@@ -746,24 +746,99 @@
   width: auto;
 }
 
-/* Responsive */
+/* Responsive - Tablet */
 @media (max-width: 1024px) {
   .nav {
     padding: 1.5rem 2rem;
   }
 
-  .why-choose,
-  .support-section {
-    flex-direction: column;
+  .logo {
+    margin-left: 0;
   }
 
-  .feature-cards,
+  .nav-links {
+    margin-right: 0;
+    gap: 2rem;
+  }
+
+  .why-choose {
+    padding: 5rem 4rem 8rem;
+    min-height: auto;
+  }
+
+  .why-images {
+    position: relative;
+    display: flex;
+    gap: 1rem;
+    min-height: auto;
+    margin-top: 2rem;
+  }
+
+  .why-img-1,
+  .why-img-2 {
+    position: relative;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    width: 50%;
+  }
+
+  .support-section {
+    flex-direction: column;
+    padding: 5rem 4rem;
+  }
+
+  .support-content {
+    flex: none;
+    max-width: 100%;
+  }
+
+  .faq-box {
+    flex: none;
+    width: 100%;
+  }
+
+  .feature-cards {
+    padding: 5rem 4rem;
+  }
+
   .steps-cards {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .pricing-cards {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .pricing-card {
+    max-width: 500px;
+    width: 100%;
+  }
+
+  .subscribe-layout {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .subscribe-icon {
+    width: 100px;
+  }
+
+  .footer {
+    padding: 4rem 4rem 2rem;
   }
 
   .footer-links {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
+    max-width: 100%;
+  }
+
+  .footer-bottom,
+  .social-links {
+    max-width: 100%;
   }
 
   .intro-badge {
@@ -779,13 +854,26 @@
   }
 }
 
+/* Responsive - Mobile */
 @media (max-width: 768px) {
+  .nav {
+    padding: 1rem 1.5rem;
+  }
+
   .nav-links {
     display: none;
   }
 
+  .hero-content {
+    padding: 2rem 1.5rem;
+  }
+
   .hero-title {
     font-size: 2rem;
+  }
+
+  .hero-subtitle {
+    font-size: 0.8rem;
   }
 
   .features-content {
@@ -799,21 +887,118 @@
   }
 
   .features-banner .feature h2 {
-    font-size: 2.5rem;
+    font-size: 2rem;
+  }
+
+  .how-it-works {
+    padding: 3rem 1.5rem;
+  }
+
+  .how-it-works h2 {
+    font-size: 2rem;
+  }
+
+  .steps-cards {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .why-choose {
+    padding: 3rem 1.5rem 4rem;
+  }
+
+  .why-content h2 {
+    font-size: 2rem;
+  }
+
+  .why-images {
+    flex-direction: column;
+  }
+
+  .why-img-1,
+  .why-img-2 {
+    width: 100%;
+    max-width: 300px;
+    margin: 0 auto;
+  }
+
+  .feature-cards {
+    grid-template-columns: 1fr;
+    padding: 3rem 1.5rem;
+    gap: 2rem;
+  }
+
+  .pricing-section {
+    padding: 3rem 1.5rem;
+  }
+
+  .pricing-section h2 {
+    font-size: 2rem;
+  }
+
+  .pricing-card {
+    padding: 2rem;
+  }
+
+  .pricing-amount .price {
+    font-size: 3rem;
+  }
+
+  .support-section {
+    padding: 3rem 1.5rem;
+    gap: 2rem;
+  }
+
+  .support-content h2 {
+    font-size: 2rem;
+  }
+
+  .faq-box {
+    padding: 1.5rem;
+  }
+
+  .subscribe {
+    padding: 3rem 1.5rem;
+  }
+
+  .subscribe-content h2 {
+    font-size: 2rem;
+  }
+
+  .subscribe-form {
+    max-width: 100%;
+  }
+
+  .footer {
+    padding: 3rem 1.5rem 2rem;
+  }
+
+  .footer-top h2 {
+    font-size: 2rem;
+  }
+
+  .footer-links {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
   }
 
   .footer-bottom {
     flex-direction: column;
-    gap: 2rem;
+    gap: 1.5rem;
     text-align: center;
+  }
+
+  .social-links {
+    justify-content: center;
   }
 
   .intro-badge {
     right: 10px;
+    top: 15%;
   }
 
   .intro-offer-svg {
-    width: 120px;
+    width: 100px;
   }
 
   .logo-svg {
@@ -822,5 +1007,37 @@
 
   .scroll-indicator {
     bottom: 1rem;
+  }
+}
+
+/* Responsive - Small Mobile */
+@media (max-width: 480px) {
+  .hero-title {
+    font-size: 1.75rem;
+  }
+
+  .features-banner .feature {
+    flex: 1 1 100%;
+  }
+
+  .features-banner .feature h2 {
+    font-size: 1.75rem;
+  }
+
+  .footer-links {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+
+  .footer-column {
+    margin-bottom: 1rem;
+  }
+
+  .pricing-amount .price {
+    font-size: 2.5rem;
+  }
+
+  .intro-badge {
+    display: none;
   }
 }
