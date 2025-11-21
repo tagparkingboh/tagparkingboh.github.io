@@ -30,13 +30,13 @@ function App() {
 
           <Link to="/tag-it" className="hero-cta">Tag it</Link>
 
-          <div className="hero-video-link">
+          {/* <div className="hero-video-link">
             <svg className="play-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="12" cy="12" r="11" stroke="white" strokeWidth="2"/>
               <path d="M10 8l6 4-6 4V8z" fill="white"/>
             </svg>
             <span>Take a look at how Tag works</span>
-          </div>
+          </div> */}
         </div>
 
         <a href="#pricing" className="scroll-indicator">
