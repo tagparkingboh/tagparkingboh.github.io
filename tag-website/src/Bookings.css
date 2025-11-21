@@ -236,8 +236,10 @@
   padding-top: 1rem;
 }
 
-.react-datepicker__current-month {
-  color: var(--lime-green);
+.react-datepicker__current-month,
+.react-datepicker__current-month--hasYearDropdown,
+.react-datepicker__current-month--hasMonthDropdown {
+  color: var(--lime-green) !important;
   font-weight: 600;
 }
 
