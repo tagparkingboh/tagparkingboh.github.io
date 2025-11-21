@@ -389,18 +389,6 @@ function Bookings() {
                 />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="flightNumber">Flight Number (optional)</label>
-                <input
-                  type="text"
-                  id="flightNumber"
-                  name="flightNumber"
-                  placeholder="e.g. BA123"
-                  value={formData.flightNumber}
-                  onChange={handleChange}
-                />
-              </div>
-
               <div className="form-actions">
                 <button type="button" className="back-btn" onClick={prevStep}>
                   Back
