@@ -11,9 +11,9 @@ function App() {
             <img src="/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
           </div>
           <ul className="nav-links">
-            <li><a href="#book">Book</a></li>
+            <li><a href="#how-it-works">Meet & Greet</a></li>
             <li><a href="#pricing">Pricing</a></li>
-            <li><a href="#support">Support</a></li>
+            <li><a href="#subscribe">Subscribe</a></li>
             <li><a href="#contact">Contact</a></li>
           </ul>
         </nav>
@@ -70,7 +70,7 @@ function App() {
       </section>
 
       {/* How TAG Works */}
-      <section className="how-it-works">
+      <section className="how-it-works" id="how-it-works">
         <h2>How TAG works for you.</h2>
         <p className="how-it-works-subtitle">This is dummy copy. It is not meant to be read. It has<br />been placed here solely to demonstrate.</p>
         <div className="steps-cards">
@@ -138,7 +138,7 @@ function App() {
       </section>
 
       {/* Pricing Section */}
-      <section className="pricing-section">
+      <section className="pricing-section" id="pricing">
         <h2>Pricing & plans</h2>
         <p className="pricing-subtitle">With lots of unique blocks, you can easily build a page without<br />coding. Build your next landing page.</p>
 
@@ -219,7 +219,7 @@ function App() {
       </section>
 
       {/* Subscribe Section */}
-      <section className="subscribe">
+      <section className="subscribe" id="subscribe">
         <div className="subscribe-layout">
           <img src="/departure-icon.png" alt="Departure" className="subscribe-icon" />
           <div className="subscribe-content">
@@ -235,7 +235,7 @@ function App() {
       </section>
 
       {/* Footer */}
-      <footer className="footer">
+      <footer className="footer" id="contact">
         <div className="footer-top">
           <h2>For everything else</h2>
         </div>
