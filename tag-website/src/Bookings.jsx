@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import DatePicker from 'react-datepicker'
+import { format } from 'date-fns'
+import 'react-datepicker/dist/react-datepicker.css'
 import './Bookings.css'
 
 function Bookings() {
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
-    terminal: '',
-    dropoffDate: '',
+    dropoffDate: null,
     dropoffFlight: '',
-    pickupDate: '',
+    pickupDate: null,
     pickupTime: '',
     registration: '',
     make: '',
@@ -23,7 +25,37 @@ function Bookings() {
     terms: false
   })
 
-  const terminals = ['Terminal 1', 'Terminal 2']
+  // UK popular car makes and their models
+  const carData = {
+    'Audi': ['A1', 'A3', 'A4', 'A5', 'A6', 'Q2', 'Q3', 'Q5', 'Q7', 'TT', 'e-tron'],
+    'BMW': ['1 Series', '2 Series', '3 Series', '4 Series', '5 Series', 'X1', 'X3', 'X5', 'iX', 'i4'],
+    'Citroen': ['C1', 'C3', 'C4', 'C5 X', 'Berlingo', 'e-C4'],
+    'Dacia': ['Sandero', 'Duster', 'Jogger', 'Spring'],
+    'Fiat': ['500', 'Panda', 'Tipo', '500X'],
+    'Ford': ['Fiesta', 'Focus', 'Puma', 'Kuga', 'Mustang Mach-E', 'Ranger'],
+    'Honda': ['Civic', 'Jazz', 'HR-V', 'CR-V', 'ZR-V', 'e'],
+    'Hyundai': ['i10', 'i20', 'i30', 'Tucson', 'Kona', 'Ioniq 5', 'Ioniq 6'],
+    'Jaguar': ['XE', 'XF', 'F-Pace', 'E-Pace', 'I-Pace'],
+    'Kia': ['Picanto', 'Rio', 'Ceed', 'Sportage', 'Niro', 'EV6', 'EV9'],
+    'Land Rover': ['Defender', 'Discovery', 'Discovery Sport', 'Range Rover', 'Range Rover Sport', 'Range Rover Evoque'],
+    'Lexus': ['UX', 'NX', 'RX', 'ES', 'IS'],
+    'Mazda': ['2', '3', 'CX-3', 'CX-30', 'CX-5', 'MX-5', 'CX-60'],
+    'Mercedes-Benz': ['A-Class', 'B-Class', 'C-Class', 'E-Class', 'GLA', 'GLC', 'GLE', 'EQA', 'EQC'],
+    'Mini': ['Hatch', 'Clubman', 'Countryman', 'Electric'],
+    'Nissan': ['Micra', 'Juke', 'Qashqai', 'X-Trail', 'Leaf', 'Ariya'],
+    'Peugeot': ['208', '308', '2008', '3008', '5008', 'e-208', 'e-2008'],
+    'Renault': ['Clio', 'Captur', 'Megane', 'Arkana', 'Zoe', 'Megane E-Tech'],
+    'Seat': ['Ibiza', 'Leon', 'Arona', 'Ateca', 'Tarraco'],
+    'Skoda': ['Fabia', 'Scala', 'Octavia', 'Superb', 'Kamiq', 'Karoq', 'Kodiaq', 'Enyaq'],
+    'Tesla': ['Model 3', 'Model Y', 'Model S', 'Model X'],
+    'Toyota': ['Yaris', 'Corolla', 'C-HR', 'RAV4', 'Prius', 'bZ4X', 'Yaris Cross'],
+    'Vauxhall': ['Corsa', 'Astra', 'Mokka', 'Grandland', 'Crossland'],
+    'Volkswagen': ['Polo', 'Golf', 'T-Roc', 'Tiguan', 'ID.3', 'ID.4', 'ID.5', 'Passat'],
+    'Volvo': ['XC40', 'XC60', 'XC90', 'V60', 'S60', 'C40 Recharge']
+  }
+
+  const carMakes = Object.keys(carData).sort()
+  const carModels = formData.make ? carData[formData.make] || [] : []
 
   const flightSlots = [
     { id: 'early', label: 'Early Morning', time: '05:00 - 09:00' },
@@ -43,6 +75,22 @@ function Bookings() {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }))
+
+    // Reset model when make changes
+    if (name === 'make') {
+      setFormData(prev => ({
+        ...prev,
+        make: value,
+        model: ''
+      }))
+    }
+  }
+
+  const handleDateChange = (date, field) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: date
+    }))
   }
 
   const nextStep = () => {
@@ -55,7 +103,7 @@ function Bookings() {
     window.scrollTo(0, 0)
   }
 
-  const isStep1Complete = formData.terminal && formData.dropoffDate && formData.dropoffFlight && formData.pickupDate && formData.pickupTime
+  const isStep1Complete = formData.dropoffDate && formData.dropoffFlight && formData.pickupDate && formData.pickupTime
   const isStep2Complete = formData.registration && formData.make && formData.model && formData.colour
   const isStep3Complete = formData.firstName && formData.lastName && formData.email && formData.phone
   const isStep4Complete = formData.package
@@ -66,6 +114,11 @@ function Bookings() {
     // Stripe integration will go here
     alert('Stripe payment integration coming soon! Your booking details have been captured.')
     console.log('Booking data:', formData)
+  }
+
+  const formatDisplayDate = (date) => {
+    if (!date) return ''
+    return format(date, 'dd/MM/yyyy')
   }
 
   return (
@@ -107,35 +160,17 @@ function Bookings() {
               <h2>Trip Details</h2>
 
               <div className="form-group">
-                <label htmlFor="terminal">Select Terminal</label>
-                <select
-                  id="terminal"
-                  name="terminal"
-                  value={formData.terminal}
-                  onChange={handleChange}
-                  required
-                >
-                  <option value="">Choose terminal</option>
-                  {terminals.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+                <label htmlFor="dropoffDate">Drop-off Date</label>
+                <DatePicker
+                  selected={formData.dropoffDate}
+                  onChange={(date) => handleDateChange(date, 'dropoffDate')}
+                  dateFormat="dd/MM/yyyy"
+                  minDate={new Date()}
+                  placeholderText="Select date"
+                  className="date-picker-input"
+                  id="dropoffDate"
+                />
               </div>
-
-              {formData.terminal && (
-                <div className="form-group fade-in">
-                  <label htmlFor="dropoffDate">Drop-off Date</label>
-                  <input
-                    type="date"
-                    id="dropoffDate"
-                    name="dropoffDate"
-                    value={formData.dropoffDate}
-                    onChange={handleChange}
-                    min={new Date().toISOString().split('T')[0]}
-                    required
-                  />
-                </div>
-              )}
 
               {formData.dropoffDate && (
                 <div className="form-group fade-in">
@@ -163,14 +198,14 @@ function Bookings() {
               {formData.dropoffFlight && (
                 <div className="form-group fade-in">
                   <label htmlFor="pickupDate">Pick-up Date</label>
-                  <input
-                    type="date"
+                  <DatePicker
+                    selected={formData.pickupDate}
+                    onChange={(date) => handleDateChange(date, 'pickupDate')}
+                    dateFormat="dd/MM/yyyy"
+                    minDate={formData.dropoffDate || new Date()}
+                    placeholderText="Select date"
+                    className="date-picker-input"
                     id="pickupDate"
-                    name="pickupDate"
-                    value={formData.pickupDate}
-                    onChange={handleChange}
-                    min={formData.dropoffDate}
-                    required
                   />
                 </div>
               )}
@@ -224,6 +259,7 @@ function Bookings() {
                   placeholder="e.g. AB12 CDE"
                   value={formData.registration}
                   onChange={handleChange}
+                  style={{ textTransform: 'uppercase' }}
                   required
                 />
               </div>
@@ -231,30 +267,36 @@ function Bookings() {
               {formData.registration && (
                 <div className="form-group fade-in">
                   <label htmlFor="make">Vehicle Make</label>
-                  <input
-                    type="text"
+                  <select
                     id="make"
                     name="make"
-                    placeholder="e.g. BMW"
                     value={formData.make}
                     onChange={handleChange}
                     required
-                  />
+                  >
+                    <option value="">Select make</option>
+                    {carMakes.map(make => (
+                      <option key={make} value={make}>{make}</option>
+                    ))}
+                  </select>
                 </div>
               )}
 
               {formData.make && (
                 <div className="form-group fade-in">
                   <label htmlFor="model">Vehicle Model</label>
-                  <input
-                    type="text"
+                  <select
                     id="model"
                     name="model"
-                    placeholder="e.g. 3 Series"
                     value={formData.model}
                     onChange={handleChange}
                     required
-                  />
+                  >
+                    <option value="">Select model</option>
+                    {carModels.map(model => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
+                  </select>
                 </div>
               )}
 
@@ -448,15 +490,15 @@ function Bookings() {
                 <h3>Booking Summary</h3>
                 <div className="summary-item">
                   <span>Airport</span>
-                  <span>Bournemouth (BOH) - {formData.terminal}</span>
+                  <span>Bournemouth (BOH)</span>
                 </div>
                 <div className="summary-item">
                   <span>Drop-off</span>
-                  <span>{formData.dropoffDate}</span>
+                  <span>{formatDisplayDate(formData.dropoffDate)}</span>
                 </div>
                 <div className="summary-item">
                   <span>Pick-up</span>
-                  <span>{formData.pickupDate}</span>
+                  <span>{formatDisplayDate(formData.pickupDate)}</span>
                 </div>
                 <div className="summary-item">
                   <span>Vehicle</span>
@@ -464,7 +506,7 @@ function Bookings() {
                 </div>
                 <div className="summary-item">
                   <span>Registration</span>
-                  <span>{formData.registration}</span>
+                  <span>{formData.registration.toUpperCase()}</span>
                 </div>
                 <div className="summary-item total">
                   <span>Total</span>
