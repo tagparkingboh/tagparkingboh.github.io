@@ -864,17 +864,19 @@
 
   .nav-links {
     display: none;
-    position: absolute;
-    top: 100%;
+    position: fixed;
+    top: 0;
     left: 0;
     right: 0;
-    background: rgba(52, 52, 52, 0.98);
+    bottom: 0;
+    background: var(--dark-gray);
     flex-direction: column;
-    padding: 1rem 1.5rem;
+    padding: 5rem 2rem 2rem;
     gap: 0;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     margin-right: 0;
-    z-index: 1000;
+    z-index: 99;
+    align-items: center;
+    justify-content: flex-start;
   }
 
   .nav-links.open {
@@ -884,6 +886,8 @@
   .nav-links li {
     text-align: center;
     list-style: none;
+    width: 100%;
+    max-width: 400px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
 
@@ -892,8 +896,8 @@
   }
 
   .nav-links a {
-    font-size: 1rem;
-    padding: 1rem;
+    font-size: 1.2rem;
+    padding: 1.25rem;
     display: block;
     color: var(--white);
     text-decoration: none;
@@ -901,7 +905,10 @@
 
   .nav-links a:active {
     color: var(--lime-green);
-    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .hamburger {
+    z-index: 100;
   }
 
   .why-choose {
@@ -1010,16 +1017,18 @@
 
   .nav-links {
     display: none;
-    position: absolute;
-    top: 100%;
+    position: fixed;
+    top: 0;
     left: 0;
     right: 0;
-    background: rgba(52, 52, 52, 0.98);
+    bottom: 0;
+    background: var(--dark-gray);
     flex-direction: column;
-    padding: 1rem 1.5rem;
+    padding: 5rem 2rem 2rem;
     gap: 0;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    z-index: 1000;
+    z-index: 99;
+    align-items: center;
+    justify-content: flex-start;
   }
 
   .nav-links.open {
@@ -1029,6 +1038,7 @@
   .nav-links li {
     text-align: center;
     list-style: none;
+    width: 100%;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
 
@@ -1037,8 +1047,8 @@
   }
 
   .nav-links a {
-    font-size: 1rem;
-    padding: 1rem;
+    font-size: 1.2rem;
+    padding: 1.25rem;
     display: block;
     color: var(--white);
     text-decoration: none;
@@ -1046,7 +1056,10 @@
 
   .nav-links a:active {
     color: var(--lime-green);
-    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .hamburger {
+    z-index: 100;
   }
 
   .hero-content {
