@@ -165,11 +165,10 @@ function App() {
 
         <div className="pricing-cards">
           <div className="pricing-card">
-            <span className="pricing-label">QUICK TRIPS</span>
+            <span className="pricing-label">1 WEEK TRIP</span>
             <div className="pricing-amount">
               <span className="currency">£</span>
               <span className="price">99</span>
-              <span className="period">/ 1 week</span>
             </div>
             <p className="pricing-note">one off payment</p>
 
@@ -185,11 +184,10 @@ function App() {
           </div>
 
           <div className="pricing-card">
-            <span className="pricing-label">LONGER STAYS</span>
+            <span className="pricing-label">2 WEEK TRIP</span>
             <div className="pricing-amount">
               <span className="currency">£</span>
               <span className="price">135</span>
-              <span className="period">/ 2 weeks</span>
             </div>
             <p className="pricing-note">one off payment</p>
 
