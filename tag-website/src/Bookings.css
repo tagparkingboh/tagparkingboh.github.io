@@ -17,7 +17,7 @@
 
 .bookings-container {
   flex: 1;
-  max-width: 800px;
+  max-width: 600px;
   margin: 0 auto;
   padding: 3rem 2rem;
   width: 100%;
@@ -35,9 +35,84 @@
 .bookings-subtitle {
   color: var(--dark-gray);
   text-align: center;
-  margin-bottom: 3rem;
+  margin-bottom: 2rem;
+  font-weight: 500;
 }
 
+/* Progress Bar */
+.progress-bar {
+  margin-bottom: 2rem;
+}
+
+.progress-steps {
+  display: flex;
+  justify-content: space-between;
+}
+
+.progress-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  position: relative;
+}
+
+.progress-step::after {
+  content: '';
+  position: absolute;
+  top: 15px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: #E0E0E0;
+  z-index: 0;
+}
+
+.progress-step:last-child::after {
+  display: none;
+}
+
+.progress-step.active::after,
+.progress-step.completed::after {
+  background: var(--lime-green);
+}
+
+.step-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #E0E0E0;
+  color: var(--dark-gray);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.85rem;
+  position: relative;
+  z-index: 1;
+  transition: all 0.3s;
+}
+
+.progress-step.active .step-number,
+.progress-step.completed .step-number {
+  background: var(--lime-green);
+  color: var(--black);
+}
+
+.step-label {
+  font-size: 0.75rem;
+  color: var(--dark-gray);
+  margin-top: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.progress-step.active .step-label {
+  color: var(--black);
+  font-weight: 600;
+}
+
+/* Form */
 .bookings-form {
   background: var(--white);
   border-radius: 12px;
@@ -46,11 +121,18 @@
 }
 
 .form-section {
-  margin-bottom: 2.5rem;
+  animation: fadeIn 0.3s ease;
 }
 
-.form-section:last-of-type {
-  margin-bottom: 2rem;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .form-section h2 {
@@ -65,21 +147,17 @@
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.form-row:last-child {
-  margin-bottom: 0;
+  gap: 1rem;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
+  margin-bottom: 1.5rem;
 }
 
-.form-group.full-width {
-  grid-column: 1 / -1;
+.form-group.fade-in {
+  animation: fadeIn 0.3s ease;
 }
 
 .form-group label {
@@ -110,10 +188,85 @@
   color: #999;
 }
 
+/* Flight Slots */
+.flight-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.flight-slot {
+  cursor: pointer;
+}
+
+.flight-slot input {
+  display: none;
+}
+
+.slot-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border: 2px solid #E0E0E0;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.flight-slot input:checked + .slot-card {
+  border-color: var(--lime-green);
+  background: rgba(204, 255, 0, 0.1);
+}
+
+.slot-label {
+  font-weight: 600;
+  color: var(--black);
+}
+
+.slot-time {
+  color: var(--dark-gray);
+  font-size: 0.9rem;
+}
+
+/* Pickup Times */
+.pickup-times {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pickup-time {
+  cursor: pointer;
+}
+
+.pickup-time input {
+  display: none;
+}
+
+.time-card {
+  padding: 1rem 1.25rem;
+  border: 2px solid #E0E0E0;
+  border-radius: 8px;
+  transition: all 0.3s;
+  text-align: center;
+}
+
+.pickup-time input:checked + .time-card {
+  border-color: var(--lime-green);
+  background: rgba(204, 255, 0, 0.1);
+}
+
+.time-card span {
+  font-weight: 500;
+  color: var(--black);
+}
+
+/* Package Options */
 .package-options {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .package-option {
@@ -131,6 +284,7 @@
   border: 2px solid #E0E0E0;
   border-radius: 8px;
   transition: all 0.3s;
+  height: 100%;
 }
 
 .package-option input:checked + .package-card {
@@ -138,20 +292,117 @@
   background: rgba(204, 255, 0, 0.1);
 }
 
-.package-name {
+.package-label {
+  font-size: 0.75rem;
   font-weight: 600;
-  color: var(--black);
+  color: var(--lime-green);
+  letter-spacing: 1px;
   margin-bottom: 0.5rem;
 }
 
 .package-price {
-  font-size: 1.25rem;
+  font-size: 2.5rem;
   font-weight: 700;
+  color: var(--black);
+  line-height: 1;
+}
+
+.package-period {
+  font-size: 0.9rem;
+  color: var(--dark-gray);
+  margin-bottom: 1rem;
+}
+
+.package-features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.package-features li {
+  font-size: 0.85rem;
+  color: var(--dark-gray);
+  padding: 0.35rem 0;
+  padding-left: 1.25rem;
+  position: relative;
+}
+
+.package-features li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--lime-green);
+  font-weight: 700;
+}
+
+/* Booking Summary */
+.booking-summary {
+  background: var(--light-gray);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.booking-summary h3 {
+  font-size: 1rem;
+  color: var(--black);
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #E0E0E0;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.summary-item span:first-child {
   color: var(--dark-gray);
 }
 
+.summary-item span:last-child {
+  color: var(--black);
+  font-weight: 500;
+}
+
+.summary-item.total {
+  border-top: 2px solid var(--lime-green);
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  font-size: 1.1rem;
+}
+
+.summary-item.total span:last-child {
+  font-weight: 700;
+  color: var(--black);
+}
+
+/* Stripe Placeholder */
+.stripe-placeholder {
+  background: #f8f9fa;
+  border: 2px dashed #E0E0E0;
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.stripe-placeholder p {
+  color: var(--dark-gray);
+  margin: 0;
+}
+
+.stripe-placeholder .stripe-note {
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  opacity: 0.7;
+}
+
+/* Checkbox */
 .checkbox-group {
-  margin-top: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .checkbox-label {
@@ -183,23 +434,57 @@
   color: var(--lime-green);
 }
 
+/* Form Actions */
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.back-btn {
+  flex: 0 0 auto;
+  padding: 1rem 1.5rem;
+  background: var(--white);
+  border: 2px solid #E0E0E0;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--dark-gray);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  border-color: var(--dark-gray);
+  color: var(--black);
+}
+
+.next-btn,
 .submit-btn {
-  width: 100%;
-  padding: 1.25rem;
+  flex: 1;
+  padding: 1rem 1.5rem;
   background: var(--lime-green);
   border: none;
   border-radius: 8px;
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--black);
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: all 0.2s;
 }
 
-.submit-btn:hover {
+.next-btn:hover:not(:disabled),
+.submit-btn:hover:not(:disabled) {
   transform: translateY(-2px);
 }
 
+.next-btn:disabled,
+.submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Footer */
 .bookings-footer {
   background: var(--dark-gray);
   padding: 1.5rem;
@@ -236,10 +521,36 @@
 
   .form-row {
     grid-template-columns: 1fr;
-    gap: 1rem;
   }
 
   .package-options {
     grid-template-columns: 1fr;
+  }
+
+  .progress-steps {
+    gap: 0.25rem;
+  }
+
+  .step-label {
+    font-size: 0.65rem;
+  }
+
+  .step-number {
+    width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+  }
+
+  .form-actions {
+    flex-direction: column;
+  }
+
+  .back-btn {
+    order: 2;
+  }
+
+  .next-btn,
+  .submit-btn {
+    order: 1;
   }
 }
