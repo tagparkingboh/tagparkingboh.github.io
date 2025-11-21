@@ -7,11 +7,13 @@
 
 .bookings-nav {
   background: var(--dark-gray);
-  padding: 1.5rem 4rem;
+  padding: 2rem 4rem;
+  display: flex;
+  justify-content: center;
 }
 
 .bookings-nav .logo-svg {
-  height: 60px;
+  height: 80px;
   width: auto;
 }
 
@@ -564,6 +566,12 @@
   background: var(--dark-gray);
   padding: 1.5rem;
   text-align: center;
+}
+
+.footer-logo-small {
+  height: 35px;
+  width: auto;
+  margin-bottom: 1rem;
 }
 
 .bookings-footer p {

@@ -538,6 +538,7 @@ function Bookings() {
       </div>
 
       <footer className="bookings-footer">
+        <img src="/logo.svg" alt="TAG" className="footer-logo-small" />
         <p>© 2025 TAG Parking. All rights reserved.</p>
       </footer>
     </div>
