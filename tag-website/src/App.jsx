@@ -1,7 +1,18 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import './App.css'
 
 function App() {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  const toggleMenu = () => {
+    setMenuOpen(!menuOpen)
+  }
+
+  const closeMenu = () => {
+    setMenuOpen(false)
+  }
+
   return (
     <div className="app">
       {/* Hero Section */}
@@ -10,11 +21,16 @@ function App() {
           <div className="logo">
             <img src="/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
           </div>
-          <ul className="nav-links">
-            <li><a href="#how-it-works">Meet & Greet</a></li>
-            <li><a href="#pricing">Pricing</a></li>
-            <li><a href="#subscribe">Subscribe</a></li>
-            <li><a href="#contact">Contact</a></li>
+          <button className={`hamburger ${menuOpen ? 'open' : ''}`} onClick={toggleMenu} aria-label="Toggle menu">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
+            <li><a href="#how-it-works" onClick={closeMenu}>Meet & Greet</a></li>
+            <li><a href="#pricing" onClick={closeMenu}>Pricing</a></li>
+            <li><a href="#subscribe" onClick={closeMenu}>Subscribe</a></li>
+            <li><a href="#contact" onClick={closeMenu}>Contact</a></li>
           </ul>
         </nav>
 
