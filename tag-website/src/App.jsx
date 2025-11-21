@@ -5,7 +5,7 @@ function App() {
   return (
     <div className="app">
       {/* Hero Section */}
-      <section className="hero">
+      <section className="hero" id="hero">
         <nav className="nav">
           <div className="logo">
             <img src="/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
@@ -233,6 +233,13 @@ function App() {
           </div>
         </div>
       </section>
+
+      {/* Back to Top */}
+      <a href="#hero" className="scroll-to-top">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M17 14l-5-5-5 5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </a>
 
       {/* Footer */}
       <footer className="footer" id="contact">
