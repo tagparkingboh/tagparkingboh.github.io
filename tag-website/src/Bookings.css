@@ -244,12 +244,12 @@
 }
 
 .react-datepicker__day-names {
-  background: var(--light-gray);
+  background: var(--light-gray) !important;
   padding: 0.5rem 0;
 }
 
 .react-datepicker__day-name {
-  color: var(--dark-gray);
+  color: var(--lime-green) !important;
   font-weight: 900;
 }
 
