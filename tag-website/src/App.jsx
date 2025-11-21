@@ -28,7 +28,7 @@ function App() {
             <h1 className="hero-title">Curb to Costa del Sol,<br />we'll be ready.</h1>
           </div>
 
-          <Link to="/book" className="hero-cta">Book your Tag</Link>
+          <Link to="/tag-it" className="hero-cta">Tag it</Link>
 
           <div className="hero-video-link">
             <svg className="play-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -160,7 +160,7 @@ function App() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <Link to="/book" className="pricing-btn">Book your Tag <span>→</span></Link>
+            <Link to="/tag-it" className="pricing-btn">Tag it <span>→</span></Link>
           </div>
 
           <div className="pricing-card">
@@ -180,7 +180,7 @@ function App() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <Link to="/book" className="pricing-btn">Book your Tag <span>→</span></Link>
+            <Link to="/tag-it" className="pricing-btn">Tag it <span>→</span></Link>
           </div>
         </div>
       </section>
