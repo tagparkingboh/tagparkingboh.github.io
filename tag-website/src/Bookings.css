@@ -245,7 +245,7 @@
 
 .react-datepicker__day-name {
   color: var(--lime-green);
-  font-weight: 700;
+  font-weight: 1000;
 }
 
 .react-datepicker__day {
