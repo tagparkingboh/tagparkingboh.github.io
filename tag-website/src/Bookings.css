@@ -16,7 +16,10 @@
 .bookings-nav .logo {
   display: flex;
   justify-content: center;
+  align-items: center;
   margin: 0;
+  width: 100%;
+  text-align: center;
 }
 
 .bookings-nav .logo-svg {
@@ -234,7 +237,7 @@
 }
 
 .react-datepicker__current-month {
-  color: var(--white);
+  color: var(--lime-green);
   font-weight: 600;
 }
 

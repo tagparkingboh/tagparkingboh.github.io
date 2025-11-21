@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
+import { getMakes, getModels } from 'car-info'
 import 'react-datepicker/dist/react-datepicker.css'
 import './Bookings.css'
 
@@ -14,7 +15,9 @@ function Bookings() {
     pickupTime: '',
     registration: '',
     make: '',
+    customMake: '',
     model: '',
+    customModel: '',
     colour: '',
     firstName: '',
     lastName: '',
@@ -25,37 +28,12 @@ function Bookings() {
     terms: false
   })
 
-  // UK popular car makes and their models
-  const carData = {
-    'Audi': ['A1', 'A3', 'A4', 'A5', 'A6', 'Q2', 'Q3', 'Q5', 'Q7', 'TT', 'e-tron'],
-    'BMW': ['1 Series', '2 Series', '3 Series', '4 Series', '5 Series', 'X1', 'X3', 'X5', 'iX', 'i4'],
-    'Citroen': ['C1', 'C3', 'C4', 'C5 X', 'Berlingo', 'e-C4'],
-    'Dacia': ['Sandero', 'Duster', 'Jogger', 'Spring'],
-    'Fiat': ['500', 'Panda', 'Tipo', '500X'],
-    'Ford': ['Fiesta', 'Focus', 'Puma', 'Kuga', 'Mustang Mach-E', 'Ranger'],
-    'Honda': ['Civic', 'Jazz', 'HR-V', 'CR-V', 'ZR-V', 'e'],
-    'Hyundai': ['i10', 'i20', 'i30', 'Tucson', 'Kona', 'Ioniq 5', 'Ioniq 6'],
-    'Jaguar': ['XE', 'XF', 'F-Pace', 'E-Pace', 'I-Pace'],
-    'Kia': ['Picanto', 'Rio', 'Ceed', 'Sportage', 'Niro', 'EV6', 'EV9'],
-    'Land Rover': ['Defender', 'Discovery', 'Discovery Sport', 'Range Rover', 'Range Rover Sport', 'Range Rover Evoque'],
-    'Lexus': ['UX', 'NX', 'RX', 'ES', 'IS'],
-    'Mazda': ['2', '3', 'CX-3', 'CX-30', 'CX-5', 'MX-5', 'CX-60'],
-    'Mercedes-Benz': ['A-Class', 'B-Class', 'C-Class', 'E-Class', 'GLA', 'GLC', 'GLE', 'EQA', 'EQC'],
-    'Mini': ['Hatch', 'Clubman', 'Countryman', 'Electric'],
-    'Nissan': ['Micra', 'Juke', 'Qashqai', 'X-Trail', 'Leaf', 'Ariya'],
-    'Peugeot': ['208', '308', '2008', '3008', '5008', 'e-208', 'e-2008'],
-    'Renault': ['Clio', 'Captur', 'Megane', 'Arkana', 'Zoe', 'Megane E-Tech'],
-    'Seat': ['Ibiza', 'Leon', 'Arona', 'Ateca', 'Tarraco'],
-    'Skoda': ['Fabia', 'Scala', 'Octavia', 'Superb', 'Kamiq', 'Karoq', 'Kodiaq', 'Enyaq'],
-    'Tesla': ['Model 3', 'Model Y', 'Model S', 'Model X'],
-    'Toyota': ['Yaris', 'Corolla', 'C-HR', 'RAV4', 'Prius', 'bZ4X', 'Yaris Cross'],
-    'Vauxhall': ['Corsa', 'Astra', 'Mokka', 'Grandland', 'Crossland'],
-    'Volkswagen': ['Polo', 'Golf', 'T-Roc', 'Tiguan', 'ID.3', 'ID.4', 'ID.5', 'Passat'],
-    'Volvo': ['XC40', 'XC60', 'XC90', 'V60', 'S60', 'C40 Recharge']
-  }
-
-  const carMakes = Object.keys(carData).sort()
-  const carModels = formData.make ? carData[formData.make] || [] : []
+  // Get car makes and models from car-info library
+  const carMakes = useMemo(() => getMakes().sort(), [])
+  const carModels = useMemo(() => {
+    if (!formData.make) return []
+    return getModels(formData.make) || []
+  }, [formData.make])
 
   const flightSlots = [
     { id: 'early', label: 'Early Morning', time: '05:00 - 09:00' },
@@ -81,7 +59,18 @@ function Bookings() {
       setFormData(prev => ({
         ...prev,
         make: value,
-        model: ''
+        model: '',
+        customMake: '',
+        customModel: ''
+      }))
+    }
+
+    // Reset custom model when model changes
+    if (name === 'model') {
+      setFormData(prev => ({
+        ...prev,
+        model: value,
+        customModel: ''
       }))
     }
   }
@@ -104,7 +93,9 @@ function Bookings() {
   }
 
   const isStep1Complete = formData.dropoffDate && formData.dropoffFlight && formData.pickupDate && formData.pickupTime
-  const isStep2Complete = formData.registration && formData.make && formData.model && formData.colour
+  const isMakeComplete = formData.make && (formData.make !== 'Other' || formData.customMake)
+  const isModelComplete = formData.model && (formData.model !== 'Other' || formData.customModel)
+  const isStep2Complete = formData.registration && isMakeComplete && isModelComplete && formData.colour
   const isStep3Complete = formData.firstName && formData.lastName && formData.email && formData.phone
   const isStep4Complete = formData.package
   const isStep5Complete = formData.terms
@@ -278,11 +269,27 @@ function Bookings() {
                     {carMakes.map(make => (
                       <option key={make} value={make}>{make}</option>
                     ))}
+                    <option value="Other">Other</option>
                   </select>
                 </div>
               )}
 
-              {formData.make && (
+              {formData.make === 'Other' && (
+                <div className="form-group fade-in">
+                  <label htmlFor="customMake">Enter Vehicle Make</label>
+                  <input
+                    type="text"
+                    id="customMake"
+                    name="customMake"
+                    placeholder="e.g. Cupra"
+                    value={formData.customMake}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              )}
+
+              {formData.make && formData.make !== 'Other' && (
                 <div className="form-group fade-in">
                   <label htmlFor="model">Vehicle Model</label>
                   <select
@@ -296,11 +303,44 @@ function Bookings() {
                     {carModels.map(model => (
                       <option key={model} value={model}>{model}</option>
                     ))}
+                    <option value="Other">Other</option>
                   </select>
                 </div>
               )}
 
-              {formData.model && (
+              {formData.make === 'Other' && formData.customMake && (
+                <div className="form-group fade-in">
+                  <label htmlFor="customModel">Enter Vehicle Model</label>
+                  <input
+                    type="text"
+                    id="customModel"
+                    name="customModel"
+                    placeholder="e.g. Formentor"
+                    value={formData.customModel}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              )}
+
+              {formData.model === 'Other' && formData.make !== 'Other' && (
+                <div className="form-group fade-in">
+                  <label htmlFor="customModel">Enter Vehicle Model</label>
+                  <input
+                    type="text"
+                    id="customModel"
+                    name="customModel"
+                    placeholder="e.g. Special Edition"
+                    value={formData.customModel}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              )}
+
+              {((formData.model && formData.model !== 'Other') ||
+                (formData.model === 'Other' && formData.customModel) ||
+                (formData.make === 'Other' && formData.customModel)) && (
                 <div className="form-group fade-in">
                   <label htmlFor="colour">Vehicle Colour</label>
                   <input
@@ -490,7 +530,7 @@ function Bookings() {
                 </div>
                 <div className="summary-item">
                   <span>Vehicle</span>
-                  <span>{formData.colour} {formData.make} {formData.model}</span>
+                  <span>{formData.colour} {formData.make === 'Other' ? formData.customMake : formData.make} {formData.model === 'Other' ? formData.customModel : formData.model}</span>
                 </div>
                 <div className="summary-item">
                   <span>Registration</span>
