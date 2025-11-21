@@ -10,6 +10,13 @@
   padding: 2rem 4rem;
   display: flex;
   justify-content: center;
+  align-items: center;
+}
+
+.bookings-nav .logo {
+  display: flex;
+  justify-content: center;
+  margin: 0;
 }
 
 .bookings-nav .logo-svg {
