@@ -4,6 +4,7 @@ import './App.css'
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [openFaq, setOpenFaq] = useState(null)
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
@@ -11,6 +12,10 @@ function App() {
 
   const closeMenu = () => {
     setMenuOpen(false)
+  }
+
+  const toggleFaq = (index) => {
+    setOpenFaq(openFaq === index ? null : index)
   }
 
   return (
@@ -228,9 +233,36 @@ function App() {
         <div className="faq-box">
           <h3>How to get started</h3>
           <p>With lots of unique blocks, you can easily build a page with coding. Build your next landing page. Integer ut obe ryn. Sed feugiat vitae turpis a porta.</p>
-          <div className="faq-item">Can I use Tag for my clients?</div>
-          <div className="faq-item">How often can I use it?</div>
-          <div className="faq-item">How can I access to old version?</div>
+
+          <div className={`faq-item ${openFaq === 0 ? 'open' : ''}`}>
+            <div className="faq-question" onClick={() => toggleFaq(0)}>
+              <span>Can I use Tag for my clients?</span>
+              <span className="faq-arrow">›</span>
+            </div>
+            <div className="faq-answer">
+              <p>Yes, you can use Tag for your clients. We offer flexible booking options that work for both personal and business use.</p>
+            </div>
+          </div>
+
+          <div className={`faq-item ${openFaq === 1 ? 'open' : ''}`}>
+            <div className="faq-question" onClick={() => toggleFaq(1)}>
+              <span>How often can I use it?</span>
+              <span className="faq-arrow">›</span>
+            </div>
+            <div className="faq-answer">
+              <p>You can use Tag as often as you need. There are no limits on the number of bookings you can make.</p>
+            </div>
+          </div>
+
+          <div className={`faq-item ${openFaq === 2 ? 'open' : ''}`}>
+            <div className="faq-question" onClick={() => toggleFaq(2)}>
+              <span>How can I access to old version?</span>
+              <span className="faq-arrow">›</span>
+            </div>
+            <div className="faq-answer">
+              <p>Previous booking history and details can be accessed through your account dashboard or by contacting our support team.</p>
+            </div>
+          </div>
         </div>
       </section>
 
