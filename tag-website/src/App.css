@@ -874,7 +874,7 @@
     padding: 5rem 2rem 2rem;
     gap: 0;
     margin-right: 0;
-    z-index: 99;
+    z-index: 9998;
     align-items: center;
     justify-content: flex-start;
   }
@@ -908,7 +908,7 @@
   }
 
   .hamburger {
-    z-index: 100;
+    z-index: 9999;
   }
 
   .why-choose {
@@ -1026,7 +1026,7 @@
     flex-direction: column;
     padding: 5rem 2rem 2rem;
     gap: 0;
-    z-index: 99;
+    z-index: 9998;
     align-items: center;
     justify-content: flex-start;
   }
@@ -1059,7 +1059,7 @@
   }
 
   .hamburger {
-    z-index: 100;
+    z-index: 9999;
   }
 
   .hero-content {
