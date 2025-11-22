@@ -46,7 +46,7 @@ function App() {
         <div className="hero-content">
           <div className="hero-text">
             <p className="hero-subtitle">TAG: THE NEW WAY TO MEET AND GREET</p>
-            <h1 className="hero-title">Enjoy peace of mind from<br />Palma to Paphos</h1>
+            <h1 className="hero-title">Enjoy peace of mind<br />from Palma to Paphos</h1>
           </div>
 
           <Link to="/tag-it" className="hero-cta">Tag it</Link>
