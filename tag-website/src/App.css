@@ -35,6 +35,15 @@
   z-index: 1;
 }
 
+/* Header */
+.header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+}
+
 .nav {
   position: relative;
   z-index: 10;
@@ -855,6 +864,15 @@
 
 /* Responsive - Tablet */
 @media (max-width: 1024px) {
+  .header {
+    position: fixed;
+    background: var(--dark-gray);
+  }
+
+  .hero {
+    padding-top: 80px;
+  }
+
   .nav {
     padding: 1.5rem 2rem;
     position: relative;
@@ -1012,6 +1030,15 @@
 
 /* Responsive - Mobile */
 @media (max-width: 768px) {
+  .header {
+    position: fixed;
+    background: var(--dark-gray);
+  }
+
+  .hero {
+    padding-top: 70px;
+  }
+
   .nav {
     padding: 1rem 1.5rem;
     position: relative;

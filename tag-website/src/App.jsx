@@ -20,8 +20,8 @@ function App() {
 
   return (
     <div className="app">
-      {/* Hero Section */}
-      <section className="hero" id="hero">
+      {/* Header/Nav */}
+      <header className="header">
         <nav className="nav">
           <div className="logo">
             <img src="/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
@@ -38,7 +38,10 @@ function App() {
             <li><a href="#contact" onClick={closeMenu}>Contact</a></li>
           </ul>
         </nav>
+      </header>
 
+      {/* Hero Section */}
+      <section className="hero" id="hero">
         <div className="intro-badge">
           <img src="/intro-offer.svg" alt="Intro Offer £75 p.w." className="intro-offer-svg" />
         </div>
