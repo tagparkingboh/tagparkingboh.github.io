@@ -804,7 +804,11 @@
   text-transform: capitalize;
 }
 
-.footer-column a {
+.footer-arrow {
+  display: none;
+}
+
+.footer-links-content a {
   display: block;
   color: var(--white);
   text-decoration: none;
@@ -813,7 +817,7 @@
   transition: color 0.3s;
 }
 
-.footer-column a:hover {
+.footer-links-content a:hover {
   color: var(--lime-green);
 }
 
@@ -1006,8 +1010,45 @@
   }
 
   .footer-links {
-    grid-template-columns: repeat(3, 1fr);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
     max-width: 100%;
+  }
+
+  .footer-column {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .footer-column h4 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    padding: 1rem 0;
+    margin-bottom: 0;
+  }
+
+  .footer-arrow {
+    display: inline-block;
+    color: var(--lime-green);
+    font-size: 1.25rem;
+    transition: transform 0.3s ease;
+  }
+
+  .footer-column.open .footer-arrow {
+    transform: rotate(90deg);
+  }
+
+  .footer-links-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+
+  .footer-column.open .footer-links-content {
+    max-height: 200px;
+    padding-bottom: 1rem;
   }
 
   .footer-bottom,
@@ -1209,8 +1250,44 @@
   }
 
   .footer-links {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .footer-column {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .footer-column h4 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    padding: 1rem 0;
+    margin-bottom: 0;
+  }
+
+  .footer-arrow {
+    display: inline-block;
+    color: var(--lime-green);
+    font-size: 1.25rem;
+    transition: transform 0.3s ease;
+  }
+
+  .footer-column.open .footer-arrow {
+    transform: rotate(90deg);
+  }
+
+  .footer-links-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+
+  .footer-column.open .footer-links-content {
+    max-height: 200px;
+    padding-bottom: 1rem;
   }
 
   .footer-bottom {

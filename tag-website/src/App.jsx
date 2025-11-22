@@ -5,6 +5,7 @@ import './App.css'
 function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [openFaq, setOpenFaq] = useState(null)
+  const [openFooter, setOpenFooter] = useState(null)
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
@@ -16,6 +17,10 @@ function App() {
 
   const toggleFaq = (index) => {
     setOpenFaq(openFaq === index ? null : index)
+  }
+
+  const toggleFooter = (index) => {
+    setOpenFooter(openFooter === index ? null : index)
   }
 
   return (
@@ -296,36 +301,46 @@ function App() {
           <h2>For everything else</h2>
         </div>
         <div className="footer-links">
-          <div className="footer-column">
-            <h4>Company</h4>
-            <a href="#about">About us</a>
-            <a href="#contact">Contact us</a>
-            <a href="#careers">Careers</a>
-            <a href="#press">Press</a>
+          <div className={`footer-column ${openFooter === 0 ? 'open' : ''}`}>
+            <h4 onClick={() => toggleFooter(0)}>Company <span className="footer-arrow">›</span></h4>
+            <div className="footer-links-content">
+              <a href="#about">About us</a>
+              <a href="#contact">Contact us</a>
+              <a href="#careers">Careers</a>
+              <a href="#press">Press</a>
+            </div>
           </div>
-          <div className="footer-column">
-            <h4>Product</h4>
-            <a href="#features">Features</a>
-            <a href="#pricing">Pricing</a>
-            <a href="#news">News</a>
-            <a href="#help">Help desk</a>
+          <div className={`footer-column ${openFooter === 1 ? 'open' : ''}`}>
+            <h4 onClick={() => toggleFooter(1)}>Product <span className="footer-arrow">›</span></h4>
+            <div className="footer-links-content">
+              <a href="#features">Features</a>
+              <a href="#pricing">Pricing</a>
+              <a href="#news">News</a>
+              <a href="#help">Help desk</a>
+            </div>
           </div>
-          <div className="footer-column">
-            <h4>Services</h4>
-            <a href="#locations">Locations</a>
-            <a href="#how-to">How To</a>
-            <a href="#faqs">FAQs</a>
+          <div className={`footer-column ${openFooter === 2 ? 'open' : ''}`}>
+            <h4 onClick={() => toggleFooter(2)}>Services <span className="footer-arrow">›</span></h4>
+            <div className="footer-links-content">
+              <a href="#locations">Locations</a>
+              <a href="#how-to">How To</a>
+              <a href="#faqs">FAQs</a>
+            </div>
           </div>
-          <div className="footer-column">
-            <h4>Legal</h4>
-            <a href="#privacy">Privacy Policy</a>
-            <a href="#terms">Terms & Conditions</a>
-            <a href="#refund">Refund Policy</a>
+          <div className={`footer-column ${openFooter === 3 ? 'open' : ''}`}>
+            <h4 onClick={() => toggleFooter(3)}>Legal <span className="footer-arrow">›</span></h4>
+            <div className="footer-links-content">
+              <a href="#privacy">Privacy Policy</a>
+              <a href="#terms">Terms & Conditions</a>
+              <a href="#refund">Refund Policy</a>
+            </div>
           </div>
-          <div className="footer-column">
-            <h4>Contact us</h4>
-            <a href="mailto:support@tagparking.co.uk" className="contact-email">support@tagparking.co.uk</a>
-            <a href="tel:+441305876543" className="contact-phone">+44 (0)1305 876 543</a>
+          <div className={`footer-column ${openFooter === 4 ? 'open' : ''}`}>
+            <h4 onClick={() => toggleFooter(4)}>Contact us <span className="footer-arrow">›</span></h4>
+            <div className="footer-links-content">
+              <a href="mailto:support@tagparking.co.uk" className="contact-email">support@tagparking.co.uk</a>
+              <a href="tel:+441305876543" className="contact-phone">+44 (0)1305 876 543</a>
+            </div>
           </div>
         </div>
         <div className="social-links">
