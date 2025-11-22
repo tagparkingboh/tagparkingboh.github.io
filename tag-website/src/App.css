@@ -877,6 +877,14 @@
     padding-top: 80px;
   }
 
+  /* Offset for fixed header when navigating to sections */
+  #how-it-works,
+  #pricing,
+  #subscribe,
+  #contact {
+    scroll-margin-top: 80px;
+  }
+
   .nav {
     padding: 1.5rem 2rem;
     position: relative;
@@ -1078,6 +1086,14 @@
 
   .hero {
     padding-top: 70px;
+  }
+
+  /* Offset for fixed header when navigating to sections */
+  #how-it-works,
+  #pricing,
+  #subscribe,
+  #contact {
+    scroll-margin-top: 70px;
   }
 
   .nav {
