@@ -48,7 +48,7 @@
 .logo {
   display: flex;
   flex-direction: column;
-  margin-left: 8rem;
+  margin-left: -6rem;
 }
 
 .logo-svg {
@@ -63,7 +63,7 @@
   margin: 0;
   padding: 0;
   padding-top: 0.5rem;
-  margin-right: 7rem;
+  margin-right: -6rem;
 }
 
 .nav-links a {
@@ -130,7 +130,7 @@
 .intro-badge {
   position: absolute;
   top: 25%;
-  right: 21rem;
+  right: 8rem;
   z-index: 10;
 }
 
