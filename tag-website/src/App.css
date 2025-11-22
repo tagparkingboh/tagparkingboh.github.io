@@ -988,6 +988,17 @@
     width: 100%;
   }
 
+  .features-content {
+    flex-wrap: wrap;
+    gap: 2rem 4rem;
+    padding: 3rem 4rem;
+  }
+
+  .features-banner .feature {
+    flex: 1 1 40%;
+    min-width: 200px;
+  }
+
   .feature-cards {
     padding: 5rem 4rem;
   }
