@@ -397,7 +397,7 @@
 .pricing-card {
   background: var(--white);
   border-radius: 12px;
-  padding: 2.5rem;
+  padding: 2.5rem 3rem;
   flex: 1;
   max-width: 400px;
   text-align: center;
@@ -448,13 +448,15 @@
   list-style: none;
   padding: 0;
   margin: 0 0 2rem 0;
+  text-align: left;
+  width: 100%;
 }
 
 .pricing-features li {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.75rem;
-  padding: 0.75rem 0;
+  padding: 1rem 0;
   color: var(--black);
   font-size: 0.95rem;
 }
@@ -462,13 +464,14 @@
 .pricing-features .check {
   color: var(--lime-green);
   font-weight: 700;
+  font-size: 1.1rem;
 }
 
 .pricing-btn {
   background: var(--lime-green);
   border: none;
   border-radius: 8px;
-  padding: 1rem 1.5rem;
+  padding: 1rem 2.5rem;
   font-size: 1rem;
   font-weight: 600;
   color: var(--black);
