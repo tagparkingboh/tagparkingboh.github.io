@@ -129,8 +129,8 @@
 
 .intro-badge {
   position: absolute;
-  top: 25%;
-  right: 12rem;
+  top: calc(25% + 1rem);
+  right: 14rem;
   z-index: 10;
 }
 
