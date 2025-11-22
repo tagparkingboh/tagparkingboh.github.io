@@ -1055,6 +1055,11 @@
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.3s ease;
+    text-align: left;
+  }
+
+  .footer-column.contact-column .footer-links-content {
+    text-align: center;
   }
 
   .footer-column.open .footer-links-content {
@@ -1302,6 +1307,11 @@
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.3s ease;
+    text-align: left;
+  }
+
+  .footer-column.contact-column .footer-links-content {
+    text-align: center;
   }
 
   .footer-column.open .footer-links-content {

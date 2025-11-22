@@ -335,7 +335,7 @@ function App() {
               <a href="#refund">Refund Policy</a>
             </div>
           </div>
-          <div className={`footer-column ${openFooter === 4 ? 'open' : ''}`}>
+          <div className={`footer-column contact-column ${openFooter === 4 ? 'open' : ''}`}>
             <h4 onClick={() => toggleFooter(4)}>Contact us <span className="footer-arrow">›</span></h4>
             <div className="footer-links-content">
               <a href="mailto:support@tagparking.co.uk" className="contact-email">support@tagparking.co.uk</a>
