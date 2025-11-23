@@ -366,7 +366,7 @@ function Bookings() {
                       selected={formData.pickupDate}
                       onChange={(date) => handleDateChange(date, 'pickupDate')}
                       dateFormat="dd/MM/yyyy"
-                      minDate={formData.dropoffDate || new Date()}
+                      minDate={formData.dropoffDate ? new Date(formData.dropoffDate.getTime() + 86400000) : new Date()}
                       placeholderText="Select date"
                       className="date-picker-input"
                       id="pickupDate"
