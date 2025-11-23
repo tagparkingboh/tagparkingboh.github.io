@@ -12,8 +12,7 @@ function Bookings() {
   const [formData, setFormData] = useState({
     dropoffDate: null,
     dropoffAirline: '',
-    dropoffFlightTime: '',
-    dropoffDestination: '',
+    dropoffFlight: '', // Combined time|destination key
     dropoffSlot: '',
     pickupDate: null,
     pickupFlightTime: '',
@@ -87,22 +86,25 @@ function Bookings() {
     return departuresForDate.filter(f => f.airlineName === formData.dropoffAirline)
   }, [departuresForDate, formData.dropoffAirline])
 
-  // Get unique flight times for selected airline
-  const flightTimesForDropoff = useMemo(() => {
-    const times = [...new Set(flightsForAirline.map(f => f.time))]
-    return times.sort()
+  // Get flights with time and destination combined for selected airline
+  const flightsForDropoff = useMemo(() => {
+    return flightsForAirline.map(f => ({
+      ...f,
+      flightKey: `${f.time}|${f.destinationCode}`,
+      displayText: `${f.time} → ${f.destinationName} (${f.destinationCode})`
+    })).sort((a, b) => a.time.localeCompare(b.time))
   }, [flightsForAirline])
 
-  // Get destinations for selected time
-  const destinationsForTime = useMemo(() => {
-    if (!formData.dropoffFlightTime) return []
-    return flightsForAirline.filter(f => f.time === formData.dropoffFlightTime)
-  }, [flightsForAirline, formData.dropoffFlightTime])
+  // Get selected flight details
+  const selectedDropoffFlight = useMemo(() => {
+    if (!formData.dropoffFlight) return null
+    return flightsForDropoff.find(f => f.flightKey === formData.dropoffFlight)
+  }, [flightsForDropoff, formData.dropoffFlight])
 
   // Calculate drop-off time slots (3h, 2.5h, 2h before departure)
   const dropoffSlots = useMemo(() => {
-    if (!formData.dropoffFlightTime) return []
-    const [hours, minutes] = formData.dropoffFlightTime.split(':').map(Number)
+    if (!selectedDropoffFlight) return []
+    const [hours, minutes] = selectedDropoffFlight.time.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
     return [
@@ -110,20 +112,20 @@ function Bookings() {
       { id: '150', label: '2.5 hours before', time: formatMinutesToTime(departureMinutes - 150) },
       { id: '120', label: '2 hours before', time: formatMinutesToTime(departureMinutes - 120) }
     ]
-  }, [formData.dropoffFlightTime])
+  }, [selectedDropoffFlight])
 
   // Filter arrivals for selected pick-up date - matching airline and destination
   const arrivalsForDate = useMemo(() => {
-    if (!formData.pickupDate || !formData.dropoffAirline || !formData.dropoffDestination) return []
+    if (!formData.pickupDate || !formData.dropoffAirline || !selectedDropoffFlight) return []
     const dateStr = format(formData.pickupDate, 'yyyy-MM-dd')
     // Filter by same airline and origin matching the departure destination
     return flightSchedule.filter(f =>
       f.date === dateStr &&
       f.type === 'arrival' &&
       f.airlineName === formData.dropoffAirline &&
-      f.originCode === formData.dropoffDestination
+      f.originCode === selectedDropoffFlight.destinationCode
     )
-  }, [formData.pickupDate, formData.dropoffAirline, formData.dropoffDestination])
+  }, [formData.pickupDate, formData.dropoffAirline, selectedDropoffFlight])
 
   // Get arrival times for matching return flights
   const arrivalTimesForPickup = useMemo(() => {
@@ -151,25 +153,15 @@ function Bookings() {
       setFormData(prev => ({
         ...prev,
         dropoffAirline: value,
-        dropoffFlightTime: '',
-        dropoffDestination: '',
+        dropoffFlight: '',
         dropoffSlot: ''
       }))
     }
 
-    if (name === 'dropoffFlightTime') {
+    if (name === 'dropoffFlight') {
       setFormData(prev => ({
         ...prev,
-        dropoffFlightTime: value,
-        dropoffDestination: '',
-        dropoffSlot: ''
-      }))
-    }
-
-    if (name === 'dropoffDestination') {
-      setFormData(prev => ({
-        ...prev,
-        dropoffDestination: value,
+        dropoffFlight: value,
         dropoffSlot: ''
       }))
     }
@@ -202,8 +194,7 @@ function Bookings() {
         ...prev,
         dropoffDate: date,
         dropoffAirline: '',
-        dropoffFlightTime: '',
-        dropoffDestination: '',
+        dropoffFlight: '',
         dropoffSlot: ''
       }))
     } else if (field === 'pickupDate') {
@@ -230,7 +221,7 @@ function Bookings() {
     window.scrollTo(0, 0)
   }
 
-  const isStep1Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlightTime && formData.dropoffDestination && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable
+  const isStep1Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable
   const isMakeComplete = formData.make && (formData.make !== 'Other' || formData.customMake)
   const isModelComplete = formData.model && (formData.model !== 'Other' || formData.customModel)
   const isStep2Complete = formData.registration && isMakeComplete && isModelComplete && formData.colour
@@ -320,43 +311,26 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.dropoffAirline && flightTimesForDropoff.length > 0 && (
+              {formData.dropoffAirline && flightsForDropoff.length > 0 && (
                 <div className="form-group fade-in">
-                  <label htmlFor="dropoffFlightTime">Departure Time</label>
+                  <label htmlFor="dropoffFlight">Flight</label>
                   <select
-                    id="dropoffFlightTime"
-                    name="dropoffFlightTime"
-                    value={formData.dropoffFlightTime}
+                    id="dropoffFlight"
+                    name="dropoffFlight"
+                    value={formData.dropoffFlight}
                     onChange={handleChange}
                   >
-                    <option value="">Select time</option>
-                    {flightTimesForDropoff.map(time => (
-                      <option key={time} value={time}>{time}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {formData.dropoffFlightTime && destinationsForTime.length > 0 && (
-                <div className="form-group fade-in">
-                  <label htmlFor="dropoffDestination">Destination</label>
-                  <select
-                    id="dropoffDestination"
-                    name="dropoffDestination"
-                    value={formData.dropoffDestination}
-                    onChange={handleChange}
-                  >
-                    <option value="">Select destination</option>
-                    {destinationsForTime.map(flight => (
-                      <option key={flight.destinationCode} value={flight.destinationCode}>
-                        {flight.destinationName} ({flight.destinationCode})
+                    <option value="">Select flight</option>
+                    {flightsForDropoff.map(flight => (
+                      <option key={flight.flightKey} value={flight.flightKey}>
+                        {flight.displayText}
                       </option>
                     ))}
                   </select>
                 </div>
               )}
 
-              {formData.dropoffDestination && dropoffSlots.length > 0 && (
+              {formData.dropoffFlight && dropoffSlots.length > 0 && (
                 <div className="form-group fade-in">
                   <label>Select Drop-off Time</label>
                   <div className="dropoff-slots">
@@ -383,7 +357,7 @@ function Bookings() {
                 <>
                   <h3 className="section-subtitle">Return Flight</h3>
                   <p className="return-flight-info">
-                    {formData.dropoffAirline} from {destinationsForTime.find(f => f.destinationCode === formData.dropoffDestination)?.destinationName || formData.dropoffDestination}
+                    {formData.dropoffAirline} from {selectedDropoffFlight?.destinationName || ''}
                   </p>
 
                   <div className="form-group fade-in">
