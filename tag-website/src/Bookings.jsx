@@ -109,7 +109,7 @@ function Bookings() {
 
     return [
       { id: '180', label: '3 hours before', time: formatMinutesToTime(departureMinutes - 180) },
-      { id: '150', label: '2.5 hours before', time: formatMinutesToTime(departureMinutes - 150) },
+      { id: '150', label: '2½ hours before', time: formatMinutesToTime(departureMinutes - 150) },
       { id: '120', label: '2 hours before', time: formatMinutesToTime(departureMinutes - 120) }
     ]
   }, [selectedDropoffFlight])
