@@ -322,6 +322,54 @@
   font-size: 0.9rem;
 }
 
+/* Section Subtitle */
+.section-subtitle {
+  font-size: 1.1rem;
+  color: var(--lime-green);
+  margin: 1.5rem 0 1rem;
+  font-weight: 600;
+}
+
+.section-subtitle:first-of-type {
+  margin-top: 0;
+}
+
+.return-flight-info {
+  color: var(--dark-gray);
+  font-size: 0.9rem;
+  margin: -0.5rem 0 1rem;
+  font-style: italic;
+}
+
+.no-flights-message {
+  color: #e74c3c;
+  font-size: 0.9rem;
+  padding: 1rem;
+  background: rgba(231, 76, 60, 0.1);
+  border-radius: 8px;
+  text-align: center;
+}
+
+/* Drop-off Slots */
+.dropoff-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dropoff-slot {
+  cursor: pointer;
+}
+
+.dropoff-slot input {
+  display: none;
+}
+
+.dropoff-slot input:checked + .slot-card {
+  border-color: var(--lime-green);
+  background: rgba(204, 255, 0, 0.1);
+}
+
 /* Pickup Times */
 .pickup-times {
   display: flex;

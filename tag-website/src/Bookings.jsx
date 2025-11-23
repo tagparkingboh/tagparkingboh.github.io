@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
 import { getMakes, getModels } from 'car-info'
+import flightSchedule from './data/flightSchedule.json'
 import 'react-datepicker/dist/react-datepicker.css'
 import './Bookings.css'
 
@@ -10,9 +11,12 @@ function Bookings() {
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
     dropoffDate: null,
-    dropoffFlight: '',
+    dropoffAirline: '',
+    dropoffFlightTime: '',
+    dropoffDestination: '',
+    dropoffSlot: '',
     pickupDate: null,
-    pickupTime: '',
+    pickupFlightTime: '',
     registration: '',
     make: '',
     customMake: '',
@@ -28,6 +32,35 @@ function Bookings() {
     terms: false
   })
 
+  // Parking capacity management
+  const MAX_PARKING_SPOTS = 60
+
+  // This would normally come from your database/API
+  // For now, simulating with a placeholder
+  const [bookedSpots, setBookedSpots] = useState({})
+
+  // Check availability for a date range
+  const checkAvailability = (dropoffDate, pickupDate) => {
+    // In production, this would fetch from your database
+    // Returns true if spots are available for the entire date range
+    if (!dropoffDate || !pickupDate) return true
+
+    let currentDate = new Date(dropoffDate)
+    const endDate = new Date(pickupDate)
+
+    while (currentDate <= endDate) {
+      const dateStr = format(currentDate, 'yyyy-MM-dd')
+      const spotsBooked = bookedSpots[dateStr] || 0
+      if (spotsBooked >= MAX_PARKING_SPOTS) {
+        return false
+      }
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+    return true
+  }
+
+  const isCapacityAvailable = checkAvailability(formData.dropoffDate, formData.pickupDate)
+
   // Get car makes and models from car-info library
   const carMakes = useMemo(() => getMakes().sort(), [])
   const carModels = useMemo(() => {
@@ -35,17 +68,76 @@ function Bookings() {
     return getModels(formData.make) || []
   }, [formData.make])
 
-  const flightSlots = [
-    { id: 'early', label: 'Early Morning', time: '05:00 - 09:00' },
-    { id: 'midday', label: 'Midday', time: '09:00 - 14:00' },
-    { id: 'afternoon', label: 'Afternoon/Evening', time: '14:00 - 21:00' }
-  ]
+  // Filter departures for selected drop-off date
+  const departuresForDate = useMemo(() => {
+    if (!formData.dropoffDate) return []
+    const dateStr = format(formData.dropoffDate, 'yyyy-MM-dd')
+    return flightSchedule.filter(f => f.date === dateStr && f.type === 'departure')
+  }, [formData.dropoffDate])
 
-  const pickupTimes = [
-    { id: '45', label: '45 minutes after landing' },
-    { id: '60', label: '60 minutes after landing' },
-    { id: '75', label: '75 minutes after landing' }
-  ]
+  // Get unique airlines for selected date
+  const airlinesForDropoff = useMemo(() => {
+    const airlines = [...new Set(departuresForDate.map(f => f.airlineName))]
+    return airlines.sort()
+  }, [departuresForDate])
+
+  // Filter flights by selected airline
+  const flightsForAirline = useMemo(() => {
+    if (!formData.dropoffAirline) return []
+    return departuresForDate.filter(f => f.airlineName === formData.dropoffAirline)
+  }, [departuresForDate, formData.dropoffAirline])
+
+  // Get unique flight times for selected airline
+  const flightTimesForDropoff = useMemo(() => {
+    const times = [...new Set(flightsForAirline.map(f => f.time))]
+    return times.sort()
+  }, [flightsForAirline])
+
+  // Get destinations for selected time
+  const destinationsForTime = useMemo(() => {
+    if (!formData.dropoffFlightTime) return []
+    return flightsForAirline.filter(f => f.time === formData.dropoffFlightTime)
+  }, [flightsForAirline, formData.dropoffFlightTime])
+
+  // Calculate drop-off time slots (3h, 2.5h, 2h before departure)
+  const dropoffSlots = useMemo(() => {
+    if (!formData.dropoffFlightTime) return []
+    const [hours, minutes] = formData.dropoffFlightTime.split(':').map(Number)
+    const departureMinutes = hours * 60 + minutes
+
+    return [
+      { id: '180', label: '3 hours before', time: formatMinutesToTime(departureMinutes - 180) },
+      { id: '150', label: '2.5 hours before', time: formatMinutesToTime(departureMinutes - 150) },
+      { id: '120', label: '2 hours before', time: formatMinutesToTime(departureMinutes - 120) }
+    ]
+  }, [formData.dropoffFlightTime])
+
+  // Filter arrivals for selected pick-up date - matching airline and destination
+  const arrivalsForDate = useMemo(() => {
+    if (!formData.pickupDate || !formData.dropoffAirline || !formData.dropoffDestination) return []
+    const dateStr = format(formData.pickupDate, 'yyyy-MM-dd')
+    // Filter by same airline and origin matching the departure destination
+    return flightSchedule.filter(f =>
+      f.date === dateStr &&
+      f.type === 'arrival' &&
+      f.airlineName === formData.dropoffAirline &&
+      f.originCode === formData.dropoffDestination
+    )
+  }, [formData.pickupDate, formData.dropoffAirline, formData.dropoffDestination])
+
+  // Get arrival times for matching return flights
+  const arrivalTimesForPickup = useMemo(() => {
+    const times = [...new Set(arrivalsForDate.map(f => f.time))]
+    return times.sort()
+  }, [arrivalsForDate])
+
+  // Helper function to format minutes to HH:MM
+  function formatMinutesToTime(totalMinutes) {
+    if (totalMinutes < 0) totalMinutes += 24 * 60 // Handle overnight
+    const hours = Math.floor(totalMinutes / 60) % 24
+    const mins = totalMinutes % 60
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+  }
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -53,6 +145,35 @@ function Bookings() {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }))
+
+    // Reset dependent fields when parent changes
+    if (name === 'dropoffAirline') {
+      setFormData(prev => ({
+        ...prev,
+        dropoffAirline: value,
+        dropoffFlightTime: '',
+        dropoffDestination: '',
+        dropoffSlot: ''
+      }))
+    }
+
+    if (name === 'dropoffFlightTime') {
+      setFormData(prev => ({
+        ...prev,
+        dropoffFlightTime: value,
+        dropoffDestination: '',
+        dropoffSlot: ''
+      }))
+    }
+
+    if (name === 'dropoffDestination') {
+      setFormData(prev => ({
+        ...prev,
+        dropoffDestination: value,
+        dropoffSlot: ''
+      }))
+    }
+
 
     // Reset model when make changes
     if (name === 'make') {
@@ -76,10 +197,27 @@ function Bookings() {
   }
 
   const handleDateChange = (date, field) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: date
-    }))
+    if (field === 'dropoffDate') {
+      setFormData(prev => ({
+        ...prev,
+        dropoffDate: date,
+        dropoffAirline: '',
+        dropoffFlightTime: '',
+        dropoffDestination: '',
+        dropoffSlot: ''
+      }))
+    } else if (field === 'pickupDate') {
+      setFormData(prev => ({
+        ...prev,
+        pickupDate: date,
+        pickupFlightTime: ''
+      }))
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [field]: date
+      }))
+    }
   }
 
   const nextStep = () => {
@@ -92,7 +230,7 @@ function Bookings() {
     window.scrollTo(0, 0)
   }
 
-  const isStep1Complete = formData.dropoffDate && formData.dropoffFlight && formData.pickupDate && formData.pickupTime
+  const isStep1Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlightTime && formData.dropoffDestination && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable
   const isMakeComplete = formData.make && (formData.make !== 'Other' || formData.customMake)
   const isModelComplete = formData.model && (formData.model !== 'Other' || formData.customModel)
   const isStep2Complete = formData.registration && isMakeComplete && isModelComplete && formData.colour
@@ -150,6 +288,8 @@ function Bookings() {
             <div className="form-section">
               <h2>Trip Details</h2>
 
+              <h3 className="section-subtitle">Departure Flight</h3>
+
               <div className="form-group">
                 <label htmlFor="dropoffDate">Drop-off Date</label>
                 <DatePicker
@@ -163,17 +303,70 @@ function Bookings() {
                 />
               </div>
 
-              {formData.dropoffDate && (
+              {formData.dropoffDate && airlinesForDropoff.length > 0 && (
                 <div className="form-group fade-in">
-                  <label>Select Your Flight Time</label>
-                  <div className="flight-slots">
-                    {flightSlots.map(slot => (
-                      <label key={slot.id} className="flight-slot">
+                  <label htmlFor="dropoffAirline">Select Airline</label>
+                  <select
+                    id="dropoffAirline"
+                    name="dropoffAirline"
+                    value={formData.dropoffAirline}
+                    onChange={handleChange}
+                  >
+                    <option value="">Select airline</option>
+                    {airlinesForDropoff.map(airline => (
+                      <option key={airline} value={airline}>{airline}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {formData.dropoffAirline && flightTimesForDropoff.length > 0 && (
+                <div className="form-group fade-in">
+                  <label htmlFor="dropoffFlightTime">Departure Time</label>
+                  <select
+                    id="dropoffFlightTime"
+                    name="dropoffFlightTime"
+                    value={formData.dropoffFlightTime}
+                    onChange={handleChange}
+                  >
+                    <option value="">Select time</option>
+                    {flightTimesForDropoff.map(time => (
+                      <option key={time} value={time}>{time}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {formData.dropoffFlightTime && destinationsForTime.length > 0 && (
+                <div className="form-group fade-in">
+                  <label htmlFor="dropoffDestination">Destination</label>
+                  <select
+                    id="dropoffDestination"
+                    name="dropoffDestination"
+                    value={formData.dropoffDestination}
+                    onChange={handleChange}
+                  >
+                    <option value="">Select destination</option>
+                    {destinationsForTime.map(flight => (
+                      <option key={flight.destinationCode} value={flight.destinationCode}>
+                        {flight.destinationName} ({flight.destinationCode})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {formData.dropoffDestination && dropoffSlots.length > 0 && (
+                <div className="form-group fade-in">
+                  <label>Select Drop-off Time</label>
+                  <div className="dropoff-slots">
+                    {dropoffSlots.map(slot => (
+                      <label key={slot.id} className="dropoff-slot">
                         <input
                           type="radio"
-                          name="dropoffFlight"
+                          name="dropoffSlot"
                           value={slot.id}
-                          checked={formData.dropoffFlight === slot.id}
+                          checked={formData.dropoffSlot === slot.id}
                           onChange={handleChange}
                         />
                         <div className="slot-card">
@@ -186,40 +379,54 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.dropoffFlight && (
+              {formData.dropoffSlot && (
+                <>
+                  <h3 className="section-subtitle">Return Flight</h3>
+                  <p className="return-flight-info">
+                    {formData.dropoffAirline} from {destinationsForTime.find(f => f.destinationCode === formData.dropoffDestination)?.destinationName || formData.dropoffDestination}
+                  </p>
+
+                  <div className="form-group fade-in">
+                    <label htmlFor="pickupDate">Pick-up Date</label>
+                    <DatePicker
+                      selected={formData.pickupDate}
+                      onChange={(date) => handleDateChange(date, 'pickupDate')}
+                      dateFormat="dd/MM/yyyy"
+                      minDate={formData.dropoffDate || new Date()}
+                      placeholderText="Select date"
+                      className="date-picker-input"
+                      id="pickupDate"
+                    />
+                  </div>
+                </>
+              )}
+
+              {formData.pickupDate && arrivalTimesForPickup.length > 0 && (
                 <div className="form-group fade-in">
-                  <label htmlFor="pickupDate">Pick-up Date</label>
-                  <DatePicker
-                    selected={formData.pickupDate}
-                    onChange={(date) => handleDateChange(date, 'pickupDate')}
-                    dateFormat="dd/MM/yyyy"
-                    minDate={formData.dropoffDate || new Date()}
-                    placeholderText="Select date"
-                    className="date-picker-input"
-                    id="pickupDate"
-                  />
+                  <label htmlFor="pickupFlightTime">Arrival Time at BOH</label>
+                  <select
+                    id="pickupFlightTime"
+                    name="pickupFlightTime"
+                    value={formData.pickupFlightTime}
+                    onChange={handleChange}
+                  >
+                    <option value="">Select time</option>
+                    {arrivalTimesForPickup.map(time => (
+                      <option key={time} value={time}>{time}</option>
+                    ))}
+                  </select>
                 </div>
               )}
 
-              {formData.pickupDate && (
+              {formData.pickupDate && arrivalTimesForPickup.length === 0 && (
                 <div className="form-group fade-in">
-                  <label>Pick-up Time (after your flight lands)</label>
-                  <div className="pickup-times">
-                    {pickupTimes.map(time => (
-                      <label key={time.id} className="pickup-time">
-                        <input
-                          type="radio"
-                          name="pickupTime"
-                          value={time.id}
-                          checked={formData.pickupTime === time.id}
-                          onChange={handleChange}
-                        />
-                        <div className="time-card">
-                          <span>{time.label}</span>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+                  <p className="no-flights-message">No return flights available on this date. Please select a different date.</p>
+                </div>
+              )}
+
+              {formData.pickupDate && !isCapacityAvailable && (
+                <div className="form-group fade-in">
+                  <p className="no-flights-message">Sorry, we're fully booked for some dates in your selected range. Please try different dates.</p>
                 </div>
               )}
 
