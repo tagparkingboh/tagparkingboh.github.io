@@ -333,14 +333,16 @@
   background: rgba(204, 255, 0, 0.1);
 }
 
-.slot-label {
-  font-weight: 600;
+.slot-time {
+  font-weight: 700;
+  font-size: 1.1rem;
   color: var(--black);
 }
 
-.slot-time {
+.slot-label {
   color: var(--dark-gray);
   font-size: 0.9rem;
+  font-weight: 500;
 }
 
 /* Section Subtitle */

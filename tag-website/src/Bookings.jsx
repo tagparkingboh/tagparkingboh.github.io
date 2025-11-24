@@ -344,8 +344,8 @@ function Bookings() {
                           onChange={handleChange}
                         />
                         <div className="slot-card">
-                          <span className="slot-label">{slot.label}</span>
                           <span className="slot-time">{slot.time}</span>
+                          <span className="slot-label">{slot.label}</span>
                         </div>
                       </label>
                     ))}
