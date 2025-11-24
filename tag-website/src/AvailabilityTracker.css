@@ -41,10 +41,24 @@
 }
 
 .week-date {
+  margin-bottom: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.week-ending-label {
+  font-size: 0.75rem;
+  color: #999;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.week-date-value {
   font-weight: 700;
   font-size: 1.1rem;
   color: var(--white);
-  margin-bottom: 0.25rem;
 }
 
 .availability-status {
@@ -117,7 +131,11 @@
     text-align: center;
   }
 
-  .week-date {
+  .week-ending-label {
+    font-size: 0.7rem;
+  }
+
+  .week-date-value {
     font-size: 1rem;
   }
 
@@ -135,7 +153,11 @@
     gap: 1rem;
   }
 
-  .week-date {
+  .week-ending-label {
+    font-size: 0.65rem;
+  }
+
+  .week-date-value {
     font-size: 0.95rem;
   }
 

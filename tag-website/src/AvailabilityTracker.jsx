@@ -58,10 +58,28 @@ function AvailabilityTracker() {
     // Initial load
     setAvailability(generateAvailability())
 
-    // Update every 30 minutes (1800000ms)
+    // Update every 2 minutes (120000ms) with gradual changes
     const interval = setInterval(() => {
-      setAvailability(generateAvailability())
-    }, 1800000)
+      setAvailability(prevAvailability => {
+        return prevAvailability.map(week => {
+          // Gradually increase percentage by 1-3%
+          const increase = Math.floor(Math.random() * 3) + 1
+          let newPercentage = week.percentage + increase
+
+          // Cap at 100%
+          if (newPercentage > 100) newPercentage = 100
+
+          // Determine new status based on percentage
+          const newStatus = newPercentage <= 65 ? 'green' : newPercentage <= 84 ? 'yellow' : 'red'
+
+          return {
+            ...week,
+            percentage: newPercentage,
+            status: newStatus
+          }
+        })
+      })
+    }, 120000) // 2 minutes
 
     return () => clearInterval(interval)
   }, [])
@@ -89,7 +107,10 @@ function AvailabilityTracker() {
           {availability.map((week) => (
             <div key={week.week} className="availability-row">
               <div className="availability-info">
-                <div className="week-date">{week.date}</div>
+                <div className="week-date">
+                  <span className="week-ending-label">Week ending</span>
+                  <span className="week-date-value">{week.date}</span>
+                </div>
                 <div className="availability-status">{getStatusLabel(week.status)}</div>
               </div>
               <div className="bar-container">
