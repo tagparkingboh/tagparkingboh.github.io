@@ -1,0 +1,140 @@
+.availability-tracker {
+  background: var(--dark-gray);
+  padding: 4rem 2rem;
+}
+
+.availability-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.availability-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  font-style: italic;
+  color: var(--white);
+  margin-bottom: 0.5rem;
+}
+
+.availability-subtitle {
+  color: #999;
+  font-size: 1rem;
+  margin-bottom: 3rem;
+}
+
+.availability-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+}
+
+.availability-card {
+  background: var(--light-gray);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.week-label {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--black);
+}
+
+.traffic-light {
+  background: #1a1a1a;
+  border-radius: 8px;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.light {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.red-light {
+  background: #4a1a1a;
+  box-shadow: none;
+}
+
+.yellow-light {
+  background: #4a4a1a;
+  box-shadow: none;
+}
+
+.green-light {
+  background: #1a4a1a;
+  box-shadow: none;
+}
+
+/* Active states */
+.traffic-light.green .green-light {
+  background: #00ff00;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.6);
+}
+
+.traffic-light.yellow .yellow-light {
+  background: #ffff00;
+  box-shadow: 0 0 15px rgba(255, 255, 0, 0.6);
+}
+
+.traffic-light.red .red-light {
+  background: #ff0000;
+  box-shadow: 0 0 15px rgba(255, 0, 0, 0.6);
+}
+
+.availability-status {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--black);
+}
+
+.availability-percentage {
+  font-size: 0.8rem;
+  color: var(--dark-gray);
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+  .availability-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 576px) {
+  .availability-tracker {
+    padding: 3rem 1rem;
+  }
+
+  .availability-title {
+    font-size: 2rem;
+  }
+
+  .availability-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .availability-card {
+    padding: 1rem;
+  }
+
+  .week-label {
+    font-size: 0.9rem;
+  }
+
+  .light {
+    width: 20px;
+    height: 20px;
+  }
+}

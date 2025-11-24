@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import AvailabilityTracker from './AvailabilityTracker'
 import './App.css'
 
 function App() {
@@ -74,6 +75,9 @@ function App() {
           </svg>
         </a>
       </section>
+
+      {/* Availability Tracker */}
+      <AvailabilityTracker />
 
       {/* Features Banner Section */}
       <section className="features-banner">
