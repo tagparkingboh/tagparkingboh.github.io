@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 // import AvailabilityTracker from './AvailabilityTracker'
 import './App.css'
 
@@ -58,7 +57,7 @@ function App() {
             <h1 className="hero-title">Enjoy peace of mind from<br />Palma to Paphos</h1>
           </div>
 
-          <Link to="/tag-it" className="hero-cta">Tag it</Link>
+          <a href="#subscribe" className="hero-cta">Subscribe</a>
 
           {/* <div className="hero-video-link">
             <svg className="play-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -192,7 +191,7 @@ function App() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <Link to="/tag-it" className="pricing-btn">Tag it <span>→</span></Link>
+            <a href="#subscribe" className="pricing-btn">Subscribe <span>→</span></a>
           </div>
 
           <div className="pricing-card">
@@ -211,7 +210,7 @@ function App() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <Link to="/tag-it" className="pricing-btn">Tag it <span>→</span></Link>
+            <a href="#subscribe" className="pricing-btn">Subscribe <span>→</span></a>
           </div>
         </div>
       </section>
@@ -284,6 +283,8 @@ function App() {
             <h2>Get latest updates</h2>
             <p>With lots of unique blocks, you can easily build a page<br />without coding. Build your next landing page.</p>
             <div className="subscribe-form">
+              <input type="text" placeholder="First name" />
+              <input type="text" placeholder="Last name" />
               <input type="email" placeholder="Enter your email" />
               <button>Subscribe</button>
             </div>
