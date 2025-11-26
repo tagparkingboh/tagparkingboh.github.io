@@ -6,6 +6,15 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [openFaq, setOpenFaq] = useState(null)
   const [openFooter, setOpenFooter] = useState(null)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+
+  const isValidEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  }
+
+  const isFormValid = firstName.trim() && lastName.trim() && isValidEmail(email)
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
@@ -283,10 +292,28 @@ function App() {
             <h2>Get latest updates</h2>
             <p>With lots of unique blocks, you can easily build a page<br />without coding. Build your next landing page.</p>
             <div className="subscribe-form">
-              <input type="text" placeholder="First name" />
-              <input type="text" placeholder="Last name" />
-              <input type="email" placeholder="Enter your email" />
-              <button>Subscribe</button>
+              <input
+                type="text"
+                placeholder="First name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Last name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                required
+              />
+              <input
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              <button disabled={!isFormValid}>Subscribe</button>
             </div>
             <p className="privacy-note">We'll never share your details with third parties.<br />View our Privacy Policy for more info.</p>
           </div>
