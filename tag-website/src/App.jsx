@@ -131,7 +131,7 @@ function App() {
       {/* Why Choose TAG Section */}
       <section className="why-choose">
         <div className="why-content">
-          <h2>Why choose TAG?</h2>
+          <h2>Why choose Tag?</h2>
           <p>This is dummy copy. It is not meant to be read.<br />It has been placed here solely to demonstrate.</p>
         </div>
         <div className="why-images">
