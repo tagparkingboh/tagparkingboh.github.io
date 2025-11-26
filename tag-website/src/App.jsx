@@ -117,7 +117,6 @@ function App() {
       {/* How TAG Works */}
       <section className="how-it-works" id="how-it-works">
         <h2>How Tag works for you.</h2>
-        <p className="how-it-works-subtitle">This is dummy copy. It is not meant to be read. It has<br />been placed here solely to demonstrate.</p>
         <div className="steps-cards">
           <div className="step-card">
             <div className="step-card-image">
@@ -141,7 +140,6 @@ function App() {
       <section className="why-choose">
         <div className="why-content">
           <h2>Why choose Tag?</h2>
-          <p>This is dummy copy. It is not meant to be read.<br />It has been placed here solely to demonstrate.</p>
         </div>
         <div className="why-images">
           <img src="/why-choose-1.png" alt="TAG driver" className="why-img-1" />
@@ -159,7 +157,7 @@ function App() {
             </svg>
           </div>
           <h3>Fully-vetted & insured drivers</h3>
-          <p>This is dummy copy. It is not meant to be read. It has been placed here solely to demonstrate the look.</p>
+          <p>All our drivers are fully background-checked, licensed, and insured for your peace of mind.</p>
         </div>
         <div className="card">
           <div className="card-icon">
@@ -178,14 +176,13 @@ function App() {
             </svg>
           </div>
           <h3>Transparent, competitive pricing</h3>
-          <p>This is dummy copy. It has been placed here solely to feel of finished dummy text on a page.</p>
+          <p>Clear pricing with no hidden fees. What you see is what you pay.</p>
         </div>
       </section>
 
       {/* Pricing Section */}
       <section className="pricing-section" id="pricing">
         <h2>Pricing & plans</h2>
-        <p className="pricing-subtitle">With lots of unique blocks, you can easily build a page without<br />coding. Build your next landing page.</p>
 
         <div className="pricing-cards">
           <div className="pricing-card">
@@ -232,7 +229,6 @@ function App() {
       <section className="support-section">
         <div className="support-content">
           <h2>We are always here<br />for you and your car.</h2>
-          <p className="support-note">This is dummy copy. It is not meant to be read.<br />It has been placed here solely to demonstrate.</p>
 
           <div className="support-features">
             <div className="support-item">
@@ -254,7 +250,6 @@ function App() {
 
         <div className="faq-box">
           <h3>How to get started</h3>
-          <p>With lots of unique blocks, you can easily build a page with coding. Build your next landing page. Integer ut obe ryn. Sed feugiat vitae turpis a porta.</p>
 
           <div className={`faq-item ${openFaq === 0 ? 'open' : ''}`}>
             <div className="faq-question" onClick={() => toggleFaq(0)}>
@@ -294,7 +289,7 @@ function App() {
           <img src="/departure-icon.png" alt="Departure" className="subscribe-icon" />
           <div className="subscribe-content">
             <h2>Get latest updates</h2>
-            <p>With lots of unique blocks, you can easily build a page<br />without coding. Build your next landing page.</p>
+            <p>Register your interest and be the first to know when we launch.</p>
             <div className="subscribe-form">
               <input
                 type="text"
