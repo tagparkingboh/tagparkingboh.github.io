@@ -647,6 +647,21 @@
   margin: 0;
 }
 
+.faq-view-all {
+  display: inline-block;
+  margin-top: 1.5rem;
+  color: var(--lime-green);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.95rem;
+  transition: opacity 0.2s;
+}
+
+.faq-view-all:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
 /* How It Works */
 .how-it-works {
   text-align: center;

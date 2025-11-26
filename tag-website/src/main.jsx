@@ -8,6 +8,7 @@ import PrivacyPolicy from './PrivacyPolicy.jsx'
 import TermsConditions from './TermsConditions.jsx'
 import RefundPolicy from './RefundPolicy.jsx'
 import CookiePolicy from './CookiePolicy.jsx'
+import FAQ from './FAQ.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -19,6 +20,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/terms-conditions" element={<TermsConditions />} />
         <Route path="/refund-policy" element={<RefundPolicy />} />
         <Route path="/cookie-policy" element={<CookiePolicy />} />
+        <Route path="/faq" element={<FAQ />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

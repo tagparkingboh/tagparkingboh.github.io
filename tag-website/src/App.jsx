@@ -249,37 +249,59 @@ function App() {
         </div>
 
         <div className="faq-box">
-          <h3>How to get started</h3>
+          <h3>Common Questions</h3>
 
           <div className={`faq-item ${openFaq === 0 ? 'open' : ''}`}>
             <div className="faq-question" onClick={() => toggleFaq(0)}>
-              <span>Can I use Tag for my clients?</span>
+              <span>How does meet and greet parking work?</span>
               <span className="faq-arrow">›</span>
             </div>
             <div className="faq-answer">
-              <p>Yes, you can use Tag for your clients. We offer flexible booking options that work for both personal and business use.</p>
+              <p>When you arrive at the airport, call us and drive to the designated meeting point. Our driver will meet you, complete a quick vehicle condition check, and take your keys. When you return, call us and we will bring your car back to the same meeting point.</p>
             </div>
           </div>
 
           <div className={`faq-item ${openFaq === 1 ? 'open' : ''}`}>
             <div className="faq-question" onClick={() => toggleFaq(1)}>
-              <span>How often can I use it?</span>
+              <span>Is my car insured while you have it?</span>
               <span className="faq-arrow">›</span>
             </div>
             <div className="faq-answer">
-              <p>You can use Tag as often as you need. There are no limits on the number of bookings you can make.</p>
+              <p>Yes, we maintain comprehensive insurance cover for all vehicles in our care. This covers damage caused by our negligence, theft from our facility, and fire damage.</p>
             </div>
           </div>
 
           <div className={`faq-item ${openFaq === 2 ? 'open' : ''}`}>
             <div className="faq-question" onClick={() => toggleFaq(2)}>
-              <span>How can I access to old version?</span>
+              <span>What is your cancellation policy?</span>
               <span className="faq-arrow">›</span>
             </div>
             <div className="faq-answer">
-              <p>Previous booking history and details can be accessed through your account dashboard or by contacting our support team.</p>
+              <p>Cancel 24 hours or more before your departure time for a 100% refund. Cancel less than 24 hours before and no refund is available. Refunds are processed within 5-7 working days.</p>
             </div>
           </div>
+
+          <div className={`faq-item ${openFaq === 3 ? 'open' : ''}`}>
+            <div className="faq-question" onClick={() => toggleFaq(3)}>
+              <span>What happens if my flight is delayed?</span>
+              <span className="faq-arrow">›</span>
+            </div>
+            <div className="faq-answer">
+              <p>We monitor all flights and will track your return flight. If your flight is delayed, we will adjust accordingly at no extra charge. Just call us when you land.</p>
+            </div>
+          </div>
+
+          <div className={`faq-item ${openFaq === 4 ? 'open' : ''}`}>
+            <div className="faq-question" onClick={() => toggleFaq(4)}>
+              <span>Are there any hidden charges?</span>
+              <span className="faq-arrow">›</span>
+            </div>
+            <div className="faq-answer">
+              <p>No! The price you see when booking is the total price you pay. There are no hidden fees, no airport drop off fees, no amendment charges, and no extra costs for flight delays.</p>
+            </div>
+          </div>
+
+          <Link to="/faq" className="faq-view-all">View all FAQs →</Link>
         </div>
       </section>
 
