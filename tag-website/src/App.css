@@ -128,11 +128,11 @@
   max-width: 800px;
   margin: 0 auto;
   text-align: center;
-  padding: 2rem 2rem;
+  padding: 6rem 2rem 2rem;
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
 }
 
@@ -171,9 +171,16 @@
   color: var(--white);
   font-size: 3.5rem;
   font-weight: 600;
-  margin-bottom: 3rem;
+  margin-bottom: 0;
   line-height: 1.15;
   font-style: italic;
+}
+
+.hero-cta-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
 }
 
 .hero-cta {
@@ -211,11 +218,6 @@
 }
 
 .scroll-indicator {
-  position: absolute;
-  bottom: 2rem;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
   cursor: pointer;
   padding: 0.5rem;
   border: 2px solid rgba(255, 255, 255, 0.5);
@@ -1355,10 +1357,6 @@
 
   .logo-svg {
     height: 60px;
-  }
-
-  .scroll-indicator {
-    bottom: 1rem;
   }
 }
 

@@ -62,19 +62,21 @@ function App() {
             <h1 className="hero-title">Enjoy peace of mind from<br />Palma to Paphos</h1>
           </div>
 
-          <div className="intro-offer-banner">
-            <span className="intro-offer-discount">10% off</span>
-            <span className="intro-offer-text">for subscribers – register your interest below</span>
+          <div className="hero-cta-group">
+            <div className="intro-offer-banner">
+              <span className="intro-offer-discount">10% off</span>
+              <span className="intro-offer-text">for subscribers – register your interest below</span>
+            </div>
+
+            <a href="#subscribe" className="hero-cta">Subscribe</a>
           </div>
 
-          <a href="#subscribe" className="hero-cta">Subscribe</a>
+          <a href="#subscribe" className="scroll-indicator">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M7 10l5 5 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </a>
         </div>
-
-        <a href="#subscribe" className="scroll-indicator">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M7 10l5 5 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </a>
       </section>
 
       {/* Availability Tracker - hidden, will be moved to /tag-it page */}
