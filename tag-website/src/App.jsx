@@ -377,7 +377,7 @@ function App() {
             <div className="footer-links-content">
               <a href="#locations">Locations</a>
               <a href="#how-to">How To</a>
-              <a href="#faqs">FAQs</a>
+              <Link to="/faq">FAQs</Link>
             </div>
           </div>
           <div className={`footer-column ${openFooter === 3 ? 'open' : ''}`}>
