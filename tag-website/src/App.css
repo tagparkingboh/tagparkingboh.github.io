@@ -265,16 +265,22 @@
 
 .features-content {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 6rem;
+  gap: 3rem 6rem;
   padding: 4rem 4rem;
   text-align: center;
   max-width: 1200px;
   margin: 0 auto;
 }
 
+.features-banner .feature {
+  flex: 0 0 calc(33.333% - 4rem);
+  min-width: 200px;
+}
+
 .features-banner .feature h2 {
-  font-size: 2.5rem;
+  font-size: 1.5rem;
   color: var(--dark-gray);
   margin: 0 0 0.5rem 0;
   font-weight: 700;
