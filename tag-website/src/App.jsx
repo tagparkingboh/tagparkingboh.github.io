@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import AvailabilityTracker from './AvailabilityTracker'
+// import AvailabilityTracker from './AvailabilityTracker'
 import './App.css'
 
 function App() {
@@ -76,8 +76,8 @@ function App() {
         </a>
       </section>
 
-      {/* Availability Tracker */}
-      <AvailabilityTracker />
+      {/* Availability Tracker - hidden, will be moved to /tag-it page */}
+      {/* <AvailabilityTracker /> */}
 
       {/* Features Banner Section */}
       <section className="features-banner">
