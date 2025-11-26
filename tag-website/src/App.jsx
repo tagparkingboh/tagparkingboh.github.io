@@ -86,8 +86,8 @@ function App() {
       <section className="features-banner">
         <div className="features-content">
           <div className="feature">
-            <h2>60%</h2>
-            <p>Save up to 60% off<br />official airport parking</p>
+            <h2>50%</h2>
+            <p>Save up to 50% off<br />official airport parking</p>
           </div>
           <div className="feature">
             <h2>£0</h2>
@@ -107,7 +107,7 @@ function App() {
 
       {/* How TAG Works */}
       <section className="how-it-works" id="how-it-works">
-        <h2>How TAG works for you.</h2>
+        <h2>How Tag works for you.</h2>
         <p className="how-it-works-subtitle">This is dummy copy. It is not meant to be read. It has<br />been placed here solely to demonstrate.</p>
         <div className="steps-cards">
           <div className="step-card">
