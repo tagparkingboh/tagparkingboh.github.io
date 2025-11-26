@@ -1,7 +1,12 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import './Legal.css'
 
 function RefundPolicy() {
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [])
+
   return (
     <div className="legal-page">
       <nav className="legal-nav">
@@ -11,8 +16,8 @@ function RefundPolicy() {
       </nav>
 
       <div className="legal-container">
-        <Link to="/" className="legal-back-link">
-          ← Back to Home
+        <Link to="/#contact" className="legal-back-link">
+          ← Back
         </Link>
 
         <h1>Cancellation and Refund Policy</h1>
