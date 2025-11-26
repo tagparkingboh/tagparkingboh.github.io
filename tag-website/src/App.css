@@ -1014,13 +1014,13 @@
 
   .features-content {
     flex-wrap: wrap;
-    gap: 2rem 4rem;
-    padding: 3rem 4rem;
+    gap: 2rem 3rem;
+    padding: 3rem 2rem;
   }
 
   .features-banner .feature {
-    flex: 1 1 40%;
-    min-width: 200px;
+    flex: 0 0 calc(33.333% - 2rem);
+    min-width: 180px;
   }
 
   .feature-cards {
@@ -1210,7 +1210,7 @@
   }
 
   .features-banner .feature h2 {
-    font-size: 2rem;
+    font-size: 1.25rem;
   }
 
   .how-it-works {
