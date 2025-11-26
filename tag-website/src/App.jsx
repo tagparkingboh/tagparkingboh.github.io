@@ -248,7 +248,7 @@ function App() {
           </div>
         </div>
 
-        <div className="faq-box">
+        <div className="faq-box" id="faq-section">
           <h3>Common Questions</h3>
 
           <div className={`faq-item ${openFaq === 0 ? 'open' : ''}`}>
@@ -301,7 +301,7 @@ function App() {
             </div>
           </div>
 
-          <Link to="/faq" className="faq-view-all">View all FAQs →</Link>
+          <Link to="/faq" state={{ from: 'accordion' }} className="faq-view-all">View all FAQs →</Link>
         </div>
       </section>
 
@@ -377,7 +377,7 @@ function App() {
             <div className="footer-links-content">
               <a href="#locations">Locations</a>
               <a href="#how-to">How To</a>
-              <Link to="/faq">FAQs</Link>
+              <Link to="/faq" state={{ from: 'footer' }}>FAQs</Link>
             </div>
           </div>
           <div className={`footer-column ${openFooter === 3 ? 'open' : ''}`}>

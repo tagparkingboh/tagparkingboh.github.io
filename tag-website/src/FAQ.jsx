@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import './Legal.css'
 import './FAQ.css'
 
 function FAQ() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [openSection, setOpenSection] = useState(null)
   const [openQuestion, setOpenQuestion] = useState(null)
+
+  // Check where the user came from (footer or faq accordion)
+  const cameFromFooter = location.state?.from === 'footer'
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -15,7 +19,8 @@ function FAQ() {
   const handleBack = () => {
     navigate('/')
     setTimeout(() => {
-      const element = document.getElementById('contact')
+      const targetId = cameFromFooter ? 'contact' : 'faq-section'
+      const element = document.getElementById(targetId)
       if (element) {
         element.scrollIntoView({ behavior: 'smooth' })
       }
