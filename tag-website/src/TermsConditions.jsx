@@ -1,11 +1,23 @@
 import { useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import './Legal.css'
 
 function TermsConditions() {
+  const navigate = useNavigate()
+
   useEffect(() => {
     window.scrollTo(0, 0)
   }, [])
+
+  const handleBack = () => {
+    navigate('/')
+    setTimeout(() => {
+      const element = document.getElementById('contact')
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' })
+      }
+    }, 100)
+  }
 
   return (
     <div className="legal-page">
@@ -16,9 +28,9 @@ function TermsConditions() {
       </nav>
 
       <div className="legal-container">
-        <Link to="/#contact" className="legal-back-link">
+        <button onClick={handleBack} className="legal-back-link">
           ← Back
-        </Link>
+        </button>
 
         <h1>Terms and Conditions</h1>
         <p className="legal-subtitle">Last Updated: January 2025</p>
