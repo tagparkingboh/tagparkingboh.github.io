@@ -56,10 +56,6 @@ function App() {
 
       {/* Hero Section */}
       <section className="hero" id="hero">
-        <div className="intro-badge">
-          <img src="/intro-offer.svg" alt="Intro Offer £75 p.w." className="intro-offer-svg" />
-        </div>
-
         <div className="hero-content">
           <div className="hero-text">
             <p className="hero-subtitle">TAG: THE NEW WAY TO MEET AND GREET</p>
@@ -68,13 +64,10 @@ function App() {
 
           <a href="#subscribe" className="hero-cta">Subscribe</a>
 
-          {/* <div className="hero-video-link">
-            <svg className="play-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="11" stroke="white" strokeWidth="2"/>
-              <path d="M10 8l6 4-6 4V8z" fill="white"/>
-            </svg>
-            <span>Take a look at how Tag works</span>
-          </div> */}
+          <div className="intro-offer-banner">
+            <span className="intro-offer-discount">10% off</span>
+            <span className="intro-offer-text">for subscribers – register your interest below</span>
+          </div>
         </div>
 
         <a href="#pricing" className="scroll-indicator">

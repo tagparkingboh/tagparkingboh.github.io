@@ -136,16 +136,26 @@
   align-items: center;
 }
 
-.intro-badge {
-  position: absolute;
-  top: calc(25% + 1rem);
-  right: 14rem;
-  z-index: 10;
+.intro-offer-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: var(--lime-green);
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  margin-top: 1.5rem;
 }
 
-.intro-offer-svg {
-  width: 200px;
-  height: auto;
+.intro-offer-discount {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--black);
+}
+
+.intro-offer-text {
+  font-size: 1rem;
+  color: var(--black);
 }
 
 .hero-subtitle {
@@ -1089,14 +1099,6 @@
     max-width: 100%;
   }
 
-  .intro-badge {
-    right: 20px;
-  }
-
-  .intro-offer-svg {
-    width: 160px;
-  }
-
   .hero-title {
     font-size: 2.5rem;
   }
@@ -1346,13 +1348,10 @@
     justify-content: center;
   }
 
-  .intro-badge {
-    right: 10px;
-    top: 15%;
-  }
-
-  .intro-offer-svg {
-    width: 100px;
+  .intro-offer-banner {
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: center;
   }
 
   .logo-svg {
@@ -1389,9 +1388,5 @@
 
   .pricing-amount .price {
     font-size: 2.5rem;
-  }
-
-  .intro-badge {
-    display: none;
   }
 }
