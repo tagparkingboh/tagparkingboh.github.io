@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 // import AvailabilityTracker from './AvailabilityTracker'
 import './App.css'
 
@@ -365,9 +366,10 @@ function App() {
           <div className={`footer-column ${openFooter === 3 ? 'open' : ''}`}>
             <h4 onClick={() => toggleFooter(3)}>Legal <span className="footer-arrow">›</span></h4>
             <div className="footer-links-content">
-              <a href="#privacy">Privacy Policy</a>
-              <a href="#terms">Terms & Conditions</a>
-              <a href="#refund">Refund Policy</a>
+              <Link to="/privacy-policy">Privacy Policy</Link>
+              <Link to="/terms-conditions">Terms & Conditions</Link>
+              <Link to="/refund-policy">Refund Policy</Link>
+              <Link to="/cookie-policy">Cookie Policy</Link>
             </div>
           </div>
           <div className={`footer-column contact-column ${openFooter === 4 ? 'open' : ''}`}>
