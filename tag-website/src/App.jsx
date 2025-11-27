@@ -25,8 +25,8 @@ function App() {
     setIsSubmitting(true)
     setSubmitStatus(null)
 
-    const portalId = '442431654'
-    const formId = '5f099bf2-ab96-43b5-85d3-e2274a51a80a'
+    const portalId = import.meta.env.VITE_HUBSPOT_PORTAL_ID
+    const formId = import.meta.env.VITE_HUBSPOT_FORM_ID
     const hubspotUrl = `https://api.hsforms.com/submissions/v3/integration/submit/${portalId}/${formId}`
 
     const payload = {

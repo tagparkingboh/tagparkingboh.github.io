@@ -35,7 +35,8 @@ jobs:
         run: npm run build
         working-directory: ./tag-website
         env:
-          VITE_ZAPIER_WEBHOOK_URL: ${{ secrets.VITE_ZAPIER_WEBHOOK_URL }}
+          VITE_HUBSPOT_PORTAL_ID: ${{ secrets.VITE_HUBSPOT_PORTAL_ID }}
+          VITE_HUBSPOT_FORM_ID: ${{ secrets.VITE_HUBSPOT_FORM_ID }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
