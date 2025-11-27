@@ -26,12 +26,8 @@ function App() {
     setSubmitStatus(null)
 
     try {
-      await fetch(import.meta.env.VITE_ZAPIER_WEBHOOK_URL, {
+      const response = await fetch(import.meta.env.VITE_ZAPIER_WEBHOOK_URL, {
         method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           firstName: firstName.trim(),
           lastName: lastName.trim(),
@@ -39,11 +35,14 @@ function App() {
         }),
       })
 
-      // With no-cors mode, we can't read the response, but the request is sent
-      setSubmitStatus('success')
-      setFirstName('')
-      setLastName('')
-      setEmail('')
+      if (response.ok) {
+        setSubmitStatus('success')
+        setFirstName('')
+        setLastName('')
+        setEmail('')
+      } else {
+        setSubmitStatus('error')
+      }
     } catch (error) {
       setSubmitStatus('error')
     } finally {
