@@ -809,6 +809,18 @@
   color: var(--dark-gray);
 }
 
+.subscribe-success {
+  color: #22c55e;
+  font-weight: 500;
+  margin-top: 1rem;
+}
+
+.subscribe-error {
+  color: #ef4444;
+  font-weight: 500;
+  margin-top: 1rem;
+}
+
 /* Footer */
 .footer {
   background: var(--dark-gray);

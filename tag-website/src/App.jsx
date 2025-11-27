@@ -10,12 +10,46 @@ function App() {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitStatus, setSubmitStatus] = useState(null) // 'success' | 'error' | null
 
   const isValidEmail = (email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   }
 
   const isFormValid = firstName.trim() && lastName.trim() && isValidEmail(email)
+
+  const handleSubscribe = async () => {
+    if (!isFormValid || isSubmitting) return
+
+    setIsSubmitting(true)
+    setSubmitStatus(null)
+
+    try {
+      await fetch(import.meta.env.VITE_ZAPIER_WEBHOOK_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: email.trim(),
+        }),
+      })
+
+      // With no-cors mode, we can't read the response, but the request is sent
+      setSubmitStatus('success')
+      setFirstName('')
+      setLastName('')
+      setEmail('')
+    } catch (error) {
+      setSubmitStatus('error')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
@@ -334,8 +368,19 @@ function App() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
-              <button disabled={!isFormValid}>Subscribe</button>
+              <button
+                onClick={handleSubscribe}
+                disabled={!isFormValid || isSubmitting}
+              >
+                {isSubmitting ? 'Subscribing...' : 'Subscribe'}
+              </button>
             </div>
+            {submitStatus === 'success' && (
+              <p className="subscribe-success">Thank you for subscribing! We'll be in touch soon.</p>
+            )}
+            {submitStatus === 'error' && (
+              <p className="subscribe-error">Something went wrong. Please try again.</p>
+            )}
             <p className="privacy-note">We'll never share your details with third parties.<br />View our Privacy Policy for more info.</p>
           </div>
         </div>

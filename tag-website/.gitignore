@@ -25,3 +25,8 @@ dist-ssr
 
 # Legal documents (source .docx files)
 legal/
+
+# Environment variables
+.env
+.env.local
+.env.production
