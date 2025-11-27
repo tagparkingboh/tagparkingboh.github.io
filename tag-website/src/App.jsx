@@ -25,15 +25,35 @@ function App() {
     setIsSubmitting(true)
     setSubmitStatus(null)
 
+    const portalId = '442431654'
+    const formId = '5f099bf2-ab96-43b5-85d3-e2274a51a80a'
+    const hubspotUrl = `https://api.hsforms.com/submissions/v3/integration/submit/${portalId}/${formId}`
+
+    const payload = {
+      fields: [
+        { name: 'firstname', value: firstName.trim() },
+        { name: 'lastname', value: lastName.trim() },
+        { name: 'email', value: email.trim() },
+      ],
+      context: {
+        pageUri: window.location.href,
+        pageName: 'Tag Parking - Subscribe',
+      },
+    }
+
+    console.log('HubSpot Request:', JSON.stringify(payload, null, 2))
+
     try {
-      const response = await fetch(import.meta.env.VITE_ZAPIER_WEBHOOK_URL, {
+      const response = await fetch(hubspotUrl, {
         method: 'POST',
-        body: JSON.stringify({
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          email: email.trim(),
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       })
+
+      const responseData = await response.json().catch(() => null)
+      console.log('HubSpot Response:', response.status, responseData)
 
       if (response.ok) {
         setSubmitStatus('success')
@@ -41,9 +61,11 @@ function App() {
         setLastName('')
         setEmail('')
       } else {
+        console.error('HubSpot Error:', response.status, responseData)
         setSubmitStatus('error')
       }
     } catch (error) {
+      console.error('Submit Error:', error)
       setSubmitStatus('error')
     } finally {
       setIsSubmitting(false)
