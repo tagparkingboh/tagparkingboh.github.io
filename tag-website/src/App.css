@@ -386,7 +386,7 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 3rem;
   padding: 5rem 4rem;
-  padding-top: 8rem;
+  padding-top: 12rem;
   background: var(--white);
   max-width: 1200px;
   margin: 0 auto;
