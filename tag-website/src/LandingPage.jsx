@@ -93,7 +93,7 @@ function LandingPage() {
       <header className="header">
         <nav className="nav">
           <div className="logo">
-            <img src="/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
+            <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
           </div>
           <button className={`hamburger ${menuOpen ? 'open' : ''}`} onClick={toggleMenu} aria-label="Toggle menu">
             <span></span>
@@ -164,21 +164,21 @@ function LandingPage() {
         <div className="steps-cards">
           <div className="step-card">
             <div className="step-card-image">
-              <img src="/step-1.png" alt="Meet us at departures" />
+              <img src="/assets/step-1.png" alt="Meet us at departures" />
             </div>
             <h3>Meet us at departures</h3>
             <p>Simply drive to the terminal car park drop off and one of our drivers will be waiting</p>
           </div>
           <div className="step-card">
             <div className="step-card-image">
-              <img src="/step-2.png" alt="Enjoy your trip" />
+              <img src="/assets/step-2.png" alt="Enjoy your trip" />
             </div>
             <h3>Enjoy your trip</h3>
             <p>Relax while we park your car in our highly secured location minutes from the airport</p>
           </div>
           <div className="step-card">
             <div className="step-card-image">
-              <img src="/step-3.png" alt="Pick up where you left off" />
+              <img src="/assets/step-3.png" alt="Pick up where you left off" />
             </div>
             <h3>Pick up where you left off</h3>
             <p>We then meet you at the same spot to hand back your keys</p>
@@ -193,8 +193,8 @@ function LandingPage() {
           <p className="why-subtitle">Our mission is simple: to provide an easier, faster and more cost-efficient meet & greet service for everyone. However you're travelling, we're here to give you a seamless experience from the moment you arrive.</p>
         </div>
         <div className="why-images">
-          <img src="/why-choose-1.png" alt="TAG driver" className="why-img-1" />
-          <img src="/why-choose-2.png" alt="Security cameras" className="why-img-2" />
+          <img src="/assets/why-choose-1.png" alt="TAG driver" className="why-img-1" />
+          <img src="/assets/why-choose-2.png" alt="Security cameras" className="why-img-2" />
         </div>
       </section>
 
@@ -202,7 +202,7 @@ function LandingPage() {
       <section className="feature-cards">
         <div className="card">
           <div className="card-icon">
-            <img src="/why-01.png" alt="Fully-vetted drivers" />
+            <img src="/assets/why-01.png" alt="Fully-vetted drivers" />
           </div>
           <div className="card-content">
             <h3>Fully-vetted & insured drivers</h3>
@@ -211,7 +211,7 @@ function LandingPage() {
         </div>
         <div className="card">
           <div className="card-icon">
-            <img src="/why-02.png" alt="Instant convenience" />
+            <img src="/assets/why-02.png" alt="Instant convenience" />
           </div>
           <div className="card-content">
             <h3>Instant convenience</h3>
@@ -220,7 +220,7 @@ function LandingPage() {
         </div>
         <div className="card">
           <div className="card-icon">
-            <img src="/why-03.png" alt="Transparent pricing" />
+            <img src="/assets/why-03.png" alt="Transparent pricing" />
           </div>
           <div className="card-content">
             <h3>Transparent, competitive pricing</h3>
@@ -357,7 +357,7 @@ function LandingPage() {
       {/* Subscribe Section */}
       <section className="subscribe" id="subscribe">
         <div className="subscribe-layout">
-          <img src="/departure-icon.png" alt="Departure" className="subscribe-icon" />
+          <img src="/assets/departure-icon.png" alt="Departure" className="subscribe-icon" />
           <div className="subscribe-content">
             <h2>Join the waitlist</h2>
             <p className="subscribe-subtitle">Sign up early. Save more: get 10% off your next trip by joining the waitlist.</p>
@@ -450,7 +450,7 @@ function LandingPage() {
             <p>© 2025 Copyright, All rights reserved</p>
           </div>
           <div className="footer-logo">
-            <img src="/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="footer-logo-img" />
+            <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="footer-logo-img" />
           </div>
         </div>
       </footer>

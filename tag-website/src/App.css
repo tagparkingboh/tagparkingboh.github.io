@@ -28,7 +28,7 @@
 /* Hero Section */
 .hero {
   min-height: 100vh;
-  background-image: url('/BG.png');
+  background-image: url('/assets/BG.png');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;

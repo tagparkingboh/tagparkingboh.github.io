@@ -245,7 +245,7 @@ function Bookings() {
     <div className="bookings-page">
       <nav className="bookings-nav">
         <Link to="/" className="logo">
-          <img src="/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
+          <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
         </Link>
       </nav>
 
@@ -759,7 +759,7 @@ function Bookings() {
       </div>
 
       <footer className="bookings-footer">
-        <img src="/logo.svg" alt="TAG" className="footer-logo-small" />
+        <img src="/assets/logo.svg" alt="TAG" className="footer-logo-small" />
         <p>© 2025 TAG Parking. All rights reserved.</p>
       </footer>
     </div>

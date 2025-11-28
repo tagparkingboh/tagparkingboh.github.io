@@ -23,7 +23,7 @@ function RefundPolicy() {
     <div className="legal-page">
       <nav className="legal-nav">
         <Link to="/" className="logo">
-          <img src="/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
+          <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
         </Link>
       </nav>
 

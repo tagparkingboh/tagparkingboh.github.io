@@ -93,7 +93,7 @@ function HomePage() {
       <header className="header">
         <nav className="nav">
           <div className="logo">
-            <img src="/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
+            <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
           </div>
           <button className={`hamburger ${menuOpen ? 'open' : ''}`} onClick={toggleMenu} aria-label="Toggle menu">
             <span></span>
@@ -174,17 +174,17 @@ function HomePage() {
         <div className="steps-cards">
           <div className="step-card">
             <div className="step-card-image">
-              <img src="/step-1.png" alt="Meet us at departures" />
+              <img src="/assets/step-1.png" alt="Meet us at departures" />
             </div>
           </div>
           <div className="step-card">
             <div className="step-card-image">
-              <img src="/step-2.png" alt="Enjoy your trip" />
+              <img src="/assets/step-2.png" alt="Enjoy your trip" />
             </div>
           </div>
           <div className="step-card">
             <div className="step-card-image">
-              <img src="/step-3.png" alt="Pick up where you left off" />
+              <img src="/assets/step-3.png" alt="Pick up where you left off" />
             </div>
           </div>
         </div>
@@ -196,8 +196,8 @@ function HomePage() {
           <h2>Why choose Tag?</h2>
         </div>
         <div className="why-images">
-          <img src="/why-choose-1.png" alt="TAG driver" className="why-img-1" />
-          <img src="/why-choose-2.png" alt="Security cameras" className="why-img-2" />
+          <img src="/assets/why-choose-1.png" alt="TAG driver" className="why-img-1" />
+          <img src="/assets/why-choose-2.png" alt="Security cameras" className="why-img-2" />
         </div>
       </section>
 
@@ -362,7 +362,7 @@ function HomePage() {
       {/* Subscribe Section */}
       <section className="subscribe" id="subscribe">
         <div className="subscribe-layout">
-          <img src="/departure-icon.png" alt="Departure" className="subscribe-icon" />
+          <img src="/assets/departure-icon.png" alt="Departure" className="subscribe-icon" />
           <div className="subscribe-content">
             <h2>Get latest updates</h2>
             <p>Register your interest and be the first to know when we launch.</p>
@@ -488,7 +488,7 @@ function HomePage() {
             <p>© 2025 Copyright, All rights reserved</p>
           </div>
           <div className="footer-logo">
-            <img src="/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="footer-logo-img" />
+            <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="footer-logo-img" />
           </div>
         </div>
       </footer>
