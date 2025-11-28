@@ -306,7 +306,7 @@ function LandingPage() {
               <span className="faq-arrow">›</span>
             </div>
             <div className="faq-answer">
-              <p>When you arrive at the airport, call us and drive to the designated meeting point. Our driver will meet you, complete a quick vehicle condition check, and take your keys. When you return, call us and we will bring your car back to the same meeting point.</p>
+              <p><strong>Meet us at the agreed booking time at the airport parking drop off area.</strong> Our driver will meet you, complete a quick vehicle condition check, and take your keys. When you return, call us and we will bring your car back to the same meeting point.</p>
             </div>
           </div>
 
