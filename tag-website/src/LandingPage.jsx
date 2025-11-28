@@ -152,18 +152,6 @@ function LandingPage() {
             <h2>24/7</h2>
             <p>Security monitoring at<br />storage site</p>
           </div>
-          <div className="feature">
-            <h2>5 mins</h2>
-            <p>5 minute average<br />handover time</p>
-          </div>
-          <div className="feature">
-            <h2>Money back Guarantee</h2>
-            <p>Your car will never leave<br />our secure car park</p>
-          </div>
-          <div className="feature">
-            <h2>Park Mark certified</h2>
-            <p>Approved for safer parking<br />by the Police</p>
-          </div>
         </div>
         <div className="features-bottom-bar"></div>
       </section>
