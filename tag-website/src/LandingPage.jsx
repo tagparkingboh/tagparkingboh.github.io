@@ -190,6 +190,7 @@ function LandingPage() {
       <section className="why-choose">
         <div className="why-content">
           <h2>Why choose Tag?</h2>
+          <p className="why-subtitle">Our mission is simple: to provide an easier, faster and more cost-efficient meet & greet service for everyone. However you're travelling, we're here to give you a seamless experience from the moment you arrive.</p>
         </div>
         <div className="why-images">
           <img src="/why-choose-1.png" alt="TAG driver" className="why-img-1" />
