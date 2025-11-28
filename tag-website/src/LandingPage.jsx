@@ -276,7 +276,8 @@ function LandingPage() {
       {/* Support Section */}
       <section className="support-section">
         <div className="support-content">
-          <h2>We are always here<br />for you and your car.</h2>
+          <h2>We're always here for you and your car.</h2>
+          <p className="support-subtitle">Our 24/7 CCTV monitoring, secure perimeter fencing, and comprehensive insurance coverage give you peace of mind while you're away.</p>
 
           <div className="support-features">
             <div className="support-item">
