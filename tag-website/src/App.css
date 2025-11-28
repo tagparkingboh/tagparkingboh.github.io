@@ -715,15 +715,16 @@
 }
 
 .step-card h3 {
-  font-size: 1.3rem;
+  font-size: 24px;
   font-weight: 700;
-  color: var(--black);
+  color: #343434;
   margin: 1.5rem 0 0.75rem 0;
 }
 
 .step-card p {
-  font-size: 0.95rem;
-  color: var(--dark-gray);
+  font-size: 16px;
+  font-weight: 600;
+  color: #343434;
   line-height: 1.5;
   margin: 0;
   padding: 0 1rem;

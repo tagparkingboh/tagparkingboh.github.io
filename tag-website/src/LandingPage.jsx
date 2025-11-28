@@ -166,16 +166,22 @@ function LandingPage() {
             <div className="step-card-image">
               <img src="/step-1.png" alt="Meet us at departures" />
             </div>
+            <h3>Meet us at departures</h3>
+            <p>Simply drive to the terminal car park drop off and one of our drivers will be waiting</p>
           </div>
           <div className="step-card">
             <div className="step-card-image">
               <img src="/step-2.png" alt="Enjoy your trip" />
             </div>
+            <h3>Enjoy your trip</h3>
+            <p>Relax while we park your car in our highly secured location minutes from the airport</p>
           </div>
           <div className="step-card">
             <div className="step-card-image">
               <img src="/step-3.png" alt="Pick up where you left off" />
             </div>
+            <h3>Pick up where you left off</h3>
+            <p>We then meet you at the same spot to hand back your keys</p>
           </div>
         </div>
       </section>
