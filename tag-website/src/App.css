@@ -1078,6 +1078,12 @@
 
   .steps-cards {
     grid-template-columns: repeat(3, 1fr);
+    max-width: 100%;
+    padding: 0 2rem;
+  }
+
+  .step-card p {
+    padding: 0 0.5rem;
   }
 
   .pricing-cards {
