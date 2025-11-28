@@ -281,8 +281,8 @@
 }
 
 .features-banner .feature {
-  flex: 0 0 calc(33.333% - 4rem);
-  min-width: 200px;
+  flex: 1;
+  min-width: 250px;
 }
 
 .features-banner .feature h2 {
