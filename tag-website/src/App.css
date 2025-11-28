@@ -6,6 +6,20 @@
   --black: #1A1A1A;
 }
 
+/* Mobile/Desktop visibility helpers */
+.mobile-only {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none;
+  }
+  .mobile-only {
+    display: inline;
+  }
+}
+
 .app {
   width: 100%;
   min-height: 100vh;
