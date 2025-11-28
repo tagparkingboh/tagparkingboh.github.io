@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-// import AvailabilityTracker from './AvailabilityTracker'
 import './App.css'
 
-function App() {
+function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [openFaq, setOpenFaq] = useState(null)
   const [openFooter, setOpenFooter] = useState(null)
@@ -497,4 +496,4 @@ function App() {
   )
 }
 
-export default App
+export default LandingPage
