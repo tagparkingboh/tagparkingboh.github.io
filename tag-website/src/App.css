@@ -1174,6 +1174,11 @@
     gap: 2rem;
   }
 
+  .step-card {
+    max-width: 75%;
+    margin: 0 auto;
+  }
+
   .step-card h3 {
     font-size: 24px;
   }
