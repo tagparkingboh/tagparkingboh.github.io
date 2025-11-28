@@ -147,7 +147,7 @@ function LandingPage() {
           </div>
           <div className="feature">
             <h2>£0</h2>
-            <p>Drop off fees:<br />everything is included</p>
+            <p><strong>Zero</strong> drop off fees:<br />everything is included</p>
           </div>
           <div className="feature">
             <h2>24/7</h2>
@@ -167,14 +167,14 @@ function LandingPage() {
               <img src="/assets/step-1.png" alt="Meet us at departures" />
             </div>
             <h3>Meet us at departures</h3>
-            <p>Simply drive to the terminal car park drop off and one of our drivers will be waiting</p>
+            <p>Simply drive to the terminal car park drop off <strong>area</strong>, and one of our drivers will be waiting</p>
           </div>
           <div className="step-card">
             <div className="step-card-image">
               <img src="/assets/step-2.png" alt="Enjoy your trip" />
             </div>
             <h3>Enjoy your trip</h3>
-            <p>Relax while we park your car in our highly secured location minutes from the airport</p>
+            <p>Relax while we park your car in our highly secured location, minutes from the airport</p>
           </div>
           <div className="step-card">
             <div className="step-card-image">
