@@ -232,6 +232,7 @@ function LandingPage() {
       {/* Pricing Section */}
       <section className="pricing-section" id="pricing">
         <h2>Pricing & plans</h2>
+        <p className="pricing-subtitle">Heading off for a short trip or a longer stay? Pick one of our pricing options that's right for you.</p>
 
         <div className="pricing-cards">
           <div className="pricing-card">
