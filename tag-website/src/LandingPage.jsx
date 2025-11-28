@@ -359,8 +359,8 @@ function LandingPage() {
         <div className="subscribe-layout">
           <img src="/departure-icon.png" alt="Departure" className="subscribe-icon" />
           <div className="subscribe-content">
-            <h2>Get latest updates</h2>
-            <p>Register your interest and be the first to know when we launch.</p>
+            <h2>Join the waitlist</h2>
+            <p className="subscribe-subtitle">Sign up early. Save more: get 10% off your next trip by joining the waitlist.</p>
             <div className="subscribe-form">
               <input
                 type="text"
@@ -387,7 +387,7 @@ function LandingPage() {
                 onClick={handleSubscribe}
                 disabled={!isFormValid || isSubmitting}
               >
-                {isSubmitting ? 'Subscribing...' : 'Subscribe'}
+                {isSubmitting ? 'Joining...' : 'Join the waitlist'}
               </button>
             </div>
             {submitStatus === 'success' && (
