@@ -1170,16 +1170,16 @@
   }
 
   .steps-cards {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
+    grid-template-columns: 1fr;
+    gap: 2rem;
   }
 
   .step-card h3 {
-    font-size: 16px;
+    font-size: 24px;
   }
 
   .step-card p {
-    font-size: 12px;
+    font-size: 16px;
   }
 
   .feature-cards {
