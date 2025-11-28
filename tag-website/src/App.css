@@ -417,6 +417,7 @@
   color: #343434;
   margin-bottom: 0.5rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .card p {
