@@ -237,6 +237,7 @@ function LandingPage() {
         <div className="pricing-cards">
           <div className="pricing-card">
             <span className="pricing-label">1 WEEK TRIP</span>
+            <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
               <span className="price">99</span>
@@ -250,12 +251,11 @@ function LandingPage() {
               <li><span className="check">✓</span> No hidden fees</li>
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
-
-            <a href="#subscribe" className="pricing-btn">Subscribe <span>→</span></a>
           </div>
 
           <div className="pricing-card">
             <span className="pricing-label">2 WEEK TRIP</span>
+            <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
               <span className="price">135</span>
@@ -269,8 +269,6 @@ function LandingPage() {
               <li><span className="check">✓</span> No hidden fees</li>
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
-
-            <a href="#subscribe" className="pricing-btn">Subscribe <span>→</span></a>
           </div>
         </div>
       </section>
