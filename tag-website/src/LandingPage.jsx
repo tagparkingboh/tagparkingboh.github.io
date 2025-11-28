@@ -160,6 +160,7 @@ function LandingPage() {
       {/* How TAG Works */}
       <section className="how-it-works" id="how-it-works">
         <h2>How Tag works for you.</h2>
+        <p className="how-it-works-subtitle">No buses, no sky high fees, just a quick, easy and<br />stress-free alternative to airport parking.</p>
         <div className="steps-cards">
           <div className="step-card">
             <div className="step-card-image">
