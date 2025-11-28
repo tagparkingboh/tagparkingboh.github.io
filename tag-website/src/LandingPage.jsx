@@ -420,6 +420,10 @@ function LandingPage() {
           <Link to="/refund-policy">Refund Policy</Link>
           <Link to="/cookie-policy">Cookie Policy</Link>
         </div>
+        <div className="footer-contact">
+          <a href="mailto:support@tagparking.co.uk">support@tagparking.co.uk</a>
+          <a href="tel:+447739106145">+44 (0)7739 106145</a>
+        </div>
         <div className="social-links">
           <a href="#facebook" aria-label="Facebook">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
