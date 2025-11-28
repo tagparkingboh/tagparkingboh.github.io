@@ -146,11 +146,11 @@ function LandingPage() {
           </div>
           <div className="feature">
             <h2>£0</h2>
-            <p>Zero parking fees:<br />everything's included</p>
+            <p>Drop off fees:<br />everything is included</p>
           </div>
           <div className="feature">
             <h2>24/7</h2>
-            <p>Security monitoring at<br />storage site</p>
+            <p>Your car never leaves our<br />secure car park</p>
           </div>
         </div>
         <div className="features-bottom-bar"></div>
