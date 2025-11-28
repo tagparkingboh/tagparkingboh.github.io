@@ -937,7 +937,7 @@
 }
 
 .footer-contact a {
-  color: var(--white);
+  color: #D9FF00;
   text-decoration: none;
   font-size: 14px;
   transition: opacity 0.2s;
