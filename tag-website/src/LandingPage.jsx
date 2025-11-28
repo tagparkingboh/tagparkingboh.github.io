@@ -123,7 +123,7 @@ function LandingPage() {
               <span className="intro-offer-text">for subscribers – register your interest below</span>
             </div>
 
-            <a href="#subscribe" className="hero-cta">Subscribe</a>
+            <a href="#subscribe" className="hero-cta">Join the waitlist <span>→</span></a>
           </div>
 
           <a href="#subscribe" className="scroll-indicator">
