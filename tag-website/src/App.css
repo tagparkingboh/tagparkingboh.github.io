@@ -325,8 +325,6 @@
   padding: 5rem 4rem 8rem 8rem;
   background: var(--light-gray);
   min-height: 700px;
-  max-width: 1400px;
-  margin: 0 auto;
   overflow: visible;
 }
 
@@ -363,7 +361,7 @@
 .why-img-1 {
   position: absolute;
   left: 8rem;
-  bottom: -120px;
+  bottom: -200px;
   width: 380px;
   border-radius: 12px;
   z-index: 10;
@@ -382,17 +380,30 @@
 
 /* Feature Cards */
 .feature-cards {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 3rem;
-  padding: 5rem 4rem;
+  padding: 5rem 4rem 5rem calc(8rem + 380px + 2rem);
   background: var(--white);
-  max-width: 1200px;
-  margin: 0 auto;
+  min-height: 200px;
+}
+
+.feature-cards::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(8rem + 380px);
+  height: 100%;
+  background: var(--light-gray);
+  z-index: 0;
 }
 
 .card {
   text-align: left;
+  position: relative;
+  z-index: 1;
 }
 
 .card-icon {
@@ -1078,6 +1089,10 @@
 
   .feature-cards {
     padding: 5rem 4rem;
+  }
+
+  .feature-cards::before {
+    display: none;
   }
 
   .steps-cards {
