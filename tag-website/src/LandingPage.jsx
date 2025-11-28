@@ -413,49 +413,12 @@ function LandingPage() {
         <div className="footer-top">
           <h2>For everything else</h2>
         </div>
-        <div className="footer-links">
-          <div className={`footer-column ${openFooter === 0 ? 'open' : ''}`}>
-            <h4 onClick={() => toggleFooter(0)}>Company <span className="footer-arrow">›</span></h4>
-            <div className="footer-links-content">
-              <a href="#about">About us</a>
-              <a href="#contact">Contact us</a>
-              <a href="#careers">Careers</a>
-              <a href="#press">Press</a>
-            </div>
-          </div>
-          <div className={`footer-column ${openFooter === 1 ? 'open' : ''}`}>
-            <h4 onClick={() => toggleFooter(1)}>Product <span className="footer-arrow">›</span></h4>
-            <div className="footer-links-content">
-              <a href="#features">Features</a>
-              <a href="#pricing">Pricing</a>
-              <a href="#news">News</a>
-              <a href="#help">Help desk</a>
-            </div>
-          </div>
-          <div className={`footer-column ${openFooter === 2 ? 'open' : ''}`}>
-            <h4 onClick={() => toggleFooter(2)}>Services <span className="footer-arrow">›</span></h4>
-            <div className="footer-links-content">
-              <a href="#locations">Locations</a>
-              <a href="#how-to">How To</a>
-              <Link to="/faq" state={{ from: 'footer' }}>FAQs</Link>
-            </div>
-          </div>
-          <div className={`footer-column ${openFooter === 3 ? 'open' : ''}`}>
-            <h4 onClick={() => toggleFooter(3)}>Legal <span className="footer-arrow">›</span></h4>
-            <div className="footer-links-content">
-              <Link to="/privacy-policy">Privacy Policy</Link>
-              <Link to="/terms-conditions">Terms & Conditions</Link>
-              <Link to="/refund-policy">Refund Policy</Link>
-              <Link to="/cookie-policy">Cookie Policy</Link>
-            </div>
-          </div>
-          <div className={`footer-column contact-column ${openFooter === 4 ? 'open' : ''}`}>
-            <h4 onClick={() => toggleFooter(4)}>Contact us <span className="footer-arrow">›</span></h4>
-            <div className="footer-links-content">
-              <a href="mailto:support@tagparking.co.uk" className="contact-email">support@tagparking.co.uk</a>
-              <a href="tel:+447739106145" className="contact-phone">+44 (0)7739 106145</a>
-            </div>
-          </div>
+        <div className="footer-links footer-links-simple">
+          <Link to="/faq" state={{ from: 'footer' }}>FAQs</Link>
+          <Link to="/privacy-policy">Privacy Policy</Link>
+          <Link to="/terms-conditions">Terms & Conditions</Link>
+          <Link to="/refund-policy">Refund Policy</Link>
+          <Link to="/cookie-policy">Cookie Policy</Link>
         </div>
         <div className="social-links">
           <a href="#facebook" aria-label="Facebook">
