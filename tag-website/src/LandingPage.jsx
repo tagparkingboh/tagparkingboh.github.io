@@ -202,29 +202,21 @@ function LandingPage() {
       <section className="feature-cards">
         <div className="card">
           <div className="card-icon">
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="1" y="1" width="38" height="38" rx="7" stroke="#CCFF00" strokeWidth="2"/>
-              <path d="M12 20L17 25L28 14" stroke="#CCFF00" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <img src="/why-01.png" alt="Fully-vetted drivers" />
           </div>
           <h3>Fully-vetted & insured drivers</h3>
-          <p>All our drivers are fully background-checked, licensed, and insured for your peace of mind.</p>
+          <p>Our drivers are fully background-checked, licensed and insured.</p>
         </div>
         <div className="card">
           <div className="card-icon">
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M22 3L8 23H20L18 37L32 17H20L22 3Z" stroke="#CCFF00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            <img src="/why-02.png" alt="Instant convenience" />
           </div>
           <h3>Instant convenience</h3>
           <p>No need to find a space or wait for a shuttle bus.</p>
         </div>
         <div className="card">
           <div className="card-icon">
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="20" cy="20" r="18" stroke="#CCFF00" strokeWidth="2"/>
-              <text x="20" y="26" textAnchor="middle" fill="#CCFF00" fontSize="16" fontWeight="600">£</text>
-            </svg>
+            <img src="/why-03.png" alt="Transparent pricing" />
           </div>
           <h3>Transparent, competitive pricing</h3>
           <p>Clear pricing with no hidden fees. What you see is what you pay.</p>
