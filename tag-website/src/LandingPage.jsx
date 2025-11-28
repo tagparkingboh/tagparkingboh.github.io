@@ -204,22 +204,28 @@ function LandingPage() {
           <div className="card-icon">
             <img src="/why-01.png" alt="Fully-vetted drivers" />
           </div>
-          <h3>Fully-vetted & insured drivers</h3>
-          <p>Our drivers are fully background-checked, licensed and insured.</p>
+          <div className="card-content">
+            <h3>Fully-vetted & insured drivers</h3>
+            <p>Our drivers are fully background-checked, licensed and insured.</p>
+          </div>
         </div>
         <div className="card">
           <div className="card-icon">
             <img src="/why-02.png" alt="Instant convenience" />
           </div>
-          <h3>Instant convenience</h3>
-          <p>No need to find a space or wait for a shuttle bus.</p>
+          <div className="card-content">
+            <h3>Instant convenience</h3>
+            <p>No need to find a space or wait for a shuttle bus.</p>
+          </div>
         </div>
         <div className="card">
           <div className="card-icon">
             <img src="/why-03.png" alt="Transparent pricing" />
           </div>
-          <h3>Transparent, competitive pricing</h3>
-          <p>Clear pricing with no hidden fees. What you see is what you pay.</p>
+          <div className="card-content">
+            <h3>Transparent, competitive pricing</h3>
+            <p>Clear pricing with no hidden fees. What you see is what you pay.</p>
+          </div>
         </div>
       </section>
 
