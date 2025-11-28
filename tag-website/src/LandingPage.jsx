@@ -121,7 +121,7 @@ function LandingPage() {
             <div className="intro-offer-banner">
               <span className="intro-offer-discount">10% off</span>
               <span className="intro-offer-text desktop-only">for subscribers – register your interest below</span>
-              <span className="intro-offer-text mobile-only">for early subscribers</span>
+              <span className="intro-offer-text mobile-only">– register below</span>
             </div>
 
             <a href="#subscribe" className="hero-cta">Join the waitlist <span>→</span></a>

@@ -1405,8 +1405,9 @@
   }
 
   .intro-offer-banner {
-    flex-direction: column;
-    gap: 0.25rem;
+    flex-direction: row;
+    justify-content: center;
+    gap: 0.5rem;
     text-align: center;
   }
 
