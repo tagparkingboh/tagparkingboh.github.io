@@ -453,7 +453,7 @@ function LandingPage() {
             <h4 onClick={() => toggleFooter(4)}>Contact us <span className="footer-arrow">›</span></h4>
             <div className="footer-links-content">
               <a href="mailto:support@tagparking.co.uk" className="contact-email">support@tagparking.co.uk</a>
-              <a href="tel:+441305876543" className="contact-phone">+44 (0)1305 876 543</a>
+              <a href="tel:+447739106145" className="contact-phone">+44 (0)7739 106145</a>
             </div>
           </div>
         </div>
