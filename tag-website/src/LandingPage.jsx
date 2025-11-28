@@ -147,7 +147,7 @@ function LandingPage() {
           </div>
           <div className="feature">
             <h2>£0</h2>
-            <p><strong>Zero</strong> drop off fees:<br />everything is included</p>
+            <p><span className="semi-bold">Zero</span> drop off fees:<br />everything is included</p>
           </div>
           <div className="feature">
             <h2>24/7</h2>
@@ -167,7 +167,7 @@ function LandingPage() {
               <img src="/assets/step-1.png" alt="Meet us at departures" />
             </div>
             <h3>Meet us at departures</h3>
-            <p>Simply drive to the terminal car park drop off <strong>area</strong>, and one of our drivers will be waiting</p>
+            <p>Simply drive to the terminal car park drop off <span className="semi-bold">area</span>, and one of our drivers will be waiting</p>
           </div>
           <div className="step-card">
             <div className="step-card-image">
@@ -306,7 +306,7 @@ function LandingPage() {
               <span className="faq-arrow">›</span>
             </div>
             <div className="faq-answer">
-              <p><strong>Meet us at the agreed booking time at the airport parking drop off area.</strong> Our driver will meet you, complete a quick vehicle condition check, and take your keys. When you return, call us and we will bring your car back to the same meeting point.</p>
+              <p><span className="semi-bold">Meet us at the agreed booking time at the airport parking drop off area.</span> Our driver will meet you, complete a quick vehicle condition check, and take your keys. When you return, call us and we will bring your car back to the same meeting point.</p>
             </div>
           </div>
 
