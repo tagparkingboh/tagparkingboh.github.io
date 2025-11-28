@@ -1159,14 +1159,14 @@
   }
 
   .features-content {
-    flex-wrap: wrap;
-    gap: 2rem 3rem;
+    flex-direction: column;
+    gap: 2rem;
     padding: 3rem 2rem;
   }
 
   .features-banner .feature {
-    flex: 0 0 calc(33.333% - 2rem);
-    min-width: 180px;
+    flex: none;
+    width: 100%;
   }
 
   .steps-cards {
