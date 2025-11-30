@@ -425,19 +425,19 @@ function LandingPage() {
           <a href="tel:+447739106145">+44 (0)7739 106145</a>
         </div>
         <div className="social-links">
-          <a href="#facebook" aria-label="Facebook">
+          <a href="https://www.facebook.com/people/Tag-Parking/61583879493475/" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3V2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </a>
-          <a href="#instagram" aria-label="Instagram">
+          <a href="https://www.instagram.com/tagparking/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect x="2" y="2" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="2"/>
               <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2"/>
               <circle cx="18" cy="6" r="1" fill="currentColor"/>
             </svg>
           </a>
-          <a href="#linkedin" aria-label="LinkedIn">
+          <a href="https://www.linkedin.com/company/tag-parking/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               <rect x="2" y="9" width="4" height="12" stroke="currentColor" strokeWidth="2"/>
