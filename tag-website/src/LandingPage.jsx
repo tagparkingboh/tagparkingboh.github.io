@@ -113,7 +113,7 @@ function LandingPage() {
       <section className="hero" id="hero">
         <div className="hero-content">
           <div className="hero-text">
-            <p className="hero-subtitle">TAG: THE NEW WAY TO MEET AND GREET</p>
+            <p className="hero-subtitle">TAG: MEET & GREET FOR BOURNEMOUTH AIRPORT</p>
             <h1 className="hero-title">Sign up early. Save more.</h1>
           </div>
 
