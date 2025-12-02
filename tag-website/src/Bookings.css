@@ -1,12 +1,42 @@
+/* Import Gilroy fonts */
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/Gilroy/Radomir Tinkov - Gilroy-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/Gilroy/Radomir Tinkov - Gilroy-SemiBold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/Gilroy/Radomir Tinkov - Gilroy-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/Gilroy/Radomir Tinkov - Gilroy-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+}
+
 .bookings-page {
   min-height: 100vh;
-  background: var(--light-gray);
+  background: #343434;
   display: flex;
   flex-direction: column;
+  font-family: 'Gilroy', sans-serif;
 }
 
 .bookings-nav {
-  background: var(--dark-gray);
+  background: #2a2a2a;
   padding: 2rem 4rem;
   display: flex;
   justify-content: center;
@@ -37,18 +67,20 @@
 
 .bookings-container h1 {
   font-size: 2.5rem;
-  color: var(--black);
+  color: #D9FF00;
   font-weight: 700;
   font-style: italic;
   margin-bottom: 0.5rem;
   text-align: center;
+  font-family: 'Gilroy', sans-serif;
 }
 
 .bookings-subtitle {
-  color: var(--dark-gray);
+  color: #ffffff;
   text-align: center;
   margin-bottom: 2rem;
   font-weight: 500;
+  opacity: 0.8;
 }
 
 /* Progress Bar */
@@ -76,7 +108,7 @@
   left: 50%;
   width: 100%;
   height: 2px;
-  background: #E0E0E0;
+  background: #555555;
   z-index: 0;
 }
 
@@ -86,15 +118,15 @@
 
 .progress-step.active::after,
 .progress-step.completed::after {
-  background: var(--lime-green);
+  background: #D9FF00;
 }
 
 .step-number {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #E0E0E0;
-  color: var(--dark-gray);
+  background: #555555;
+  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -107,29 +139,31 @@
 
 .progress-step.active .step-number,
 .progress-step.completed .step-number {
-  background: var(--lime-green);
-  color: var(--black);
+  background: #D9FF00;
+  color: #343434;
 }
 
 .step-label {
   font-size: 0.75rem;
-  color: var(--dark-gray);
+  color: #ffffff;
   margin-top: 0.5rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  opacity: 0.7;
 }
 
 .progress-step.active .step-label {
-  color: var(--black);
+  color: #D9FF00;
   font-weight: 600;
+  opacity: 1;
 }
 
 /* Form */
 .bookings-form {
-  background: var(--white);
+  background: #2a2a2a;
   border-radius: 12px;
   padding: 2.5rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .form-section {
@@ -149,11 +183,12 @@
 
 .form-section h2 {
   font-size: 1.25rem;
-  color: var(--black);
+  color: #ffffff;
   font-weight: 600;
   margin-bottom: 1.5rem;
   padding-bottom: 0.75rem;
-  border-bottom: 2px solid var(--lime-green);
+  border-bottom: 2px solid #D9FF00;
+  font-family: 'Gilroy', sans-serif;
 }
 
 .form-row {
@@ -175,28 +210,28 @@
 .form-group label {
   font-size: 0.9rem;
   font-weight: 500;
-  color: var(--black);
+  color: #ffffff;
   margin-bottom: 0.5rem;
 }
 
 .form-group input,
 .form-group select {
   padding: 0.875rem 1rem;
-  border: 2px solid #E0E0E0;
+  border: 2px solid #555555;
   border-radius: 8px;
   font-size: 1rem;
-  color: var(--black);
-  background: var(--white);
+  color: #ffffff;
+  background: #343434;
   transition: border-color 0.3s;
   width: 100%;
-  font-family: inherit;
+  font-family: 'Gilroy', sans-serif;
 }
 
 .form-group select {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23333' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23D9FF00' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 1rem center;
   padding-right: 2.5rem;
@@ -204,39 +239,41 @@
 }
 
 .form-group select:hover {
-  border-color: var(--lime-green);
+  border-color: #D9FF00;
 }
 
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: var(--lime-green);
+  border-color: #D9FF00;
 }
 
 .form-group input::placeholder {
-  color: #999;
+  color: #888888;
 }
 
 .form-group select option {
   padding: 0.5rem;
+  background: #343434;
+  color: #ffffff;
 }
 
 /* Date Picker Styling */
 .date-picker-input {
   width: 100%;
   padding: 0.875rem 1rem;
-  border: 2px solid #E0E0E0;
+  border: 2px solid #555555;
   border-radius: 8px;
   font-size: 1rem;
-  color: var(--black);
-  background: var(--white);
+  color: #ffffff;
+  background: #343434;
   transition: border-color 0.3s;
-  font-family: inherit;
+  font-family: 'Gilroy', sans-serif;
 }
 
 .date-picker-input:focus {
   outline: none;
-  border-color: var(--lime-green);
+  border-color: #D9FF00;
 }
 
 .react-datepicker-wrapper {
@@ -244,14 +281,15 @@
 }
 
 .react-datepicker {
-  font-family: 'Poppins', sans-serif;
-  border: 2px solid #E0E0E0;
+  font-family: 'Gilroy', sans-serif;
+  border: 2px solid #555555;
   border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  background: #343434;
 }
 
 .react-datepicker__header {
-  background: var(--dark-gray);
+  background: #2a2a2a;
   border-bottom: none;
   border-radius: 6px 6px 0 0;
   padding-top: 1rem;
@@ -260,46 +298,60 @@
 .react-datepicker__current-month,
 .react-datepicker__current-month--hasYearDropdown,
 .react-datepicker__current-month--hasMonthDropdown {
-  color: var(--lime-green) !important;
+  color: #D9FF00 !important;
   font-weight: 600;
 }
 
 .react-datepicker__day-names {
-  background: var(--light-gray) !important;
+  background: #343434 !important;
   padding: 0.5rem 0;
 }
 
 .react-datepicker__day-name {
-  color: var(--lime-green) !important;
+  color: #D9FF00 !important;
   font-weight: 900;
+}
+
+.react-datepicker__month {
+  background: #343434;
 }
 
 .react-datepicker__day {
   border-radius: 50%;
   transition: all 0.2s;
+  color: #ffffff;
 }
 
 .react-datepicker__day:hover {
-  background: rgba(204, 255, 0, 0.3);
+  background: rgba(217, 255, 0, 0.3);
   border-radius: 50%;
 }
 
 .react-datepicker__day--selected,
 .react-datepicker__day--keyboard-selected {
-  background: var(--lime-green) !important;
-  color: var(--black) !important;
+  background: #D9FF00 !important;
+  color: #343434 !important;
   font-weight: 600;
 }
 
 .react-datepicker__day--disabled {
-  color: #ccc;
+  color: #666666;
 }
 
 .react-datepicker__navigation-icon::before {
-  border-color: var(--lime-green);
+  border-color: #D9FF00;
 }
 
 .react-datepicker__triangle {
+  display: none;
+}
+
+/* Limit calendar to 5 weeks */
+.five-weeks .react-datepicker__month {
+  overflow: hidden;
+}
+
+.five-weeks .react-datepicker__week:nth-child(6) {
   display: none;
 }
 
@@ -323,24 +375,25 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.25rem;
-  border: 2px solid #E0E0E0;
+  border: 2px solid #555555;
   border-radius: 8px;
   transition: all 0.3s;
+  background: #343434;
 }
 
 .flight-slot input:checked + .slot-card {
-  border-color: var(--lime-green);
-  background: rgba(204, 255, 0, 0.1);
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
 }
 
 .slot-time {
   font-weight: 700;
   font-size: 1.1rem;
-  color: var(--black);
+  color: #ffffff;
 }
 
 .slot-label {
-  color: var(--dark-gray);
+  color: #bbbbbb;
   font-size: 0.9rem;
   font-weight: 500;
 }
@@ -348,27 +401,36 @@
 /* Section Subtitle */
 .section-subtitle {
   font-size: 1.1rem;
-  color: var(--lime-green);
+  color: #D9FF00;
   margin: 1.5rem 0 1rem;
   font-weight: 600;
+  font-family: 'Gilroy', sans-serif;
 }
 
 .section-subtitle:first-of-type {
   margin-top: 0;
 }
 
+.section-info {
+  color: #D9FF00;
+  font-size: 0.95rem;
+  margin: -0.5rem 0 1.5rem;
+  font-weight: 500;
+  font-family: 'Gilroy', sans-serif;
+}
+
 .return-flight-info {
-  color: var(--dark-gray);
+  color: #bbbbbb;
   font-size: 0.9rem;
   margin: -0.5rem 0 1rem;
   font-style: italic;
 }
 
 .no-flights-message {
-  color: #e74c3c;
+  color: #ff6b6b;
   font-size: 0.9rem;
   padding: 1rem;
-  background: rgba(231, 76, 60, 0.1);
+  background: rgba(255, 107, 107, 0.1);
   border-radius: 8px;
   text-align: center;
 }
@@ -389,8 +451,8 @@
 }
 
 .dropoff-slot input:checked + .slot-card {
-  border-color: var(--lime-green);
-  background: rgba(204, 255, 0, 0.1);
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
 }
 
 /* Pickup Times */
@@ -410,20 +472,21 @@
 
 .time-card {
   padding: 1rem 1.25rem;
-  border: 2px solid #E0E0E0;
+  border: 2px solid #555555;
   border-radius: 8px;
   transition: all 0.3s;
   text-align: center;
+  background: #343434;
 }
 
 .pickup-time input:checked + .time-card {
-  border-color: var(--lime-green);
-  background: rgba(204, 255, 0, 0.1);
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
 }
 
 .time-card span {
   font-weight: 500;
-  color: var(--black);
+  color: #ffffff;
 }
 
 /* Package Options */
@@ -446,21 +509,22 @@
   display: flex;
   flex-direction: column;
   padding: 1.5rem;
-  border: 2px solid #E0E0E0;
+  border: 2px solid #555555;
   border-radius: 8px;
   transition: all 0.3s;
   height: 100%;
+  background: #343434;
 }
 
 .package-option input:checked + .package-card {
-  border-color: var(--lime-green);
-  background: rgba(204, 255, 0, 0.1);
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
 }
 
 .package-label {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--lime-green);
+  color: #D9FF00;
   letter-spacing: 1px;
   margin-bottom: 0.5rem;
 }
@@ -468,13 +532,13 @@
 .package-price {
   font-size: 2.5rem;
   font-weight: 700;
-  color: var(--black);
+  color: #ffffff;
   line-height: 1;
 }
 
 .package-period {
   font-size: 0.9rem;
-  color: var(--dark-gray);
+  color: #bbbbbb;
   margin-bottom: 1rem;
 }
 
@@ -486,7 +550,7 @@
 
 .package-features li {
   font-size: 0.85rem;
-  color: var(--dark-gray);
+  color: #bbbbbb;
   padding: 0.35rem 0;
   padding-left: 1.25rem;
   position: relative;
@@ -496,24 +560,26 @@
   content: '✓';
   position: absolute;
   left: 0;
-  color: var(--lime-green);
+  color: #D9FF00;
   font-weight: 700;
 }
 
 /* Booking Summary */
 .booking-summary {
-  background: var(--light-gray);
+  background: #343434;
   border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
+  border: 1px solid #555555;
 }
 
 .booking-summary h3 {
   font-size: 1rem;
-  color: var(--black);
+  color: #ffffff;
   margin-bottom: 1rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid #E0E0E0;
+  border-bottom: 1px solid #555555;
+  font-family: 'Gilroy', sans-serif;
 }
 
 .summary-item {
@@ -524,16 +590,16 @@
 }
 
 .summary-item span:first-child {
-  color: var(--dark-gray);
+  color: #bbbbbb;
 }
 
 .summary-item span:last-child {
-  color: var(--black);
+  color: #ffffff;
   font-weight: 500;
 }
 
 .summary-item.total {
-  border-top: 2px solid var(--lime-green);
+  border-top: 2px solid #D9FF00;
   margin-top: 0.5rem;
   padding-top: 1rem;
   font-size: 1.1rem;
@@ -541,13 +607,13 @@
 
 .summary-item.total span:last-child {
   font-weight: 700;
-  color: var(--black);
+  color: #D9FF00;
 }
 
 /* Stripe Placeholder */
 .stripe-placeholder {
-  background: #f8f9fa;
-  border: 2px dashed #E0E0E0;
+  background: #3a3a3a;
+  border: 2px dashed #555555;
   border-radius: 8px;
   padding: 2rem;
   text-align: center;
@@ -555,7 +621,7 @@
 }
 
 .stripe-placeholder p {
-  color: var(--dark-gray);
+  color: #bbbbbb;
   margin: 0;
 }
 
@@ -581,22 +647,22 @@
   margin-top: 0.25rem;
   width: 18px;
   height: 18px;
-  accent-color: var(--lime-green);
+  accent-color: #D9FF00;
 }
 
 .checkbox-label span {
   font-size: 0.9rem;
-  color: var(--dark-gray);
+  color: #bbbbbb;
   line-height: 1.5;
 }
 
 .checkbox-label a {
-  color: var(--black);
+  color: #D9FF00;
   font-weight: 500;
 }
 
 .checkbox-label a:hover {
-  color: var(--lime-green);
+  color: #ffffff;
 }
 
 /* Form Actions */
@@ -609,38 +675,41 @@
 .back-btn {
   flex: 0 0 auto;
   padding: 1rem 1.5rem;
-  background: var(--white);
-  border: 2px solid #E0E0E0;
+  background: transparent;
+  border: 2px solid #555555;
   border-radius: 8px;
   font-size: 1rem;
   font-weight: 600;
-  color: var(--dark-gray);
+  color: #ffffff;
   cursor: pointer;
   transition: all 0.2s;
+  font-family: 'Gilroy', sans-serif;
 }
 
 .back-btn:hover {
-  border-color: var(--dark-gray);
-  color: var(--black);
+  border-color: #D9FF00;
+  color: #D9FF00;
 }
 
 .next-btn,
 .submit-btn {
   flex: 1;
   padding: 1rem 1.5rem;
-  background: var(--lime-green);
+  background: #D9FF00;
   border: none;
   border-radius: 8px;
   font-size: 1rem;
   font-weight: 700;
-  color: var(--black);
+  color: #343434;
   cursor: pointer;
   transition: all 0.2s;
+  font-family: 'Gilroy', sans-serif;
 }
 
 .next-btn:hover:not(:disabled),
 .submit-btn:hover:not(:disabled) {
   transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(217, 255, 0, 0.3);
 }
 
 .next-btn:disabled,
@@ -651,7 +720,7 @@
 
 /* Footer */
 .bookings-footer {
-  background: var(--dark-gray);
+  background: #2a2a2a;
   padding: 1.5rem;
   text-align: center;
 }
@@ -663,7 +732,7 @@
 }
 
 .bookings-footer p {
-  color: #999;
+  color: #888888;
   font-size: 0.85rem;
   margin: 0;
 }
