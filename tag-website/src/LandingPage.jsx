@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import './App.css'
 
@@ -11,6 +11,23 @@ function LandingPage() {
   const [email, setEmail] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitStatus, setSubmitStatus] = useState(null) // 'success' | 'error' | null
+
+  // Load HubSpot tracking script
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.src = '//js-ap1.hs-scripts.com/442431654.js'
+    script.id = 'hs-script-loader'
+    script.async = true
+    script.defer = true
+    document.body.appendChild(script)
+
+    return () => {
+      const existingScript = document.getElementById('hs-script-loader')
+      if (existingScript) {
+        existingScript.remove()
+      }
+    }
+  }, [])
 
   const isValidEmail = (email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
