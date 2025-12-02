@@ -7,6 +7,42 @@ import flightSchedule from './data/flightSchedule.json'
 import 'react-datepicker/dist/react-datepicker.css'
 import './Bookings.css'
 
+// Country code to full name mapping
+const countryNames = {
+  ES: 'Spain',
+  PT: 'Portugal',
+  GB: 'United Kingdom',
+  CH: 'Switzerland',
+  PL: 'Poland',
+  MT: 'Malta',
+  FR: 'France',
+  IT: 'Italy',
+  DE: 'Germany',
+  GR: 'Greece',
+  TR: 'Turkey',
+  CY: 'Cyprus',
+  HR: 'Croatia',
+  NL: 'Netherlands',
+  BE: 'Belgium',
+  AT: 'Austria',
+  IE: 'Ireland',
+  SC: 'Scotland',
+  IS: 'Iceland',
+  CZ: 'Czech Republic',
+  HU: 'Hungary',
+  SI: 'Slovenia',
+  LV: 'Latvia',
+  LT: 'Lithuania',
+  EE: 'Estonia',
+  NO: 'Norway',
+  SE: 'Sweden',
+  DK: 'Denmark',
+  FI: 'Finland',
+  TN: 'Tunisia',
+  MA: 'Morocco',
+  EG: 'Egypt'
+}
+
 function Bookings() {
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
@@ -28,6 +64,13 @@ function Bookings() {
     phone: '',
     flightNumber: '',
     package: 'quick',
+    // Billing Address
+    billingAddress1: '',
+    billingAddress2: '',
+    billingCity: '',
+    billingCounty: '',
+    billingPostcode: '',
+    billingCountry: 'United Kingdom',
     terms: false
   })
 
@@ -88,11 +131,21 @@ function Bookings() {
 
   // Get flights with time and destination combined for selected airline
   const flightsForDropoff = useMemo(() => {
-    return flightsForAirline.map(f => ({
-      ...f,
-      flightKey: `${f.time}|${f.destinationCode}`,
-      displayText: `${f.time} → ${f.destinationName} (${f.destinationCode})`
-    })).sort((a, b) => a.time.localeCompare(b.time))
+    return flightsForAirline.map(f => {
+      // Parse destinationName to extract city and country code (e.g., "Faro, PT" or "Edinburgh, SC, GB")
+      const parts = f.destinationName.split(', ')
+      const countryCode = parts[parts.length - 1]
+      let cityName = parts.slice(0, -1).join(', ')
+      // Shorten Tenerife-Reinasofia to Tenerife
+      if (cityName === 'Tenerife-Reinasofia') cityName = 'Tenerife'
+      const countryName = countryNames[countryCode] || countryCode
+
+      return {
+        ...f,
+        flightKey: `${f.time}|${f.destinationCode}`,
+        displayText: `${f.time} ${f.airlineCode}${f.flightNumber} → ${cityName} (${f.destinationCode}), ${countryName}`
+      }
+    }).sort((a, b) => a.time.localeCompare(b.time))
   }, [flightsForAirline])
 
   // Get selected flight details
@@ -101,15 +154,14 @@ function Bookings() {
     return flightsForDropoff.find(f => f.flightKey === formData.dropoffFlight)
   }, [flightsForDropoff, formData.dropoffFlight])
 
-  // Calculate drop-off time slots (3h, 2.5h, 2h before departure)
+  // Calculate drop-off time slots (2¾h, 2h before departure)
   const dropoffSlots = useMemo(() => {
     if (!selectedDropoffFlight) return []
     const [hours, minutes] = selectedDropoffFlight.time.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
     return [
-      { id: '180', label: '3 hours before', time: formatMinutesToTime(departureMinutes - 180) },
-      { id: '150', label: '2½ hours before', time: formatMinutesToTime(departureMinutes - 150) },
+      { id: '165', label: '2¾ hours before', time: formatMinutesToTime(departureMinutes - 165) },
       { id: '120', label: '2 hours before', time: formatMinutesToTime(departureMinutes - 120) }
     ]
   }, [selectedDropoffFlight])
@@ -127,10 +179,21 @@ function Bookings() {
     )
   }, [formData.pickupDate, formData.dropoffAirline, selectedDropoffFlight])
 
-  // Get arrival times for matching return flights
-  const arrivalTimesForPickup = useMemo(() => {
-    const times = [...new Set(arrivalsForDate.map(f => f.time))]
-    return times.sort()
+  // Get arrival flights for pickup with display details
+  const arrivalFlightsForPickup = useMemo(() => {
+    return arrivalsForDate.map(f => {
+      // Parse originName to get city
+      const parts = f.originName.split(', ')
+      let cityName = parts.slice(0, -1).join(', ')
+      // Shorten Tenerife-Reinasofia to Tenerife
+      if (cityName === 'Tenerife-Reinasofia') cityName = 'Tenerife'
+
+      return {
+        ...f,
+        flightKey: `${f.time}|${f.flightNumber}`,
+        displayText: `${f.departureTime} ${f.airlineCode}${f.flightNumber} from ${cityName} (${f.originCode}) → arrives ${f.time}`
+      }
+    }).sort((a, b) => a.time.localeCompare(b.time))
   }, [arrivalsForDate])
 
   // Helper function to format minutes to HH:MM
@@ -212,7 +275,7 @@ function Bookings() {
   }
 
   const nextStep = () => {
-    setCurrentStep(prev => Math.min(prev + 1, 5))
+    setCurrentStep(prev => Math.min(prev + 1, 6))
     window.scrollTo(0, 0)
   }
 
@@ -221,13 +284,20 @@ function Bookings() {
     window.scrollTo(0, 0)
   }
 
-  const isStep1Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable
+  // Step 1: Contact Details (first for lead capture)
+  const isStep1Complete = formData.firstName && formData.lastName && formData.email && formData.phone
+  // Step 2: Trip Details
+  const isStep2Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable
+  // Step 3: Vehicle Details
   const isMakeComplete = formData.make && (formData.make !== 'Other' || formData.customMake)
   const isModelComplete = formData.model && (formData.model !== 'Other' || formData.customModel)
-  const isStep2Complete = formData.registration && isMakeComplete && isModelComplete && formData.colour
-  const isStep3Complete = formData.firstName && formData.lastName && formData.email && formData.phone
+  const isStep3Complete = formData.registration && isMakeComplete && isModelComplete && formData.colour
+  // Step 4: Package
   const isStep4Complete = formData.package
-  const isStep5Complete = formData.terms
+  // Step 5: Billing Address
+  const isStep5Complete = formData.billingAddress1 && formData.billingCity && formData.billingPostcode && formData.billingCountry
+  // Step 6: Payment
+  const isStep6Complete = formData.terms
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -255,18 +325,19 @@ function Bookings() {
 
         <div className="progress-bar">
           <div className="progress-steps">
-            {[1, 2, 3, 4, 5].map(step => (
+            {[1, 2, 3, 4, 5, 6].map(step => (
               <div
                 key={step}
                 className={`progress-step ${currentStep >= step ? 'active' : ''} ${currentStep > step ? 'completed' : ''}`}
               >
                 <span className="step-number">{step}</span>
                 <span className="step-label">
-                  {step === 1 && 'Trip'}
-                  {step === 2 && 'Vehicle'}
-                  {step === 3 && 'Details'}
+                  {step === 1 && 'Contact'}
+                  {step === 2 && 'Trip'}
+                  {step === 3 && 'Vehicle'}
                   {step === 4 && 'Package'}
-                  {step === 5 && 'Payment'}
+                  {step === 5 && 'Billing'}
+                  {step === 6 && 'Payment'}
                 </span>
               </div>
             ))}
@@ -274,8 +345,79 @@ function Bookings() {
         </div>
 
         <form className="bookings-form" onSubmit={handleSubmit}>
-          {/* Step 1: Trip Details */}
+          {/* Step 1: Contact Details (first for lead capture) */}
           {currentStep === 1 && (
+            <div className="form-section">
+              <h2>Your Details</h2>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="firstName">First Name</label>
+                  <input
+                    type="text"
+                    id="firstName"
+                    name="firstName"
+                    placeholder="John"
+                    value={formData.firstName}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="lastName">Last Name</label>
+                  <input
+                    type="text"
+                    id="lastName"
+                    name="lastName"
+                    placeholder="Smith"
+                    value={formData.lastName}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="email">Email Address</label>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  placeholder="john@example.com"
+                  value={formData.email}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="phone">Phone Number</label>
+                <input
+                  type="tel"
+                  id="phone"
+                  name="phone"
+                  placeholder="+44 7123 456789"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="next-btn"
+                  onClick={nextStep}
+                  disabled={!isStep1Complete}
+                >
+                  Continue to Trip Details
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Trip Details */}
+          {currentStep === 2 && (
             <div className="form-section">
               <h2>Trip Details</h2>
 
@@ -291,6 +433,8 @@ function Bookings() {
                   placeholderText="Select date"
                   className="date-picker-input"
                   id="dropoffDate"
+                  popperPlacement="bottom-start"
+                  calendarClassName="five-weeks"
                 />
               </div>
 
@@ -357,7 +501,13 @@ function Bookings() {
                 <>
                   <h3 className="section-subtitle">Return Flight</h3>
                   <p className="return-flight-info">
-                    {formData.dropoffAirline} from {selectedDropoffFlight?.destinationName || ''}
+                    {selectedDropoffFlight && (() => {
+                      const parts = selectedDropoffFlight.destinationName.split(', ')
+                      const countryCode = parts[parts.length - 1]
+                      const cityName = parts.slice(0, -1).join(', ')
+                      const country = countryNames[countryCode] || countryCode
+                      return `${formData.dropoffAirline} from ${cityName} (${selectedDropoffFlight.destinationCode}), ${country}`
+                    })()}
                   </p>
 
                   <div className="form-group fade-in">
@@ -370,29 +520,31 @@ function Bookings() {
                       placeholderText="Select date"
                       className="date-picker-input"
                       id="pickupDate"
+                      popperPlacement="bottom-start"
+                      calendarClassName="five-weeks"
                     />
                   </div>
                 </>
               )}
 
-              {formData.pickupDate && arrivalTimesForPickup.length > 0 && (
+              {formData.pickupDate && arrivalFlightsForPickup.length > 0 && (
                 <div className="form-group fade-in">
-                  <label htmlFor="pickupFlightTime">Arrival Time at BOH</label>
+                  <label htmlFor="pickupFlightTime">Return Flight</label>
                   <select
                     id="pickupFlightTime"
                     name="pickupFlightTime"
                     value={formData.pickupFlightTime}
                     onChange={handleChange}
                   >
-                    <option value="">Select time</option>
-                    {arrivalTimesForPickup.map(time => (
-                      <option key={time} value={time}>{time}</option>
+                    <option value="">Select flight</option>
+                    {arrivalFlightsForPickup.map(flight => (
+                      <option key={flight.flightKey} value={flight.flightKey}>{flight.displayText}</option>
                     ))}
                   </select>
                 </div>
               )}
 
-              {formData.pickupDate && arrivalTimesForPickup.length === 0 && (
+              {formData.pickupDate && arrivalFlightsForPickup.length === 0 && (
                 <div className="form-group fade-in">
                   <p className="no-flights-message">No return flights available on this date. Please select a different date.</p>
                 </div>
@@ -405,11 +557,14 @@ function Bookings() {
               )}
 
               <div className="form-actions">
+                <button type="button" className="back-btn" onClick={prevStep}>
+                  Back
+                </button>
                 <button
                   type="button"
                   className="next-btn"
                   onClick={nextStep}
-                  disabled={!isStep1Complete}
+                  disabled={!isStep2Complete}
                 >
                   Continue to Vehicle Details
                 </button>
@@ -417,8 +572,8 @@ function Bookings() {
             </div>
           )}
 
-          {/* Step 2: Vehicle Details */}
-          {currentStep === 2 && (
+          {/* Step 3: Vehicle Details */}
+          {currentStep === 3 && (
             <div className="form-section">
               <h2>Vehicle Details</h2>
 
@@ -544,80 +699,6 @@ function Bookings() {
                   type="button"
                   className="next-btn"
                   onClick={nextStep}
-                  disabled={!isStep2Complete}
-                >
-                  Continue to Your Details
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Your Details */}
-          {currentStep === 3 && (
-            <div className="form-section">
-              <h2>Your Details</h2>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="firstName">First Name</label>
-                  <input
-                    type="text"
-                    id="firstName"
-                    name="firstName"
-                    placeholder="John"
-                    value={formData.firstName}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="lastName">Last Name</label>
-                  <input
-                    type="text"
-                    id="lastName"
-                    name="lastName"
-                    placeholder="Smith"
-                    value={formData.lastName}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="email">Email Address</label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  placeholder="john@example.com"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="phone">Phone Number</label>
-                <input
-                  type="tel"
-                  id="phone"
-                  name="phone"
-                  placeholder="+44 7123 456789"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-
-              <div className="form-actions">
-                <button type="button" className="back-btn" onClick={prevStep}>
-                  Back
-                </button>
-                <button
-                  type="button"
-                  className="next-btn"
-                  onClick={nextStep}
                   disabled={!isStep3Complete}
                 >
                   Continue to Package Selection
@@ -684,14 +765,120 @@ function Bookings() {
                   onClick={nextStep}
                   disabled={!isStep4Complete}
                 >
+                  Continue to Billing Address
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 5: Billing Address */}
+          {currentStep === 5 && (
+            <div className="form-section">
+              <h2>Billing Address</h2>
+              <p className="section-info">This address will be used for payment verification.</p>
+
+              <div className="form-group">
+                <label htmlFor="billingAddress1">Address Line 1</label>
+                <input
+                  type="text"
+                  id="billingAddress1"
+                  name="billingAddress1"
+                  placeholder="123 High Street"
+                  value={formData.billingAddress1}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="billingAddress2">Address Line 2 (optional)</label>
+                <input
+                  type="text"
+                  id="billingAddress2"
+                  name="billingAddress2"
+                  placeholder="Flat 4"
+                  value={formData.billingAddress2}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="billingCity">City</label>
+                  <input
+                    type="text"
+                    id="billingCity"
+                    name="billingCity"
+                    placeholder="Bournemouth"
+                    value={formData.billingCity}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="billingCounty">County (optional)</label>
+                  <input
+                    type="text"
+                    id="billingCounty"
+                    name="billingCounty"
+                    placeholder="Dorset"
+                    value={formData.billingCounty}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="billingPostcode">Postcode</label>
+                  <input
+                    type="text"
+                    id="billingPostcode"
+                    name="billingPostcode"
+                    placeholder="BH1 1AA"
+                    value={formData.billingPostcode}
+                    onChange={handleChange}
+                    style={{ textTransform: 'uppercase' }}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="billingCountry">Country</label>
+                  <select
+                    id="billingCountry"
+                    name="billingCountry"
+                    value={formData.billingCountry}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="United Kingdom">United Kingdom</option>
+                    <option value="Ireland">Ireland</option>
+                    <option value="France">France</option>
+                    <option value="Germany">Germany</option>
+                    <option value="Spain">Spain</option>
+                    <option value="Netherlands">Netherlands</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-actions">
+                <button type="button" className="back-btn" onClick={prevStep}>
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="next-btn"
+                  onClick={nextStep}
+                  disabled={!isStep5Complete}
+                >
                   Continue to Payment
                 </button>
               </div>
             </div>
           )}
 
-          {/* Step 5: Payment */}
-          {currentStep === 5 && (
+          {/* Step 6: Payment */}
+          {currentStep === 6 && (
             <div className="form-section">
               <h2>Payment</h2>
 
@@ -748,7 +935,7 @@ function Bookings() {
                 <button
                   type="submit"
                   className="submit-btn"
-                  disabled={!isStep5Complete}
+                  disabled={!isStep6Complete}
                 >
                   Pay {formData.package === 'quick' ? '£99.00' : '£135.00'}
                 </button>
