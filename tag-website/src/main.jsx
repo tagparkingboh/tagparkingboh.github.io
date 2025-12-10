@@ -12,7 +12,7 @@ import CookiePolicy from './CookiePolicy.jsx'
 import FAQ from './FAQ.jsx'
 
 // Toggle this to switch between Landing Page (pre-launch) and Home Page (post-launch)
-const IS_LAUNCHED = false
+const IS_LAUNCHED = true
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

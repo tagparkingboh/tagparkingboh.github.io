@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
 import { getMakes, getModels } from 'car-info'
-import flightSchedule from './data/flightSchedule.json'
+import StripePayment from './components/StripePayment'
 import 'react-datepicker/dist/react-datepicker.css'
 import './Bookings.css'
 
@@ -44,11 +44,28 @@ const countryNames = {
 }
 
 function Bookings() {
+  const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState(1)
+  const [paymentComplete, setPaymentComplete] = useState(false)
+  const [bookingConfirmation, setBookingConfirmation] = useState(null)
+  const [customerId, setCustomerId] = useState(null)
+  const [vehicleId, setVehicleId] = useState(null)
+  const [saving, setSaving] = useState(false)
+  // DVLA lookup state
+  const [dvlaLoading, setDvlaLoading] = useState(false)
+  const [dvlaError, setDvlaError] = useState('')
+  const [dvlaVerified, setDvlaVerified] = useState(false)
+  // Address lookup state
+  const [addressLoading, setAddressLoading] = useState(false)
+  const [addressError, setAddressError] = useState('')
+  const [addressList, setAddressList] = useState([])
+  const [showAddressSelect, setShowAddressSelect] = useState(false)
+  const [postcodeSearched, setPostcodeSearched] = useState('')
+  const [manualAddressEntry, setManualAddressEntry] = useState(false)
   const [formData, setFormData] = useState({
     dropoffDate: null,
     dropoffAirline: '',
-    dropoffFlight: '', // Combined time|destination key
+    dropoffFlight: '',
     dropoffSlot: '',
     pickupDate: null,
     pickupFlightTime: '',
@@ -63,7 +80,7 @@ function Bookings() {
     email: '',
     phone: '',
     flightNumber: '',
-    package: 'quick',
+    package: '',
     // Billing Address
     billingAddress1: '',
     billingAddress2: '',
@@ -73,6 +90,14 @@ function Bookings() {
     billingCountry: 'United Kingdom',
     terms: false
   })
+
+  // API base URL
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // Flight data from API
+  const [departuresForDate, setDeparturesForDate] = useState([])
+  const [arrivalsForDate, setArrivalsForDate] = useState([])
+  const [loadingFlights, setLoadingFlights] = useState(false)
 
   // Parking capacity management
   const MAX_PARKING_SPOTS = 60
@@ -110,12 +135,28 @@ function Bookings() {
     return getModels(formData.make) || []
   }, [formData.make])
 
-  // Filter departures for selected drop-off date
-  const departuresForDate = useMemo(() => {
-    if (!formData.dropoffDate) return []
-    const dateStr = format(formData.dropoffDate, 'yyyy-MM-dd')
-    return flightSchedule.filter(f => f.date === dateStr && f.type === 'departure')
-  }, [formData.dropoffDate])
+  // Fetch departures when drop-off date changes
+  useEffect(() => {
+    const fetchDepartures = async () => {
+      if (!formData.dropoffDate) {
+        setDeparturesForDate([])
+        return
+      }
+      setLoadingFlights(true)
+      try {
+        const dateStr = format(formData.dropoffDate, 'yyyy-MM-dd')
+        const response = await fetch(`${API_BASE_URL}/api/flights/departures/${dateStr}`)
+        const data = await response.json()
+        setDeparturesForDate(data)
+      } catch (error) {
+        console.error('Error fetching departures:', error)
+        setDeparturesForDate([])
+      } finally {
+        setLoadingFlights(false)
+      }
+    }
+    fetchDepartures()
+  }, [formData.dropoffDate, API_BASE_URL])
 
   // Get unique airlines for selected date
   const airlinesForDropoff = useMemo(() => {
@@ -155,33 +196,67 @@ function Bookings() {
   }, [flightsForDropoff, formData.dropoffFlight])
 
   // Calculate drop-off time slots (2¾h, 2h before departure)
+  // Only show available slots (not already booked)
   const dropoffSlots = useMemo(() => {
     if (!selectedDropoffFlight) return []
+
     const [hours, minutes] = selectedDropoffFlight.time.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
-    return [
-      { id: '165', label: '2¾ hours before', time: formatMinutesToTime(departureMinutes - 165) },
-      { id: '120', label: '2 hours before', time: formatMinutesToTime(departureMinutes - 120) }
-    ]
+    const slots = []
+
+    // Slot 1: 2¾ hours before (165 minutes)
+    if (!selectedDropoffFlight.is_slot_1_booked) {
+      slots.push({ id: '165', label: '2¾ hours before', time: formatMinutesToTime(departureMinutes - 165) })
+    }
+
+    // Slot 2: 2 hours before (120 minutes)
+    if (!selectedDropoffFlight.is_slot_2_booked) {
+      slots.push({ id: '120', label: '2 hours before', time: formatMinutesToTime(departureMinutes - 120) })
+    }
+
+    return slots
   }, [selectedDropoffFlight])
 
-  // Filter arrivals for selected pick-up date - matching airline and destination
-  const arrivalsForDate = useMemo(() => {
-    if (!formData.pickupDate || !formData.dropoffAirline || !selectedDropoffFlight) return []
-    const dateStr = format(formData.pickupDate, 'yyyy-MM-dd')
+  // Check if flight is fully booked (both slots taken)
+  const isFlightFullyBooked = useMemo(() => {
+    if (!selectedDropoffFlight) return false
+    return selectedDropoffFlight.is_slot_1_booked && selectedDropoffFlight.is_slot_2_booked
+  }, [selectedDropoffFlight])
+
+  // Fetch arrivals when pick-up date changes
+  useEffect(() => {
+    const fetchArrivals = async () => {
+      if (!formData.pickupDate) {
+        setArrivalsForDate([])
+        return
+      }
+      try {
+        const dateStr = format(formData.pickupDate, 'yyyy-MM-dd')
+        const response = await fetch(`${API_BASE_URL}/api/flights/arrivals/${dateStr}`)
+        const data = await response.json()
+        setArrivalsForDate(data)
+      } catch (error) {
+        console.error('Error fetching arrivals:', error)
+        setArrivalsForDate([])
+      }
+    }
+    fetchArrivals()
+  }, [formData.pickupDate, API_BASE_URL])
+
+  // Filter arrivals by airline and destination (from fetched data)
+  const filteredArrivalsForDate = useMemo(() => {
+    if (!formData.dropoffAirline || !selectedDropoffFlight) return []
     // Filter by same airline and origin matching the departure destination
-    return flightSchedule.filter(f =>
-      f.date === dateStr &&
-      f.type === 'arrival' &&
+    return arrivalsForDate.filter(f =>
       f.airlineName === formData.dropoffAirline &&
       f.originCode === selectedDropoffFlight.destinationCode
     )
-  }, [formData.pickupDate, formData.dropoffAirline, selectedDropoffFlight])
+  }, [arrivalsForDate, formData.dropoffAirline, selectedDropoffFlight])
 
-  // Get arrival flights for pickup with display details
+  // Get arrival flights for pickup with display details (filtered by airline and destination)
   const arrivalFlightsForPickup = useMemo(() => {
-    return arrivalsForDate.map(f => {
+    return filteredArrivalsForDate.map(f => {
       // Parse originName to get city
       const parts = f.originName.split(', ')
       let cityName = parts.slice(0, -1).join(', ')
@@ -191,10 +266,16 @@ function Bookings() {
       return {
         ...f,
         flightKey: `${f.time}|${f.flightNumber}`,
-        displayText: `${f.departureTime} ${f.airlineCode}${f.flightNumber} from ${cityName} (${f.originCode}) → arrives ${f.time}`
+        displayText: `${f.airlineCode}${f.flightNumber} from ${cityName} (${f.originCode}) → arrives ${f.time}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
-  }, [arrivalsForDate])
+  }, [filteredArrivalsForDate])
+
+  // Get selected arrival/return flight details
+  const selectedArrivalFlight = useMemo(() => {
+    if (!formData.pickupFlightTime) return null
+    return arrivalFlightsForPickup.find(f => f.flightKey === formData.pickupFlightTime)
+  }, [arrivalFlightsForPickup, formData.pickupFlightTime])
 
   // Helper function to format minutes to HH:MM
   function formatMinutesToTime(totalMinutes) {
@@ -274,9 +355,230 @@ function Bookings() {
     }
   }
 
-  const nextStep = () => {
-    setCurrentStep(prev => Math.min(prev + 1, 6))
-    window.scrollTo(0, 0)
+  // API functions for incremental saves
+  const saveCustomer = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/customers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          email: formData.email,
+          phone: formData.phone,
+        }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        setCustomerId(data.customer_id)
+        console.log('Customer saved:', data.customer_id)
+      }
+      return data.success
+    } catch (error) {
+      console.error('Error saving customer:', error)
+      return false
+    }
+  }
+
+  const saveVehicle = async () => {
+    if (!customerId) return false
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/vehicles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: customerId,
+          registration: formData.registration.toUpperCase(),
+          make: formData.make === 'Other' ? formData.customMake : formData.make,
+          model: formData.model === 'Other' ? formData.customModel : formData.model,
+          colour: formData.colour,
+        }),
+      })
+      const data = await response.json()
+      if (data.success) {
+        setVehicleId(data.vehicle_id)
+        console.log('Vehicle saved:', data.vehicle_id)
+      }
+      return data.success
+    } catch (error) {
+      console.error('Error saving vehicle:', error)
+      return false
+    }
+  }
+
+  const saveBillingAddress = async () => {
+    if (!customerId) return false
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/customers/${customerId}/billing`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          billing_address1: formData.billingAddress1,
+          billing_address2: formData.billingAddress2,
+          billing_city: formData.billingCity,
+          billing_county: formData.billingCounty,
+          billing_postcode: formData.billingPostcode.toUpperCase(),
+          billing_country: formData.billingCountry,
+        }),
+      })
+      const data = await response.json()
+      console.log('Billing address saved:', data.success)
+      return data.success
+    } catch (error) {
+      console.error('Error saving billing address:', error)
+      return false
+    }
+  }
+
+  // DVLA vehicle lookup function
+  const lookupVehicle = async () => {
+    if (!formData.registration || formData.registration.length < 2) {
+      setDvlaError('Please enter a valid registration number')
+      return
+    }
+
+    setDvlaLoading(true)
+    setDvlaError('')
+    setDvlaVerified(false)
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/vehicles/lookup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registration: formData.registration }),
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.make) {
+        // Capitalize make properly (API returns uppercase)
+        const formattedMake = data.make.charAt(0).toUpperCase() + data.make.slice(1).toLowerCase()
+        // Capitalize colour properly
+        const formattedColour = data.colour ?
+          data.colour.charAt(0).toUpperCase() + data.colour.slice(1).toLowerCase() : ''
+
+        // Check if make exists in car-info library
+        const makeExists = carMakes.some(m => m.toUpperCase() === data.make.toUpperCase())
+
+        setFormData(prev => ({
+          ...prev,
+          make: makeExists ? formattedMake : 'Other',
+          customMake: makeExists ? '' : formattedMake,
+          colour: formattedColour,
+          model: '', // Reset model so user can select
+          customModel: '',
+        }))
+        setDvlaVerified(true)
+        setDvlaError('')
+      } else {
+        setDvlaError(data.error || 'Vehicle not found. Please enter details manually.')
+        setDvlaVerified(false)
+      }
+    } catch (error) {
+      console.error('DVLA lookup error:', error)
+      setDvlaError('Unable to verify vehicle. Please enter details manually.')
+      setDvlaVerified(false)
+    } finally {
+      setDvlaLoading(false)
+    }
+  }
+
+  // Address lookup using OS Places API
+  const lookupAddress = async () => {
+    const postcode = formData.billingPostcode.trim()
+    if (!postcode) {
+      setAddressError('Please enter a postcode')
+      return
+    }
+
+    setAddressLoading(true)
+    setAddressError('')
+    setAddressList([])
+    setShowAddressSelect(false)
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/address/lookup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postcode })
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.addresses.length > 0) {
+        setAddressList(data.addresses)
+        setShowAddressSelect(true)
+        setPostcodeSearched(data.postcode)
+        setAddressError('')
+      } else if (data.success && data.addresses.length === 0) {
+        setAddressError('No addresses found for this postcode')
+      } else {
+        setAddressError(data.error || 'Unable to find addresses')
+      }
+    } catch (error) {
+      console.error('Address lookup error:', error)
+      setAddressError('Unable to lookup address. Please enter manually.')
+    } finally {
+      setAddressLoading(false)
+    }
+  }
+
+  // Handle address selection from dropdown
+  const handleAddressSelect = (e) => {
+    const selectedUprn = e.target.value
+    if (!selectedUprn) return
+
+    const selectedAddress = addressList.find(addr => addr.uprn === selectedUprn)
+    if (selectedAddress) {
+      // Build Address Line 1: combine building name/number with thoroughfare
+      let address1Parts = []
+
+      if (selectedAddress.building_name) {
+        address1Parts.push(selectedAddress.building_name)
+      }
+      if (selectedAddress.building_number) {
+        address1Parts.push(selectedAddress.building_number)
+      }
+      if (selectedAddress.thoroughfare) {
+        address1Parts.push(selectedAddress.thoroughfare)
+      }
+
+      // If no structured data, fall back to parsing the address string
+      let address1 = address1Parts.join(' ')
+      if (!address1) {
+        const parts = selectedAddress.address.split(', ')
+        address1 = parts.slice(0, -2).join(', ') // Everything except town and postcode
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        billingAddress1: address1,
+        billingAddress2: '', // Leave empty - user can fill if needed
+        billingCity: selectedAddress.post_town,
+        billingPostcode: selectedAddress.postcode,
+        billingCounty: selectedAddress.county || '' // Use county from API
+      }))
+
+      setShowAddressSelect(false)
+    }
+  }
+
+  const nextStep = async () => {
+    setSaving(true)
+    try {
+      // Save data based on current step
+      if (currentStep === 1) {
+        await saveCustomer()
+      } else if (currentStep === 3) {
+        await saveVehicle()
+      } else if (currentStep === 5) {
+        await saveBillingAddress()
+      }
+      setCurrentStep(prev => Math.min(prev + 1, 6))
+      window.scrollTo(0, 0)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const prevStep = () => {
@@ -301,9 +603,23 @@ function Bookings() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    // Stripe integration will go here
-    alert('Stripe payment integration coming soon! Your booking details have been captured.')
+    // Form submission is now handled by the StripePayment component
+    // This is just a fallback
     console.log('Booking data:', formData)
+  }
+
+  const handlePaymentSuccess = (paymentData) => {
+    console.log('Payment successful:', paymentData)
+    setPaymentComplete(true)
+    setBookingConfirmation({
+      reference: paymentData.bookingReference,
+      amount: `£${(paymentData.amount / 100).toFixed(2)}`,
+    })
+  }
+
+  const handlePaymentError = (error) => {
+    console.error('Payment error:', error)
+    // Error is handled within the StripePayment component
   }
 
   const formatDisplayDate = (date) => {
@@ -408,9 +724,9 @@ function Bookings() {
                   type="button"
                   className="next-btn"
                   onClick={nextStep}
-                  disabled={!isStep1Complete}
+                  disabled={!isStep1Complete || saving}
                 >
-                  Continue to Trip Details
+                  {saving ? 'Saving...' : 'Continue to Trip Details'}
                 </button>
               </div>
             </div>
@@ -438,7 +754,19 @@ function Bookings() {
                 />
               </div>
 
-              {formData.dropoffDate && airlinesForDropoff.length > 0 && (
+              {formData.dropoffDate && loadingFlights && (
+                <div className="form-group fade-in">
+                  <p className="loading-message">Loading available flights...</p>
+                </div>
+              )}
+
+              {formData.dropoffDate && !loadingFlights && airlinesForDropoff.length === 0 && (
+                <div className="form-group fade-in">
+                  <p className="no-flights-message">No departure flights available on this date.</p>
+                </div>
+              )}
+
+              {formData.dropoffDate && !loadingFlights && airlinesForDropoff.length > 0 && (
                 <div className="form-group fade-in">
                   <label htmlFor="dropoffAirline">Select Airline</label>
                   <select
@@ -474,7 +802,25 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.dropoffFlight && dropoffSlots.length > 0 && (
+              {formData.dropoffFlight && isFlightFullyBooked && (
+                <div className="form-group fade-in">
+                  <div className="fully-booked-banner">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                    </svg>
+                    <div className="fully-booked-content">
+                      <strong>Drop-off slots fully reserved</strong>
+                      <p>We may be able to accommodate your booking! Contact us and we'll see if we can find a drop-off time that suits your schedule.</p>
+                      <div className="contact-details">
+                        <a href="mailto:booking@tagparking.co.uk" className="contact-link">booking@tagparking.co.uk</a>
+                        <a href="tel:+447739106145" className="contact-link">+44 (0)7739 106145</a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {formData.dropoffFlight && !isFlightFullyBooked && dropoffSlots.length > 0 && (
                 <div className="form-group fade-in">
                   <label>Select Drop-off Time</label>
                   <div className="dropoff-slots">
@@ -579,34 +925,65 @@ function Bookings() {
 
               <div className="form-group">
                 <label htmlFor="registration">Registration Number</label>
-                <input
-                  type="text"
-                  id="registration"
-                  name="registration"
-                  placeholder="e.g. AB12 CDE"
-                  value={formData.registration}
-                  onChange={handleChange}
-                  style={{ textTransform: 'uppercase' }}
-                  required
-                />
+                <div className="registration-input-group">
+                  <input
+                    type="text"
+                    id="registration"
+                    name="registration"
+                    placeholder="e.g. AB12 CDE"
+                    value={formData.registration}
+                    onChange={(e) => {
+                      handleChange(e)
+                      // Reset DVLA state when registration changes
+                      setDvlaVerified(false)
+                      setDvlaError('')
+                    }}
+                    style={{ textTransform: 'uppercase' }}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="validate-btn"
+                    onClick={lookupVehicle}
+                    disabled={!formData.registration || dvlaLoading}
+                  >
+                    {dvlaLoading ? 'Looking up...' : 'Lookup'}
+                  </button>
+                </div>
+                {dvlaVerified && (
+                  <span className="dvla-success">Vehicle found and verified</span>
+                )}
+                {dvlaError && (
+                  <span className="dvla-error">{dvlaError}</span>
+                )}
               </div>
 
-              {formData.registration && (
+              {(formData.registration && (dvlaVerified || dvlaError || formData.make)) && (
                 <div className="form-group fade-in">
                   <label htmlFor="make">Vehicle Make</label>
-                  <select
-                    id="make"
-                    name="make"
-                    value={formData.make}
-                    onChange={handleChange}
-                    required
-                  >
-                    <option value="">Select make</option>
-                    {carMakes.map(make => (
-                      <option key={make} value={make}>{make}</option>
-                    ))}
-                    <option value="Other">Other</option>
-                  </select>
+                  {dvlaVerified && formData.make !== 'Other' ? (
+                    <input
+                      type="text"
+                      id="make"
+                      value={formData.make}
+                      readOnly
+                      className="readonly-input"
+                    />
+                  ) : (
+                    <select
+                      id="make"
+                      name="make"
+                      value={formData.make}
+                      onChange={handleChange}
+                      required
+                    >
+                      <option value="">Select make</option>
+                      {carMakes.map(make => (
+                        <option key={make} value={make}>{make}</option>
+                      ))}
+                      <option value="Other">Other</option>
+                    </select>
+                  )}
                 </div>
               )}
 
@@ -625,7 +1002,34 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.make && formData.make !== 'Other' && (
+              {/* Colour comes after Make (from DVLA or manual entry) */}
+              {((formData.make && formData.make !== 'Other') || (formData.make === 'Other' && formData.customMake)) && (
+                <div className="form-group fade-in">
+                  <label htmlFor="colour">Vehicle Colour</label>
+                  {dvlaVerified && formData.colour ? (
+                    <input
+                      type="text"
+                      id="colour"
+                      value={formData.colour}
+                      readOnly
+                      className="readonly-input"
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      id="colour"
+                      name="colour"
+                      placeholder="e.g. Black"
+                      value={formData.colour}
+                      onChange={handleChange}
+                      required
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Model comes after Colour */}
+              {formData.make && formData.make !== 'Other' && formData.colour && (
                 <div className="form-group fade-in">
                   <label htmlFor="model">Vehicle Model</label>
                   <select
@@ -644,7 +1048,7 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.make === 'Other' && formData.customMake && (
+              {formData.make === 'Other' && formData.customMake && formData.colour && (
                 <div className="form-group fade-in">
                   <label htmlFor="customModel">Enter Vehicle Model</label>
                   <input
@@ -674,23 +1078,6 @@ function Bookings() {
                 </div>
               )}
 
-              {((formData.model && formData.model !== 'Other') ||
-                (formData.model === 'Other' && formData.customModel) ||
-                (formData.make === 'Other' && formData.customModel)) && (
-                <div className="form-group fade-in">
-                  <label htmlFor="colour">Vehicle Colour</label>
-                  <input
-                    type="text"
-                    id="colour"
-                    name="colour"
-                    placeholder="e.g. Black"
-                    value={formData.colour}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-              )}
-
               <div className="form-actions">
                 <button type="button" className="back-btn" onClick={prevStep}>
                   Back
@@ -699,9 +1086,9 @@ function Bookings() {
                   type="button"
                   className="next-btn"
                   onClick={nextStep}
-                  disabled={!isStep3Complete}
+                  disabled={!isStep3Complete || saving}
                 >
-                  Continue to Package Selection
+                  {saving ? 'Saving...' : 'Continue to Package Selection'}
                 </button>
               </div>
             </div>
@@ -777,6 +1164,92 @@ function Bookings() {
               <h2>Billing Address</h2>
               <p className="section-info">This address will be used for payment verification.</p>
 
+              {/* Postcode Lookup - show unless manual entry mode */}
+              {!manualAddressEntry && (
+                <>
+                  <div className="form-group">
+                    <label htmlFor="billingPostcode">Postcode</label>
+                    <div className="postcode-lookup-row">
+                      <input
+                        type="text"
+                        id="billingPostcode"
+                        name="billingPostcode"
+                        placeholder="BH1 1AA"
+                        value={formData.billingPostcode}
+                        onChange={handleChange}
+                        style={{ textTransform: 'uppercase' }}
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="find-address-btn"
+                        onClick={lookupAddress}
+                        disabled={addressLoading || !formData.billingPostcode.trim()}
+                      >
+                        {addressLoading ? 'Finding...' : 'Find Address'}
+                      </button>
+                    </div>
+                    {addressError && (
+                      <span className="error-text">
+                        {addressError}
+                        {' '}
+                        <button
+                          type="button"
+                          className="manual-entry-link"
+                          onClick={() => setManualAddressEntry(true)}
+                        >
+                          Enter address manually
+                        </button>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Address Selection Dropdown */}
+                  {showAddressSelect && addressList.length > 0 && (
+                    <div className="form-group fade-in">
+                      <label htmlFor="addressSelect">Select your address</label>
+                      <select
+                        id="addressSelect"
+                        onChange={handleAddressSelect}
+                        defaultValue=""
+                        className="address-select"
+                      >
+                        <option value="">-- Select an address ({addressList.length} found) --</option>
+                        {addressList.map((addr) => (
+                          <option key={addr.uprn} value={addr.uprn}>
+                            {addr.address}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="manual-entry-link"
+                        onClick={() => setManualAddressEntry(true)}
+                        style={{ marginTop: '0.5rem' }}
+                      >
+                        Can't find your address? Enter manually
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Manual Entry Mode Header */}
+              {manualAddressEntry && (
+                <div className="manual-entry-header">
+                  <button
+                    type="button"
+                    className="back-to-lookup-link"
+                    onClick={() => {
+                      setManualAddressEntry(false)
+                      setAddressError('')
+                    }}
+                  >
+                    &larr; Back to postcode lookup
+                  </button>
+                </div>
+              )}
+
               <div className="form-group">
                 <label htmlFor="billingAddress1">Address Line 1</label>
                 <input
@@ -828,37 +1301,22 @@ function Bookings() {
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="billingPostcode">Postcode</label>
-                  <input
-                    type="text"
-                    id="billingPostcode"
-                    name="billingPostcode"
-                    placeholder="BH1 1AA"
-                    value={formData.billingPostcode}
-                    onChange={handleChange}
-                    style={{ textTransform: 'uppercase' }}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="billingCountry">Country</label>
-                  <select
-                    id="billingCountry"
-                    name="billingCountry"
-                    value={formData.billingCountry}
-                    onChange={handleChange}
-                    required
-                  >
-                    <option value="United Kingdom">United Kingdom</option>
-                    <option value="Ireland">Ireland</option>
-                    <option value="France">France</option>
-                    <option value="Germany">Germany</option>
-                    <option value="Spain">Spain</option>
-                    <option value="Netherlands">Netherlands</option>
-                  </select>
-                </div>
+              <div className="form-group">
+                <label htmlFor="billingCountry">Country</label>
+                <select
+                  id="billingCountry"
+                  name="billingCountry"
+                  value={formData.billingCountry}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="United Kingdom">United Kingdom</option>
+                  <option value="Ireland">Ireland</option>
+                  <option value="France">France</option>
+                  <option value="Germany">Germany</option>
+                  <option value="Spain">Spain</option>
+                  <option value="Netherlands">Netherlands</option>
+                </select>
               </div>
 
               <div className="form-actions">
@@ -869,9 +1327,9 @@ function Bookings() {
                   type="button"
                   className="next-btn"
                   onClick={nextStep}
-                  disabled={!isStep5Complete}
+                  disabled={!isStep5Complete || saving}
                 >
-                  Continue to Payment
+                  {saving ? 'Saving...' : 'Continue to Payment'}
                 </button>
               </div>
             </div>
@@ -890,11 +1348,27 @@ function Bookings() {
                 </div>
                 <div className="summary-item">
                   <span>Drop-off</span>
-                  <span>{formatDisplayDate(formData.dropoffDate)}</span>
+                  <span>
+                    {formatDisplayDate(formData.dropoffDate)}
+                    {formData.dropoffSlot && dropoffSlots.find(s => s.id === formData.dropoffSlot) && (
+                      <> at {dropoffSlots.find(s => s.id === formData.dropoffSlot).time}</>
+                    )}
+                  </span>
                 </div>
                 <div className="summary-item">
                   <span>Pick-up</span>
-                  <span>{formatDisplayDate(formData.pickupDate)}</span>
+                  <span>
+                    {formatDisplayDate(formData.pickupDate)}
+                    {formData.pickupFlightTime && (() => {
+                      // pickupFlightTime is a flightKey in format "time|destinationCode"
+                      const flightTime = formData.pickupFlightTime.split('|')[0]
+                      const [hours, minutes] = flightTime.split(':').map(Number)
+                      const landingMinutes = hours * 60 + minutes
+                      const pickupStart = formatMinutesToTime(landingMinutes + 35)
+                      const pickupEnd = formatMinutesToTime(landingMinutes + 60)
+                      return <> between {pickupStart} - {pickupEnd}</>
+                    })()}
+                  </span>
                 </div>
                 <div className="summary-item">
                   <span>Vehicle</span>
@@ -919,27 +1393,50 @@ function Bookings() {
                     onChange={handleChange}
                     required
                   />
-                  <span>I agree to the <a href="#terms">Terms & Conditions</a> and <a href="#privacy">Privacy Policy</a></span>
+                  <span>I agree to the <a href="/terms-conditions">Terms & Conditions</a> and <a href="/privacy-policy">Privacy Policy</a></span>
                 </label>
               </div>
 
-              <div className="stripe-placeholder">
-                <p>Stripe payment form will appear here</p>
-                <p className="stripe-note">Secure payment powered by Stripe</p>
-              </div>
+              {paymentComplete ? (
+                <div className="payment-success">
+                  <div className="success-icon">✓</div>
+                  <h3>Payment Successful!</h3>
+                  <p>Your booking reference is:</p>
+                  <div className="booking-reference-display">
+                    {bookingConfirmation?.reference}
+                  </div>
+                  <p>A confirmation email has been sent to {formData.email}</p>
+                  <button
+                    type="button"
+                    className="submit-btn"
+                    onClick={() => navigate('/')}
+                  >
+                    Return to Home
+                  </button>
+                </div>
+              ) : formData.terms ? (
+                <StripePayment
+                  formData={formData}
+                  selectedFlight={selectedDropoffFlight}
+                  selectedArrivalFlight={selectedArrivalFlight}
+                  customerId={customerId}
+                  vehicleId={vehicleId}
+                  onPaymentSuccess={handlePaymentSuccess}
+                  onPaymentError={handlePaymentError}
+                />
+              ) : (
+                <div className="terms-required">
+                  <p>Please accept the Terms & Conditions to proceed with payment</p>
+                </div>
+              )}
 
-              <div className="form-actions">
-                <button type="button" className="back-btn" onClick={prevStep}>
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  className="submit-btn"
-                  disabled={!isStep6Complete}
-                >
-                  Pay {formData.package === 'quick' ? '£99.00' : '£135.00'}
-                </button>
-              </div>
+              {!paymentComplete && (
+                <div className="form-actions">
+                  <button type="button" className="back-btn" onClick={prevStep}>
+                    Back
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </form>

@@ -1,8 +1,25 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import './App.css'
 
 function LandingPage() {
+  // Load HubSpot tracking script
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.src = '//js-ap1.hs-scripts.com/442431654.js'
+    script.id = 'hs-script-loader'
+    script.async = true
+    script.defer = true
+    document.body.appendChild(script)
+
+    return () => {
+      // Cleanup on unmount
+      const existingScript = document.getElementById('hs-script-loader')
+      if (existingScript) {
+        existingScript.remove()
+      }
+    }
+  }, [])
   const [menuOpen, setMenuOpen] = useState(false)
   const [openFaq, setOpenFaq] = useState(null)
   const [openFooter, setOpenFooter] = useState(null)

@@ -49,10 +49,8 @@ function HomePage() {
           </div>
 
           <div className="hero-cta-group">
-            <div className="intro-offer-banner">
-              <span className="intro-offer-discount">10% off</span>
-              <span className="intro-offer-text desktop-only">your first booking – book now</span>
-              <span className="intro-offer-text mobile-only">– book now</span>
+            <div className="intro-offer-banner" style={{ visibility: 'hidden' }}>
+              <span className="intro-offer-discount">Spacer</span>
             </div>
 
             <Link to="/tag-it" className="hero-cta">Tag It <span>→</span></Link>

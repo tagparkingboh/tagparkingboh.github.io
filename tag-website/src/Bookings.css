@@ -252,6 +252,184 @@
   color: #888888;
 }
 
+/* Registration Input with Lookup Button */
+.registration-input-group {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.registration-input-group input {
+  flex: 1;
+}
+
+.validate-btn {
+  padding: 0.875rem 1.25rem;
+  background: #D9FF00;
+  color: #343434;
+  border: none;
+  border-radius: 8px;
+  font-family: 'Gilroy', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.validate-btn:hover:not(:disabled) {
+  background: #c4e600;
+  transform: translateY(-1px);
+}
+
+.validate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* DVLA Feedback Messages */
+.dvla-success {
+  display: block;
+  color: #22c55e;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
+
+.dvla-error {
+  display: block;
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
+
+/* Postcode Lookup */
+.postcode-lookup-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.postcode-lookup-row input {
+  flex: 1;
+}
+
+.find-address-btn {
+  padding: 0.875rem 1.25rem;
+  background: #D9FF00;
+  color: #343434;
+  border: none;
+  border-radius: 8px;
+  font-family: 'Gilroy', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.find-address-btn:hover:not(:disabled) {
+  background: #c4e600;
+  transform: translateY(-1px);
+}
+
+.find-address-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Address Select Dropdown */
+.address-select {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid #D9FF00;
+  border-radius: 8px;
+  font-size: 1rem;
+  color: #ffffff;
+  background: #343434;
+  font-family: 'Gilroy', sans-serif;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23D9FF00' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
+.address-select:hover {
+  border-color: #c4e600;
+}
+
+.address-select:focus {
+  outline: none;
+  border-color: #D9FF00;
+  box-shadow: 0 0 0 3px rgba(217, 255, 0, 0.2);
+}
+
+.address-select option {
+  padding: 0.5rem;
+  background: #343434;
+  color: #ffffff;
+}
+
+/* Error Text */
+.error-text {
+  display: block;
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
+
+/* Manual Entry Link */
+.manual-entry-link {
+  background: none;
+  border: none;
+  color: #D9FF00;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  font-family: 'Gilroy', sans-serif;
+  display: block;
+}
+
+.manual-entry-link:hover {
+  color: #ffffff;
+}
+
+/* Manual Entry Header */
+.manual-entry-header {
+  margin-bottom: 1.5rem;
+}
+
+.back-to-lookup-link {
+  background: none;
+  border: none;
+  color: #D9FF00;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  font-family: 'Gilroy', sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.back-to-lookup-link:hover {
+  color: #ffffff;
+}
+
+/* Read-only input styling */
+.readonly-input {
+  background: #3a3a3a !important;
+  border-color: #22c55e !important;
+  cursor: default;
+}
+
 .form-group select option {
   padding: 0.5rem;
   background: #343434;
@@ -435,6 +613,67 @@
   text-align: center;
 }
 
+.loading-message {
+  color: #D9FF00;
+  font-size: 0.9rem;
+  padding: 1rem;
+  background: rgba(217, 255, 0, 0.1);
+  border-radius: 8px;
+  text-align: center;
+}
+
+/* Fully Booked Banner */
+.fully-booked-banner {
+  display: flex;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: rgba(255, 159, 64, 0.15);
+  border: 1px solid rgba(255, 159, 64, 0.4);
+  border-radius: 12px;
+  color: #ffb366;
+}
+
+.fully-booked-banner svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.fully-booked-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fully-booked-content strong {
+  font-size: 1rem;
+  color: #ffcc80;
+}
+
+.fully-booked-content p {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+  color: #ccc;
+}
+
+.fully-booked-content .contact-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin-top: 0.25rem;
+}
+
+.fully-booked-content .contact-link {
+  color: #D9FF00;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.fully-booked-content .contact-link:hover {
+  text-decoration: underline;
+}
+
 /* Drop-off Slots */
 .dropoff-slots {
   display: flex;
@@ -610,7 +849,201 @@
   color: #D9FF00;
 }
 
-/* Stripe Placeholder */
+/* Stripe Payment Container */
+.stripe-payment-container {
+  background: #2a2a2a;
+  border: 1px solid #555555;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.stripe-payment-container .booking-reference {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: #343434;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.stripe-payment-container .booking-reference span {
+  color: #bbbbbb;
+  font-size: 0.9rem;
+}
+
+.stripe-payment-container .booking-reference strong {
+  color: #D9FF00;
+  font-family: 'Gilroy', monospace;
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+}
+
+.stripe-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.stripe-error {
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid #ff6b6b;
+  color: #ff6b6b;
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.stripe-pay-btn {
+  width: 100%;
+  padding: 1rem 2rem;
+  background: #D9FF00;
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  font-family: 'Gilroy', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stripe-pay-btn:hover:not(:disabled) {
+  background: #c4e600;
+  transform: translateY(-2px);
+}
+
+.stripe-pay-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.stripe-security-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  color: #888888;
+  font-size: 0.85rem;
+}
+
+.stripe-security-note svg {
+  color: #22c55e;
+}
+
+.stripe-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  gap: 1rem;
+}
+
+.stripe-loading .spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #555555;
+  border-top-color: #D9FF00;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.stripe-loading p {
+  color: #bbbbbb;
+  font-size: 0.95rem;
+}
+
+.stripe-error-container {
+  text-align: center;
+  padding: 2rem;
+}
+
+.stripe-error-container .error-message {
+  color: #ff6b6b;
+  margin-bottom: 1rem;
+}
+
+.stripe-error-container .retry-btn {
+  padding: 0.75rem 1.5rem;
+  background: #343434;
+  color: #ffffff;
+  border: 1px solid #555555;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.stripe-error-container .retry-btn:hover {
+  background: #444444;
+  border-color: #D9FF00;
+}
+
+/* Payment Success */
+.payment-success {
+  text-align: center;
+  padding: 2rem;
+  background: #2a2a2a;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
+
+.payment-success .success-icon {
+  width: 60px;
+  height: 60px;
+  background: #22c55e;
+  color: #ffffff;
+  font-size: 2rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+}
+
+.payment-success h3 {
+  color: #22c55e;
+  margin-bottom: 1rem;
+  font-family: 'Gilroy', sans-serif;
+}
+
+.payment-success p {
+  color: #bbbbbb;
+  margin-bottom: 0.5rem;
+}
+
+.booking-reference-display {
+  font-family: 'Gilroy', monospace;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #D9FF00;
+  background: #343434;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  margin: 1rem 0;
+  letter-spacing: 2px;
+}
+
+.terms-required {
+  text-align: center;
+  padding: 2rem;
+  background: #343434;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.terms-required p {
+  color: #bbbbbb;
+  margin: 0;
+}
+
+/* Legacy Stripe Placeholder (can be removed) */
 .stripe-placeholder {
   background: #3a3a3a;
   border: 2px dashed #555555;
