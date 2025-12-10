@@ -892,6 +892,10 @@
   color: var(--dark-gray);
 }
 
+.subscribe-content .hero-cta {
+  padding: 1.25rem 3rem;
+}
+
 .subscribe-success {
   color: #22c55e;
   font-weight: 500;
