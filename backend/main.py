@@ -66,6 +66,7 @@ app.add_middleware(
         "https://www.tagparking.co.uk",  # Production domain with www
         "https://staging.tagparking.co.uk",  # Staging environment
         "https://tagparkingbohgithubio-staging.up.railway.app",  # Railway staging
+        "https://staging-tagparking.netlify.app",  # Netlify staging frontend
     ],
     allow_credentials=True,
     allow_methods=["*"],
