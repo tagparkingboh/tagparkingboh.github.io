@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - homepage-updates
 
 permissions:
   contents: read
