@@ -65,6 +65,7 @@ app.add_middleware(
         "https://tagparking.co.uk",  # Production domain
         "https://www.tagparking.co.uk",  # Production domain with www
         "https://staging.tagparking.co.uk",  # Staging environment
+        "https://tagparkingbohgithubio-staging.up.railway.app",  # Railway staging
     ],
     allow_credentials=True,
     allow_methods=["*"],
