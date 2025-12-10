@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - homepage-updates
 
 permissions:
   contents: read
@@ -37,6 +38,8 @@ jobs:
         env:
           VITE_HUBSPOT_PORTAL_ID: ${{ secrets.VITE_HUBSPOT_PORTAL_ID }}
           VITE_HUBSPOT_FORM_ID: ${{ secrets.VITE_HUBSPOT_FORM_ID }}
+          VITE_API_URL: https://staging.tagparking.co.uk
+          VITE_STRIPE_PUBLISHABLE_KEY: ${{ secrets.VITE_STRIPE_PUBLISHABLE_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
