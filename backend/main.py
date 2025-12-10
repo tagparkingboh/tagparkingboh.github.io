@@ -1343,6 +1343,115 @@ async def admin_refund_payment(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# =============================================================================
+# Admin: Seed Flight Data
+# =============================================================================
+
+FLIGHT_SCHEDULE_DATA = None  # Will be loaded from JSON
+
+def load_flight_schedule_json():
+    """Load flight schedule from embedded JSON or file."""
+    global FLIGHT_SCHEDULE_DATA
+    if FLIGHT_SCHEDULE_DATA is not None:
+        return FLIGHT_SCHEDULE_DATA
+
+    # Try to load from file (for local dev)
+    import json
+    from pathlib import Path
+
+    possible_paths = [
+        Path(__file__).parent.parent / "tag-website" / "src" / "data" / "flightSchedule.json",
+        Path(__file__).parent / "flightSchedule.json",
+    ]
+
+    for path in possible_paths:
+        if path.exists():
+            with open(path, "r") as f:
+                FLIGHT_SCHEDULE_DATA = json.load(f)
+                return FLIGHT_SCHEDULE_DATA
+
+    return None
+
+
+@app.post("/api/admin/seed-flights")
+async def seed_flights(
+    secret: str = Query(..., description="Admin secret key"),
+    clear_existing: bool = Query(True, description="Clear existing flight data"),
+    db: Session = Depends(get_db)
+):
+    """
+    Admin endpoint: Seed the database with flight schedule data.
+
+    Requires ADMIN_SECRET environment variable to be set and passed as query param.
+    """
+    admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
+
+    if secret != admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
+
+    flights = load_flight_schedule_json()
+    if not flights:
+        raise HTTPException(status_code=500, detail="Could not load flight schedule JSON")
+
+    try:
+        if clear_existing:
+            db.query(FlightDeparture).delete()
+            db.query(FlightArrival).delete()
+            db.commit()
+
+        departures_count = 0
+        arrivals_count = 0
+
+        for flight in flights:
+            flight_date = datetime.strptime(flight["date"], "%Y-%m-%d").date()
+
+            if flight["type"] == "departure":
+                departure = FlightDeparture(
+                    date=flight_date,
+                    flight_number=flight["flightNumber"],
+                    airline_code=flight["airlineCode"],
+                    airline_name=flight["airlineName"],
+                    departure_time=datetime.strptime(flight["time"], "%H:%M").time(),
+                    destination_code=flight["destinationCode"],
+                    destination_name=flight.get("destinationName"),
+                    is_slot_1_booked=False,
+                    is_slot_2_booked=False,
+                )
+                db.add(departure)
+                departures_count += 1
+
+            elif flight["type"] == "arrival":
+                departure_time_val = None
+                if flight.get("departureTime"):
+                    departure_time_val = datetime.strptime(flight["departureTime"], "%H:%M").time()
+
+                arrival = FlightArrival(
+                    date=flight_date,
+                    flight_number=flight["flightNumber"],
+                    airline_code=flight["airlineCode"],
+                    airline_name=flight["airlineName"],
+                    arrival_time=datetime.strptime(flight["time"], "%H:%M").time(),
+                    departure_time=departure_time_val,
+                    origin_code=flight["originCode"],
+                    origin_name=flight.get("originName"),
+                )
+                db.add(arrival)
+                arrivals_count += 1
+
+        db.commit()
+
+        return {
+            "success": True,
+            "departures": departures_count,
+            "arrivals": arrivals_count,
+            "total": departures_count + arrivals_count
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error seeding flights: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
