@@ -1235,6 +1235,182 @@
   margin: 0;
 }
 
+/* Duration Options (Trip Length Selection) */
+.duration-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.duration-option {
+  cursor: pointer;
+}
+
+.duration-option input {
+  display: none;
+}
+
+.duration-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem 1rem;
+  border: 2px solid #555555;
+  border-radius: 8px;
+  transition: all 0.3s;
+  background: #343434;
+  text-align: center;
+}
+
+.duration-option input:checked + .duration-card,
+.duration-card.selected {
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
+}
+
+.duration-label {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 0.5rem;
+}
+
+.duration-date {
+  font-size: 0.85rem;
+  color: #bbbbbb;
+  margin-bottom: 0.75rem;
+}
+
+.duration-price {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #D9FF00;
+}
+
+.duration-price.loading {
+  color: #888888;
+  font-style: italic;
+}
+
+/* Package Summary (Step 4) */
+.package-summary {
+  margin-bottom: 1.5rem;
+}
+
+.package-summary .package-card {
+  text-align: center;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.package-summary .package-card.selected {
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
+}
+
+.package-summary .package-label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.package-summary .package-price {
+  display: block;
+}
+
+.package-summary .package-period {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+/* Price Badge */
+.price-badge {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.5rem;
+}
+
+.price-badge.early {
+  background: #22c55e;
+  color: #ffffff;
+}
+
+.price-badge.standard {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.price-badge.late {
+  background: #f59e0b;
+  color: #343434;
+}
+
+.price-tier-info {
+  color: #888888;
+  font-size: 0.85rem;
+  margin: 0.5rem 0 1rem;
+}
+
+/* Pricing Tiers Info */
+.pricing-tiers-info {
+  background: #343434;
+  border-radius: 8px;
+  padding: 1.25rem;
+  border: 1px solid #555555;
+}
+
+.pricing-tiers-info h4 {
+  font-size: 0.85rem;
+  color: #bbbbbb;
+  font-weight: 500;
+  margin: 0 0 1rem 0;
+  text-align: center;
+}
+
+.tier-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tier {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: #2a2a2a;
+}
+
+.tier.active {
+  background: rgba(217, 255, 0, 0.15);
+  border: 1px solid #D9FF00;
+}
+
+.tier-label {
+  font-size: 0.85rem;
+  color: #bbbbbb;
+}
+
+.tier.active .tier-label {
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.tier-price {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #888888;
+}
+
+.tier.active .tier-price {
+  color: #D9FF00;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .bookings-nav {
@@ -1262,6 +1438,10 @@
   }
 
   .package-options {
+    grid-template-columns: 1fr;
+  }
+
+  .duration-options {
     grid-template-columns: 1fr;
   }
 

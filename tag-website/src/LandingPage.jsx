@@ -155,6 +155,50 @@ function LandingPage() {
       {/* Availability Tracker - hidden, will be moved to /tag-it page */}
       {/* <AvailabilityTracker /> */}
 
+      {/* Pricing Section */}
+      <section className="pricing-section" id="pricing">
+        <h2>Pricing & plans</h2>
+        <p className="pricing-subtitle">Heading off for a short trip or a longer stay? Pick one of our pricing options that's right for you.</p>
+
+        <div className="pricing-cards">
+          <div className="pricing-card">
+            <span className="pricing-label">1 WEEK TRIP</span>
+            <p className="pricing-from">From</p>
+            <div className="pricing-amount">
+              <span className="currency">£</span>
+              <span className="price">99</span>
+            </div>
+            <p className="pricing-note">one off payment</p>
+
+            <ul className="pricing-features">
+              <li><span className="check">✓</span> Meet & Greet at terminal</li>
+              <li><span className="check">✓</span> Secure storage facility</li>
+              <li><span className="check">✓</span> 24/7 monitoring</li>
+              <li><span className="check">✓</span> No hidden fees</li>
+              <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
+            </ul>
+          </div>
+
+          <div className="pricing-card">
+            <span className="pricing-label">2 WEEK TRIP</span>
+            <p className="pricing-from">From</p>
+            <div className="pricing-amount">
+              <span className="currency">£</span>
+              <span className="price">135</span>
+            </div>
+            <p className="pricing-note">one off payment</p>
+
+            <ul className="pricing-features">
+              <li><span className="check">✓</span> Meet & Greet at terminal</li>
+              <li><span className="check">✓</span> Secure storage facility</li>
+              <li><span className="check">✓</span> 24/7 monitoring</li>
+              <li><span className="check">✓</span> No hidden fees</li>
+              <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       {/* Features Banner Section */}
       <section className="features-banner">
         <div className="features-content">

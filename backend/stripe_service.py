@@ -188,12 +188,17 @@ def refund_payment(payment_intent_id: str, reason: str = "requested_by_customer"
     }
 
 
-def calculate_price_in_pence(package: str, custom_price: Optional[float] = None) -> int:
+def calculate_price_in_pence(
+    package: str,
+    drop_off_date: Optional[date] = None,
+    custom_price: Optional[float] = None
+) -> int:
     """
-    Calculate the price in pence for Stripe.
+    Calculate the price in pence for Stripe based on dynamic pricing.
 
     Args:
-        package: "quick" (£99) or "longer" (£135)
+        package: "quick" (1 week) or "longer" (2 weeks)
+        drop_off_date: The drop-off date (used to determine advance booking tier)
         custom_price: Optional override price in pounds
 
     Returns:
@@ -202,9 +207,13 @@ def calculate_price_in_pence(package: str, custom_price: Optional[float] = None)
     if custom_price is not None:
         return int(custom_price * 100)
 
-    prices = {
-        "quick": 9900,   # £99.00
-        "longer": 13500,  # £135.00
-    }
+    # Use dynamic pricing from BookingService
+    from booking_service import BookingService
 
-    return prices.get(package, 9900)
+    if drop_off_date:
+        price = BookingService.calculate_price(package, drop_off_date)
+    else:
+        # Fallback to base prices if no date provided
+        price = BookingService.PACKAGE_PRICES.get(package, {}).get("late", 119.0)
+
+    return int(price * 100)

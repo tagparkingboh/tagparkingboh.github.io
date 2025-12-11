@@ -15,9 +15,9 @@
     "car-info": "^0.2.2",
     "date-fns": "^4.1.0",
     "react": "^18.2.0",
-    "react-datepicker": "^7.0.0",
+    "react-datepicker": "^6.9.0",
     "react-dom": "^18.2.0",
-    "react-phone-number-input": "^3.4.14",
+    "react-phone-number-input": "^3.3.12",
     "react-router-dom": "^7.9.6"
   },
   "devDependencies": {

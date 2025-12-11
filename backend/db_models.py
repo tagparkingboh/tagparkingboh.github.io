@@ -291,6 +291,12 @@ class MarketingSubscriber(Base):
     welcome_email_sent = Column(Boolean, default=False)
     promo_code_sent = Column(Boolean, default=False)
 
+    # Promo code tracking
+    promo_code = Column(String(20), unique=True, index=True)  # Unique code like "TAG-XXXX-XXXX"
+    promo_code_used = Column(Boolean, default=False)
+    promo_code_used_booking_id = Column(Integer, ForeignKey("bookings.id"))  # Which booking used it
+    promo_code_used_at = Column(DateTime(timezone=True))
+
     # Source tracking
     source = Column(String(50), default="landing_page")  # landing_page, homepage, etc.
     hubspot_contact_id = Column(String(100))  # For HubSpot integration
@@ -299,6 +305,9 @@ class MarketingSubscriber(Base):
     subscribed_at = Column(DateTime(timezone=True), server_default=func.now())
     welcome_email_sent_at = Column(DateTime(timezone=True))
     promo_code_sent_at = Column(DateTime(timezone=True))
+
+    # Relationship to booking (optional)
+    used_booking = relationship("Booking", foreign_keys=[promo_code_used_booking_id])
 
     def __repr__(self):
         return f"<MarketingSubscriber {self.first_name} {self.last_name} ({self.email})>"

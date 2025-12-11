@@ -28,22 +28,48 @@ async def client():
 class TestCalculatePriceInPence:
     """Tests for price calculation."""
 
-    def test_quick_package_price(self):
-        """Quick package should be £99.00 = 9900 pence."""
-        assert calculate_price_in_pence("quick") == 9900
+    def test_quick_package_early_bird_price(self):
+        """Quick package booked 14+ days in advance should be £99.00 = 9900 pence."""
+        from datetime import date, timedelta
+        early_date = date.today() + timedelta(days=20)
+        assert calculate_price_in_pence("quick", drop_off_date=early_date) == 9900
 
-    def test_longer_package_price(self):
-        """Longer package should be £135.00 = 13500 pence."""
-        assert calculate_price_in_pence("longer") == 13500
+    def test_quick_package_standard_price(self):
+        """Quick package booked 7-13 days in advance should be £109.00 = 10900 pence."""
+        from datetime import date, timedelta
+        standard_date = date.today() + timedelta(days=10)
+        assert calculate_price_in_pence("quick", drop_off_date=standard_date) == 10900
+
+    def test_quick_package_late_price(self):
+        """Quick package booked <7 days in advance should be £119.00 = 11900 pence."""
+        from datetime import date, timedelta
+        late_date = date.today() + timedelta(days=3)
+        assert calculate_price_in_pence("quick", drop_off_date=late_date) == 11900
+
+    def test_longer_package_early_bird_price(self):
+        """Longer package booked 14+ days in advance should be £135.00 = 13500 pence."""
+        from datetime import date, timedelta
+        early_date = date.today() + timedelta(days=20)
+        assert calculate_price_in_pence("longer", drop_off_date=early_date) == 13500
+
+    def test_longer_package_late_price(self):
+        """Longer package booked <7 days in advance should be £155.00 = 15500 pence."""
+        from datetime import date, timedelta
+        late_date = date.today() + timedelta(days=3)
+        assert calculate_price_in_pence("longer", drop_off_date=late_date) == 15500
 
     def test_custom_price_override(self):
-        """Custom price should override package price."""
-        assert calculate_price_in_pence("quick", custom_price=75.00) == 7500
-        assert calculate_price_in_pence("longer", custom_price=50.50) == 5050
+        """Custom price should override package price regardless of date."""
+        from datetime import date, timedelta
+        any_date = date.today() + timedelta(days=5)
+        assert calculate_price_in_pence("quick", drop_off_date=any_date, custom_price=75.00) == 7500
+        assert calculate_price_in_pence("longer", drop_off_date=any_date, custom_price=50.50) == 5050
 
-    def test_unknown_package_defaults_to_quick(self):
-        """Unknown package should default to quick price."""
-        assert calculate_price_in_pence("unknown") == 9900
+    def test_no_date_defaults_to_late_tier(self):
+        """Without drop_off_date, should default to late tier price."""
+        # Without date, fallback to late tier: quick = £119, longer = £155
+        assert calculate_price_in_pence("quick") == 11900
+        assert calculate_price_in_pence("longer") == 15500
 
 
 class TestStripeConfigEndpoint:

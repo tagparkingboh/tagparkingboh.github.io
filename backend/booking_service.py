@@ -40,11 +40,87 @@ class BookingService:
     # Maximum concurrent bookings (parking spots)
     MAX_PARKING_SPOTS = 60
 
-    # Package prices
-    PACKAGE_PRICES = {
-        "quick": 99.0,   # 1 week
-        "longer": 135.0,  # 2 weeks
+    # Package durations (in days)
+    PACKAGE_DURATIONS = {
+        "quick": 7,    # 1 week
+        "longer": 14,  # 2 weeks
     }
+
+    # Pricing matrix: package -> advance_tier -> price
+    # Advance tiers: "early" (>=14 days), "standard" (7-13 days), "late" (<7 days)
+    PACKAGE_PRICES = {
+        "quick": {
+            "early": 99.0,     # >=14 days in advance
+            "standard": 109.0, # 7-13 days in advance
+            "late": 119.0,     # <7 days in advance
+        },
+        "longer": {
+            "early": 135.0,    # >=14 days in advance
+            "standard": 145.0, # 7-13 days in advance
+            "late": 155.0,     # <7 days in advance
+        },
+    }
+
+    @classmethod
+    def get_advance_tier(cls, drop_off_date: date) -> str:
+        """
+        Determine the pricing tier based on how far in advance the booking is.
+
+        Args:
+            drop_off_date: The date of drop-off
+
+        Returns:
+            "early" if >=14 days, "standard" if 7-13 days, "late" if <7 days
+        """
+        from datetime import timedelta
+        today = date.today()
+        days_in_advance = (drop_off_date - today).days
+
+        if days_in_advance >= 14:
+            return "early"
+        elif days_in_advance >= 7:
+            return "standard"
+        else:
+            return "late"
+
+    @classmethod
+    def calculate_price(cls, package: str, drop_off_date: date) -> float:
+        """
+        Calculate the price based on package and advance booking tier.
+
+        Args:
+            package: "quick" (1 week) or "longer" (2 weeks)
+            drop_off_date: The date of drop-off
+
+        Returns:
+            The price in pounds
+        """
+        tier = cls.get_advance_tier(drop_off_date)
+        return cls.PACKAGE_PRICES[package][tier]
+
+    @classmethod
+    def get_package_for_duration(cls, drop_off_date: date, pickup_date: date) -> str:
+        """
+        Determine the package based on the duration between drop-off and pickup.
+
+        Args:
+            drop_off_date: The date of drop-off
+            pickup_date: The date of pickup
+
+        Returns:
+            "quick" for 7 days, "longer" for 14 days
+
+        Raises:
+            ValueError: If duration is not exactly 7 or 14 days
+        """
+        duration = (pickup_date - drop_off_date).days
+
+        if duration == 7:
+            return "quick"
+        elif duration == 14:
+            return "longer"
+        else:
+            raise ValueError(f"Invalid duration: {duration} days. Must be exactly 7 or 14 days.")
 
     def __init__(self, flights_data_path: Optional[str] = None):
         """
@@ -264,8 +340,8 @@ class BookingService:
         return_time_parts = request.return_flight_time.split(':')
         return_flight_time = time(int(return_time_parts[0]), int(return_time_parts[1]))
 
-        # Calculate price
-        price = self.PACKAGE_PRICES[request.package]
+        # Calculate price based on package and advance booking tier
+        price = self.calculate_price(request.package, drop_off_date)
 
         # Create the booking
         booking = Booking(
@@ -445,11 +521,11 @@ class BookingService:
         # Generate booking ID
         booking_id = str(uuid.uuid4())
 
-        # Calculate price (use custom price if provided, otherwise standard)
+        # Calculate price (use custom price if provided, otherwise use tiered pricing)
         if request.custom_price is not None:
             price = request.custom_price
         else:
-            price = self.PACKAGE_PRICES[request.package]
+            price = self.calculate_price(request.package, request.drop_off_date)
 
         # For admin bookings, we use a dummy slot type since they set exact time
         # Default to EARLY but it doesn't affect the actual drop-off time

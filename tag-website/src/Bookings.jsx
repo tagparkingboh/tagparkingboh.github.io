@@ -116,6 +116,10 @@ function Bookings() {
   // For now, simulating with a placeholder
   const [bookedSpots, setBookedSpots] = useState({})
 
+  // Dynamic pricing state
+  const [pricingInfo, setPricingInfo] = useState(null)
+  const [pricingLoading, setPricingLoading] = useState(false)
+
   // Check availability for a date range
   const checkAvailability = (dropoffDate, pickupDate) => {
     // In production, this would fetch from your database
@@ -253,6 +257,49 @@ function Bookings() {
     }
     fetchArrivals()
   }, [formData.pickupDate, API_BASE_URL])
+
+  // Fetch dynamic pricing when dates change
+  useEffect(() => {
+    const fetchPricing = async () => {
+      if (!formData.dropoffDate || !formData.pickupDate) {
+        setPricingInfo(null)
+        return
+      }
+
+      setPricingLoading(true)
+      try {
+        const dropoffStr = format(formData.dropoffDate, 'yyyy-MM-dd')
+        const pickupStr = format(formData.pickupDate, 'yyyy-MM-dd')
+
+        const response = await fetch(`${API_BASE_URL}/api/pricing/calculate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            drop_off_date: dropoffStr,
+            pickup_date: pickupStr,
+          }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setPricingInfo(data)
+          // Auto-set the package based on duration
+          setFormData(prev => ({
+            ...prev,
+            package: data.package, // "quick" or "longer"
+          }))
+        } else {
+          setPricingInfo(null)
+        }
+      } catch (error) {
+        console.error('Error fetching pricing:', error)
+        setPricingInfo(null)
+      } finally {
+        setPricingLoading(false)
+      }
+    }
+    fetchPricing()
+  }, [formData.dropoffDate, formData.pickupDate, API_BASE_URL])
 
   // Filter arrivals by airline and destination (from fetched data)
   const filteredArrivalsForDate = useMemo(() => {
@@ -869,18 +916,40 @@ function Bookings() {
                   </p>
 
                   <div className="form-group fade-in">
-                    <label htmlFor="pickupDate">Pick-up Date</label>
-                    <DatePicker
-                      selected={formData.pickupDate}
-                      onChange={(date) => handleDateChange(date, 'pickupDate')}
-                      dateFormat="dd/MM/yyyy"
-                      minDate={formData.dropoffDate ? new Date(formData.dropoffDate.getTime() + 86400000) : new Date()}
-                      placeholderText="Select date"
-                      className="date-picker-input"
-                      id="pickupDate"
-                      popperPlacement="bottom-start"
-                      calendarClassName="five-weeks"
-                    />
+                    <label>Select Trip Duration</label>
+                    <div className="duration-options">
+                      {[
+                        { days: 7, label: '1 Week' },
+                        { days: 14, label: '2 Weeks' },
+                      ].map(({ days, label }) => {
+                        const pickupDate = new Date(formData.dropoffDate)
+                        pickupDate.setDate(pickupDate.getDate() + days)
+                        const isSelected = formData.pickupDate &&
+                          format(formData.pickupDate, 'yyyy-MM-dd') === format(pickupDate, 'yyyy-MM-dd')
+
+                        return (
+                          <label key={days} className="duration-option">
+                            <input
+                              type="radio"
+                              name="tripDuration"
+                              value={days}
+                              checked={isSelected}
+                              onChange={() => handleDateChange(pickupDate, 'pickupDate')}
+                            />
+                            <div className={`duration-card ${isSelected ? 'selected' : ''}`}>
+                              <span className="duration-label">{label}</span>
+                              <span className="duration-date">Return: {format(pickupDate, 'EEE, d MMM yyyy')}</span>
+                              {pricingLoading && isSelected && (
+                                <span className="duration-price loading">Calculating...</span>
+                              )}
+                              {!pricingLoading && pricingInfo && isSelected && (
+                                <span className="duration-price">From £{pricingInfo.price.toFixed(0)}</span>
+                              )}
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
                 </>
               )}
@@ -1106,24 +1175,34 @@ function Bookings() {
             </div>
           )}
 
-          {/* Step 4: Select Package */}
+          {/* Step 4: Your Package & Price */}
           {currentStep === 4 && (
             <div className="form-section">
-              <h2>Select Package</h2>
+              <h2>Your Package</h2>
 
-              <div className="package-options">
-                <label className="package-option">
-                  <input
-                    type="radio"
-                    name="package"
-                    value="quick"
-                    checked={formData.package === 'quick'}
-                    onChange={handleChange}
-                  />
-                  <div className="package-card">
-                    <span className="package-label">QUICK TRIPS</span>
-                    <span className="package-price">£99</span>
-                    <span className="package-period">/ 1 week</span>
+              {pricingInfo ? (
+                <div className="package-summary">
+                  <div className="package-card selected">
+                    <span className="package-label">
+                      {pricingInfo.package_name.toUpperCase()}
+                    </span>
+                    <span className="package-price">£{pricingInfo.price.toFixed(0)}</span>
+                    <span className="package-period">/ {pricingInfo.duration_days} days</span>
+
+                    {pricingInfo.advance_tier === 'early' && (
+                      <span className="price-badge early">Early Bird Price</span>
+                    )}
+                    {pricingInfo.advance_tier === 'standard' && (
+                      <span className="price-badge standard">Standard Price</span>
+                    )}
+                    {pricingInfo.advance_tier === 'late' && (
+                      <span className="price-badge late">Late Booking</span>
+                    )}
+
+                    <p className="price-tier-info">
+                      Booking {pricingInfo.days_in_advance} days in advance
+                    </p>
+
                     <ul className="package-features">
                       <li>Meet & Greet at terminal</li>
                       <li>Secure storage facility</li>
@@ -1131,28 +1210,28 @@ function Bookings() {
                       <li>No hidden fees</li>
                     </ul>
                   </div>
-                </label>
-                <label className="package-option">
-                  <input
-                    type="radio"
-                    name="package"
-                    value="longer"
-                    checked={formData.package === 'longer'}
-                    onChange={handleChange}
-                  />
-                  <div className="package-card">
-                    <span className="package-label">LONGER STAYS</span>
-                    <span className="package-price">£135</span>
-                    <span className="package-period">/ 2 weeks</span>
-                    <ul className="package-features">
-                      <li>Meet & Greet at terminal</li>
-                      <li>Secure storage facility</li>
-                      <li>24/7 monitoring</li>
-                      <li>No hidden fees</li>
-                    </ul>
+
+                  <div className="pricing-tiers-info">
+                    <h4>Pricing based on advance booking:</h4>
+                    <div className="tier-list">
+                      <div className={`tier ${pricingInfo.advance_tier === 'early' ? 'active' : ''}`}>
+                        <span className="tier-label">14+ days ahead</span>
+                        <span className="tier-price">£{pricingInfo.all_prices.early.toFixed(0)}</span>
+                      </div>
+                      <div className={`tier ${pricingInfo.advance_tier === 'standard' ? 'active' : ''}`}>
+                        <span className="tier-label">7-13 days ahead</span>
+                        <span className="tier-price">£{pricingInfo.all_prices.standard.toFixed(0)}</span>
+                      </div>
+                      <div className={`tier ${pricingInfo.advance_tier === 'late' ? 'active' : ''}`}>
+                        <span className="tier-label">Under 7 days</span>
+                        <span className="tier-price">£{pricingInfo.all_prices.late.toFixed(0)}</span>
+                      </div>
+                    </div>
                   </div>
-                </label>
-              </div>
+                </div>
+              ) : (
+                <div className="loading-message">Loading pricing information...</div>
+              )}
 
               <div className="form-actions">
                 <button type="button" className="back-btn" onClick={prevStep}>
@@ -1443,9 +1522,13 @@ function Bookings() {
                   <span>Registration</span>
                   <span>{formData.registration.toUpperCase()}</span>
                 </div>
+                <div className="summary-item">
+                  <span>Package</span>
+                  <span>{pricingInfo?.package_name || (formData.package === 'quick' ? '1 Week' : '2 Weeks')}</span>
+                </div>
                 <div className="summary-item total">
                   <span>Total</span>
-                  <span>{formData.package === 'quick' ? '£99.00' : '£135.00'}</span>
+                  <span>£{pricingInfo ? pricingInfo.price.toFixed(2) : (formData.package === 'quick' ? '99.00' : '135.00')}</span>
                 </div>
               </div>
 

@@ -48,6 +48,9 @@ import db_service
 import json
 import traceback
 
+# Email scheduler
+from email_scheduler import start_scheduler, stop_scheduler
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -78,8 +81,15 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database on startup."""
+    """Initialize database and start background scheduler on startup."""
     init_db()
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop background scheduler on shutdown."""
+    stop_scheduler()
 
 
 # Path to flight schedule
@@ -329,6 +339,105 @@ async def check_capacity(request: CapacityCheckRequest):
         start_date=request.start_date,
         end_date=request.end_date,
     )
+
+
+# ==================== PRICING ====================
+
+class PriceCalculationRequest(BaseModel):
+    """Request to calculate booking price."""
+    drop_off_date: date
+    pickup_date: date
+
+
+class PriceCalculationResponse(BaseModel):
+    """Response with calculated price and package info."""
+    package: str  # "quick" or "longer"
+    package_name: str  # "1 Week" or "2 Weeks"
+    duration_days: int
+    advance_tier: str  # "early", "standard", or "late"
+    days_in_advance: int
+    price: float
+    price_pence: int
+    all_prices: dict  # Show all tier prices for reference
+
+
+@app.post("/api/pricing/calculate", response_model=PriceCalculationResponse)
+async def calculate_price(request: PriceCalculationRequest):
+    """
+    Calculate booking price based on dates.
+
+    Pricing tiers:
+    - Early (>=14 days in advance): 1 week £99, 2 weeks £135
+    - Standard (7-13 days in advance): 1 week £109, 2 weeks £145
+    - Late (<7 days in advance): 1 week £119, 2 weeks £155
+
+    Duration must be exactly 7 or 14 days.
+    """
+    from booking_service import BookingService
+
+    duration = (request.pickup_date - request.drop_off_date).days
+
+    # Validate duration
+    if duration not in [7, 14]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Duration must be exactly 7 or 14 days. Got {duration} days."
+        )
+
+    # Determine package
+    package = BookingService.get_package_for_duration(request.drop_off_date, request.pickup_date)
+    package_name = "1 Week" if package == "quick" else "2 Weeks"
+
+    # Calculate advance booking tier
+    today = date.today()
+    days_in_advance = (request.drop_off_date - today).days
+    advance_tier = BookingService.get_advance_tier(request.drop_off_date)
+
+    # Calculate price
+    price = BookingService.calculate_price(package, request.drop_off_date)
+
+    return PriceCalculationResponse(
+        package=package,
+        package_name=package_name,
+        duration_days=duration,
+        advance_tier=advance_tier,
+        days_in_advance=days_in_advance,
+        price=price,
+        price_pence=int(price * 100),
+        all_prices={
+            "early": BookingService.PACKAGE_PRICES[package]["early"],
+            "standard": BookingService.PACKAGE_PRICES[package]["standard"],
+            "late": BookingService.PACKAGE_PRICES[package]["late"],
+        }
+    )
+
+
+@app.get("/api/pricing/tiers")
+async def get_pricing_tiers():
+    """
+    Get all pricing tiers for display on the frontend.
+    """
+    from booking_service import BookingService
+
+    return {
+        "packages": {
+            "quick": {
+                "name": "1 Week",
+                "duration_days": 7,
+                "prices": BookingService.PACKAGE_PRICES["quick"],
+            },
+            "longer": {
+                "name": "2 Weeks",
+                "duration_days": 14,
+                "prices": BookingService.PACKAGE_PRICES["longer"],
+            },
+        },
+        "tiers": {
+            "early": {"label": "14+ days in advance", "min_days": 14},
+            "standard": {"label": "7-13 days in advance", "min_days": 7, "max_days": 13},
+            "late": {"label": "Less than 7 days", "max_days": 6},
+        }
+    }
 
 
 @app.post("/api/bookings", response_model=BookingResponse)
@@ -1355,12 +1464,12 @@ async def create_payment(
             detail="Payment system is not configured"
         )
 
-    # Calculate amount in pence
-    amount = calculate_price_in_pence(request.package)
-
     try:
-        # Parse dates
+        # Parse dates first (needed for dynamic pricing)
         dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
+
+        # Calculate amount in pence (using dynamic pricing based on drop-off date)
+        amount = calculate_price_in_pence(request.package, drop_off_date=dropoff_date)
         pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
 
         # Calculate drop-off time from slot and flight departure
