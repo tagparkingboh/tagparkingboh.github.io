@@ -277,6 +277,33 @@ class ErrorSeverity(enum.Enum):
     CRITICAL = "critical"
 
 
+class MarketingSubscriber(Base):
+    """Marketing subscribers from waitlist/newsletter signups."""
+    __tablename__ = "marketing_subscribers"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+
+    # Email tracking
+    welcome_email_sent = Column(Boolean, default=False)
+    promo_code_sent = Column(Boolean, default=False)
+
+    # Source tracking
+    source = Column(String(50), default="landing_page")  # landing_page, homepage, etc.
+    hubspot_contact_id = Column(String(100))  # For HubSpot integration
+
+    # Timestamps
+    subscribed_at = Column(DateTime(timezone=True), server_default=func.now())
+    welcome_email_sent_at = Column(DateTime(timezone=True))
+    promo_code_sent_at = Column(DateTime(timezone=True))
+
+    def __repr__(self):
+        return f"<MarketingSubscriber {self.first_name} {self.last_name} ({self.email})>"
+
+
 class ErrorLog(Base):
     """Error log for API and service errors."""
     __tablename__ = "error_logs"

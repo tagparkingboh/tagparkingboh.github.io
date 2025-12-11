@@ -341,6 +341,11 @@
   background: var(--dark-gray);
 }
 
+.hero-bottom-bar {
+  height: 30px;
+  background: #CCFF00;
+}
+
 /* Why Choose Section */
 .why-choose {
   position: relative;

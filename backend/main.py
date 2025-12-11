@@ -43,7 +43,7 @@ from stripe_service import (
 
 # Database imports
 from database import get_db, init_db
-from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity
+from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber
 import db_service
 import json
 import traceback
@@ -1181,6 +1181,67 @@ async def lookup_address(
             postcode=clean_postcode,
             error="Unable to lookup address"
         )
+
+
+# =============================================================================
+# Marketing Subscriber Endpoint
+# =============================================================================
+
+class MarketingSubscribeRequest(BaseModel):
+    """Request to subscribe to marketing emails."""
+    first_name: str
+    last_name: str
+    email: str
+    source: Optional[str] = "website"
+
+
+class MarketingSubscribeResponse(BaseModel):
+    """Response from marketing subscription."""
+    success: bool
+    message: str
+    is_new_subscriber: bool = True
+
+
+@app.post("/api/marketing/subscribe", response_model=MarketingSubscribeResponse)
+async def subscribe_to_marketing(
+    request: MarketingSubscribeRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Subscribe to marketing emails (waitlist/newsletter).
+
+    If the email already exists, returns success with is_new_subscriber=False.
+    """
+    # Check if subscriber already exists
+    existing = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.email == request.email.lower().strip()
+    ).first()
+
+    if existing:
+        return MarketingSubscribeResponse(
+            success=True,
+            message="You're already on the list!",
+            is_new_subscriber=False,
+        )
+
+    try:
+        subscriber = MarketingSubscriber(
+            first_name=request.first_name.strip(),
+            last_name=request.last_name.strip(),
+            email=request.email.lower().strip(),
+            source=request.source,
+        )
+        db.add(subscriber)
+        db.commit()
+
+        return MarketingSubscribeResponse(
+            success=True,
+            message="Thanks for signing up!",
+            is_new_subscriber=True,
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Failed to subscribe: {str(e)}")
 
 
 # =============================================================================

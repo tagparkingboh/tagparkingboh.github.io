@@ -1,10 +1,119 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import './App.css'
 
 function HomePage() {
+  // Load HubSpot tracking script
+  useEffect(() => {
+    const script = document.createElement('script')
+    script.src = '//js-ap1.hs-scripts.com/442431654.js'
+    script.id = 'hs-script-loader'
+    script.async = true
+    script.defer = true
+    document.body.appendChild(script)
+
+    return () => {
+      // Cleanup on unmount
+      const existingScript = document.getElementById('hs-script-loader')
+      if (existingScript) {
+        existingScript.remove()
+      }
+    }
+  }, [])
+
   const [menuOpen, setMenuOpen] = useState(false)
   const [openFaq, setOpenFaq] = useState(null)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitStatus, setSubmitStatus] = useState(null) // 'success' | 'error' | null
+
+  const isValidEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  }
+
+  const isFormValid = firstName.trim() && lastName.trim() && isValidEmail(email)
+
+  const handleSubscribe = async () => {
+    if (!isFormValid || isSubmitting) return
+
+    setIsSubmitting(true)
+    setSubmitStatus(null)
+
+    const trimmedFirstName = firstName.trim()
+    const trimmedLastName = lastName.trim()
+    const trimmedEmail = email.trim()
+
+    // Send to our backend API
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    try {
+      const apiResponse = await fetch(`${apiUrl}/api/marketing/subscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          first_name: trimmedFirstName,
+          last_name: trimmedLastName,
+          email: trimmedEmail,
+          source: 'homepage',
+        }),
+      })
+      const apiData = await apiResponse.json().catch(() => null)
+      console.log('Marketing API Response:', apiResponse.status, apiData)
+    } catch (apiError) {
+      console.error('Marketing API Error:', apiError)
+      // Continue with HubSpot even if our API fails
+    }
+
+    // Send to HubSpot
+    const portalId = import.meta.env.VITE_HUBSPOT_PORTAL_ID
+    const formId = import.meta.env.VITE_HUBSPOT_FORM_ID
+    const hubspotUrl = `https://api.hsforms.com/submissions/v3/integration/submit/${portalId}/${formId}`
+
+    const payload = {
+      fields: [
+        { name: 'firstname', value: trimmedFirstName },
+        { name: 'lastname', value: trimmedLastName },
+        { name: 'email', value: trimmedEmail },
+      ],
+      context: {
+        pageUri: window.location.href,
+        pageName: 'Tag Parking - Subscribe',
+      },
+    }
+
+    console.log('HubSpot Request:', JSON.stringify(payload, null, 2))
+
+    try {
+      const response = await fetch(hubspotUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const responseData = await response.json().catch(() => null)
+      console.log('HubSpot Response:', response.status, responseData)
+
+      if (response.ok) {
+        setSubmitStatus('success')
+        setFirstName('')
+        setLastName('')
+        setEmail('')
+      } else {
+        console.error('HubSpot Error:', response.status, responseData)
+        setSubmitStatus('error')
+      }
+    } catch (error) {
+      console.error('Submit Error:', error)
+      setSubmitStatus('error')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
@@ -53,7 +162,7 @@ function HomePage() {
               <span className="intro-offer-discount">Spacer</span>
             </div>
 
-            <Link to="/tag-it" className="hero-cta">Tag It <span>→</span></Link>
+            <a href="#subscribe" className="hero-cta">Join the waitlist <span>→</span></a>
           </div>
 
           <a href="#how-it-works" className="scroll-indicator">
@@ -66,6 +175,57 @@ function HomePage() {
 
       {/* Availability Tracker - hidden, will be moved to /tag-it page */}
       {/* <AvailabilityTracker /> */}
+
+      {/* Hero Bottom Bar */}
+      <div className="hero-bottom-bar"></div>
+
+      {/* Pricing Section */}
+      <section className="pricing-section" id="pricing">
+        <h2>Pricing & plans</h2>
+        <p className="pricing-subtitle">Heading off for a short trip or a longer stay? Pick one of our pricing options that's right for you.</p>
+
+        <div className="pricing-cards">
+          <div className="pricing-card">
+            <span className="pricing-label">1 WEEK TRIP</span>
+            <p className="pricing-from">From</p>
+            <div className="pricing-amount">
+              <span className="currency">£</span>
+              <span className="price">99</span>
+            </div>
+            <p className="pricing-note">one off payment</p>
+
+            <ul className="pricing-features">
+              <li><span className="check">✓</span> Meet & Greet at terminal</li>
+              <li><span className="check">✓</span> Secure storage facility</li>
+              <li><span className="check">✓</span> 24/7 monitoring</li>
+              <li><span className="check">✓</span> No hidden fees</li>
+              <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
+            </ul>
+
+            <Link to="/tag-it" className="pricing-btn">Tag It <span>→</span></Link>
+          </div>
+
+          <div className="pricing-card">
+            <span className="pricing-label">2 WEEK TRIP</span>
+            <p className="pricing-from">From</p>
+            <div className="pricing-amount">
+              <span className="currency">£</span>
+              <span className="price">135</span>
+            </div>
+            <p className="pricing-note">one off payment</p>
+
+            <ul className="pricing-features">
+              <li><span className="check">✓</span> Meet & Greet at terminal</li>
+              <li><span className="check">✓</span> Secure storage facility</li>
+              <li><span className="check">✓</span> 24/7 monitoring</li>
+              <li><span className="check">✓</span> No hidden fees</li>
+              <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
+            </ul>
+
+            <Link to="/tag-it" className="pricing-btn">Tag It <span>→</span></Link>
+          </div>
+        </div>
+      </section>
 
       {/* Features Banner Section */}
       <section className="features-banner">
@@ -158,54 +318,6 @@ function HomePage() {
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <section className="pricing-section" id="pricing">
-        <h2>Pricing & plans</h2>
-        <p className="pricing-subtitle">Heading off for a short trip or a longer stay? Pick one of our pricing options that's right for you.</p>
-
-        <div className="pricing-cards">
-          <div className="pricing-card">
-            <span className="pricing-label">1 WEEK TRIP</span>
-            <p className="pricing-from">From</p>
-            <div className="pricing-amount">
-              <span className="currency">£</span>
-              <span className="price">99</span>
-            </div>
-            <p className="pricing-note">one off payment</p>
-
-            <ul className="pricing-features">
-              <li><span className="check">✓</span> Meet & Greet at terminal</li>
-              <li><span className="check">✓</span> Secure storage facility</li>
-              <li><span className="check">✓</span> 24/7 monitoring</li>
-              <li><span className="check">✓</span> No hidden fees</li>
-              <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
-            </ul>
-
-            <Link to="/tag-it" className="pricing-btn">Tag It <span>→</span></Link>
-          </div>
-
-          <div className="pricing-card">
-            <span className="pricing-label">2 WEEK TRIP</span>
-            <p className="pricing-from">From</p>
-            <div className="pricing-amount">
-              <span className="currency">£</span>
-              <span className="price">135</span>
-            </div>
-            <p className="pricing-note">one off payment</p>
-
-            <ul className="pricing-features">
-              <li><span className="check">✓</span> Meet & Greet at terminal</li>
-              <li><span className="check">✓</span> Secure storage facility</li>
-              <li><span className="check">✓</span> 24/7 monitoring</li>
-              <li><span className="check">✓</span> No hidden fees</li>
-              <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
-            </ul>
-
-            <Link to="/tag-it" className="pricing-btn">Tag It <span>→</span></Link>
-          </div>
-        </div>
-      </section>
-
       {/* Support Section */}
       <section className="support-section">
         <div className="support-content">
@@ -292,9 +404,43 @@ function HomePage() {
         <div className="subscribe-layout">
           <img src="/assets/departure-icon.png" alt="Departure" className="subscribe-icon" />
           <div className="subscribe-content">
-            <h2>Ready to book?</h2>
-            <p className="subscribe-subtitle">Start your stress-free parking experience today.</p>
-            <Link to="/tag-it" className="hero-cta">Tag It <span>→</span></Link>
+            <h2>Join the waitlist</h2>
+            <p className="subscribe-subtitle">Sign up early. Save more: get 10% off your next trip by joining the waitlist.</p>
+            <div className="subscribe-form">
+              <input
+                type="text"
+                placeholder="First name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Last name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                required
+              />
+              <input
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              <button
+                onClick={handleSubscribe}
+                disabled={!isFormValid || isSubmitting}
+              >
+                {isSubmitting ? 'Joining...' : 'Join the waitlist'}
+              </button>
+            </div>
+            {submitStatus === 'success' && (
+              <p className="subscribe-success">Thank you for subscribing! We'll be in touch soon.</p>
+            )}
+            {submitStatus === 'error' && (
+              <p className="subscribe-error">Something went wrong. Please try again.</p>
+            )}
             <p className="privacy-note">We'll never share your details with third parties.<br />View our Privacy Policy for more info.</p>
           </div>
         </div>
