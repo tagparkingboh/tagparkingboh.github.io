@@ -10,6 +10,48 @@ import {
 // API base URL - adjust for production
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// Convert country name to ISO 2-letter code for Stripe
+const getCountryCode = (countryName) => {
+  const countryMap = {
+    'United Kingdom': 'GB',
+    'Ireland': 'IE',
+    'Austria': 'AT',
+    'Belgium': 'BE',
+    'Croatia': 'HR',
+    'Cyprus': 'CY',
+    'Czech Republic': 'CZ',
+    'Denmark': 'DK',
+    'Estonia': 'EE',
+    'Finland': 'FI',
+    'France': 'FR',
+    'Germany': 'DE',
+    'Greece': 'GR',
+    'Hungary': 'HU',
+    'Iceland': 'IS',
+    'Italy': 'IT',
+    'Latvia': 'LV',
+    'Lithuania': 'LT',
+    'Luxembourg': 'LU',
+    'Malta': 'MT',
+    'Netherlands': 'NL',
+    'Norway': 'NO',
+    'Poland': 'PL',
+    'Portugal': 'PT',
+    'Romania': 'RO',
+    'Slovakia': 'SK',
+    'Slovenia': 'SI',
+    'Spain': 'ES',
+    'Sweden': 'SE',
+    'Switzerland': 'CH',
+    'Turkey': 'TR',
+    'Australia': 'AU',
+    'Canada': 'CA',
+    'New Zealand': 'NZ',
+    'United States': 'US',
+  }
+  return countryMap[countryName] || 'GB'
+}
+
 // Stripe promise - loaded once
 let stripePromise = null
 
@@ -28,7 +70,7 @@ const getStripe = async () => {
 }
 
 // The checkout form component (inside Elements provider)
-function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingPostcode }) {
+function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDetails }) {
   const stripe = useStripe()
   const elements = useElements()
   const [isProcessing, setIsProcessing] = useState(false)
@@ -84,9 +126,12 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingPos
           layout: 'tabs',
           defaultValues: {
             billingDetails: {
+              name: billingDetails.name || '',
+              email: billingDetails.email || '',
+              phone: billingDetails.phone || '',
               address: {
-                postal_code: billingPostcode || '',
-                country: 'GB',
+                postal_code: billingDetails.postcode || '',
+                country: billingDetails.country || 'GB',
               },
             },
           },
@@ -306,7 +351,13 @@ function StripePayment({
           onError={handleError}
           bookingReference={bookingReference}
           amount={amount}
-          billingPostcode={formData.billingPostcode}
+          billingDetails={{
+            name: `${formData.firstName} ${formData.lastName}`,
+            email: formData.email,
+            phone: formData.phone, // Already in E.164 format from react-phone-number-input
+            postcode: formData.billingPostcode,
+            country: getCountryCode(formData.billingCountry),
+          }}
         />
       </Elements>
 
