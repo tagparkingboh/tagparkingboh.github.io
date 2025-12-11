@@ -633,7 +633,7 @@ class VehicleLookupResponse(BaseModel):
     error: Optional[str] = None
 
 
-@app.post("/api/vehicles/lookup", response_model=VehicleLookupResponse)
+@app.post("/api/vehicles/dvla-lookup", response_model=VehicleLookupResponse)
 async def lookup_vehicle(request: VehicleLookupRequest):
     """
     Lookup vehicle make and colour from DVLA Vehicle Enquiry Service.
@@ -797,7 +797,7 @@ class AddressLookupResponse(BaseModel):
     error: Optional[str] = None
 
 
-@app.post("/api/address/lookup", response_model=AddressLookupResponse)
+@app.post("/api/address/postcode-lookup", response_model=AddressLookupResponse)
 async def lookup_address(request: AddressLookupRequest):
     """
     Lookup addresses by postcode using OS Places API.

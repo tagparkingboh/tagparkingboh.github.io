@@ -442,7 +442,7 @@ function Bookings() {
     setDvlaVerified(false)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/vehicles/lookup`, {
+      const response = await fetch(`${API_BASE_URL}/api/vehicles/dvla-lookup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ registration: formData.registration }),
@@ -497,7 +497,7 @@ function Bookings() {
     setShowAddressSelect(false)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/address/lookup`, {
+      const response = await fetch(`${API_BASE_URL}/api/address/postcode-lookup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ postcode })
@@ -1393,7 +1393,7 @@ function Bookings() {
                     onChange={handleChange}
                     required
                   />
-                  <span>I agree to the <a href="/terms-conditions">Terms & Conditions</a> and <a href="/privacy-policy">Privacy Policy</a></span>
+                  <span>I agree to the <Link to="/terms-conditions" target="_blank">Terms & Conditions</Link> and <Link to="/privacy-policy" target="_blank">Privacy Policy</Link></span>
                 </label>
               </div>
 
