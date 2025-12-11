@@ -28,7 +28,7 @@ const getStripe = async () => {
 }
 
 // The checkout form component (inside Elements provider)
-function CheckoutForm({ onSuccess, onError, bookingReference, amount }) {
+function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingPostcode }) {
   const stripe = useStripe()
   const elements = useElements()
   const [isProcessing, setIsProcessing] = useState(false)
@@ -85,6 +85,7 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount }) {
           defaultValues: {
             billingDetails: {
               address: {
+                postal_code: billingPostcode || '',
                 country: 'GB',
               },
             },
@@ -305,6 +306,7 @@ function StripePayment({
           onError={handleError}
           bookingReference={bookingReference}
           amount={amount}
+          billingPostcode={formData.billingPostcode}
         />
       </Elements>
 
