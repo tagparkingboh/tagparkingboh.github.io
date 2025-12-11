@@ -6,55 +6,87 @@ function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [openFaq, setOpenFaq] = useState(null)
   const [openFooter, setOpenFooter] = useState(null)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitStatus, setSubmitStatus] = useState(null) // 'success' | 'error' | null
 
-  // Load HubSpot forms script and create form
+  // Load HubSpot tracking script
   useEffect(() => {
-    // Prevent duplicate form creation
-    const container = document.getElementById('hubspot-form-container')
-    if (!container || container.hasChildNodes()) {
-      return
-    }
+    const script = document.createElement('script')
+    script.src = '//js-ap1.hs-scripts.com/442431654.js'
+    script.id = 'hs-script-loader'
+    script.async = true
+    script.defer = true
+    document.body.appendChild(script)
 
-    // Load tracking script (only if not already loaded)
-    if (!document.getElementById('hs-script-loader')) {
-      const trackingScript = document.createElement('script')
-      trackingScript.src = '//js-ap1.hs-scripts.com/442431654.js'
-      trackingScript.id = 'hs-script-loader'
-      trackingScript.async = true
-      trackingScript.defer = true
-      document.body.appendChild(trackingScript)
-    }
-
-    // Function to create the form
-    const createForm = () => {
-      // Double-check container is still empty
-      if (container.hasChildNodes()) return
-
-      window.hbspt.forms.create({
-        region: 'ap1',
-        portalId: '442431654',
-        formId: '5f099bf2-ab96-43b5-85d3-e2274a51a80a',
-        target: '#hubspot-form-container',
-        cssRequired: '', // Removes HubSpot's default CSS
-        css: '',         // Prevents loading any HubSpot styles
-      })
-    }
-
-    // If HubSpot is already loaded, create form immediately
-    if (window.hbspt) {
-      createForm()
-      return
-    }
-
-    // Load forms script (only if not already loaded)
-    if (!document.getElementById('hs-forms-script')) {
-      const formsScript = document.createElement('script')
-      formsScript.src = '//js.hsforms.net/forms/embed/v2.js'
-      formsScript.id = 'hs-forms-script'
-      formsScript.onload = createForm
-      document.body.appendChild(formsScript)
+    return () => {
+      const existingScript = document.getElementById('hs-script-loader')
+      if (existingScript) {
+        existingScript.remove()
+      }
     }
   }, [])
+
+  const isValidEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  }
+
+  const isFormValid = firstName.trim() && lastName.trim() && isValidEmail(email)
+
+  const handleSubscribe = async () => {
+    if (!isFormValid || isSubmitting) return
+
+    setIsSubmitting(true)
+    setSubmitStatus(null)
+
+    const portalId = import.meta.env.VITE_HUBSPOT_PORTAL_ID
+    const formId = import.meta.env.VITE_HUBSPOT_FORM_ID
+    const hubspotUrl = `https://api.hsforms.com/submissions/v3/integration/submit/${portalId}/${formId}`
+
+    const payload = {
+      fields: [
+        { name: 'firstname', value: firstName.trim() },
+        { name: 'lastname', value: lastName.trim() },
+        { name: 'email', value: email.trim() },
+      ],
+      context: {
+        pageUri: window.location.href,
+        pageName: 'Tag Parking - Subscribe',
+      },
+    }
+
+    console.log('HubSpot Request:', JSON.stringify(payload, null, 2))
+
+    try {
+      const response = await fetch(hubspotUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      const responseData = await response.json().catch(() => null)
+      console.log('HubSpot Response:', response.status, responseData)
+
+      if (response.ok) {
+        setSubmitStatus('success')
+        setFirstName('')
+        setLastName('')
+        setEmail('')
+      } else {
+        console.error('HubSpot Error:', response.status, responseData)
+        setSubmitStatus('error')
+      }
+    } catch (error) {
+      console.error('Submit Error:', error)
+      setSubmitStatus('error')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
@@ -346,9 +378,41 @@ function LandingPage() {
           <div className="subscribe-content">
             <h2>Join the waitlist</h2>
             <p className="subscribe-subtitle">Sign up early. Save more: get 10% off your next trip by joining the waitlist.</p>
-            <div className="subscribe-form hubspot-form-wrapper">
-              <div id="hubspot-form-container"></div>
+            <div className="subscribe-form">
+              <input
+                type="text"
+                placeholder="First name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Last name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                required
+              />
+              <input
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              <button
+                onClick={handleSubscribe}
+                disabled={!isFormValid || isSubmitting}
+              >
+                {isSubmitting ? 'Joining...' : 'Join the waitlist'}
+              </button>
             </div>
+            {submitStatus === 'success' && (
+              <p className="subscribe-success">Thank you for subscribing! We'll be in touch soon.</p>
+            )}
+            {submitStatus === 'error' && (
+              <p className="subscribe-error">Something went wrong. Please try again.</p>
+            )}
             <p className="privacy-note">We'll never share your details with third parties.<br />View our Privacy Policy for more info.</p>
           </div>
         </div>
