@@ -164,6 +164,7 @@ function StripePayment({
   customerId,
   vehicleId,
   sessionId,
+  promoCode,
   onPaymentSuccess,
   onPaymentError,
 }) {
@@ -231,6 +232,8 @@ function StripePayment({
             pickup_flight_time: selectedArrivalFlight?.time || null,
             pickup_flight_number: selectedArrivalFlight?.flightNumber || null,
             pickup_origin: selectedArrivalFlight?.originCode || null,
+            // Promo code (if applied)
+            promo_code: promoCode || null,
           }),
         })
 

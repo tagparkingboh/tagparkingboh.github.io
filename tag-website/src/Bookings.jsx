@@ -72,6 +72,12 @@ function Bookings() {
   const [showAddressSelect, setShowAddressSelect] = useState(false)
   const [postcodeSearched, setPostcodeSearched] = useState('')
   const [manualAddressEntry, setManualAddressEntry] = useState(false)
+  // Promo code state
+  const [promoCode, setPromoCode] = useState('')
+  const [promoCodeValidating, setPromoCodeValidating] = useState(false)
+  const [promoCodeValid, setPromoCodeValid] = useState(false)
+  const [promoCodeMessage, setPromoCodeMessage] = useState('')
+  const [promoCodeDiscount, setPromoCodeDiscount] = useState(0) // Discount percentage (10)
   const [formData, setFormData] = useState({
     dropoffDate: null,
     dropoffAirline: '',
@@ -680,6 +686,51 @@ function Bookings() {
   const handlePaymentError = (error) => {
     console.error('Payment error:', error)
     // Error is handled within the StripePayment component
+  }
+
+  // Promo code validation
+  const validatePromoCode = async () => {
+    if (!promoCode.trim()) {
+      setPromoCodeMessage('Please enter a promo code')
+      setPromoCodeValid(false)
+      return
+    }
+
+    setPromoCodeValidating(true)
+    setPromoCodeMessage('')
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/promo/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: promoCode.trim() }),
+      })
+
+      const data = await response.json()
+
+      if (data.valid) {
+        setPromoCodeValid(true)
+        setPromoCodeDiscount(data.discount_percent)
+        setPromoCodeMessage(data.message)
+      } else {
+        setPromoCodeValid(false)
+        setPromoCodeDiscount(0)
+        setPromoCodeMessage(data.message)
+      }
+    } catch (err) {
+      setPromoCodeValid(false)
+      setPromoCodeDiscount(0)
+      setPromoCodeMessage('Failed to validate promo code')
+    } finally {
+      setPromoCodeValidating(false)
+    }
+  }
+
+  const clearPromoCode = () => {
+    setPromoCode('')
+    setPromoCodeValid(false)
+    setPromoCodeMessage('')
+    setPromoCodeDiscount(0)
   }
 
   const formatDisplayDate = (date) => {
@@ -1526,10 +1577,61 @@ function Bookings() {
                   <span>Package</span>
                   <span>{pricingInfo?.package_name || (formData.package === 'quick' ? '1 Week' : '2 Weeks')}</span>
                 </div>
+                {promoCodeValid && promoCodeDiscount > 0 && (
+                  <>
+                    <div className="summary-item subtotal">
+                      <span>Subtotal</span>
+                      <span>£{pricingInfo ? pricingInfo.price.toFixed(2) : (formData.package === 'quick' ? '99.00' : '135.00')}</span>
+                    </div>
+                    <div className="summary-item discount">
+                      <span>Promo Discount ({promoCodeDiscount}%)</span>
+                      <span className="discount-amount">-£{((pricingInfo ? pricingInfo.price : (formData.package === 'quick' ? 99 : 135)) * promoCodeDiscount / 100).toFixed(2)}</span>
+                    </div>
+                  </>
+                )}
                 <div className="summary-item total">
                   <span>Total</span>
-                  <span>£{pricingInfo ? pricingInfo.price.toFixed(2) : (formData.package === 'quick' ? '99.00' : '135.00')}</span>
+                  <span>
+                    £{(() => {
+                      const basePrice = pricingInfo ? pricingInfo.price : (formData.package === 'quick' ? 99 : 135)
+                      const discount = promoCodeValid && promoCodeDiscount > 0 ? basePrice * promoCodeDiscount / 100 : 0
+                      return (basePrice - discount).toFixed(2)
+                    })()}
+                  </span>
                 </div>
+              </div>
+
+              {/* Promo Code Section */}
+              <div className="promo-code-section">
+                <h4>Have a promo code?</h4>
+                {promoCodeValid ? (
+                  <div className="promo-code-applied">
+                    <span className="promo-badge">{promoCode.toUpperCase()}</span>
+                    <span className="promo-success">{promoCodeMessage}</span>
+                    <button type="button" className="promo-remove" onClick={clearPromoCode}>Remove</button>
+                  </div>
+                ) : (
+                  <div className="promo-code-input">
+                    <input
+                      type="text"
+                      placeholder="Enter promo code"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                      disabled={promoCodeValidating}
+                    />
+                    <button
+                      type="button"
+                      onClick={validatePromoCode}
+                      disabled={promoCodeValidating || !promoCode.trim()}
+                      className="promo-apply-btn"
+                    >
+                      {promoCodeValidating ? 'Checking...' : 'Apply'}
+                    </button>
+                  </div>
+                )}
+                {promoCodeMessage && !promoCodeValid && (
+                  <p className="promo-error">{promoCodeMessage}</p>
+                )}
               </div>
 
               <div className="form-group checkbox-group">
@@ -1570,6 +1672,7 @@ function Bookings() {
                   customerId={customerId}
                   vehicleId={vehicleId}
                   sessionId={sessionIdRef.current}
+                  promoCode={promoCodeValid ? promoCode : null}
                   onPaymentSuccess={handlePaymentSuccess}
                   onPaymentError={handlePaymentError}
                 />
