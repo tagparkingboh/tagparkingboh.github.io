@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
 import { getMakes, getModels } from 'car-info'
+import PhoneInput from 'react-phone-number-input'
+import 'react-phone-number-input/style.css'
 import StripePayment from './components/StripePayment'
 import 'react-datepicker/dist/react-datepicker.css'
 import './Bookings.css'
@@ -708,14 +710,13 @@ function Bookings() {
 
               <div className="form-group">
                 <label htmlFor="phone">Phone Number</label>
-                <input
-                  type="tel"
+                <PhoneInput
+                  international
+                  defaultCountry="GB"
                   id="phone"
-                  name="phone"
-                  placeholder="+44 7123 456789"
                   value={formData.phone}
-                  onChange={handleChange}
-                  required
+                  onChange={(value) => setFormData(prev => ({ ...prev, phone: value || '' }))}
+                  className="phone-input"
                 />
               </div>
 
@@ -1301,21 +1302,74 @@ function Bookings() {
                 </div>
               </div>
 
+              {/* Only show postcode input for manual entry if non-UK country */}
+              {manualAddressEntry && formData.billingCountry !== 'United Kingdom' && (
+                <div className="form-group">
+                  <label htmlFor="billingPostcodeManual">Postcode / ZIP Code</label>
+                  <input
+                    type="text"
+                    id="billingPostcodeManual"
+                    name="billingPostcode"
+                    placeholder="Enter postcode"
+                    value={formData.billingPostcode}
+                    onChange={handleChange}
+                  />
+                </div>
+              )}
+
               <div className="form-group">
                 <label htmlFor="billingCountry">Country</label>
                 <select
                   id="billingCountry"
                   name="billingCountry"
                   value={formData.billingCountry}
-                  onChange={handleChange}
+                  onChange={(e) => {
+                    handleChange(e)
+                    // Switch to manual entry for non-UK countries
+                    if (e.target.value !== 'United Kingdom') {
+                      setManualAddressEntry(true)
+                    }
+                  }}
                   required
                 >
                   <option value="United Kingdom">United Kingdom</option>
                   <option value="Ireland">Ireland</option>
+                  <option disabled>──── Europe ────</option>
+                  <option value="Austria">Austria</option>
+                  <option value="Belgium">Belgium</option>
+                  <option value="Croatia">Croatia</option>
+                  <option value="Cyprus">Cyprus</option>
+                  <option value="Czech Republic">Czech Republic</option>
+                  <option value="Denmark">Denmark</option>
+                  <option value="Estonia">Estonia</option>
+                  <option value="Finland">Finland</option>
                   <option value="France">France</option>
                   <option value="Germany">Germany</option>
-                  <option value="Spain">Spain</option>
+                  <option value="Greece">Greece</option>
+                  <option value="Hungary">Hungary</option>
+                  <option value="Iceland">Iceland</option>
+                  <option value="Italy">Italy</option>
+                  <option value="Latvia">Latvia</option>
+                  <option value="Lithuania">Lithuania</option>
+                  <option value="Luxembourg">Luxembourg</option>
+                  <option value="Malta">Malta</option>
                   <option value="Netherlands">Netherlands</option>
+                  <option value="Norway">Norway</option>
+                  <option value="Poland">Poland</option>
+                  <option value="Portugal">Portugal</option>
+                  <option value="Romania">Romania</option>
+                  <option value="Slovakia">Slovakia</option>
+                  <option value="Slovenia">Slovenia</option>
+                  <option value="Spain">Spain</option>
+                  <option value="Sweden">Sweden</option>
+                  <option value="Switzerland">Switzerland</option>
+                  <option value="Turkey">Turkey</option>
+                  <option disabled>──── Other ────</option>
+                  <option value="Australia">Australia</option>
+                  <option value="Canada">Canada</option>
+                  <option value="New Zealand">New Zealand</option>
+                  <option value="United States">United States</option>
+                  <option value="Other">Other</option>
                 </select>
               </div>
 
