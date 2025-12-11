@@ -1018,11 +1018,25 @@ async def create_payment(request: CreatePaymentRequest, db: Session = Depends(ge
         dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
         pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
 
-        # Parse drop-off time if provided
+        # Calculate drop-off time from slot and flight departure
         dropoff_time = time(12, 0)  # Default to noon
         if request.drop_off_time:
+            # Explicit time provided (e.g., from admin)
             time_parts = request.drop_off_time.split(":")
             dropoff_time = time(int(time_parts[0]), int(time_parts[1]))
+        elif request.departure_id and request.drop_off_slot:
+            # Calculate from flight departure time minus slot minutes
+            departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
+            if departure:
+                # Slot is minutes before departure (165 = 2¾h, 120 = 2h)
+                slot_minutes = int(request.drop_off_slot)
+                dep_hour = departure.departure_time.hour
+                dep_min = departure.departure_time.minute
+                total_minutes = dep_hour * 60 + dep_min - slot_minutes
+                # Handle overnight (negative minutes)
+                if total_minutes < 0:
+                    total_minutes += 24 * 60
+                dropoff_time = time(total_minutes // 60, total_minutes % 60)
 
         # Parse pickup/landing time and calculate pickup time range (35-60 min after landing)
         pickup_time = None
