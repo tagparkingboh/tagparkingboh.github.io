@@ -51,6 +51,9 @@ import traceback
 # Email scheduler
 from email_scheduler import start_scheduler, stop_scheduler
 
+# Email service
+from email_service import send_booking_confirmation_email
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -438,6 +441,70 @@ async def get_pricing_tiers():
             "late": {"label": "Less than 7 days", "max_days": 6},
         }
     }
+
+
+# =============================================================================
+# Promo Code Endpoints
+# =============================================================================
+
+# Promo code discount: 10% off any booking
+PROMO_DISCOUNT_PERCENT = 10
+
+
+class PromoCodeValidateRequest(BaseModel):
+    """Request to validate a promo code."""
+    code: str
+
+
+class PromoCodeValidateResponse(BaseModel):
+    """Response from promo code validation."""
+    valid: bool
+    message: str
+    discount_percent: Optional[int] = None
+
+
+@app.post("/api/promo/validate", response_model=PromoCodeValidateResponse)
+async def validate_promo_code(
+    request: PromoCodeValidateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Validate a promo code and return discount information.
+
+    Promo codes are generated for marketing subscribers and can be used once.
+    Currently offers 10% off any booking.
+    """
+    code = request.code.strip().upper()
+
+    if not code:
+        return PromoCodeValidateResponse(
+            valid=False,
+            message="Please enter a promo code",
+        )
+
+    # Look up the promo code in marketing subscribers
+    subscriber = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.promo_code == code
+    ).first()
+
+    if not subscriber:
+        return PromoCodeValidateResponse(
+            valid=False,
+            message="Invalid promo code",
+        )
+
+    if subscriber.promo_code_used:
+        return PromoCodeValidateResponse(
+            valid=False,
+            message="This promo code has already been used",
+        )
+
+    # Valid and unused
+    return PromoCodeValidateResponse(
+        valid=True,
+        message="Promo code applied! 10% off",
+        discount_percent=PROMO_DISCOUNT_PERCENT,
+    )
 
 
 @app.post("/api/bookings", response_model=BookingResponse)
@@ -1403,6 +1470,9 @@ class CreatePaymentRequest(BaseModel):
     # Session tracking
     session_id: Optional[str] = None
 
+    # Promo code
+    promo_code: Optional[str] = None
+
 
 class CreatePaymentResponse(BaseModel):
     """Response with payment intent details for frontend."""
@@ -1412,6 +1482,12 @@ class CreatePaymentResponse(BaseModel):
     amount: int
     amount_display: str  # e.g., "£99.00"
     publishable_key: str
+    # Discount info (optional)
+    original_amount: Optional[int] = None
+    original_amount_display: Optional[str] = None
+    discount_amount: Optional[int] = None
+    discount_amount_display: Optional[str] = None
+    promo_code_applied: Optional[str] = None
 
 
 @app.get("/api/stripe/config")
@@ -1468,9 +1544,25 @@ async def create_payment(
         # Parse dates first (needed for dynamic pricing)
         dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
 
-        # Calculate amount in pence (using dynamic pricing based on drop-off date)
-        amount = calculate_price_in_pence(request.package, drop_off_date=dropoff_date)
+        # Calculate base amount in pence (using dynamic pricing based on drop-off date)
+        original_amount = calculate_price_in_pence(request.package, drop_off_date=dropoff_date)
         pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
+
+        # Check for promo code and apply 10% discount if valid
+        discount_amount = 0
+        promo_code_applied = None
+        if request.promo_code:
+            promo_code = request.promo_code.strip().upper()
+            subscriber = db.query(MarketingSubscriber).filter(
+                MarketingSubscriber.promo_code == promo_code
+            ).first()
+            if subscriber and not subscriber.promo_code_used:
+                # Valid promo code - apply 10% discount
+                discount_amount = int(original_amount * PROMO_DISCOUNT_PERCENT / 100)
+                promo_code_applied = promo_code
+
+        # Final amount after discount
+        amount = original_amount - discount_amount
 
         # Calculate drop-off time from slot and flight departure
         dropoff_time = time(12, 0)  # Default to noon
@@ -1618,6 +1710,7 @@ async def create_payment(
             pickup_date=request.pickup_date,
             departure_id=request.departure_id,
             drop_off_slot=request.drop_off_slot,
+            promo_code=promo_code_applied,
         )
 
         intent = create_payment_intent(intent_request)
@@ -1650,7 +1743,8 @@ async def create_payment(
             },
         )
 
-        return CreatePaymentResponse(
+        # Build response with discount info if applicable
+        response = CreatePaymentResponse(
             client_secret=intent.client_secret,
             payment_intent_id=intent.payment_intent_id,
             booking_reference=booking_reference,
@@ -1658,6 +1752,16 @@ async def create_payment(
             amount_display=f"£{amount / 100:.2f}",
             publishable_key=settings.stripe_publishable_key,
         )
+
+        # Add discount info if promo code was applied
+        if promo_code_applied:
+            response.original_amount = original_amount
+            response.original_amount_display = f"£{original_amount / 100:.2f}"
+            response.discount_amount = discount_amount
+            response.discount_amount_display = f"£{discount_amount / 100:.2f}"
+            response.promo_code_applied = promo_code_applied
+
+        return response
 
     except Exception as e:
         # Log the error
@@ -1748,6 +1852,7 @@ async def stripe_webhook(
         booking_reference = metadata.get("booking_reference")
         departure_id = metadata.get("departure_id")
         drop_off_slot = metadata.get("drop_off_slot")
+        promo_code = metadata.get("promo_code")
 
         # Update payment status in database (this also updates booking to CONFIRMED)
         db_service.update_payment_status(
@@ -1804,6 +1909,101 @@ async def stripe_webhook(
                     booking_reference=booking_reference,
                     stack_trace=traceback.format_exc(),
                 )
+
+        # Mark promo code as used (if one was applied)
+        if promo_code:
+            try:
+                # Get booking ID from reference
+                booking = db_service.get_booking_by_reference(db, booking_reference)
+                subscriber = db.query(MarketingSubscriber).filter(
+                    MarketingSubscriber.promo_code == promo_code
+                ).first()
+                if subscriber:
+                    subscriber.promo_code_used = True
+                    subscriber.promo_code_used_booking_id = booking.id if booking else None
+                    subscriber.promo_code_used_at = datetime.utcnow()
+                    db.commit()
+            except Exception as e:
+                log_error(
+                    db=db,
+                    error_type="promo_code_marking",
+                    message=f"Failed to mark promo code as used: {str(e)}",
+                    request=request,
+                    booking_reference=booking_reference,
+                    stack_trace=traceback.format_exc(),
+                )
+
+        # Send booking confirmation email
+        try:
+            booking = db_service.get_booking_by_reference(db, booking_reference)
+            if booking:
+                # Calculate pickup time window (35-60 min after landing)
+                pickup_time_window = ""
+                if booking.pickup_time:
+                    landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+                    pickup_start_mins = landing_minutes + 35
+                    pickup_end_mins = landing_minutes + 60
+                    # Handle overnight
+                    if pickup_start_mins >= 24 * 60:
+                        pickup_start_mins -= 24 * 60
+                    if pickup_end_mins >= 24 * 60:
+                        pickup_end_mins -= 24 * 60
+                    pickup_start = f"{pickup_start_mins // 60:02d}:{pickup_start_mins % 60:02d}"
+                    pickup_end = f"{pickup_end_mins // 60:02d}:{pickup_end_mins % 60:02d}"
+                    pickup_time_window = f"{pickup_start} - {pickup_end}"
+
+                # Format dates nicely
+                dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
+                pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
+                dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else ""
+
+                # Format flight info
+                departure_flight = f"{booking.dropoff_flight_number} to {booking.dropoff_destination or 'destination'}"
+                return_flight = f"{booking.pickup_flight_number or 'N/A'} from {booking.pickup_origin or 'origin'}"
+
+                # Package name
+                package_name = "1 Week" if booking.package == "quick" else "2 Weeks"
+
+                # Amount paid
+                amount_pence = data.get("amount", 0)
+                amount_paid = f"£{amount_pence / 100:.2f}"
+
+                # Calculate discount if promo code was used
+                discount_amount = None
+                if promo_code:
+                    # 10% discount
+                    original_amount = amount_pence / 0.9  # Work backwards from discounted amount
+                    discount_amount = f"£{(original_amount - amount_pence) / 100:.2f}"
+
+                send_booking_confirmation_email(
+                    email=booking.customer.email,
+                    first_name=booking.customer.first_name,
+                    booking_reference=booking_reference,
+                    dropoff_date=dropoff_date_str,
+                    dropoff_time=dropoff_time_str,
+                    pickup_date=pickup_date_str,
+                    pickup_time_window=pickup_time_window,
+                    departure_flight=departure_flight,
+                    return_flight=return_flight,
+                    vehicle_make=booking.vehicle.make,
+                    vehicle_model=booking.vehicle.model,
+                    vehicle_colour=booking.vehicle.colour,
+                    vehicle_registration=booking.vehicle.registration,
+                    package_name=package_name,
+                    amount_paid=amount_paid,
+                    promo_code=promo_code if promo_code else None,
+                    discount_amount=discount_amount,
+                )
+        except Exception as e:
+            # Log error but don't fail the webhook - payment was successful
+            log_error(
+                db=db,
+                error_type="confirmation_email",
+                message=f"Failed to send confirmation email: {str(e)}",
+                request=request,
+                booking_reference=booking_reference,
+                stack_trace=traceback.format_exc(),
+            )
 
         return {"status": "success", "booking_reference": booking_reference}
 

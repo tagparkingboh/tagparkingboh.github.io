@@ -42,6 +42,9 @@ class PaymentIntentRequest(BaseModel):
     departure_id: Optional[int] = None
     drop_off_slot: Optional[str] = None
 
+    # Promo code (if applied)
+    promo_code: Optional[str] = None
+
 
 class PaymentIntentResponse(BaseModel):
     """Response containing payment intent details."""
@@ -98,6 +101,7 @@ def create_payment_intent(request: PaymentIntentRequest) -> PaymentIntentRespons
             "customer_name": request.customer_name,
             "departure_id": str(request.departure_id) if request.departure_id else "",
             "drop_off_slot": request.drop_off_slot or "",
+            "promo_code": request.promo_code or "",
         },
         receipt_email=request.customer_email,
         description=f"TAG Parking - {request.flight_number} ({request.flight_date})",
