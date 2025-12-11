@@ -219,3 +219,89 @@ class FlightArrival(Base):
 
     def __repr__(self):
         return f"<FlightArrival {self.flight_number} on {self.date} at {self.arrival_time}>"
+
+
+class AuditLogEvent(enum.Enum):
+    """Types of booking audit events."""
+    # Booking flow events
+    BOOKING_STARTED = "booking_started"
+    FLIGHT_SELECTED = "flight_selected"
+    SLOT_SELECTED = "slot_selected"
+    VEHICLE_ENTERED = "vehicle_entered"
+    CUSTOMER_ENTERED = "customer_entered"
+    BILLING_ENTERED = "billing_entered"
+    PAYMENT_INITIATED = "payment_initiated"
+    PAYMENT_SUCCEEDED = "payment_succeeded"
+    PAYMENT_FAILED = "payment_failed"
+    BOOKING_CONFIRMED = "booking_confirmed"
+    BOOKING_ABANDONED = "booking_abandoned"
+    # Admin events
+    BOOKING_CANCELLED = "booking_cancelled"
+    BOOKING_REFUNDED = "booking_refunded"
+    BOOKING_UPDATED = "booking_updated"
+
+
+class AuditLog(Base):
+    """Audit trail for booking events - tracks every step of the booking process."""
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Session tracking (for incomplete bookings)
+    session_id = Column(String(100), index=True)
+
+    # Booking reference (may be null for early-stage abandoned bookings)
+    booking_reference = Column(String(20), index=True)
+
+    # Event details
+    event = Column(Enum(AuditLogEvent), nullable=False, index=True)
+    event_data = Column(Text)  # JSON blob with event-specific data
+
+    # User context
+    ip_address = Column(String(45))  # IPv6 compatible
+    user_agent = Column(String(500))
+
+    # Timestamp
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    def __repr__(self):
+        return f"<AuditLog {self.event.value} - {self.booking_reference or self.session_id}>"
+
+
+class ErrorSeverity(enum.Enum):
+    """Severity levels for error logs."""
+    DEBUG = "debug"
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+
+class ErrorLog(Base):
+    """Error log for API and service errors."""
+    __tablename__ = "error_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Error classification
+    severity = Column(Enum(ErrorSeverity), default=ErrorSeverity.ERROR, nullable=False, index=True)
+    error_type = Column(String(100), nullable=False, index=True)  # e.g., "dvla_api", "stripe", "validation"
+    error_code = Column(String(50))  # HTTP status or custom code
+
+    # Error details
+    message = Column(Text, nullable=False)
+    stack_trace = Column(Text)
+    request_data = Column(Text)  # JSON blob with sanitized request data
+
+    # Context
+    endpoint = Column(String(200), index=True)
+    booking_reference = Column(String(20), index=True)
+    session_id = Column(String(100))
+    ip_address = Column(String(45))
+    user_agent = Column(String(500))
+
+    # Timestamp
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    def __repr__(self):
+        return f"<ErrorLog {self.severity.value} - {self.error_type}: {self.message[:50]}>"

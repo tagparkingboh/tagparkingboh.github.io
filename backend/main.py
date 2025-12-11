@@ -43,8 +43,10 @@ from stripe_service import (
 
 # Database imports
 from database import get_db, init_db
-from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival
+from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity
 import db_service
+import json
+import traceback
 
 
 # Initialize FastAPI app
@@ -89,6 +91,131 @@ def get_service() -> BookingService:
     path = str(FLIGHTS_DATA_PATH) if FLIGHTS_DATA_PATH.exists() else None
     return get_booking_service(path)
 
+
+# ============================================================================
+# LOGGING HELPERS
+# ============================================================================
+
+def log_audit_event(
+    db: Session,
+    event: AuditLogEvent,
+    request: Request = None,
+    session_id: str = None,
+    booking_reference: str = None,
+    event_data: dict = None,
+):
+    """
+    Log a booking audit event to the database.
+
+    Args:
+        db: Database session
+        event: The type of event (from AuditLogEvent enum)
+        request: FastAPI request object (for IP/user agent)
+        session_id: Frontend session ID for tracking incomplete bookings
+        booking_reference: Booking reference if available
+        event_data: Dictionary of event-specific data (will be JSON serialized)
+    """
+    try:
+        ip_address = None
+        user_agent = None
+
+        if request:
+            # Get client IP (handle proxies)
+            forwarded = request.headers.get("x-forwarded-for")
+            if forwarded:
+                ip_address = forwarded.split(",")[0].strip()
+            else:
+                ip_address = request.client.host if request.client else None
+            user_agent = request.headers.get("user-agent", "")[:500]
+
+        audit_log = AuditLog(
+            session_id=session_id,
+            booking_reference=booking_reference,
+            event=event,
+            event_data=json.dumps(event_data) if event_data else None,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        db.add(audit_log)
+        db.commit()
+    except Exception as e:
+        # Don't let logging failures break the main flow
+        print(f"Failed to log audit event: {e}")
+        db.rollback()
+
+
+def log_error(
+    db: Session,
+    error_type: str,
+    message: str,
+    request: Request = None,
+    severity: ErrorSeverity = ErrorSeverity.ERROR,
+    error_code: str = None,
+    stack_trace: str = None,
+    request_data: dict = None,
+    booking_reference: str = None,
+    session_id: str = None,
+):
+    """
+    Log an error to the database.
+
+    Args:
+        db: Database session
+        error_type: Category of error (e.g., "dvla_api", "stripe", "validation")
+        message: Human-readable error message
+        request: FastAPI request object (for endpoint/IP/user agent)
+        severity: Error severity level
+        error_code: HTTP status or custom error code
+        stack_trace: Full stack trace if available
+        request_data: Sanitized request data (remove sensitive info)
+        booking_reference: Associated booking reference if known
+        session_id: Frontend session ID if known
+    """
+    try:
+        ip_address = None
+        user_agent = None
+        endpoint = None
+
+        if request:
+            forwarded = request.headers.get("x-forwarded-for")
+            if forwarded:
+                ip_address = forwarded.split(",")[0].strip()
+            else:
+                ip_address = request.client.host if request.client else None
+            user_agent = request.headers.get("user-agent", "")[:500]
+            endpoint = f"{request.method} {request.url.path}"
+
+        # Sanitize request_data to remove sensitive fields
+        if request_data:
+            sanitized = {k: v for k, v in request_data.items()
+                        if k.lower() not in ('password', 'card', 'cvv', 'cvc', 'secret', 'token')}
+        else:
+            sanitized = None
+
+        error_log = ErrorLog(
+            severity=severity,
+            error_type=error_type,
+            error_code=error_code,
+            message=message,
+            stack_trace=stack_trace,
+            request_data=json.dumps(sanitized) if sanitized else None,
+            endpoint=endpoint,
+            booking_reference=booking_reference,
+            session_id=session_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        db.add(error_log)
+        db.commit()
+    except Exception as e:
+        # Don't let logging failures break the main flow
+        print(f"Failed to log error: {e}")
+        db.rollback()
+
+
+# ============================================================================
+# REQUEST/RESPONSE MODELS
+# ============================================================================
 
 # Request/Response models for API
 class SlotAvailabilityRequest(BaseModel):
@@ -634,7 +761,11 @@ class VehicleLookupResponse(BaseModel):
 
 
 @app.post("/api/vehicles/dvla-lookup", response_model=VehicleLookupResponse)
-async def lookup_vehicle(request: VehicleLookupRequest):
+async def lookup_vehicle(
+    request: VehicleLookupRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
     """
     Lookup vehicle make and colour from DVLA Vehicle Enquiry Service.
 
@@ -703,15 +834,28 @@ async def lookup_vehicle(request: VehicleLookupRequest):
                     error="Invalid registration format"
                 )
             elif response.status_code == 403:
-                print(f"DVLA API 403: {response.text}")
+                log_error(
+                    db=db,
+                    error_type="dvla_api",
+                    message="DVLA API access denied",
+                    request=http_request,
+                    error_code="403",
+                    request_data={"registration": clean_reg},
+                )
                 return VehicleLookupResponse(
                     success=False,
                     registration=clean_reg,
                     error="DVLA API access denied - check API key"
                 )
             else:
-                # Log error for debugging
-                print(f"DVLA API error: {response.status_code} - {response.text}")
+                log_error(
+                    db=db,
+                    error_type="dvla_api",
+                    message=f"DVLA API error: {response.status_code}",
+                    request=http_request,
+                    error_code=str(response.status_code),
+                    request_data={"registration": clean_reg},
+                )
                 return VehicleLookupResponse(
                     success=False,
                     registration=clean_reg,
@@ -719,13 +863,28 @@ async def lookup_vehicle(request: VehicleLookupRequest):
                 )
 
     except httpx.TimeoutException:
+        log_error(
+            db=db,
+            error_type="dvla_api",
+            message="DVLA API timeout",
+            request=http_request,
+            severity=ErrorSeverity.WARNING,
+            request_data={"registration": clean_reg},
+        )
         return VehicleLookupResponse(
             success=False,
             registration=clean_reg,
             error="DVLA service timeout"
         )
     except Exception as e:
-        print(f"DVLA lookup error: {e}")
+        log_error(
+            db=db,
+            error_type="dvla_api",
+            message=str(e),
+            request=http_request,
+            stack_trace=traceback.format_exc(),
+            request_data={"registration": clean_reg},
+        )
         return VehicleLookupResponse(
             success=False,
             registration=clean_reg,
@@ -798,7 +957,11 @@ class AddressLookupResponse(BaseModel):
 
 
 @app.post("/api/address/postcode-lookup", response_model=AddressLookupResponse)
-async def lookup_address(request: AddressLookupRequest):
+async def lookup_address(
+    request: AddressLookupRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
     """
     Lookup addresses by postcode using OS Places API.
 
@@ -877,14 +1040,28 @@ async def lookup_address(request: AddressLookupRequest):
                     error="Invalid postcode"
                 )
             elif response.status_code == 401:
-                print(f"OS Places API 401: {response.text}")
+                log_error(
+                    db=db,
+                    error_type="os_places_api",
+                    message="OS Places API authentication failed",
+                    request=http_request,
+                    error_code="401",
+                    request_data={"postcode": clean_postcode},
+                )
                 return AddressLookupResponse(
                     success=False,
                     postcode=clean_postcode,
                     error="Address service authentication failed"
                 )
             else:
-                print(f"OS Places API error: {response.status_code} - {response.text}")
+                log_error(
+                    db=db,
+                    error_type="os_places_api",
+                    message=f"OS Places API error: {response.status_code}",
+                    request=http_request,
+                    error_code=str(response.status_code),
+                    request_data={"postcode": clean_postcode},
+                )
                 return AddressLookupResponse(
                     success=False,
                     postcode=clean_postcode,
@@ -892,13 +1069,28 @@ async def lookup_address(request: AddressLookupRequest):
                 )
 
     except httpx.TimeoutException:
+        log_error(
+            db=db,
+            error_type="os_places_api",
+            message="OS Places API timeout",
+            request=http_request,
+            severity=ErrorSeverity.WARNING,
+            request_data={"postcode": clean_postcode},
+        )
         return AddressLookupResponse(
             success=False,
             postcode=clean_postcode,
             error="Address service timeout"
         )
     except Exception as e:
-        print(f"Address lookup error: {e}")
+        log_error(
+            db=db,
+            error_type="os_places_api",
+            message=str(e),
+            request=http_request,
+            stack_trace=traceback.format_exc(),
+            request_data={"postcode": clean_postcode},
+        )
         return AddressLookupResponse(
             success=False,
             postcode=clean_postcode,
@@ -986,7 +1178,11 @@ async def get_stripe_config():
 
 
 @app.post("/api/payments/create-intent", response_model=CreatePaymentResponse)
-async def create_payment(request: CreatePaymentRequest, db: Session = Depends(get_db)):
+async def create_payment(
+    request: CreatePaymentRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
     """
     Create a Stripe PaymentIntent for a booking.
 
@@ -1178,6 +1374,23 @@ async def create_payment(request: CreatePaymentRequest, db: Session = Depends(ge
 
         settings = get_settings()
 
+        # Log the payment initiation
+        log_audit_event(
+            db=db,
+            event=AuditLogEvent.PAYMENT_INITIATED,
+            request=http_request,
+            booking_reference=booking_reference,
+            event_data={
+                "payment_intent_id": intent.payment_intent_id,
+                "amount_pence": amount,
+                "package": request.package,
+                "email": request.email,
+                "flight_number": request.flight_number,
+                "drop_off_date": request.drop_off_date,
+                "pickup_date": request.pickup_date,
+            },
+        )
+
         return CreatePaymentResponse(
             client_secret=intent.client_secret,
             payment_intent_id=intent.payment_intent_id,
@@ -1188,6 +1401,19 @@ async def create_payment(request: CreatePaymentRequest, db: Session = Depends(ge
         )
 
     except Exception as e:
+        # Log the error
+        log_error(
+            db=db,
+            error_type="payment_creation",
+            message=str(e),
+            request=http_request,
+            stack_trace=traceback.format_exc(),
+            request_data={
+                "email": request.email,
+                "package": request.package,
+                "flight_number": request.flight_number,
+            },
+        )
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -1263,17 +1489,36 @@ async def stripe_webhook(
         departure_id = metadata.get("departure_id")
         drop_off_slot = metadata.get("drop_off_slot")
 
-        # Log the successful payment
-        print(f"Payment succeeded: {payment_intent_id}")
-        print(f"Booking reference: {booking_reference}")
-        print(f"Amount: £{data['amount'] / 100:.2f}")
-
         # Update payment status in database (this also updates booking to CONFIRMED)
         db_service.update_payment_status(
             db=db,
             stripe_payment_intent_id=payment_intent_id,
             status=PaymentStatus.SUCCEEDED,
             paid_at=datetime.utcnow(),
+        )
+
+        # Log payment success
+        log_audit_event(
+            db=db,
+            event=AuditLogEvent.PAYMENT_SUCCEEDED,
+            request=request,
+            booking_reference=booking_reference,
+            event_data={
+                "payment_intent_id": payment_intent_id,
+                "amount_pence": data.get("amount"),
+            },
+        )
+
+        # Log booking confirmed
+        log_audit_event(
+            db=db,
+            event=AuditLogEvent.BOOKING_CONFIRMED,
+            request=request,
+            booking_reference=booking_reference,
+            event_data={
+                "departure_id": departure_id,
+                "drop_off_slot": drop_off_slot,
+            },
         )
 
         # Book the slot on the departure flight (now that payment succeeded)
@@ -1287,22 +1532,26 @@ async def stripe_webhook(
                     # Slot "120" = 2 hours before = slot 2
                     if drop_off_slot == "165":
                         departure.is_slot_1_booked = True
-                        print(f"Booked slot 1 for departure {departure_id}")
                     elif drop_off_slot == "120":
                         departure.is_slot_2_booked = True
-                        print(f"Booked slot 2 for departure {departure_id}")
                     db.commit()
             except Exception as e:
-                print(f"Error booking slot: {e}")
+                log_error(
+                    db=db,
+                    error_type="slot_booking",
+                    message=f"Failed to book slot after payment: {str(e)}",
+                    request=request,
+                    booking_reference=booking_reference,
+                    stack_trace=traceback.format_exc(),
+                )
 
         return {"status": "success", "booking_reference": booking_reference}
 
     elif event_type == "payment_intent.payment_failed":
         payment_intent_id = data["id"]
+        metadata = data.get("metadata", {})
+        booking_reference = metadata.get("booking_reference")
         error_message = data.get("last_payment_error", {}).get("message", "Unknown error")
-
-        print(f"Payment failed: {payment_intent_id}")
-        print(f"Error: {error_message}")
 
         # Update payment status to failed
         db_service.update_payment_status(
@@ -1311,14 +1560,47 @@ async def stripe_webhook(
             status=PaymentStatus.FAILED,
         )
 
+        # Log payment failure as audit event
+        log_audit_event(
+            db=db,
+            event=AuditLogEvent.PAYMENT_FAILED,
+            request=request,
+            booking_reference=booking_reference,
+            event_data={
+                "payment_intent_id": payment_intent_id,
+                "error_message": error_message,
+            },
+        )
+
+        # Also log as error for error tracking
+        log_error(
+            db=db,
+            error_type="stripe_payment",
+            message=f"Payment failed: {error_message}",
+            request=request,
+            severity=ErrorSeverity.WARNING,
+            booking_reference=booking_reference,
+        )
+
         return {"status": "failed", "error": error_message}
 
     elif event_type == "charge.refunded":
         charge_id = data["id"]
         refund_amount = data.get("amount_refunded", 0)
+        metadata = data.get("metadata", {})
+        booking_reference = metadata.get("booking_reference")
 
-        print(f"Refund processed: {charge_id}")
-        print(f"Amount refunded: £{refund_amount / 100:.2f}")
+        # Log refund
+        log_audit_event(
+            db=db,
+            event=AuditLogEvent.BOOKING_REFUNDED,
+            request=request,
+            booking_reference=booking_reference,
+            event_data={
+                "charge_id": charge_id,
+                "refund_amount_pence": refund_amount,
+            },
+        )
 
         return {"status": "refunded"}
 
