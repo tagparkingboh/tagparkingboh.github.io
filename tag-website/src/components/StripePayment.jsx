@@ -163,6 +163,7 @@ function StripePayment({
   selectedArrivalFlight,
   customerId,
   vehicleId,
+  sessionId,
   onPaymentSuccess,
   onPaymentError,
 }) {
@@ -199,6 +200,7 @@ function StripePayment({
             // IDs from incremental saves (if available)
             customer_id: customerId || null,
             vehicle_id: vehicleId || null,
+            session_id: sessionId || null,
             // Customer details
             first_name: formData.firstName,
             last_name: formData.lastName,

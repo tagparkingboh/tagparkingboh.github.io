@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
@@ -45,6 +45,11 @@ const countryNames = {
   EG: 'Egypt'
 }
 
+// Generate a unique session ID for tracking the booking flow
+const generateSessionId = () => {
+  return `sess_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
+}
+
 function Bookings() {
   const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState(1)
@@ -53,6 +58,9 @@ function Bookings() {
   const [customerId, setCustomerId] = useState(null)
   const [vehicleId, setVehicleId] = useState(null)
   const [saving, setSaving] = useState(false)
+
+  // Session ID for audit trail - persists across the booking flow
+  const sessionIdRef = useRef(generateSessionId())
   // DVLA lookup state
   const [dvlaLoading, setDvlaLoading] = useState(false)
   const [dvlaError, setDvlaError] = useState('')
@@ -368,6 +376,7 @@ function Bookings() {
           last_name: formData.lastName,
           email: formData.email,
           phone: formData.phone,
+          session_id: sessionIdRef.current,
         }),
       })
       const data = await response.json()
@@ -394,6 +403,7 @@ function Bookings() {
           make: formData.make === 'Other' ? formData.customMake : formData.make,
           model: formData.model === 'Other' ? formData.customModel : formData.model,
           colour: formData.colour,
+          session_id: sessionIdRef.current,
         }),
       })
       const data = await response.json()
@@ -421,6 +431,7 @@ function Bookings() {
           billing_county: formData.billingCounty,
           billing_postcode: formData.billingPostcode.toUpperCase(),
           billing_country: formData.billingCountry,
+          session_id: sessionIdRef.current,
         }),
       })
       const data = await response.json()
@@ -1475,6 +1486,7 @@ function Bookings() {
                   selectedArrivalFlight={selectedArrivalFlight}
                   customerId={customerId}
                   vehicleId={vehicleId}
+                  sessionId={sessionIdRef.current}
                   onPaymentSuccess={handlePaymentSuccess}
                   onPaymentError={handlePaymentError}
                 />

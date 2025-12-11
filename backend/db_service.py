@@ -28,6 +28,71 @@ def get_customer_by_email(db: Session, email: str) -> Optional[Customer]:
     return db.query(Customer).filter(Customer.email == email).first()
 
 
+def normalize_name(name: str) -> str:
+    """Normalize a name for comparison (lowercase, strip whitespace)."""
+    return name.strip().lower() if name else ""
+
+
+def normalize_postcode(postcode: str) -> str:
+    """Normalize a postcode for comparison (uppercase, no spaces)."""
+    return postcode.replace(" ", "").upper() if postcode else ""
+
+
+def find_potential_duplicate_customer(
+    db: Session,
+    first_name: str,
+    last_name: str,
+    postcode: str,
+    exclude_email: str = None,
+) -> Optional[Customer]:
+    """
+    Find a potential duplicate customer by name and postcode.
+
+    This is used to flag possible duplicates when someone books with
+    a different email but same name/postcode combination.
+
+    Args:
+        db: Database session
+        first_name: Customer's first name
+        last_name: Customer's last name
+        postcode: Customer's billing postcode
+        exclude_email: Email to exclude from search (the current customer's email)
+
+    Returns:
+        Customer if a potential duplicate is found, None otherwise
+    """
+    if not postcode or not first_name or not last_name:
+        return None
+
+    # Normalize for comparison
+    norm_first = normalize_name(first_name)
+    norm_last = normalize_name(last_name)
+    norm_postcode = normalize_postcode(postcode)
+
+    # Query customers with matching postcode (case-insensitive)
+    query = db.query(Customer).filter(
+        Customer.billing_postcode.isnot(None)
+    )
+
+    if exclude_email:
+        query = query.filter(Customer.email != exclude_email)
+
+    candidates = query.all()
+
+    # Check for name + postcode match
+    for customer in candidates:
+        cust_postcode = normalize_postcode(customer.billing_postcode or "")
+        cust_first = normalize_name(customer.first_name or "")
+        cust_last = normalize_name(customer.last_name or "")
+
+        if (cust_postcode == norm_postcode and
+            cust_first == norm_first and
+            cust_last == norm_last):
+            return customer
+
+    return None
+
+
 def get_customer_by_id(db: Session, customer_id: int) -> Optional[Customer]:
     """Get customer by ID."""
     return db.query(Customer).filter(Customer.id == customer_id).first()
@@ -45,8 +110,13 @@ def create_customer(
     billing_county: str = None,
     billing_postcode: str = None,
     billing_country: str = "United Kingdom"
-) -> Customer:
-    """Create a new customer or return existing one if email matches."""
+) -> tuple[Customer, bool]:
+    """
+    Create a new customer or return existing one if email matches.
+
+    Returns:
+        tuple: (Customer object, is_new: bool) - is_new is True if newly created
+    """
     # Check if customer already exists
     existing = get_customer_by_email(db, email)
     if existing:
@@ -62,7 +132,7 @@ def create_customer(
         existing.billing_country = billing_country
         db.commit()
         db.refresh(existing)
-        return existing
+        return existing, False  # Existing customer updated
 
     # Create new customer
     customer = Customer(
@@ -80,7 +150,7 @@ def create_customer(
     db.add(customer)
     db.commit()
     db.refresh(customer)
-    return customer
+    return customer, True  # New customer created
 
 
 def get_all_customers(db: Session, skip: int = 0, limit: int = 100) -> List[Customer]:
@@ -107,8 +177,13 @@ def create_vehicle(
     make: str,
     model: str,
     colour: str
-) -> Vehicle:
-    """Create a new vehicle or return existing one."""
+) -> tuple[Vehicle, bool]:
+    """
+    Create a new vehicle or return existing one.
+
+    Returns:
+        tuple: (Vehicle object, is_new: bool) - is_new is True if newly created
+    """
     registration = registration.upper()
 
     # Check if vehicle already exists for this customer
@@ -120,7 +195,7 @@ def create_vehicle(
         existing.colour = colour
         db.commit()
         db.refresh(existing)
-        return existing
+        return existing, False  # Existing vehicle updated
 
     # Create new vehicle
     vehicle = Vehicle(
@@ -133,7 +208,7 @@ def create_vehicle(
     db.add(vehicle)
     db.commit()
     db.refresh(vehicle)
-    return vehicle
+    return vehicle, True  # New vehicle created
 
 
 # ============== BOOKING OPERATIONS ==============
@@ -448,7 +523,7 @@ def create_full_booking(
     Returns dict with all created objects.
     """
     # 1. Create or update customer
-    customer = create_customer(
+    customer, _is_new_customer = create_customer(
         db=db,
         first_name=first_name,
         last_name=last_name,
@@ -463,7 +538,7 @@ def create_full_booking(
     )
 
     # 2. Create or update vehicle
-    vehicle = create_vehicle(
+    vehicle, _is_new_vehicle = create_vehicle(
         db=db,
         customer_id=customer.id,
         registration=registration,

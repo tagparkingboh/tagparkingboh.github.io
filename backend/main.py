@@ -633,6 +633,7 @@ class CreateCustomerRequest(BaseModel):
     last_name: str
     email: str
     phone: str
+    session_id: Optional[str] = None
 
 
 class UpdateCustomerBillingRequest(BaseModel):
@@ -643,6 +644,7 @@ class UpdateCustomerBillingRequest(BaseModel):
     billing_county: Optional[str] = None
     billing_postcode: str
     billing_country: str = "United Kingdom"
+    session_id: Optional[str] = None
 
 
 class CreateVehicleRequest(BaseModel):
@@ -652,10 +654,15 @@ class CreateVehicleRequest(BaseModel):
     make: str
     model: str
     colour: str
+    session_id: Optional[str] = None
 
 
 @app.post("/api/customers")
-async def create_or_update_customer(request: CreateCustomerRequest, db: Session = Depends(get_db)):
+async def create_or_update_customer(
+    request: CreateCustomerRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
     """
     Create or update a customer (Step 1: Contact Details).
 
@@ -663,16 +670,31 @@ async def create_or_update_customer(request: CreateCustomerRequest, db: Session 
     Returns the customer ID for use in subsequent steps.
     """
     try:
-        customer = db_service.create_customer(
+        customer, is_new_customer = db_service.create_customer(
             db=db,
             first_name=request.first_name,
             last_name=request.last_name,
             email=request.email,
             phone=request.phone,
         )
+
+        # Log audit event for customer entry
+        log_audit_event(
+            db=db,
+            event=AuditLogEvent.CUSTOMER_ENTERED,
+            request=http_request,
+            session_id=request.session_id,
+            event_data={
+                "customer_id": customer.id,
+                "email": request.email,
+                "is_new_customer": is_new_customer,
+            },
+        )
+
         return {
             "success": True,
             "customer_id": customer.id,
+            "is_new_customer": is_new_customer,
             "message": "Customer saved successfully",
         }
     except Exception as e:
@@ -683,7 +705,8 @@ async def create_or_update_customer(request: CreateCustomerRequest, db: Session 
 async def update_customer_billing(
     customer_id: int,
     request: UpdateCustomerBillingRequest,
-    db: Session = Depends(get_db)
+    http_request: Request,
+    db: Session = Depends(get_db),
 ):
     """
     Update customer billing address (Step 5: Billing Address).
@@ -702,17 +725,62 @@ async def update_customer_billing(
         db.commit()
         db.refresh(customer)
 
-        return {
+        # Check for potential duplicate (same name + postcode, different email)
+        potential_duplicate = db_service.find_potential_duplicate_customer(
+            db=db,
+            first_name=customer.first_name,
+            last_name=customer.last_name,
+            postcode=request.billing_postcode,
+            exclude_email=customer.email,
+        )
+
+        # Build event data for audit log
+        event_data = {
+            "customer_id": customer.id,
+            "billing_city": request.billing_city,
+            "billing_country": request.billing_country,
+        }
+
+        # Add potential duplicate info if found
+        if potential_duplicate:
+            event_data["potential_duplicate_of"] = potential_duplicate.id
+            event_data["potential_duplicate_email"] = potential_duplicate.email
+            event_data["match_reason"] = "name_and_postcode"
+
+        # Log audit event for billing address entry
+        log_audit_event(
+            db=db,
+            event=AuditLogEvent.BILLING_ENTERED,
+            request=http_request,
+            session_id=request.session_id,
+            event_data=event_data,
+        )
+
+        response_data = {
             "success": True,
             "customer_id": customer.id,
             "message": "Billing address saved successfully",
         }
+
+        # Include potential duplicate warning in response (for admin visibility)
+        if potential_duplicate:
+            response_data["potential_duplicate"] = {
+                "customer_id": potential_duplicate.id,
+                "email": potential_duplicate.email,
+                "match_reason": "name_and_postcode",
+            }
+
+        return response_data
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/vehicles")
-async def create_or_update_vehicle(request: CreateVehicleRequest, db: Session = Depends(get_db)):
+async def create_or_update_vehicle(
+    request: CreateVehicleRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
     """
     Create or update a vehicle (Step 3: Vehicle Details).
 
@@ -725,7 +793,7 @@ async def create_or_update_vehicle(request: CreateVehicleRequest, db: Session = 
         raise HTTPException(status_code=404, detail="Customer not found")
 
     try:
-        vehicle = db_service.create_vehicle(
+        vehicle, is_new_vehicle = db_service.create_vehicle(
             db=db,
             customer_id=request.customer_id,
             registration=request.registration,
@@ -733,9 +801,26 @@ async def create_or_update_vehicle(request: CreateVehicleRequest, db: Session = 
             model=request.model,
             colour=request.colour,
         )
+
+        # Log audit event for vehicle entry
+        log_audit_event(
+            db=db,
+            event=AuditLogEvent.VEHICLE_ENTERED,
+            request=http_request,
+            session_id=request.session_id,
+            event_data={
+                "vehicle_id": vehicle.id,
+                "customer_id": request.customer_id,
+                "registration": request.registration,
+                "make": request.make,
+                "is_new_vehicle": is_new_vehicle,
+            },
+        )
+
         return {
             "success": True,
             "vehicle_id": vehicle.id,
+            "is_new_vehicle": is_new_vehicle,
             "message": "Vehicle saved successfully",
         }
     except Exception as e:
@@ -1145,6 +1230,9 @@ class CreatePaymentRequest(BaseModel):
     pickup_flight_number: Optional[str] = None
     pickup_origin: Optional[str] = None
 
+    # Session tracking
+    session_id: Optional[str] = None
+
 
 class CreatePaymentResponse(BaseModel):
     """Response with payment intent details for frontend."""
@@ -1379,6 +1467,7 @@ async def create_payment(
             db=db,
             event=AuditLogEvent.PAYMENT_INITIATED,
             request=http_request,
+            session_id=request.session_id,
             booking_reference=booking_reference,
             event_data={
                 "payment_intent_id": intent.payment_intent_id,
@@ -1408,6 +1497,7 @@ async def create_payment(
             message=str(e),
             request=http_request,
             stack_trace=traceback.format_exc(),
+            session_id=request.session_id,
             request_data={
                 "email": request.email,
                 "package": request.package,
