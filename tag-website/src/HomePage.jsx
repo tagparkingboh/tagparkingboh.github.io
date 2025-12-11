@@ -3,23 +3,23 @@ import { Link } from 'react-router-dom'
 import './App.css'
 
 function HomePage() {
-  // Load HubSpot tracking script
-  useEffect(() => {
-    const script = document.createElement('script')
-    script.src = '//js-ap1.hs-scripts.com/442431654.js'
-    script.id = 'hs-script-loader'
-    script.async = true
-    script.defer = true
-    document.body.appendChild(script)
+  // DISABLED: HubSpot tracking script
+  // useEffect(() => {
+  //   const script = document.createElement('script')
+  //   script.src = '//js-ap1.hs-scripts.com/442431654.js'
+  //   script.id = 'hs-script-loader'
+  //   script.async = true
+  //   script.defer = true
+  //   document.body.appendChild(script)
 
-    return () => {
-      // Cleanup on unmount
-      const existingScript = document.getElementById('hs-script-loader')
-      if (existingScript) {
-        existingScript.remove()
-      }
-    }
-  }, [])
+  //   return () => {
+  //     // Cleanup on unmount
+  //     const existingScript = document.getElementById('hs-script-loader')
+  //     if (existingScript) {
+  //       existingScript.remove()
+  //     }
+  //   }
+  // }, [])
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [openFaq, setOpenFaq] = useState(null)
@@ -62,57 +62,68 @@ function HomePage() {
       })
       const apiData = await apiResponse.json().catch(() => null)
       console.log('Marketing API Response:', apiResponse.status, apiData)
-    } catch (apiError) {
-      console.error('Marketing API Error:', apiError)
-      // Continue with HubSpot even if our API fails
-    }
-
-    // Send to HubSpot
-    const portalId = import.meta.env.VITE_HUBSPOT_PORTAL_ID
-    const formId = import.meta.env.VITE_HUBSPOT_FORM_ID
-    const hubspotUrl = `https://api.hsforms.com/submissions/v3/integration/submit/${portalId}/${formId}`
-
-    const payload = {
-      fields: [
-        { name: 'firstname', value: trimmedFirstName },
-        { name: 'lastname', value: trimmedLastName },
-        { name: 'email', value: trimmedEmail },
-      ],
-      context: {
-        pageUri: window.location.href,
-        pageName: 'Tag Parking - Subscribe',
-      },
-    }
-
-    console.log('HubSpot Request:', JSON.stringify(payload, null, 2))
-
-    try {
-      const response = await fetch(hubspotUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      })
-
-      const responseData = await response.json().catch(() => null)
-      console.log('HubSpot Response:', response.status, responseData)
-
-      if (response.ok) {
+      // Backend API success - show success message
+      if (apiResponse.ok) {
         setSubmitStatus('success')
         setFirstName('')
         setLastName('')
         setEmail('')
       } else {
-        console.error('HubSpot Error:', response.status, responseData)
         setSubmitStatus('error')
       }
-    } catch (error) {
-      console.error('Submit Error:', error)
+    } catch (apiError) {
+      console.error('Marketing API Error:', apiError)
       setSubmitStatus('error')
     } finally {
       setIsSubmitting(false)
     }
+
+    // DISABLED: HubSpot form submission
+    // const portalId = import.meta.env.VITE_HUBSPOT_PORTAL_ID
+    // const formId = import.meta.env.VITE_HUBSPOT_FORM_ID
+    // const hubspotUrl = `https://api.hsforms.com/submissions/v3/integration/submit/${portalId}/${formId}`
+
+    // const payload = {
+    //   fields: [
+    //     { name: 'firstname', value: trimmedFirstName },
+    //     { name: 'lastname', value: trimmedLastName },
+    //     { name: 'email', value: trimmedEmail },
+    //   ],
+    //   context: {
+    //     pageUri: window.location.href,
+    //     pageName: 'Tag Parking - Subscribe',
+    //   },
+    // }
+
+    // console.log('HubSpot Request:', JSON.stringify(payload, null, 2))
+
+    // try {
+    //   const response = await fetch(hubspotUrl, {
+    //     method: 'POST',
+    //     headers: {
+    //       'Content-Type': 'application/json',
+    //     },
+    //     body: JSON.stringify(payload),
+    //   })
+
+    //   const responseData = await response.json().catch(() => null)
+    //   console.log('HubSpot Response:', response.status, responseData)
+
+    //   if (response.ok) {
+    //     setSubmitStatus('success')
+    //     setFirstName('')
+    //     setLastName('')
+    //     setEmail('')
+    //   } else {
+    //     console.error('HubSpot Error:', response.status, responseData)
+    //     setSubmitStatus('error')
+    //   }
+    // } catch (error) {
+    //   console.error('Submit Error:', error)
+    //   setSubmitStatus('error')
+    // } finally {
+    //   setIsSubmitting(false)
+    // }
   }
 
   const toggleMenu = () => {
