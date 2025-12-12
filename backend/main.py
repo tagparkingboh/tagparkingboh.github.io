@@ -1894,36 +1894,61 @@ async def stripe_webhook(
         promo_code = metadata.get("promo_code")
 
         # Update payment status in database (this also updates booking to CONFIRMED)
-        db_service.update_payment_status(
-            db=db,
-            stripe_payment_intent_id=payment_intent_id,
-            status=PaymentStatus.SUCCEEDED,
-            paid_at=datetime.utcnow(),
-        )
+        try:
+            payment = db_service.update_payment_status(
+                db=db,
+                stripe_payment_intent_id=payment_intent_id,
+                status=PaymentStatus.SUCCEEDED,
+                paid_at=datetime.utcnow(),
+            )
+            if not payment:
+                # Payment not found in database - log but continue
+                log_error(
+                    db=db,
+                    error_type="webhook_payment_not_found",
+                    message=f"Payment record not found for intent: {payment_intent_id}",
+                    request=request,
+                    booking_reference=booking_reference,
+                )
+        except Exception as e:
+            log_error(
+                db=db,
+                error_type="webhook_payment_update",
+                message=f"Failed to update payment status: {str(e)}",
+                request=request,
+                booking_reference=booking_reference,
+                stack_trace=traceback.format_exc(),
+            )
 
         # Log payment success
-        log_audit_event(
-            db=db,
-            event=AuditLogEvent.PAYMENT_SUCCEEDED,
-            request=request,
-            booking_reference=booking_reference,
-            event_data={
-                "payment_intent_id": payment_intent_id,
-                "amount_pence": data.get("amount"),
-            },
-        )
+        try:
+            log_audit_event(
+                db=db,
+                event=AuditLogEvent.PAYMENT_SUCCEEDED,
+                request=request,
+                booking_reference=booking_reference,
+                event_data={
+                    "payment_intent_id": payment_intent_id,
+                    "amount_pence": data.get("amount"),
+                },
+            )
+        except Exception as e:
+            print(f"[WEBHOOK] Failed to log audit event PAYMENT_SUCCEEDED: {e}")
 
         # Log booking confirmed
-        log_audit_event(
-            db=db,
-            event=AuditLogEvent.BOOKING_CONFIRMED,
-            request=request,
-            booking_reference=booking_reference,
-            event_data={
-                "departure_id": departure_id,
-                "drop_off_slot": drop_off_slot,
-            },
-        )
+        try:
+            log_audit_event(
+                db=db,
+                event=AuditLogEvent.BOOKING_CONFIRMED,
+                request=request,
+                booking_reference=booking_reference,
+                event_data={
+                    "departure_id": departure_id,
+                    "drop_off_slot": drop_off_slot,
+                },
+            )
+        except Exception as e:
+            print(f"[WEBHOOK] Failed to log audit event BOOKING_CONFIRMED: {e}")
 
         # Book the slot on the departure flight (now that payment succeeded)
         if departure_id and drop_off_slot:
