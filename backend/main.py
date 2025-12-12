@@ -1592,13 +1592,21 @@ async def create_payment(
         promo_code_applied = None
         if request.promo_code:
             promo_code = request.promo_code.strip().upper()
+            print(f"[PROMO] Looking up promo code: {promo_code}")
             subscriber = db.query(MarketingSubscriber).filter(
                 MarketingSubscriber.promo_code == promo_code
             ).first()
-            if subscriber and not subscriber.promo_code_used:
-                # Valid promo code - apply 10% discount
-                discount_amount = int(original_amount * PROMO_DISCOUNT_PERCENT / 100)
-                promo_code_applied = promo_code
+            if subscriber:
+                print(f"[PROMO] Found subscriber: {subscriber.email}, used: {subscriber.promo_code_used}")
+                if not subscriber.promo_code_used:
+                    # Valid promo code - apply 10% discount
+                    discount_amount = int(original_amount * PROMO_DISCOUNT_PERCENT / 100)
+                    promo_code_applied = promo_code
+                    print(f"[PROMO] Discount applied: {discount_amount} pence")
+                else:
+                    print(f"[PROMO] Code already used!")
+            else:
+                print(f"[PROMO] No subscriber found with this code")
 
         # Final amount after discount
         amount = original_amount - discount_amount
