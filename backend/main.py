@@ -45,7 +45,7 @@ from stripe_service import (
 
 # Database imports
 from database import get_db, init_db
-from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking
+from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle
 import db_service
 import json
 import traceback
@@ -1787,15 +1787,21 @@ async def create_payment(
             booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
             if booking:
                 booking.status = BookingStatus.CONFIRMED
+                booking.updated_at = datetime.utcnow()
                 db.commit()
+                db.refresh(booking)
 
-            # Create payment record with £0 amount
-            db_service.create_payment(
+            # Create payment record with £0 amount and mark as SUCCEEDED
+            payment = db_service.create_payment(
                 db=db,
                 booking_id=booking_id,
                 stripe_payment_intent_id=f"free_{booking_reference}",  # Pseudo-ID for free bookings
                 amount_pence=0,
             )
+            # Update payment status to SUCCEEDED (it's created as PENDING by default)
+            payment.status = PaymentStatus.SUCCEEDED
+            payment.paid_at = datetime.utcnow()
+            db.commit()
 
             # Mark promo code as used
             if promo_code_applied:
@@ -1818,10 +1824,10 @@ async def create_payment(
                         departure.is_slot_2_booked = True
                     db.commit()
 
-            # Log the free booking
+            # Log payment success
             log_audit_event(
                 db=db,
-                event=AuditLogEvent.PAYMENT_INITIATED,
+                event=AuditLogEvent.PAYMENT_SUCCEEDED,
                 request=http_request,
                 session_id=request.session_id,
                 booking_reference=booking_reference,
@@ -1830,33 +1836,88 @@ async def create_payment(
                     "amount_pence": 0,
                     "is_free_booking": True,
                     "promo_code": promo_code_applied,
+                },
+            )
+
+            # Log booking confirmed
+            log_audit_event(
+                db=db,
+                event=AuditLogEvent.BOOKING_CONFIRMED,
+                request=http_request,
+                session_id=request.session_id,
+                booking_reference=booking_reference,
+                event_data={
                     "package": request.package,
                     "email": request.email,
                     "flight_number": request.flight_number,
                     "drop_off_date": request.drop_off_date,
                     "pickup_date": request.pickup_date,
+                    "departure_id": request.departure_id,
+                    "drop_off_slot": request.drop_off_slot,
                 },
             )
 
             # Send confirmation email for free booking
             try:
-                from email_service import send_booking_confirmation_email
-                send_booking_confirmation_email(
-                    first_name=request.first_name,
+                # Format dates nicely for email
+                dropoff_date_str = dropoff_date.strftime("%A, %d %B %Y")
+                pickup_date_str = pickup_date.strftime("%A, %d %B %Y")
+                dropoff_time_str = dropoff_time.strftime("%H:%M") if dropoff_time else "TBC"
+
+                # Calculate pickup time window
+                pickup_time_window = ""
+                if pickup_time_from and pickup_time_to:
+                    pickup_time_window = f"{pickup_time_from.strftime('%H:%M')} - {pickup_time_to.strftime('%H:%M')}"
+
+                # Package name
+                package_name = "1 Week" if request.package == "quick" else "2 Weeks"
+
+                # Get vehicle info (use request data or booking data)
+                vehicle_make = request.make if request.make and request.make != "Other" else (request.customMake if hasattr(request, 'customMake') else "TBC")
+                vehicle_model = request.model if request.model and request.model != "Other" else (request.customModel if hasattr(request, 'customModel') else "TBC")
+                vehicle_colour = request.colour or "TBC"
+                vehicle_registration = request.registration or "TBC"
+
+                # If we have vehicle_id, get from database for accuracy
+                if request.vehicle_id:
+                    vehicle = db.query(DbVehicle).filter(DbVehicle.id == request.vehicle_id).first()
+                    if vehicle:
+                        vehicle_make = vehicle.make
+                        vehicle_model = vehicle.model
+                        vehicle_colour = vehicle.colour
+                        vehicle_registration = vehicle.registration
+
+                email_sent = send_booking_confirmation_email(
                     email=request.email,
+                    first_name=request.first_name,
                     booking_reference=booking_reference,
-                    drop_off_date=request.drop_off_date,
-                    drop_off_time=dropoff_time.strftime("%H:%M") if dropoff_time else "TBC",
-                    pickup_date=request.pickup_date,
-                    pickup_time_from=pickup_time_from.strftime("%H:%M") if pickup_time_from else "TBC",
-                    pickup_time_to=pickup_time_to.strftime("%H:%M") if pickup_time_to else "TBC",
-                    vehicle_reg=request.registration,
+                    dropoff_date=dropoff_date_str,
+                    dropoff_time=dropoff_time_str,
+                    pickup_date=pickup_date_str,
+                    pickup_time_window=pickup_time_window,
+                    departure_flight=f"{request.flight_number}",
+                    return_flight=f"{request.pickup_flight_number or 'TBC'} from {request.pickup_origin or 'TBC'}",
+                    vehicle_make=vehicle_make,
+                    vehicle_model=vehicle_model,
+                    vehicle_colour=vehicle_colour,
+                    vehicle_registration=vehicle_registration,
+                    package_name=package_name,
                     amount_paid="£0.00",
                     promo_code=promo_code_applied,
                     discount_amount=f"£{original_amount / 100:.2f}",
                 )
+
+                # Update booking with email sent status
+                if email_sent and booking:
+                    booking.confirmation_email_sent = True
+                    booking.confirmation_email_sent_at = datetime.utcnow()
+                    db.commit()
+                    print(f"[FREE BOOKING] Confirmation email sent to {request.email}")
+
             except Exception as email_error:
                 print(f"[FREE BOOKING] Failed to send confirmation email: {email_error}")
+                import traceback
+                traceback.print_exc()
 
             # Return response for free booking
             response = CreatePaymentResponse(
