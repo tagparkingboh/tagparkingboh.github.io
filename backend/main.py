@@ -1,6 +1,8 @@
 """
 FastAPI application for TAG booking system.
 
+Stripe webhook configured for payment confirmations.
+
 Provides REST API endpoints for the frontend to:
 - Get available time slots for flights
 - Create bookings (which hides the booked slot)
