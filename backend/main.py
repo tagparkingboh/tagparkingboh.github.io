@@ -45,7 +45,7 @@ from stripe_service import (
 
 # Database imports
 from database import get_db, init_db
-from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber
+from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking
 import db_service
 import json
 import traceback
@@ -91,7 +91,7 @@ def run_migrations():
 
     db = SessionLocal()
     try:
-        # Check if confirmation_email_sent column exists
+        # Migration 1: Add confirmation_email_sent columns to bookings
         result = db.execute(text("""
             SELECT column_name
             FROM information_schema.columns
@@ -113,6 +113,26 @@ def run_migrations():
             print("Migration completed: confirmation_email_sent columns added")
         else:
             print("Migration check: confirmation_email_sent columns already exist")
+
+        # Migration 2: Add discount_percent column to marketing_subscribers
+        result = db.execute(text("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'marketing_subscribers'
+            AND column_name = 'discount_percent'
+        """))
+
+        if not result.fetchone():
+            print("Running migration: Adding discount_percent column to marketing_subscribers...")
+            db.execute(text("""
+                ALTER TABLE marketing_subscribers
+                ADD COLUMN discount_percent INTEGER DEFAULT 10
+            """))
+            db.commit()
+            print("Migration completed: discount_percent column added")
+        else:
+            print("Migration check: discount_percent column already exists")
+
     except Exception as e:
         print(f"Migration error (non-fatal): {e}")
         db.rollback()
@@ -538,11 +558,16 @@ async def validate_promo_code(
             message="This promo code has already been used",
         )
 
-    # Valid and unused
+    # Valid and unused - use per-code discount percent (default to 10% if not set)
+    discount = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
+    if discount == 100:
+        message = "Promo code applied! 100% off - FREE parking!"
+    else:
+        message = f"Promo code applied! {discount}% off"
     return PromoCodeValidateResponse(
         valid=True,
-        message="Promo code applied! 10% off",
-        discount_percent=PROMO_DISCOUNT_PERCENT,
+        message=message,
+        discount_percent=discount,
     )
 
 
@@ -1515,12 +1540,13 @@ class CreatePaymentRequest(BaseModel):
 
 class CreatePaymentResponse(BaseModel):
     """Response with payment intent details for frontend."""
-    client_secret: str
-    payment_intent_id: str
+    client_secret: Optional[str] = None  # None for free bookings (100% off)
+    payment_intent_id: Optional[str] = None  # None for free bookings (100% off)
     booking_reference: str
     amount: int
     amount_display: str  # e.g., "£99.00"
     publishable_key: str
+    is_free_booking: bool = False  # True when promo code gives 100% off
     # Discount info (optional)
     original_amount: Optional[int] = None
     original_amount_display: Optional[str] = None
@@ -1590,9 +1616,11 @@ async def create_payment(
         original_amount = calculate_price_in_pence(request.package, drop_off_date=dropoff_date)
         pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
 
-        # Check for promo code and apply 10% discount if valid
+        # Check for promo code and apply discount if valid
         discount_amount = 0
+        discount_percent = 0
         promo_code_applied = None
+        is_free_booking = False
         if request.promo_code:
             promo_code = request.promo_code.strip().upper()
             print(f"[PROMO] Looking up promo code: {promo_code}")
@@ -1602,10 +1630,12 @@ async def create_payment(
             if subscriber:
                 print(f"[PROMO] Found subscriber: {subscriber.email}, used: {subscriber.promo_code_used}")
                 if not subscriber.promo_code_used:
-                    # Valid promo code - apply 10% discount
-                    discount_amount = int(original_amount * PROMO_DISCOUNT_PERCENT / 100)
+                    # Valid promo code - use per-code discount (default 10%)
+                    discount_percent = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
+                    discount_amount = int(original_amount * discount_percent / 100)
                     promo_code_applied = promo_code
-                    print(f"[PROMO] Discount applied: {discount_amount} pence")
+                    is_free_booking = (discount_percent == 100)
+                    print(f"[PROMO] Discount applied: {discount_percent}% = {discount_amount} pence (free: {is_free_booking})")
                 else:
                     print(f"[PROMO] Code already used!")
             else:
@@ -1747,7 +1777,105 @@ async def create_payment(
                     )
                 # Note: Slot is NOT booked here - it will be booked after payment succeeds via webhook
 
-        # Create Stripe PaymentIntent
+        settings = get_settings()
+
+        # Handle FREE bookings (100% off promo code) - skip Stripe entirely
+        if is_free_booking:
+            print(f"[FREE BOOKING] Processing free booking for {booking_reference}")
+
+            # Mark booking as confirmed immediately (no payment needed)
+            booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+            if booking:
+                booking.status = BookingStatus.CONFIRMED
+                db.commit()
+
+            # Create payment record with £0 amount
+            db_service.create_payment(
+                db=db,
+                booking_id=booking_id,
+                stripe_payment_intent_id=f"free_{booking_reference}",  # Pseudo-ID for free bookings
+                amount_pence=0,
+            )
+
+            # Mark promo code as used
+            if promo_code_applied:
+                subscriber = db.query(MarketingSubscriber).filter(
+                    MarketingSubscriber.promo_code == promo_code_applied
+                ).first()
+                if subscriber:
+                    subscriber.promo_code_used = True
+                    subscriber.promo_code_used_booking_id = booking_id
+                    subscriber.promo_code_used_at = datetime.utcnow()
+                    db.commit()
+
+            # Book the slot immediately for free bookings
+            if request.departure_id and request.drop_off_slot:
+                departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
+                if departure:
+                    if request.drop_off_slot == "165":
+                        departure.is_slot_1_booked = True
+                    elif request.drop_off_slot == "120":
+                        departure.is_slot_2_booked = True
+                    db.commit()
+
+            # Log the free booking
+            log_audit_event(
+                db=db,
+                event=AuditLogEvent.PAYMENT_INITIATED,
+                request=http_request,
+                session_id=request.session_id,
+                booking_reference=booking_reference,
+                event_data={
+                    "payment_intent_id": f"free_{booking_reference}",
+                    "amount_pence": 0,
+                    "is_free_booking": True,
+                    "promo_code": promo_code_applied,
+                    "package": request.package,
+                    "email": request.email,
+                    "flight_number": request.flight_number,
+                    "drop_off_date": request.drop_off_date,
+                    "pickup_date": request.pickup_date,
+                },
+            )
+
+            # Send confirmation email for free booking
+            try:
+                from email_service import send_booking_confirmation_email
+                send_booking_confirmation_email(
+                    first_name=request.first_name,
+                    email=request.email,
+                    booking_reference=booking_reference,
+                    drop_off_date=request.drop_off_date,
+                    drop_off_time=dropoff_time.strftime("%H:%M") if dropoff_time else "TBC",
+                    pickup_date=request.pickup_date,
+                    pickup_time_from=pickup_time_from.strftime("%H:%M") if pickup_time_from else "TBC",
+                    pickup_time_to=pickup_time_to.strftime("%H:%M") if pickup_time_to else "TBC",
+                    vehicle_reg=request.registration,
+                    amount_paid="£0.00",
+                    promo_code=promo_code_applied,
+                    discount_amount=f"£{original_amount / 100:.2f}",
+                )
+            except Exception as email_error:
+                print(f"[FREE BOOKING] Failed to send confirmation email: {email_error}")
+
+            # Return response for free booking
+            response = CreatePaymentResponse(
+                client_secret=None,  # No Stripe payment needed
+                payment_intent_id=f"free_{booking_reference}",
+                booking_reference=booking_reference,
+                amount=0,
+                amount_display="£0.00",
+                publishable_key=settings.stripe_publishable_key,
+                is_free_booking=True,
+                original_amount=original_amount,
+                original_amount_display=f"£{original_amount / 100:.2f}",
+                discount_amount=discount_amount,
+                discount_amount_display=f"£{discount_amount / 100:.2f}",
+                promo_code_applied=promo_code_applied,
+            )
+            return response
+
+        # Regular paid booking - Create Stripe PaymentIntent
         intent_request = PaymentIntentRequest(
             amount=amount,
             currency="gbp",
@@ -1772,8 +1900,6 @@ async def create_payment(
             stripe_payment_intent_id=intent.payment_intent_id,
             amount_pence=amount,
         )
-
-        settings = get_settings()
 
         # Log the payment initiation
         log_audit_event(

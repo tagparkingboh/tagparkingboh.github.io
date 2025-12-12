@@ -300,6 +300,7 @@ class MarketingSubscriber(Base):
     promo_code_used = Column(Boolean, default=False)
     promo_code_used_booking_id = Column(Integer, ForeignKey("bookings.id"))  # Which booking used it
     promo_code_used_at = Column(DateTime(timezone=True))
+    discount_percent = Column(Integer, default=10)  # Discount percentage (default 10%, can be up to 100%)
 
     # Source tracking
     source = Column(String(50), default="landing_page")  # landing_page, homepage, etc.
