@@ -2009,9 +2009,12 @@ async def stripe_webhook(
                 )
 
         # Send booking confirmation email
+        print(f"[EMAIL] Starting to send confirmation email for booking: {booking_reference}")
         try:
             booking = db_service.get_booking_by_reference(db, booking_reference)
+            print(f"[EMAIL] Booking found: {booking is not None}")
             if booking:
+                print(f"[EMAIL] Customer email: {booking.customer.email}, name: {booking.customer.first_name}")
                 # Calculate pickup time window (35-60 min after landing)
                 pickup_time_window = ""
                 if booking.pickup_time:
@@ -2050,6 +2053,7 @@ async def stripe_webhook(
                     original_amount = amount_pence / 0.9  # Work backwards from discounted amount
                     discount_amount = f"£{(original_amount - amount_pence) / 100:.2f}"
 
+                print(f"[EMAIL] Calling send_booking_confirmation_email...")
                 email_sent = send_booking_confirmation_email(
                     email=booking.customer.email,
                     first_name=booking.customer.first_name,
@@ -2069,6 +2073,7 @@ async def stripe_webhook(
                     promo_code=promo_code if promo_code else None,
                     discount_amount=discount_amount,
                 )
+                print(f"[EMAIL] send_booking_confirmation_email returned: {email_sent}")
 
                 # Update booking with email sent status
                 if email_sent:

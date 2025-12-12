@@ -44,9 +44,12 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
 
     Returns True if sent successfully, False otherwise.
     """
+    print(f"[EMAIL] send_email called for: {to_email}, subject: {subject}")
     if not SENDGRID_API_KEY:
+        print("[EMAIL] ERROR: SendGrid API key not configured!")
         logger.warning("SendGrid API key not configured - email not sent")
         return False
+    print(f"[EMAIL] SendGrid API key is configured (length: {len(SENDGRID_API_KEY)})")
 
     try:
         message = Mail(
@@ -57,16 +60,21 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
         )
 
         sg = SendGridAPIClient(SENDGRID_API_KEY)
+        print(f"[EMAIL] Sending via SendGrid...")
         response = sg.send(message)
+        print(f"[EMAIL] SendGrid response status: {response.status_code}")
 
         if response.status_code in (200, 201, 202):
+            print(f"[EMAIL] Email sent successfully to {to_email}")
             logger.info(f"Email sent successfully to {to_email}")
             return True
         else:
+            print(f"[EMAIL] SendGrid returned non-success status: {response.status_code}")
             logger.error(f"Failed to send email to {to_email}: {response.status_code}")
             return False
 
     except Exception as e:
+        print(f"[EMAIL] Exception sending email: {str(e)}")
         logger.error(f"Error sending email to {to_email}: {str(e)}")
         return False
 
