@@ -1975,7 +1975,7 @@ async def stripe_webhook(
                     original_amount = amount_pence / 0.9  # Work backwards from discounted amount
                     discount_amount = f"£{(original_amount - amount_pence) / 100:.2f}"
 
-                send_booking_confirmation_email(
+                email_sent = send_booking_confirmation_email(
                     email=booking.customer.email,
                     first_name=booking.customer.first_name,
                     booking_reference=booking_reference,
@@ -1994,6 +1994,13 @@ async def stripe_webhook(
                     promo_code=promo_code if promo_code else None,
                     discount_amount=discount_amount,
                 )
+
+                # Update booking with email sent status
+                if email_sent:
+                    from datetime import datetime
+                    booking.confirmation_email_sent = True
+                    booking.confirmation_email_sent_at = datetime.now()
+                    db.commit()
         except Exception as e:
             # Log error but don't fail the webhook - payment was successful
             log_error(

@@ -114,6 +114,10 @@ class Booking(Base):
     # Admin notes
     notes = Column(Text)
 
+    # Email tracking
+    confirmation_email_sent = Column(Boolean, default=False)
+    confirmation_email_sent_at = Column(DateTime(timezone=True))
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
