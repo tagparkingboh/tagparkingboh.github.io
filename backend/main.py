@@ -1580,6 +1580,9 @@ async def create_payment(
         )
 
     try:
+        # Debug: log incoming promo code
+        print(f"[PROMO] Received request with promo_code: {request.promo_code}")
+
         # Parse dates first (needed for dynamic pricing)
         dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
 
