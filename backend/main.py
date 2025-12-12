@@ -2061,9 +2061,8 @@ async def stripe_webhook(
 
                 # Update booking with email sent status
                 if email_sent:
-                    from datetime import datetime
                     booking.confirmation_email_sent = True
-                    booking.confirmation_email_sent_at = datetime.now()
+                    booking.confirmation_email_sent_at = datetime.utcnow()
                     db.commit()
         except Exception as e:
             # Log error but don't fail the webhook - payment was successful
