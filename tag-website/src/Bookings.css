@@ -1173,6 +1173,88 @@
   border-color: #D9FF00;
 }
 
+/* Free Booking (100% off promo) */
+.stripe-payment-container.free-booking {
+  text-align: center;
+}
+
+.free-booking-summary {
+  padding: 1.5rem;
+  background: #343434;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.free-booking-badge {
+  display: inline-block;
+  background: #22c55e;
+  color: #000;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+.free-booking-summary h3 {
+  color: #D9FF00;
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+}
+
+.price-breakdown {
+  text-align: left;
+  max-width: 280px;
+  margin: 0 auto;
+}
+
+.price-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #444;
+}
+
+.price-row:last-child {
+  border-bottom: none;
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+  border-top: 2px solid #555;
+}
+
+.price-row.original span:first-child,
+.price-row.discount span:first-child {
+  color: #999;
+}
+
+.price-row .strikethrough {
+  text-decoration: line-through;
+  color: #888;
+}
+
+.price-row .discount-amount {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.price-row.total span {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.price-row .free-amount {
+  color: #D9FF00;
+}
+
+.free-booking-btn {
+  background: #22c55e !important;
+  color: #fff !important;
+}
+
+.free-booking-btn:hover:not(:disabled) {
+  background: #1ea550 !important;
+}
+
 /* Payment Success */
 .payment-success {
   text-align: center;

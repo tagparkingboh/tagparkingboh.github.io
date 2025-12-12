@@ -174,6 +174,9 @@ function StripePayment({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [stripeLoaded, setStripeLoaded] = useState(null)
+  const [isFreeBooking, setIsFreeBooking] = useState(false)
+  const [originalAmount, setOriginalAmount] = useState('')
+  const [discountAmount, setDiscountAmount] = useState('')
 
   useEffect(() => {
     // Load Stripe and create payment intent
@@ -244,9 +247,20 @@ function StripePayment({
         }
 
         const data = await response.json()
-        setClientSecret(data.client_secret)
-        setBookingReference(data.booking_reference)
-        setAmount(data.amount_display)
+
+        // Handle free bookings (100% off promo code)
+        if (data.is_free_booking) {
+          setBookingReference(data.booking_reference)
+          setAmount(data.amount_display)
+          setIsFreeBooking(true)
+          setOriginalAmount(data.original_amount_display)
+          setDiscountAmount(data.discount_amount_display)
+          // Don't set clientSecret - we don't need Stripe for free bookings
+        } else {
+          setClientSecret(data.client_secret)
+          setBookingReference(data.booking_reference)
+          setAmount(data.amount_display)
+        }
       } catch (err) {
         console.error('Payment init error:', err)
         setError(err.message || 'Failed to initialize payment. Please try again.')
@@ -282,11 +296,21 @@ function StripePayment({
     onPaymentError?.(err)
   }
 
+  // Handle free booking confirmation (no Stripe needed)
+  const handleFreeBookingConfirm = () => {
+    // Booking is already confirmed on the backend, just notify parent
+    onPaymentSuccess?.({
+      paymentIntentId: `free_${bookingReference}`,
+      bookingReference: bookingReference,
+      amount: 0,
+    })
+  }
+
   if (loading) {
     return (
       <div className="stripe-loading">
         <div className="spinner"></div>
-        <p>Initializing secure payment...</p>
+        <p>{promoCode ? 'Applying promo code...' : 'Initializing secure payment...'}</p>
       </div>
     )
   }
@@ -301,6 +325,47 @@ function StripePayment({
         >
           Try Again
         </button>
+      </div>
+    )
+  }
+
+  // Free booking - show confirmation button instead of Stripe form
+  if (isFreeBooking) {
+    return (
+      <div className="stripe-payment-container free-booking">
+        <div className="free-booking-summary">
+          <div className="free-booking-badge">100% OFF</div>
+          <h3>Your booking is free!</h3>
+          <div className="price-breakdown">
+            <div className="price-row original">
+              <span>Original price:</span>
+              <span className="strikethrough">{originalAmount}</span>
+            </div>
+            <div className="price-row discount">
+              <span>Promo discount:</span>
+              <span className="discount-amount">-{discountAmount}</span>
+            </div>
+            <div className="price-row total">
+              <span>Total to pay:</span>
+              <span className="free-amount">£0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleFreeBookingConfirm}
+          className="stripe-pay-btn free-booking-btn"
+        >
+          Complete Free Booking
+        </button>
+
+        <div className="stripe-security-note">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+          </svg>
+          <span>Your booking reference: {bookingReference}</span>
+        </div>
       </div>
     )
   }
