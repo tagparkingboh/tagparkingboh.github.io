@@ -82,10 +82,47 @@ app.add_middleware(
 )
 
 
+def run_migrations():
+    """Run database migrations on startup."""
+    from sqlalchemy import text
+    from database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        # Check if confirmation_email_sent column exists
+        result = db.execute(text("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'bookings'
+            AND column_name = 'confirmation_email_sent'
+        """))
+
+        if not result.fetchone():
+            print("Running migration: Adding confirmation_email_sent columns...")
+            db.execute(text("""
+                ALTER TABLE bookings
+                ADD COLUMN confirmation_email_sent BOOLEAN DEFAULT FALSE
+            """))
+            db.execute(text("""
+                ALTER TABLE bookings
+                ADD COLUMN confirmation_email_sent_at TIMESTAMP WITH TIME ZONE
+            """))
+            db.commit()
+            print("Migration completed: confirmation_email_sent columns added")
+        else:
+            print("Migration check: confirmation_email_sent columns already exist")
+    except Exception as e:
+        print(f"Migration error (non-fatal): {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize database and start background scheduler on startup."""
     init_db()
+    run_migrations()
     start_scheduler()
 
 
