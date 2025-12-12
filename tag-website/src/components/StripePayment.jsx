@@ -192,6 +192,7 @@ function StripePayment({
         setStripeLoaded(stripe)
 
         // Create payment intent with full booking data
+        console.log('[PROMO] Creating payment intent with promo code:', promoCode)
         const response = await fetch(`${API_BASE_URL}/api/payments/create-intent`, {
           method: 'POST',
           headers: {
@@ -255,7 +256,7 @@ function StripePayment({
     }
 
     initPayment()
-  }, [formData, selectedFlight, selectedArrivalFlight, customerId, vehicleId])
+  }, [formData, selectedFlight, selectedArrivalFlight, customerId, vehicleId, sessionId, promoCode])
 
   const handleSuccess = async (paymentIntent, reference) => {
     // Book the slot now that payment succeeded
