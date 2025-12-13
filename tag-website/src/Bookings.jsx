@@ -1673,6 +1673,7 @@ function Bookings() {
                   vehicleId={vehicleId}
                   sessionId={sessionIdRef.current}
                   promoCode={promoCodeValid ? promoCode : null}
+                  promoCodeDiscount={promoCodeValid ? promoCodeDiscount : 0}
                   onPaymentSuccess={handlePaymentSuccess}
                   onPaymentError={handlePaymentError}
                 />

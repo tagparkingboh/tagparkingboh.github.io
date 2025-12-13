@@ -165,21 +165,98 @@ function StripePayment({
   vehicleId,
   sessionId,
   promoCode,
+  promoCodeDiscount = 0,
   onPaymentSuccess,
   onPaymentError,
 }) {
   const [clientSecret, setClientSecret] = useState('')
   const [bookingReference, setBookingReference] = useState('')
   const [amount, setAmount] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(promoCodeDiscount !== 100) // Don't show loading for free bookings
   const [error, setError] = useState('')
   const [stripeLoaded, setStripeLoaded] = useState(null)
-  const [isFreeBooking, setIsFreeBooking] = useState(false)
+  const [isFreeBooking, setIsFreeBooking] = useState(promoCodeDiscount === 100)
   const [originalAmount, setOriginalAmount] = useState('')
   const [discountAmount, setDiscountAmount] = useState('')
+  const [isProcessingFreeBooking, setIsProcessingFreeBooking] = useState(false)
+
+  // Calculate display amounts for free booking preview
+  const calculateAmounts = () => {
+    // Base prices in pence
+    const basePrice = formData.package === 'quick' ? 9900 : 13500
+    return {
+      original: `£${(basePrice / 100).toFixed(2)}`,
+      discount: `£${(basePrice / 100).toFixed(2)}`,
+    }
+  }
+
+  // Create payment intent API call - extracted so it can be called on demand
+  const createPaymentIntent = async () => {
+    console.log('[PAYMENT] Creating payment intent with promo code:', promoCode)
+    const response = await fetch(`${API_BASE_URL}/api/payments/create-intent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        // IDs from incremental saves (if available)
+        customer_id: customerId || null,
+        vehicle_id: vehicleId || null,
+        session_id: sessionId || null,
+        // Customer details
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        // Billing address
+        billing_address1: formData.billingAddress1,
+        billing_address2: formData.billingAddress2,
+        billing_city: formData.billingCity,
+        billing_county: formData.billingCounty,
+        billing_postcode: formData.billingPostcode,
+        billing_country: formData.billingCountry,
+        // Vehicle details
+        registration: formData.registration,
+        make: formData.make === 'Other' ? formData.customMake : formData.make,
+        model: formData.model === 'Other' ? formData.customModel : formData.model,
+        colour: formData.colour,
+        // Package
+        package: formData.package,
+        // Flight details
+        flight_number: selectedFlight?.flightNumber || formData.dropoffFlight?.split('|')[1] || 'Unknown',
+        flight_date: formData.dropoffDate ? formData.dropoffDate.toISOString().split('T')[0] : '',
+        drop_off_date: formData.dropoffDate ? formData.dropoffDate.toISOString().split('T')[0] : '',
+        pickup_date: formData.pickupDate ? formData.pickupDate.toISOString().split('T')[0] : '',
+        drop_off_slot: formData.dropoffSlot || null,
+        departure_id: selectedFlight?.id || null,
+        // Return flight details
+        pickup_flight_time: selectedArrivalFlight?.time || null,
+        pickup_flight_number: selectedArrivalFlight?.flightNumber || null,
+        pickup_origin: selectedArrivalFlight?.originCode || null,
+        // Promo code (if applied)
+        promo_code: promoCode || null,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.detail || 'Failed to initialize payment')
+    }
+
+    return await response.json()
+  }
 
   useEffect(() => {
-    // Load Stripe and create payment intent
+    // For FREE bookings (100% off), don't call API on mount - wait for button click
+    if (promoCodeDiscount === 100) {
+      const amounts = calculateAmounts()
+      setOriginalAmount(amounts.original)
+      setDiscountAmount(amounts.discount)
+      setLoading(false)
+      return
+    }
+
+    // For PAID bookings, load Stripe and create payment intent on mount
     const initPayment = async () => {
       setLoading(true)
       setError('')
@@ -194,68 +271,15 @@ function StripePayment({
         }
         setStripeLoaded(stripe)
 
-        // Create payment intent with full booking data
-        console.log('[PROMO] Creating payment intent with promo code:', promoCode)
-        const response = await fetch(`${API_BASE_URL}/api/payments/create-intent`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            // IDs from incremental saves (if available)
-            customer_id: customerId || null,
-            vehicle_id: vehicleId || null,
-            session_id: sessionId || null,
-            // Customer details
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-            email: formData.email,
-            phone: formData.phone,
-            // Billing address
-            billing_address1: formData.billingAddress1,
-            billing_address2: formData.billingAddress2,
-            billing_city: formData.billingCity,
-            billing_county: formData.billingCounty,
-            billing_postcode: formData.billingPostcode,
-            billing_country: formData.billingCountry,
-            // Vehicle details
-            registration: formData.registration,
-            make: formData.make === 'Other' ? formData.customMake : formData.make,
-            model: formData.model === 'Other' ? formData.customModel : formData.model,
-            colour: formData.colour,
-            // Package
-            package: formData.package,
-            // Flight details
-            flight_number: selectedFlight?.flightNumber || formData.dropoffFlight?.split('|')[1] || 'Unknown',
-            flight_date: formData.dropoffDate ? formData.dropoffDate.toISOString().split('T')[0] : '',
-            drop_off_date: formData.dropoffDate ? formData.dropoffDate.toISOString().split('T')[0] : '',
-            pickup_date: formData.pickupDate ? formData.pickupDate.toISOString().split('T')[0] : '',
-            drop_off_slot: formData.dropoffSlot || null,
-            departure_id: selectedFlight?.id || null,
-            // Return flight details
-            pickup_flight_time: selectedArrivalFlight?.time || null,
-            pickup_flight_number: selectedArrivalFlight?.flightNumber || null,
-            pickup_origin: selectedArrivalFlight?.originCode || null,
-            // Promo code (if applied)
-            promo_code: promoCode || null,
-          }),
-        })
+        const data = await createPaymentIntent()
 
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.detail || 'Failed to initialize payment')
-        }
-
-        const data = await response.json()
-
-        // Handle free bookings (100% off promo code)
+        // Handle response (should not be free booking if we got here)
         if (data.is_free_booking) {
           setBookingReference(data.booking_reference)
           setAmount(data.amount_display)
           setIsFreeBooking(true)
           setOriginalAmount(data.original_amount_display)
           setDiscountAmount(data.discount_amount_display)
-          // Don't set clientSecret - we don't need Stripe for free bookings
         } else {
           setClientSecret(data.client_secret)
           setBookingReference(data.booking_reference)
@@ -270,7 +294,7 @@ function StripePayment({
     }
 
     initPayment()
-  }, [formData, selectedFlight, selectedArrivalFlight, customerId, vehicleId, sessionId, promoCode])
+  }, [formData, selectedFlight, selectedArrivalFlight, customerId, vehicleId, sessionId, promoCode, promoCodeDiscount])
 
   const handleSuccess = async (paymentIntent, reference) => {
     // Book the slot now that payment succeeded
@@ -297,13 +321,32 @@ function StripePayment({
   }
 
   // Handle free booking confirmation (no Stripe needed)
-  const handleFreeBookingConfirm = () => {
-    // Booking is already confirmed on the backend, just notify parent
-    onPaymentSuccess?.({
-      paymentIntentId: `free_${bookingReference}`,
-      bookingReference: bookingReference,
-      amount: 0,
-    })
+  const handleFreeBookingConfirm = async () => {
+    setIsProcessingFreeBooking(true)
+    setError('')
+
+    try {
+      // NOW call the API to create and confirm the free booking
+      const data = await createPaymentIntent()
+
+      if (data.is_free_booking) {
+        // Success - notify parent with booking details
+        onPaymentSuccess?.({
+          paymentIntentId: data.payment_intent_id,
+          bookingReference: data.booking_reference,
+          amount: 0,
+        })
+      } else {
+        // Unexpected - should be free booking
+        setError('Unexpected error. Please try again.')
+      }
+    } catch (err) {
+      console.error('Free booking error:', err)
+      setError(err.message || 'Failed to complete booking. Please try again.')
+      onPaymentError?.(err)
+    } finally {
+      setIsProcessingFreeBooking(false)
+    }
   }
 
   if (loading) {
@@ -352,19 +395,26 @@ function StripePayment({
           </div>
         </div>
 
+        {error && (
+          <div className="stripe-error">
+            {error}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={handleFreeBookingConfirm}
+          disabled={isProcessingFreeBooking}
           className="stripe-pay-btn free-booking-btn"
         >
-          Complete Free Booking
+          {isProcessingFreeBooking ? 'Processing...' : 'Complete Free Booking'}
         </button>
 
         <div className="stripe-security-note">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
           </svg>
-          <span>Your booking reference: {bookingReference}</span>
+          <span>Promo code: {promoCode}</span>
         </div>
       </div>
     )
