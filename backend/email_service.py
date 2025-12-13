@@ -158,7 +158,7 @@ def send_welcome_email(first_name: str, email: str) -> bool:
 
                 <div class="cta-section">
                     <p style="font-size: 16px; margin-bottom: 15px;"><strong>Ready to start your journey?</strong></p>
-                    <a href="https://tagparking.co.uk/bookings" class="button">Book now</a>
+                    <a href="https://tagparking.co.uk" class="button">Book now</a>
                 </div>
 
                 <p>If you have any special requests or need assistance before your arrival, please don't hesitate to contact us at <a href="mailto:info@tagparking.co.uk" style="color: #1a1a1a;">info@tagparking.co.uk</a>.</p>
@@ -222,7 +222,7 @@ def send_promo_code_email(first_name: str, email: str, promo_code: str = "TAG10"
 
                 <div class="cta-section">
                     <p style="font-size: 16px; margin-bottom: 15px;"><strong>Ready to book?</strong></p>
-                    <a href="https://tagparking.co.uk/bookings" class="button">Book now</a>
+                    <a href="https://tagparking.co.uk" class="button">Book now</a>
                 </div>
 
                 <p>Simply enter your code at checkout to apply the discount.</p>
