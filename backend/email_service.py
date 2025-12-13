@@ -81,51 +81,96 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
 
 def send_welcome_email(first_name: str, email: str) -> bool:
     """Send welcome email to new subscriber."""
-    subject = f"Welcome to TAG Parking, {first_name}!"
+    subject = f"Welcome to TAG, {first_name}!"
 
     html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
-            .header h1 {{ color: #ADFF2F; margin: 0; font-size: 28px; }}
-            .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
-            .highlight {{ color: #ADFF2F; font-weight: bold; }}
-            .button {{ display: inline-block; background: #ADFF2F; color: #1a1a2e; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }}
-            .footer {{ text-align: center; margin-top: 20px; color: #666; font-size: 12px; }}
+            .header {{ background: #1a1a1a; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .header img {{ max-width: 120px; }}
+            .header h1 {{ color: #D9FF00; margin: 10px 0 0 0; font-size: 28px; }}
+            .content {{ background: #ffffff; padding: 30px; }}
+            .intro {{ font-size: 16px; color: #333; }}
+            .steps {{ background: #f9f9f9; padding: 20px; margin: 25px 0; border-radius: 8px; }}
+            .step {{ display: flex; align-items: flex-start; margin-bottom: 20px; }}
+            .step:last-child {{ margin-bottom: 0; }}
+            .step-number {{ background: #D9FF00; color: #1a1a1a; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; margin-right: 15px; }}
+            .step-content h4 {{ margin: 0 0 5px 0; color: #1a1a1a; font-size: 16px; }}
+            .step-content p {{ margin: 0; color: #666; font-size: 14px; }}
+            .cta-section {{ text-align: center; margin: 30px 0; }}
+            .button {{ display: inline-block; background: #D9FF00; color: #1a1a1a; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }}
+            .button:hover {{ background: #c4e600; }}
+            .note {{ background: #f0f0f0; padding: 15px; border-radius: 6px; font-size: 14px; color: #555; margin: 20px 0; }}
+            .tagline {{ font-size: 18px; font-weight: bold; color: #1a1a1a; margin: 25px 0 15px 0; }}
+            .footer {{ background: #1a1a1a; padding: 25px; text-align: center; border-radius: 0 0 10px 10px; }}
+            .footer p {{ color: #999; font-size: 12px; margin: 5px 0; }}
+            .footer a {{ color: #D9FF00; text-decoration: none; }}
         </style>
     </head>
     <body>
         <div class="container">
             <div class="header">
-                <h1>TAG Parking</h1>
+                <h1>TAG</h1>
             </div>
             <div class="content">
-                <h2>Hi {first_name},</h2>
+                <h2 style="margin-top: 0;">Hi {first_name},</h2>
+                <p class="intro">Welcome to TAG — we're thrilled to have you with us!</p>
 
-                <p>Thanks for joining the TAG Parking waitlist! We're excited to have you on board.</p>
+                <p>Our mission is simple: to provide an easier, faster and more cost-efficient meet & greet service for everyone. However you're travelling, we're here to give you a seamless experience from the moment you arrive.</p>
 
-                <p>We're building something special for Bournemouth Airport travellers - a <span class="highlight">premium Meet & Greet parking service</span> that takes the stress out of airport parking.</p>
+                <p><strong>No more sky-high fees, no more buses, no more treks to Zone F.</strong> Just your car, waiting for you when your trip is over.</p>
 
-                <p><strong>What you can expect:</strong></p>
-                <ul>
-                    <li>Drive directly to the terminal - we'll handle the parking</li>
-                    <li>Your car returned to you when you land</li>
-                    <li>Secure, insured parking at competitive prices</li>
-                    <li>Simple online booking</li>
-                </ul>
+                <div class="steps">
+                    <h3 style="margin-top: 0; color: #1a1a1a;">How does it work?</h3>
 
-                <p>We'll be in touch soon with exclusive early access and a special discount code just for waitlist members.</p>
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h4>Meet us at departures</h4>
+                            <p>Simply drive to the terminal car park drop off and one of our drivers will be waiting for you</p>
+                        </div>
+                    </div>
 
-                <p>Safe travels!</p>
-                <p><strong>The TAG Parking Team</strong></p>
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h4>Sit back and enjoy your trip</h4>
+                            <p>Relax while we park your car in our highly secured location, minutes from the airport</p>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h4>Pick up where you left off</h4>
+                            <p>We then meet you at the same spot to hand your keys and car back to you</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="note">
+                    Before your scheduled meet and greet, you'll receive a confirmation email with all your details and the name of your greeter.
+                </div>
+
+                <div class="cta-section">
+                    <p style="font-size: 16px; margin-bottom: 15px;"><strong>Ready to start your journey?</strong></p>
+                    <a href="https://tagparking.co.uk/bookings" class="button">Book now</a>
+                </div>
+
+                <p>If you have any special requests or need assistance before your arrival, please don't hesitate to contact us at <a href="mailto:info@tagparking.co.uk" style="color: #1a1a1a;">info@tagparking.co.uk</a>.</p>
+
+                <p class="tagline">It's time to Tag it.</p>
+
+                <p>Warm regards,</p>
+                <p><strong>The Tag Team</strong></p>
             </div>
             <div class="footer">
-                <p>TAG Parking | Bournemouth Airport</p>
-                <p>You're receiving this because you signed up at tagparking.co.uk</p>
+                <p><strong style="color: #D9FF00;">TAG</strong> | Bournemouth Airport</p>
+                <p>You're receiving this because you signed up at <a href="https://tagparking.co.uk">tagparking.co.uk</a></p>
             </div>
         </div>
     </body>
