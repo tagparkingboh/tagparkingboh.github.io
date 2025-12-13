@@ -63,8 +63,13 @@ function HomePage() {
       const apiData = await apiResponse.json().catch(() => null)
       console.log('Marketing API Response:', apiResponse.status, apiData)
       // Backend API success - show success message
-      if (apiResponse.ok) {
-        setSubmitStatus('success')
+      if (apiResponse.ok && apiData?.success) {
+        // Check if already subscribed
+        if (apiData.is_new_subscriber === false) {
+          setSubmitStatus('already_subscribed')
+        } else {
+          setSubmitStatus('success')
+        }
         setFirstName('')
         setLastName('')
         setEmail('')
@@ -450,6 +455,9 @@ function HomePage() {
             </div>
             {submitStatus === 'success' && (
               <p className="subscribe-success">Thank you for subscribing! We'll be in touch soon.</p>
+            )}
+            {submitStatus === 'already_subscribed' && (
+              <p className="subscribe-success">You're already on the list! We'll be in touch soon.</p>
             )}
             {submitStatus === 'error' && (
               <p className="subscribe-error">Something went wrong. Please try again.</p>
