@@ -182,50 +182,61 @@ def send_welcome_email(first_name: str, email: str) -> bool:
 
 def send_promo_code_email(first_name: str, email: str, promo_code: str = "TAG10") -> bool:
     """Send promo code email to subscriber."""
-    subject = f"{first_name}, here's your exclusive TAG Parking discount!"
+    subject = f"{first_name}, here's your 10% off promo code!"
 
     html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
-            .header h1 {{ color: #ADFF2F; margin: 0; font-size: 28px; }}
-            .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
-            .promo-box {{ background: #1a1a2e; color: white; padding: 25px; text-align: center; border-radius: 10px; margin: 20px 0; }}
-            .promo-code {{ font-size: 36px; font-weight: bold; color: #ADFF2F; letter-spacing: 3px; }}
-            .promo-text {{ font-size: 14px; color: #ccc; margin-top: 10px; }}
-            .button {{ display: inline-block; background: #ADFF2F; color: #1a1a2e; padding: 15px 40px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; font-size: 16px; }}
-            .footer {{ text-align: center; margin-top: 20px; color: #666; font-size: 12px; }}
+            .header {{ background: #1a1a1a; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .header h1 {{ color: #D9FF00; margin: 0; font-size: 28px; }}
+            .content {{ background: #ffffff; padding: 30px; }}
+            .promo-box {{ background: #1a1a1a; color: white; padding: 30px; text-align: center; border-radius: 10px; margin: 25px 0; }}
+            .promo-code {{ font-size: 42px; font-weight: bold; color: #D9FF00; letter-spacing: 4px; margin-bottom: 10px; }}
+            .promo-text {{ font-size: 16px; color: #ccc; }}
+            .cta-section {{ text-align: center; margin: 30px 0; }}
+            .button {{ display: inline-block; background: #D9FF00; color: #1a1a1a; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }}
+            .tagline {{ font-size: 18px; font-weight: bold; color: #1a1a1a; margin: 25px 0 15px 0; }}
+            .footer {{ background: #1a1a1a; padding: 25px; text-align: center; border-radius: 0 0 10px 10px; }}
+            .footer p {{ color: #999; font-size: 12px; margin: 5px 0; }}
+            .footer a {{ color: #D9FF00; text-decoration: none; }}
         </style>
     </head>
     <body>
         <div class="container">
             <div class="header">
-                <h1>TAG Parking</h1>
+                <h1>TAG</h1>
             </div>
             <div class="content">
-                <h2>Hi {first_name},</h2>
+                <h2 style="margin-top: 0;">Hi {first_name},</h2>
 
-                <p>As promised, here's your <strong>exclusive waitlist discount</strong> for TAG Parking at Bournemouth Airport!</p>
+                <p>Thanks for signing up! As promised, here's your exclusive <strong>10% off</strong> promo code for your first trip with TAG.</p>
 
                 <div class="promo-box">
                     <div class="promo-code">{promo_code}</div>
-                    <div class="promo-text">Use this code at checkout for 10% off your first booking</div>
+                    <div class="promo-text">10% off your first booking</div>
                 </div>
 
-                <p>This code is exclusively for our early supporters like you. Use it when we launch to save on your next trip!</p>
+                <div class="cta-section">
+                    <p style="font-size: 16px; margin-bottom: 15px;"><strong>Ready to book?</strong></p>
+                    <a href="https://tagparking.co.uk/bookings" class="button">Book now</a>
+                </div>
 
-                <p>We'll let you know as soon as bookings are open.</p>
+                <p>Simply enter your code at checkout to apply the discount.</p>
 
-                <p>Thanks for your patience and support!</p>
-                <p><strong>The TAG Parking Team</strong></p>
+                <p>If you have any questions or queries, please don't hesitate to contact us at <a href="mailto:info@tagparking.co.uk" style="color: #1a1a1a;">info@tagparking.co.uk</a>.</p>
+
+                <p class="tagline">It's time to Tag it.</p>
+
+                <p>Warm regards,</p>
+                <p><strong>The Tag Team</strong></p>
             </div>
             <div class="footer">
-                <p>TAG Parking | Bournemouth Airport</p>
-                <p>You're receiving this because you signed up at tagparking.co.uk</p>
+                <p><strong style="color: #D9FF00;">TAG</strong> | Bournemouth Airport</p>
+                <p>You're receiving this because you signed up at <a href="https://tagparking.co.uk">tagparking.co.uk</a></p>
             </div>
         </div>
     </body>
