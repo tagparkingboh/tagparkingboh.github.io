@@ -1,11 +1,28 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import './App.css'
 
 function HomePage() {
+  // DISABLED: HubSpot tracking script
+  // useEffect(() => {
+  //   const script = document.createElement('script')
+  //   script.src = '//js-ap1.hs-scripts.com/442431654.js'
+  //   script.id = 'hs-script-loader'
+  //   script.async = true
+  //   script.defer = true
+  //   document.body.appendChild(script)
+
+  //   return () => {
+  //     // Cleanup on unmount
+  //     const existingScript = document.getElementById('hs-script-loader')
+  //     if (existingScript) {
+  //       existingScript.remove()
+  //     }
+  //   }
+  // }, [])
+
   const [menuOpen, setMenuOpen] = useState(false)
   const [openFaq, setOpenFaq] = useState(null)
-  const [openFooter, setOpenFooter] = useState(null)
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
@@ -24,51 +41,89 @@ function HomePage() {
     setIsSubmitting(true)
     setSubmitStatus(null)
 
-    const portalId = import.meta.env.VITE_HUBSPOT_PORTAL_ID
-    const formId = import.meta.env.VITE_HUBSPOT_FORM_ID
-    const hubspotUrl = `https://api.hsforms.com/submissions/v3/integration/submit/${portalId}/${formId}`
+    const trimmedFirstName = firstName.trim()
+    const trimmedLastName = lastName.trim()
+    const trimmedEmail = email.trim()
 
-    const payload = {
-      fields: [
-        { name: 'firstname', value: firstName.trim() },
-        { name: 'lastname', value: lastName.trim() },
-        { name: 'email', value: email.trim() },
-      ],
-      context: {
-        pageUri: window.location.href,
-        pageName: 'Tag Parking - Subscribe',
-      },
-    }
-
-    console.log('HubSpot Request:', JSON.stringify(payload, null, 2))
-
+    // Send to our backend API
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
     try {
-      const response = await fetch(hubspotUrl, {
+      const apiResponse = await fetch(`${apiUrl}/api/marketing/subscribe`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          first_name: trimmedFirstName,
+          last_name: trimmedLastName,
+          email: trimmedEmail,
+          source: 'homepage',
+        }),
       })
-
-      const responseData = await response.json().catch(() => null)
-      console.log('HubSpot Response:', response.status, responseData)
-
-      if (response.ok) {
+      const apiData = await apiResponse.json().catch(() => null)
+      console.log('Marketing API Response:', apiResponse.status, apiData)
+      // Backend API success - show success message
+      if (apiResponse.ok) {
         setSubmitStatus('success')
         setFirstName('')
         setLastName('')
         setEmail('')
       } else {
-        console.error('HubSpot Error:', response.status, responseData)
         setSubmitStatus('error')
       }
-    } catch (error) {
-      console.error('Submit Error:', error)
+    } catch (apiError) {
+      console.error('Marketing API Error:', apiError)
       setSubmitStatus('error')
     } finally {
       setIsSubmitting(false)
     }
+
+    // DISABLED: HubSpot form submission
+    // const portalId = import.meta.env.VITE_HUBSPOT_PORTAL_ID
+    // const formId = import.meta.env.VITE_HUBSPOT_FORM_ID
+    // const hubspotUrl = `https://api.hsforms.com/submissions/v3/integration/submit/${portalId}/${formId}`
+
+    // const payload = {
+    //   fields: [
+    //     { name: 'firstname', value: trimmedFirstName },
+    //     { name: 'lastname', value: trimmedLastName },
+    //     { name: 'email', value: trimmedEmail },
+    //   ],
+    //   context: {
+    //     pageUri: window.location.href,
+    //     pageName: 'Tag Parking - Subscribe',
+    //   },
+    // }
+
+    // console.log('HubSpot Request:', JSON.stringify(payload, null, 2))
+
+    // try {
+    //   const response = await fetch(hubspotUrl, {
+    //     method: 'POST',
+    //     headers: {
+    //       'Content-Type': 'application/json',
+    //     },
+    //     body: JSON.stringify(payload),
+    //   })
+
+    //   const responseData = await response.json().catch(() => null)
+    //   console.log('HubSpot Response:', response.status, responseData)
+
+    //   if (response.ok) {
+    //     setSubmitStatus('success')
+    //     setFirstName('')
+    //     setLastName('')
+    //     setEmail('')
+    //   } else {
+    //     console.error('HubSpot Error:', response.status, responseData)
+    //     setSubmitStatus('error')
+    //   }
+    // } catch (error) {
+    //   console.error('Submit Error:', error)
+    //   setSubmitStatus('error')
+    // } finally {
+    //   setIsSubmitting(false)
+    // }
   }
 
   const toggleMenu = () => {
@@ -81,10 +136,6 @@ function HomePage() {
 
   const toggleFaq = (index) => {
     setOpenFaq(openFaq === index ? null : index)
-  }
-
-  const toggleFooter = (index) => {
-    setOpenFooter(openFooter === index ? null : index)
   }
 
   return (
@@ -118,15 +169,14 @@ function HomePage() {
           </div>
 
           <div className="hero-cta-group">
-            <div className="intro-offer-banner">
-              <span className="intro-offer-discount">10% off</span>
-              <span className="intro-offer-text">for subscribers – register your interest below</span>
+            <div className="intro-offer-banner" style={{ visibility: 'hidden' }}>
+              <span className="intro-offer-discount">Spacer</span>
             </div>
 
-            <a href="#subscribe" className="hero-cta">Subscribe</a>
+            <a href="#subscribe" className="hero-cta">Join the waitlist <span>→</span></a>
           </div>
 
-          <a href="#subscribe" className="scroll-indicator">
+          <a href="#how-it-works" className="scroll-indicator">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M7 10l5 5 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -137,110 +187,18 @@ function HomePage() {
       {/* Availability Tracker - hidden, will be moved to /tag-it page */}
       {/* <AvailabilityTracker /> */}
 
-      {/* Features Banner Section */}
-      <section className="features-banner">
-        <div className="features-content">
-          <div className="feature">
-            <h2>50%</h2>
-            <p>Save up to 50% off<br />official airport parking</p>
-          </div>
-          <div className="feature">
-            <h2>£0</h2>
-            <p>Zero parking fees:<br />everything's included</p>
-          </div>
-          <div className="feature">
-            <h2>24/7</h2>
-            <p>Security monitoring at<br />storage site</p>
-          </div>
-          <div className="feature">
-            <h2>5 mins</h2>
-            <p>5 minute average<br />handover time</p>
-          </div>
-          <div className="feature">
-            <h2>Money back Guarantee</h2>
-            <p>Your car will never leave<br />our secure car park</p>
-          </div>
-          <div className="feature">
-            <h2>Park Mark certified</h2>
-            <p>Approved for safer parking<br />by the Police</p>
-          </div>
-        </div>
-        <div className="features-bottom-bar"></div>
-      </section>
-
-      {/* How TAG Works */}
-      <section className="how-it-works" id="how-it-works">
-        <h2>How Tag works for you.</h2>
-        <div className="steps-cards">
-          <div className="step-card">
-            <div className="step-card-image">
-              <img src="/assets/step-1.png" alt="Meet us at departures" />
-            </div>
-          </div>
-          <div className="step-card">
-            <div className="step-card-image">
-              <img src="/assets/step-2.png" alt="Enjoy your trip" />
-            </div>
-          </div>
-          <div className="step-card">
-            <div className="step-card-image">
-              <img src="/assets/step-3.png" alt="Pick up where you left off" />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Why Choose TAG Section */}
-      <section className="why-choose">
-        <div className="why-content">
-          <h2>Why choose Tag?</h2>
-        </div>
-        <div className="why-images">
-          <img src="/assets/why-choose-1.png" alt="TAG driver" className="why-img-1" />
-          <img src="/assets/why-choose-2.png" alt="Security cameras" className="why-img-2" />
-        </div>
-      </section>
-
-      {/* Feature Cards */}
-      <section className="feature-cards">
-        <div className="card">
-          <div className="card-icon">
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="1" y="1" width="38" height="38" rx="7" stroke="#CCFF00" strokeWidth="2"/>
-              <path d="M12 20L17 25L28 14" stroke="#CCFF00" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-          <h3>Fully-vetted & insured drivers</h3>
-          <p>All our drivers are fully background-checked, licensed, and insured for your peace of mind.</p>
-        </div>
-        <div className="card">
-          <div className="card-icon">
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M22 3L8 23H20L18 37L32 17H20L22 3Z" stroke="#CCFF00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
-          <h3>Instant convenience</h3>
-          <p>No need to find a space or wait for a shuttle bus.</p>
-        </div>
-        <div className="card">
-          <div className="card-icon">
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="20" cy="20" r="18" stroke="#CCFF00" strokeWidth="2"/>
-              <text x="20" y="26" textAnchor="middle" fill="#CCFF00" fontSize="16" fontWeight="600">£</text>
-            </svg>
-          </div>
-          <h3>Transparent, competitive pricing</h3>
-          <p>Clear pricing with no hidden fees. What you see is what you pay.</p>
-        </div>
-      </section>
+      {/* Hero Bottom Bar */}
+      <div className="hero-bottom-bar"></div>
 
       {/* Pricing Section */}
       <section className="pricing-section" id="pricing">
         <h2>Pricing & plans</h2>
+        <p className="pricing-subtitle">Heading off for a short trip or a longer stay? Pick one of our pricing options that's right for you.</p>
 
         <div className="pricing-cards">
           <div className="pricing-card">
             <span className="pricing-label">1 WEEK TRIP</span>
+            <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
               <span className="price">99</span>
@@ -255,11 +213,13 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <a href="#subscribe" className="pricing-btn">Subscribe <span>→</span></a>
+            {/* <Link to="/tag-it" className="pricing-btn">Tag It <span>→</span></Link> */}
+            <button className="pricing-btn disabled" disabled>Coming Soon</button>
           </div>
 
           <div className="pricing-card">
             <span className="pricing-label">2 WEEK TRIP</span>
+            <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
               <span className="price">135</span>
@@ -274,7 +234,99 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <a href="#subscribe" className="pricing-btn">Subscribe <span>→</span></a>
+            {/* <Link to="/tag-it" className="pricing-btn">Tag It <span>→</span></Link> */}
+            <button className="pricing-btn disabled" disabled>Coming Soon</button>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Banner Section */}
+      <section className="features-banner">
+        <div className="features-content">
+          <div className="feature">
+            <h2>50%</h2>
+            <p>Save up to 50% off<br />official airport parking</p>
+          </div>
+          <div className="feature">
+            <h2>£0</h2>
+            <p><span className="semi-bold">Zero</span> drop off fees:<br />everything is included</p>
+          </div>
+          <div className="feature">
+            <h2>24/7</h2>
+            <p>Your car never leaves our<br />secure car park</p>
+          </div>
+        </div>
+        <div className="features-bottom-bar"></div>
+      </section>
+
+      {/* How TAG Works */}
+      <section className="how-it-works" id="how-it-works">
+        <h2>How Tag works for you.</h2>
+        <p className="how-it-works-subtitle">No buses, no sky high fees, just a quick, easy and<br />stress-free alternative to parking at Bournemouth airport.</p>
+        <div className="steps-cards">
+          <div className="step-card">
+            <div className="step-card-image">
+              <img src="/assets/step-1.png" alt="Meet us at departures" />
+            </div>
+            <h3>Meet us at departures</h3>
+            <p>Simply drive to the terminal car park drop off <span className="semi-bold">area</span>, and one of our drivers will be waiting</p>
+          </div>
+          <div className="step-card">
+            <div className="step-card-image">
+              <img src="/assets/step-2.png" alt="Enjoy your trip" />
+            </div>
+            <h3>Enjoy your trip</h3>
+            <p>Relax while we park your car in our highly secured location, minutes from the airport</p>
+          </div>
+          <div className="step-card">
+            <div className="step-card-image">
+              <img src="/assets/step-3.png" alt="Pick up where you left off" />
+            </div>
+            <h3>Pick up where you left off</h3>
+            <p>We then meet you at the same spot to hand back your keys</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Why Choose TAG Section */}
+      <section className="why-choose">
+        <div className="why-content">
+          <h2>Why choose Tag?</h2>
+          <p className="why-subtitle">Our mission is simple: to provide an easier, faster and more cost-efficient meet & greet service for everyone. However you're travelling, we're here to give you a seamless experience from the moment you arrive.</p>
+        </div>
+        <div className="why-images">
+          <img src="/assets/why-choose-1.png" alt="TAG driver" className="why-img-1" />
+          <img src="/assets/why-choose-2.png" alt="Security cameras" className="why-img-2" />
+        </div>
+      </section>
+
+      {/* Feature Cards */}
+      <section className="feature-cards">
+        <div className="card">
+          <div className="card-icon">
+            <img src="/assets/why-01.png" alt="Fully-vetted drivers" />
+          </div>
+          <div className="card-content">
+            <h3>Fully-vetted & insured drivers</h3>
+            <p>Our drivers are fully background-checked, licensed and insured.</p>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-icon">
+            <img src="/assets/why-02.png" alt="Instant convenience" />
+          </div>
+          <div className="card-content">
+            <h3>Instant convenience</h3>
+            <p>No need to find a space or wait for a shuttle bus.</p>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-icon">
+            <img src="/assets/why-03.png" alt="Transparent pricing" />
+          </div>
+          <div className="card-content">
+            <h3>Transparent, competitive pricing</h3>
+            <p>Clear pricing with no hidden fees. What you see is what you pay.</p>
           </div>
         </div>
       </section>
@@ -282,7 +334,8 @@ function HomePage() {
       {/* Support Section */}
       <section className="support-section">
         <div className="support-content">
-          <h2>We are always here<br />for you and your car.</h2>
+          <h2>We're always here for you and your car.</h2>
+          <p className="support-subtitle">Our 24/7 CCTV monitoring, secure perimeter fencing, and comprehensive insurance coverage give you peace of mind while you're away.</p>
 
           <div className="support-features">
             <div className="support-item">
@@ -311,7 +364,7 @@ function HomePage() {
               <span className="faq-arrow">›</span>
             </div>
             <div className="faq-answer">
-              <p>When you arrive at the airport, call us and drive to the designated meeting point. Our driver will meet you, complete a quick vehicle condition check, and take your keys. When you return, call us and we will bring your car back to the same meeting point.</p>
+              <p><span className="semi-bold">Meet us at the agreed booking time at the airport parking drop off area.</span> Our driver will meet you, complete a quick vehicle condition check, and take your keys. When you return, call us and we will bring your car back to the same meeting point.</p>
             </div>
           </div>
 
@@ -364,8 +417,8 @@ function HomePage() {
         <div className="subscribe-layout">
           <img src="/assets/departure-icon.png" alt="Departure" className="subscribe-icon" />
           <div className="subscribe-content">
-            <h2>Get latest updates</h2>
-            <p>Register your interest and be the first to know when we launch.</p>
+            <h2>Join the waitlist</h2>
+            <p className="subscribe-subtitle">Sign up early. Save more: get 10% off your next trip by joining the waitlist.</p>
             <div className="subscribe-form">
               <input
                 type="text"
@@ -392,7 +445,7 @@ function HomePage() {
                 onClick={handleSubscribe}
                 disabled={!isFormValid || isSubmitting}
               >
-                {isSubmitting ? 'Subscribing...' : 'Subscribe'}
+                {isSubmitting ? 'Joining...' : 'Join the waitlist'}
               </button>
             </div>
             {submitStatus === 'success' && (
@@ -418,49 +471,16 @@ function HomePage() {
         <div className="footer-top">
           <h2>For everything else</h2>
         </div>
-        <div className="footer-links">
-          <div className={`footer-column ${openFooter === 0 ? 'open' : ''}`}>
-            <h4 onClick={() => toggleFooter(0)}>Company <span className="footer-arrow">›</span></h4>
-            <div className="footer-links-content">
-              <a href="#about">About us</a>
-              <a href="#contact">Contact us</a>
-              <a href="#careers">Careers</a>
-              <a href="#press">Press</a>
-            </div>
-          </div>
-          <div className={`footer-column ${openFooter === 1 ? 'open' : ''}`}>
-            <h4 onClick={() => toggleFooter(1)}>Product <span className="footer-arrow">›</span></h4>
-            <div className="footer-links-content">
-              <a href="#features">Features</a>
-              <a href="#pricing">Pricing</a>
-              <a href="#news">News</a>
-              <a href="#help">Help desk</a>
-            </div>
-          </div>
-          <div className={`footer-column ${openFooter === 2 ? 'open' : ''}`}>
-            <h4 onClick={() => toggleFooter(2)}>Services <span className="footer-arrow">›</span></h4>
-            <div className="footer-links-content">
-              <a href="#locations">Locations</a>
-              <a href="#how-to">How To</a>
-              <Link to="/faq" state={{ from: 'footer' }}>FAQs</Link>
-            </div>
-          </div>
-          <div className={`footer-column ${openFooter === 3 ? 'open' : ''}`}>
-            <h4 onClick={() => toggleFooter(3)}>Legal <span className="footer-arrow">›</span></h4>
-            <div className="footer-links-content">
-              <Link to="/privacy-policy">Privacy Policy</Link>
-              <Link to="/terms-conditions">Terms & Conditions</Link>
-              <Link to="/refund-policy">Refund Policy</Link>
-              <Link to="/cookie-policy">Cookie Policy</Link>
-            </div>
-          </div>
-          <div className={`footer-column contact-column ${openFooter === 4 ? 'open' : ''}`}>
-            <h4 onClick={() => toggleFooter(4)}>Contact us <span className="footer-arrow">›</span></h4>
-            <div className="footer-links-content">
-              <a href="mailto:support@tagparking.co.uk" className="contact-email">support@tagparking.co.uk</a>
-              <a href="tel:+441305876543" className="contact-phone">+44 (0)1305 876 543</a>
-            </div>
-          </div>
+        <div className="footer-links footer-links-simple">
+          <Link to="/faq" state={{ from: 'footer' }}>FAQs</Link>
+          <Link to="/privacy-policy">Privacy Policy</Link>
+          <Link to="/terms-conditions">Terms & Conditions</Link>
+          <Link to="/refund-policy">Refund Policy</Link>
+          <Link to="/cookie-policy">Cookie Policy</Link>
+        </div>
+        <div className="footer-contact">
+          <a href="mailto:support@tagparking.co.uk">support@tagparking.co.uk</a>
+          <a href="tel:+447739106145">+44 (0)7739 106145</a>
         </div>
         <div className="social-links">
           <a href="https://www.facebook.com/people/Tag-Parking/61583879493475/" target="_blank" rel="noopener noreferrer" aria-label="Facebook">

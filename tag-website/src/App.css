@@ -230,7 +230,7 @@
   gap: 0.5rem;
   background: #D9FF00;
   color: #343434;
-  padding: 1rem 2rem;
+  padding: 16px 40px;
   border-radius: 8px;
   font-size: 1rem;
   font-weight: 700;
@@ -339,6 +339,11 @@
 .features-bottom-bar {
   height: 30px;
   background: var(--dark-gray);
+}
+
+.hero-bottom-bar {
+  height: 30px;
+  background: #CCFF00;
 }
 
 /* Why Choose Section */
@@ -890,6 +895,10 @@
 .privacy-note {
   font-size: 0.85rem;
   color: var(--dark-gray);
+}
+
+.subscribe-content .hero-cta {
+  margin-bottom: 2rem;
 }
 
 .subscribe-success {
