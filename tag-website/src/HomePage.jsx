@@ -184,7 +184,13 @@ function HomePage() {
         <div className="hero-content">
           <div className="hero-text">
             <p className="hero-subtitle">TAG: MEET & GREET FOR BOURNEMOUTH AIRPORT</p>
-            <h1 className="hero-title">Enjoy peace of mind from<br />Palma to Paphos</h1>
+            <h1 className={`hero-title ${bannerFading ? 'fading' : ''}`}>
+              {heroBannerIndex === 0 ? (
+                <>Sign up early. Save more.</>
+              ) : (
+                <>Enjoy peace of mind from<br />Palma to Paphos</>
+              )}
+            </h1>
           </div>
 
           <div className="hero-cta-group">

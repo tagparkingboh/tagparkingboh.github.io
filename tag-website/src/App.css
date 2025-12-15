@@ -221,6 +221,12 @@
   margin-bottom: 2.5rem;
   line-height: 1.15;
   white-space: nowrap;
+  transition: opacity 0.3s ease-in-out;
+  opacity: 1;
+}
+
+.hero-title.fading {
+  opacity: 0;
 }
 
 .hero-cta-group {
