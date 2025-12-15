@@ -28,20 +28,6 @@ function HomePage() {
   const [email, setEmail] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitStatus, setSubmitStatus] = useState(null) // 'success' | 'error' | null
-  const [heroBannerIndex, setHeroBannerIndex] = useState(0)
-  const [bannerFading, setBannerFading] = useState(false)
-
-  // Alternate hero banner every 10 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setBannerFading(true)
-      setTimeout(() => {
-        setHeroBannerIndex(prev => (prev + 1) % 2)
-        setBannerFading(false)
-      }, 300) // Fade out duration
-    }, 10000)
-    return () => clearInterval(interval)
-  }, [])
 
   const isValidEmail = (email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -184,29 +170,12 @@ function HomePage() {
         <div className="hero-content">
           <div className="hero-text">
             <p className="hero-subtitle">TAG: MEET & GREET FOR BOURNEMOUTH AIRPORT</p>
-            <h1 className={`hero-title ${bannerFading ? 'fading' : ''}`}>
-              {heroBannerIndex === 0 ? (
-                <>Sign up early. Save more.</>
-              ) : (
-                <>Enjoy peace of mind from<br />Palma to Paphos</>
-              )}
-            </h1>
+            <h1 className="hero-title">Enjoy peace of mind from<br />Palma to Paphos</h1>
           </div>
 
           <div className="hero-cta-group">
-            <div className={`intro-offer-banner ${bannerFading ? 'fading' : ''}`}>
-              {heroBannerIndex === 0 ? (
-                <>
-                  <span className="intro-offer-discount">10% off</span>
-                  <span className="intro-offer-text desktop-only">for subscribers – register your interest below</span>
-                  <span className="intro-offer-text mobile-only">– register below</span>
-                </>
-              ) : (
-                <>
-                  <span className="intro-offer-text desktop-only">Coming Soon – Early January 2026</span>
-                  <span className="intro-offer-text mobile-only">Coming Soon – Early 2026</span>
-                </>
-              )}
+            <div className="intro-offer-banner" style={{ visibility: 'hidden' }}>
+              <span className="intro-offer-discount">Spacer</span>
             </div>
 
             <a href="#subscribe" className="hero-cta">Join the waitlist <span>→</span></a>
