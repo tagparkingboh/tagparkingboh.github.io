@@ -54,11 +54,17 @@
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  background-attachment: fixed;
   position: relative;
   padding: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Parallax only on desktop/laptop */
+@media (min-width: 1024px) {
+  .hero {
+    background-attachment: fixed;
+  }
 }
 
 .hero::before {
