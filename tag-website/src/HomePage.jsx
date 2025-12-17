@@ -249,8 +249,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            {/* <Link to="/tag-it" className="pricing-btn">Tag It <span>→</span></Link> */}
-            <button className="pricing-btn disabled" disabled>Coming Soon</button>
+            <Link to="/tag-it" className="pricing-btn">Tag It <span>→</span></Link>
           </div>
 
           <div className="pricing-card">
@@ -270,8 +269,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            {/* <Link to="/tag-it" className="pricing-btn">Tag It <span>→</span></Link> */}
-            <button className="pricing-btn disabled" disabled>Coming Soon</button>
+            <Link to="/tag-it" className="pricing-btn">Tag It <span>→</span></Link>
           </div>
         </div>
       </section>
