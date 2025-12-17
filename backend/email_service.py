@@ -5,10 +5,14 @@ import os
 import logging
 import secrets
 import string
+from pathlib import Path
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Email, To, Content
 
 logger = logging.getLogger(__name__)
+
+# Get the directory where this file is located
+EMAIL_TEMPLATES_DIR = Path(__file__).parent / "email_templates"
 
 # SendGrid configuration
 SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
@@ -80,102 +84,22 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
 
 
 def send_welcome_email(first_name: str, email: str) -> bool:
-    """Send welcome email to new subscriber."""
-    subject = f"Welcome to TAG, {first_name}!"
+    """Send welcome email to new subscriber using the HTML template."""
+    subject = "Thanks for joining the waitlist!"
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background: #1a1a1a; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
-            .header img {{ max-width: 120px; }}
-            .header h1 {{ color: #D9FF00; margin: 10px 0 0 0; font-size: 28px; }}
-            .content {{ background: #ffffff; padding: 30px; }}
-            .intro {{ font-size: 16px; color: #333; }}
-            .steps {{ background: #f9f9f9; padding: 20px; margin: 25px 0; border-radius: 8px; }}
-            .step {{ display: flex; align-items: flex-start; margin-bottom: 20px; }}
-            .step:last-child {{ margin-bottom: 0; }}
-            .step-number {{ background: #D9FF00; color: #1a1a1a; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0; margin-right: 15px; }}
-            .step-content h4 {{ margin: 0 0 5px 0; color: #1a1a1a; font-size: 16px; }}
-            .step-content p {{ margin: 0; color: #666; font-size: 14px; }}
-            .cta-section {{ text-align: center; margin: 30px 0; }}
-            .button {{ display: inline-block; background: #D9FF00; color: #1a1a1a; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }}
-            .button:hover {{ background: #c4e600; }}
-            .note {{ background: #f0f0f0; padding: 15px; border-radius: 6px; font-size: 14px; color: #555; margin: 20px 0; }}
-            .tagline {{ font-size: 18px; font-weight: bold; color: #1a1a1a; margin: 25px 0 15px 0; }}
-            .footer {{ background: #1a1a1a; padding: 25px; text-align: center; border-radius: 0 0 10px 10px; }}
-            .footer p {{ color: #999; font-size: 12px; margin: 5px 0; }}
-            .footer a {{ color: #D9FF00; text-decoration: none; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>TAG</h1>
-            </div>
-            <div class="content">
-                <h2 style="margin-top: 0;">Hi {first_name},</h2>
-                <p class="intro">Welcome to TAG — we're thrilled to have you with us!</p>
-
-                <p>Our mission is simple: to provide an easier, faster and more cost-efficient meet & greet service for everyone. However you're travelling, we're here to give you a seamless experience from the moment you arrive.</p>
-
-                <p><strong>No more sky-high fees, no more buses, no more treks to Zone F.</strong> Just your car, waiting for you when your trip is over.</p>
-
-                <div class="steps">
-                    <h3 style="margin-top: 0; color: #1a1a1a;">How does it work?</h3>
-
-                    <div class="step">
-                        <div class="step-number">1</div>
-                        <div class="step-content">
-                            <h4>Meet us at departures</h4>
-                            <p>Simply drive to the terminal car park drop off and one of our drivers will be waiting for you</p>
-                        </div>
-                    </div>
-
-                    <div class="step">
-                        <div class="step-number">2</div>
-                        <div class="step-content">
-                            <h4>Sit back and enjoy your trip</h4>
-                            <p>Relax while we park your car in our highly secured location, minutes from the airport</p>
-                        </div>
-                    </div>
-
-                    <div class="step">
-                        <div class="step-number">3</div>
-                        <div class="step-content">
-                            <h4>Pick up where you left off</h4>
-                            <p>We then meet you at the same spot to hand your keys and car back to you</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="note">
-                    Before your scheduled meet and greet, you'll receive a confirmation email with all your details and the name of your greeter.
-                </div>
-
-                <div class="cta-section">
-                    <p style="font-size: 16px; margin-bottom: 15px;"><strong>Ready to start your journey?</strong></p>
-                    <a href="https://tagparking.co.uk" class="button">Book now</a>
-                </div>
-
-                <p>If you have any special requests or need assistance before your arrival, please don't hesitate to contact us at <a href="mailto:info@tagparking.co.uk" style="color: #1a1a1a;">info@tagparking.co.uk</a>.</p>
-
-                <p class="tagline">It's time to Tag it.</p>
-
-                <p>Warm regards,</p>
-                <p><strong>The Tag Team</strong></p>
-            </div>
-            <div class="footer">
-                <p><strong style="color: #D9FF00;">TAG</strong> | Bournemouth Airport</p>
-                <p>You're receiving this because you signed up at <a href="https://tagparking.co.uk">tagparking.co.uk</a></p>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
+    # Load the HTML template
+    template_path = EMAIL_TEMPLATES_DIR / "welcome_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        # Replace the placeholder with the actual first name
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+    except FileNotFoundError:
+        logger.error(f"Welcome email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading welcome email template: {e}")
+        return False
 
     return send_email(email, subject, html_content)
 
