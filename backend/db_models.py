@@ -306,6 +306,11 @@ class MarketingSubscriber(Base):
     source = Column(String(50), default="landing_page")  # landing_page, homepage, etc.
     hubspot_contact_id = Column(String(100))  # For HubSpot integration
 
+    # Unsubscribe tracking
+    unsubscribe_token = Column(String(64), unique=True, index=True)  # Secure token for unsubscribe link
+    unsubscribed = Column(Boolean, default=False)
+    unsubscribed_at = Column(DateTime(timezone=True))
+
     # Timestamps
     subscribed_at = Column(DateTime(timezone=True), server_default=func.now())
     welcome_email_sent_at = Column(DateTime(timezone=True))

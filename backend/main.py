@@ -11,6 +11,7 @@ Provides REST API endpoints for the frontend to:
 - Process Stripe payments
 """
 import uuid
+import secrets
 from datetime import date, time, datetime
 from pathlib import Path
 from typing import Optional
@@ -1465,11 +1466,15 @@ async def subscribe_to_marketing(
         )
 
     try:
+        # Generate a secure unsubscribe token
+        unsubscribe_token = secrets.token_urlsafe(32)
+
         subscriber = MarketingSubscriber(
             first_name=request.first_name.strip(),
             last_name=request.last_name.strip(),
             email=request.email.lower().strip(),
             source=request.source,
+            unsubscribe_token=unsubscribe_token,
         )
         db.add(subscriber)
         db.commit()
@@ -1482,6 +1487,99 @@ async def subscribe_to_marketing(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Failed to subscribe: {str(e)}")
+
+
+@app.get("/api/marketing/unsubscribe/{token}")
+async def unsubscribe_from_marketing(
+    token: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Unsubscribe from marketing emails using a secure token.
+
+    Returns an HTML page confirming the unsubscription.
+    """
+    from fastapi.responses import HTMLResponse
+
+    # Find subscriber by token
+    subscriber = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.unsubscribe_token == token
+    ).first()
+
+    if not subscriber:
+        return HTMLResponse(content="""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Unsubscribe - TAG Parking</title>
+            <style>
+                body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #1a1a1a; color: white; }
+                .container { max-width: 500px; margin: 0 auto; }
+                h1 { color: #D9FF00; }
+                p { color: #ccc; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Invalid Link</h1>
+                <p>This unsubscribe link is not valid or has expired.</p>
+                <p>If you need help, contact us at <a href="mailto:support@tagparking.co.uk" style="color: #D9FF00;">support@tagparking.co.uk</a></p>
+            </div>
+        </body>
+        </html>
+        """, status_code=404)
+
+    if subscriber.unsubscribed:
+        return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Already Unsubscribed - TAG Parking</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #1a1a1a; color: white; }}
+                .container {{ max-width: 500px; margin: 0 auto; }}
+                h1 {{ color: #D9FF00; }}
+                p {{ color: #ccc; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Already Unsubscribed</h1>
+                <p>You have already been unsubscribed from TAG Parking emails.</p>
+                <p>Email: {subscriber.email}</p>
+            </div>
+        </body>
+        </html>
+        """)
+
+    # Mark as unsubscribed
+    subscriber.unsubscribed = True
+    subscriber.unsubscribed_at = datetime.utcnow()
+    db.commit()
+
+    return HTMLResponse(content=f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Unsubscribed - TAG Parking</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #1a1a1a; color: white; }}
+            .container {{ max-width: 500px; margin: 0 auto; }}
+            h1 {{ color: #D9FF00; }}
+            p {{ color: #ccc; }}
+            .success {{ color: #4CAF50; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Unsubscribed Successfully</h1>
+            <p class="success">You have been unsubscribed from TAG Parking marketing emails.</p>
+            <p>Email: {subscriber.email}</p>
+            <p>We're sorry to see you go! If you change your mind, you can sign up again at <a href="https://tagparking.co.uk" style="color: #D9FF00;">tagparking.co.uk</a></p>
+        </div>
+    </body>
+    </html>
+    """)
 
 
 # =============================================================================

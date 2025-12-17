@@ -83,17 +83,26 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
         return False
 
 
-def send_welcome_email(first_name: str, email: str) -> bool:
+def send_welcome_email(first_name: str, email: str, unsubscribe_token: str = None) -> bool:
     """Send welcome email to new subscriber using the HTML template."""
     subject = "Thanks for joining the waitlist!"
+
+    # Build unsubscribe URL
+    api_base_url = os.getenv("API_BASE_URL", "https://tagparkingbohgithubio-production.up.railway.app")
+    if unsubscribe_token:
+        unsubscribe_url = f"{api_base_url}/api/marketing/unsubscribe/{unsubscribe_token}"
+    else:
+        # Fallback - shouldn't happen but just in case
+        unsubscribe_url = "https://tagparking.co.uk"
 
     # Load the HTML template
     template_path = EMAIL_TEMPLATES_DIR / "welcome_email.html"
     try:
         with open(template_path, "r", encoding="utf-8") as f:
             html_content = f.read()
-        # Replace the placeholder with the actual first name
+        # Replace placeholders
         html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{UNSUBSCRIBE_URL}}", unsubscribe_url)
     except FileNotFoundError:
         logger.error(f"Welcome email template not found at {template_path}")
         return False

@@ -50,11 +50,16 @@ def process_pending_welcome_emails():
         ).limit(10).all()  # Process 10 at a time to avoid overwhelming
 
         for subscriber in pending:
+            # Skip if already unsubscribed
+            if subscriber.unsubscribed:
+                continue
+
             logger.info(f"Sending welcome email to {subscriber.email}")
 
             success = send_welcome_email(
                 first_name=subscriber.first_name,
                 email=subscriber.email,
+                unsubscribe_token=subscriber.unsubscribe_token,
             )
 
             if success:
