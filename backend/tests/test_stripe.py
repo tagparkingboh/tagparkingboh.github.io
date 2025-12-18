@@ -47,10 +47,10 @@ class TestCalculatePriceInPence:
         assert calculate_price_in_pence("quick", drop_off_date=late_date) == 11900
 
     def test_longer_package_early_bird_price(self):
-        """Longer package booked 14+ days in advance should be £135.00 = 13500 pence."""
+        """Longer package booked 14+ days in advance should be £150.00 = 15000 pence."""
         from datetime import date, timedelta
         early_date = date.today() + timedelta(days=20)
-        assert calculate_price_in_pence("longer", drop_off_date=early_date) == 13500
+        assert calculate_price_in_pence("longer", drop_off_date=early_date) == 15000
 
     def test_longer_package_late_price(self):
         """Longer package booked <7 days in advance should be £155.00 = 15500 pence."""

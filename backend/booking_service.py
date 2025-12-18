@@ -55,9 +55,9 @@ class BookingService:
             "late": 119.0,     # <7 days in advance
         },
         "longer": {
-            "early": 135.0,    # >=14 days in advance
-            "standard": 145.0, # 7-13 days in advance
-            "late": 155.0,     # <7 days in advance
+            "early": 150.0,    # >=14 days in advance
+            "standard": 160.0, # 7-13 days in advance
+            "late": 170.0,     # <7 days in advance
         },
     }
 

@@ -1134,7 +1134,7 @@ async def test_full_booking_flow(client, db_session):
 
     assert payment_response.status_code == 200
     payment_data = payment_response.json()
-    assert payment_data["amount"] == 13500  # £135.00 for longer package
+    assert payment_data["amount"] == 15000  # £150.00 for longer package
 
     # Step 7: Verify slot is now booked
     flights_after = await client.get("/api/flights/departures/2025-12-25")

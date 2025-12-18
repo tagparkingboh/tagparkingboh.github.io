@@ -1581,11 +1581,11 @@ function Bookings() {
                   <>
                     <div className="summary-item subtotal">
                       <span>Subtotal</span>
-                      <span>£{pricingInfo ? pricingInfo.price.toFixed(2) : (formData.package === 'quick' ? '99.00' : '135.00')}</span>
+                      <span>£{pricingInfo ? pricingInfo.price.toFixed(2) : (formData.package === 'quick' ? '99.00' : '150.00')}</span>
                     </div>
                     <div className="summary-item discount">
                       <span>Promo Discount ({promoCodeDiscount}%)</span>
-                      <span className="discount-amount">-£{((pricingInfo ? pricingInfo.price : (formData.package === 'quick' ? 99 : 135)) * promoCodeDiscount / 100).toFixed(2)}</span>
+                      <span className="discount-amount">-£{((pricingInfo ? pricingInfo.price : (formData.package === 'quick' ? 99 : 150)) * promoCodeDiscount / 100).toFixed(2)}</span>
                     </div>
                   </>
                 )}
@@ -1593,7 +1593,7 @@ function Bookings() {
                   <span>Total</span>
                   <span>
                     £{(() => {
-                      const basePrice = pricingInfo ? pricingInfo.price : (formData.package === 'quick' ? 99 : 135)
+                      const basePrice = pricingInfo ? pricingInfo.price : (formData.package === 'quick' ? 99 : 150)
                       const discount = promoCodeValid && promoCodeDiscount > 0 ? basePrice * promoCodeDiscount / 100 : 0
                       return (basePrice - discount).toFixed(2)
                     })()}

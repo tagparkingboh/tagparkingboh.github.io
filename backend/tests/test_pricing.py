@@ -109,9 +109,9 @@ class TestCalculatePriceBoundaries:
 
     # Longer package (2 weeks) tests
     def test_longer_early_at_14_days(self):
-        """Longer package at exactly 14 days = early tier = £135."""
+        """Longer package at exactly 14 days = early tier = £150."""
         drop_off = date.today() + timedelta(days=14)
-        assert BookingService.calculate_price("longer", drop_off) == 135.0
+        assert BookingService.calculate_price("longer", drop_off) == 150.0
 
     def test_longer_standard_at_13_days(self):
         """Longer package at exactly 13 days = standard tier = £145."""
@@ -153,8 +153,8 @@ class TestCalculatePriceAllScenarios:
         assert BookingService.calculate_price("quick", drop_off) == expected_price
 
     @pytest.mark.parametrize("days,expected_price", [
-        (20, 135.0),  # Early
-        (14, 135.0),  # Early boundary
+        (20, 150.0),  # Early
+        (14, 150.0),  # Early boundary
         (13, 145.0),  # Standard boundary
         (10, 145.0),  # Standard middle
         (7, 145.0),   # Standard boundary
@@ -260,9 +260,9 @@ class TestCalculatePriceInPence:
         assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 11900
 
     def test_longer_early_in_pence(self):
-        """Longer early = £135 = 13500 pence."""
+        """Longer early = £150 = 15000 pence."""
         drop_off = date.today() + timedelta(days=20)
-        assert calculate_price_in_pence("longer", drop_off_date=drop_off) == 13500
+        assert calculate_price_in_pence("longer", drop_off_date=drop_off) == 15000
 
     def test_longer_standard_in_pence(self):
         """Longer standard = £145 = 14500 pence."""
@@ -377,7 +377,7 @@ class TestPricingCalculateEndpoint:
 
     @pytest.mark.asyncio
     async def test_calculate_longer_early(self, client):
-        """2 week package, 14+ days ahead = £135."""
+        """2 week package, 14+ days ahead = £150."""
         drop_off = (date.today() + timedelta(days=20)).isoformat()
         pickup = (date.today() + timedelta(days=34)).isoformat()  # 14 days later
 
@@ -392,8 +392,8 @@ class TestPricingCalculateEndpoint:
         assert data["package_name"] == "2 Weeks"
         assert data["duration_days"] == 14
         assert data["advance_tier"] == "early"
-        assert data["price"] == 135.0
-        assert data["price_pence"] == 13500
+        assert data["price"] == 150.0
+        assert data["price_pence"] == 15000
 
     @pytest.mark.asyncio
     async def test_calculate_longer_standard(self, client):
@@ -588,7 +588,7 @@ class TestPricingTiersEndpoint:
         assert data["packages"]["quick"]["prices"]["late"] == 119.0
 
         # Check longer package prices (nested under "prices" key)
-        assert data["packages"]["longer"]["prices"]["early"] == 135.0
+        assert data["packages"]["longer"]["prices"]["early"] == 150.0
         assert data["packages"]["longer"]["prices"]["standard"] == 145.0
         assert data["packages"]["longer"]["prices"]["late"] == 155.0
 
@@ -658,7 +658,7 @@ class TestEndToEndPricingFlow:
             (20, 7, "quick", "early", 99.0),
             (10, 7, "quick", "standard", 109.0),
             (3, 7, "quick", "late", 119.0),
-            (20, 14, "longer", "early", 135.0),
+            (20, 14, "longer", "early", 150.0),
             (10, 14, "longer", "standard", 145.0),
             (3, 14, "longer", "late", 155.0),
         ]

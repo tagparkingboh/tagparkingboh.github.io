@@ -201,7 +201,7 @@ function LandingPage() {
             <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
-              <span className="price">135</span>
+              <span className="price">150</span>
             </div>
             <p className="pricing-note">one off payment</p>
 
@@ -336,7 +336,7 @@ function LandingPage() {
             <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
-              <span className="price">135</span>
+              <span className="price">150</span>
             </div>
             <p className="pricing-note">one off payment</p>
 

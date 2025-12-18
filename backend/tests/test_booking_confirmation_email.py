@@ -256,11 +256,11 @@ class TestSendBookingConfirmationEmail:
             vehicle_colour="Blue",
             vehicle_registration="AB12 CDE",
             package_name="2 Weeks",
-            amount_paid="£135.00",
+            amount_paid="£150.00",
         )
 
         html_content = mock_send_email.call_args[0][2]
-        assert "£135.00" in html_content
+        assert "£150.00" in html_content
         assert "2 Weeks" in html_content
 
     @patch('email_service.send_email')
@@ -553,7 +553,7 @@ class TestWebhookEmailIntegration:
             "data": {
                 "object": {
                     "id": "pi_test_123456",
-                    "amount": 13500,  # £135.00
+                    "amount": 15000,  # £150.00
                     "metadata": {
                         "booking_reference": booking.reference,
                         "departure_id": "",
@@ -573,7 +573,7 @@ class TestWebhookEmailIntegration:
         assert response.status_code == 200
 
         call_kwargs = mock_send_email.call_args[1]
-        assert call_kwargs["amount_paid"] == "£135.00"
+        assert call_kwargs["amount_paid"] == "£150.00"
 
     @pytest.mark.asyncio
     @patch('main.send_booking_confirmation_email')
@@ -765,7 +765,7 @@ class TestWebhookEmailIntegration:
         payment = Payment(
             booking_id=booking.id,
             stripe_payment_intent_id="pi_test_2week",
-            amount_pence=13500,
+            amount_pence=15000,
             currency="gbp",
             status=PaymentStatus.PENDING,
         )
@@ -777,7 +777,7 @@ class TestWebhookEmailIntegration:
             "data": {
                 "object": {
                     "id": "pi_test_2week",
-                    "amount": 13500,
+                    "amount": 15000,
                     "metadata": {
                         "booking_reference": "TAG-2WEEK123",
                         "departure_id": "",
