@@ -594,8 +594,8 @@ class TestUnsubscribeModelFields:
 # =============================================================================
 
 @pytest.mark.asyncio
-async def test_unsubscribe_success(client):
-    """Should successfully unsubscribe with valid token."""
+async def test_unsubscribe_confirmation_page(client):
+    """GET should show confirmation page with 'Yes, I'm sure!' button."""
     # First, create a subscriber
     db = TestingSessionLocal()
     try:
@@ -610,8 +610,44 @@ async def test_unsubscribe_success(client):
     finally:
         db.close()
 
-    # Now unsubscribe
+    # GET should show confirmation page
     response = await client.get("/api/marketing/unsubscribe/valid-token-12345")
+    assert response.status_code == 200
+    assert "Are you sure" in response.text
+    assert "Yes, I'm sure!" in response.text
+    assert "john@example.com" in response.text
+
+    # Verify NOT unsubscribed yet in database
+    db = TestingSessionLocal()
+    try:
+        subscriber = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email == "john@example.com"
+        ).first()
+        assert subscriber.unsubscribed is False
+        assert subscriber.unsubscribed_at is None
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_success(client):
+    """POST should successfully unsubscribe with valid token."""
+    # First, create a subscriber
+    db = TestingSessionLocal()
+    try:
+        subscriber = MarketingSubscriber(
+            first_name="John",
+            last_name="Doe",
+            email="john@example.com",
+            unsubscribe_token="valid-token-12345",
+        )
+        db.add(subscriber)
+        db.commit()
+    finally:
+        db.close()
+
+    # POST to actually unsubscribe
+    response = await client.post("/api/marketing/unsubscribe/valid-token-12345")
     assert response.status_code == 200
     assert "Unsubscribed Successfully" in response.text
     assert "john@example.com" in response.text

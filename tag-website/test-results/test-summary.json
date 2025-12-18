@@ -1,0 +1,1390 @@
+{
+  "timestamp": "2025-12-12T22:32:33.622Z",
+  "totalTests": 170,
+  "passed": 170,
+  "failed": 0,
+  "skipped": 0,
+  "duration": "1m 41s",
+  "tests": [
+    {
+      "title": "should display the signup form on homepage",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should display the signup form on homepage",
+      "status": "passed",
+      "duration": 4112,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should disable submit button with only last name filled",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only last name filled",
+      "status": "passed",
+      "duration": 4123,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should disable submit button with only first name filled",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only first name filled",
+      "status": "passed",
+      "duration": 4111,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should disable submit button when form is empty",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button when form is empty",
+      "status": "passed",
+      "duration": 4555,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should clear form fields after successful signup",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should clear form fields after successful signup",
+      "status": "passed",
+      "duration": 6754,
+      "email": "clear_form_fields_Chr_6796@yopmail.com",
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should successfully sign up with valid data",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should successfully sign up with valid data",
+      "status": "passed",
+      "duration": 6851,
+      "email": "successful_signup_Chr_6897@yopmail.com",
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should disable submit button with only email filled",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only email filled",
+      "status": "passed",
+      "duration": 3744,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should disable submit button with invalid email format",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with invalid email format",
+      "status": "passed",
+      "duration": 4107,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should disable submit button with email missing @ symbol",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing @ symbol",
+      "status": "passed",
+      "duration": 4231,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should disable submit button with email missing domain",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing domain",
+      "status": "passed",
+      "duration": 4279,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should handle duplicate email signup attempt",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Duplicate Email > should handle duplicate email signup attempt",
+      "status": "passed",
+      "duration": 9762,
+      "email": "duplicate_email_test_Chr_6188@yopmail.com",
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should disable submit button with whitespace-only last name",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with whitespace-only last name",
+      "status": "passed",
+      "duration": 2068,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should disable submit button with email missing TLD",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing TLD",
+      "status": "passed",
+      "duration": 3849,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should reject invalid email: missing local part",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing local part",
+      "status": "passed",
+      "duration": 2101,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should enable submit button with all valid fields",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should enable submit button with all valid fields",
+      "status": "passed",
+      "duration": 4183,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should reject invalid email: plain text without @ or domain",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: plain text without @ or domain",
+      "status": "passed",
+      "duration": 3852,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should reject invalid email: missing domain name",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing domain name",
+      "status": "passed",
+      "duration": 2062,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should disable submit button with whitespace-only first name",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with whitespace-only first name",
+      "status": "passed",
+      "duration": 4538,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should reject invalid email: space after @",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: space after @",
+      "status": "passed",
+      "duration": 2069,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should reject invalid email: missing domain",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing domain",
+      "status": "passed",
+      "duration": 3978,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should reject invalid email: empty string",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: empty string",
+      "status": "passed",
+      "duration": 2178,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should reject invalid email: missing TLD",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing TLD",
+      "status": "passed",
+      "duration": 3896,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should accept valid email: email with dot in local part",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with dot in local part",
+      "status": "passed",
+      "duration": 2440,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should accept valid email: standard email",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: standard email",
+      "status": "passed",
+      "duration": 2511,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should reject invalid email: space in local part",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: space in local part",
+      "status": "passed",
+      "duration": 4338,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should accept valid email: uppercase email",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: uppercase email",
+      "status": "passed",
+      "duration": 2428,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should accept valid email: email with plus sign",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with plus sign",
+      "status": "passed",
+      "duration": 3819,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should accept valid email: email with subdomain",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with subdomain",
+      "status": "passed",
+      "duration": 3803,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should accept valid email: email with numbers",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with numbers",
+      "status": "passed",
+      "duration": 4094,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should show \"Join the waitlist\" button text initially",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - UI State > should show \"Join the waitlist\" button text initially",
+      "status": "passed",
+      "duration": 3820,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should show \"Joining...\" while submitting",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - UI State > should show \"Joining...\" while submitting",
+      "status": "passed",
+      "duration": 3904,
+      "email": "joining_state_Chr_1361@yopmail.com",
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should scroll to subscribe section via nav link",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Navigation > should scroll to subscribe section via nav link",
+      "status": "passed",
+      "duration": 2020,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should not show success or error message initially",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - UI State > should not show success or error message initially",
+      "status": "passed",
+      "duration": 3813,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should scroll to subscribe section via hero CTA",
+      "fullTitle": " > chromium > waitlist-signup.spec.ts > Waitlist Signup - Navigation > should scroll to subscribe section via hero CTA",
+      "status": "passed",
+      "duration": 2372,
+      "retries": 0,
+      "browser": "chromium"
+    },
+    {
+      "title": "should display the signup form on homepage",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should display the signup form on homepage",
+      "status": "passed",
+      "duration": 4457,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should disable submit button when form is empty",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button when form is empty",
+      "status": "passed",
+      "duration": 4464,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should disable submit button with only first name filled",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only first name filled",
+      "status": "passed",
+      "duration": 4443,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should disable submit button with only last name filled",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only last name filled",
+      "status": "passed",
+      "duration": 4452,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should successfully sign up with valid data",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should successfully sign up with valid data",
+      "status": "passed",
+      "duration": 7008,
+      "email": "successful_signup_FF_6312@yopmail.com",
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should clear form fields after successful signup",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should clear form fields after successful signup",
+      "status": "passed",
+      "duration": 6623,
+      "email": "clear_form_fields_FF_6497@yopmail.com",
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should disable submit button with only email filled",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only email filled",
+      "status": "passed",
+      "duration": 3943,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should disable submit button with invalid email format",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with invalid email format",
+      "status": "passed",
+      "duration": 3971,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should disable submit button with whitespace-only first name",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with whitespace-only first name",
+      "status": "passed",
+      "duration": 2537,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should disable submit button with email missing domain",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing domain",
+      "status": "passed",
+      "duration": 4007,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should disable submit button with email missing @ symbol",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing @ symbol",
+      "status": "passed",
+      "duration": 4435,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should handle duplicate email signup attempt",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Duplicate Email > should handle duplicate email signup attempt",
+      "status": "passed",
+      "duration": 10228,
+      "email": "duplicate_email_test_FF_6180@yopmail.com",
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should disable submit button with email missing TLD",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing TLD",
+      "status": "passed",
+      "duration": 4043,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should reject invalid email: missing local part",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing local part",
+      "status": "passed",
+      "duration": 2240,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should enable submit button with all valid fields",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should enable submit button with all valid fields",
+      "status": "passed",
+      "duration": 5079,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should disable submit button with whitespace-only last name",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with whitespace-only last name",
+      "status": "passed",
+      "duration": 3984,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should reject invalid email: plain text without @ or domain",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: plain text without @ or domain",
+      "status": "passed",
+      "duration": 3995,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should reject invalid email: space after @",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: space after @",
+      "status": "passed",
+      "duration": 2241,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should reject invalid email: missing domain",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing domain",
+      "status": "passed",
+      "duration": 5190,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should reject invalid email: missing TLD",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing TLD",
+      "status": "passed",
+      "duration": 4526,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should accept valid email: standard email",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: standard email",
+      "status": "passed",
+      "duration": 2256,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should reject invalid email: empty string",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: empty string",
+      "status": "passed",
+      "duration": 4033,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should accept valid email: email with plus sign",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with plus sign",
+      "status": "passed",
+      "duration": 2291,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should reject invalid email: missing domain name",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing domain name",
+      "status": "passed",
+      "duration": 7182,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should accept valid email: uppercase email",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: uppercase email",
+      "status": "passed",
+      "duration": 2284,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should reject invalid email: space in local part",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: space in local part",
+      "status": "passed",
+      "duration": 6246,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should accept valid email: email with dot in local part",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with dot in local part",
+      "status": "passed",
+      "duration": 4055,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should accept valid email: email with numbers",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with numbers",
+      "status": "passed",
+      "duration": 2564,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should accept valid email: email with subdomain",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with subdomain",
+      "status": "passed",
+      "duration": 4361,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should not show success or error message initially",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - UI State > should not show success or error message initially",
+      "status": "passed",
+      "duration": 2302,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should show \"Joining...\" while submitting",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - UI State > should show \"Joining...\" while submitting",
+      "status": "passed",
+      "duration": 4400,
+      "email": "joining_state_FF_3949@yopmail.com",
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should scroll to subscribe section via hero CTA",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Navigation > should scroll to subscribe section via hero CTA",
+      "status": "passed",
+      "duration": 3968,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should show \"Join the waitlist\" button text initially",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - UI State > should show \"Join the waitlist\" button text initially",
+      "status": "passed",
+      "duration": 5396,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should scroll to subscribe section via nav link",
+      "fullTitle": " > firefox > waitlist-signup.spec.ts > Waitlist Signup - Navigation > should scroll to subscribe section via nav link",
+      "status": "passed",
+      "duration": 5405,
+      "retries": 0,
+      "browser": "firefox"
+    },
+    {
+      "title": "should display the signup form on homepage",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should display the signup form on homepage",
+      "status": "passed",
+      "duration": 4238,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should disable submit button with only first name filled",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only first name filled",
+      "status": "passed",
+      "duration": 2619,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should successfully sign up with valid data",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should successfully sign up with valid data",
+      "status": "passed",
+      "duration": 5925,
+      "email": "successful_signup_Saf_5854@yopmail.com",
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should disable submit button when form is empty",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button when form is empty",
+      "status": "passed",
+      "duration": 3968,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should clear form fields after successful signup",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should clear form fields after successful signup",
+      "status": "passed",
+      "duration": 6499,
+      "email": "clear_form_fields_Saf_7175@yopmail.com",
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should disable submit button with only last name filled",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only last name filled",
+      "status": "passed",
+      "duration": 3867,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should disable submit button with only email filled",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only email filled",
+      "status": "passed",
+      "duration": 3647,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should disable submit button with email missing domain",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing domain",
+      "status": "passed",
+      "duration": 2128,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should disable submit button with invalid email format",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with invalid email format",
+      "status": "passed",
+      "duration": 3872,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should disable submit button with email missing @ symbol",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing @ symbol",
+      "status": "passed",
+      "duration": 4130,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should disable submit button with email missing TLD",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing TLD",
+      "status": "passed",
+      "duration": 4118,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should disable submit button with whitespace-only first name",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with whitespace-only first name",
+      "status": "passed",
+      "duration": 3595,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should handle duplicate email signup attempt",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Duplicate Email > should handle duplicate email signup attempt",
+      "status": "passed",
+      "duration": 9571,
+      "email": "duplicate_email_test_Saf_8238@yopmail.com",
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should reject invalid email: plain text without @ or domain",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: plain text without @ or domain",
+      "status": "passed",
+      "duration": 2469,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should disable submit button with whitespace-only last name",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with whitespace-only last name",
+      "status": "passed",
+      "duration": 3645,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should enable submit button with all valid fields",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should enable submit button with all valid fields",
+      "status": "passed",
+      "duration": 4972,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should reject invalid email: missing local part",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing local part",
+      "status": "passed",
+      "duration": 3612,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should reject invalid email: missing domain",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing domain",
+      "status": "passed",
+      "duration": 2571,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should reject invalid email: space in local part",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: space in local part",
+      "status": "passed",
+      "duration": 2275,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should reject invalid email: missing domain name",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing domain name",
+      "status": "passed",
+      "duration": 3810,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should reject invalid email: missing TLD",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing TLD",
+      "status": "passed",
+      "duration": 3821,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should reject invalid email: space after @",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: space after @",
+      "status": "passed",
+      "duration": 3813,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should accept valid email: standard email",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: standard email",
+      "status": "passed",
+      "duration": 2465,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should reject invalid email: empty string",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: empty string",
+      "status": "passed",
+      "duration": 4224,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should accept valid email: email with dot in local part",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with dot in local part",
+      "status": "passed",
+      "duration": 3940,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should accept valid email: email with plus sign",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with plus sign",
+      "status": "passed",
+      "duration": 3656,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should accept valid email: email with subdomain",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with subdomain",
+      "status": "passed",
+      "duration": 3665,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should accept valid email: uppercase email",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: uppercase email",
+      "status": "passed",
+      "duration": 4051,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should show \"Joining...\" while submitting",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - UI State > should show \"Joining...\" while submitting",
+      "status": "passed",
+      "duration": 2581,
+      "email": "joining_state_Saf_2083@yopmail.com",
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should accept valid email: email with numbers",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with numbers",
+      "status": "passed",
+      "duration": 3738,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should show \"Join the waitlist\" button text initially",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - UI State > should show \"Join the waitlist\" button text initially",
+      "status": "passed",
+      "duration": 4128,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should not show success or error message initially",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - UI State > should not show success or error message initially",
+      "status": "passed",
+      "duration": 3730,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should scroll to subscribe section via nav link",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Navigation > should scroll to subscribe section via nav link",
+      "status": "passed",
+      "duration": 4345,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should scroll to subscribe section via hero CTA",
+      "fullTitle": " > webkit > waitlist-signup.spec.ts > Waitlist Signup - Navigation > should scroll to subscribe section via hero CTA",
+      "status": "passed",
+      "duration": 4310,
+      "retries": 0,
+      "browser": "webkit"
+    },
+    {
+      "title": "should display the signup form on homepage",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should display the signup form on homepage",
+      "status": "passed",
+      "duration": 3508,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should disable submit button when form is empty",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button when form is empty",
+      "status": "passed",
+      "duration": 2114,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should clear form fields after successful signup",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should clear form fields after successful signup",
+      "status": "passed",
+      "duration": 4110,
+      "email": "clear_form_fields_MobC_4395@yopmail.com",
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should successfully sign up with valid data",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should successfully sign up with valid data",
+      "status": "passed",
+      "duration": 6148,
+      "email": "successful_signup_MobC_6047@yopmail.com",
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should disable submit button with only first name filled",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only first name filled",
+      "status": "passed",
+      "duration": 3693,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should disable submit button with only email filled",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only email filled",
+      "status": "passed",
+      "duration": 3458,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should disable submit button with only last name filled",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only last name filled",
+      "status": "passed",
+      "duration": 3699,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should disable submit button with invalid email format",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with invalid email format",
+      "status": "passed",
+      "duration": 3492,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should disable submit button with email missing @ symbol",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing @ symbol",
+      "status": "passed",
+      "duration": 3494,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should disable submit button with email missing domain",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing domain",
+      "status": "passed",
+      "duration": 3669,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should disable submit button with email missing TLD",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing TLD",
+      "status": "passed",
+      "duration": 3495,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should handle duplicate email signup attempt",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Duplicate Email > should handle duplicate email signup attempt",
+      "status": "passed",
+      "duration": 9554,
+      "email": "duplicate_email_test_MobC_6584@yopmail.com",
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should enable submit button with all valid fields",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should enable submit button with all valid fields",
+      "status": "passed",
+      "duration": 3466,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should disable submit button with whitespace-only last name",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with whitespace-only last name",
+      "status": "passed",
+      "duration": 3592,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should disable submit button with whitespace-only first name",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with whitespace-only first name",
+      "status": "passed",
+      "duration": 4171,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should reject invalid email: plain text without @ or domain",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: plain text without @ or domain",
+      "status": "passed",
+      "duration": 3692,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should reject invalid email: missing domain name",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing domain name",
+      "status": "passed",
+      "duration": 2500,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should reject invalid email: space in local part",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: space in local part",
+      "status": "passed",
+      "duration": 2033,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should reject invalid email: missing local part",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing local part",
+      "status": "passed",
+      "duration": 3601,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should reject invalid email: missing domain",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing domain",
+      "status": "passed",
+      "duration": 4052,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should reject invalid email: missing TLD",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing TLD",
+      "status": "passed",
+      "duration": 3564,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should reject invalid email: space after @",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: space after @",
+      "status": "passed",
+      "duration": 3628,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should reject invalid email: empty string",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: empty string",
+      "status": "passed",
+      "duration": 4128,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should accept valid email: standard email",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: standard email",
+      "status": "passed",
+      "duration": 3578,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should accept valid email: email with plus sign",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with plus sign",
+      "status": "passed",
+      "duration": 3680,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should accept valid email: email with dot in local part",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with dot in local part",
+      "status": "passed",
+      "duration": 3840,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should accept valid email: email with numbers",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with numbers",
+      "status": "passed",
+      "duration": 2070,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should accept valid email: uppercase email",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: uppercase email",
+      "status": "passed",
+      "duration": 3479,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should accept valid email: email with subdomain",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with subdomain",
+      "status": "passed",
+      "duration": 3954,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should show \"Joining...\" while submitting",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - UI State > should show \"Joining...\" while submitting",
+      "status": "passed",
+      "duration": 2440,
+      "email": "joining_state_MobC_1235@yopmail.com",
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should show \"Join the waitlist\" button text initially",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - UI State > should show \"Join the waitlist\" button text initially",
+      "status": "passed",
+      "duration": 3514,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should not show success or error message initially",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - UI State > should not show success or error message initially",
+      "status": "passed",
+      "duration": 3417,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should scroll to subscribe section via hero CTA",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Navigation > should scroll to subscribe section via hero CTA",
+      "status": "passed",
+      "duration": 3436,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should scroll to subscribe section via nav link",
+      "fullTitle": " > Mobile Chrome > waitlist-signup.spec.ts > Waitlist Signup - Navigation > should scroll to subscribe section via nav link",
+      "status": "passed",
+      "duration": 3769,
+      "retries": 0,
+      "browser": "Mobile Chrome"
+    },
+    {
+      "title": "should display the signup form on homepage",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should display the signup form on homepage",
+      "status": "passed",
+      "duration": 4213,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should successfully sign up with valid data",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should successfully sign up with valid data",
+      "status": "passed",
+      "duration": 4410,
+      "email": "successful_signup_MobS_2622@yopmail.com",
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should disable submit button with invalid email format",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with invalid email format",
+      "status": "passed",
+      "duration": 2193,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should disable submit button with only first name filled",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only first name filled",
+      "status": "passed",
+      "duration": 4170,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should disable submit button with only last name filled",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only last name filled",
+      "status": "passed",
+      "duration": 4214,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should disable submit button when form is empty",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button when form is empty",
+      "status": "passed",
+      "duration": 4862,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should disable submit button with only email filled",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with only email filled",
+      "status": "passed",
+      "duration": 4592,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should clear form fields after successful signup",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Successful Signup > should clear form fields after successful signup",
+      "status": "passed",
+      "duration": 7929,
+      "email": "clear_form_fields_MobS_7014@yopmail.com",
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should handle duplicate email signup attempt",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Duplicate Email > should handle duplicate email signup attempt",
+      "status": "passed",
+      "duration": 9441,
+      "email": "duplicate_email_test_MobS_5709@yopmail.com",
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should disable submit button with email missing @ symbol",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing @ symbol",
+      "status": "passed",
+      "duration": 4352,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should disable submit button with email missing domain",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing domain",
+      "status": "passed",
+      "duration": 3996,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should enable submit button with all valid fields",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should enable submit button with all valid fields",
+      "status": "passed",
+      "duration": 4028,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should disable submit button with email missing TLD",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with email missing TLD",
+      "status": "passed",
+      "duration": 4488,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should disable submit button with whitespace-only first name",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with whitespace-only first name",
+      "status": "passed",
+      "duration": 3991,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should disable submit button with whitespace-only last name",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Form Validation > should disable submit button with whitespace-only last name",
+      "status": "passed",
+      "duration": 3979,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should reject invalid email: missing domain name",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing domain name",
+      "status": "passed",
+      "duration": 2628,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should reject invalid email: missing domain",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing domain",
+      "status": "passed",
+      "duration": 3955,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should reject invalid email: missing local part",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing local part",
+      "status": "passed",
+      "duration": 3976,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should reject invalid email: plain text without @ or domain",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: plain text without @ or domain",
+      "status": "passed",
+      "duration": 4128,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should reject invalid email: missing TLD",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: missing TLD",
+      "status": "passed",
+      "duration": 4194,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should reject invalid email: space in local part",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: space in local part",
+      "status": "passed",
+      "duration": 4094,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should reject invalid email: space after @",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: space after @",
+      "status": "passed",
+      "duration": 3974,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should accept valid email: standard email",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: standard email",
+      "status": "passed",
+      "duration": 2545,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should accept valid email: email with plus sign",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with plus sign",
+      "status": "passed",
+      "duration": 2583,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should reject invalid email: empty string",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should reject invalid email: empty string",
+      "status": "passed",
+      "duration": 3974,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should accept valid email: email with dot in local part",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with dot in local part",
+      "status": "passed",
+      "duration": 4508,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should show \"Joining...\" while submitting",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - UI State > should show \"Joining...\" while submitting",
+      "status": "passed",
+      "duration": 2306,
+      "email": "joining_state_MobS_0699@yopmail.com",
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should accept valid email: uppercase email",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: uppercase email",
+      "status": "passed",
+      "duration": 4013,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should accept valid email: email with numbers",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with numbers",
+      "status": "passed",
+      "duration": 4263,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should accept valid email: email with subdomain",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Email Format Validation > should accept valid email: email with subdomain",
+      "status": "passed",
+      "duration": 5293,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should show \"Join the waitlist\" button text initially",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - UI State > should show \"Join the waitlist\" button text initially",
+      "status": "passed",
+      "duration": 4329,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should scroll to subscribe section via nav link",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Navigation > should scroll to subscribe section via nav link",
+      "status": "passed",
+      "duration": 2883,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should scroll to subscribe section via hero CTA",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - Navigation > should scroll to subscribe section via hero CTA",
+      "status": "passed",
+      "duration": 2538,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    },
+    {
+      "title": "should not show success or error message initially",
+      "fullTitle": " > Mobile Safari > waitlist-signup.spec.ts > Waitlist Signup - UI State > should not show success or error message initially",
+      "status": "passed",
+      "duration": 4509,
+      "retries": 0,
+      "browser": "Mobile Safari"
+    }
+  ]
+}

@@ -1490,12 +1490,117 @@ async def subscribe_to_marketing(
 
 
 @app.get("/api/marketing/unsubscribe/{token}")
+async def unsubscribe_confirmation_page(
+    token: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Show unsubscribe confirmation page (step 1).
+
+    Returns an HTML page asking user to confirm unsubscription.
+    """
+    from fastapi.responses import HTMLResponse
+
+    # Find subscriber by token
+    subscriber = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.unsubscribe_token == token
+    ).first()
+
+    if not subscriber:
+        return HTMLResponse(content="""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Unsubscribe - TAG Parking</title>
+            <style>
+                body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #1a1a1a; color: white; }
+                .container { max-width: 500px; margin: 0 auto; }
+                h1 { color: #D9FF00; }
+                p { color: #ccc; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Invalid Link</h1>
+                <p>This unsubscribe link is not valid or has expired.</p>
+                <p>If you need help, contact us at <a href="mailto:support@tagparking.co.uk" style="color: #D9FF00;">support@tagparking.co.uk</a></p>
+            </div>
+        </body>
+        </html>
+        """, status_code=404)
+
+    if subscriber.unsubscribed:
+        return HTMLResponse(content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Already Unsubscribed - TAG Parking</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #1a1a1a; color: white; }}
+                .container {{ max-width: 500px; margin: 0 auto; }}
+                h1 {{ color: #D9FF00; }}
+                p {{ color: #ccc; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Already Unsubscribed</h1>
+                <p>You have already been unsubscribed from TAG Parking emails.</p>
+                <p>Email: {subscriber.email}</p>
+            </div>
+        </body>
+        </html>
+        """)
+
+    # Show confirmation page
+    return HTMLResponse(content=f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Unsubscribe - TAG Parking</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #1a1a1a; color: white; }}
+            .container {{ max-width: 500px; margin: 0 auto; }}
+            h1 {{ color: #D9FF00; }}
+            p {{ color: #ccc; }}
+            .btn {{
+                display: inline-block;
+                background: #D9FF00;
+                color: #1a1a1a;
+                padding: 15px 40px;
+                text-decoration: none;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 16px;
+                border: none;
+                cursor: pointer;
+                margin-top: 20px;
+            }}
+            .btn:hover {{ background: #c4e600; }}
+            .email {{ color: #D9FF00; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Unsubscribe</h1>
+            <p>Are you sure you want to unsubscribe from TAG Parking marketing emails?</p>
+            <p>Email: <span class="email">{subscriber.email}</span></p>
+            <form method="POST" action="/api/marketing/unsubscribe/{token}">
+                <button type="submit" class="btn">Yes, I'm sure!</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    """)
+
+
+@app.post("/api/marketing/unsubscribe/{token}")
 async def unsubscribe_from_marketing(
     token: str,
     db: Session = Depends(get_db),
 ):
     """
-    Unsubscribe from marketing emails using a secure token.
+    Actually unsubscribe from marketing emails (step 2).
 
     Returns an HTML page confirming the unsubscription.
     """
