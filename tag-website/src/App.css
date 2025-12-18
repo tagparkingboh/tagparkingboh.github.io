@@ -47,10 +47,10 @@
   min-height: 100vh;
 }
 
-/* Hero Section */
+/* Hero Section - Responsive WebP backgrounds for performance */
 .hero {
   min-height: 100vh;
-  background-image: url('/assets/BG.png');
+  background-image: url('/assets/hero-480.webp');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -60,10 +60,24 @@
   flex-direction: column;
 }
 
+/* Responsive hero backgrounds */
+@media (min-width: 481px) {
+  .hero {
+    background-image: url('/assets/hero-768.webp');
+  }
+}
+
+@media (min-width: 769px) {
+  .hero {
+    background-image: url('/assets/hero-1280.webp');
+  }
+}
+
 /* Parallax only on desktop/laptop */
 @media (min-width: 1024px) {
   .hero {
     background-attachment: fixed;
+    background-image: url('/assets/hero-1920.webp');
   }
 }
 
@@ -154,7 +168,7 @@
 }
 
 .hamburger.open span:nth-child(1) {
-  transform: rotate(45deg) translate(5px, 5px);
+  transform: rotate(45deg) translate(6px, 6px);
 }
 
 .hamburger.open span:nth-child(2) {
@@ -162,7 +176,7 @@
 }
 
 .hamburger.open span:nth-child(3) {
-  transform: rotate(-45deg) translate(7px, -6px);
+  transform: rotate(-45deg) translate(6px, -6px);
 }
 
 .hero-content {
