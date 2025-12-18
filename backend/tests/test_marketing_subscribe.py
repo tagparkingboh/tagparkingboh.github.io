@@ -198,6 +198,61 @@ async def test_subscribe_duplicate_email(client):
 
 
 @pytest.mark.asyncio
+async def test_subscribe_resubscribe_after_unsubscribe(client):
+    """Should allow user to re-subscribe after unsubscribing."""
+    from datetime import datetime
+
+    # Create an unsubscribed user directly in the database
+    db = TestingSessionLocal()
+    try:
+        subscriber = MarketingSubscriber(
+            first_name="John",
+            last_name="Doe",
+            email="john@example.com",
+            unsubscribe_token="old-token-123",
+            unsubscribed=True,
+            unsubscribed_at=datetime.utcnow(),
+            welcome_email_sent=True,
+            welcome_email_sent_at=datetime.utcnow(),
+        )
+        db.add(subscriber)
+        db.commit()
+    finally:
+        db.close()
+
+    # Re-subscribe with same email
+    response = await client.post(
+        "/api/marketing/subscribe",
+        json={
+            "first_name": "Johnny",
+            "last_name": "Smith",
+            "email": "john@example.com",
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["message"] == "Welcome back! You've been re-subscribed."
+    assert data["is_new_subscriber"] is True
+
+    # Verify database was updated correctly
+    db = TestingSessionLocal()
+    try:
+        subscriber = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email == "john@example.com"
+        ).first()
+        assert subscriber.unsubscribed is False
+        assert subscriber.unsubscribed_at is None
+        assert subscriber.first_name == "Johnny"
+        assert subscriber.last_name == "Smith"
+        assert subscriber.welcome_email_sent is False
+        assert subscriber.welcome_email_sent_at is None
+        assert subscriber.unsubscribe_token != "old-token-123"  # New token generated
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
 async def test_subscribe_email_case_insensitive(client):
     """Should treat emails as case-insensitive."""
     # First subscription

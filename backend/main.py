@@ -1451,7 +1451,8 @@ async def subscribe_to_marketing(
     """
     Subscribe to marketing emails (waitlist/newsletter).
 
-    If the email already exists, returns success with is_new_subscriber=False.
+    If the email already exists and is not unsubscribed, returns success with is_new_subscriber=False.
+    If the email exists but was unsubscribed, re-subscribes them.
     """
     # Check if subscriber already exists
     existing = db.query(MarketingSubscriber).filter(
@@ -1459,6 +1460,23 @@ async def subscribe_to_marketing(
     ).first()
 
     if existing:
+        # If they previously unsubscribed, allow them to re-subscribe
+        if existing.unsubscribed:
+            existing.unsubscribed = False
+            existing.unsubscribed_at = None
+            existing.first_name = request.first_name.strip()
+            existing.last_name = request.last_name.strip()
+            existing.welcome_email_sent = False
+            existing.welcome_email_sent_at = None
+            # Generate new unsubscribe token for security
+            existing.unsubscribe_token = secrets.token_urlsafe(32)
+            db.commit()
+            return MarketingSubscribeResponse(
+                success=True,
+                message="Welcome back! You've been re-subscribed.",
+                is_new_subscriber=True,  # Treat as new for welcome email purposes
+            )
+
         return MarketingSubscribeResponse(
             success=True,
             message="You're already on the list!",
