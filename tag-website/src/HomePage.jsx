@@ -78,9 +78,11 @@ function HomePage() {
       console.log('Marketing API Response:', apiResponse.status, apiData)
       // Backend API success - show success message
       if (apiResponse.ok && apiData?.success) {
-        // Check if already subscribed
+        // Check if already subscribed or re-subscribed
         if (apiData.is_new_subscriber === false) {
           setSubmitStatus('already_subscribed')
+        } else if (apiData.message === "Welcome back! You've been re-subscribed.") {
+          setSubmitStatus('resubscribed')
         } else {
           setSubmitStatus('success')
         }
@@ -486,6 +488,9 @@ function HomePage() {
             </div>
             {submitStatus === 'success' && (
               <p className="subscribe-success">Thank you for subscribing! We'll be in touch soon.</p>
+            )}
+            {submitStatus === 'resubscribed' && (
+              <p className="subscribe-success">Welcome back! You've been re-subscribed.</p>
             )}
             {submitStatus === 'already_subscribed' && (
               <p className="subscribe-success">You're already on the list! We'll be in touch soon.</p>

@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
 # Configuration
-WELCOME_EMAIL_DELAY_HOURS = 1  # Send welcome email 1 hour after signup
-PROMO_EMAIL_DELAY_HOURS = 1   # Send promo email 1 hour after welcome email
-CHECK_INTERVAL_MINUTES = 5     # Check for pending emails every 5 minutes
+WELCOME_EMAIL_DELAY_MINUTES = 5  # Send welcome email 5 minutes after signup
+PROMO_EMAIL_DELAY_HOURS = 1      # Send promo email 1 hour after welcome email (PAUSED)
+CHECK_INTERVAL_MINUTES = 1       # Check for pending emails every 1 minute
 
 
 def get_db() -> Session:
@@ -33,7 +33,7 @@ def get_db() -> Session:
 
 def process_pending_welcome_emails():
     """
-    Find subscribers who signed up more than WELCOME_EMAIL_DELAY_HOURS ago
+    Find subscribers who signed up more than WELCOME_EMAIL_DELAY_MINUTES ago
     and haven't received their welcome email yet.
     """
     if not is_email_enabled():
@@ -41,7 +41,7 @@ def process_pending_welcome_emails():
 
     db = get_db()
     try:
-        cutoff_time = datetime.utcnow() - timedelta(hours=WELCOME_EMAIL_DELAY_HOURS)
+        cutoff_time = datetime.utcnow() - timedelta(minutes=WELCOME_EMAIL_DELAY_MINUTES)
 
         # Find subscribers who need welcome email
         pending = db.query(MarketingSubscriber).filter(
@@ -50,11 +50,16 @@ def process_pending_welcome_emails():
         ).limit(10).all()  # Process 10 at a time to avoid overwhelming
 
         for subscriber in pending:
+            # Skip if already unsubscribed
+            if subscriber.unsubscribed:
+                continue
+
             logger.info(f"Sending welcome email to {subscriber.email}")
 
             success = send_welcome_email(
                 first_name=subscriber.first_name,
                 email=subscriber.email,
+                unsubscribe_token=subscriber.unsubscribe_token,
             )
 
             if success:
@@ -134,7 +139,8 @@ def process_all_pending_emails():
     """Main job that processes all pending emails."""
     logger.debug("Checking for pending emails...")
     process_pending_welcome_emails()
-    process_pending_promo_emails()
+    # PAUSED: Promo code emails - uncomment when ready to send
+    # process_pending_promo_emails()
 
 
 def start_scheduler():
