@@ -67,8 +67,8 @@ class TestBookingServiceInit:
 
     def test_package_prices_configured(self, service):
         """Package prices should be set correctly."""
-        assert service.PACKAGE_PRICES["quick"] == 99.0
-        assert service.PACKAGE_PRICES["longer"] == 150.0
+        assert service.PACKAGE_PRICES["quick"]["early"] == 99.0
+        assert service.PACKAGE_PRICES["longer"]["early"] == 150.0
 
 
 class TestSlotAvailability:

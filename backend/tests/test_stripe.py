@@ -53,10 +53,10 @@ class TestCalculatePriceInPence:
         assert calculate_price_in_pence("longer", drop_off_date=early_date) == 15000
 
     def test_longer_package_late_price(self):
-        """Longer package booked <7 days in advance should be £155.00 = 15500 pence."""
+        """Longer package booked <7 days in advance should be £170.00 = 17000 pence."""
         from datetime import date, timedelta
         late_date = date.today() + timedelta(days=3)
-        assert calculate_price_in_pence("longer", drop_off_date=late_date) == 15500
+        assert calculate_price_in_pence("longer", drop_off_date=late_date) == 17000
 
     def test_custom_price_override(self):
         """Custom price should override package price regardless of date."""
@@ -69,7 +69,7 @@ class TestCalculatePriceInPence:
         """Without drop_off_date, should default to late tier price."""
         # Without date, fallback to late tier: quick = £119, longer = £155
         assert calculate_price_in_pence("quick") == 11900
-        assert calculate_price_in_pence("longer") == 15500
+        assert calculate_price_in_pence("longer") == 17000
 
 
 class TestStripeConfigEndpoint:
