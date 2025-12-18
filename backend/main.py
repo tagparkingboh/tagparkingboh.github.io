@@ -430,9 +430,9 @@ async def calculate_price(request: PriceCalculationRequest):
     Calculate booking price based on dates.
 
     Pricing tiers:
-    - Early (>=14 days in advance): 1 week £99, 2 weeks £135
-    - Standard (7-13 days in advance): 1 week £109, 2 weeks £145
-    - Late (<7 days in advance): 1 week £119, 2 weeks £155
+    - Early (>=14 days in advance): 1 week £99, 2 weeks £150
+    - Standard (7-13 days in advance): 1 week £109, 2 weeks £160
+    - Late (<7 days in advance): 1 week £119, 2 weeks £170
 
     Duration must be exactly 7 or 14 days.
     """

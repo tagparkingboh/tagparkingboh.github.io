@@ -68,7 +68,7 @@ class TestBookingServiceInit:
     def test_package_prices_configured(self, service):
         """Package prices should be set correctly."""
         assert service.PACKAGE_PRICES["quick"] == 99.0
-        assert service.PACKAGE_PRICES["longer"] == 135.0
+        assert service.PACKAGE_PRICES["longer"] == 150.0
 
 
 class TestSlotAvailability:
@@ -172,7 +172,7 @@ class TestBookingCreation:
         longer_request.drop_off_slot_type = SlotType.LATE  # Use different slot
 
         longer_booking = service.create_booking(longer_request)
-        assert longer_booking.price == 135.0
+        assert longer_booking.price == 150.0
 
     def test_booking_calculates_drop_off_time(self, service, sample_booking_request):
         """Booking should calculate correct drop-off time."""

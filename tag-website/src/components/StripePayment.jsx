@@ -183,7 +183,7 @@ function StripePayment({
   // Calculate display amounts for free booking preview
   const calculateAmounts = () => {
     // Base prices in pence
-    const basePrice = formData.package === 'quick' ? 9900 : 13500
+    const basePrice = formData.package === 'quick' ? 9900 : 15000
     return {
       original: `£${(basePrice / 100).toFixed(2)}`,
       discount: `£${(basePrice / 100).toFixed(2)}`,
