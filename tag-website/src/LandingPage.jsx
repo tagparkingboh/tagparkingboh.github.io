@@ -214,6 +214,10 @@ function LandingPage() {
             <h2>24/7</h2>
             <p>Your car never leaves our<br />secure car park</p>
           </div>
+          <div className="feature">
+            <h2>60s</h2>
+            <p>1 minute walk<br />to the terminal</p>
+          </div>
         </div>
         <div className="features-bottom-bar"></div>
       </section>
