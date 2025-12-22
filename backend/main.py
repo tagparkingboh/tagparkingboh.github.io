@@ -2155,7 +2155,6 @@ async def create_payment(
 
             except Exception as email_error:
                 print(f"[FREE BOOKING] Failed to send confirmation email: {email_error}")
-                import traceback
                 traceback.print_exc()
 
             # Return response for free booking
