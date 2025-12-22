@@ -1718,7 +1718,7 @@
 
 .welcome-modal-icon {
   margin-bottom: 1.5rem;
-  color: #C19A6B;
+  color: #D9FF00;
 }
 
 .welcome-modal-icon svg {
@@ -1745,22 +1745,26 @@
 }
 
 .welcome-modal-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   margin-bottom: 1.5rem;
 }
 
 .welcome-modal-contact .contact-link {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  color: #C19A6B;
+  color: #D9FF00;
   text-decoration: none;
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 600;
   transition: color 0.2s;
 }
 
 .welcome-modal-contact .contact-link:hover {
-  color: #d4af7a;
+  color: #e8ff4d;
 }
 
 .welcome-modal-contact .contact-link svg {
@@ -1768,12 +1772,12 @@
 }
 
 .welcome-modal-btn {
-  background: linear-gradient(135deg, #C19A6B, #a3825a);
-  color: white;
+  background: #D9FF00;
+  color: #1a1a1a;
   border: none;
   padding: 1rem 2.5rem;
   font-size: 1.1rem;
-  font-weight: 600;
+  font-weight: 700;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1781,7 +1785,7 @@
 }
 
 .welcome-modal-btn:hover {
-  background: linear-gradient(135deg, #d4af7a, #b8956b);
+  background: #e8ff4d;
   transform: translateY(-2px);
 }
 
