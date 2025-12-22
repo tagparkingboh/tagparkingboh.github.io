@@ -1993,24 +1993,31 @@ async def create_payment(
                 FlightDeparture.id == request.departure_id
             ).first()
             if departure:
-                # Check if both slots are booked (fully booked)
-                if departure.is_slot_1_booked and departure.is_slot_2_booked:
+                # Check if this is a "Call Us only" flight (capacity_tier = 0)
+                if departure.is_call_us_only:
                     raise HTTPException(
                         status_code=400,
-                        detail="This flight is fully booked. Please contact us directly at hello@tagparking.com to arrange an alternative."
+                        detail="This flight requires calling to book. Please contact us directly."
                     )
 
-                # Slot "165" = 2¾ hours before = slot 1
-                # Slot "120" = 2 hours before = slot 2
-                if request.drop_off_slot == "165" and departure.is_slot_1_booked:
+                # Check if all slots are booked
+                if departure.all_slots_booked:
                     raise HTTPException(
                         status_code=400,
-                        detail="This slot is already booked. Please select the other available slot or contact us directly."
+                        detail="This flight is fully booked. Please contact us directly to arrange an alternative."
                     )
-                elif request.drop_off_slot == "120" and departure.is_slot_2_booked:
+
+                # Slot "165" = early (2¾ hours before)
+                # Slot "120" = late (2 hours before)
+                if request.drop_off_slot == "165" and departure.early_slots_available <= 0:
                     raise HTTPException(
                         status_code=400,
-                        detail="This slot is already booked. Please select the other available slot or contact us directly."
+                        detail="This slot is fully booked. Please select the other available slot or contact us directly."
+                    )
+                elif request.drop_off_slot == "120" and departure.late_slots_available <= 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="This slot is fully booked. Please select the other available slot or contact us directly."
                     )
                 # Note: Slot is NOT booked here - it will be booked after payment succeeds via webhook
 
@@ -2053,13 +2060,8 @@ async def create_payment(
 
             # Book the slot immediately for free bookings
             if request.departure_id and request.drop_off_slot:
-                departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
-                if departure:
-                    if request.drop_off_slot == "165":
-                        departure.is_slot_1_booked = True
-                    elif request.drop_off_slot == "120":
-                        departure.is_slot_2_booked = True
-                    db.commit()
+                slot_type = 'early' if request.drop_off_slot == "165" else 'late'
+                db_service.book_departure_slot(db, request.departure_id, slot_type)
 
             # Log payment success
             log_audit_event(
@@ -2388,17 +2390,8 @@ async def stripe_webhook(
         # Book the slot on the departure flight (now that payment succeeded)
         if departure_id and drop_off_slot:
             try:
-                departure = db.query(FlightDeparture).filter(
-                    FlightDeparture.id == int(departure_id)
-                ).first()
-                if departure:
-                    # Slot "165" = 2¾ hours before = slot 1
-                    # Slot "120" = 2 hours before = slot 2
-                    if drop_off_slot == "165":
-                        departure.is_slot_1_booked = True
-                    elif drop_off_slot == "120":
-                        departure.is_slot_2_booked = True
-                    db.commit()
+                slot_type = 'early' if drop_off_slot == "165" else 'late'
+                db_service.book_departure_slot(db, int(departure_id), slot_type)
             except Exception as e:
                 log_error(
                     db=db,
