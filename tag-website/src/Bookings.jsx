@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
 import { getMakes, getModels } from 'car-info'
-import PhoneInput from 'react-phone-number-input'
+import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import StripePayment from './components/StripePayment'
 import 'react-datepicker/dist/react-datepicker.css'
@@ -685,7 +685,8 @@ function Bookings() {
   }
 
   // Step 1: Contact Details (first for lead capture)
-  const isStep1Complete = formData.firstName && formData.lastName && formData.email && formData.phone
+  const isPhoneValid = formData.phone && isValidPhoneNumber(formData.phone)
+  const isStep1Complete = formData.firstName && formData.lastName && formData.email && isPhoneValid
   // Step 2: Trip Details
   const isStep2Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable
   // Step 3: Vehicle Details
@@ -907,8 +908,11 @@ function Bookings() {
                   id="phone"
                   value={formData.phone}
                   onChange={(value) => setFormData(prev => ({ ...prev, phone: value || '' }))}
-                  className="phone-input"
+                  className={`phone-input ${formData.phone && !isPhoneValid ? 'invalid' : ''}`}
                 />
+                {formData.phone && !isPhoneValid && (
+                  <span className="field-error">Please enter a valid phone number</span>
+                )}
               </div>
 
               <div className="form-actions">
@@ -942,7 +946,8 @@ function Bookings() {
                   className="date-picker-input"
                   id="dropoffDate"
                   popperPlacement="bottom-start"
-                  calendarClassName="five-weeks"
+                  calendarClassName="fixed-height-calendar"
+                  onFocus={(e) => e.target.readOnly = true}
                 />
               </div>
 

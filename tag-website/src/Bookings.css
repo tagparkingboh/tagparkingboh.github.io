@@ -300,6 +300,17 @@
   color: #888888;
 }
 
+.phone-input.invalid {
+  border-color: #ff4444;
+}
+
+.field-error {
+  color: #ff4444;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  display: block;
+}
+
 /* Country dropdown styling */
 .PhoneInputCountrySelect {
   position: absolute;
@@ -589,13 +600,13 @@
   display: none;
 }
 
-/* Limit calendar to 5 weeks */
-.five-weeks .react-datepicker__month {
-  overflow: hidden;
+/* Fixed height calendar to prevent jumping when changing months */
+.fixed-height-calendar .react-datepicker__month {
+  min-height: 200px;
 }
 
-.five-weeks .react-datepicker__week:nth-child(6) {
-  display: none;
+.fixed-height-calendar .react-datepicker__month-container {
+  min-height: 280px;
 }
 
 /* Flight Slots */
