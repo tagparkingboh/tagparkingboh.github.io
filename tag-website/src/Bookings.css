@@ -797,11 +797,10 @@
   margin-left: 1rem;
 }
 
-/* Mobile: badge below, compact and centered */
-@media (max-width: 768px) {
+/* Mobile only: badge below, compact and centered */
+@media (max-width: 480px) {
   .slot-card.last-slot {
-    flex-wrap: wrap;
-    justify-content: center;
+    flex-direction: column;
   }
 
   .slot-card.last-slot .slot-info {
