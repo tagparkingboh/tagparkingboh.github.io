@@ -767,17 +767,17 @@
 }
 
 .last-slot-badge {
-  width: 100%;
   margin-top: 0.5rem;
-  padding: 0.35rem 0.5rem;
+  padding: 0.3rem 0.6rem;
   background: #FF9500;
   color: #1a1a1a;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 600;
   border-radius: 4px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   text-align: center;
+  flex-basis: 100%;
 }
 
 .dropoff-slot input:checked + .slot-card.last-slot {
