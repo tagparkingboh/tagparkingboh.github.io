@@ -759,13 +759,22 @@
   background: rgba(217, 255, 0, 0.1);
 }
 
+/* Slot info wrapper */
+.slot-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 1;
+  gap: 1rem;
+}
+
 /* Last slot available indicator */
 .slot-card.last-slot {
   border-color: #FF9500;
 }
 
 .last-slot-badge {
-  margin-left: auto;
+  margin-left: 1rem;
   padding: 0.25rem 0.5rem;
   background: #FF9500;
   color: #1a1a1a;

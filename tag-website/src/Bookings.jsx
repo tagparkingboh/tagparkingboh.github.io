@@ -1026,10 +1026,12 @@ function Bookings() {
                           onChange={handleChange}
                         />
                         <div className={`slot-card ${slot.isLastSlot ? 'last-slot' : ''}`}>
-                          <span className="slot-time">{slot.time}</span>
-                          <span className="slot-label">{slot.label}</span>
+                          <div className="slot-info">
+                            <span className="slot-time">{slot.time}</span>
+                            <span className="slot-label">{slot.label}</span>
+                          </div>
                           {slot.isLastSlot && (
-                            <span className="last-slot-badge">Last slot available!</span>
+                            <span className="last-slot-badge">Last slot!</span>
                           )}
                         </div>
                       </label>
