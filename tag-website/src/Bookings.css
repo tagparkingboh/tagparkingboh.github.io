@@ -771,12 +771,9 @@
 /* Last slot available indicator */
 .slot-card.last-slot {
   border-color: #FF9500;
-  flex-wrap: wrap;
 }
 
 .last-slot-badge {
-  width: 100%;
-  margin-top: 0.5rem;
   padding: 0.3rem 0.5rem;
   background: #FF9500;
   color: #1a1a1a;
@@ -786,6 +783,19 @@
   text-transform: uppercase;
   letter-spacing: 0.3px;
   text-align: center;
+  white-space: nowrap;
+}
+
+/* Mobile: badge below, full width centered */
+@media (max-width: 480px) {
+  .slot-card.last-slot {
+    flex-wrap: wrap;
+  }
+
+  .last-slot-badge {
+    width: 100%;
+    margin-top: 0.5rem;
+  }
 }
 
 .dropoff-slot input:checked + .slot-card.last-slot {
