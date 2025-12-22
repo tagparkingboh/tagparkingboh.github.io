@@ -727,7 +727,7 @@ async def get_departures_for_date(flight_date: date, db: Session = Depends(get_d
 
     Returns flights in a format compatible with the frontend:
     - date, type, time, airlineCode, airlineName, destinationCode, destinationName, flightNumber
-    - Also includes slot availability (is_slot_1_booked, is_slot_2_booked)
+    - Capacity info: capacity_tier, early_slots_available, late_slots_available, is_call_us_only
     """
     departures = db.query(FlightDeparture).filter(
         FlightDeparture.date == flight_date
@@ -744,8 +744,13 @@ async def get_departures_for_date(flight_date: date, db: Session = Depends(get_d
             "destinationCode": d.destination_code,
             "destinationName": d.destination_name,
             "flightNumber": d.flight_number,
-            "is_slot_1_booked": d.is_slot_1_booked,
-            "is_slot_2_booked": d.is_slot_2_booked,
+            # New capacity-based fields
+            "capacity_tier": d.capacity_tier,
+            "max_slots_per_time": d.max_slots_per_time,
+            "early_slots_available": d.early_slots_available,
+            "late_slots_available": d.late_slots_available,
+            "is_call_us_only": d.is_call_us_only,
+            "all_slots_booked": d.all_slots_booked,
         }
         for d in departures
     ]
@@ -808,8 +813,12 @@ async def get_schedule_for_date(flight_date: date, db: Session = Depends(get_db)
             "destinationCode": d.destination_code,
             "destinationName": d.destination_name,
             "flightNumber": d.flight_number,
-            "is_slot_1_booked": d.is_slot_1_booked,
-            "is_slot_2_booked": d.is_slot_2_booked,
+            "capacity_tier": d.capacity_tier,
+            "max_slots_per_time": d.max_slots_per_time,
+            "early_slots_available": d.early_slots_available,
+            "late_slots_available": d.late_slots_available,
+            "is_call_us_only": d.is_call_us_only,
+            "all_slots_booked": d.all_slots_booked,
         })
 
     for a in arrivals:
@@ -832,25 +841,32 @@ async def get_schedule_for_date(flight_date: date, db: Session = Depends(get_db)
 @app.post("/api/flights/departures/{departure_id}/book-slot")
 async def book_departure_slot(
     departure_id: int,
-    slot_id: str = Query(..., description="Slot ID: '165' for slot 1, '120' for slot 2"),
+    slot_id: str = Query(..., description="Slot ID: '165' for early slot (2¾h before), '120' for late slot (2h before)"),
     db: Session = Depends(get_db)
 ):
     """
     Book a slot on a departure flight.
 
-    Slot 1 (id='165'): 2¾ hours before departure
-    Slot 2 (id='120'): 2 hours before departure
+    Slot types (based on time before departure):
+    - '165' (early): 2¾ hours before departure
+    - '120' (late): 2 hours before departure
+
+    Returns success status and remaining slots available.
     """
-    # Convert slot_id to slot_number
-    slot_number = 1 if slot_id == "165" else 2 if slot_id == "120" else None
-    if slot_number is None:
-        raise HTTPException(status_code=400, detail="Invalid slot ID. Use '165' or '120'")
+    # Convert slot_id to slot_type
+    slot_type = 'early' if slot_id == "165" else 'late' if slot_id == "120" else None
+    if slot_type is None:
+        raise HTTPException(status_code=400, detail="Invalid slot ID. Use '165' (early) or '120' (late)")
 
-    success = db_service.book_departure_slot(db, departure_id, slot_number)
-    if not success:
-        raise HTTPException(status_code=400, detail="Slot already booked or flight not found")
+    result = db_service.book_departure_slot(db, departure_id, slot_type)
 
-    return {"success": True, "message": f"Slot {slot_number} booked successfully"}
+    if not result["success"]:
+        # Check if this is a "Call Us" situation
+        if result.get("call_us"):
+            raise HTTPException(status_code=400, detail="This flight requires calling to book")
+        raise HTTPException(status_code=400, detail=result["message"])
+
+    return result
 
 
 @app.get("/api/flights/dates")
@@ -2664,8 +2680,9 @@ async def seed_flights(
                     departure_time=datetime.strptime(flight["time"], "%H:%M").time(),
                     destination_code=flight["destinationCode"],
                     destination_name=flight.get("destinationName"),
-                    is_slot_1_booked=False,
-                    is_slot_2_booked=False,
+                    capacity_tier=flight.get("capacity_tier", 2),  # Default to 2 slots for legacy data
+                    slots_booked_early=0,
+                    slots_booked_late=0,
                 )
                 db.add(departure)
                 departures_count += 1
@@ -2700,6 +2717,46 @@ async def seed_flights(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error seeding flights: {str(e)}")
+
+
+class ImportDeparturesRequest(BaseModel):
+    """Request body for importing departures with capacity tiers."""
+    tsv_data: str  # Tab-separated data
+    clear_existing: bool = True
+
+
+@app.post("/api/admin/import-departures")
+async def import_departures_with_capacity(
+    request: ImportDeparturesRequest,
+    secret: str = Query(..., description="Admin secret key"),
+    db: Session = Depends(get_db)
+):
+    """
+    Admin endpoint: Import departures with capacity tiers from TSV data.
+
+    Expected TSV format (tab-separated):
+    Date, Day, Op Al, Dest, Flight, Dep Time, Forming Service Arr Time, 0 Spaces, 2 Spaces, 4 Spaces, 6 Spaces, 8 Spaces
+
+    Each row should have exactly one TRUE in the capacity columns.
+    """
+    admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
+
+    if secret != admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
+
+    try:
+        from import_departures_capacity import import_from_tsv_string
+        result = import_from_tsv_string(request.tsv_data, request.clear_existing)
+
+        if result.get("error"):
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        return result
+
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import module not found: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error importing departures: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,56 @@
+Date	Day	Op Al	Dest	Flight	Dep Time	Forming Service Arr Time	0 Spaces	2 Spaces	4 Spaces	6 Spaces	8 Spaces
+2026-02-07	Saturday	FR : Ryanair	Gran Canaria Airport	6764	06:40	10:50	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-07	Saturday	FR : Ryanair	Málaga-Costa del Sol Airport	5955	07:55	11:35	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-07	Saturday	LS : Jet2	Tenerife South Airport	3675	08:15	12:25	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-07	Saturday	U2 : EasyJet	Geneva Airport	1446	09:10	11:50	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-07	Saturday	FR : Ryanair	Wrocław Copernicus Airport	3317	13:50	13:25	FALSE	FALSE	FALSE	TRUE	FALSE
+2026-02-07	Saturday	U2 : EasyJet	Geneva Airport	2697	16:20	15:45	FALSE	FALSE	FALSE	TRUE	FALSE
+2026-02-07	Saturday	FR : Ryanair	Alicante-Elche Airport	3948	16:55	20:20	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-08	Sunday	FR : Ryanair	Kraków John Paul II International Airport	5523	07:10	10:40	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-08	Sunday	FR : Ryanair	Malta International Airport	8316	08:25	12:40	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-08	Sunday	LS : Jet2	Fuerteventura Airport	3685	08:30	12:30	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-08	Sunday	TOM : TUI Airways	Lanzarote Airport (César Manrique-Lanzarote Airport)	6744	09:20	13:15	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-08	Sunday	FR : Ryanair	Tenerife South Airport	1178	13:40	17:50	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-08	Sunday	FR : Ryanair	Alicante-Elche Airport	3948	17:10	16:45	FALSE	TRUE	FALSE	FALSE	FALSE
+2026-02-08	Sunday	U2 : EasyJet	Geneva Airport	2970	17:35	16:50	FALSE	FALSE	TRUE	FALSE	FALSE
+2026-02-08	Sunday	RK : Ryanair UK	Edinburgh Airport	1132	18:55	18:30	FALSE	FALSE	TRUE	FALSE	FALSE
+2026-02-08	Sunday	FR : Ryanair	Faro Airport	3944	20:35	20:10	FALSE	FALSE	TRUE	FALSE	FALSE
+2026-02-09	Monday	LS : Jet2	Lanzarote Airport (César Manrique-Lanzarote Airport)	3601	07:00	11:00	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-09	Monday	FR : Ryanair	Lanzarote Airport (César Manrique-Lanzarote Airport)	3970	07:25	11:15	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-09	Monday	TOM : TUI Airways	Gran Canaria Airport	6180	08:20	12:25	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-09	Monday	FR : Ryanair	Kraków John Paul II International Airport	5523	08:25	11:55	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-09	Monday	LS : Jet2	Madeira Airport (Cristiano Ronaldo International Airport)	3623	09:55	13:35	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-09	Monday	U2 : EasyJet	Geneva Airport	2650	12:50	12:10	FALSE	FALSE	FALSE	TRUE	FALSE
+2026-02-09	Monday	FR : Ryanair	Wrocław Copernicus Airport	3317	15:20	14:55	FALSE	FALSE	FALSE	TRUE	FALSE
+2026-02-09	Monday	FR : Ryanair	Alicante-Elche Airport	3948	17:15	20:40	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-10	Tuesday	LS : Jet2	Tenerife South Airport	3671	07:00	11:05	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-10	Tuesday	TOM : TUI Airways	Tenerife South Airport	6268	08:55	13:00	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-10	Tuesday	LS : Jet2	Agadir–Al Massira Airport	3609	09:05	13:45	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-10	Tuesday	FR : Ryanair	Málaga-Costa del Sol Airport	5944	18:10	21:50	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-11	Wednesday	LS : Jet2	Keflavík International Airport	3637	07:10	10:15	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-12	Thursday	FR : Ryanair	Málaga-Costa del Sol Airport	5944	08:05	11:45	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-12	Thursday	LS : Jet2	Tenerife South Airport	3675	08:25	12:35	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-12	Thursday	TOM : TUI Airways	Lanzarote Airport (César Manrique-Lanzarote Airport)	6426	08:35	12:30	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-12	Thursday	RK : Ryanair UK	Edinburgh Airport	1132	10:00	11:25	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-12	Thursday	LS : Jet2	Gran Canaria Airport	3643	10:25	14:40	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-12	Thursday	FR : Ryanair	Alicante-Elche Airport	3948	10:35	14:00	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-12	Thursday	FR : Ryanair	Wrocław Copernicus Airport	3317	14:30	17:45	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-12	Thursday	U2 : EasyJet	Geneva Airport	2650	17:05	19:40	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-12	Thursday	FR : Ryanair	Malta International Airport	8316	18:35	18:10	FALSE	FALSE	FALSE	TRUE	FALSE
+2026-02-12	Thursday	FR : Ryanair	Kraków John Paul II International Airport	5523	21:20	20:55	FALSE	FALSE	FALSE	TRUE	FALSE
+2026-02-13	Friday	FR : Ryanair	Faro Airport	3944	06:45	09:20	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-13	Friday	LS : Jet2	Lanzarote Airport (César Manrique-Lanzarote Airport)	3601	08:25	12:25	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-13	Friday	TOM : TUI Airways	Tenerife South Airport	6596	09:00	13:05	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-13	Friday	FR : Ryanair	Tenerife South Airport	1178	14:10	18:20	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-13	Friday	FR : Ryanair	Alicante-Elche Airport	3948	14:35	18:00	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-13	Friday	U2 : EasyJet	Geneva Airport	2650	16:55	19:30	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-13	Friday	FR : Ryanair	Málaga-Costa del Sol Airport	5944	20:20	19:55	FALSE	FALSE	TRUE	FALSE	FALSE
+2026-02-13	Friday	FR : Ryanair	Kraków John Paul II International Airport	5523	21:25	21:00	FALSE	TRUE	FALSE	FALSE	FALSE
+2026-02-13	Friday	RK : Ryanair UK	Edinburgh Airport	1132	21:35	21:10	FALSE	FALSE	TRUE	FALSE	FALSE
+2026-02-14	Saturday	FR : Ryanair	Gran Canaria Airport	6764	06:40	10:50	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-14	Saturday	FR : Ryanair	Málaga-Costa del Sol Airport	5955	07:55	11:35	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-14	Saturday	LS : Jet2	Tenerife South Airport	3675	08:15	12:25	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-14	Saturday	U2 : EasyJet	Geneva Airport	1446	09:10	11:50	TRUE	FALSE	FALSE	FALSE	FALSE
+2026-02-14	Saturday	FR : Ryanair	Wrocław Copernicus Airport	3317	13:50	13:25	FALSE	FALSE	FALSE	TRUE	FALSE
+2026-02-14	Saturday	U2 : EasyJet	Geneva Airport	2697	16:20	15:45	FALSE	FALSE	FALSE	TRUE	FALSE
+2026-02-14	Saturday	FR : Ryanair	Alicante-Elche Airport	3948	16:55	20:20	TRUE	FALSE	FALSE	FALSE	FALSE

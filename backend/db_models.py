@@ -181,9 +181,15 @@ class FlightDeparture(Base):
     destination_code = Column(String(10), nullable=False)
     destination_name = Column(String(100))
 
-    # Slot availability (boolean - simpler and clearer)
-    is_slot_1_booked = Column(Boolean, default=False)  # 2¾ hours before departure
-    is_slot_2_booked = Column(Boolean, default=False)  # 2 hours before departure
+    # Capacity tier: 0, 2, 4, 6, or 8 (determines max slots available)
+    # 0 = Call Us only, 2 = 1+1, 4 = 2+2, 6 = 3+3, 8 = 4+4
+    capacity_tier = Column(Integer, default=0, nullable=False)
+
+    # Slot booking counters (how many booked at each time)
+    # Early slot: 2¾ hours (165 min) before departure
+    # Late slot: 2 hours (120 min) before departure
+    slots_booked_early = Column(Integer, default=0, nullable=False)
+    slots_booked_late = Column(Integer, default=0, nullable=False)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -192,9 +198,29 @@ class FlightDeparture(Base):
         return f"<FlightDeparture {self.flight_number} on {self.date} at {self.departure_time}>"
 
     @property
+    def max_slots_per_time(self):
+        """Max slots available at each time (early/late)."""
+        return self.capacity_tier // 2
+
+    @property
+    def early_slots_available(self):
+        """Number of early slots still available."""
+        return max(0, self.max_slots_per_time - self.slots_booked_early)
+
+    @property
+    def late_slots_available(self):
+        """Number of late slots still available."""
+        return max(0, self.max_slots_per_time - self.slots_booked_late)
+
+    @property
+    def is_call_us_only(self):
+        """True if this flight has 0 capacity (Call Us only)."""
+        return self.capacity_tier == 0
+
+    @property
     def all_slots_booked(self):
         """Check if all slots are booked."""
-        return self.is_slot_1_booked and self.is_slot_2_booked
+        return self.early_slots_available == 0 and self.late_slots_available == 0
 
 
 class FlightArrival(Base):

@@ -421,42 +421,80 @@ def get_departure_by_number_and_date(
     ).first()
 
 
-def book_departure_slot(db: Session, flight_id: int, slot_number: int) -> bool:
-    """Book a slot on a departure flight. slot_number is 1 or 2."""
+def book_departure_slot(db: Session, flight_id: int, slot_type: str) -> dict:
+    """
+    Book a slot on a departure flight.
+
+    Args:
+        db: Database session
+        flight_id: The departure flight ID
+        slot_type: 'early' (2¾ hours before) or 'late' (2 hours before)
+
+    Returns:
+        dict with 'success' (bool), 'message' (str), and optionally 'slots_remaining' (int)
+    """
     flight = db.query(FlightDeparture).filter(FlightDeparture.id == flight_id).first()
     if not flight:
-        return False
+        return {"success": False, "message": "Flight not found"}
 
-    if slot_number == 1:
-        if flight.is_slot_1_booked:
-            return False
-        flight.is_slot_1_booked = True
-    elif slot_number == 2:
-        if flight.is_slot_2_booked:
-            return False
-        flight.is_slot_2_booked = True
+    # Check if this is a "Call Us only" flight (capacity_tier = 0)
+    if flight.capacity_tier == 0:
+        return {"success": False, "message": "This flight requires calling to book", "call_us": True}
+
+    max_per_slot = flight.max_slots_per_time
+
+    if slot_type == 'early':
+        if flight.slots_booked_early >= max_per_slot:
+            return {"success": False, "message": "No early slots available", "slots_remaining": 0}
+        flight.slots_booked_early += 1
+        slots_remaining = max_per_slot - flight.slots_booked_early
+    elif slot_type == 'late':
+        if flight.slots_booked_late >= max_per_slot:
+            return {"success": False, "message": "No late slots available", "slots_remaining": 0}
+        flight.slots_booked_late += 1
+        slots_remaining = max_per_slot - flight.slots_booked_late
     else:
-        return False
+        return {"success": False, "message": "Invalid slot type. Use 'early' or 'late'"}
 
     db.commit()
-    return True
+    return {
+        "success": True,
+        "message": f"Slot booked successfully",
+        "slots_remaining": slots_remaining
+    }
 
 
-def release_departure_slot(db: Session, flight_id: int, slot_number: int) -> bool:
-    """Release a previously booked slot on a departure flight."""
+def release_departure_slot(db: Session, flight_id: int, slot_type: str) -> dict:
+    """
+    Release a previously booked slot on a departure flight.
+
+    Args:
+        db: Database session
+        flight_id: The departure flight ID
+        slot_type: 'early' (2¾ hours before) or 'late' (2 hours before)
+
+    Returns:
+        dict with 'success' (bool) and 'message' (str)
+    """
     flight = db.query(FlightDeparture).filter(FlightDeparture.id == flight_id).first()
     if not flight:
-        return False
+        return {"success": False, "message": "Flight not found"}
 
-    if slot_number == 1:
-        flight.is_slot_1_booked = False
-    elif slot_number == 2:
-        flight.is_slot_2_booked = False
+    if slot_type == 'early':
+        if flight.slots_booked_early > 0:
+            flight.slots_booked_early -= 1
+        else:
+            return {"success": False, "message": "No early slots to release"}
+    elif slot_type == 'late':
+        if flight.slots_booked_late > 0:
+            flight.slots_booked_late -= 1
+        else:
+            return {"success": False, "message": "No late slots to release"}
     else:
-        return False
+        return {"success": False, "message": "Invalid slot type. Use 'early' or 'late'"}
 
     db.commit()
-    return True
+    return {"success": True, "message": "Slot released successfully"}
 
 
 # ============== FLIGHT ARRIVAL OPERATIONS ==============

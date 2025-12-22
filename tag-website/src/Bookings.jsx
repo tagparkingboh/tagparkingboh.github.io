@@ -58,6 +58,8 @@ function Bookings() {
   const [customerId, setCustomerId] = useState(null)
   const [vehicleId, setVehicleId] = useState(null)
   const [saving, setSaving] = useState(false)
+  // Welcome modal state - shown once when user lands on booking page
+  const [showWelcomeModal, setShowWelcomeModal] = useState(true)
 
   // Session ID for audit trail - persists across the booking flow
   const sessionIdRef = useRef(generateSessionId())
@@ -215,32 +217,60 @@ function Bookings() {
     return flightsForDropoff.find(f => f.flightKey === formData.dropoffFlight)
   }, [flightsForDropoff, formData.dropoffFlight])
 
+  // Check if flight is "Call Us only" (capacity_tier = 0)
+  const isCallUsOnly = useMemo(() => {
+    if (!selectedDropoffFlight) return false
+    return selectedDropoffFlight.is_call_us_only || selectedDropoffFlight.capacity_tier === 0
+  }, [selectedDropoffFlight])
+
   // Calculate drop-off time slots (2¾h, 2h before departure)
-  // Only show available slots (not already booked)
+  // Shows slots based on capacity tier and remaining availability
   const dropoffSlots = useMemo(() => {
     if (!selectedDropoffFlight) return []
+
+    // If this is a "Call Us only" flight, no slots available
+    if (isCallUsOnly) return []
 
     const [hours, minutes] = selectedDropoffFlight.time.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
     const slots = []
 
-    // Slot 1: 2¾ hours before (165 minutes)
-    if (!selectedDropoffFlight.is_slot_1_booked) {
-      slots.push({ id: '165', label: '2¾ hours before', time: formatMinutesToTime(departureMinutes - 165) })
+    // Early slot: 2¾ hours before (165 minutes) - show if slots available
+    const earlyAvailable = selectedDropoffFlight.early_slots_available ??
+      (selectedDropoffFlight.is_slot_1_booked === false ? 1 : 0)
+    if (earlyAvailable > 0) {
+      slots.push({
+        id: '165',
+        label: '2¾ hours before',
+        time: formatMinutesToTime(departureMinutes - 165),
+        available: earlyAvailable
+      })
     }
 
-    // Slot 2: 2 hours before (120 minutes)
-    if (!selectedDropoffFlight.is_slot_2_booked) {
-      slots.push({ id: '120', label: '2 hours before', time: formatMinutesToTime(departureMinutes - 120) })
+    // Late slot: 2 hours before (120 minutes) - show if slots available
+    const lateAvailable = selectedDropoffFlight.late_slots_available ??
+      (selectedDropoffFlight.is_slot_2_booked === false ? 1 : 0)
+    if (lateAvailable > 0) {
+      slots.push({
+        id: '120',
+        label: '2 hours before',
+        time: formatMinutesToTime(departureMinutes - 120),
+        available: lateAvailable
+      })
     }
 
     return slots
-  }, [selectedDropoffFlight])
+  }, [selectedDropoffFlight, isCallUsOnly])
 
-  // Check if flight is fully booked (both slots taken)
+  // Check if flight is fully booked (all slots taken) or Call Us only
   const isFlightFullyBooked = useMemo(() => {
     if (!selectedDropoffFlight) return false
+    // New capacity-based check
+    if (selectedDropoffFlight.all_slots_booked !== undefined) {
+      return selectedDropoffFlight.all_slots_booked
+    }
+    // Fallback for old data format
     return selectedDropoffFlight.is_slot_1_booked && selectedDropoffFlight.is_slot_2_booked
   }, [selectedDropoffFlight])
 
@@ -740,6 +770,45 @@ function Bookings() {
 
   return (
     <div className="bookings-page">
+      {/* Welcome Modal - shown once when user lands on booking page */}
+      {showWelcomeModal && (
+        <div className="welcome-modal-overlay">
+          <div className="welcome-modal">
+            <div className="welcome-modal-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                <path d="M12 16v-4"/>
+                <path d="M12 8h.01"/>
+              </svg>
+            </div>
+            <h2>Welcome to TAG Parking</h2>
+            <p>
+              As a new business, we're building our service and online booking isn't available for all flights just yet.
+              Availability changes regularly as we grow.
+            </p>
+            <p>
+              If your flight or preferred time slot isn't available online, please give us a call.
+              We'll do our best to accommodate your booking.
+            </p>
+            <div className="welcome-modal-contact">
+              <a href="tel:+447739106145" className="contact-link">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                </svg>
+                +44 (0)7739 106145
+              </a>
+            </div>
+            <button
+              type="button"
+              className="welcome-modal-btn"
+              onClick={() => setShowWelcomeModal(false)}
+            >
+              Continue to booking
+            </button>
+          </div>
+        </div>
+      )}
+
       <nav className="bookings-nav">
         <Link to="/" className="logo">
           <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
@@ -912,15 +981,15 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.dropoffFlight && isFlightFullyBooked && (
+              {formData.dropoffFlight && (isCallUsOnly || isFlightFullyBooked) && (
                 <div className="form-group fade-in">
                   <div className="fully-booked-banner">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                      <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
                     </svg>
                     <div className="fully-booked-content">
-                      <strong>Drop-off slots fully reserved</strong>
-                      <p>We may be able to accommodate your booking! Contact us and we'll see if we can find a drop-off time that suits your schedule.</p>
+                      <strong>We'd love to help with your booking</strong>
+                      <p>Online slots aren't available for this flight and we may still be able to accommodate you. Give us a call and we'll do our best to find a time that works for you.</p>
                       <div className="contact-details">
                         <a href="mailto:booking@tagparking.co.uk" className="contact-link">booking@tagparking.co.uk</a>
                         <a href="tel:+447739106145" className="contact-link">+44 (0)7739 106145</a>
@@ -930,7 +999,7 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.dropoffFlight && !isFlightFullyBooked && dropoffSlots.length > 0 && (
+              {formData.dropoffFlight && !isCallUsOnly && !isFlightFullyBooked && dropoffSlots.length > 0 && (
                 <div className="form-group fade-in">
                   <label>Select Drop-off Time</label>
                   <div className="dropoff-slots">
