@@ -1718,12 +1718,12 @@
 
 .welcome-modal-icon {
   margin-bottom: 1.5rem;
-  color: #D9FF00;
 }
 
-.welcome-modal-icon svg {
-  width: 48px;
-  height: 48px;
+.welcome-modal-icon img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
 }
 
 .welcome-modal h2 {
