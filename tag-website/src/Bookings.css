@@ -311,6 +311,13 @@
   display: block;
 }
 
+.date-info {
+  color: #D9FF00;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+}
+
 /* Country dropdown styling */
 .PhoneInputCountrySelect {
   position: absolute;
