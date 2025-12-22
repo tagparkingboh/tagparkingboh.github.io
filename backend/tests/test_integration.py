@@ -7,66 +7,22 @@ Includes mocked Stripe calls for payment flow testing.
 Updated to use capacity-based slot system:
 - capacity_tier: 0, 2, 4, 6, or 8 (determines max slots)
 - slots_booked_early/late: counters for bookings
+
+Note: Database setup is handled by conftest.py
 """
 import pytest
 import pytest_asyncio
 from datetime import date, time
 from httpx import AsyncClient, ASGITransport
 from unittest.mock import patch, MagicMock
-import os
 import sys
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Set test database before importing app
-os.environ["DATABASE_URL"] = "sqlite:///./tag_test.db"
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from database import Base, get_db
 from db_models import Customer, Vehicle, Booking, FlightDeparture, FlightArrival
 from main import app
-
-
-# Test database setup
-TEST_DATABASE_URL = "sqlite:///./tag_test.db"
-test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-
-
-def override_get_db():
-    """Override database dependency for testing."""
-    db = TestSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-# Override the dependency
-app.dependency_overrides[get_db] = override_get_db
-
-
-@pytest.fixture(autouse=True)
-def setup_test_database():
-    """Create fresh test database for each test."""
-    # Create all tables
-    Base.metadata.create_all(bind=test_engine)
-    yield
-    # Drop all tables after test
-    Base.metadata.drop_all(bind=test_engine)
-
-
-@pytest.fixture
-def db_session():
-    """Get a test database session."""
-    db = TestSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @pytest.fixture
