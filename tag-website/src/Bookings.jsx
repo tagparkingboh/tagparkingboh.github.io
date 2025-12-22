@@ -1031,7 +1031,7 @@ function Bookings() {
                             <span className="slot-label">{slot.label}</span>
                           </div>
                           {slot.isLastSlot && (
-                            <span className="last-slot-badge">Last slot!</span>
+                            <span className="last-slot-badge">Last slot available</span>
                           )}
                         </div>
                       </label>
