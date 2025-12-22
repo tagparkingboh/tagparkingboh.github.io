@@ -802,13 +802,22 @@ function Bookings() {
                 info@tagparking.co.uk
               </a>
             </div>
-            <button
-              type="button"
-              className="welcome-modal-btn"
-              onClick={() => setShowWelcomeModal(false)}
-            >
-              Continue to booking
-            </button>
+            <div className="welcome-modal-actions">
+              <button
+                type="button"
+                className="welcome-modal-btn"
+                onClick={() => setShowWelcomeModal(false)}
+              >
+                Continue to booking
+              </button>
+              <button
+                type="button"
+                className="welcome-modal-back-btn"
+                onClick={() => navigate('/')}
+              >
+                Back to home
+              </button>
+            </div>
           </div>
         </div>
       )}

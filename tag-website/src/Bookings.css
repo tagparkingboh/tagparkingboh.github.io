@@ -1771,6 +1771,12 @@
   flex-shrink: 0;
 }
 
+.welcome-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 .welcome-modal-btn {
   background: #D9FF00;
   color: #1a1a1a;
@@ -1787,6 +1793,22 @@
 .welcome-modal-btn:hover {
   background: #e8ff4d;
   transform: translateY(-2px);
+}
+
+.welcome-modal-back-btn {
+  background: transparent;
+  color: #999;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s;
+  font-family: 'Gilroy', sans-serif;
+}
+
+.welcome-modal-back-btn:hover {
+  color: #fff;
 }
 
 @media (max-width: 480px) {
