@@ -222,6 +222,26 @@ class FlightDeparture(Base):
         """Check if all slots are booked."""
         return self.early_slots_available == 0 and self.late_slots_available == 0
 
+    @property
+    def total_slots_available(self):
+        """Total slots available across both times."""
+        return self.early_slots_available + self.late_slots_available
+
+    @property
+    def is_last_slot(self):
+        """True if only 1 slot remains (either early or late)."""
+        return self.total_slots_available == 1
+
+    @property
+    def early_is_last_slot(self):
+        """True if the early slot is the last one available."""
+        return self.early_slots_available == 1 and self.late_slots_available == 0
+
+    @property
+    def late_is_last_slot(self):
+        """True if the late slot is the last one available."""
+        return self.late_slots_available == 1 and self.early_slots_available == 0
+
 
 class FlightArrival(Base):
     """Arrival flights - used for pickup scheduling."""

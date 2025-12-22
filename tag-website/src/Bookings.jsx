@@ -244,7 +244,8 @@ function Bookings() {
         id: '165',
         label: '2¾ hours before',
         time: formatMinutesToTime(departureMinutes - 165),
-        available: earlyAvailable
+        available: earlyAvailable,
+        isLastSlot: selectedDropoffFlight.early_is_last_slot || selectedDropoffFlight.is_last_slot
       })
     }
 
@@ -256,7 +257,8 @@ function Bookings() {
         id: '120',
         label: '2 hours before',
         time: formatMinutesToTime(departureMinutes - 120),
-        available: lateAvailable
+        available: lateAvailable,
+        isLastSlot: selectedDropoffFlight.late_is_last_slot || selectedDropoffFlight.is_last_slot
       })
     }
 
@@ -1023,9 +1025,12 @@ function Bookings() {
                           checked={formData.dropoffSlot === slot.id}
                           onChange={handleChange}
                         />
-                        <div className="slot-card">
+                        <div className={`slot-card ${slot.isLastSlot ? 'last-slot' : ''}`}>
                           <span className="slot-time">{slot.time}</span>
                           <span className="slot-label">{slot.label}</span>
+                          {slot.isLastSlot && (
+                            <span className="last-slot-badge">Last slot available!</span>
+                          )}
                         </div>
                       </label>
                     ))}

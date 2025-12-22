@@ -744,13 +744,18 @@ async def get_departures_for_date(flight_date: date, db: Session = Depends(get_d
             "destinationCode": d.destination_code,
             "destinationName": d.destination_name,
             "flightNumber": d.flight_number,
-            # New capacity-based fields
+            # Capacity-based fields
             "capacity_tier": d.capacity_tier,
             "max_slots_per_time": d.max_slots_per_time,
             "early_slots_available": d.early_slots_available,
             "late_slots_available": d.late_slots_available,
             "is_call_us_only": d.is_call_us_only,
             "all_slots_booked": d.all_slots_booked,
+            # Last slot indicators
+            "total_slots_available": d.total_slots_available,
+            "is_last_slot": d.is_last_slot,
+            "early_is_last_slot": d.early_is_last_slot,
+            "late_is_last_slot": d.late_is_last_slot,
         }
         for d in departures
     ]
@@ -819,6 +824,11 @@ async def get_schedule_for_date(flight_date: date, db: Session = Depends(get_db)
             "late_slots_available": d.late_slots_available,
             "is_call_us_only": d.is_call_us_only,
             "all_slots_booked": d.all_slots_booked,
+            # Last slot indicators
+            "total_slots_available": d.total_slots_available,
+            "is_last_slot": d.is_last_slot,
+            "early_is_last_slot": d.early_is_last_slot,
+            "late_is_last_slot": d.late_is_last_slot,
         })
 
     for a in arrivals:
