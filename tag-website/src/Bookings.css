@@ -786,14 +786,14 @@
   white-space: nowrap;
 }
 
-/* Mobile: badge below, full width centered */
+/* Mobile: badge below, centered */
 @media (max-width: 480px) {
   .slot-card.last-slot {
     flex-wrap: wrap;
+    justify-content: center;
   }
 
   .last-slot-badge {
-    width: 100%;
     margin-top: 0.5rem;
   }
 }
