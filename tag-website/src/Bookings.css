@@ -766,7 +766,15 @@
   align-items: center;
   flex: 1;
   gap: 1rem;
-  min-width: 0;
+}
+
+.slot-info .slot-time {
+  flex: 1;
+}
+
+.slot-info .slot-label {
+  flex: 1;
+  text-align: center;
 }
 
 /* Last slot available indicator */
