@@ -46,7 +46,7 @@ from stripe_service import (
 
 # Database imports
 from database import get_db, init_db
-from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle
+from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession
 import db_service
 import json
 import traceback
@@ -55,7 +55,7 @@ import traceback
 from email_scheduler import start_scheduler, stop_scheduler
 
 # Email service
-from email_service import send_booking_confirmation_email
+from email_service import send_booking_confirmation_email, send_login_code_email
 
 
 # Initialize FastAPI app
@@ -2759,6 +2759,264 @@ async def import_departures_with_capacity(
         raise HTTPException(status_code=500, detail=f"Import module not found: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error importing departures: {str(e)}")
+
+
+# =============================================================================
+# Authentication Endpoints (Passwordless)
+# =============================================================================
+
+class AuthRequestCodeRequest(BaseModel):
+    """Request to send a login code."""
+    email: str
+
+
+class AuthRequestCodeResponse(BaseModel):
+    """Response from request-code endpoint."""
+    success: bool
+    message: str
+
+
+class AuthVerifyCodeRequest(BaseModel):
+    """Request to verify a login code."""
+    email: str
+    code: str
+
+
+class AuthVerifyCodeResponse(BaseModel):
+    """Response from verify-code endpoint."""
+    success: bool
+    message: str
+    token: Optional[str] = None
+    user: Optional[dict] = None
+
+
+class AuthMeResponse(BaseModel):
+    """Response from me endpoint."""
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+    is_admin: bool
+
+
+@app.post("/api/auth/request-code", response_model=AuthRequestCodeResponse)
+async def auth_request_code(
+    request: AuthRequestCodeRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Request a 6-digit login code via email.
+
+    The code expires after 10 minutes.
+    Only active users can request codes.
+    """
+    import random
+    from datetime import timedelta
+
+    email = request.email.strip().lower()
+
+    # Find the user
+    user = db.query(User).filter(
+        User.email == email,
+        User.is_active == True
+    ).first()
+
+    if not user:
+        # Don't reveal whether email exists
+        return AuthRequestCodeResponse(
+            success=True,
+            message="If your email is registered, you will receive a login code shortly."
+        )
+
+    # Generate 6-digit code
+    code = str(random.randint(100000, 999999))
+
+    # Code expires in 10 minutes
+    expires_at = datetime.utcnow() + timedelta(minutes=10)
+
+    # Invalidate any existing unused codes for this user
+    db.query(LoginCode).filter(
+        LoginCode.user_id == user.id,
+        LoginCode.used == False
+    ).update({"used": True})
+
+    # Create new login code
+    login_code = LoginCode(
+        user_id=user.id,
+        code=code,
+        expires_at=expires_at,
+    )
+    db.add(login_code)
+    db.commit()
+
+    # Send email with code
+    email_sent = send_login_code_email(
+        email=user.email,
+        first_name=user.first_name,
+        code=code
+    )
+
+    if not email_sent:
+        print(f"WARNING: Failed to send login code email to {user.email}")
+
+    return AuthRequestCodeResponse(
+        success=True,
+        message="If your email is registered, you will receive a login code shortly."
+    )
+
+
+@app.post("/api/auth/verify-code", response_model=AuthVerifyCodeResponse)
+async def auth_verify_code(
+    request: AuthVerifyCodeRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Verify a 6-digit login code and create a session.
+
+    Sessions expire after 8 hours.
+    """
+    from datetime import timedelta
+
+    email = request.email.strip().lower()
+    code = request.code.strip()
+
+    # Find the user
+    user = db.query(User).filter(
+        User.email == email,
+        User.is_active == True
+    ).first()
+
+    if not user:
+        return AuthVerifyCodeResponse(
+            success=False,
+            message="Invalid email or code."
+        )
+
+    # Find valid login code
+    login_code = db.query(LoginCode).filter(
+        LoginCode.user_id == user.id,
+        LoginCode.code == code,
+        LoginCode.used == False,
+        LoginCode.expires_at > datetime.utcnow()
+    ).first()
+
+    if not login_code:
+        return AuthVerifyCodeResponse(
+            success=False,
+            message="Invalid or expired code."
+        )
+
+    # Mark code as used
+    login_code.used = True
+
+    # Generate session token (64-char hex string)
+    token = secrets.token_hex(32)
+
+    # Session expires in 8 hours
+    expires_at = datetime.utcnow() + timedelta(hours=8)
+
+    # Create session
+    session = DbSession(
+        user_id=user.id,
+        token=token,
+        expires_at=expires_at,
+    )
+    db.add(session)
+
+    # Update user's last login
+    user.last_login = datetime.utcnow()
+
+    db.commit()
+
+    return AuthVerifyCodeResponse(
+        success=True,
+        message="Login successful.",
+        token=token,
+        user={
+            "id": user.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_admin": user.is_admin,
+        }
+    )
+
+
+async def get_current_user(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+) -> User:
+    """
+    Dependency to get the current authenticated user from session token.
+
+    Expects header: Authorization: Bearer <token>
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Extract token from "Bearer <token>"
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+
+    token = parts[1]
+
+    # Find valid session
+    session = db.query(DbSession).filter(
+        DbSession.token == token,
+        DbSession.expires_at > datetime.utcnow()
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    # Get user
+    user = db.query(User).filter(
+        User.id == session.user_id,
+        User.is_active == True
+    ).first()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+
+    return user
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Logout the current user by invalidating their session.
+    """
+    if not authorization:
+        return {"success": True, "message": "Logged out"}
+
+    parts = authorization.split()
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        token = parts[1]
+        # Delete the session
+        db.query(DbSession).filter(DbSession.token == token).delete()
+        db.commit()
+
+    return {"success": True, "message": "Logged out"}
+
+
+@app.get("/api/auth/me", response_model=AuthMeResponse)
+async def auth_me(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get the current authenticated user's information.
+    """
+    return AuthMeResponse(
+        id=current_user.id,
+        email=current_user.email,
+        first_name=current_user.first_name,
+        last_name=current_user.last_name,
+        is_admin=current_user.is_admin,
+    )
 
 
 if __name__ == "__main__":

@@ -179,6 +179,65 @@ def send_promo_code_email(first_name: str, email: str, promo_code: str = "TAG10"
     return send_email(email, subject, html_content)
 
 
+def send_login_code_email(email: str, first_name: str, code: str) -> bool:
+    """
+    Send 6-digit login code to user.
+
+    Args:
+        email: User's email address
+        first_name: User's first name
+        code: 6-digit login code
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    subject = f"Your TAG login code: {code}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <!-- Header -->
+            <div style="background: #1a1a2e; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+                <h1 style="color: #D9FF00; margin: 0; font-size: 32px; font-weight: bold;">TAG</h1>
+                <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px;">Staff Login</p>
+            </div>
+
+            <!-- Main Content -->
+            <div style="background: #ffffff; padding: 30px; border-radius: 0 0 10px 10px;">
+                <p style="font-size: 16px; margin-bottom: 20px;">Hi {first_name},</p>
+
+                <p style="font-size: 16px; margin-bottom: 25px;">
+                    Here's your login code. It expires in 10 minutes.
+                </p>
+
+                <!-- Code Box -->
+                <div style="background: #1a1a2e; padding: 25px; text-align: center; border-radius: 8px; margin-bottom: 25px;">
+                    <p style="color: #D9FF00; margin: 0; font-size: 36px; font-weight: bold; letter-spacing: 8px;">{code}</p>
+                </div>
+
+                <p style="font-size: 14px; color: #666;">
+                    If you didn't request this code, you can safely ignore this email.
+                </p>
+            </div>
+
+            <!-- Footer -->
+            <div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">
+                <p style="margin: 0;">TAG Parking | Bournemouth International Airport</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return send_email(email, subject, html_content)
+
+
 def send_booking_confirmation_email(
     email: str,
     first_name: str,
