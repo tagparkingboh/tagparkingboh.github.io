@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import './Admin.css'
 
@@ -76,7 +76,9 @@ function Admin() {
     <div className="admin-container">
       <header className="admin-header">
         <div className="admin-header-left">
-          <img src="/images/tag-logo.png" alt="TAG Parking" className="admin-logo" />
+          <Link to="/">
+            <img src="/assets/logo.svg" alt="TAG Parking" className="admin-logo" />
+          </Link>
           <h1>Admin Dashboard</h1>
         </div>
         <div className="admin-header-right">

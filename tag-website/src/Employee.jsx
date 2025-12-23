@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import './Employee.css'
 
@@ -110,7 +110,9 @@ function Employee() {
     <div className="employee-container">
       <header className="employee-header">
         <div className="employee-header-left">
-          <img src="/images/tag-logo.png" alt="TAG Parking" className="employee-logo" />
+          <Link to="/">
+            <img src="/assets/logo.svg" alt="TAG Parking" className="employee-logo" />
+          </Link>
           <h1>Daily Operations</h1>
         </div>
         <div className="employee-header-right">
