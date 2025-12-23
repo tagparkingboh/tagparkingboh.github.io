@@ -8,7 +8,6 @@
 }
 
 .login-card {
-  background: white;
   border-radius: 16px;
   overflow: hidden;
   width: 100%;
@@ -20,6 +19,11 @@
   background: #1a1a2e;
   padding: 30px 40px;
   text-align: center;
+}
+
+.login-body {
+  background: white;
+  padding: 30px 40px 40px;
 }
 
 .login-logo {
@@ -43,10 +47,6 @@
   font-weight: 600;
   color: white;
   margin: 0;
-}
-
-.login-body {
-  padding: 30px 40px 40px;
 }
 
 .login-instructions {
