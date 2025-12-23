@@ -380,11 +380,21 @@ function Bookings() {
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
   }
 
+  // Convert string to Title Case
+  const toTitleCase = (str) => {
+    if (!str) return str
+    return str.toLowerCase().replace(/\b\w/g, char => char.toUpperCase())
+  }
+
+  // Fields that should be title case
+  const titleCaseFields = ['colour', 'customMake', 'customModel', 'billingAddress1', 'billingAddress2', 'billingCity', 'billingCounty']
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
+    const processedValue = titleCaseFields.includes(name) ? toTitleCase(value) : value
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : processedValue
     }))
 
     // Reset dependent fields when parent changes
