@@ -960,7 +960,15 @@ function Bookings() {
 
               {formData.dropoffDate && !loadingFlights && airlinesForDropoff.length > 0 && (
                 <div className="form-group fade-in">
-                  <label htmlFor="dropoffAirline">Select Airline</label>
+                  <div className="label-with-help">
+                    <label htmlFor="dropoffAirline">Select Airline</label>
+                    <div className="help-icon-wrapper">
+                      <span className="help-icon">?</span>
+                      <div className="help-tooltip">
+                        Can't find your flight? We're adding more regularly. Email <a href="mailto:sales@tagparking.co.uk">sales@tagparking.co.uk</a> and we'll do our best to help.
+                      </div>
+                    </div>
+                  </div>
                   <select
                     id="dropoffAirline"
                     name="dropoffAirline"
