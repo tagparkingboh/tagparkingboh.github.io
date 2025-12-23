@@ -638,33 +638,42 @@ function Bookings() {
 
     const selectedAddress = addressList.find(addr => addr.uprn === selectedUprn)
     if (selectedAddress) {
-      // Build Address Line 1: combine building name/number with thoroughfare
-      let address1Parts = []
+      let address1 = ''
+      let address2 = ''
 
-      if (selectedAddress.building_name) {
-        address1Parts.push(selectedAddress.building_name)
-      }
+      // Build street address (building number + thoroughfare)
+      let streetParts = []
       if (selectedAddress.building_number) {
-        address1Parts.push(selectedAddress.building_number)
+        streetParts.push(selectedAddress.building_number)
       }
       if (selectedAddress.thoroughfare) {
-        address1Parts.push(selectedAddress.thoroughfare)
+        streetParts.push(selectedAddress.thoroughfare)
+      }
+      const streetAddress = streetParts.join(' ')
+
+      // If there's a building name (e.g., "Flat 6"), put it on line 1, street on line 2
+      if (selectedAddress.building_name) {
+        address1 = selectedAddress.building_name
+        address2 = streetAddress
+      } else {
+        // No building name - just use street address on line 1
+        address1 = streetAddress
       }
 
       // If no structured data, fall back to parsing the address string
-      let address1 = address1Parts.join(' ')
       if (!address1) {
         const parts = selectedAddress.address.split(', ')
-        address1 = parts.slice(0, -2).join(', ') // Everything except town and postcode
+        address1 = parts[0] || ''
+        address2 = parts.length > 2 ? parts.slice(1, -2).join(', ') : ''
       }
 
       setFormData(prev => ({
         ...prev,
-        billingAddress1: address1,
-        billingAddress2: '', // Leave empty - user can fill if needed
-        billingCity: selectedAddress.post_town,
+        billingAddress1: toTitleCase(address1),
+        billingAddress2: toTitleCase(address2),
+        billingCity: toTitleCase(selectedAddress.post_town),
         billingPostcode: selectedAddress.postcode,
-        billingCounty: selectedAddress.county || '' // Use county from API
+        billingCounty: selectedAddress.county || ''
       }))
 
       setShowAddressSelect(false)
