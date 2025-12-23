@@ -1027,7 +1027,7 @@ function Bookings() {
                     </svg>
                     <div className="fully-booked-content">
                       <strong>Online booking not available</strong>
-                      <p>We don't offer online booking for this flight yet, but we may still be able to accommodate you. Get in touch and we'll do our best to help.</p>
+                      <p>We don't offer online booking for this flight yet and we may still be able to accommodate you. Get in touch and we'll do our best to help.</p>
                       <div className="contact-details">
                         <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a>
                       </div>
