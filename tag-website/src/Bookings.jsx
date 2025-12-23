@@ -1367,44 +1367,12 @@ function Bookings() {
                     <span className="package-price">£{pricingInfo.price.toFixed(0)}</span>
                     <span className="package-period">/ {pricingInfo.duration_days} days</span>
 
-                    {pricingInfo.advance_tier === 'early' && (
-                      <span className="price-badge early">Early Bird Price</span>
-                    )}
-                    {pricingInfo.advance_tier === 'standard' && (
-                      <span className="price-badge standard">Standard Price</span>
-                    )}
-                    {pricingInfo.advance_tier === 'late' && (
-                      <span className="price-badge late">Late Booking</span>
-                    )}
-
-                    <p className="price-tier-info">
-                      Booking {pricingInfo.days_in_advance} days in advance
-                    </p>
-
                     <ul className="package-features">
                       <li>Meet & Greet at terminal</li>
                       <li>Secure storage facility</li>
                       <li>24/7 monitoring</li>
                       <li>No hidden fees</li>
                     </ul>
-                  </div>
-
-                  <div className="pricing-tiers-info">
-                    <h4>Pricing based on advance booking:</h4>
-                    <div className="tier-list">
-                      <div className={`tier ${pricingInfo.advance_tier === 'early' ? 'active' : ''}`}>
-                        <span className="tier-label">14+ days ahead</span>
-                        <span className="tier-price">£{pricingInfo.all_prices.early.toFixed(0)}</span>
-                      </div>
-                      <div className={`tier ${pricingInfo.advance_tier === 'standard' ? 'active' : ''}`}>
-                        <span className="tier-label">7-13 days ahead</span>
-                        <span className="tier-price">£{pricingInfo.all_prices.standard.toFixed(0)}</span>
-                      </div>
-                      <div className={`tier ${pricingInfo.advance_tier === 'late' ? 'active' : ''}`}>
-                        <span className="tier-label">Under 7 days</span>
-                        <span className="tier-price">£{pricingInfo.all_prices.late.toFixed(0)}</span>
-                      </div>
-                    </div>
                   </div>
                 </div>
               ) : (
