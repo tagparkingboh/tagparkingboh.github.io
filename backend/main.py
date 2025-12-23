@@ -2765,6 +2765,94 @@ async def import_departures_with_capacity(
 # Authentication Endpoints (Passwordless)
 # =============================================================================
 
+class CreateUserRequest(BaseModel):
+    """Request to create a new user."""
+    email: str
+    first_name: str
+    last_name: str
+    phone: Optional[str] = None
+    is_admin: bool = False
+
+
+@app.post("/api/admin/users")
+async def create_user(
+    request: CreateUserRequest,
+    secret: str = Query(..., description="Admin secret key"),
+    db: Session = Depends(get_db),
+):
+    """
+    Admin endpoint: Create a new user.
+    Requires ADMIN_SECRET query parameter.
+    """
+    admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
+
+    if secret != admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
+
+    email = request.email.strip().lower()
+
+    # Check if user already exists
+    existing = db.query(User).filter(User.email == email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+
+    # Create user
+    user = User(
+        email=email,
+        first_name=request.first_name.strip(),
+        last_name=request.last_name.strip(),
+        phone=request.phone.strip() if request.phone else None,
+        is_admin=request.is_admin,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "success": True,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_admin": user.is_admin,
+        }
+    }
+
+
+@app.get("/api/admin/users")
+async def list_users(
+    secret: str = Query(..., description="Admin secret key"),
+    db: Session = Depends(get_db),
+):
+    """
+    Admin endpoint: List all users.
+    Requires ADMIN_SECRET query parameter.
+    """
+    admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
+
+    if secret != admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
+
+    users = db.query(User).all()
+
+    return {
+        "users": [
+            {
+                "id": u.id,
+                "email": u.email,
+                "first_name": u.first_name,
+                "last_name": u.last_name,
+                "is_admin": u.is_admin,
+                "is_active": u.is_active,
+                "last_login": u.last_login.isoformat() if u.last_login else None,
+            }
+            for u in users
+        ]
+    }
+
+
 class AuthRequestCodeRequest(BaseModel):
     """Request to send a login code."""
     email: str
