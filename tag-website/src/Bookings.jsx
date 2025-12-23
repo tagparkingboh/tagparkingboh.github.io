@@ -1010,10 +1010,7 @@ function Bookings() {
                     </svg>
                     <div className="fully-booked-content">
                       <strong>Sold out</strong>
-                      <p>All online slots for this flight have been booked. Email sales@tagparking.co.uk and we may still be able to help.</p>
-                      <div className="contact-details">
-                        <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a>
-                      </div>
+                      <p>All online slots for this flight have been booked. Email <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a> and we may still be able to help.</p>
                     </div>
                   </div>
                 </div>
