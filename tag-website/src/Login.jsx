@@ -72,11 +72,14 @@ function Login() {
   return (
     <div className="login-container">
       <div className="login-card">
-        <Link to="/" className="login-logo">
-          <img src="/assets/logo.svg" alt="TAG Parking" />
-        </Link>
-        <h1>Staff Login</h1>
+        <div className="login-header">
+          <Link to="/" className="login-logo">
+            <img src="/assets/logo.svg" alt="TAG Parking" />
+          </Link>
+          <h1>Staff Login</h1>
+        </div>
 
+        <div className="login-body">
         {step === 'email' ? (
           <form onSubmit={handleRequestCode}>
             <p className="login-instructions">
@@ -149,6 +152,7 @@ function Login() {
             </button>
           </form>
         )}
+        </div>
       </div>
     </div>
   )

@@ -10,21 +10,26 @@
 .login-card {
   background: white;
   border-radius: 16px;
-  padding: 40px;
+  overflow: hidden;
   width: 100%;
   max-width: 400px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
+.login-header {
+  background: #1a1a2e;
+  padding: 30px 40px;
+  text-align: center;
+}
+
 .login-logo {
   display: block;
-  text-align: center;
-  margin-bottom: 24px;
   text-decoration: none;
+  margin-bottom: 16px;
 }
 
 .login-logo img {
-  height: 60px;
+  height: 50px;
   width: auto;
   transition: opacity 0.2s ease;
 }
@@ -33,12 +38,15 @@
   opacity: 0.8;
 }
 
-.login-card h1 {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1a1a2e;
-  text-align: center;
-  margin: 0 0 24px 0;
+.login-header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: white;
+  margin: 0;
+}
+
+.login-body {
+  padding: 30px 40px 40px;
 }
 
 .login-instructions {
@@ -164,8 +172,12 @@
 }
 
 @media (max-width: 480px) {
-  .login-card {
-    padding: 30px 24px;
+  .login-header {
+    padding: 24px 20px;
+  }
+
+  .login-body {
+    padding: 24px 20px 30px;
   }
 
   .login-field input.code-input {
