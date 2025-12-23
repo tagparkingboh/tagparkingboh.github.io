@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import './Login.css'
 
@@ -72,9 +72,9 @@ function Login() {
   return (
     <div className="login-container">
       <div className="login-card">
-        <div className="login-logo">
-          <img src="/images/tag-logo.png" alt="TAG Parking" />
-        </div>
+        <Link to="/" className="login-logo">
+          <img src="/assets/logo.svg" alt="TAG Parking" />
+        </Link>
         <h1>Staff Login</h1>
 
         {step === 'email' ? (

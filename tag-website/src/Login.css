@@ -17,13 +17,20 @@
 }
 
 .login-logo {
+  display: block;
   text-align: center;
   margin-bottom: 24px;
+  text-decoration: none;
 }
 
 .login-logo img {
   height: 60px;
   width: auto;
+  transition: opacity 0.2s ease;
+}
+
+.login-logo:hover img {
+  opacity: 0.8;
 }
 
 .login-card h1 {
