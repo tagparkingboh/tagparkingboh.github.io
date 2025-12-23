@@ -2898,7 +2898,6 @@ async def auth_request_code(
     The code expires after 10 minutes.
     Only active users can request codes.
     """
-    import random
     from datetime import timedelta
 
     email = request.email.strip().lower()
@@ -2916,8 +2915,8 @@ async def auth_request_code(
             message="If your email is registered, you will receive a login code shortly."
         )
 
-    # Generate 6-digit code
-    code = str(random.randint(100000, 999999))
+    # Generate cryptographically secure 6-digit code
+    code = str(secrets.randbelow(900000) + 100000)
 
     # Code expires in 10 minutes
     expires_at = datetime.utcnow() + timedelta(minutes=10)
