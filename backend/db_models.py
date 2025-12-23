@@ -397,3 +397,61 @@ class ErrorLog(Base):
 
     def __repr__(self):
         return f"<ErrorLog {self.severity.value} - {self.error_type}: {self.message[:50]}>"
+
+
+class User(Base):
+    """Employee/Admin users for internal access."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
+    phone = Column(String(20))
+
+    # Role
+    is_admin = Column(Boolean, default=False, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    last_login = Column(DateTime(timezone=True))
+
+    def __repr__(self):
+        role = "Admin" if self.is_admin else "Employee"
+        return f"<User {self.first_name} {self.last_name} ({role})>"
+
+
+class LoginCode(Base):
+    """6-digit login codes sent via email."""
+    __tablename__ = "login_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    code = Column(String(6), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<LoginCode {self.code} for user {self.user_id}>"
+
+
+class Session(Base):
+    """User sessions - expire after 8 hours."""
+    __tablename__ = "sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<Session for user {self.user_id}>"
