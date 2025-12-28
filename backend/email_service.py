@@ -199,7 +199,7 @@ def send_booking_confirmation_email(
     discount_amount: str = None,
 ) -> bool:
     """
-    Send booking confirmation email after successful payment.
+    Send booking confirmation email after successful payment using the HTML template.
 
     Args:
         email: Customer email address
@@ -229,135 +229,46 @@ def send_booking_confirmation_email(
     discount_section = ""
     if promo_code and discount_amount:
         discount_section = f"""
-                        <tr style="color: #22c55e;">
-                            <td style="padding: 8px 0; border-bottom: 1px solid #e5e5e5;">Promo Code ({promo_code})</td>
-                            <td style="padding: 8px 0; border-bottom: 1px solid #e5e5e5; text-align: right;">-{discount_amount}</td>
-                        </tr>
-        """
+<tr>
+<td style="padding:10px 0; border-bottom:1px solid #e5e5e5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr>
+<td style="font-family: Helvetica, Arial, sans-serif; color:#22c55e; font-size:16px;">Promo Code ({promo_code})</td>
+<td align="right" style="font-family: Helvetica, Arial, sans-serif; color:#22c55e; font-size:16px;">-{discount_amount}</td>
+</tr>
+</table>
+</td>
+</tr>
+"""
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Booking Confirmation</title>
-    </head>
-    <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5; color: #333;">
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-            <!-- Header -->
-            <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-                <h1 style="color: #D9FF00; margin: 0; font-size: 32px; font-weight: bold;">TAG</h1>
-                <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px;">Airport Parking</p>
-            </div>
+    # Load the HTML template
+    template_path = EMAIL_TEMPLATES_DIR / "booking_confirmation_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
 
-            <!-- Success Banner -->
-            <div style="background: #22c55e; padding: 20px; text-align: center;">
-                <div style="font-size: 40px; margin-bottom: 10px;">&#10003;</div>
-                <h2 style="color: #ffffff; margin: 0; font-size: 24px;">Booking Confirmed!</h2>
-            </div>
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{BOOKING_REFERENCE}}", booking_reference)
+        html_content = html_content.replace("{{DROPOFF_DATE}}", dropoff_date)
+        html_content = html_content.replace("{{DROPOFF_TIME}}", dropoff_time)
+        html_content = html_content.replace("{{PICKUP_DATE}}", pickup_date)
+        html_content = html_content.replace("{{PICKUP_TIME_WINDOW}}", pickup_time_window)
+        html_content = html_content.replace("{{DEPARTURE_FLIGHT}}", departure_flight)
+        html_content = html_content.replace("{{RETURN_FLIGHT}}", return_flight)
+        html_content = html_content.replace("{{VEHICLE_MAKE}}", vehicle_make)
+        html_content = html_content.replace("{{VEHICLE_MODEL}}", vehicle_model)
+        html_content = html_content.replace("{{VEHICLE_COLOUR}}", vehicle_colour)
+        html_content = html_content.replace("{{VEHICLE_REGISTRATION}}", vehicle_registration)
+        html_content = html_content.replace("{{PACKAGE_NAME}}", package_name)
+        html_content = html_content.replace("{{AMOUNT_PAID}}", amount_paid)
+        html_content = html_content.replace("{{DISCOUNT_SECTION}}", discount_section)
 
-            <!-- Main Content -->
-            <div style="background: #ffffff; padding: 30px; border-radius: 0 0 10px 10px;">
-                <p style="font-size: 16px; margin-bottom: 20px;">Hi {first_name},</p>
-
-                <p style="font-size: 16px; margin-bottom: 25px;">
-                    Thank you for booking with TAG Parking. Your parking is confirmed and we look forward to seeing you!
-                </p>
-
-                <!-- Booking Reference Box -->
-                <div style="background: #1a1a2e; padding: 20px; text-align: center; border-radius: 8px; margin-bottom: 25px;">
-                    <p style="color: #cccccc; margin: 0 0 5px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Your Booking Reference</p>
-                    <p style="color: #D9FF00; margin: 0; font-size: 28px; font-weight: bold; letter-spacing: 2px;">{booking_reference}</p>
-                </div>
-
-                <!-- Booking Details -->
-                <h3 style="color: #1a1a2e; margin: 25px 0 15px 0; font-size: 18px; border-bottom: 2px solid #D9FF00; padding-bottom: 10px;">Booking Details</h3>
-
-                <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
-                    <tr>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5; color: #666; width: 40%;">Drop-off</td>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5; font-weight: 500;">
-                            {dropoff_date}<br>
-                            <span style="color: #1a1a2e; font-weight: bold;">{dropoff_time}</span>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5; color: #666;">Departure Flight</td>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">{departure_flight}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5; color: #666;">Pick-up</td>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5; font-weight: 500;">
-                            {pickup_date}<br>
-                            <span style="color: #1a1a2e; font-weight: bold;">{pickup_time_window}</span>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5; color: #666;">Return Flight</td>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">{return_flight}</td>
-                    </tr>
-                </table>
-
-                <!-- Vehicle Details -->
-                <h3 style="color: #1a1a2e; margin: 25px 0 15px 0; font-size: 18px; border-bottom: 2px solid #D9FF00; padding-bottom: 10px;">Vehicle Details</h3>
-
-                <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
-                    <tr>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5; color: #666; width: 40%;">Vehicle</td>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5;">{vehicle_colour} {vehicle_make} {vehicle_model}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5; color: #666;">Registration</td>
-                        <td style="padding: 12px 0; border-bottom: 1px solid #e5e5e5; font-weight: bold; font-size: 16px;">{vehicle_registration}</td>
-                    </tr>
-                </table>
-
-                <!-- Payment Summary -->
-                <h3 style="color: #1a1a2e; margin: 25px 0 15px 0; font-size: 18px; border-bottom: 2px solid #D9FF00; padding-bottom: 10px;">Payment Summary</h3>
-
-                <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
-                    <tr>
-                        <td style="padding: 8px 0; border-bottom: 1px solid #e5e5e5; color: #666;">Package</td>
-                        <td style="padding: 8px 0; border-bottom: 1px solid #e5e5e5; text-align: right;">{package_name}</td>
-                    </tr>
-                    {discount_section}
-                    <tr style="font-size: 18px; font-weight: bold;">
-                        <td style="padding: 12px 0; color: #1a1a2e;">Total Paid</td>
-                        <td style="padding: 12px 0; text-align: right; color: #22c55e;">{amount_paid}</td>
-                    </tr>
-                </table>
-
-                <!-- Important Info Box -->
-                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #D9FF00; margin-bottom: 25px;">
-                    <h4 style="color: #1a1a2e; margin: 0 0 10px 0; font-size: 16px;">Important Information</h4>
-                    <ul style="color: #666; margin: 0; padding-left: 20px; line-height: 1.8;">
-                        <li>Please arrive at the drop-off time shown above</li>
-                        <li>Meet us at the <strong>Short Stay Car Park</strong> at Bournemouth Airport</li>
-                        <li>Have your booking reference ready</li>
-                        <li>We'll call you when we're on our way back with your car</li>
-                    </ul>
-                </div>
-
-                <!-- Contact Section -->
-                <div style="text-align: center; padding: 20px; background: #f8f9fa; border-radius: 8px;">
-                    <p style="margin: 0 0 10px 0; color: #666;">Questions? We're here to help!</p>
-                    <p style="margin: 0;">
-                        <a href="mailto:booking@tagparking.co.uk" style="color: #1a1a2e; text-decoration: none; font-weight: 500;">booking@tagparking.co.uk</a>
-                        <span style="color: #ccc; margin: 0 10px;">|</span>
-                        <a href="tel:+447739106145" style="color: #1a1a2e; text-decoration: none; font-weight: 500;">07739 106145</a>
-                    </p>
-                </div>
-            </div>
-
-            <!-- Footer -->
-            <div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">
-                <p style="margin: 0 0 10px 0;">TAG Parking | Bournemouth International Airport</p>
-                <p style="margin: 0;">© 2025 TAG Parking. All rights reserved.</p>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
+    except FileNotFoundError:
+        logger.error(f"Booking confirmation email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading booking confirmation email template: {e}")
+        return False
 
     return send_email(email, subject, html_content)
