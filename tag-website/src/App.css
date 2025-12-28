@@ -269,6 +269,15 @@
   opacity: 0;
 }
 
+.hero-launch-text {
+  color: #FFFFFF;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-top: 1.5rem;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
 .hero-cta-group {
   display: flex;
   flex-direction: column;
