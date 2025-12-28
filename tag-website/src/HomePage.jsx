@@ -194,6 +194,7 @@ function HomePage() {
                 <>Enjoy peace of mind from<br />Palma to Paphos</>
               )}
             </h1>
+            <p className="hero-launch-text">TAG opens January 3rd 2026<br />Book it. Bag it. Tag it.</p>
           </div>
 
           <div className="hero-cta-group">
