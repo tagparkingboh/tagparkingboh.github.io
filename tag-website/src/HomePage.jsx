@@ -36,7 +36,7 @@ function HomePage() {
     const interval = setInterval(() => {
       setBannerFading(true)
       setTimeout(() => {
-        setHeroBannerIndex(prev => (prev + 1) % 2)
+        setHeroBannerIndex(prev => (prev + 1) % 3)
         setBannerFading(false)
       }, 300) // Fade out duration
     }, 10000)
@@ -190,28 +190,22 @@ function HomePage() {
             <h1 className={`hero-title ${bannerFading ? 'fading' : ''}`}>
               {heroBannerIndex === 0 ? (
                 <>Sign up early. Save more.</>
-              ) : (
+              ) : heroBannerIndex === 1 ? (
                 <>Enjoy peace of mind from<br />Palma to Paphos</>
+              ) : (
+                <>TAG opens January 3rd 2026<br />Book it. Bag it. Tag it.</>
               )}
             </h1>
-            <p className="hero-launch-text">TAG opens January 3rd 2026<br />Book it. Bag it. Tag it.</p>
           </div>
 
           <div className="hero-cta-group">
-            <div className={`intro-offer-banner ${bannerFading ? 'fading' : ''}`}>
-              {heroBannerIndex === 0 ? (
-                <>
-                  <span className="intro-offer-discount">10% off</span>
-                  <span className="intro-offer-text desktop-only">for subscribers – register your interest below</span>
-                  <span className="intro-offer-text mobile-only">– register below</span>
-                </>
-              ) : (
-                <>
-                  <span className="intro-offer-text desktop-only">Coming Soon – Early January 2026</span>
-                  <span className="intro-offer-text mobile-only">Coming Soon – Early 2026</span>
-                </>
-              )}
-            </div>
+            {heroBannerIndex === 0 && (
+              <div className={`intro-offer-banner ${bannerFading ? 'fading' : ''}`}>
+                <span className="intro-offer-discount">10% off</span>
+                <span className="intro-offer-text desktop-only">for subscribers – register your interest below</span>
+                <span className="intro-offer-text mobile-only">– register below</span>
+              </div>
+            )}
 
             <a href="#subscribe" className="hero-cta">Join the waitlist <span>→</span></a>
           </div>
