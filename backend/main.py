@@ -670,6 +670,7 @@ async def get_all_bookings(
         joinedload(Booking.customer),
         joinedload(Booking.vehicle),
         joinedload(Booking.payment),
+        joinedload(Booking.departure),
     )
 
     if date_filter:
@@ -695,6 +696,7 @@ async def get_all_bookings(
             "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
             "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
             "dropoff_flight_number": b.dropoff_flight_number,
+            "dropoff_airline_name": b.departure.airline_name if b.departure else None,
             "dropoff_destination": b.dropoff_destination,
             "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
             "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,

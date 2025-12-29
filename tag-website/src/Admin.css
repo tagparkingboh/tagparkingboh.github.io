@@ -597,6 +597,12 @@
   border: 1px solid #e2e8f0;
 }
 
+/* Airline name styling */
+.airline-name {
+  color: #666;
+  margin-right: 6px;
+}
+
 /* Flight number styling */
 .flight-number {
   font-family: 'Courier New', monospace;

@@ -344,10 +344,6 @@ function Admin() {
                         <span className="booking-name">
                           {booking.customer?.first_name} {booking.customer?.last_name}
                         </span>
-                        <span className="booking-date">{formatDate(booking.dropoff_date)}</span>
-                        <span className={`status-badge status-${booking.status?.toLowerCase()}`}>
-                          {booking.status}
-                        </span>
                       </div>
                       <div className="booking-expand-icon">
                         {expandedBookingId === booking.id ? '−' : '+'}
@@ -421,8 +417,13 @@ function Admin() {
                                 <span className="detail-value">{formatTime(booking.dropoff_time)}</span>
                               </div>
                               <div className="booking-detail">
-                                <span className="detail-label">Flight Number</span>
-                                <span className="detail-value flight-number">{booking.dropoff_flight_number || '-'}</span>
+                                <span className="detail-label">Flight</span>
+                                <span className="detail-value">
+                                  {booking.dropoff_airline_name && (
+                                    <span className="airline-name">{booking.dropoff_airline_name}</span>
+                                  )}
+                                  <span className="flight-number">{booking.dropoff_flight_number || '-'}</span>
+                                </span>
                               </div>
                               <div className="booking-detail">
                                 <span className="detail-label">Destination</span>
@@ -450,8 +451,10 @@ function Admin() {
                                 </span>
                               </div>
                               <div className="booking-detail">
-                                <span className="detail-label">Flight Number</span>
-                                <span className="detail-value flight-number">{booking.pickup_flight_number || '-'}</span>
+                                <span className="detail-label">Flight</span>
+                                <span className="detail-value">
+                                  <span className="flight-number">{booking.pickup_flight_number || '-'}</span>
+                                </span>
                               </div>
                               <div className="booking-detail">
                                 <span className="detail-label">Origin</span>
