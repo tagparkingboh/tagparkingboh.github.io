@@ -245,7 +245,7 @@ def send_booking_confirmation_email(
     dropoff_date: str,
     dropoff_time: str,
     pickup_date: str,
-    pickup_time_window: str,
+    pickup_time: str,
     departure_flight: str,
     return_flight: str,
     vehicle_make: str,
@@ -267,7 +267,7 @@ def send_booking_confirmation_email(
         dropoff_date: Formatted drop-off date (e.g., "Saturday, 28 December 2025")
         dropoff_time: Drop-off time (e.g., "10:15")
         pickup_date: Formatted pickup date (e.g., "Saturday, 4 January 2026")
-        pickup_time_window: Pickup window (e.g., "14:35 - 15:00")
+        pickup_time: Pickup time - 45 mins after scheduled arrival (e.g., "15:20")
         departure_flight: Flight details (e.g., "TOM1234 to Tenerife (TFS)")
         return_flight: Return flight details (e.g., "TOM1235 from Tenerife (TFS)")
         vehicle_make: Vehicle make
@@ -312,7 +312,7 @@ def send_booking_confirmation_email(
         html_content = html_content.replace("{{DROPOFF_DATE}}", dropoff_date)
         html_content = html_content.replace("{{DROPOFF_TIME}}", dropoff_time)
         html_content = html_content.replace("{{PICKUP_DATE}}", pickup_date)
-        html_content = html_content.replace("{{PICKUP_TIME_WINDOW}}", pickup_time_window)
+        html_content = html_content.replace("{{PICKUP_TIME}}", pickup_time)
         html_content = html_content.replace("{{DEPARTURE_FLIGHT}}", departure_flight)
         html_content = html_content.replace("{{RETURN_FLIGHT}}", return_flight)
         html_content = html_content.replace("{{VEHICLE_MAKE}}", vehicle_make)
