@@ -15,6 +15,7 @@ function Admin() {
   const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [expandedBookingId, setExpandedBookingId] = useState(null)
   const [cancellingId, setCancellingId] = useState(null)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [bookingToCancel, setBookingToCancel] = useState(null)
@@ -94,7 +95,12 @@ function Admin() {
     return filtered
   }, [bookings, searchTerm, statusFilter])
 
-  const handleCancelClick = (booking) => {
+  const toggleBookingExpanded = (bookingId) => {
+    setExpandedBookingId(expandedBookingId === bookingId ? null : bookingId)
+  }
+
+  const handleCancelClick = (booking, e) => {
+    e.stopPropagation()
     setBookingToCancel(booking)
     setShowCancelModal(true)
   }
@@ -130,7 +136,8 @@ function Admin() {
     }
   }
 
-  const handleRefundClick = (booking) => {
+  const handleRefundClick = (booking, e) => {
+    e.stopPropagation()
     // Open Stripe dashboard to the payment intent
     const paymentIntentId = booking.payment?.stripe_payment_intent_id
     if (paymentIntentId) {
@@ -142,7 +149,8 @@ function Admin() {
     }
   }
 
-  const handleResendEmailClick = (booking) => {
+  const handleResendEmailClick = (booking, e) => {
+    e.stopPropagation()
     setBookingToResend(booking)
     setShowResendModal(true)
   }
@@ -187,6 +195,7 @@ function Admin() {
     if (!dateStr) return '-'
     const date = new Date(dateStr)
     return date.toLocaleDateString('en-GB', {
+      weekday: 'short',
       day: '2-digit',
       month: 'short',
       year: 'numeric'
@@ -319,118 +328,177 @@ function Admin() {
                 {bookings.length === 0 ? 'No bookings found' : 'No bookings match your search'}
               </p>
             ) : (
-              <div className="admin-table-container">
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>Reference</th>
-                      <th>Customer</th>
-                      <th>Vehicle</th>
-                      <th>Drop-off</th>
-                      <th>Pick-up</th>
-                      <th>Status</th>
-                      <th>Payment</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredBookings.map((booking) => (
-                      <tr key={booking.id || booking.reference}>
-                        <td className="booking-ref">{booking.reference}</td>
-                        <td>
+              <div className="booking-accordion">
+                {filteredBookings.map((booking) => (
+                  <div
+                    key={booking.id || booking.reference}
+                    className={`booking-card ${expandedBookingId === booking.id ? 'expanded' : ''}`}
+                  >
+                    {/* Collapsed Header Row */}
+                    <div
+                      className="booking-card-header"
+                      onClick={() => toggleBookingExpanded(booking.id)}
+                    >
+                      <div className="booking-header-main">
+                        <span className="booking-ref">{booking.reference}</span>
+                        <span className="booking-name">
                           {booking.customer?.first_name} {booking.customer?.last_name}
-                          <br />
-                          <span className="small-text">{booking.customer?.email}</span>
-                          {booking.customer?.phone && (
-                            <>
-                              <br />
-                              <span className="small-text">{booking.customer?.phone}</span>
-                            </>
-                          )}
-                        </td>
-                        <td>
-                          <span className="vehicle-reg">{booking.vehicle?.registration}</span>
-                          <br />
-                          <span className="small-text">
-                            {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
-                          </span>
-                        </td>
-                        <td>
-                          {formatDate(booking.dropoff_date)}
-                          <br />
-                          <span className="small-text">{formatTime(booking.dropoff_time)}</span>
-                          {booking.dropoff_flight_number && (
-                            <>
-                              <br />
-                              <span className="small-text flight-number">{booking.dropoff_flight_number}</span>
-                            </>
-                          )}
-                        </td>
-                        <td>
-                          {formatDate(booking.pickup_date)}
-                          <br />
-                          <span className="small-text">
-                            {formatTime(booking.pickup_time_from)}
-                            {booking.pickup_time_to && ` - ${formatTime(booking.pickup_time_to)}`}
-                          </span>
-                          {booking.pickup_flight_number && (
-                            <>
-                              <br />
-                              <span className="small-text flight-number">{booking.pickup_flight_number}</span>
-                            </>
-                          )}
-                        </td>
-                        <td>
-                          <span className={`status-badge status-${booking.status?.toLowerCase()}`}>
-                            {booking.status}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`status-badge payment-${booking.payment?.status?.toLowerCase()}`}>
-                            {booking.payment?.status || 'N/A'}
-                          </span>
-                          {booking.payment?.amount_pence && (
-                            <>
-                              <br />
-                              <span className="small-text">
-                                £{(booking.payment.amount_pence / 100).toFixed(2)}
+                        </span>
+                        <span className="booking-date">{formatDate(booking.dropoff_date)}</span>
+                        <span className={`status-badge status-${booking.status?.toLowerCase()}`}>
+                          {booking.status}
+                        </span>
+                      </div>
+                      <div className="booking-expand-icon">
+                        {expandedBookingId === booking.id ? '−' : '+'}
+                      </div>
+                    </div>
+
+                    {/* Expanded Content */}
+                    {expandedBookingId === booking.id && (
+                      <div className="booking-card-body">
+                        {/* Contact Details Section */}
+                        <div className="booking-section">
+                          <h4>Contact Details</h4>
+                          <div className="booking-section-content">
+                            <div className="booking-detail">
+                              <span className="detail-label">Name</span>
+                              <span className="detail-value">
+                                {booking.customer?.first_name} {booking.customer?.last_name}
                               </span>
-                            </>
-                          )}
-                        </td>
-                        <td className="actions-cell">
-                          {booking.status?.toLowerCase() !== 'cancelled' &&
-                           booking.status?.toLowerCase() !== 'refunded' && (
+                            </div>
+                            <div className="booking-detail">
+                              <span className="detail-label">Email</span>
+                              <span className="detail-value">{booking.customer?.email}</span>
+                            </div>
+                            {booking.customer?.phone && (
+                              <div className="booking-detail">
+                                <span className="detail-label">Phone</span>
+                                <span className="detail-value">{booking.customer?.phone}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Booking Information Section */}
+                        <div className="booking-section">
+                          <h4>Booking Information</h4>
+                          <div className="booking-section-content">
+                            <div className="booking-detail-row">
+                              <div className="booking-detail">
+                                <span className="detail-label">Drop-off</span>
+                                <span className="detail-value">
+                                  {formatDate(booking.dropoff_date)} at {formatTime(booking.dropoff_time)}
+                                </span>
+                              </div>
+                              {booking.dropoff_flight_number && (
+                                <div className="booking-detail">
+                                  <span className="detail-label">Departure Flight</span>
+                                  <span className="detail-value flight-number">{booking.dropoff_flight_number}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="booking-detail-row">
+                              <div className="booking-detail">
+                                <span className="detail-label">Pick-up</span>
+                                <span className="detail-value">
+                                  {formatDate(booking.pickup_date)}
+                                  {booking.pickup_time_from && ` at ${formatTime(booking.pickup_time_from)}`}
+                                  {booking.pickup_time_to && ` - ${formatTime(booking.pickup_time_to)}`}
+                                </span>
+                              </div>
+                              {booking.pickup_flight_number && (
+                                <div className="booking-detail">
+                                  <span className="detail-label">Return Flight</span>
+                                  <span className="detail-value flight-number">{booking.pickup_flight_number}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="booking-detail-row">
+                              <div className="booking-detail">
+                                <span className="detail-label">Vehicle</span>
+                                <span className="detail-value">
+                                  <span className="vehicle-reg">{booking.vehicle?.registration}</span>
+                                  {' '}
+                                  {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
+                                </span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Package</span>
+                                <span className="detail-value">
+                                  {booking.package === 'quick' ? '1 Week' : '2 Weeks'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status & Payment Section */}
+                        <div className="booking-section">
+                          <h4>Status & Payment</h4>
+                          <div className="booking-section-content">
+                            <div className="booking-detail-row">
+                              <div className="booking-detail">
+                                <span className="detail-label">Booking Status</span>
+                                <span className={`status-badge status-${booking.status?.toLowerCase()}`}>
+                                  {booking.status}
+                                </span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Payment Status</span>
+                                <span className={`status-badge payment-${booking.payment?.status?.toLowerCase()}`}>
+                                  {booking.payment?.status || 'N/A'}
+                                </span>
+                              </div>
+                              {booking.payment?.amount_pence && (
+                                <div className="booking-detail">
+                                  <span className="detail-label">Amount</span>
+                                  <span className="detail-value">
+                                    £{(booking.payment.amount_pence / 100).toFixed(2)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions Section */}
+                        <div className="booking-section booking-actions-section">
+                          <h4>Actions</h4>
+                          <div className="booking-actions">
                             <button
-                              className="action-btn cancel-btn"
-                              onClick={() => handleCancelClick(booking)}
-                              disabled={cancellingId === booking.id}
+                              className="action-btn email-btn"
+                              onClick={(e) => handleResendEmailClick(booking, e)}
+                              disabled={resendingEmailId === booking.id}
                             >
-                              {cancellingId === booking.id ? 'Cancelling...' : 'Cancel'}
+                              {resendingEmailId === booking.id ? 'Sending...' : 'Resend Confirmation Email'}
                             </button>
-                          )}
-                          {booking.payment?.stripe_payment_intent_id &&
-                           booking.payment?.status?.toLowerCase() === 'succeeded' &&
-                           booking.status?.toLowerCase() !== 'refunded' && (
-                            <button
-                              className="action-btn refund-btn"
-                              onClick={() => handleRefundClick(booking)}
-                            >
-                              Refund
-                            </button>
-                          )}
-                          <button
-                            className="action-btn email-btn"
-                            onClick={() => handleResendEmailClick(booking)}
-                            disabled={resendingEmailId === booking.id}
-                          >
-                            {resendingEmailId === booking.id ? 'Sending...' : 'Resend Email'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                            {booking.payment?.stripe_payment_intent_id &&
+                             booking.payment?.status?.toLowerCase() === 'succeeded' &&
+                             booking.status?.toLowerCase() !== 'refunded' && (
+                              <button
+                                className="action-btn refund-btn"
+                                onClick={(e) => handleRefundClick(booking, e)}
+                              >
+                                Process Refund
+                              </button>
+                            )}
+                            {booking.status?.toLowerCase() !== 'cancelled' &&
+                             booking.status?.toLowerCase() !== 'refunded' && (
+                              <button
+                                className="action-btn cancel-btn"
+                                onClick={(e) => handleCancelClick(booking, e)}
+                                disabled={cancellingId === booking.id}
+                              >
+                                {cancellingId === booking.id ? 'Cancelling...' : 'Cancel Booking'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>

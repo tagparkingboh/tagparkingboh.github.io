@@ -440,6 +440,152 @@
   background: #c6f6d5;
 }
 
+/* Accordion Booking Cards */
+.booking-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.booking-card {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+}
+
+.booking-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.booking-card.expanded {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.booking-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  cursor: pointer;
+  background: #fafafa;
+  transition: background 0.2s ease;
+}
+
+.booking-card-header:hover {
+  background: #f5f5f5;
+}
+
+.booking-card.expanded .booking-card-header {
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.booking-header-main {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.booking-ref {
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  font-size: 15px;
+  color: #1a1a2e;
+  min-width: 120px;
+}
+
+.booking-name {
+  font-weight: 500;
+  color: #333;
+  min-width: 150px;
+}
+
+.booking-date {
+  color: #666;
+  font-size: 14px;
+  min-width: 140px;
+}
+
+.booking-expand-icon {
+  font-size: 20px;
+  font-weight: 300;
+  color: #888;
+  width: 24px;
+  text-align: center;
+}
+
+.booking-card-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: white;
+}
+
+.booking-section {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+
+.booking-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.booking-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.booking-detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.booking-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+}
+
+.detail-label {
+  font-size: 12px;
+  color: #888;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.detail-value {
+  font-size: 14px;
+  color: #333;
+}
+
+.booking-actions-section {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+}
+
+.booking-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.booking-actions .action-btn {
+  margin-right: 0;
+}
+
 /* Vehicle registration styling */
 .vehicle-reg {
   font-family: 'Courier New', monospace;
@@ -647,5 +793,48 @@
 
   .actions-cell {
     white-space: normal;
+  }
+
+  /* Accordion mobile styles */
+  .booking-header-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .booking-ref,
+  .booking-name,
+  .booking-date {
+    min-width: auto;
+  }
+
+  .booking-card-header {
+    padding: 14px 16px;
+  }
+
+  .booking-card-body {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .booking-section {
+    padding: 14px 16px;
+  }
+
+  .booking-detail-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .booking-detail {
+    min-width: auto;
+  }
+
+  .booking-actions {
+    flex-direction: column;
+  }
+
+  .booking-actions .action-btn {
+    width: 100%;
   }
 }
