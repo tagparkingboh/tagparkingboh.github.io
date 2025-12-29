@@ -2242,10 +2242,15 @@ async def create_payment(
                 pickup_date_str = pickup_date.strftime("%A, %d %B %Y")
                 dropoff_time_str = dropoff_time.strftime("%H:%M") if dropoff_time else "TBC"
 
-                # Calculate pickup time window
-                pickup_time_window = ""
-                if pickup_time_from and pickup_time_to:
-                    pickup_time_window = f"{pickup_time_from.strftime('%H:%M')} - {pickup_time_to.strftime('%H:%M')}"
+                # Calculate pickup time (45 mins after scheduled arrival)
+                pickup_time_str = ""
+                if pickup_time:
+                    # pickup_time is the landing time, add 45 mins
+                    landing_mins = pickup_time.hour * 60 + pickup_time.minute
+                    pickup_mins = landing_mins + 45
+                    if pickup_mins >= 24 * 60:
+                        pickup_mins -= 24 * 60
+                    pickup_time_str = f"{pickup_mins // 60:02d}:{pickup_mins % 60:02d}"
 
                 # Package name
                 package_name = "1 Week" if request.package == "quick" else "2 Weeks"
@@ -2272,7 +2277,7 @@ async def create_payment(
                     dropoff_date=dropoff_date_str,
                     dropoff_time=dropoff_time_str,
                     pickup_date=pickup_date_str,
-                    pickup_time_window=pickup_time_window,
+                    pickup_time=pickup_time_str,
                     departure_flight=f"{request.flight_number}",
                     return_flight=f"{request.pickup_flight_number or 'TBC'} from {request.pickup_origin or 'TBC'}",
                     vehicle_make=vehicle_make,
@@ -2570,20 +2575,15 @@ async def stripe_webhook(
             print(f"[EMAIL] Booking found: {booking is not None}")
             if booking:
                 print(f"[EMAIL] Customer email: {booking.customer.email}, name: {booking.customer.first_name}")
-                # Calculate pickup time window (35-60 min after landing)
-                pickup_time_window = ""
+                # Calculate pickup time (45 min after landing)
+                pickup_time_str = ""
                 if booking.pickup_time:
                     landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
-                    pickup_start_mins = landing_minutes + 35
-                    pickup_end_mins = landing_minutes + 60
+                    pickup_mins = landing_minutes + 45
                     # Handle overnight
-                    if pickup_start_mins >= 24 * 60:
-                        pickup_start_mins -= 24 * 60
-                    if pickup_end_mins >= 24 * 60:
-                        pickup_end_mins -= 24 * 60
-                    pickup_start = f"{pickup_start_mins // 60:02d}:{pickup_start_mins % 60:02d}"
-                    pickup_end = f"{pickup_end_mins // 60:02d}:{pickup_end_mins % 60:02d}"
-                    pickup_time_window = f"{pickup_start} - {pickup_end}"
+                    if pickup_mins >= 24 * 60:
+                        pickup_mins -= 24 * 60
+                    pickup_time_str = f"{pickup_mins // 60:02d}:{pickup_mins % 60:02d}"
 
                 # Format dates nicely
                 dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
@@ -2616,7 +2616,7 @@ async def stripe_webhook(
                     dropoff_date=dropoff_date_str,
                     dropoff_time=dropoff_time_str,
                     pickup_date=pickup_date_str,
-                    pickup_time_window=pickup_time_window,
+                    pickup_time=pickup_time_str,
                     departure_flight=departure_flight,
                     return_flight=return_flight,
                     vehicle_make=booking.vehicle.make,
