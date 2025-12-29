@@ -830,6 +830,85 @@ async def cancel_booking_admin(
     }
 
 
+@app.post("/api/admin/bookings/{booking_id}/resend-email")
+async def resend_booking_confirmation_email(
+    booking_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Admin endpoint: Resend booking confirmation email.
+
+    Sends the confirmation email again for a specific booking.
+    Useful when the original email failed or customer didn't receive it.
+    """
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    # Calculate pickup time (45 min after landing)
+    pickup_time_str = ""
+    if booking.pickup_time:
+        landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+        pickup_mins = landing_minutes + 45
+        if pickup_mins >= 24 * 60:
+            pickup_mins -= 24 * 60
+        pickup_time_str = f"{pickup_mins // 60:02d}:{pickup_mins % 60:02d}"
+
+    # Format dates
+    dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
+    pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
+    dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else ""
+
+    # Format flight info
+    departure_flight = f"{booking.dropoff_flight_number} to {booking.dropoff_destination or 'destination'}"
+    return_flight = f"{booking.pickup_flight_number or 'N/A'} from {booking.pickup_origin or 'origin'}"
+
+    # Package name
+    package_name = "1 Week" if booking.package == "quick" else "2 Weeks"
+
+    # Get payment amount
+    amount_paid = "£0.00"
+    if booking.payment and booking.payment.amount_pence:
+        amount_paid = f"£{booking.payment.amount_pence / 100:.2f}"
+
+    # Send the email
+    email_sent = send_booking_confirmation_email(
+        email=booking.customer.email,
+        first_name=booking.customer.first_name,
+        booking_reference=booking.reference,
+        dropoff_date=dropoff_date_str,
+        dropoff_time=dropoff_time_str,
+        pickup_date=pickup_date_str,
+        pickup_time=pickup_time_str,
+        departure_flight=departure_flight,
+        return_flight=return_flight,
+        vehicle_make=booking.vehicle.make,
+        vehicle_model=booking.vehicle.model,
+        vehicle_colour=booking.vehicle.colour,
+        vehicle_registration=booking.vehicle.registration,
+        package_name=package_name,
+        amount_paid=amount_paid,
+    )
+
+    if email_sent:
+        # Update email sent tracking
+        booking.confirmation_email_sent = True
+        booking.confirmation_email_sent_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Confirmation email sent to {booking.customer.email}",
+            "reference": booking.reference,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send confirmation email. Check SendGrid configuration."
+        )
+
+
 # =============================================================================
 # Flight Schedule Endpoints (from database)
 # =============================================================================
