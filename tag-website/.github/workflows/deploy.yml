@@ -34,8 +34,6 @@ jobs:
       - name: Build
         run: npm run build
         working-directory: ./tag-website
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
