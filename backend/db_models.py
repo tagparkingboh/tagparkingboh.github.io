@@ -103,6 +103,10 @@ class Booking(Base):
     dropoff_flight_number = Column(String(20))
     dropoff_destination = Column(String(100))
 
+    # Flight slot booking (for slot release on cancellation)
+    departure_id = Column(Integer, ForeignKey("flight_departures.id"), nullable=True)
+    dropoff_slot = Column(String(10), nullable=True)  # "early" or "late"
+
     # Pick-up details
     pickup_date = Column(Date, nullable=False)
     pickup_time = Column(Time)  # Arrival/landing time of return flight
@@ -126,6 +130,7 @@ class Booking(Base):
     customer = relationship("Customer", back_populates="bookings")
     vehicle = relationship("Vehicle", back_populates="bookings")
     payment = relationship("Payment", back_populates="booking", uselist=False)
+    departure = relationship("FlightDeparture")
 
     def __repr__(self):
         return f"<Booking {self.reference} - {self.status.value}>"

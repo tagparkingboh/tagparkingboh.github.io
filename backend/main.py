@@ -790,7 +790,8 @@ async def cancel_booking_admin(
     """
     Admin endpoint: Cancel a booking.
 
-    Sets the booking status to CANCELLED.
+    Sets the booking status to CANCELLED and releases the flight slot
+    so it becomes available for other bookings.
     Note: This does NOT automatically refund the payment -
     use the Stripe dashboard for refunds.
     """
@@ -807,14 +808,25 @@ async def cancel_booking_admin(
     if booking.status == BookingStatus.REFUNDED:
         raise HTTPException(status_code=400, detail="Cannot cancel a refunded booking")
 
+    # Release the flight slot using stored departure_id and dropoff_slot
+    slot_released = False
+    if booking.departure_id and booking.dropoff_slot:
+        result = db_service.release_departure_slot(db, booking.departure_id, booking.dropoff_slot)
+        slot_released = result.get("success", False)
+
     # Update booking status
     booking.status = BookingStatus.CANCELLED
     db.commit()
 
+    message = f"Booking {booking.reference} has been cancelled"
+    if slot_released:
+        message += " and the flight slot has been released"
+
     return {
         "success": True,
-        "message": f"Booking {booking.reference} has been cancelled",
+        "message": message,
         "reference": booking.reference,
+        "slot_released": slot_released,
     }
 
 
@@ -2044,6 +2056,11 @@ async def create_payment(
             if not customer:
                 raise ValueError("Customer not found")
 
+            # Determine slot type from drop_off_slot ("165" = early, "120" = late)
+            slot_type = None
+            if request.drop_off_slot:
+                slot_type = 'early' if request.drop_off_slot == "165" else 'late'
+
             # Create booking with existing IDs
             booking = db_service.create_booking(
                 db=db,
@@ -2059,11 +2076,18 @@ async def create_payment(
                 pickup_time_to=pickup_time_to,
                 pickup_flight_number=request.pickup_flight_number,
                 pickup_origin=request.pickup_origin,
+                departure_id=request.departure_id,
+                dropoff_slot=slot_type,
             )
             booking_reference = booking.reference
             booking_id = booking.id
         else:
             # Fallback: Create everything from scratch (backwards compatible)
+            # Determine slot type from drop_off_slot ("165" = early, "120" = late)
+            slot_type = None
+            if request.drop_off_slot:
+                slot_type = 'early' if request.drop_off_slot == "165" else 'late'
+
             booking_data = db_service.create_full_booking(
                 db=db,
                 # Customer
@@ -2094,6 +2118,9 @@ async def create_payment(
                 pickup_time_to=pickup_time_to,
                 pickup_flight_number=request.pickup_flight_number,
                 pickup_origin=request.pickup_origin,
+                # Flight slot
+                departure_id=request.departure_id,
+                dropoff_slot=slot_type,
             )
             booking_reference = booking_data["booking"].reference
             booking_id = booking_data["booking"].id
