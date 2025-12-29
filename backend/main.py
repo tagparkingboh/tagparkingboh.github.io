@@ -19,7 +19,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from models import (
     BookingRequest,
@@ -652,24 +652,90 @@ async def get_bookings_by_email(email: str):
 @app.get("/api/admin/bookings")
 async def get_all_bookings(
     date_filter: Optional[date] = Query(None, description="Filter by parking date"),
+    include_cancelled: bool = Query(True, description="Include cancelled bookings"),
+    db: Session = Depends(get_db),
 ):
     """
-    Admin endpoint: Get all active bookings.
+    Admin endpoint: Get all bookings from database.
 
-    Optionally filter by a specific date to see which vehicles
-    will be parked on that day.
+    Returns bookings with full details including:
+    - Customer info (name, email, phone)
+    - Vehicle info (registration, make, model, colour)
+    - Booking dates and times
+    - Payment info (status, amount, stripe_payment_intent_id)
     """
-    service = get_service()
+    from db_models import Booking, Customer, Vehicle, Payment, BookingStatus
+
+    query = db.query(Booking).options(
+        joinedload(Booking.customer),
+        joinedload(Booking.vehicle),
+        joinedload(Booking.payment),
+    )
 
     if date_filter:
-        bookings = service.get_bookings_for_date(date_filter)
-    else:
-        bookings = service.get_all_active_bookings()
+        # Filter bookings that overlap with the given date
+        query = query.filter(
+            Booking.dropoff_date <= date_filter,
+            Booking.pickup_date >= date_filter,
+        )
+
+    if not include_cancelled:
+        query = query.filter(Booking.status != BookingStatus.CANCELLED)
+
+    bookings = query.order_by(Booking.dropoff_date.asc()).all()
+
+    # Format bookings for frontend
+    result = []
+    for b in bookings:
+        result.append({
+            "id": b.id,
+            "reference": b.reference,
+            "status": b.status.value if b.status else None,
+            "package": b.package,
+            "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
+            "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
+            "dropoff_flight_number": b.dropoff_flight_number,
+            "dropoff_destination": b.dropoff_destination,
+            "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
+            "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
+            "pickup_time_from": b.pickup_time_from.strftime("%H:%M") if b.pickup_time_from else None,
+            "pickup_time_to": b.pickup_time_to.strftime("%H:%M") if b.pickup_time_to else None,
+            "pickup_flight_number": b.pickup_flight_number,
+            "pickup_origin": b.pickup_origin,
+            "notes": b.notes,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "customer": {
+                "id": b.customer.id,
+                "first_name": b.customer.first_name,
+                "last_name": b.customer.last_name,
+                "email": b.customer.email,
+                "phone": b.customer.phone,
+            } if b.customer else None,
+            "vehicle": {
+                "id": b.vehicle.id,
+                "registration": b.vehicle.registration,
+                "make": b.vehicle.make,
+                "model": b.vehicle.model,
+                "colour": b.vehicle.colour,
+            } if b.vehicle else None,
+            "payment": {
+                "id": b.payment.id,
+                "status": b.payment.status.value if b.payment.status else None,
+                "amount_pence": b.payment.amount_pence,
+                "currency": b.payment.currency,
+                "stripe_payment_intent_id": b.payment.stripe_payment_intent_id,
+                "stripe_customer_id": b.payment.stripe_customer_id,
+                "paid_at": b.payment.paid_at.isoformat() if b.payment.paid_at else None,
+                "refund_id": b.payment.refund_id,
+                "refund_amount_pence": b.payment.refund_amount_pence,
+                "refunded_at": b.payment.refunded_at.isoformat() if b.payment.refunded_at else None,
+            } if b.payment else None,
+        })
 
     return {
-        "count": len(bookings),
+        "count": len(result),
         "date_filter": date_filter.isoformat() if date_filter else None,
-        "bookings": bookings,
+        "bookings": result,
     }
 
 
