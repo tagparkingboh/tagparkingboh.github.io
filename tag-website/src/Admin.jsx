@@ -386,35 +386,15 @@ function Admin() {
                           <div className="booking-section-content">
                             <div className="booking-detail-row">
                               <div className="booking-detail">
-                                <span className="detail-label">Drop-off</span>
-                                <span className="detail-value">
-                                  {formatDate(booking.dropoff_date)} at {formatTime(booking.dropoff_time)}
-                                </span>
+                                <span className="detail-label">Booking Reference</span>
+                                <span className="detail-value booking-ref">{booking.reference}</span>
                               </div>
-                              {booking.dropoff_flight_number && (
-                                <div className="booking-detail">
-                                  <span className="detail-label">Departure Flight</span>
-                                  <span className="detail-value flight-number">{booking.dropoff_flight_number}</span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="booking-detail-row">
                               <div className="booking-detail">
-                                <span className="detail-label">Pick-up</span>
+                                <span className="detail-label">Package</span>
                                 <span className="detail-value">
-                                  {formatDate(booking.pickup_date)}
-                                  {booking.pickup_time_from && ` at ${formatTime(booking.pickup_time_from)}`}
-                                  {booking.pickup_time_to && ` - ${formatTime(booking.pickup_time_to)}`}
+                                  {booking.package === 'quick' ? '1 Week' : '2 Weeks'}
                                 </span>
                               </div>
-                              {booking.pickup_flight_number && (
-                                <div className="booking-detail">
-                                  <span className="detail-label">Return Flight</span>
-                                  <span className="detail-value flight-number">{booking.pickup_flight_number}</span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="booking-detail-row">
                               <div className="booking-detail">
                                 <span className="detail-label">Vehicle</span>
                                 <span className="detail-value">
@@ -423,11 +403,59 @@ function Admin() {
                                   {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
                                 </span>
                               </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Drop-off / Departure Section */}
+                        <div className="booking-section">
+                          <h4>Drop-off / Departure</h4>
+                          <div className="booking-section-content">
+                            <div className="booking-detail-row">
                               <div className="booking-detail">
-                                <span className="detail-label">Package</span>
+                                <span className="detail-label">Drop-off Date</span>
+                                <span className="detail-value">{formatDate(booking.dropoff_date)}</span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Drop-off Time</span>
+                                <span className="detail-value">{formatTime(booking.dropoff_time)}</span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Flight Number</span>
+                                <span className="detail-value flight-number">{booking.dropoff_flight_number || '-'}</span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Destination</span>
+                                <span className="detail-value">{booking.dropoff_destination || '-'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Pick-up / Return Section */}
+                        <div className="booking-section">
+                          <h4>Pick-up / Return</h4>
+                          <div className="booking-section-content">
+                            <div className="booking-detail-row">
+                              <div className="booking-detail">
+                                <span className="detail-label">Pick-up Date</span>
+                                <span className="detail-value">{formatDate(booking.pickup_date)}</span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Pick-up Window</span>
                                 <span className="detail-value">
-                                  {booking.package === 'quick' ? '1 Week' : '2 Weeks'}
+                                  {booking.pickup_time_from && booking.pickup_time_to
+                                    ? `${formatTime(booking.pickup_time_from)} - ${formatTime(booking.pickup_time_to)}`
+                                    : '-'}
                                 </span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Flight Number</span>
+                                <span className="detail-value flight-number">{booking.pickup_flight_number || '-'}</span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Origin</span>
+                                <span className="detail-value">{booking.pickup_origin || '-'}</span>
                               </div>
                             </div>
                           </div>

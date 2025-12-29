@@ -548,14 +548,15 @@
 .booking-detail-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 24px;
+  gap: 24px 40px;
 }
 
 .booking-detail {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 180px;
+  flex: 1;
+  min-width: 150px;
 }
 
 .detail-label {
