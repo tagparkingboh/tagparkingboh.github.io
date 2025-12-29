@@ -716,6 +716,42 @@ async def create_admin_booking(request: AdminBookingRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/api/admin/bookings/{booking_id}/cancel")
+async def cancel_booking_admin(
+    booking_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Admin endpoint: Cancel a booking.
+
+    Sets the booking status to CANCELLED.
+    Note: This does NOT automatically refund the payment -
+    use the Stripe dashboard for refunds.
+    """
+    from db_models import Booking, BookingStatus
+
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status == BookingStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Booking is already cancelled")
+
+    if booking.status == BookingStatus.REFUNDED:
+        raise HTTPException(status_code=400, detail="Cannot cancel a refunded booking")
+
+    # Update booking status
+    booking.status = BookingStatus.CANCELLED
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Booking {booking.reference} has been cancelled",
+        "reference": booking.reference,
+    }
+
+
 # =============================================================================
 # Flight Schedule Endpoints (from database)
 # =============================================================================
