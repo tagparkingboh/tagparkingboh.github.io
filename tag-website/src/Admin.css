@@ -430,6 +430,16 @@
   background: #bee3f8;
 }
 
+.email-btn {
+  background: #f0fff4;
+  color: #276749;
+  border: 1px solid #9ae6b4;
+}
+
+.email-btn:hover:not(:disabled) {
+  background: #c6f6d5;
+}
+
 /* Vehicle registration styling */
 .vehicle-reg {
   font-family: 'Courier New', monospace;
@@ -535,6 +545,15 @@
 
 .modal-btn-danger:hover:not(:disabled) {
   background: #9b2c2c;
+}
+
+.modal-btn-primary {
+  background: #f7b32b;
+  color: #1a1a2e;
+}
+
+.modal-btn-primary:hover:not(:disabled) {
+  background: #e5a320;
 }
 
 /* Payment refunded status */

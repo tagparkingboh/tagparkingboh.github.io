@@ -18,6 +18,9 @@ function Admin() {
   const [cancellingId, setCancellingId] = useState(null)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [bookingToCancel, setBookingToCancel] = useState(null)
+  const [resendingEmailId, setResendingEmailId] = useState(null)
+  const [showResendModal, setShowResendModal] = useState(false)
+  const [bookingToResend, setBookingToResend] = useState(null)
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -136,6 +139,42 @@ function Admin() {
       window.open(stripeUrl, '_blank')
     } else {
       setError('No payment found for this booking')
+    }
+  }
+
+  const handleResendEmailClick = (booking) => {
+    setBookingToResend(booking)
+    setShowResendModal(true)
+  }
+
+  const handleConfirmResendEmail = async () => {
+    if (!bookingToResend) return
+
+    setResendingEmailId(bookingToResend.id)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingToResend.id}/resend-email`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (response.ok) {
+        setShowResendModal(false)
+        setBookingToResend(null)
+        // Show success (could use a toast, but we'll just clear error)
+        setError('')
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to send confirmation email')
+      }
+    } catch (err) {
+      setError('Network error while sending email')
+    } finally {
+      setResendingEmailId(null)
     }
   }
 
@@ -380,6 +419,13 @@ function Admin() {
                               Refund
                             </button>
                           )}
+                          <button
+                            className="action-btn email-btn"
+                            onClick={() => handleResendEmailClick(booking)}
+                            disabled={resendingEmailId === booking.id}
+                          >
+                            {resendingEmailId === booking.id ? 'Sending...' : 'Resend Email'}
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -436,6 +482,36 @@ function Admin() {
                 disabled={cancellingId}
               >
                 {cancellingId ? 'Cancelling...' : 'Yes, Cancel Booking'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resend Email Confirmation Modal */}
+      {showResendModal && bookingToResend && (
+        <div className="modal-overlay" onClick={() => setShowResendModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Resend Confirmation Email</h3>
+            <p>Are you sure you want to resend the booking confirmation email?</p>
+            <div className="modal-booking-info">
+              <p><strong>Reference:</strong> {bookingToResend.reference}</p>
+              <p><strong>Customer:</strong> {bookingToResend.customer?.first_name} {bookingToResend.customer?.last_name}</p>
+              <p><strong>Email:</strong> {bookingToResend.customer?.email}</p>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowResendModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={handleConfirmResendEmail}
+                disabled={resendingEmailId}
+              >
+                {resendingEmailId ? 'Sending...' : 'Yes, Send Email'}
               </button>
             </div>
           </div>
