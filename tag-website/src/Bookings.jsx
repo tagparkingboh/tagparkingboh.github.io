@@ -339,14 +339,33 @@ function Bookings() {
     fetchPricing()
   }, [formData.dropoffDate, formData.pickupDate, API_BASE_URL])
 
-  // Filter arrivals by airline and destination (from fetched data)
+  // Filter arrivals by airline and destination, then find the best matching return flight
   const filteredArrivalsForDate = useMemo(() => {
     if (!formData.dropoffAirline || !selectedDropoffFlight) return []
+
     // Filter by same airline and origin matching the departure destination
-    return arrivalsForDate.filter(f =>
+    const matchingFlights = arrivalsForDate.filter(f =>
       f.airlineName === formData.dropoffAirline &&
       f.originCode === selectedDropoffFlight.destinationCode
     )
+
+    // If only one or no flights, return as-is
+    if (matchingFlights.length <= 1) return matchingFlights
+
+    // Find the best matching return flight based on flight number similarity
+    // e.g., departure U22697 should match return U22696 (typically ±1)
+    const departureNumeric = parseInt(selectedDropoffFlight.flightNumber.replace(/\D/g, ''), 10)
+
+    // Score each flight by how close the flight number is to the departure
+    const scoredFlights = matchingFlights.map(f => {
+      const arrivalNumeric = parseInt(f.flightNumber.replace(/\D/g, ''), 10)
+      const numDiff = Math.abs(arrivalNumeric - departureNumeric)
+      return { ...f, score: numDiff }
+    })
+
+    // Sort by score (closest flight number first) and return only the best match
+    scoredFlights.sort((a, b) => a.score - b.score)
+    return [scoredFlights[0]]
   }, [arrivalsForDate, formData.dropoffAirline, selectedDropoffFlight])
 
   // Get arrival flights for pickup with display details (filtered by airline and destination)
