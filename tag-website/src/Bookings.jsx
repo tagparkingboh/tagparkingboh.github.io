@@ -50,6 +50,12 @@ const generateSessionId = () => {
   return `sess_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
 }
 
+// Normalize airline names (merge Ryanair UK into Ryanair)
+const normalizeAirlineName = (name) => {
+  if (name === 'Ryanair UK') return 'Ryanair'
+  return name
+}
+
 function Bookings() {
   const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState(1)
@@ -180,16 +186,16 @@ function Bookings() {
     fetchDepartures()
   }, [formData.dropoffDate, API_BASE_URL])
 
-  // Get unique airlines for selected date
+  // Get unique airlines for selected date (normalized - Ryanair UK merged into Ryanair)
   const airlinesForDropoff = useMemo(() => {
-    const airlines = [...new Set(departuresForDate.map(f => f.airlineName))]
+    const airlines = [...new Set(departuresForDate.map(f => normalizeAirlineName(f.airlineName)))]
     return airlines.sort()
   }, [departuresForDate])
 
-  // Filter flights by selected airline
+  // Filter flights by selected airline (matches normalized name)
   const flightsForAirline = useMemo(() => {
     if (!formData.dropoffAirline) return []
-    return departuresForDate.filter(f => f.airlineName === formData.dropoffAirline)
+    return departuresForDate.filter(f => normalizeAirlineName(f.airlineName) === formData.dropoffAirline)
   }, [departuresForDate, formData.dropoffAirline])
 
   // Get flights with time and destination combined for selected airline
@@ -343,9 +349,9 @@ function Bookings() {
   const filteredArrivalsForDate = useMemo(() => {
     if (!formData.dropoffAirline || !selectedDropoffFlight) return []
 
-    // Filter by same airline and origin matching the departure destination
+    // Filter by same airline (normalized) and origin matching the departure destination
     const matchingFlights = arrivalsForDate.filter(f =>
-      f.airlineName === formData.dropoffAirline &&
+      normalizeAirlineName(f.airlineName) === formData.dropoffAirline &&
       f.originCode === selectedDropoffFlight.destinationCode
     )
 
