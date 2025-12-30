@@ -443,10 +443,10 @@ function Admin() {
                                 <span className="detail-value">{formatDate(booking.pickup_date)}</span>
                               </div>
                               <div className="booking-detail">
-                                <span className="detail-label">Pick-up Window</span>
+                                <span className="detail-label">Pick-up Time</span>
                                 <span className="detail-value">
-                                  {booking.pickup_time_from && booking.pickup_time_to
-                                    ? `${formatTime(booking.pickup_time_from)} - ${formatTime(booking.pickup_time_to)}`
+                                  {booking.pickup_collection_time
+                                    ? `From ${booking.pickup_collection_time} onwards`
                                     : '-'}
                                 </span>
                               </div>

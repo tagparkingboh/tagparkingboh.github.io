@@ -1654,9 +1654,8 @@ function Bookings() {
                       const flightTime = formData.pickupFlightTime.split('|')[0]
                       const [hours, minutes] = flightTime.split(':').map(Number)
                       const landingMinutes = hours * 60 + minutes
-                      const pickupStart = formatMinutesToTime(landingMinutes + 35)
-                      const pickupEnd = formatMinutesToTime(landingMinutes + 60)
-                      return <> between {pickupStart} - {pickupEnd}</>
+                      const pickupTime = formatMinutesToTime(landingMinutes + 45)
+                      return <> from {pickupTime} onwards</>
                     })()}
                   </span>
                 </div>

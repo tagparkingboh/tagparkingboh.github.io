@@ -700,6 +700,8 @@ async def get_all_bookings(
             "dropoff_destination": b.dropoff_destination,
             "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
             "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
+            # Calculate pickup collection time (45 min after landing)
+            "pickup_collection_time": (lambda t: f"{((t.hour * 60 + t.minute + 45) // 60) % 24:02d}:{(t.hour * 60 + t.minute + 45) % 60:02d}")(b.pickup_time) if b.pickup_time else None,
             "pickup_time_from": b.pickup_time_from.strftime("%H:%M") if b.pickup_time_from else None,
             "pickup_time_to": b.pickup_time_to.strftime("%H:%M") if b.pickup_time_to else None,
             "pickup_flight_number": b.pickup_flight_number,
@@ -848,14 +850,14 @@ async def resend_booking_confirmation_email(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    # Calculate pickup time (45 min after landing)
+    # Calculate pickup time (45 min after landing) - format as "From HH:MM onwards"
     pickup_time_str = ""
     if booking.pickup_time:
         landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
         pickup_mins = landing_minutes + 45
         if pickup_mins >= 24 * 60:
             pickup_mins -= 24 * 60
-        pickup_time_str = f"{pickup_mins // 60:02d}:{pickup_mins % 60:02d}"
+        pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
 
     # Format dates
     dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
@@ -1968,10 +1970,9 @@ class CreatePaymentRequest(BaseModel):
     drop_off_slot: Optional[str] = None  # "165" or "120" (minutes before flight)
     departure_id: Optional[int] = None  # ID of the flight departure to book slot on
 
-    # Return flight details
+    # Return flight details (destination/origin names are looked up from flight tables)
     pickup_flight_time: Optional[str] = None  # Landing time "HH:MM"
     pickup_flight_number: Optional[str] = None
-    pickup_origin: Optional[str] = None
 
     # Session tracking
     session_id: Optional[str] = None
@@ -2142,6 +2143,35 @@ async def create_payment(
             if request.drop_off_slot:
                 slot_type = 'early' if request.drop_off_slot == "165" else 'late'
 
+            # Look up destination name from departure table (more reliable than frontend)
+            dropoff_destination = None
+            if request.departure_id:
+                departure = db.query(FlightDeparture).filter(
+                    FlightDeparture.id == request.departure_id
+                ).first()
+                if departure and departure.destination_name:
+                    # Extract city name from "City, CountryCode" format
+                    parts = departure.destination_name.split(', ')
+                    dropoff_destination = parts[0] if parts else departure.destination_name
+                    # Shorten Tenerife-Reinasofia to Tenerife
+                    if dropoff_destination == 'Tenerife-Reinasofia':
+                        dropoff_destination = 'Tenerife'
+
+            # Look up origin name from arrival table
+            pickup_origin = None
+            if request.pickup_flight_number and pickup_date:
+                arrival = db.query(FlightArrival).filter(
+                    FlightArrival.date == pickup_date,
+                    FlightArrival.flight_number == request.pickup_flight_number
+                ).first()
+                if arrival and arrival.origin_name:
+                    # Extract city name from "City, CountryCode" format
+                    parts = arrival.origin_name.split(', ')
+                    pickup_origin = parts[0] if parts else arrival.origin_name
+                    # Shorten Tenerife-Reinasofia to Tenerife
+                    if pickup_origin == 'Tenerife-Reinasofia':
+                        pickup_origin = 'Tenerife'
+
             # Create booking with existing IDs
             booking = db_service.create_booking(
                 db=db,
@@ -2152,11 +2182,12 @@ async def create_payment(
                 dropoff_time=dropoff_time,
                 pickup_date=pickup_date,
                 dropoff_flight_number=request.flight_number,
+                dropoff_destination=dropoff_destination,
                 pickup_time=pickup_time,
                 pickup_time_from=pickup_time_from,
                 pickup_time_to=pickup_time_to,
                 pickup_flight_number=request.pickup_flight_number,
-                pickup_origin=request.pickup_origin,
+                pickup_origin=pickup_origin,
                 departure_id=request.departure_id,
                 dropoff_slot=slot_type,
             )
@@ -2168,6 +2199,35 @@ async def create_payment(
             slot_type = None
             if request.drop_off_slot:
                 slot_type = 'early' if request.drop_off_slot == "165" else 'late'
+
+            # Look up destination name from departure table (more reliable than frontend)
+            dropoff_destination = None
+            if request.departure_id:
+                departure = db.query(FlightDeparture).filter(
+                    FlightDeparture.id == request.departure_id
+                ).first()
+                if departure and departure.destination_name:
+                    # Extract city name from "City, CountryCode" format
+                    parts = departure.destination_name.split(', ')
+                    dropoff_destination = parts[0] if parts else departure.destination_name
+                    # Shorten Tenerife-Reinasofia to Tenerife
+                    if dropoff_destination == 'Tenerife-Reinasofia':
+                        dropoff_destination = 'Tenerife'
+
+            # Look up origin name from arrival table
+            pickup_origin = None
+            if request.pickup_flight_number and pickup_date:
+                arrival = db.query(FlightArrival).filter(
+                    FlightArrival.date == pickup_date,
+                    FlightArrival.flight_number == request.pickup_flight_number
+                ).first()
+                if arrival and arrival.origin_name:
+                    # Extract city name from "City, CountryCode" format
+                    parts = arrival.origin_name.split(', ')
+                    pickup_origin = parts[0] if parts else arrival.origin_name
+                    # Shorten Tenerife-Reinasofia to Tenerife
+                    if pickup_origin == 'Tenerife-Reinasofia':
+                        pickup_origin = 'Tenerife'
 
             booking_data = db_service.create_full_booking(
                 db=db,
@@ -2194,11 +2254,12 @@ async def create_payment(
                 dropoff_time=dropoff_time,
                 pickup_date=pickup_date,
                 dropoff_flight_number=request.flight_number,
+                dropoff_destination=dropoff_destination,
                 pickup_time=pickup_time,
                 pickup_time_from=pickup_time_from,
                 pickup_time_to=pickup_time_to,
                 pickup_flight_number=request.pickup_flight_number,
-                pickup_origin=request.pickup_origin,
+                pickup_origin=pickup_origin,
                 # Flight slot
                 departure_id=request.departure_id,
                 dropoff_slot=slot_type,
@@ -2323,7 +2384,7 @@ async def create_payment(
                 pickup_date_str = pickup_date.strftime("%A, %d %B %Y")
                 dropoff_time_str = dropoff_time.strftime("%H:%M") if dropoff_time else "TBC"
 
-                # Calculate pickup time (45 mins after scheduled arrival)
+                # Calculate pickup time (45 mins after scheduled arrival) - format as "From HH:MM onwards"
                 pickup_time_str = ""
                 if pickup_time:
                     # pickup_time is the landing time, add 45 mins
@@ -2331,7 +2392,7 @@ async def create_payment(
                     pickup_mins = landing_mins + 45
                     if pickup_mins >= 24 * 60:
                         pickup_mins -= 24 * 60
-                    pickup_time_str = f"{pickup_mins // 60:02d}:{pickup_mins % 60:02d}"
+                    pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
 
                 # Package name
                 package_name = "1 Week" if request.package == "quick" else "2 Weeks"
@@ -2656,7 +2717,7 @@ async def stripe_webhook(
             print(f"[EMAIL] Booking found: {booking is not None}")
             if booking:
                 print(f"[EMAIL] Customer email: {booking.customer.email}, name: {booking.customer.first_name}")
-                # Calculate pickup time (45 min after landing)
+                # Calculate pickup time (45 min after landing) - format as "From HH:MM onwards"
                 pickup_time_str = ""
                 if booking.pickup_time:
                     landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
@@ -2664,7 +2725,7 @@ async def stripe_webhook(
                     # Handle overnight
                     if pickup_mins >= 24 * 60:
                         pickup_mins -= 24 * 60
-                    pickup_time_str = f"{pickup_mins // 60:02d}:{pickup_mins % 60:02d}"
+                    pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
 
                 # Format dates nicely
                 dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")

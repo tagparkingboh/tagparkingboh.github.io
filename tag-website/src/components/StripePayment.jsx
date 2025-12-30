@@ -229,10 +229,9 @@ function StripePayment({
         pickup_date: formData.pickupDate ? formData.pickupDate.toISOString().split('T')[0] : '',
         drop_off_slot: formData.dropoffSlot || null,
         departure_id: selectedFlight?.id || null,
-        // Return flight details
+        // Return flight details (destination/origin names are looked up from flight tables on backend)
         pickup_flight_time: selectedArrivalFlight?.time || null,
         pickup_flight_number: selectedArrivalFlight?.flightNumber || null,
-        pickup_origin: selectedArrivalFlight?.originCode || null,
         // Promo code (if applied)
         promo_code: promoCode || null,
       }),
