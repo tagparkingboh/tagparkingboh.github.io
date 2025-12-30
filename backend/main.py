@@ -913,6 +913,111 @@ async def resend_booking_confirmation_email(
         )
 
 
+@app.post("/api/admin/bookings/{booking_id}/send-cancellation-email")
+async def send_cancellation_email_endpoint(
+    booking_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Admin endpoint: Send cancellation email to customer.
+
+    Sends the cancellation notification email for a cancelled booking.
+    """
+    from db_models import BookingStatus
+    from email_service import send_cancellation_email
+
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status != BookingStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Booking must be cancelled before sending cancellation email")
+
+    # Format dates
+    dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
+
+    # Send the email
+    email_sent = send_cancellation_email(
+        email=booking.customer.email,
+        first_name=booking.customer.first_name,
+        booking_reference=booking.reference,
+        dropoff_date=dropoff_date_str,
+    )
+
+    if email_sent:
+        # Update email sent tracking
+        booking.cancellation_email_sent = True
+        booking.cancellation_email_sent_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Cancellation email sent to {booking.customer.email}",
+            "reference": booking.reference,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send cancellation email. Check SendGrid configuration."
+        )
+
+
+@app.post("/api/admin/bookings/{booking_id}/send-refund-email")
+async def send_refund_email_endpoint(
+    booking_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Admin endpoint: Send refund confirmation email to customer.
+
+    Sends the refund notification email for a refunded booking.
+    """
+    from db_models import BookingStatus
+    from email_service import send_refund_email
+
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status != BookingStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Booking must be cancelled before sending refund email")
+
+    # Get refund amount
+    refund_amount = "£0.00"
+    if booking.payment and booking.payment.refund_amount_pence:
+        refund_amount = f"£{booking.payment.refund_amount_pence / 100:.2f}"
+    elif booking.payment and booking.payment.amount_pence:
+        # Fall back to original amount if no specific refund amount
+        refund_amount = f"£{booking.payment.amount_pence / 100:.2f}"
+
+    # Send the email
+    email_sent = send_refund_email(
+        email=booking.customer.email,
+        first_name=booking.customer.first_name,
+        booking_reference=booking.reference,
+        refund_amount=refund_amount,
+    )
+
+    if email_sent:
+        # Update email sent tracking
+        booking.refund_email_sent = True
+        booking.refund_email_sent_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Refund email sent to {booking.customer.email}",
+            "reference": booking.reference,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send refund email. Check SendGrid configuration."
+        )
+
+
 # =============================================================================
 # Flight Schedule Endpoints (from database)
 # =============================================================================

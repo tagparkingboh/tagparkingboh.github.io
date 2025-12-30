@@ -121,6 +121,10 @@ class Booking(Base):
     # Email tracking
     confirmation_email_sent = Column(Boolean, default=False)
     confirmation_email_sent_at = Column(DateTime(timezone=True))
+    cancellation_email_sent = Column(Boolean, default=False)
+    cancellation_email_sent_at = Column(DateTime(timezone=True))
+    refund_email_sent = Column(Boolean, default=False)
+    refund_email_sent_at = Column(DateTime(timezone=True))
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

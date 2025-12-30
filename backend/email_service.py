@@ -331,3 +331,85 @@ def send_booking_confirmation_email(
         return False
 
     return send_email(email, subject, html_content)
+
+
+def send_cancellation_email(
+    email: str,
+    first_name: str,
+    booking_reference: str,
+    dropoff_date: str,
+) -> bool:
+    """
+    Send booking cancellation email using the HTML template.
+
+    Args:
+        email: Customer email address
+        first_name: Customer first name
+        booking_reference: Unique booking reference (e.g., TAG-XXXXXXXX)
+        dropoff_date: Formatted drop-off date (e.g., "Saturday, 28 December 2025")
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    subject = f"Booking Cancelled - {booking_reference}"
+
+    # Load the HTML template
+    template_path = EMAIL_TEMPLATES_DIR / "booking_cancellation_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{BOOKING_REFERENCE}}", booking_reference)
+        html_content = html_content.replace("{{DROPOFF_DATE}}", dropoff_date)
+
+    except FileNotFoundError:
+        logger.error(f"Booking cancellation email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading booking cancellation email template: {e}")
+        return False
+
+    return send_email(email, subject, html_content)
+
+
+def send_refund_email(
+    email: str,
+    first_name: str,
+    booking_reference: str,
+    refund_amount: str,
+) -> bool:
+    """
+    Send refund confirmation email using the HTML template.
+
+    Args:
+        email: Customer email address
+        first_name: Customer first name
+        booking_reference: Unique booking reference (e.g., TAG-XXXXXXXX)
+        refund_amount: Amount refunded (e.g., "£99.00")
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    subject = f"Refund Processed - {booking_reference}"
+
+    # Load the HTML template
+    template_path = EMAIL_TEMPLATES_DIR / "booking_refund_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{BOOKING_REFERENCE}}", booking_reference)
+        html_content = html_content.replace("{{REFUND_AMOUNT}}", refund_amount)
+
+    except FileNotFoundError:
+        logger.error(f"Booking refund email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading booking refund email template: {e}")
+        return False
+
+    return send_email(email, subject, html_content)

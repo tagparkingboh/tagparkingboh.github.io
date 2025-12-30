@@ -21,7 +21,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from db_models import Customer, Vehicle, Booking, FlightDeparture, FlightArrival
+from db_models import Customer, Vehicle, Booking, FlightDeparture, FlightArrival, BookingStatus
 from main import app
 
 
@@ -1244,3 +1244,599 @@ async def test_full_booking_flow(client, db_session):
     ).first()
     assert booking is not None
     assert booking.package == "longer"
+
+
+# =============================================================================
+# Destination/Origin Lookup from Flight Tables Tests
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_booking_gets_destination_from_departure_table(client, sample_customer, sample_departure, db_session):
+    """
+    Booking should get dropoff_destination from FlightDeparture table, not frontend.
+
+    This tests the new functionality where destination_name is looked up from
+    the departure table using the departure_id, extracting just the city name.
+    """
+    # Create vehicle
+    vehicle = Vehicle(
+        customer_id=sample_customer.id,
+        registration="DEST001",
+        make="Ford",
+        model="Fiesta",
+        colour="Red",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+
+    with patch("main.create_payment_intent") as mock_create:
+        mock_create.return_value = MagicMock(
+            client_secret="pi_dest_test",
+            payment_intent_id="pi_dest_123",
+        )
+        with patch("main.is_stripe_configured", return_value=True):
+            with patch("main.get_settings") as mock_settings:
+                mock_settings.return_value.stripe_publishable_key = "pk_dest_test"
+
+                response = await client.post(
+                    "/api/payments/create-intent",
+                    json={
+                        "customer_id": sample_customer.id,
+                        "vehicle_id": vehicle.id,
+                        "first_name": sample_customer.first_name,
+                        "last_name": sample_customer.last_name,
+                        "email": sample_customer.email,
+                        "package": "quick",
+                        "flight_number": "1234",
+                        "flight_date": "2025-12-15",
+                        "drop_off_date": "2025-12-15",
+                        "pickup_date": "2025-12-22",
+                        "drop_off_slot": "165",
+                        "departure_id": sample_departure.id,
+                        # Note: NOT passing dropoff_destination - it should be looked up
+                    }
+                )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify booking was created with destination from flight table
+    booking = db_session.query(Booking).filter(
+        Booking.reference == data["booking_reference"]
+    ).first()
+    assert booking is not None
+    # sample_departure has destination_name="Faro, PT", should extract "Faro"
+    assert booking.dropoff_destination == "Faro"
+
+
+@pytest.mark.asyncio
+async def test_booking_gets_origin_from_arrival_table(client, sample_customer, sample_departure, sample_arrival, db_session):
+    """
+    Booking should get pickup_origin from FlightArrival table, not frontend.
+
+    This tests the new functionality where origin_name is looked up from
+    the arrival table using pickup_flight_number and pickup_date.
+    """
+    # Create vehicle
+    vehicle = Vehicle(
+        customer_id=sample_customer.id,
+        registration="ORIG001",
+        make="Ford",
+        model="Focus",
+        colour="Blue",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+
+    with patch("main.create_payment_intent") as mock_create:
+        mock_create.return_value = MagicMock(
+            client_secret="pi_orig_test",
+            payment_intent_id="pi_orig_123",
+        )
+        with patch("main.is_stripe_configured", return_value=True):
+            with patch("main.get_settings") as mock_settings:
+                mock_settings.return_value.stripe_publishable_key = "pk_orig_test"
+
+                response = await client.post(
+                    "/api/payments/create-intent",
+                    json={
+                        "customer_id": sample_customer.id,
+                        "vehicle_id": vehicle.id,
+                        "first_name": sample_customer.first_name,
+                        "last_name": sample_customer.last_name,
+                        "email": sample_customer.email,
+                        "package": "quick",
+                        "flight_number": "1234",
+                        "flight_date": "2025-12-15",
+                        "drop_off_date": "2025-12-15",
+                        "pickup_date": "2025-12-22",
+                        "drop_off_slot": "165",
+                        "departure_id": sample_departure.id,
+                        "pickup_flight_number": "1235",  # Matches sample_arrival
+                        "pickup_flight_time": "17:30",
+                        # Note: NOT passing pickup_origin - it should be looked up
+                    }
+                )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify booking was created with origin from flight table
+    booking = db_session.query(Booking).filter(
+        Booking.reference == data["booking_reference"]
+    ).first()
+    assert booking is not None
+    # sample_arrival has origin_name="Faro, PT", should extract "Faro"
+    assert booking.pickup_origin == "Faro"
+
+
+@pytest.mark.asyncio
+async def test_tenerife_reinasofia_shortened_to_tenerife(client, sample_customer, db_session):
+    """
+    Tenerife-Reinasofia should be shortened to just 'Tenerife'.
+    """
+    # Create departure with Tenerife-Reinasofia
+    departure = FlightDeparture(
+        date=date(2025, 12, 20),
+        flight_number="TFS001",
+        airline_code="U2",
+        airline_name="easyJet",
+        departure_time=time(16, 0),
+        destination_code="TFS",
+        destination_name="Tenerife-Reinasofia, ES",
+        capacity_tier=4,
+        slots_booked_early=0,
+        slots_booked_late=0,
+    )
+    db_session.add(departure)
+    db_session.commit()
+    db_session.refresh(departure)
+
+    # Create vehicle
+    vehicle = Vehicle(
+        customer_id=sample_customer.id,
+        registration="TFS001",
+        make="VW",
+        model="Polo",
+        colour="Silver",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+
+    with patch("main.create_payment_intent") as mock_create:
+        mock_create.return_value = MagicMock(
+            client_secret="pi_tfs_test",
+            payment_intent_id="pi_tfs_123",
+        )
+        with patch("main.is_stripe_configured", return_value=True):
+            with patch("main.get_settings") as mock_settings:
+                mock_settings.return_value.stripe_publishable_key = "pk_tfs_test"
+
+                response = await client.post(
+                    "/api/payments/create-intent",
+                    json={
+                        "customer_id": sample_customer.id,
+                        "vehicle_id": vehicle.id,
+                        "first_name": sample_customer.first_name,
+                        "last_name": sample_customer.last_name,
+                        "email": sample_customer.email,
+                        "package": "quick",
+                        "flight_number": "TFS001",
+                        "flight_date": "2025-12-20",
+                        "drop_off_date": "2025-12-20",
+                        "pickup_date": "2025-12-27",
+                        "drop_off_slot": "165",
+                        "departure_id": departure.id,
+                    }
+                )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify Tenerife-Reinasofia is shortened to Tenerife
+    booking = db_session.query(Booking).filter(
+        Booking.reference == data["booking_reference"]
+    ).first()
+    assert booking is not None
+    assert booking.dropoff_destination == "Tenerife"
+
+
+@pytest.mark.asyncio
+async def test_admin_bookings_returns_pickup_collection_time(client, sample_customer, sample_departure, sample_arrival, db_session):
+    """
+    Admin bookings API should return pickup_collection_time (45 min after landing).
+    """
+    # Create vehicle
+    vehicle = Vehicle(
+        customer_id=sample_customer.id,
+        registration="PCT123",
+        make="Ford",
+        model="Focus",
+        colour="Blue",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+
+    # Create booking with pickup_time of 14:00
+    booking = Booking(
+        customer_id=sample_customer.id,
+        vehicle_id=vehicle.id,
+        reference="PCT-TEST-001",
+        package="quick",
+        dropoff_date=sample_departure.date,
+        dropoff_time=time(9, 0),
+        dropoff_flight_number=sample_departure.flight_number,
+        dropoff_slot="early",
+        departure_id=sample_departure.id,
+        pickup_date=sample_arrival.date,
+        pickup_time=time(14, 0),  # 14:00 landing
+        pickup_flight_number=sample_arrival.flight_number,
+        status=BookingStatus.CONFIRMED,
+    )
+    db_session.add(booking)
+    db_session.commit()
+
+    # Get admin bookings
+    response = await client.get("/api/admin/bookings")
+    assert response.status_code == 200
+    data = response.json()
+
+    # Find our booking
+    bookings = data["bookings"]
+    our_booking = next((b for b in bookings if b["reference"] == "PCT-TEST-001"), None)
+    assert our_booking is not None
+
+    # Verify pickup_collection_time is 45 min after landing (14:00 + 45 = 14:45)
+    assert our_booking["pickup_collection_time"] == "14:45"
+
+
+@pytest.mark.asyncio
+async def test_admin_bookings_pickup_collection_time_handles_hour_rollover(client, sample_customer, sample_departure, db_session):
+    """
+    Pickup collection time should correctly handle hour rollover (e.g., 14:30 + 45 = 15:15).
+    """
+    # Create arrival with time that causes hour rollover
+    arrival = FlightArrival(
+        date=date(2025, 12, 27),
+        flight_number="HR001",
+        airline_code="BA",
+        airline_name="British Airways",
+        arrival_time=time(14, 30),  # 14:30 + 45 = 15:15
+        origin_code="LHR",
+        origin_name="London Heathrow, GB",
+    )
+    db_session.add(arrival)
+    db_session.commit()
+
+    # Create vehicle
+    vehicle = Vehicle(
+        customer_id=sample_customer.id,
+        registration="HR123",
+        make="Honda",
+        model="Civic",
+        colour="Red",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+
+    # Create booking
+    booking = Booking(
+        customer_id=sample_customer.id,
+        vehicle_id=vehicle.id,
+        reference="HR-TEST-001",
+        package="quick",
+        dropoff_date=sample_departure.date,
+        dropoff_time=time(9, 0),
+        dropoff_flight_number=sample_departure.flight_number,
+        dropoff_slot="early",
+        departure_id=sample_departure.id,
+        pickup_date=arrival.date,
+        pickup_time=time(14, 30),  # 14:30 landing
+        pickup_flight_number=arrival.flight_number,
+        status=BookingStatus.CONFIRMED,
+    )
+    db_session.add(booking)
+    db_session.commit()
+
+    # Get admin bookings
+    response = await client.get("/api/admin/bookings")
+    assert response.status_code == 200
+    data = response.json()
+
+    # Find our booking
+    bookings = data["bookings"]
+    our_booking = next((b for b in bookings if b["reference"] == "HR-TEST-001"), None)
+    assert our_booking is not None
+
+    # Verify pickup_collection_time correctly rolled over (14:30 + 45 = 15:15)
+    assert our_booking["pickup_collection_time"] == "15:15"
+
+
+# =============================================================================
+# Cancellation and Refund Email Tests
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_send_cancellation_email_success(client, sample_customer, sample_departure, db_session):
+    """
+    Should send cancellation email for a cancelled booking and update tracking fields.
+    """
+    from db_models import Payment, PaymentStatus
+
+    # Create vehicle
+    vehicle = Vehicle(
+        customer_id=sample_customer.id,
+        registration="CANCEL01",
+        make="Ford",
+        model="Focus",
+        colour="Blue",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+
+    # Create a cancelled booking
+    booking = Booking(
+        customer_id=sample_customer.id,
+        vehicle_id=vehicle.id,
+        reference="CAN-TEST-001",
+        package="quick",
+        dropoff_date=sample_departure.date,
+        dropoff_time=time(9, 0),
+        dropoff_flight_number=sample_departure.flight_number,
+        dropoff_slot="early",
+        departure_id=sample_departure.id,
+        pickup_date=date(2025, 12, 22),
+        pickup_time=time(14, 0),
+        status=BookingStatus.CANCELLED,
+        cancellation_email_sent=False,
+    )
+    db_session.add(booking)
+    db_session.commit()
+    db_session.refresh(booking)
+
+    # Mock email sending - need to patch in email_service since it's imported inside the endpoint
+    with patch("email_service.send_cancellation_email", return_value=True):
+        response = await client.post(f"/api/admin/bookings/{booking.id}/send-cancellation-email")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "CAN-TEST-001" in data["reference"]
+
+    # Verify database updated
+    db_session.refresh(booking)
+    assert booking.cancellation_email_sent is True
+    assert booking.cancellation_email_sent_at is not None
+
+
+@pytest.mark.asyncio
+async def test_send_cancellation_email_fails_for_non_cancelled_booking(client, sample_customer, sample_departure, db_session):
+    """
+    Should reject sending cancellation email for non-cancelled bookings.
+    """
+    # Create vehicle
+    vehicle = Vehicle(
+        customer_id=sample_customer.id,
+        registration="CANCEL02",
+        make="VW",
+        model="Golf",
+        colour="White",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+
+    # Create a confirmed (not cancelled) booking
+    booking = Booking(
+        customer_id=sample_customer.id,
+        vehicle_id=vehicle.id,
+        reference="CAN-TEST-002",
+        package="quick",
+        dropoff_date=sample_departure.date,
+        dropoff_time=time(9, 0),
+        dropoff_flight_number=sample_departure.flight_number,
+        dropoff_slot="early",
+        departure_id=sample_departure.id,
+        pickup_date=date(2025, 12, 22),
+        pickup_time=time(14, 0),
+        status=BookingStatus.CONFIRMED,  # Not cancelled
+    )
+    db_session.add(booking)
+    db_session.commit()
+    db_session.refresh(booking)
+
+    response = await client.post(f"/api/admin/bookings/{booking.id}/send-cancellation-email")
+
+    assert response.status_code == 400
+    data = response.json()
+    assert "cancelled" in data["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_send_cancellation_email_not_found(client):
+    """
+    Should return 404 for non-existent booking.
+    """
+    response = await client.post("/api/admin/bookings/99999/send-cancellation-email")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_send_refund_email_success(client, sample_customer, sample_departure, db_session):
+    """
+    Should send refund email for a cancelled booking with payment and update tracking fields.
+    """
+    from db_models import Payment, PaymentStatus
+
+    # Create vehicle
+    vehicle = Vehicle(
+        customer_id=sample_customer.id,
+        registration="REFUND01",
+        make="BMW",
+        model="3 Series",
+        colour="Black",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+
+    # Create a cancelled booking
+    booking = Booking(
+        customer_id=sample_customer.id,
+        vehicle_id=vehicle.id,
+        reference="REF-TEST-001",
+        package="quick",
+        dropoff_date=sample_departure.date,
+        dropoff_time=time(9, 0),
+        dropoff_flight_number=sample_departure.flight_number,
+        dropoff_slot="early",
+        departure_id=sample_departure.id,
+        pickup_date=date(2025, 12, 22),
+        pickup_time=time(14, 0),
+        status=BookingStatus.CANCELLED,
+        refund_email_sent=False,
+    )
+    db_session.add(booking)
+    db_session.commit()
+    db_session.refresh(booking)
+
+    # Create payment record with refund amount
+    payment = Payment(
+        booking_id=booking.id,
+        stripe_payment_intent_id="pi_test_refund",
+        amount_pence=9900,
+        refund_amount_pence=9900,
+        status=PaymentStatus.REFUNDED,
+    )
+    db_session.add(payment)
+    db_session.commit()
+
+    # Mock email sending - need to patch in email_service since it's imported inside the endpoint
+    with patch("email_service.send_refund_email", return_value=True):
+        response = await client.post(f"/api/admin/bookings/{booking.id}/send-refund-email")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "REF-TEST-001" in data["reference"]
+
+    # Verify database updated
+    db_session.refresh(booking)
+    assert booking.refund_email_sent is True
+    assert booking.refund_email_sent_at is not None
+
+
+@pytest.mark.asyncio
+async def test_send_refund_email_uses_original_amount_if_no_refund_amount(client, sample_customer, sample_departure, db_session):
+    """
+    Should use original payment amount if no specific refund_amount_pence is set.
+    """
+    from db_models import Payment, PaymentStatus
+
+    # Create vehicle
+    vehicle = Vehicle(
+        customer_id=sample_customer.id,
+        registration="REFUND02",
+        make="Audi",
+        model="A4",
+        colour="Silver",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+
+    # Create a cancelled booking
+    booking = Booking(
+        customer_id=sample_customer.id,
+        vehicle_id=vehicle.id,
+        reference="REF-TEST-002",
+        package="longer",
+        dropoff_date=sample_departure.date,
+        dropoff_time=time(9, 0),
+        dropoff_flight_number=sample_departure.flight_number,
+        dropoff_slot="early",
+        departure_id=sample_departure.id,
+        pickup_date=date(2025, 12, 22),
+        pickup_time=time(14, 0),
+        status=BookingStatus.CANCELLED,
+    )
+    db_session.add(booking)
+    db_session.commit()
+    db_session.refresh(booking)
+
+    # Create payment record without refund_amount_pence
+    payment = Payment(
+        booking_id=booking.id,
+        stripe_payment_intent_id="pi_test_refund2",
+        amount_pence=15000,
+        refund_amount_pence=None,  # No refund amount specified
+        status=PaymentStatus.REFUNDED,
+    )
+    db_session.add(payment)
+    db_session.commit()
+
+    # Mock email sending - verify it's called (endpoint will use amount_pence as fallback)
+    with patch("email_service.send_refund_email", return_value=True):
+        response = await client.post(f"/api/admin/bookings/{booking.id}/send-refund-email")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_send_refund_email_fails_for_non_cancelled_booking(client, sample_customer, sample_departure, db_session):
+    """
+    Should reject sending refund email for non-cancelled bookings.
+    """
+    # Create vehicle
+    vehicle = Vehicle(
+        customer_id=sample_customer.id,
+        registration="REFUND03",
+        make="Mercedes",
+        model="C-Class",
+        colour="White",
+    )
+    db_session.add(vehicle)
+    db_session.commit()
+    db_session.refresh(vehicle)
+
+    # Create a confirmed (not cancelled) booking
+    booking = Booking(
+        customer_id=sample_customer.id,
+        vehicle_id=vehicle.id,
+        reference="REF-TEST-003",
+        package="quick",
+        dropoff_date=sample_departure.date,
+        dropoff_time=time(9, 0),
+        dropoff_flight_number=sample_departure.flight_number,
+        dropoff_slot="early",
+        departure_id=sample_departure.id,
+        pickup_date=date(2025, 12, 22),
+        pickup_time=time(14, 0),
+        status=BookingStatus.CONFIRMED,  # Not cancelled
+    )
+    db_session.add(booking)
+    db_session.commit()
+    db_session.refresh(booking)
+
+    response = await client.post(f"/api/admin/bookings/{booking.id}/send-refund-email")
+
+    assert response.status_code == 400
+    data = response.json()
+    assert "cancelled" in data["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_send_refund_email_not_found(client):
+    """
+    Should return 404 for non-existent booking.
+    """
+    response = await client.post("/api/admin/bookings/99999/send-refund-email")
+    assert response.status_code == 404

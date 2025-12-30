@@ -22,6 +22,12 @@ function Admin() {
   const [resendingEmailId, setResendingEmailId] = useState(null)
   const [showResendModal, setShowResendModal] = useState(false)
   const [bookingToResend, setBookingToResend] = useState(null)
+  const [sendingCancellationEmailId, setSendingCancellationEmailId] = useState(null)
+  const [showCancellationEmailModal, setShowCancellationEmailModal] = useState(false)
+  const [bookingForCancellationEmail, setBookingForCancellationEmail] = useState(null)
+  const [sendingRefundEmailId, setSendingRefundEmailId] = useState(null)
+  const [showRefundEmailModal, setShowRefundEmailModal] = useState(false)
+  const [bookingForRefundEmail, setBookingForRefundEmail] = useState(null)
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -183,6 +189,80 @@ function Admin() {
       setError('Network error while sending email')
     } finally {
       setResendingEmailId(null)
+    }
+  }
+
+  const handleSendCancellationEmailClick = (booking, e) => {
+    e.stopPropagation()
+    setBookingForCancellationEmail(booking)
+    setShowCancellationEmailModal(true)
+  }
+
+  const handleConfirmSendCancellationEmail = async () => {
+    if (!bookingForCancellationEmail) return
+
+    setSendingCancellationEmailId(bookingForCancellationEmail.id)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingForCancellationEmail.id}/send-cancellation-email`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (response.ok) {
+        setShowCancellationEmailModal(false)
+        setBookingForCancellationEmail(null)
+        // Refresh bookings to update email sent status
+        await fetchBookings()
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to send cancellation email')
+      }
+    } catch (err) {
+      setError('Network error while sending cancellation email')
+    } finally {
+      setSendingCancellationEmailId(null)
+    }
+  }
+
+  const handleSendRefundEmailClick = (booking, e) => {
+    e.stopPropagation()
+    setBookingForRefundEmail(booking)
+    setShowRefundEmailModal(true)
+  }
+
+  const handleConfirmSendRefundEmail = async () => {
+    if (!bookingForRefundEmail) return
+
+    setSendingRefundEmailId(bookingForRefundEmail.id)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingForRefundEmail.id}/send-refund-email`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (response.ok) {
+        setShowRefundEmailModal(false)
+        setBookingForRefundEmail(null)
+        // Refresh bookings to update email sent status
+        await fetchBookings()
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to send refund email')
+      }
+    } catch (err) {
+      setError('Network error while sending refund email')
+    } finally {
+      setSendingRefundEmailId(null)
     }
   }
 
@@ -504,6 +584,26 @@ function Admin() {
                             >
                               {resendingEmailId === booking.id ? 'Sending...' : 'Resend Confirmation Email'}
                             </button>
+                            {/* Show cancellation email button only when status is cancelled */}
+                            {booking.status?.toLowerCase() === 'cancelled' && (
+                              <button
+                                className="action-btn email-btn"
+                                onClick={(e) => handleSendCancellationEmailClick(booking, e)}
+                                disabled={sendingCancellationEmailId === booking.id}
+                              >
+                                {sendingCancellationEmailId === booking.id ? 'Sending...' : 'Send Cancellation Email'}
+                              </button>
+                            )}
+                            {/* Show refund email button only when status is cancelled */}
+                            {booking.status?.toLowerCase() === 'cancelled' && (
+                              <button
+                                className="action-btn email-btn"
+                                onClick={(e) => handleSendRefundEmailClick(booking, e)}
+                                disabled={sendingRefundEmailId === booking.id}
+                              >
+                                {sendingRefundEmailId === booking.id ? 'Sending...' : 'Send Refund Email'}
+                              </button>
+                            )}
                             {booking.payment?.stripe_payment_intent_id &&
                              booking.payment?.status?.toLowerCase() === 'succeeded' &&
                              booking.status?.toLowerCase() !== 'refunded' && (
@@ -611,6 +711,69 @@ function Admin() {
                 disabled={resendingEmailId}
               >
                 {resendingEmailId ? 'Sending...' : 'Yes, Send Email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Cancellation Email Modal */}
+      {showCancellationEmailModal && bookingForCancellationEmail && (
+        <div className="modal-overlay" onClick={() => setShowCancellationEmailModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Send Cancellation Email</h3>
+            <p>Are you sure you want to send the cancellation email to the customer?</p>
+            <div className="modal-booking-info">
+              <p><strong>Reference:</strong> {bookingForCancellationEmail.reference}</p>
+              <p><strong>Customer:</strong> {bookingForCancellationEmail.customer?.first_name} {bookingForCancellationEmail.customer?.last_name}</p>
+              <p><strong>Email:</strong> {bookingForCancellationEmail.customer?.email}</p>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowCancellationEmailModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={handleConfirmSendCancellationEmail}
+                disabled={sendingCancellationEmailId}
+              >
+                {sendingCancellationEmailId ? 'Sending...' : 'Yes, Send Email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Refund Email Modal */}
+      {showRefundEmailModal && bookingForRefundEmail && (
+        <div className="modal-overlay" onClick={() => setShowRefundEmailModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Send Refund Email</h3>
+            <p>Are you sure you want to send the refund confirmation email to the customer?</p>
+            <div className="modal-booking-info">
+              <p><strong>Reference:</strong> {bookingForRefundEmail.reference}</p>
+              <p><strong>Customer:</strong> {bookingForRefundEmail.customer?.first_name} {bookingForRefundEmail.customer?.last_name}</p>
+              <p><strong>Email:</strong> {bookingForRefundEmail.customer?.email}</p>
+              {bookingForRefundEmail.payment?.refund_amount_pence && (
+                <p><strong>Refund Amount:</strong> £{(bookingForRefundEmail.payment.refund_amount_pence / 100).toFixed(2)}</p>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowRefundEmailModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={handleConfirmSendRefundEmail}
+                disabled={sendingRefundEmailId}
+              >
+                {sendingRefundEmailId ? 'Sending...' : 'Yes, Send Email'}
               </button>
             </div>
           </div>
