@@ -815,7 +815,7 @@ async def create_manual_booking(
                 first_name=request.first_name,
                 last_name=request.last_name,
                 email=request.email,
-                phone=request.phone,
+                phone=request.phone or "",  # Phone is required in DB
                 billing_address1=request.billing_address1,
                 billing_address2=request.billing_address2,
                 billing_city=request.billing_city,

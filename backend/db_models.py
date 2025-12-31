@@ -117,6 +117,10 @@ class Booking(Base):
 
     # Admin notes
     notes = Column(Text)
+    admin_notes = Column(Text)  # Internal notes from admin
+
+    # Booking source (online, manual, admin, phone)
+    booking_source = Column(String(20), default="online")
 
     # Email tracking
     confirmation_email_sent = Column(Boolean, default=False)
