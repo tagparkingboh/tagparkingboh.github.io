@@ -278,6 +278,51 @@
   color: #004085;
 }
 
+/* Booking source badges - header badge */
+.booking-source-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+.booking-source-badge.manual {
+  background: #e0d4f7;
+  color: #5e35b1;
+}
+
+/* Source badge in expanded details */
+.source-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 12px;
+}
+
+.source-badge.manual {
+  background: #e0d4f7;
+  color: #5e35b1;
+}
+
+.source-badge.admin {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.source-badge.phone {
+  background: #d1ecf1;
+  color: #0c5460;
+}
+
+.source-badge.online {
+  background: #d4edda;
+  color: #155724;
+}
+
 .status-refunded {
   background: #e2e3e5;
   color: #383d41;

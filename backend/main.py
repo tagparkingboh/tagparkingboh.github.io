@@ -693,6 +693,7 @@ async def get_all_bookings(
             "id": b.id,
             "reference": b.reference,
             "status": b.status.value if b.status else None,
+            "booking_source": b.booking_source,
             "package": b.package,
             "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
             "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,

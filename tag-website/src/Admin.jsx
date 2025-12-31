@@ -428,6 +428,9 @@ function Admin() {
                     >
                       <div className="booking-header-main">
                         <span className="booking-ref">{booking.reference}</span>
+                        {booking.booking_source === 'manual' && (
+                          <span className="booking-source-badge manual">Manual</span>
+                        )}
                         <span className="booking-name">
                           {booking.customer?.first_name} {booking.customer?.last_name}
                         </span>
@@ -471,6 +474,17 @@ function Admin() {
                               <div className="booking-detail">
                                 <span className="detail-label">Booking Reference</span>
                                 <span className="detail-value booking-ref">{booking.reference}</span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Source</span>
+                                <span className="detail-value">
+                                  <span className={`source-badge ${booking.booking_source || 'online'}`}>
+                                    {booking.booking_source === 'manual' ? 'Manual Booking' :
+                                     booking.booking_source === 'admin' ? 'Admin' :
+                                     booking.booking_source === 'phone' ? 'Phone' :
+                                     'Online'}
+                                  </span>
+                                </span>
                               </div>
                               <div className="booking-detail">
                                 <span className="detail-label">Package</span>
