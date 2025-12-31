@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { getMakes, getModels } from 'car-info'
 import DatePicker from 'react-datepicker'
+import { format } from 'date-fns'
 import 'react-datepicker/dist/react-datepicker.css'
 import './ManualBooking.css'
 
@@ -28,9 +29,9 @@ function ManualBooking({ token }) {
     colour: '',
     // Trip
     dropoffDate: null,
-    dropoffTime: '',
+    dropoffTime: null,
     pickupDate: null,
-    pickupTime: '',
+    pickupTime: null,
     // Payment
     stripePaymentLink: '',
     amount: '',
@@ -301,9 +302,9 @@ function ManualBooking({ token }) {
           model: formData.model === 'Other' ? formData.customModel : formData.model,
           colour: formData.colour,
           dropoff_date: formData.dropoffDate.toISOString().split('T')[0],
-          dropoff_time: formData.dropoffTime,
+          dropoff_time: format(formData.dropoffTime, 'HH:mm'),
           pickup_date: formData.pickupDate.toISOString().split('T')[0],
-          pickup_time: formData.pickupTime,
+          pickup_time: format(formData.pickupTime, 'HH:mm'),
           stripe_payment_link: formData.stripePaymentLink,
           amount_pence: Math.round(parseFloat(formData.amount) * 100),
           notes: formData.notes,
@@ -331,9 +332,9 @@ function ManualBooking({ token }) {
           customModel: '',
           colour: '',
           dropoffDate: null,
-          dropoffTime: '',
+          dropoffTime: null,
           pickupDate: null,
-          pickupTime: '',
+          pickupTime: null,
           stripePaymentLink: '',
           amount: '',
           notes: '',
@@ -671,13 +672,18 @@ function ManualBooking({ token }) {
             </div>
             <div className="form-group">
               <label htmlFor="dropoffTime">Drop-off Time <span className="required">*</span></label>
-              <input
-                type="time"
+              <DatePicker
+                selected={formData.dropoffTime}
+                onChange={(time) => handleDateChange(time, 'dropoffTime')}
+                showTimeSelect
+                showTimeSelectOnly
+                timeIntervals={15}
+                timeCaption="Time"
+                dateFormat="HH:mm"
+                timeFormat="HH:mm"
+                placeholderText="Select time"
+                className="date-picker-input"
                 id="dropoffTime"
-                name="dropoffTime"
-                value={formData.dropoffTime}
-                onChange={handleChange}
-                required
               />
             </div>
           </div>
@@ -696,13 +702,18 @@ function ManualBooking({ token }) {
             </div>
             <div className="form-group">
               <label htmlFor="pickupTime">Pick-up Time <span className="required">*</span></label>
-              <input
-                type="time"
+              <DatePicker
+                selected={formData.pickupTime}
+                onChange={(time) => handleDateChange(time, 'pickupTime')}
+                showTimeSelect
+                showTimeSelectOnly
+                timeIntervals={15}
+                timeCaption="Time"
+                dateFormat="HH:mm"
+                timeFormat="HH:mm"
+                placeholderText="Select time"
+                className="date-picker-input"
                 id="pickupTime"
-                name="pickupTime"
-                value={formData.pickupTime}
-                onChange={handleChange}
-                required
               />
             </div>
           </div>
@@ -764,8 +775,8 @@ function ManualBooking({ token }) {
               <p>Thank you for your booking with TAG Parking.</p>
               <p><strong>Booking Summary:</strong></p>
               <ul>
-                <li>Drop-off: {formatDate(formData.dropoffDate)} at {formData.dropoffTime}</li>
-                <li>Pick-up: {formatDate(formData.pickupDate)} at {formData.pickupTime}</li>
+                <li>Drop-off: {formatDate(formData.dropoffDate)} at {formData.dropoffTime ? format(formData.dropoffTime, 'HH:mm') : ''}</li>
+                <li>Pick-up: {formatDate(formData.pickupDate)} at {formData.pickupTime ? format(formData.pickupTime, 'HH:mm') : ''}</li>
                 <li>Vehicle: {formData.colour} {formData.make === 'Other' ? formData.customMake : formData.make} {formData.model === 'Other' ? formData.customModel : formData.model}</li>
                 <li>Registration: {formData.registration.toUpperCase()}</li>
                 <li>Total: £{parseFloat(formData.amount).toFixed(2)}</li>
