@@ -1206,3 +1206,271 @@ class TestManualBookingIntegration:
         assert payment.amount_pence == 18500
         assert payment.stripe_payment_link == "https://buy.stripe.com/test_integrity"
         assert payment.status == PaymentStatus.PENDING
+
+
+# =============================================================================
+# POST /api/admin/bookings/{booking_id}/mark-paid - Tests
+# =============================================================================
+
+class TestMarkBookingPaid:
+    """Tests for marking manual bookings as paid."""
+
+    async def _create_manual_booking(self, client, mock_send_email, unique_id=None):
+        """Helper to create a manual booking for testing."""
+        if unique_id is None:
+            unique_id = uuid.uuid4().hex[:8]
+        mock_send_email.return_value = True
+
+        request = {
+            "first_name": "MarkPaid",
+            "last_name": "Test",
+            "email": f"markpaid.{unique_id}@example.com",
+            "billing_address1": "123 Street",
+            "billing_city": "City",
+            "billing_postcode": "AB1 2CD",
+            "registration": f"MP{unique_id[:6]}",
+            "make": "Toyota",
+            "model": "Corolla",
+            "colour": "Blue",
+            "dropoff_date": "2027-07-01",
+            "dropoff_time": "08:00",
+            "pickup_date": "2027-07-08",
+            "pickup_time": "15:00",
+            "stripe_payment_link": "https://buy.stripe.com/test_markpaid",
+            "amount_pence": 9900,
+        }
+
+        response = await client.post("/api/admin/manual-booking", json=request)
+        return response.json()["booking_reference"]
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_booking_confirmation_email')
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_mark_paid_success(
+        self, mock_payment_email, mock_confirmation_email, client, db_session
+    ):
+        """Should successfully mark a pending manual booking as paid."""
+        mock_confirmation_email.return_value = True
+
+        reference = await self._create_manual_booking(client, mock_payment_email)
+
+        # Get booking ID
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+
+        # Mark as paid
+        response = await client.post(f"/api/admin/bookings/{booking.id}/mark-paid")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["email_sent"] is True
+        assert "confirmed" in data["message"].lower()
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_booking_confirmation_email')
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_mark_paid_updates_booking_status(
+        self, mock_payment_email, mock_confirmation_email, client, db_session
+    ):
+        """Should update booking status to CONFIRMED."""
+        mock_confirmation_email.return_value = True
+
+        reference = await self._create_manual_booking(client, mock_payment_email)
+
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+        assert booking.status == BookingStatus.PENDING
+
+        await client.post(f"/api/admin/bookings/{booking.id}/mark-paid")
+
+        db_session.refresh(booking)
+        assert booking.status == BookingStatus.CONFIRMED
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_booking_confirmation_email')
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_mark_paid_updates_payment_status(
+        self, mock_payment_email, mock_confirmation_email, client, db_session
+    ):
+        """Should update payment status to PAID."""
+        mock_confirmation_email.return_value = True
+
+        reference = await self._create_manual_booking(client, mock_payment_email)
+
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+        payment = db_session.query(Payment).filter(
+            Payment.booking_id == booking.id
+        ).first()
+        assert payment.status == PaymentStatus.PENDING
+
+        await client.post(f"/api/admin/bookings/{booking.id}/mark-paid")
+
+        db_session.refresh(payment)
+        assert payment.status == PaymentStatus.SUCCEEDED
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_booking_confirmation_email')
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_mark_paid_sends_confirmation_email(
+        self, mock_payment_email, mock_confirmation_email, client, db_session
+    ):
+        """Should send confirmation email when marking as paid."""
+        mock_confirmation_email.return_value = True
+
+        reference = await self._create_manual_booking(client, mock_payment_email)
+
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+
+        await client.post(f"/api/admin/bookings/{booking.id}/mark-paid")
+
+        mock_confirmation_email.assert_called_once()
+        call_kwargs = mock_confirmation_email.call_args[1]
+        assert call_kwargs["booking_reference"] == reference
+        assert call_kwargs["vehicle_make"] == "Toyota"
+        assert call_kwargs["vehicle_model"] == "Corolla"
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_booking_confirmation_email')
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_mark_paid_sets_email_sent_timestamp(
+        self, mock_payment_email, mock_confirmation_email, client, db_session
+    ):
+        """Should update confirmation_email_sent fields."""
+        mock_confirmation_email.return_value = True
+
+        reference = await self._create_manual_booking(client, mock_payment_email)
+
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+        assert booking.confirmation_email_sent is not True
+
+        await client.post(f"/api/admin/bookings/{booking.id}/mark-paid")
+
+        db_session.refresh(booking)
+        assert booking.confirmation_email_sent is True
+        assert booking.confirmation_email_sent_at is not None
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_booking_confirmation_email')
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_mark_paid_email_failure_still_confirms(
+        self, mock_payment_email, mock_confirmation_email, client, db_session
+    ):
+        """Should still confirm booking even if email fails."""
+        mock_confirmation_email.return_value = False  # Email fails
+
+        reference = await self._create_manual_booking(client, mock_payment_email)
+
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+
+        response = await client.post(f"/api/admin/bookings/{booking.id}/mark-paid")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["email_sent"] is False
+        assert "failed" in data["message"].lower()
+
+        # Booking should still be confirmed
+        db_session.refresh(booking)
+        assert booking.status == BookingStatus.CONFIRMED
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_mark_paid_already_confirmed(
+        self, mock_payment_email, client, db_session
+    ):
+        """Should return 400 if booking is already confirmed."""
+        reference = await self._create_manual_booking(client, mock_payment_email)
+
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+
+        # Manually set to confirmed
+        booking.status = BookingStatus.CONFIRMED
+        db_session.commit()
+
+        response = await client.post(f"/api/admin/bookings/{booking.id}/mark-paid")
+
+        assert response.status_code == 400
+        assert "already confirmed" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_mark_paid_cancelled_booking(
+        self, mock_payment_email, client, db_session
+    ):
+        """Should return 400 if booking is cancelled."""
+        reference = await self._create_manual_booking(client, mock_payment_email)
+
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+
+        # Manually set to cancelled
+        booking.status = BookingStatus.CANCELLED
+        db_session.commit()
+
+        response = await client.post(f"/api/admin/bookings/{booking.id}/mark-paid")
+
+        assert response.status_code == 400
+        assert "cancelled" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_mark_paid_refunded_booking(
+        self, mock_payment_email, client, db_session
+    ):
+        """Should return 400 if booking is refunded."""
+        reference = await self._create_manual_booking(client, mock_payment_email)
+
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+
+        # Manually set to refunded
+        booking.status = BookingStatus.REFUNDED
+        db_session.commit()
+
+        response = await client.post(f"/api/admin/bookings/{booking.id}/mark-paid")
+
+        assert response.status_code == 400
+        assert "refunded" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_mark_paid_booking_not_found(self, client):
+        """Should return 404 if booking doesn't exist."""
+        response = await client.post("/api/admin/bookings/99999/mark-paid")
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_booking_confirmation_email')
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_mark_paid_returns_reference(
+        self, mock_payment_email, mock_confirmation_email, client, db_session
+    ):
+        """Should return the booking reference in response."""
+        mock_confirmation_email.return_value = True
+
+        reference = await self._create_manual_booking(client, mock_payment_email)
+
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+
+        response = await client.post(f"/api/admin/bookings/{booking.id}/mark-paid")
+
+        assert response.json()["reference"] == reference

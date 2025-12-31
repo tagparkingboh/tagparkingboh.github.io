@@ -960,7 +960,7 @@ async def mark_booking_paid(
     # Update payment status if exists
     payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
     if payment:
-        payment.status = PaymentStatus.PAID
+        payment.status = PaymentStatus.SUCCEEDED
 
     db.commit()
 
