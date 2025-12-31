@@ -20,6 +20,7 @@ function Admin() {
   const [cancellingId, setCancellingId] = useState(null)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [bookingToCancel, setBookingToCancel] = useState(null)
+  const [markingPaidId, setMarkingPaidId] = useState(null)
   const [resendingEmailId, setResendingEmailId] = useState(null)
   const [showResendModal, setShowResendModal] = useState(false)
   const [bookingToResend, setBookingToResend] = useState(null)
@@ -140,6 +141,34 @@ function Admin() {
       setError('Network error while cancelling booking')
     } finally {
       setCancellingId(null)
+    }
+  }
+
+  const handleMarkPaid = async (booking, e) => {
+    e.stopPropagation()
+    setMarkingPaidId(booking.id)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${booking.id}/mark-paid`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // Refresh bookings list
+        fetchBookings()
+      } else {
+        setError(data.detail || 'Failed to mark booking as paid')
+      }
+    } catch (err) {
+      setError('Network error while updating booking')
+    } finally {
+      setMarkingPaidId(null)
     }
   }
 
@@ -645,6 +674,17 @@ function Admin() {
                                 disabled={cancellingId === booking.id}
                               >
                                 {cancellingId === booking.id ? 'Cancelling...' : 'Cancel Booking'}
+                              </button>
+                            )}
+                            {/* Mark as Paid button for manual bookings with pending status */}
+                            {booking.booking_source === 'manual' &&
+                             booking.status?.toLowerCase() === 'pending' && (
+                              <button
+                                className="action-btn paid-btn"
+                                onClick={(e) => handleMarkPaid(booking, e)}
+                                disabled={markingPaidId === booking.id}
+                              >
+                                {markingPaidId === booking.id ? 'Updating...' : 'Mark as Paid'}
                               </button>
                             )}
                           </div>

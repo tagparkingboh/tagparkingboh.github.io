@@ -476,6 +476,16 @@
   background: #bee3f8;
 }
 
+.paid-btn {
+  background: #c6f6d5;
+  color: #22543d;
+  border: 1px solid #68d391;
+}
+
+.paid-btn:hover:not(:disabled) {
+  background: #9ae6b4;
+}
+
 .email-btn {
   background: #f0fff4;
   color: #276749;

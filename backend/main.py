@@ -925,6 +925,50 @@ async def create_manual_booking(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/admin/bookings/{booking_id}/mark-paid")
+async def mark_booking_paid(
+    booking_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Admin endpoint: Mark a manual booking as paid (confirmed).
+
+    Updates booking status to CONFIRMED and payment status to PAID.
+    Use this after verifying payment was received via Stripe Payment Link.
+    """
+    from db_models import Booking, Payment, BookingStatus, PaymentStatus
+
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status == BookingStatus.CONFIRMED:
+        raise HTTPException(status_code=400, detail="Booking is already confirmed")
+
+    if booking.status == BookingStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Cannot confirm a cancelled booking")
+
+    if booking.status == BookingStatus.REFUNDED:
+        raise HTTPException(status_code=400, detail="Cannot confirm a refunded booking")
+
+    # Update booking status
+    booking.status = BookingStatus.CONFIRMED
+
+    # Update payment status if exists
+    payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
+    if payment:
+        payment.status = PaymentStatus.PAID
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Booking marked as paid and confirmed",
+        "reference": booking.reference,
+    }
+
+
 @app.post("/api/admin/bookings/{booking_id}/cancel")
 async def cancel_booking_admin(
     booking_id: int,
