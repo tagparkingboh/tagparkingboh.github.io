@@ -546,9 +546,11 @@ function Admin() {
                               <div className="booking-detail">
                                 <span className="detail-label">Pick-up Time</span>
                                 <span className="detail-value">
-                                  {booking.pickup_collection_time
-                                    ? `From ${booking.pickup_collection_time} onwards`
-                                    : '-'}
+                                  {booking.booking_source === 'manual'
+                                    ? (booking.pickup_time || '-')
+                                    : (booking.pickup_collection_time
+                                        ? `From ${booking.pickup_collection_time} onwards`
+                                        : '-')}
                                 </span>
                               </div>
                               <div className="booking-detail">
