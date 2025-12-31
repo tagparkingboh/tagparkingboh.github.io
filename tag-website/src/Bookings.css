@@ -1055,15 +1055,19 @@
   justify-content: space-between;
   padding: 0.5rem 0;
   font-size: 0.9rem;
+  gap: 1rem;
 }
 
 .summary-item span:first-child {
   color: #bbbbbb;
+  flex-shrink: 0;
 }
 
 .summary-item span:last-child {
   color: #ffffff;
   font-weight: 500;
+  text-align: right;
+  word-break: break-word;
 }
 
 .summary-item.total {
