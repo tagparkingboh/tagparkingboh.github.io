@@ -413,3 +413,68 @@ def send_refund_email(
         return False
 
     return send_email(email, subject, html_content)
+
+
+def send_manual_booking_payment_email(
+    email: str,
+    first_name: str,
+    dropoff_date: str,
+    dropoff_time: str,
+    pickup_date: str,
+    pickup_time: str,
+    vehicle_make: str,
+    vehicle_model: str,
+    vehicle_colour: str,
+    vehicle_registration: str,
+    amount: str,
+    payment_link: str,
+) -> bool:
+    """
+    Send payment request email for manual bookings.
+
+    Args:
+        email: Customer email address
+        first_name: Customer first name
+        dropoff_date: Formatted drop-off date (e.g., "Saturday, 28 December 2025")
+        dropoff_time: Drop-off time (e.g., "10:15")
+        pickup_date: Formatted pickup date (e.g., "Saturday, 4 January 2026")
+        pickup_time: Pickup time (e.g., "15:20")
+        vehicle_make: Vehicle make
+        vehicle_model: Vehicle model
+        vehicle_colour: Vehicle colour
+        vehicle_registration: Registration plate
+        amount: Amount to pay (e.g., "£99.00")
+        payment_link: Stripe payment link URL
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    subject = "Complete Your TAG Parking Booking"
+
+    # Load the HTML template
+    template_path = EMAIL_TEMPLATES_DIR / "manual_booking_payment_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{DROPOFF_DATE}}", dropoff_date)
+        html_content = html_content.replace("{{DROPOFF_TIME}}", dropoff_time)
+        html_content = html_content.replace("{{PICKUP_DATE}}", pickup_date)
+        html_content = html_content.replace("{{PICKUP_TIME}}", pickup_time)
+        html_content = html_content.replace("{{VEHICLE_MAKE}}", vehicle_make)
+        html_content = html_content.replace("{{VEHICLE_MODEL}}", vehicle_model)
+        html_content = html_content.replace("{{VEHICLE_COLOUR}}", vehicle_colour)
+        html_content = html_content.replace("{{VEHICLE_REGISTRATION}}", vehicle_registration)
+        html_content = html_content.replace("{{AMOUNT}}", amount)
+        html_content = html_content.replace("{{PAYMENT_LINK}}", payment_link)
+
+    except FileNotFoundError:
+        logger.error(f"Manual booking payment email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading manual booking payment email template: {e}")
+        return False
+
+    return send_email(email, subject, html_content)

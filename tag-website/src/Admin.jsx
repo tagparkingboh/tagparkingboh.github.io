@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
+import ManualBooking from './components/ManualBooking'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -328,6 +329,12 @@ function Admin() {
           Bookings
         </button>
         <button
+          className={`admin-nav-item ${activeTab === 'manual-booking' ? 'active' : ''}`}
+          onClick={() => setActiveTab('manual-booking')}
+        >
+          Manual Booking
+        </button>
+        <button
           className={`admin-nav-item ${activeTab === 'users' ? 'active' : ''}`}
           onClick={() => setActiveTab('users')}
         >
@@ -632,6 +639,12 @@ function Admin() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'manual-booking' && (
+          <div className="admin-section">
+            <ManualBooking token={token} />
           </div>
         )}
 

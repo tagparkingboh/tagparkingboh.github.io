@@ -156,6 +156,9 @@ class Payment(Base):
     currency = Column(String(3), default="gbp")
     status = Column(Enum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
 
+    # Manual booking payment link (for admin-created bookings)
+    stripe_payment_link = Column(String(500))
+
     # Refund tracking
     refund_id = Column(String(255))
     refund_amount_pence = Column(Integer)

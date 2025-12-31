@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Complete Your TAG Parking Booking</title>
+</head>
+<body style="margin:0; padding:0; font-family: Helvetica, Arial, sans-serif; background-color:#f5f5f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;">
+<tr>
+<td align="center" style="padding:40px 20px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px; width:100%;">
+
+<!-- Header -->
+<tr>
+<td style="background:#1a1a2e; padding:30px; text-align:center; border-radius:12px 12px 0 0;">
+<h1 style="color:#D9FF00; margin:0; font-size:36px; font-weight:bold; letter-spacing:2px;">TAG</h1>
+<p style="color:#ffffff; margin:10px 0 0 0; font-size:14px;">Bournemouth International Airport</p>
+</td>
+</tr>
+
+<!-- Main Content -->
+<tr>
+<td style="background:#ffffff; padding:40px 30px;">
+<h2 style="color:#1a1a2e; margin:0 0 20px 0; font-size:24px;">Hi {{FIRST_NAME}},</h2>
+
+<p style="color:#333; font-size:16px; line-height:1.6; margin:0 0 25px 0;">
+Thank you for choosing TAG Parking! Please complete your booking by making your payment using the link below.
+</p>
+
+<!-- Booking Summary Box -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa; border-radius:8px; margin-bottom:30px;">
+<tr>
+<td style="padding:25px;">
+<h3 style="color:#1a1a2e; margin:0 0 20px 0; font-size:18px; border-bottom:2px solid #D9FF00; padding-bottom:10px;">Booking Summary</h3>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr>
+<td style="padding:8px 0; color:#666; font-size:14px;">Drop-off</td>
+<td align="right" style="padding:8px 0; color:#1a1a2e; font-size:14px; font-weight:500;">{{DROPOFF_DATE}} at {{DROPOFF_TIME}}</td>
+</tr>
+<tr>
+<td style="padding:8px 0; color:#666; font-size:14px;">Pick-up</td>
+<td align="right" style="padding:8px 0; color:#1a1a2e; font-size:14px; font-weight:500;">{{PICKUP_DATE}} at {{PICKUP_TIME}}</td>
+</tr>
+<tr>
+<td style="padding:8px 0; color:#666; font-size:14px;">Vehicle</td>
+<td align="right" style="padding:8px 0; color:#1a1a2e; font-size:14px; font-weight:500;">{{VEHICLE_COLOUR}} {{VEHICLE_MAKE}} {{VEHICLE_MODEL}}</td>
+</tr>
+<tr>
+<td style="padding:8px 0; color:#666; font-size:14px;">Registration</td>
+<td align="right" style="padding:8px 0; color:#1a1a2e; font-size:14px; font-weight:bold;">{{VEHICLE_REGISTRATION}}</td>
+</tr>
+</table>
+
+<!-- Total Amount -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:15px; border-top:2px solid #D9FF00; padding-top:15px;">
+<tr>
+<td style="color:#1a1a2e; font-size:18px; font-weight:bold;">Total</td>
+<td align="right" style="color:#D9FF00; font-size:24px; font-weight:bold;">{{AMOUNT}}</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+
+<!-- Payment Button -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr>
+<td align="center" style="padding:10px 0 30px 0;">
+<a href="{{PAYMENT_LINK}}" style="display:inline-block; background:#D9FF00; color:#1a1a2e; padding:16px 40px; text-decoration:none; border-radius:8px; font-weight:bold; font-size:18px;">Complete Payment</a>
+</td>
+</tr>
+</table>
+
+<p style="color:#666; font-size:14px; line-height:1.6; margin:0 0 20px 0;">
+Once your payment is processed, you'll receive a confirmation email with your booking reference and all the details you need for your visit.
+</p>
+
+<p style="color:#666; font-size:14px; line-height:1.6; margin:0 0 20px 0;">
+If you have any questions, please don't hesitate to contact us at <a href="mailto:sales@tagparking.co.uk" style="color:#1a1a2e;">sales@tagparking.co.uk</a>.
+</p>
+
+<p style="color:#1a1a2e; font-size:16px; font-weight:bold; margin:30px 0 10px 0;">
+It's time to Tag it.
+</p>
+
+<p style="color:#333; font-size:14px; margin:0;">
+Warm regards,<br>
+<strong>The Tag Team</strong>
+</p>
+</td>
+</tr>
+
+<!-- Footer -->
+<tr>
+<td style="background:#1a1a2e; padding:25px 30px; text-align:center; border-radius:0 0 12px 12px;">
+<p style="color:#D9FF00; margin:0 0 10px 0; font-size:20px; font-weight:bold;">TAG</p>
+<p style="color:#999; font-size:12px; margin:0;">
+Bournemouth International Airport<br>
+<a href="https://tagparking.co.uk" style="color:#D9FF00; text-decoration:none;">tagparking.co.uk</a>
+</p>
+</td>
+</tr>
+
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>

@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, joinedload
 from models import (
     BookingRequest,
     AdminBookingRequest,
+    ManualBookingRequest,
     Booking,
     SlotType,
     AvailableSlotsResponse,
@@ -784,6 +785,143 @@ async def create_admin_booking(request: AdminBookingRequest):
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/admin/manual-booking")
+async def create_manual_booking(
+    request: ManualBookingRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Admin endpoint: Create a manual booking and send payment link email.
+
+    This creates a pending booking record and sends an email to the customer
+    with the booking summary and Stripe payment link. The booking is NOT
+    confirmed until the customer pays via the link.
+
+    Use this for phone/email enquiries where you create a Stripe payment link
+    in the Stripe dashboard and send it to the customer.
+    """
+    from email_service import send_manual_booking_payment_email
+    from db_models import Customer, Vehicle, Booking, BookingStatus, Payment, PaymentStatus
+    from datetime import datetime
+
+    try:
+        # Create or find customer
+        customer = db.query(Customer).filter(Customer.email == request.email).first()
+        if not customer:
+            customer = Customer(
+                first_name=request.first_name,
+                last_name=request.last_name,
+                email=request.email,
+                phone=request.phone,
+                billing_address1=request.billing_address1,
+                billing_address2=request.billing_address2,
+                billing_city=request.billing_city,
+                billing_county=request.billing_county,
+                billing_postcode=request.billing_postcode,
+                billing_country=request.billing_country,
+            )
+            db.add(customer)
+            db.flush()
+        else:
+            # Update customer details
+            customer.first_name = request.first_name
+            customer.last_name = request.last_name
+            customer.phone = request.phone or customer.phone
+            customer.billing_address1 = request.billing_address1
+            customer.billing_address2 = request.billing_address2
+            customer.billing_city = request.billing_city
+            customer.billing_county = request.billing_county
+            customer.billing_postcode = request.billing_postcode
+            customer.billing_country = request.billing_country
+
+        # Create or find vehicle
+        vehicle = db.query(Vehicle).filter(
+            Vehicle.registration == request.registration.upper()
+        ).first()
+        if not vehicle:
+            vehicle = Vehicle(
+                customer_id=customer.id,
+                registration=request.registration.upper(),
+                make=request.make,
+                model=request.model,
+                colour=request.colour,
+            )
+            db.add(vehicle)
+            db.flush()
+
+        # Determine package based on duration
+        dropoff = datetime.strptime(str(request.dropoff_date), "%Y-%m-%d")
+        pickup = datetime.strptime(str(request.pickup_date), "%Y-%m-%d")
+        duration_days = (pickup - dropoff).days
+        package = "quick" if duration_days <= 7 else "longer"
+
+        # Generate booking reference
+        import random
+        import string
+        reference = "TAG-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+
+        # Create pending booking
+        booking = Booking(
+            reference=reference,
+            customer_id=customer.id,
+            vehicle_id=vehicle.id,
+            dropoff_date=request.dropoff_date,
+            dropoff_time=datetime.strptime(request.dropoff_time, "%H:%M").time(),
+            pickup_date=request.pickup_date,
+            pickup_time=datetime.strptime(request.pickup_time, "%H:%M").time(),
+            package=package,
+            status=BookingStatus.PENDING,
+            booking_source="manual",
+            admin_notes=request.notes,
+        )
+        db.add(booking)
+        db.flush()
+
+        # Create pending payment record
+        payment = Payment(
+            booking_id=booking.id,
+            amount_pence=request.amount_pence,
+            currency="gbp",
+            status=PaymentStatus.PENDING,
+            stripe_payment_link=request.stripe_payment_link,
+        )
+        db.add(payment)
+
+        db.commit()
+
+        # Format dates for email
+        dropoff_date_formatted = dropoff.strftime("%A, %d %B %Y")
+        pickup_date_formatted = pickup.strftime("%A, %d %B %Y")
+        amount_formatted = f"£{request.amount_pence / 100:.2f}"
+
+        # Send payment link email
+        email_sent = send_manual_booking_payment_email(
+            email=request.email,
+            first_name=request.first_name,
+            dropoff_date=dropoff_date_formatted,
+            dropoff_time=request.dropoff_time,
+            pickup_date=pickup_date_formatted,
+            pickup_time=request.pickup_time,
+            vehicle_make=request.make,
+            vehicle_model=request.model,
+            vehicle_colour=request.colour,
+            vehicle_registration=request.registration.upper(),
+            amount=amount_formatted,
+            payment_link=request.stripe_payment_link,
+        )
+
+        return {
+            "success": True,
+            "message": "Manual booking created and payment link email sent" if email_sent else "Manual booking created but email failed to send",
+            "booking_reference": reference,
+            "email_sent": email_sent,
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/admin/bookings/{booking_id}/cancel")
