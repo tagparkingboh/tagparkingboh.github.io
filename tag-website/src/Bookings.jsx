@@ -730,7 +730,8 @@ function Bookings() {
 
   // Step 1: Contact Details (first for lead capture)
   const isPhoneValid = formData.phone && isValidPhoneNumber(formData.phone)
-  const isStep1Complete = formData.firstName && formData.lastName && formData.email && isPhoneValid
+  const isEmailValid = formData.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)
+  const isStep1Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid
   // Step 2: Trip Details
   const isStep2Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable
   // Step 3: Vehicle Details
@@ -900,7 +901,7 @@ function Bookings() {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label htmlFor="firstName">First Name</label>
+                  <label htmlFor="firstName">First Name <span className="required">*</span></label>
                   <input
                     type="text"
                     id="firstName"
@@ -912,7 +913,7 @@ function Bookings() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="lastName">Last Name</label>
+                  <label htmlFor="lastName">Last Name <span className="required">*</span></label>
                   <input
                     type="text"
                     id="lastName"
@@ -926,7 +927,7 @@ function Bookings() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="email">Email Address</label>
+                <label htmlFor="email">Email Address <span className="required">*</span></label>
                 <input
                   type="email"
                   id="email"
@@ -934,12 +935,16 @@ function Bookings() {
                   placeholder="john@example.com"
                   value={formData.email}
                   onChange={handleChange}
+                  className={formData.email && !isEmailValid ? 'input-error' : ''}
                   required
                 />
+                {formData.email && !isEmailValid && (
+                  <span className="field-error">Please enter a valid email address</span>
+                )}
               </div>
 
               <div className="form-group">
-                <label htmlFor="phone">Phone Number</label>
+                <label htmlFor="phone">Phone Number <span className="required">*</span></label>
                 <PhoneInput
                   international
                   defaultCountry="GB"
@@ -1208,7 +1213,7 @@ function Bookings() {
               <h2>Vehicle Details</h2>
 
               <div className="form-group">
-                <label htmlFor="registration">Registration Number</label>
+                <label htmlFor="registration">Registration Number <span className="required">*</span></label>
                 <div className="registration-input-group">
                   <input
                     type="text"
@@ -1244,7 +1249,7 @@ function Bookings() {
 
               {(formData.registration && (dvlaVerified || dvlaError || formData.make)) && (
                 <div className="form-group fade-in">
-                  <label htmlFor="make">Vehicle Make</label>
+                  <label htmlFor="make">Vehicle Make <span className="required">*</span></label>
                   {dvlaVerified && formData.make !== 'Other' ? (
                     <input
                       type="text"
@@ -1273,7 +1278,7 @@ function Bookings() {
 
               {formData.make === 'Other' && (
                 <div className="form-group fade-in">
-                  <label htmlFor="customMake">Enter Vehicle Make</label>
+                  <label htmlFor="customMake">Enter Vehicle Make <span className="required">*</span></label>
                   <input
                     type="text"
                     id="customMake"
@@ -1289,7 +1294,7 @@ function Bookings() {
               {/* Colour comes after Make (from DVLA or manual entry) */}
               {((formData.make && formData.make !== 'Other') || (formData.make === 'Other' && formData.customMake)) && (
                 <div className="form-group fade-in">
-                  <label htmlFor="colour">Vehicle Colour</label>
+                  <label htmlFor="colour">Vehicle Colour <span className="required">*</span></label>
                   {dvlaVerified && formData.colour ? (
                     <input
                       type="text"
@@ -1315,7 +1320,7 @@ function Bookings() {
               {/* Model comes after Colour */}
               {formData.make && formData.make !== 'Other' && formData.colour && (
                 <div className="form-group fade-in">
-                  <label htmlFor="model">Vehicle Model</label>
+                  <label htmlFor="model">Vehicle Model <span className="required">*</span></label>
                   <select
                     id="model"
                     name="model"
@@ -1334,7 +1339,7 @@ function Bookings() {
 
               {formData.make === 'Other' && formData.customMake && formData.colour && (
                 <div className="form-group fade-in">
-                  <label htmlFor="customModel">Enter Vehicle Model</label>
+                  <label htmlFor="customModel">Enter Vehicle Model <span className="required">*</span></label>
                   <input
                     type="text"
                     id="customModel"
@@ -1349,7 +1354,7 @@ function Bookings() {
 
               {formData.model === 'Other' && formData.make !== 'Other' && (
                 <div className="form-group fade-in">
-                  <label htmlFor="customModel">Enter Vehicle Model</label>
+                  <label htmlFor="customModel">Enter Vehicle Model <span className="required">*</span></label>
                   <input
                     type="text"
                     id="customModel"
@@ -1430,7 +1435,7 @@ function Bookings() {
               {!manualAddressEntry && (
                 <>
                   <div className="form-group">
-                    <label htmlFor="billingPostcode">Postcode</label>
+                    <label htmlFor="billingPostcode">Postcode <span className="required">*</span></label>
                     <div className="postcode-lookup-row">
                       <input
                         type="text"
@@ -1513,7 +1518,7 @@ function Bookings() {
               )}
 
               <div className="form-group">
-                <label htmlFor="billingAddress1">Address Line 1</label>
+                <label htmlFor="billingAddress1">Address Line 1 <span className="required">*</span></label>
                 <input
                   type="text"
                   id="billingAddress1"
@@ -1526,7 +1531,7 @@ function Bookings() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="billingAddress2">Address Line 2 (optional)</label>
+                <label htmlFor="billingAddress2">Address Line 2</label>
                 <input
                   type="text"
                   id="billingAddress2"
@@ -1539,7 +1544,7 @@ function Bookings() {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label htmlFor="billingCity">City</label>
+                  <label htmlFor="billingCity">City <span className="required">*</span></label>
                   <input
                     type="text"
                     id="billingCity"
@@ -1551,7 +1556,7 @@ function Bookings() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="billingCounty">County (optional)</label>
+                  <label htmlFor="billingCounty">County</label>
                   <input
                     type="text"
                     id="billingCounty"
@@ -1579,7 +1584,7 @@ function Bookings() {
               )}
 
               <div className="form-group">
-                <label htmlFor="billingCountry">Country</label>
+                <label htmlFor="billingCountry">Country <span className="required">*</span></label>
                 <select
                   id="billingCountry"
                   name="billingCountry"

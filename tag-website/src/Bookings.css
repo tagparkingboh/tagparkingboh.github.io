@@ -304,6 +304,23 @@
   border-color: #ff4444;
 }
 
+/* Required field indicator */
+.required {
+  color: #ff4444;
+  font-weight: 600;
+  margin-left: 2px;
+}
+
+/* Input error state */
+.input-error {
+  border-color: #ff4444 !important;
+}
+
+.input-error:focus {
+  border-color: #ff4444 !important;
+  box-shadow: 0 0 0 2px rgba(255, 68, 68, 0.2);
+}
+
 .field-error {
   color: #ff4444;
   font-size: 0.85rem;

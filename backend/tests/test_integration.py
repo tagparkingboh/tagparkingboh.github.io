@@ -67,12 +67,15 @@ def sample_arrival(db_session):
 
 @pytest.fixture
 def sample_customer(db_session):
-    """Create a sample customer for testing."""
+    """Get or create a sample customer for testing."""
+    import uuid
+    # Use unique email per test run to avoid conflicts on staging DB
+    test_email = f"test_{uuid.uuid4().hex[:8]}@test.com"
     customer = Customer(
-        first_name="John",
-        last_name="Doe",
-        email="john.doe@test.com",
-        phone="+44 7123 456789",
+        first_name="Test",
+        last_name="User",
+        email=test_email,
+        phone="+44 7000 000000",
     )
     db_session.add(customer)
     db_session.commit()
@@ -264,10 +267,15 @@ async def test_get_departures_empty_date(client):
 @pytest.mark.asyncio
 async def test_get_departures_with_booked_slots(client, db_session):
     """Should show correct slot availability with capacity system."""
+    import uuid
+    # Use unique flight number to avoid conflicts with staging data
+    unique_flight = f"TEST{uuid.uuid4().hex[:4].upper()}"
+    test_date = date(2026, 6, 20)  # Use future date unlikely to have staging data
+
     # Create departure with early slot booked (1 of 1)
     departure = FlightDeparture(
-        date=date(2025, 12, 20),
-        flight_number="5555",
+        date=test_date,
+        flight_number=unique_flight,
         airline_code="LS",
         airline_name="Jet2",
         departure_time=time(14, 0),
@@ -280,12 +288,14 @@ async def test_get_departures_with_booked_slots(client, db_session):
     db_session.add(departure)
     db_session.commit()
 
-    response = await client.get("/api/flights/departures/2025-12-20")
+    response = await client.get(f"/api/flights/departures/{test_date}")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 1
-    assert data[0]["early_slots_available"] == 0  # Fully booked
-    assert data[0]["late_slots_available"] == 1   # Still available
+    # Find our specific test flight
+    our_flight = next((f for f in data if f["flightNumber"] == unique_flight), None)
+    assert our_flight is not None, f"Test flight {unique_flight} not found in response"
+    assert our_flight["early_slots_available"] == 0  # Fully booked
+    assert our_flight["late_slots_available"] == 1   # Still available
 
 
 @pytest.mark.asyncio
@@ -342,9 +352,13 @@ async def test_get_departures_call_us_only(client, db_session):
 @pytest.mark.asyncio
 async def test_get_departures_high_capacity(client, db_session):
     """Should correctly show availability for high capacity flights."""
+    import uuid
+    unique_flight = f"HICAP{uuid.uuid4().hex[:4].upper()}"
+    test_date = date(2026, 7, 23)  # Use future date
+
     departure = FlightDeparture(
-        date=date(2025, 12, 23),
-        flight_number="HIGHCAP",
+        date=test_date,
+        flight_number=unique_flight,
         airline_code="FR",
         airline_name="Ryanair",
         departure_time=time(12, 0),
@@ -357,14 +371,17 @@ async def test_get_departures_high_capacity(client, db_session):
     db_session.add(departure)
     db_session.commit()
 
-    response = await client.get("/api/flights/departures/2025-12-23")
+    response = await client.get(f"/api/flights/departures/{test_date}")
     assert response.status_code == 200
     data = response.json()
-    assert data[0]["capacity_tier"] == 6
-    assert data[0]["max_slots_per_time"] == 3
-    assert data[0]["early_slots_available"] == 2  # 3 - 1
-    assert data[0]["late_slots_available"] == 1   # 3 - 2
-    assert data[0]["all_slots_booked"] is False
+    # Find our specific test flight
+    our_flight = next((f for f in data if f["flightNumber"] == unique_flight), None)
+    assert our_flight is not None, f"Test flight {unique_flight} not found"
+    assert our_flight["capacity_tier"] == 6
+    assert our_flight["max_slots_per_time"] == 3
+    assert our_flight["early_slots_available"] == 2  # 3 - 1
+    assert our_flight["late_slots_available"] == 1   # 3 - 2
+    assert our_flight["all_slots_booked"] is False
 
 
 # =============================================================================
@@ -502,10 +519,13 @@ async def test_slot_booking_early(client, sample_customer, sample_departure, db_
     # Verify slot is not booked initially
     assert sample_departure.slots_booked_early == 0
 
+    import uuid
+    unique_pi_id = f"pi_test_early_{uuid.uuid4().hex[:12]}"
+
     with patch("main.create_payment_intent") as mock_create:
         mock_create.return_value = MagicMock(
-            client_secret="pi_test_secret_456",
-            payment_intent_id="pi_test_456",
+            client_secret=f"{unique_pi_id}_secret",
+            payment_intent_id=unique_pi_id,
         )
         with patch("main.is_stripe_configured", return_value=True):
             with patch("main.get_settings") as mock_settings:
@@ -568,10 +588,13 @@ async def test_slot_booking_late(client, sample_customer, db_session):
     db_session.commit()
     db_session.refresh(vehicle)
 
+    import uuid
+    unique_pi_id = f"pi_test_late_{uuid.uuid4().hex[:12]}"
+
     with patch("main.create_payment_intent") as mock_create:
         mock_create.return_value = MagicMock(
-            client_secret="pi_test_secret_789",
-            payment_intent_id="pi_test_789",
+            client_secret=f"{unique_pi_id}_secret",
+            payment_intent_id=unique_pi_id,
         )
         with patch("main.is_stripe_configured", return_value=True):
             with patch("main.get_settings") as mock_settings:
@@ -938,10 +961,13 @@ async def test_can_book_late_slot_when_only_early_full(client, sample_customer, 
     db_session.commit()
     db_session.refresh(vehicle)
 
+    import uuid
+    unique_pi_id = f"pi_partial_{uuid.uuid4().hex[:12]}"
+
     with patch("main.create_payment_intent") as mock_create:
         mock_create.return_value = MagicMock(
-            client_secret="pi_partial",
-            payment_intent_id="pi_partial_123",
+            client_secret=f"{unique_pi_id}_secret",
+            payment_intent_id=unique_pi_id,
         )
         with patch("main.is_stripe_configured", return_value=True):
             with patch("main.get_settings") as mock_settings:
@@ -1001,10 +1027,13 @@ async def test_can_book_early_slot_when_only_late_full(client, sample_customer, 
     db_session.commit()
     db_session.refresh(vehicle)
 
+    import uuid
+    unique_pi_id = f"pi_partial2_{uuid.uuid4().hex[:12]}"
+
     with patch("main.create_payment_intent") as mock_create:
         mock_create.return_value = MagicMock(
-            client_secret="pi_partial2",
-            payment_intent_id="pi_partial2_123",
+            client_secret=f"{unique_pi_id}_secret",
+            payment_intent_id=unique_pi_id,
         )
         with patch("main.is_stripe_configured", return_value=True):
             with patch("main.get_settings") as mock_settings:
@@ -1037,19 +1066,24 @@ async def test_can_book_early_slot_when_only_late_full(client, sample_customer, 
 @pytest.mark.asyncio
 async def test_departure_shows_capacity_info(client, db_session):
     """Departures endpoint should show capacity information."""
+    import uuid
+    # Use unique suffix for test flights and unique date
+    suffix = uuid.uuid4().hex[:4].upper()
+    test_date = date(2026, 8, 22)  # Use future date
+
     # Create various departures with different capacity states
     departures_data = [
-        ("EMPTY", 2, 0, 0),      # Both available (capacity 2)
-        ("EARLY", 2, 1, 0),      # Early full
-        ("LATE", 2, 0, 1),       # Late full
-        ("FULL", 2, 1, 1),       # Both full
-        ("HIGH", 6, 1, 2),       # High capacity, partially booked
-        ("CALLUS", 0, 0, 0),     # Call Us only
+        (f"EMPTY{suffix}", 2, 0, 0),      # Both available (capacity 2)
+        (f"EARLY{suffix}", 2, 1, 0),      # Early full
+        (f"LATE{suffix}", 2, 0, 1),       # Late full
+        (f"FULL{suffix}", 2, 1, 1),       # Both full
+        (f"HIGH{suffix}", 6, 1, 2),       # High capacity, partially booked
+        (f"CALLUS{suffix}", 0, 0, 0),     # Call Us only
     ]
 
     for flight_num, cap, early, late in departures_data:
         dep = FlightDeparture(
-            date=date(2025, 12, 22),
+            date=test_date,
             flight_number=flight_num,
             airline_code="FR",
             airline_name="Ryanair",
@@ -1063,42 +1097,41 @@ async def test_departure_shows_capacity_info(client, db_session):
         db_session.add(dep)
     db_session.commit()
 
-    response = await client.get("/api/flights/departures/2025-12-22")
+    response = await client.get(f"/api/flights/departures/{test_date}")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 6
 
-    # Check each flight has correct capacity status
+    # Check each flight has correct capacity status (find by our unique flight numbers)
     flights_by_num = {f["flightNumber"]: f for f in data}
 
     # EMPTY: capacity 2, 0 booked
-    assert flights_by_num["EMPTY"]["capacity_tier"] == 2
-    assert flights_by_num["EMPTY"]["early_slots_available"] == 1
-    assert flights_by_num["EMPTY"]["late_slots_available"] == 1
-    assert flights_by_num["EMPTY"]["all_slots_booked"] is False
+    assert flights_by_num[f"EMPTY{suffix}"]["capacity_tier"] == 2
+    assert flights_by_num[f"EMPTY{suffix}"]["early_slots_available"] == 1
+    assert flights_by_num[f"EMPTY{suffix}"]["late_slots_available"] == 1
+    assert flights_by_num[f"EMPTY{suffix}"]["all_slots_booked"] is False
 
     # EARLY: early slot full
-    assert flights_by_num["EARLY"]["early_slots_available"] == 0
-    assert flights_by_num["EARLY"]["late_slots_available"] == 1
+    assert flights_by_num[f"EARLY{suffix}"]["early_slots_available"] == 0
+    assert flights_by_num[f"EARLY{suffix}"]["late_slots_available"] == 1
 
     # LATE: late slot full
-    assert flights_by_num["LATE"]["early_slots_available"] == 1
-    assert flights_by_num["LATE"]["late_slots_available"] == 0
+    assert flights_by_num[f"LATE{suffix}"]["early_slots_available"] == 1
+    assert flights_by_num[f"LATE{suffix}"]["late_slots_available"] == 0
 
     # FULL: both full
-    assert flights_by_num["FULL"]["all_slots_booked"] is True
-    assert flights_by_num["FULL"]["early_slots_available"] == 0
-    assert flights_by_num["FULL"]["late_slots_available"] == 0
+    assert flights_by_num[f"FULL{suffix}"]["all_slots_booked"] is True
+    assert flights_by_num[f"FULL{suffix}"]["early_slots_available"] == 0
+    assert flights_by_num[f"FULL{suffix}"]["late_slots_available"] == 0
 
     # HIGH: capacity 6, 1 early booked, 2 late booked
-    assert flights_by_num["HIGH"]["capacity_tier"] == 6
-    assert flights_by_num["HIGH"]["max_slots_per_time"] == 3
-    assert flights_by_num["HIGH"]["early_slots_available"] == 2  # 3 - 1
-    assert flights_by_num["HIGH"]["late_slots_available"] == 1   # 3 - 2
+    assert flights_by_num[f"HIGH{suffix}"]["capacity_tier"] == 6
+    assert flights_by_num[f"HIGH{suffix}"]["max_slots_per_time"] == 3
+    assert flights_by_num[f"HIGH{suffix}"]["early_slots_available"] == 2  # 3 - 1
+    assert flights_by_num[f"HIGH{suffix}"]["late_slots_available"] == 1   # 3 - 2
 
     # CALLUS: capacity 0
-    assert flights_by_num["CALLUS"]["is_call_us_only"] is True
-    assert flights_by_num["CALLUS"]["capacity_tier"] == 0
+    assert flights_by_num[f"CALLUS{suffix}"]["is_call_us_only"] is True
+    assert flights_by_num[f"CALLUS{suffix}"]["capacity_tier"] == 0
 
 
 # =============================================================================

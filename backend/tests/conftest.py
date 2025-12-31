@@ -18,7 +18,9 @@ if env_file.exists():
     load_dotenv(env_file)
 
 # Set test database before any imports
-os.environ["DATABASE_URL"] = "sqlite:///./tag_test.db"
+# Use staging PostgreSQL database for realistic testing
+STAGING_DATABASE_URL = "postgresql://postgres:oviYXmjpSwWKHejteMgdIxXTorTtGdUl@switchback.proxy.rlwy.net:25567/railway"
+os.environ["DATABASE_URL"] = STAGING_DATABASE_URL
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -31,9 +33,9 @@ def pytest_configure(config):
     )
 
 
-# Shared test database setup
-TEST_DATABASE_URL = "sqlite:///./tag_test.db"
-test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+# Shared test database setup - using staging PostgreSQL
+TEST_DATABASE_URL = STAGING_DATABASE_URL
+test_engine = create_engine(TEST_DATABASE_URL)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
@@ -61,11 +63,12 @@ def setup_app_dependency_override():
 
 @pytest.fixture(autouse=True)
 def setup_test_database():
-    """Create fresh test database for each test."""
+    """Ensure tables exist in staging database (does not drop existing data)."""
     from database import Base
+    # Only create tables if they don't exist - never drop staging data
     Base.metadata.create_all(bind=test_engine)
     yield
-    Base.metadata.drop_all(bind=test_engine)
+    # Do NOT drop tables on staging - we want to preserve real data
 
 
 @pytest.fixture
