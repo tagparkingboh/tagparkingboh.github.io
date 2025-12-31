@@ -1680,7 +1680,7 @@ function Bookings() {
                       const [hours, minutes] = flightTime.split(':').map(Number)
                       const landingMinutes = hours * 60 + minutes
                       const pickupTime = formatMinutesToTime(landingMinutes + 45)
-                      return <> from {pickupTime} onwards</>
+                      return <> from {pickupTime}</>
                     })()}
                   </span>
                 </div>
@@ -1775,6 +1775,7 @@ function Bookings() {
                     {bookingConfirmation?.reference}
                   </div>
                   <p>A confirmation email has been sent to {formData.email}</p>
+                  <p className="spam-notice">Please check your spam/junk folder if you don't see it in your inbox.</p>
                   <button
                     type="button"
                     className="submit-btn"
