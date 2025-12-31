@@ -934,9 +934,11 @@ async def mark_booking_paid(
     Admin endpoint: Mark a manual booking as paid (confirmed).
 
     Updates booking status to CONFIRMED and payment status to PAID.
+    Sends booking confirmation email to customer.
     Use this after verifying payment was received via Stripe Payment Link.
     """
     from db_models import Booking, Payment, BookingStatus, PaymentStatus
+    from email_service import send_booking_confirmation_email
 
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
 
@@ -962,10 +964,55 @@ async def mark_booking_paid(
 
     db.commit()
 
+    # Send confirmation email
+    email_sent = False
+    try:
+        # Format dates
+        dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
+        dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else "TBC"
+        pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
+        pickup_time_str = booking.pickup_time.strftime("%H:%M") if booking.pickup_time else "TBC"
+
+        # Package name
+        package_name = "1 Week" if booking.package == "quick" else "2 Weeks"
+
+        # Amount paid
+        amount_paid = f"£{payment.amount_pence / 100:.2f}" if payment else "N/A"
+
+        # For manual bookings, flight info is not applicable
+        departure_flight = "-"
+        return_flight = "-"
+
+        email_sent = send_booking_confirmation_email(
+            email=booking.customer.email,
+            first_name=booking.customer.first_name,
+            booking_reference=booking.reference,
+            dropoff_date=dropoff_date_str,
+            dropoff_time=dropoff_time_str,
+            pickup_date=pickup_date_str,
+            pickup_time=pickup_time_str,
+            departure_flight=departure_flight,
+            return_flight=return_flight,
+            vehicle_make=booking.vehicle.make,
+            vehicle_model=booking.vehicle.model,
+            vehicle_colour=booking.vehicle.colour,
+            vehicle_registration=booking.vehicle.registration,
+            package_name=package_name,
+            amount_paid=amount_paid,
+        )
+
+        if email_sent:
+            booking.confirmation_email_sent = True
+            booking.confirmation_email_sent_at = datetime.utcnow()
+            db.commit()
+    except Exception as e:
+        print(f"Error sending confirmation email: {e}")
+
     return {
         "success": True,
-        "message": "Booking marked as paid and confirmed",
+        "message": "Booking confirmed and confirmation email sent" if email_sent else "Booking confirmed but email failed to send",
         "reference": booking.reference,
+        "email_sent": email_sent,
     }
 
 
