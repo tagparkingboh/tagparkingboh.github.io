@@ -900,3 +900,149 @@
     width: 100%;
   }
 }
+
+/* ========================================
+   Marketing Subscribers Section
+   ======================================== */
+
+.subscribers-table-container {
+  overflow-x: auto;
+  margin-top: 20px;
+}
+
+.subscribers-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.subscribers-table th,
+.subscribers-table td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.subscribers-table th {
+  background: #f7fafc;
+  font-weight: 600;
+  color: #4a5568;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.subscribers-table tbody tr:hover {
+  background: #f7fafc;
+}
+
+.subscribers-table tbody tr.unsubscribed {
+  opacity: 0.6;
+  background: #fafafa;
+}
+
+.promo-code-display {
+  font-family: monospace;
+  background: #edf2f7;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.no-code {
+  color: #a0aec0;
+  font-style: italic;
+}
+
+.discount-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #e0f0ff;
+  color: #2b6cb0;
+}
+
+.discount-badge.free {
+  background: #c6f6d5;
+  color: #22543d;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.pending {
+  background: #feebc8;
+  color: #c05621;
+}
+
+.status-badge.sent {
+  background: #bee3f8;
+  color: #2b6cb0;
+}
+
+.status-badge.used {
+  background: #c6f6d5;
+  color: #276749;
+}
+
+.status-badge.unsubscribed {
+  background: #fed7d7;
+  color: #c53030;
+}
+
+.promo-btn {
+  background: #ebf8ff;
+  color: #2b6cb0;
+  border: 1px solid #90cdf4;
+}
+
+.promo-btn:hover:not(:disabled) {
+  background: #bee3f8;
+}
+
+.promo-btn.free {
+  background: #c6f6d5;
+  color: #22543d;
+  border: 1px solid #68d391;
+}
+
+.promo-btn.free:hover:not(:disabled) {
+  background: #9ae6b4;
+}
+
+.subscribers-summary {
+  margin-top: 20px;
+  padding: 15px;
+  background: #f7fafc;
+  border-radius: 6px;
+  color: #718096;
+  font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .subscribers-table th,
+  .subscribers-table td {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .subscribers-table .actions-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .subscribers-table .action-btn {
+    width: 100%;
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+}

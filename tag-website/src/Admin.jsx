@@ -31,6 +31,12 @@ function Admin() {
   const [showRefundEmailModal, setShowRefundEmailModal] = useState(false)
   const [bookingForRefundEmail, setBookingForRefundEmail] = useState(null)
 
+  // Marketing subscribers state
+  const [subscribers, setSubscribers] = useState([])
+  const [loadingSubscribers, setLoadingSubscribers] = useState(false)
+  const [sendingPromoId, setSendingPromoId] = useState(null)
+  const [subscriberSearchTerm, setSubscriberSearchTerm] = useState('')
+
   // Redirect if not authenticated or not admin
   useEffect(() => {
     if (!loading) {
@@ -48,6 +54,65 @@ function Admin() {
       fetchBookings()
     }
   }, [activeTab, token])
+
+  // Fetch subscribers when marketing tab is active
+  useEffect(() => {
+    if (activeTab === 'marketing' && token) {
+      fetchSubscribers()
+    }
+  }, [activeTab, token])
+
+  const fetchSubscribers = async () => {
+    setLoadingSubscribers(true)
+    setError('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing-subscribers`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSubscribers(data.subscribers || [])
+      } else {
+        setError('Failed to load subscribers')
+      }
+    } catch (err) {
+      setError('Network error loading subscribers')
+    } finally {
+      setLoadingSubscribers(false)
+    }
+  }
+
+  const handleSendPromo = async (subscriberId, discountPercent) => {
+    setSendingPromoId(subscriberId)
+    setError('')
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/admin/marketing-subscribers/${subscriberId}/send-promo?discount_percent=${discountPercent}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      )
+
+      const data = await response.json()
+
+      if (response.ok) {
+        // Refresh subscribers list
+        fetchSubscribers()
+      } else {
+        setError(data.detail || 'Failed to send promo email')
+      }
+    } catch (err) {
+      setError('Network error sending promo email')
+    } finally {
+      setSendingPromoId(null)
+    }
+  }
 
   const fetchBookings = async () => {
     setLoadingData(true)
@@ -102,6 +167,20 @@ function Admin() {
 
     return filtered
   }, [bookings, searchTerm, statusFilter])
+
+  // Filter subscribers
+  const filteredSubscribers = useMemo(() => {
+    if (!subscriberSearchTerm.trim()) return subscribers
+
+    const search = subscriberSearchTerm.toLowerCase().trim()
+    return subscribers.filter(s =>
+      s.first_name?.toLowerCase().includes(search) ||
+      s.last_name?.toLowerCase().includes(search) ||
+      s.email?.toLowerCase().includes(search) ||
+      s.promo_code?.toLowerCase().includes(search) ||
+      `${s.first_name} ${s.last_name}`.toLowerCase().includes(search)
+    )
+  }, [subscribers, subscriberSearchTerm])
 
   const toggleBookingExpanded = (bookingId) => {
     setExpandedBookingId(expandedBookingId === bookingId ? null : bookingId)
@@ -374,6 +453,12 @@ function Admin() {
           onClick={() => setActiveTab('flights')}
         >
           Flights
+        </button>
+        <button
+          className={`admin-nav-item ${activeTab === 'marketing' ? 'active' : ''}`}
+          onClick={() => setActiveTab('marketing')}
+        >
+          Marketing
         </button>
         <button
           className={`admin-nav-item ${activeTab === 'reports' ? 'active' : ''}`}
@@ -715,6 +800,105 @@ function Admin() {
           <div className="admin-section">
             <h2>Flight Schedule</h2>
             <p className="admin-coming-soon">Flight management coming soon...</p>
+          </div>
+        )}
+
+        {activeTab === 'marketing' && (
+          <div className="admin-section">
+            <div className="admin-section-header">
+              <h2>Marketing Subscribers</h2>
+              <div className="admin-controls">
+                <input
+                  type="text"
+                  placeholder="Search by name, email, or promo code..."
+                  value={subscriberSearchTerm}
+                  onChange={(e) => setSubscriberSearchTerm(e.target.value)}
+                  className="admin-search"
+                />
+              </div>
+            </div>
+
+            {loadingSubscribers ? (
+              <p>Loading subscribers...</p>
+            ) : filteredSubscribers.length === 0 ? (
+              <p className="no-results">No subscribers found</p>
+            ) : (
+              <div className="subscribers-table-container">
+                <table className="subscribers-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Subscribed</th>
+                      <th>Promo Code</th>
+                      <th>Discount</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSubscribers.map((subscriber) => (
+                      <tr key={subscriber.id} className={subscriber.unsubscribed ? 'unsubscribed' : ''}>
+                        <td>{subscriber.first_name} {subscriber.last_name}</td>
+                        <td>{subscriber.email}</td>
+                        <td>{subscriber.subscribed_at ? new Date(subscriber.subscribed_at).toLocaleDateString() : '-'}</td>
+                        <td>
+                          {subscriber.promo_code ? (
+                            <span className="promo-code-display">{subscriber.promo_code}</span>
+                          ) : (
+                            <span className="no-code">Not generated</span>
+                          )}
+                        </td>
+                        <td>
+                          {subscriber.promo_code ? (
+                            <span className={`discount-badge ${subscriber.discount_percent === 100 ? 'free' : ''}`}>
+                              {subscriber.discount_percent}% off
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td>
+                          {subscriber.unsubscribed ? (
+                            <span className="status-badge unsubscribed">Unsubscribed</span>
+                          ) : subscriber.promo_code_used ? (
+                            <span className="status-badge used">Code Used</span>
+                          ) : subscriber.promo_code_sent ? (
+                            <span className="status-badge sent">Code Sent</span>
+                          ) : (
+                            <span className="status-badge pending">Pending</span>
+                          )}
+                        </td>
+                        <td className="actions-cell">
+                          {!subscriber.unsubscribed && !subscriber.promo_code_used && (
+                            <>
+                              <button
+                                className="action-btn promo-btn"
+                                onClick={() => handleSendPromo(subscriber.id, 10)}
+                                disabled={sendingPromoId === subscriber.id}
+                                title="Send 10% off promo code"
+                              >
+                                {sendingPromoId === subscriber.id ? 'Sending...' : '10% Off'}
+                              </button>
+                              <button
+                                className="action-btn promo-btn free"
+                                onClick={() => handleSendPromo(subscriber.id, 100)}
+                                disabled={sendingPromoId === subscriber.id}
+                                title="Send FREE parking promo code"
+                              >
+                                {sendingPromoId === subscriber.id ? 'Sending...' : 'FREE'}
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="subscribers-summary">
+              <p>Total: {subscribers.length} subscribers | Showing: {filteredSubscribers.length}</p>
+            </div>
           </div>
         )}
 

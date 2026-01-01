@@ -1249,6 +1249,199 @@ async def send_refund_email_endpoint(
 
 
 # =============================================================================
+# Marketing Subscribers Admin Endpoints
+# =============================================================================
+
+@app.get("/api/admin/marketing-subscribers")
+async def get_marketing_subscribers(
+    db: Session = Depends(get_db),
+):
+    """
+    Get all marketing subscribers for admin management.
+    """
+    subscribers = db.query(MarketingSubscriber).order_by(
+        MarketingSubscriber.subscribed_at.desc()
+    ).all()
+
+    return {
+        "count": len(subscribers),
+        "subscribers": [
+            {
+                "id": s.id,
+                "first_name": s.first_name,
+                "last_name": s.last_name,
+                "email": s.email,
+                "subscribed_at": s.subscribed_at.isoformat() if s.subscribed_at else None,
+                "welcome_email_sent": s.welcome_email_sent,
+                "welcome_email_sent_at": s.welcome_email_sent_at.isoformat() if s.welcome_email_sent_at else None,
+                "promo_code": s.promo_code,
+                "promo_code_sent": s.promo_code_sent,
+                "promo_code_sent_at": s.promo_code_sent_at.isoformat() if s.promo_code_sent_at else None,
+                "discount_percent": s.discount_percent,
+                "promo_code_used": s.promo_code_used,
+                "promo_code_used_at": s.promo_code_used_at.isoformat() if s.promo_code_used_at else None,
+                "promo_code_used_booking_id": s.promo_code_used_booking_id,
+                "unsubscribed": s.unsubscribed,
+                "unsubscribed_at": s.unsubscribed_at.isoformat() if s.unsubscribed_at else None,
+            }
+            for s in subscribers
+        ],
+    }
+
+
+@app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
+async def send_promo_email_to_subscriber(
+    subscriber_id: int,
+    discount_percent: int = Query(10, description="Discount percentage (10 or 100)"),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate a unique promo code and send promo email to a subscriber.
+
+    - Generates a unique promo code if one doesn't exist
+    - Sets the discount percentage (10% or 100%)
+    - Sends the promo code email
+    - Marks promo_code_sent = True
+    """
+    from email_service import generate_promo_code, send_promo_code_email
+
+    subscriber = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.id == subscriber_id
+    ).first()
+
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+
+    if subscriber.unsubscribed:
+        raise HTTPException(status_code=400, detail="Subscriber has unsubscribed")
+
+    if subscriber.promo_code_used:
+        raise HTTPException(status_code=400, detail="Promo code has already been used")
+
+    # Validate discount percent
+    if discount_percent not in [10, 100]:
+        raise HTTPException(status_code=400, detail="Discount must be 10 or 100 percent")
+
+    # Generate unique promo code if not already generated
+    if not subscriber.promo_code:
+        for _ in range(10):  # Max 10 attempts
+            new_code = generate_promo_code()
+            existing = db.query(MarketingSubscriber).filter(
+                MarketingSubscriber.promo_code == new_code
+            ).first()
+            if not existing:
+                subscriber.promo_code = new_code
+                break
+        else:
+            raise HTTPException(status_code=500, detail="Failed to generate unique promo code")
+
+    # Update discount percent
+    subscriber.discount_percent = discount_percent
+    db.commit()
+
+    # Send the email
+    if discount_percent == 100:
+        # Custom email for 100% off
+        email_sent = send_free_parking_promo_email(
+            first_name=subscriber.first_name,
+            email=subscriber.email,
+            promo_code=subscriber.promo_code,
+        )
+    else:
+        # Standard 10% off email
+        email_sent = send_promo_code_email(
+            first_name=subscriber.first_name,
+            email=subscriber.email,
+            promo_code=subscriber.promo_code,
+        )
+
+    if email_sent:
+        subscriber.promo_code_sent = True
+        subscriber.promo_code_sent_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Promo code email ({discount_percent}% off) sent to {subscriber.email}",
+            "promo_code": subscriber.promo_code,
+            "discount_percent": discount_percent,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send promo email. Check SendGrid configuration."
+        )
+
+
+def send_free_parking_promo_email(first_name: str, email: str, promo_code: str) -> bool:
+    """Send 100% off (FREE parking) promo code email."""
+    from email_service import send_email
+
+    subject = f"{first_name}, you've won FREE airport parking!"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: #1a1a1a; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .header h1 {{ color: #D9FF00; margin: 0; font-size: 28px; }}
+            .content {{ background: #ffffff; padding: 30px; }}
+            .promo-box {{ background: #1a1a1a; color: white; padding: 30px; text-align: center; border-radius: 10px; margin: 25px 0; }}
+            .promo-code {{ font-size: 42px; font-weight: bold; color: #D9FF00; letter-spacing: 4px; margin-bottom: 10px; }}
+            .promo-text {{ font-size: 18px; color: #D9FF00; font-weight: bold; }}
+            .free-text {{ font-size: 24px; color: #D9FF00; margin-top: 10px; }}
+            .cta-section {{ text-align: center; margin: 30px 0; }}
+            .button {{ display: inline-block; background: #D9FF00; color: #1a1a1a; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }}
+            .tagline {{ font-size: 18px; font-weight: bold; color: #1a1a1a; margin: 25px 0 15px 0; }}
+            .footer {{ background: #1a1a1a; padding: 25px; text-align: center; border-radius: 0 0 10px 10px; }}
+            .footer p {{ color: #ccc; margin: 5px 0; font-size: 12px; }}
+            .footer a {{ color: #D9FF00; text-decoration: none; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>TAG Parking</h1>
+            </div>
+            <div class="content">
+                <p>Hi {first_name},</p>
+                <p>Congratulations! You've been selected to receive <strong>100% FREE airport parking</strong> at Bournemouth Airport!</p>
+
+                <div class="promo-box">
+                    <div class="promo-text">YOUR EXCLUSIVE CODE</div>
+                    <div class="promo-code">{promo_code}</div>
+                    <div class="free-text">100% OFF - COMPLETELY FREE!</div>
+                </div>
+
+                <p class="tagline">How to claim your free parking:</p>
+                <ol>
+                    <li>Visit our website and start your booking</li>
+                    <li>Enter your promo code at checkout</li>
+                    <li>Enjoy free secure parking for your trip!</li>
+                </ol>
+
+                <p><strong>Note:</strong> This code can only be used once and is valid for a 1-week or 2-week booking.</p>
+
+                <div class="cta-section">
+                    <a href="https://tagparking.co.uk/bookings" class="button">Book Now - It's FREE!</a>
+                </div>
+            </div>
+            <div class="footer">
+                <p>TAG Parking - Bournemouth Airport</p>
+                <p>Secure Meet & Greet Parking</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return send_email(email, subject, html_content)
+
+
+# =============================================================================
 # Flight Schedule Endpoints (from database)
 # =============================================================================
 
