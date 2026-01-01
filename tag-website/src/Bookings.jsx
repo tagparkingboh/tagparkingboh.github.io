@@ -212,7 +212,7 @@ function Bookings() {
       return {
         ...f,
         flightKey: `${f.time}|${f.destinationCode}`,
-        displayText: `${f.time} ${f.airlineCode}${f.flightNumber} → ${cityName} (${f.destinationCode}), ${countryName}`
+        displayText: `${f.time} ${f.airlineCode}${f.flightNumber} → ${cityName}, ${countryName}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
   }, [flightsForAirline])
@@ -386,7 +386,7 @@ function Bookings() {
       return {
         ...f,
         flightKey: `${f.time}|${f.flightNumber}`,
-        displayText: `${f.airlineCode}${f.flightNumber} from ${cityName} (${f.originCode}) → arrives ${f.time}`
+        displayText: `${f.airlineCode}${f.flightNumber} from ${cityName} → arrives ${f.time}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
   }, [filteredArrivalsForDate])
@@ -1119,7 +1119,7 @@ function Bookings() {
                       const countryCode = parts[parts.length - 1]
                       const cityName = parts.slice(0, -1).join(', ')
                       const country = countryNames[countryCode] || countryCode
-                      return `${formData.dropoffAirline} from ${cityName} (${selectedDropoffFlight.destinationCode}), ${country}`
+                      return `${formData.dropoffAirline} from ${cityName}, ${country}`
                     })()}
                   </p>
 
