@@ -657,6 +657,11 @@
   margin: 0;
 }
 
+.promo-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .section-empty {
   color: #999;
   font-size: 0.875rem;

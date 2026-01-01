@@ -957,27 +957,44 @@ function Admin() {
                           </div>
                         </div>
 
-                        {/* 10% Off Promo Section */}
+                        {/* Promo Code Section */}
                         <div className="booking-section">
                           <div className="section-header-with-action">
-                            <h4>10% Off Promo</h4>
-                            {!subscriber.unsubscribed && !subscriber.promo_code_used && (!subscriber.promo_code || subscriber.discount_percent === 10) && (
-                              <button
-                                className="action-btn promo-btn"
-                                onClick={(e) => { e.stopPropagation(); handleSendPromo(subscriber.id, 10); }}
-                                disabled={sendingPromoId === subscriber.id || subscriber.promo_code_sent}
-                              >
-                                {sendingPromoId === subscriber.id ? 'Sending...' : subscriber.promo_code_sent ? 'Sent' : 'Send 10% Off'}
-                              </button>
+                            <h4>Promo Code</h4>
+                            {!subscriber.unsubscribed && !subscriber.promo_code_used && !subscriber.promo_code && (
+                              <div className="promo-buttons">
+                                <button
+                                  className="action-btn promo-btn"
+                                  onClick={(e) => { e.stopPropagation(); handleSendPromo(subscriber.id, 10); }}
+                                  disabled={sendingPromoId === subscriber.id}
+                                >
+                                  {sendingPromoId === subscriber.id ? 'Sending...' : 'Send 10% Off'}
+                                </button>
+                                <button
+                                  className="action-btn promo-btn free"
+                                  onClick={(e) => { e.stopPropagation(); handleSendPromo(subscriber.id, 100); }}
+                                  disabled={sendingPromoId === subscriber.id}
+                                >
+                                  {sendingPromoId === subscriber.id ? 'Sending...' : 'Send FREE'}
+                                </button>
+                              </div>
                             )}
                           </div>
                           <div className="booking-section-content">
-                            {subscriber.promo_code && subscriber.discount_percent === 10 ? (
+                            {subscriber.promo_code ? (
                               <div className="booking-detail-row">
                                 <div className="booking-detail">
                                   <span className="detail-label">Code</span>
                                   <span className="detail-value">
                                     <span className="promo-code-display">{subscriber.promo_code}</span>
+                                  </span>
+                                </div>
+                                <div className="booking-detail">
+                                  <span className="detail-label">Discount</span>
+                                  <span className="detail-value">
+                                    <span className={`discount-badge ${subscriber.discount_percent === 100 ? 'free' : ''}`}>
+                                      {subscriber.discount_percent === 100 ? 'FREE' : '10% Off'}
+                                    </span>
                                   </span>
                                 </div>
                                 <div className="booking-detail">
@@ -996,51 +1013,7 @@ function Admin() {
                                 </div>
                               </div>
                             ) : (
-                              <p className="section-empty">No 10% promo sent</p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Free Parking Promo Section */}
-                        <div className="booking-section">
-                          <div className="section-header-with-action">
-                            <h4>Free Parking Promo</h4>
-                            {!subscriber.unsubscribed && !subscriber.promo_code_used && (!subscriber.promo_code || subscriber.discount_percent === 100) && (
-                              <button
-                                className="action-btn promo-btn free"
-                                onClick={(e) => { e.stopPropagation(); handleSendPromo(subscriber.id, 100); }}
-                                disabled={sendingPromoId === subscriber.id || subscriber.promo_code_sent}
-                              >
-                                {sendingPromoId === subscriber.id ? 'Sending...' : subscriber.promo_code_sent ? 'Sent' : 'Send FREE'}
-                              </button>
-                            )}
-                          </div>
-                          <div className="booking-section-content">
-                            {subscriber.promo_code && subscriber.discount_percent === 100 ? (
-                              <div className="booking-detail-row">
-                                <div className="booking-detail">
-                                  <span className="detail-label">Code</span>
-                                  <span className="detail-value">
-                                    <span className="promo-code-display">{subscriber.promo_code}</span>
-                                  </span>
-                                </div>
-                                <div className="booking-detail">
-                                  <span className="detail-label">Status</span>
-                                  <span className="detail-value">
-                                    <span className={`status-badge ${subscriber.promo_code_used ? 'used' : 'sent'}`}>
-                                      {subscriber.promo_code_used ? 'Used' : 'Sent'}
-                                    </span>
-                                  </span>
-                                </div>
-                                <div className="booking-detail">
-                                  <span className="detail-label">Sent At</span>
-                                  <span className="detail-value">
-                                    {subscriber.promo_code_sent_at ? new Date(subscriber.promo_code_sent_at).toLocaleString() : '-'}
-                                  </span>
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="section-empty">No free promo sent</p>
+                              <p className="section-empty">No promo code sent yet</p>
                             )}
                           </div>
                         </div>
