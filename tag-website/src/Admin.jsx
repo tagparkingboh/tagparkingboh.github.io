@@ -920,8 +920,20 @@ function Admin() {
                       className="booking-card-header subscriber-header"
                       onClick={() => setExpandedSubscriberId(expandedSubscriberId === subscriber.id ? null : subscriber.id)}
                     >
-                      <span className="subscriber-name">{subscriber.first_name} {subscriber.last_name}</span>
-                      <span className="subscriber-email">{subscriber.email}</span>
+                      <div className="subscriber-info">
+                        <span className="subscriber-name">{subscriber.first_name} {subscriber.last_name}</span>
+                        <span className="subscriber-email">{subscriber.email}</span>
+                      </div>
+                      <div className="subscriber-meta">
+                        <span className={`subscriber-status ${subscriber.welcome_email_sent ? 'sent' : 'pending'}`}>
+                          Welcome: {subscriber.welcome_email_sent ? 'Sent' : 'Pending'}
+                        </span>
+                        {subscriber.subscribed_at && (
+                          <span className="subscriber-date">
+                            {new Date(subscriber.subscribed_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Expanded Content */}
