@@ -591,6 +591,34 @@
   min-width: 150px;
 }
 
+.booking-card-header.booking-header-stacked {
+  display: block;
+}
+
+.booking-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.booking-header-top {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.booking-ref-large {
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: #1a1a2e;
+}
+
+.booking-customer-name {
+  font-size: 0.875rem;
+  color: #666;
+}
+
 .booking-card-header.subscriber-header {
   display: flex;
   justify-content: space-between;

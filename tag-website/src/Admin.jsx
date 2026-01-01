@@ -583,20 +583,19 @@ function Admin() {
                   >
                     {/* Collapsed Header Row */}
                     <div
-                      className="booking-card-header"
+                      className="booking-card-header booking-header-stacked"
                       onClick={() => toggleBookingExpanded(booking.id)}
                     >
-                      <div className="booking-header-main">
-                        <span className="booking-ref">{booking.reference}</span>
-                        {booking.booking_source === 'manual' && (
-                          <span className="booking-source-badge manual">Manual</span>
-                        )}
-                        <span className="booking-name">
+                      <div className="booking-header-info">
+                        <div className="booking-header-top">
+                          <span className="booking-ref-large">{booking.reference}</span>
+                          {booking.booking_source === 'manual' && (
+                            <span className="booking-source-badge manual">Manual</span>
+                          )}
+                        </div>
+                        <span className="booking-customer-name">
                           {booking.customer?.first_name} {booking.customer?.last_name}
                         </span>
-                      </div>
-                      <div className="booking-expand-icon">
-                        {expandedBookingId === booking.id ? '−' : '+'}
                       </div>
                     </div>
 
