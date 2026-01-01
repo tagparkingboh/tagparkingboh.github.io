@@ -179,6 +179,65 @@ def send_promo_code_email(first_name: str, email: str, promo_code: str = "TAG10"
     return send_email(email, subject, html_content)
 
 
+def send_login_code_email(email: str, first_name: str, code: str) -> bool:
+    """
+    Send 6-digit login code to user.
+
+    Args:
+        email: User's email address
+        first_name: User's first name
+        code: 6-digit login code
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    subject = f"Your TAG login code: {code}"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <!-- Header -->
+            <div style="background: #1a1a2e; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+                <h1 style="color: #D9FF00; margin: 0; font-size: 32px; font-weight: bold;">TAG</h1>
+                <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px;">Staff Login</p>
+            </div>
+
+            <!-- Main Content -->
+            <div style="background: #ffffff; padding: 30px; border-radius: 0 0 10px 10px;">
+                <p style="font-size: 16px; margin-bottom: 20px;">Hi {first_name},</p>
+
+                <p style="font-size: 16px; margin-bottom: 25px;">
+                    Here's your login code. It expires in 10 minutes.
+                </p>
+
+                <!-- Code Box -->
+                <div style="background: #1a1a2e; padding: 25px; text-align: center; border-radius: 8px; margin-bottom: 25px;">
+                    <p style="color: #D9FF00; margin: 0; font-size: 36px; font-weight: bold; letter-spacing: 8px;">{code}</p>
+                </div>
+
+                <p style="font-size: 14px; color: #666;">
+                    If you didn't request this code, you can safely ignore this email.
+                </p>
+            </div>
+
+            <!-- Footer -->
+            <div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">
+                <p style="margin: 0;">TAG Parking | Bournemouth International Airport</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return send_email(email, subject, html_content)
+
+
 def send_booking_confirmation_email(
     email: str,
     first_name: str,
@@ -269,6 +328,153 @@ def send_booking_confirmation_email(
         return False
     except Exception as e:
         logger.error(f"Error loading booking confirmation email template: {e}")
+        return False
+
+    return send_email(email, subject, html_content)
+
+
+def send_cancellation_email(
+    email: str,
+    first_name: str,
+    booking_reference: str,
+    dropoff_date: str,
+) -> bool:
+    """
+    Send booking cancellation email using the HTML template.
+
+    Args:
+        email: Customer email address
+        first_name: Customer first name
+        booking_reference: Unique booking reference (e.g., TAG-XXXXXXXX)
+        dropoff_date: Formatted drop-off date (e.g., "Saturday, 28 December 2025")
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    subject = f"Booking Cancelled - {booking_reference}"
+
+    # Load the HTML template
+    template_path = EMAIL_TEMPLATES_DIR / "booking_cancellation_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{BOOKING_REFERENCE}}", booking_reference)
+        html_content = html_content.replace("{{DROPOFF_DATE}}", dropoff_date)
+
+    except FileNotFoundError:
+        logger.error(f"Booking cancellation email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading booking cancellation email template: {e}")
+        return False
+
+    return send_email(email, subject, html_content)
+
+
+def send_refund_email(
+    email: str,
+    first_name: str,
+    booking_reference: str,
+    refund_amount: str,
+) -> bool:
+    """
+    Send refund confirmation email using the HTML template.
+
+    Args:
+        email: Customer email address
+        first_name: Customer first name
+        booking_reference: Unique booking reference (e.g., TAG-XXXXXXXX)
+        refund_amount: Amount refunded (e.g., "£99.00")
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    subject = f"Refund Processed - {booking_reference}"
+
+    # Load the HTML template
+    template_path = EMAIL_TEMPLATES_DIR / "booking_refund_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{BOOKING_REFERENCE}}", booking_reference)
+        html_content = html_content.replace("{{REFUND_AMOUNT}}", refund_amount)
+
+    except FileNotFoundError:
+        logger.error(f"Booking refund email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading booking refund email template: {e}")
+        return False
+
+    return send_email(email, subject, html_content)
+
+
+def send_manual_booking_payment_email(
+    email: str,
+    first_name: str,
+    dropoff_date: str,
+    dropoff_time: str,
+    pickup_date: str,
+    pickup_time: str,
+    vehicle_make: str,
+    vehicle_model: str,
+    vehicle_colour: str,
+    vehicle_registration: str,
+    amount: str,
+    payment_link: str,
+) -> bool:
+    """
+    Send payment request email for manual bookings.
+
+    Args:
+        email: Customer email address
+        first_name: Customer first name
+        dropoff_date: Formatted drop-off date (e.g., "Saturday, 28 December 2025")
+        dropoff_time: Drop-off time (e.g., "10:15")
+        pickup_date: Formatted pickup date (e.g., "Saturday, 4 January 2026")
+        pickup_time: Pickup time (e.g., "15:20")
+        vehicle_make: Vehicle make
+        vehicle_model: Vehicle model
+        vehicle_colour: Vehicle colour
+        vehicle_registration: Registration plate
+        amount: Amount to pay (e.g., "£99.00")
+        payment_link: Stripe payment link URL
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    subject = "Complete Your TAG Parking Booking"
+
+    # Load the HTML template
+    template_path = EMAIL_TEMPLATES_DIR / "manual_booking_payment_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{DROPOFF_DATE}}", dropoff_date)
+        html_content = html_content.replace("{{DROPOFF_TIME}}", dropoff_time)
+        html_content = html_content.replace("{{PICKUP_DATE}}", pickup_date)
+        html_content = html_content.replace("{{PICKUP_TIME}}", pickup_time)
+        html_content = html_content.replace("{{VEHICLE_MAKE}}", vehicle_make)
+        html_content = html_content.replace("{{VEHICLE_MODEL}}", vehicle_model)
+        html_content = html_content.replace("{{VEHICLE_COLOUR}}", vehicle_colour)
+        html_content = html_content.replace("{{VEHICLE_REGISTRATION}}", vehicle_registration)
+        html_content = html_content.replace("{{AMOUNT}}", amount)
+        html_content = html_content.replace("{{PAYMENT_LINK}}", payment_link)
+
+    except FileNotFoundError:
+        logger.error(f"Manual booking payment email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading manual booking payment email template: {e}")
         return False
 
     return send_email(email, subject, html_content)

@@ -216,3 +216,43 @@ class AdminBookingRequest(BaseModel):
     # Admin notes
     admin_notes: Optional[str] = None
     booking_source: str = "admin"  # "admin", "phone", "walk-in"
+
+
+class ManualBookingRequest(BaseModel):
+    """
+    Request to create a manual booking with payment link.
+    Used when admin creates a booking and sends payment link to customer.
+    Booking is NOT confirmed until customer pays via the link.
+    """
+    # Customer details
+    first_name: str
+    last_name: str
+    email: str
+    phone: Optional[str] = None
+
+    # Billing address
+    billing_address1: str
+    billing_address2: Optional[str] = None
+    billing_city: str
+    billing_county: Optional[str] = None
+    billing_postcode: str
+    billing_country: str = "United Kingdom"
+
+    # Vehicle details
+    registration: str
+    make: str
+    model: str
+    colour: str
+
+    # Trip details
+    dropoff_date: date
+    dropoff_time: str  # "HH:MM"
+    pickup_date: date
+    pickup_time: str  # "HH:MM"
+
+    # Payment
+    stripe_payment_link: str
+    amount_pence: int
+
+    # Notes
+    notes: Optional[str] = None

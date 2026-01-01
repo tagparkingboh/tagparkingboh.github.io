@@ -6,6 +6,7 @@ For integration tests with Stripe's test mode, use the sandbox keys.
 """
 import pytest
 import pytest_asyncio
+import os
 from unittest.mock import patch, MagicMock
 from httpx import AsyncClient, ASGITransport
 
@@ -13,13 +14,12 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from main import app
 from stripe_service import calculate_price_in_pence
-
 
 @pytest_asyncio.fixture
 async def client():
     """Create an async test client."""
+    from main import app
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

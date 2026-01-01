@@ -300,6 +300,111 @@
   color: #888888;
 }
 
+.phone-input.invalid {
+  border-color: #ff4444;
+}
+
+/* Required field indicator */
+.required {
+  color: #ff4444;
+  font-weight: 600;
+  margin-left: 2px;
+}
+
+/* Input error state */
+.input-error {
+  border-color: #ff4444 !important;
+}
+
+.input-error:focus {
+  border-color: #ff4444 !important;
+  box-shadow: 0 0 0 2px rgba(255, 68, 68, 0.2);
+}
+
+.field-error {
+  color: #ff4444;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  display: block;
+}
+
+.date-info {
+  color: #D9FF00;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+}
+
+/* Label with help icon */
+.label-with-help {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.label-with-help label {
+  margin-bottom: 0;
+}
+
+.help-icon-wrapper {
+  position: relative;
+}
+
+.help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #555555;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.help-icon:hover {
+  background: #D9FF00;
+  color: #1a1a1a;
+}
+
+.help-tooltip {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 0.5rem;
+  width: 280px;
+  padding: 0.75rem 1rem;
+  background: #2a2a2a;
+  border: 1px solid #555555;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #cccccc;
+  line-height: 1.5;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.help-tooltip a {
+  color: #D9FF00;
+  text-decoration: none;
+}
+
+.help-tooltip a:hover {
+  text-decoration: underline;
+}
+
+.help-icon-wrapper:hover .help-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* Country dropdown styling */
 .PhoneInputCountrySelect {
   position: absolute;
@@ -589,13 +694,13 @@
   display: none;
 }
 
-/* Limit calendar to 5 weeks */
-.five-weeks .react-datepicker__month {
-  overflow: hidden;
+/* Fixed height calendar to prevent jumping when changing months */
+.fixed-height-calendar .react-datepicker__month {
+  min-height: 200px;
 }
 
-.five-weeks .react-datepicker__week:nth-child(6) {
-  display: none;
+.fixed-height-calendar .react-datepicker__month-container {
+  min-height: 280px;
 }
 
 /* Flight Slots */
@@ -759,6 +864,65 @@
   background: rgba(217, 255, 0, 0.1);
 }
 
+/* Slot info wrapper */
+.slot-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 1;
+  gap: 1rem;
+}
+
+.slot-info .slot-time {
+  flex: 1;
+}
+
+.slot-info .slot-label {
+  flex: 1;
+  text-align: center;
+}
+
+/* Last slot available indicator */
+.slot-card.last-slot {
+  border-color: #FF9500;
+}
+
+.last-slot-badge {
+  padding: 0.3rem 0.5rem;
+  background: #FF9500;
+  color: #1a1a1a;
+  font-size: 0.65rem;
+  font-weight: 600;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  text-align: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 1rem;
+}
+
+/* Mobile only: badge below, compact and centered */
+@media (max-width: 480px) {
+  .slot-card.last-slot {
+    flex-direction: column;
+  }
+
+  .slot-card.last-slot .slot-info {
+    width: 100%;
+  }
+
+  .last-slot-badge {
+    margin-top: 0.5rem;
+    margin-left: 0;
+  }
+}
+
+.dropoff-slot input:checked + .slot-card.last-slot {
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
+}
+
 /* Pickup Times */
 .pickup-times {
   display: flex;
@@ -891,15 +1055,19 @@
   justify-content: space-between;
   padding: 0.5rem 0;
   font-size: 0.9rem;
+  gap: 1rem;
 }
 
 .summary-item span:first-child {
   color: #bbbbbb;
+  flex-shrink: 0;
 }
 
 .summary-item span:last-child {
   color: #ffffff;
   font-weight: 500;
+  text-align: right;
+  word-break: break-word;
 }
 
 .summary-item.total {
@@ -1286,6 +1454,13 @@
 .payment-success p {
   color: #bbbbbb;
   margin-bottom: 0.5rem;
+}
+
+.payment-success .spam-notice {
+  font-size: 0.85rem;
+  color: #888888;
+  font-style: italic;
+  margin-top: 0.25rem;
 }
 
 .booking-reference-display {
@@ -1675,5 +1850,157 @@
   .next-btn,
   .submit-btn {
     order: 1;
+  }
+}
+
+
+/* Welcome Modal */
+.welcome-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.welcome-modal {
+  background: #2a2a2a;
+  border-radius: 16px;
+  padding: 2.5rem;
+  max-width: 480px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.welcome-modal-icon {
+  margin-bottom: 1.5rem;
+}
+
+.welcome-modal-icon img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.welcome-modal h2 {
+  font-size: 1.75rem;
+  color: white;
+  margin: 0 0 1.25rem 0;
+  font-weight: 700;
+}
+
+.welcome-modal p {
+  font-size: 1rem;
+  color: #b0b0b0;
+  line-height: 1.6;
+  margin: 0 0 1rem 0;
+}
+
+.welcome-modal p:last-of-type {
+  margin-bottom: 1.5rem;
+}
+
+.welcome-modal-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.welcome-modal-contact .contact-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: #D9FF00;
+  text-decoration: none;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.welcome-modal-contact .contact-link:hover {
+  color: #e8ff4d;
+}
+
+.welcome-modal-contact .contact-link svg {
+  flex-shrink: 0;
+}
+
+.welcome-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.welcome-modal-btn {
+  background: #D9FF00;
+  color: #1a1a1a;
+  border: none;
+  padding: 1rem 2.5rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Gilroy', sans-serif;
+}
+
+.welcome-modal-btn:hover {
+  background: #e8ff4d;
+  transform: translateY(-2px);
+}
+
+.welcome-modal-back-btn {
+  background: transparent;
+  color: #999;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s;
+  font-family: 'Gilroy', sans-serif;
+}
+
+.welcome-modal-back-btn:hover {
+  color: #fff;
+}
+
+@media (max-width: 480px) {
+  .welcome-modal {
+    padding: 1.5rem;
+  }
+
+  .welcome-modal h2 {
+    font-size: 1.5rem;
+  }
+
+  .welcome-modal p {
+    font-size: 0.95rem;
+  }
+
+  .welcome-modal-btn {
+    width: 100%;
+    padding: 1rem;
   }
 }

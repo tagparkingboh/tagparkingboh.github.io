@@ -103,6 +103,10 @@ class Booking(Base):
     dropoff_flight_number = Column(String(20))
     dropoff_destination = Column(String(100))
 
+    # Flight slot booking (for slot release on cancellation)
+    departure_id = Column(Integer, ForeignKey("flight_departures.id"), nullable=True)
+    dropoff_slot = Column(String(10), nullable=True)  # "early" or "late"
+
     # Pick-up details
     pickup_date = Column(Date, nullable=False)
     pickup_time = Column(Time)  # Arrival/landing time of return flight
@@ -113,10 +117,18 @@ class Booking(Base):
 
     # Admin notes
     notes = Column(Text)
+    admin_notes = Column(Text)  # Internal notes from admin
+
+    # Booking source (online, manual, admin, phone)
+    booking_source = Column(String(20), default="online")
 
     # Email tracking
     confirmation_email_sent = Column(Boolean, default=False)
     confirmation_email_sent_at = Column(DateTime(timezone=True))
+    cancellation_email_sent = Column(Boolean, default=False)
+    cancellation_email_sent_at = Column(DateTime(timezone=True))
+    refund_email_sent = Column(Boolean, default=False)
+    refund_email_sent_at = Column(DateTime(timezone=True))
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -126,6 +138,7 @@ class Booking(Base):
     customer = relationship("Customer", back_populates="bookings")
     vehicle = relationship("Vehicle", back_populates="bookings")
     payment = relationship("Payment", back_populates="booking", uselist=False)
+    departure = relationship("FlightDeparture")
 
     def __repr__(self):
         return f"<Booking {self.reference} - {self.status.value}>"
@@ -146,6 +159,9 @@ class Payment(Base):
     amount_pence = Column(Integer, nullable=False)  # Amount in pence
     currency = Column(String(3), default="gbp")
     status = Column(Enum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
+
+    # Manual booking payment link (for admin-created bookings)
+    stripe_payment_link = Column(String(500))
 
     # Refund tracking
     refund_id = Column(String(255))
@@ -181,9 +197,15 @@ class FlightDeparture(Base):
     destination_code = Column(String(10), nullable=False)
     destination_name = Column(String(100))
 
-    # Slot availability (boolean - simpler and clearer)
-    is_slot_1_booked = Column(Boolean, default=False)  # 2¾ hours before departure
-    is_slot_2_booked = Column(Boolean, default=False)  # 2 hours before departure
+    # Capacity tier: 0, 2, 4, 6, or 8 (determines max slots available)
+    # 0 = Call Us only, 2 = 1+1, 4 = 2+2, 6 = 3+3, 8 = 4+4
+    capacity_tier = Column(Integer, default=0, nullable=False)
+
+    # Slot booking counters (how many booked at each time)
+    # Early slot: 2¾ hours (165 min) before departure
+    # Late slot: 2 hours (120 min) before departure
+    slots_booked_early = Column(Integer, default=0, nullable=False)
+    slots_booked_late = Column(Integer, default=0, nullable=False)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -192,9 +214,49 @@ class FlightDeparture(Base):
         return f"<FlightDeparture {self.flight_number} on {self.date} at {self.departure_time}>"
 
     @property
+    def max_slots_per_time(self):
+        """Max slots available at each time (early/late)."""
+        return self.capacity_tier // 2
+
+    @property
+    def early_slots_available(self):
+        """Number of early slots still available."""
+        return max(0, self.max_slots_per_time - self.slots_booked_early)
+
+    @property
+    def late_slots_available(self):
+        """Number of late slots still available."""
+        return max(0, self.max_slots_per_time - self.slots_booked_late)
+
+    @property
+    def is_call_us_only(self):
+        """True if this flight has 0 capacity (Call Us only)."""
+        return self.capacity_tier == 0
+
+    @property
     def all_slots_booked(self):
         """Check if all slots are booked."""
-        return self.is_slot_1_booked and self.is_slot_2_booked
+        return self.early_slots_available == 0 and self.late_slots_available == 0
+
+    @property
+    def total_slots_available(self):
+        """Total slots available across both times."""
+        return self.early_slots_available + self.late_slots_available
+
+    @property
+    def is_last_slot(self):
+        """True if only 1 slot remains (either early or late)."""
+        return self.total_slots_available == 1
+
+    @property
+    def early_is_last_slot(self):
+        """True if the early slot is the last one available."""
+        return self.early_slots_available == 1 and self.late_slots_available == 0
+
+    @property
+    def late_is_last_slot(self):
+        """True if the late slot is the last one available."""
+        return self.late_slots_available == 1 and self.early_slots_available == 0
 
 
 class FlightArrival(Base):
@@ -293,14 +355,30 @@ class MarketingSubscriber(Base):
 
     # Email tracking
     welcome_email_sent = Column(Boolean, default=False)
-    promo_code_sent = Column(Boolean, default=False)
+    promo_code_sent = Column(Boolean, default=False)  # Legacy - kept for backwards compatibility
 
-    # Promo code tracking
+    # Legacy promo code tracking (kept for backwards compatibility)
     promo_code = Column(String(20), unique=True, index=True)  # Unique code like "TAG-XXXX-XXXX"
     promo_code_used = Column(Boolean, default=False)
     promo_code_used_booking_id = Column(Integer, ForeignKey("bookings.id"))  # Which booking used it
     promo_code_used_at = Column(DateTime(timezone=True))
     discount_percent = Column(Integer, default=10)  # Discount percentage (default 10%, can be up to 100%)
+
+    # 10% OFF Promo - separate tracking
+    promo_10_code = Column(String(20), unique=True, index=True)  # 10% off promo code
+    promo_10_sent = Column(Boolean, default=False)
+    promo_10_sent_at = Column(DateTime(timezone=True))
+    promo_10_used = Column(Boolean, default=False)
+    promo_10_used_at = Column(DateTime(timezone=True))
+    promo_10_used_booking_id = Column(Integer, ForeignKey("bookings.id"))
+
+    # FREE Parking Promo (100% off) - separate tracking
+    promo_free_code = Column(String(20), unique=True, index=True)  # Free parking promo code
+    promo_free_sent = Column(Boolean, default=False)
+    promo_free_sent_at = Column(DateTime(timezone=True))
+    promo_free_used = Column(Boolean, default=False)
+    promo_free_used_at = Column(DateTime(timezone=True))
+    promo_free_used_booking_id = Column(Integer, ForeignKey("bookings.id"))
 
     # Source tracking
     source = Column(String(50), default="landing_page")  # landing_page, homepage, etc.
@@ -314,10 +392,12 @@ class MarketingSubscriber(Base):
     # Timestamps
     subscribed_at = Column(DateTime(timezone=True), server_default=func.now())
     welcome_email_sent_at = Column(DateTime(timezone=True))
-    promo_code_sent_at = Column(DateTime(timezone=True))
+    promo_code_sent_at = Column(DateTime(timezone=True))  # Legacy
 
-    # Relationship to booking (optional)
+    # Relationships to bookings
     used_booking = relationship("Booking", foreign_keys=[promo_code_used_booking_id])
+    promo_10_booking = relationship("Booking", foreign_keys=[promo_10_used_booking_id])
+    promo_free_booking = relationship("Booking", foreign_keys=[promo_free_used_booking_id])
 
     def __repr__(self):
         return f"<MarketingSubscriber {self.first_name} {self.last_name} ({self.email})>"
@@ -351,3 +431,61 @@ class ErrorLog(Base):
 
     def __repr__(self):
         return f"<ErrorLog {self.severity.value} - {self.error_type}: {self.message[:50]}>"
+
+
+class User(Base):
+    """Employee/Admin users for internal access."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
+    phone = Column(String(20))
+
+    # Role
+    is_admin = Column(Boolean, default=False, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    last_login = Column(DateTime(timezone=True))
+
+    def __repr__(self):
+        role = "Admin" if self.is_admin else "Employee"
+        return f"<User {self.first_name} {self.last_name} ({role})>"
+
+
+class LoginCode(Base):
+    """6-digit login codes sent via email."""
+    __tablename__ = "login_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    code = Column(String(6), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<LoginCode {self.code} for user {self.user_id}>"
+
+
+class Session(Base):
+    """User sessions - expire after 8 hours."""
+    __tablename__ = "sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<Session for user {self.user_id}>"

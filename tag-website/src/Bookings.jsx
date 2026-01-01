@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
 import { getMakes, getModels } from 'car-info'
-import PhoneInput from 'react-phone-number-input'
+import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import StripePayment from './components/StripePayment'
 import 'react-datepicker/dist/react-datepicker.css'
@@ -50,6 +50,12 @@ const generateSessionId = () => {
   return `sess_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
 }
 
+// Normalize airline names (merge Ryanair UK into Ryanair)
+const normalizeAirlineName = (name) => {
+  if (name === 'Ryanair UK') return 'Ryanair'
+  return name
+}
+
 function Bookings() {
   const navigate = useNavigate()
   const [currentStep, setCurrentStep] = useState(1)
@@ -58,6 +64,8 @@ function Bookings() {
   const [customerId, setCustomerId] = useState(null)
   const [vehicleId, setVehicleId] = useState(null)
   const [saving, setSaving] = useState(false)
+  // Welcome modal state - shown once when user lands on booking page
+  const [showWelcomeModal, setShowWelcomeModal] = useState(true)
 
   // Session ID for audit trail - persists across the booking flow
   const sessionIdRef = useRef(generateSessionId())
@@ -178,16 +186,16 @@ function Bookings() {
     fetchDepartures()
   }, [formData.dropoffDate, API_BASE_URL])
 
-  // Get unique airlines for selected date
+  // Get unique airlines for selected date (normalized - Ryanair UK merged into Ryanair)
   const airlinesForDropoff = useMemo(() => {
-    const airlines = [...new Set(departuresForDate.map(f => f.airlineName))]
+    const airlines = [...new Set(departuresForDate.map(f => normalizeAirlineName(f.airlineName)))]
     return airlines.sort()
   }, [departuresForDate])
 
-  // Filter flights by selected airline
+  // Filter flights by selected airline (matches normalized name)
   const flightsForAirline = useMemo(() => {
     if (!formData.dropoffAirline) return []
-    return departuresForDate.filter(f => f.airlineName === formData.dropoffAirline)
+    return departuresForDate.filter(f => normalizeAirlineName(f.airlineName) === formData.dropoffAirline)
   }, [departuresForDate, formData.dropoffAirline])
 
   // Get flights with time and destination combined for selected airline
@@ -215,32 +223,62 @@ function Bookings() {
     return flightsForDropoff.find(f => f.flightKey === formData.dropoffFlight)
   }, [flightsForDropoff, formData.dropoffFlight])
 
+  // Check if flight is "Call Us only" (capacity_tier = 0)
+  const isCallUsOnly = useMemo(() => {
+    if (!selectedDropoffFlight) return false
+    return selectedDropoffFlight.is_call_us_only || selectedDropoffFlight.capacity_tier === 0
+  }, [selectedDropoffFlight])
+
   // Calculate drop-off time slots (2¾h, 2h before departure)
-  // Only show available slots (not already booked)
+  // Shows slots based on capacity tier and remaining availability
   const dropoffSlots = useMemo(() => {
     if (!selectedDropoffFlight) return []
+
+    // If this is a "Call Us only" flight, no slots available
+    if (isCallUsOnly) return []
 
     const [hours, minutes] = selectedDropoffFlight.time.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
     const slots = []
 
-    // Slot 1: 2¾ hours before (165 minutes)
-    if (!selectedDropoffFlight.is_slot_1_booked) {
-      slots.push({ id: '165', label: '2¾ hours before', time: formatMinutesToTime(departureMinutes - 165) })
+    // Early slot: 2¾ hours before (165 minutes) - show if slots available
+    const earlyAvailable = selectedDropoffFlight.early_slots_available ??
+      (selectedDropoffFlight.is_slot_1_booked === false ? 1 : 0)
+    if (earlyAvailable > 0) {
+      slots.push({
+        id: '165',
+        label: '2¾ hours before',
+        time: formatMinutesToTime(departureMinutes - 165),
+        available: earlyAvailable,
+        isLastSlot: selectedDropoffFlight.early_is_last_slot || selectedDropoffFlight.is_last_slot
+      })
     }
 
-    // Slot 2: 2 hours before (120 minutes)
-    if (!selectedDropoffFlight.is_slot_2_booked) {
-      slots.push({ id: '120', label: '2 hours before', time: formatMinutesToTime(departureMinutes - 120) })
+    // Late slot: 2 hours before (120 minutes) - show if slots available
+    const lateAvailable = selectedDropoffFlight.late_slots_available ??
+      (selectedDropoffFlight.is_slot_2_booked === false ? 1 : 0)
+    if (lateAvailable > 0) {
+      slots.push({
+        id: '120',
+        label: '2 hours before',
+        time: formatMinutesToTime(departureMinutes - 120),
+        available: lateAvailable,
+        isLastSlot: selectedDropoffFlight.late_is_last_slot || selectedDropoffFlight.is_last_slot
+      })
     }
 
     return slots
-  }, [selectedDropoffFlight])
+  }, [selectedDropoffFlight, isCallUsOnly])
 
-  // Check if flight is fully booked (both slots taken)
+  // Check if flight is fully booked (all slots taken) or Call Us only
   const isFlightFullyBooked = useMemo(() => {
     if (!selectedDropoffFlight) return false
+    // New capacity-based check
+    if (selectedDropoffFlight.all_slots_booked !== undefined) {
+      return selectedDropoffFlight.all_slots_booked
+    }
+    // Fallback for old data format
     return selectedDropoffFlight.is_slot_1_booked && selectedDropoffFlight.is_slot_2_booked
   }, [selectedDropoffFlight])
 
@@ -307,14 +345,33 @@ function Bookings() {
     fetchPricing()
   }, [formData.dropoffDate, formData.pickupDate, API_BASE_URL])
 
-  // Filter arrivals by airline and destination (from fetched data)
+  // Filter arrivals by airline and destination, then find the best matching return flight
   const filteredArrivalsForDate = useMemo(() => {
     if (!formData.dropoffAirline || !selectedDropoffFlight) return []
-    // Filter by same airline and origin matching the departure destination
-    return arrivalsForDate.filter(f =>
-      f.airlineName === formData.dropoffAirline &&
+
+    // Filter by same airline (normalized) and origin matching the departure destination
+    const matchingFlights = arrivalsForDate.filter(f =>
+      normalizeAirlineName(f.airlineName) === formData.dropoffAirline &&
       f.originCode === selectedDropoffFlight.destinationCode
     )
+
+    // If only one or no flights, return as-is
+    if (matchingFlights.length <= 1) return matchingFlights
+
+    // Find the best matching return flight based on flight number similarity
+    // e.g., departure U22697 should match return U22696 (typically ±1)
+    const departureNumeric = parseInt(selectedDropoffFlight.flightNumber.replace(/\D/g, ''), 10)
+
+    // Score each flight by how close the flight number is to the departure
+    const scoredFlights = matchingFlights.map(f => {
+      const arrivalNumeric = parseInt(f.flightNumber.replace(/\D/g, ''), 10)
+      const numDiff = Math.abs(arrivalNumeric - departureNumeric)
+      return { ...f, score: numDiff }
+    })
+
+    // Sort by score (closest flight number first) and return only the best match
+    scoredFlights.sort((a, b) => a.score - b.score)
+    return [scoredFlights[0]]
   }, [arrivalsForDate, formData.dropoffAirline, selectedDropoffFlight])
 
   // Get arrival flights for pickup with display details (filtered by airline and destination)
@@ -348,11 +405,21 @@ function Bookings() {
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
   }
 
+  // Convert string to Title Case
+  const toTitleCase = (str) => {
+    if (!str) return str
+    return str.toLowerCase().replace(/\b\w/g, char => char.toUpperCase())
+  }
+
+  // Fields that should be title case
+  const titleCaseFields = ['colour', 'customMake', 'customModel', 'billingAddress1', 'billingAddress2', 'billingCity', 'billingCounty']
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
+    const processedValue = titleCaseFields.includes(name) ? toTitleCase(value) : value
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : processedValue
     }))
 
     // Reset dependent fields when parent changes
@@ -596,33 +663,42 @@ function Bookings() {
 
     const selectedAddress = addressList.find(addr => addr.uprn === selectedUprn)
     if (selectedAddress) {
-      // Build Address Line 1: combine building name/number with thoroughfare
-      let address1Parts = []
+      let address1 = ''
+      let address2 = ''
 
-      if (selectedAddress.building_name) {
-        address1Parts.push(selectedAddress.building_name)
-      }
+      // Build street address (building number + thoroughfare)
+      let streetParts = []
       if (selectedAddress.building_number) {
-        address1Parts.push(selectedAddress.building_number)
+        streetParts.push(selectedAddress.building_number)
       }
       if (selectedAddress.thoroughfare) {
-        address1Parts.push(selectedAddress.thoroughfare)
+        streetParts.push(selectedAddress.thoroughfare)
+      }
+      const streetAddress = streetParts.join(' ')
+
+      // If there's a building name (e.g., "Flat 6"), put it on line 1, street on line 2
+      if (selectedAddress.building_name) {
+        address1 = selectedAddress.building_name
+        address2 = streetAddress
+      } else {
+        // No building name - just use street address on line 1
+        address1 = streetAddress
       }
 
       // If no structured data, fall back to parsing the address string
-      let address1 = address1Parts.join(' ')
       if (!address1) {
         const parts = selectedAddress.address.split(', ')
-        address1 = parts.slice(0, -2).join(', ') // Everything except town and postcode
+        address1 = parts[0] || ''
+        address2 = parts.length > 2 ? parts.slice(1, -2).join(', ') : ''
       }
 
       setFormData(prev => ({
         ...prev,
-        billingAddress1: address1,
-        billingAddress2: '', // Leave empty - user can fill if needed
-        billingCity: selectedAddress.post_town,
+        billingAddress1: toTitleCase(address1),
+        billingAddress2: toTitleCase(address2),
+        billingCity: toTitleCase(selectedAddress.post_town),
         billingPostcode: selectedAddress.postcode,
-        billingCounty: selectedAddress.county || '' // Use county from API
+        billingCounty: selectedAddress.county || ''
       }))
 
       setShowAddressSelect(false)
@@ -653,7 +729,9 @@ function Bookings() {
   }
 
   // Step 1: Contact Details (first for lead capture)
-  const isStep1Complete = formData.firstName && formData.lastName && formData.email && formData.phone
+  const isPhoneValid = formData.phone && isValidPhoneNumber(formData.phone)
+  const isEmailValid = formData.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)
+  const isStep1Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid
   // Step 2: Trip Details
   const isStep2Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable
   // Step 3: Vehicle Details
@@ -740,6 +818,50 @@ function Bookings() {
 
   return (
     <div className="bookings-page">
+      {/* Welcome Modal - shown once when user lands on booking page */}
+      {showWelcomeModal && (
+        <div className="welcome-modal-overlay">
+          <div className="welcome-modal">
+            <div className="welcome-modal-icon">
+              <img src="/assets/departure-icon.webp" alt="Departure" />
+            </div>
+            <h2>Welcome to Tag Parking</h2>
+            <p>
+              As a new business, we're building our service and online booking isn't available for all flights just yet.
+              Availability changes regularly as we grow.
+            </p>
+            <p>
+              If your flight or preferred time slot isn't available online, please get in touch.
+              We'll do our best to accommodate your booking.
+            </p>
+            <div className="welcome-modal-contact">
+              <a href="mailto:sales@tagparking.co.uk" className="contact-link">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                </svg>
+                sales@tagparking.co.uk
+              </a>
+            </div>
+            <div className="welcome-modal-actions">
+              <button
+                type="button"
+                className="welcome-modal-btn"
+                onClick={() => setShowWelcomeModal(false)}
+              >
+                Continue to booking
+              </button>
+              <button
+                type="button"
+                className="welcome-modal-back-btn"
+                onClick={() => navigate('/')}
+              >
+                Back to home
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <nav className="bookings-nav">
         <Link to="/" className="logo">
           <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
@@ -779,7 +901,7 @@ function Bookings() {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label htmlFor="firstName">First Name</label>
+                  <label htmlFor="firstName">First Name <span className="required">*</span></label>
                   <input
                     type="text"
                     id="firstName"
@@ -791,7 +913,7 @@ function Bookings() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="lastName">Last Name</label>
+                  <label htmlFor="lastName">Last Name <span className="required">*</span></label>
                   <input
                     type="text"
                     id="lastName"
@@ -805,7 +927,7 @@ function Bookings() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="email">Email Address</label>
+                <label htmlFor="email">Email Address <span className="required">*</span></label>
                 <input
                   type="email"
                   id="email"
@@ -813,20 +935,27 @@ function Bookings() {
                   placeholder="john@example.com"
                   value={formData.email}
                   onChange={handleChange}
+                  className={formData.email && !isEmailValid ? 'input-error' : ''}
                   required
                 />
+                {formData.email && !isEmailValid && (
+                  <span className="field-error">Please enter a valid email address</span>
+                )}
               </div>
 
               <div className="form-group">
-                <label htmlFor="phone">Phone Number</label>
+                <label htmlFor="phone">Phone Number <span className="required">*</span></label>
                 <PhoneInput
                   international
                   defaultCountry="GB"
                   id="phone"
                   value={formData.phone}
                   onChange={(value) => setFormData(prev => ({ ...prev, phone: value || '' }))}
-                  className="phone-input"
+                  className={`phone-input ${formData.phone && !isPhoneValid ? 'invalid' : ''}`}
                 />
+                {formData.phone && !isPhoneValid && (
+                  <span className="field-error">Please enter a valid phone number</span>
+                )}
               </div>
 
               <div className="form-actions">
@@ -855,13 +984,15 @@ function Bookings() {
                   selected={formData.dropoffDate}
                   onChange={(date) => handleDateChange(date, 'dropoffDate')}
                   dateFormat="dd/MM/yyyy"
-                  minDate={new Date()}
+                  minDate={new Date('2026-02-07')}
                   placeholderText="Select date"
                   className="date-picker-input"
                   id="dropoffDate"
                   popperPlacement="bottom-start"
-                  calendarClassName="five-weeks"
+                  calendarClassName="fixed-height-calendar"
+                  onFocus={(e) => e.target.readOnly = true}
                 />
+                <p className="date-info">Online bookings available from 7th February 2026</p>
               </div>
 
               {formData.dropoffDate && loadingFlights && (
@@ -878,7 +1009,15 @@ function Bookings() {
 
               {formData.dropoffDate && !loadingFlights && airlinesForDropoff.length > 0 && (
                 <div className="form-group fade-in">
-                  <label htmlFor="dropoffAirline">Select Airline</label>
+                  <div className="label-with-help">
+                    <label htmlFor="dropoffAirline">Select Airline</label>
+                    <div className="help-icon-wrapper">
+                      <span className="help-icon">?</span>
+                      <div className="help-tooltip">
+                        Can't find your flight? We're adding more regularly. Email <a href="mailto:sales@tagparking.co.uk">sales@tagparking.co.uk</a> and we'll do our best to help.
+                      </div>
+                    </div>
+                  </div>
                   <select
                     id="dropoffAirline"
                     name="dropoffAirline"
@@ -912,25 +1051,38 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.dropoffFlight && isFlightFullyBooked && (
+              {formData.dropoffFlight && isFlightFullyBooked && !isCallUsOnly && (
                 <div className="form-group fade-in">
                   <div className="fully-booked-banner">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                      <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
                     </svg>
                     <div className="fully-booked-content">
-                      <strong>Drop-off slots fully reserved</strong>
-                      <p>We may be able to accommodate your booking! Contact us and we'll see if we can find a drop-off time that suits your schedule.</p>
+                      <strong>Sold out</strong>
+                      <p>All online slots for this flight have been booked. Email <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a> and we may still be able to help.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {formData.dropoffFlight && isCallUsOnly && (
+                <div className="form-group fade-in">
+                  <div className="fully-booked-banner">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                    </svg>
+                    <div className="fully-booked-content">
+                      <strong>Online booking not available</strong>
+                      <p>We don't offer online booking for this flight yet and we may still be able to accommodate you. Get in touch and we'll do our best to help.</p>
                       <div className="contact-details">
-                        <a href="mailto:booking@tagparking.co.uk" className="contact-link">booking@tagparking.co.uk</a>
-                        <a href="tel:+447739106145" className="contact-link">+44 (0)7739 106145</a>
+                        <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a>
                       </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {formData.dropoffFlight && !isFlightFullyBooked && dropoffSlots.length > 0 && (
+              {formData.dropoffFlight && !isCallUsOnly && !isFlightFullyBooked && dropoffSlots.length > 0 && (
                 <div className="form-group fade-in">
                   <label>Select Drop-off Time</label>
                   <div className="dropoff-slots">
@@ -943,9 +1095,14 @@ function Bookings() {
                           checked={formData.dropoffSlot === slot.id}
                           onChange={handleChange}
                         />
-                        <div className="slot-card">
-                          <span className="slot-time">{slot.time}</span>
-                          <span className="slot-label">{slot.label}</span>
+                        <div className={`slot-card ${slot.isLastSlot ? 'last-slot' : ''}`}>
+                          <div className="slot-info">
+                            <span className="slot-time">{slot.time}</span>
+                            <span className="slot-label">{slot.label}</span>
+                          </div>
+                          {slot.isLastSlot && (
+                            <span className="last-slot-badge">Last slot available</span>
+                          )}
                         </div>
                       </label>
                     ))}
@@ -1056,7 +1213,7 @@ function Bookings() {
               <h2>Vehicle Details</h2>
 
               <div className="form-group">
-                <label htmlFor="registration">Registration Number</label>
+                <label htmlFor="registration">Registration Number <span className="required">*</span></label>
                 <div className="registration-input-group">
                   <input
                     type="text"
@@ -1092,7 +1249,7 @@ function Bookings() {
 
               {(formData.registration && (dvlaVerified || dvlaError || formData.make)) && (
                 <div className="form-group fade-in">
-                  <label htmlFor="make">Vehicle Make</label>
+                  <label htmlFor="make">Vehicle Make <span className="required">*</span></label>
                   {dvlaVerified && formData.make !== 'Other' ? (
                     <input
                       type="text"
@@ -1121,7 +1278,7 @@ function Bookings() {
 
               {formData.make === 'Other' && (
                 <div className="form-group fade-in">
-                  <label htmlFor="customMake">Enter Vehicle Make</label>
+                  <label htmlFor="customMake">Enter Vehicle Make <span className="required">*</span></label>
                   <input
                     type="text"
                     id="customMake"
@@ -1137,7 +1294,7 @@ function Bookings() {
               {/* Colour comes after Make (from DVLA or manual entry) */}
               {((formData.make && formData.make !== 'Other') || (formData.make === 'Other' && formData.customMake)) && (
                 <div className="form-group fade-in">
-                  <label htmlFor="colour">Vehicle Colour</label>
+                  <label htmlFor="colour">Vehicle Colour <span className="required">*</span></label>
                   {dvlaVerified && formData.colour ? (
                     <input
                       type="text"
@@ -1163,7 +1320,7 @@ function Bookings() {
               {/* Model comes after Colour */}
               {formData.make && formData.make !== 'Other' && formData.colour && (
                 <div className="form-group fade-in">
-                  <label htmlFor="model">Vehicle Model</label>
+                  <label htmlFor="model">Vehicle Model <span className="required">*</span></label>
                   <select
                     id="model"
                     name="model"
@@ -1182,7 +1339,7 @@ function Bookings() {
 
               {formData.make === 'Other' && formData.customMake && formData.colour && (
                 <div className="form-group fade-in">
-                  <label htmlFor="customModel">Enter Vehicle Model</label>
+                  <label htmlFor="customModel">Enter Vehicle Model <span className="required">*</span></label>
                   <input
                     type="text"
                     id="customModel"
@@ -1197,7 +1354,7 @@ function Bookings() {
 
               {formData.model === 'Other' && formData.make !== 'Other' && (
                 <div className="form-group fade-in">
-                  <label htmlFor="customModel">Enter Vehicle Model</label>
+                  <label htmlFor="customModel">Enter Vehicle Model <span className="required">*</span></label>
                   <input
                     type="text"
                     id="customModel"
@@ -1240,44 +1397,12 @@ function Bookings() {
                     <span className="package-price">£{pricingInfo.price.toFixed(0)}</span>
                     <span className="package-period">/ {pricingInfo.duration_days} days</span>
 
-                    {pricingInfo.advance_tier === 'early' && (
-                      <span className="price-badge early">Early Bird Price</span>
-                    )}
-                    {pricingInfo.advance_tier === 'standard' && (
-                      <span className="price-badge standard">Standard Price</span>
-                    )}
-                    {pricingInfo.advance_tier === 'late' && (
-                      <span className="price-badge late">Late Booking</span>
-                    )}
-
-                    <p className="price-tier-info">
-                      Booking {pricingInfo.days_in_advance} days in advance
-                    </p>
-
                     <ul className="package-features">
                       <li>Meet & Greet at terminal</li>
                       <li>Secure storage facility</li>
                       <li>24/7 monitoring</li>
                       <li>No hidden fees</li>
                     </ul>
-                  </div>
-
-                  <div className="pricing-tiers-info">
-                    <h4>Pricing based on advance booking:</h4>
-                    <div className="tier-list">
-                      <div className={`tier ${pricingInfo.advance_tier === 'early' ? 'active' : ''}`}>
-                        <span className="tier-label">14+ days ahead</span>
-                        <span className="tier-price">£{pricingInfo.all_prices.early.toFixed(0)}</span>
-                      </div>
-                      <div className={`tier ${pricingInfo.advance_tier === 'standard' ? 'active' : ''}`}>
-                        <span className="tier-label">7-13 days ahead</span>
-                        <span className="tier-price">£{pricingInfo.all_prices.standard.toFixed(0)}</span>
-                      </div>
-                      <div className={`tier ${pricingInfo.advance_tier === 'late' ? 'active' : ''}`}>
-                        <span className="tier-label">Under 7 days</span>
-                        <span className="tier-price">£{pricingInfo.all_prices.late.toFixed(0)}</span>
-                      </div>
-                    </div>
                   </div>
                 </div>
               ) : (
@@ -1310,7 +1435,7 @@ function Bookings() {
               {!manualAddressEntry && (
                 <>
                   <div className="form-group">
-                    <label htmlFor="billingPostcode">Postcode</label>
+                    <label htmlFor="billingPostcode">Postcode <span className="required">*</span></label>
                     <div className="postcode-lookup-row">
                       <input
                         type="text"
@@ -1393,7 +1518,7 @@ function Bookings() {
               )}
 
               <div className="form-group">
-                <label htmlFor="billingAddress1">Address Line 1</label>
+                <label htmlFor="billingAddress1">Address Line 1 <span className="required">*</span></label>
                 <input
                   type="text"
                   id="billingAddress1"
@@ -1406,7 +1531,7 @@ function Bookings() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="billingAddress2">Address Line 2 (optional)</label>
+                <label htmlFor="billingAddress2">Address Line 2</label>
                 <input
                   type="text"
                   id="billingAddress2"
@@ -1419,7 +1544,7 @@ function Bookings() {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label htmlFor="billingCity">City</label>
+                  <label htmlFor="billingCity">City <span className="required">*</span></label>
                   <input
                     type="text"
                     id="billingCity"
@@ -1431,7 +1556,7 @@ function Bookings() {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="billingCounty">County (optional)</label>
+                  <label htmlFor="billingCounty">County</label>
                   <input
                     type="text"
                     id="billingCounty"
@@ -1459,7 +1584,7 @@ function Bookings() {
               )}
 
               <div className="form-group">
-                <label htmlFor="billingCountry">Country</label>
+                <label htmlFor="billingCountry">Country <span className="required">*</span></label>
                 <select
                   id="billingCountry"
                   name="billingCountry"
@@ -1559,9 +1684,8 @@ function Bookings() {
                       const flightTime = formData.pickupFlightTime.split('|')[0]
                       const [hours, minutes] = flightTime.split(':').map(Number)
                       const landingMinutes = hours * 60 + minutes
-                      const pickupStart = formatMinutesToTime(landingMinutes + 35)
-                      const pickupEnd = formatMinutesToTime(landingMinutes + 60)
-                      return <> between {pickupStart} - {pickupEnd}</>
+                      const pickupTime = formatMinutesToTime(landingMinutes + 45)
+                      return <> from {pickupTime}</>
                     })()}
                   </span>
                 </div>
@@ -1656,6 +1780,7 @@ function Bookings() {
                     {bookingConfirmation?.reference}
                   </div>
                   <p>A confirmation email has been sent to {formData.email}</p>
+                  <p className="spam-notice">Please check your spam/junk folder if you don't see it in your inbox.</p>
                   <button
                     type="button"
                     className="submit-btn"

@@ -19,11 +19,12 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from models import (
     BookingRequest,
     AdminBookingRequest,
+    ManualBookingRequest,
     Booking,
     SlotType,
     AvailableSlotsResponse,
@@ -46,7 +47,7 @@ from stripe_service import (
 
 # Database imports
 from database import get_db, init_db
-from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle
+from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession
 import db_service
 import json
 import traceback
@@ -55,7 +56,7 @@ import traceback
 from email_scheduler import start_scheduler, stop_scheduler
 
 # Email service
-from email_service import send_booking_confirmation_email
+from email_service import send_booking_confirmation_email, send_login_code_email
 
 
 # Initialize FastAPI app
@@ -649,32 +650,175 @@ async def get_bookings_by_email(email: str):
     }
 
 
+# =============================================================================
+# Admin Authentication Dependencies
+# =============================================================================
+
+async def get_current_user(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+) -> User:
+    """
+    Dependency to get the current authenticated user from session token.
+
+    Expects header: Authorization: Bearer <token>
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Extract token from "Bearer <token>"
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+
+    token = parts[1]
+
+    # Find valid session
+    session = db.query(DbSession).filter(
+        DbSession.token == token,
+        DbSession.expires_at > datetime.utcnow()
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    # Get user
+    user = db.query(User).filter(
+        User.id == session.user_id,
+        User.is_active == True
+    ).first()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+
+    return user
+
+
+async def require_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """
+    Dependency to require admin privileges.
+
+    Use this for admin-only endpoints like:
+    - Managing bookings
+    - Viewing customer data
+    - Sending promo codes
+    - Refunds and payments
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin privileges required"
+        )
+    return current_user
+
+
+# =============================================================================
+# Admin Endpoints
+# =============================================================================
+
 @app.get("/api/admin/bookings")
 async def get_all_bookings(
     date_filter: Optional[date] = Query(None, description="Filter by parking date"),
+    include_cancelled: bool = Query(True, description="Include cancelled bookings"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
-    Admin endpoint: Get all active bookings.
+    Admin endpoint: Get all bookings from database.
 
-    Optionally filter by a specific date to see which vehicles
-    will be parked on that day.
+    Returns bookings with full details including:
+    - Customer info (name, email, phone)
+    - Vehicle info (registration, make, model, colour)
+    - Booking dates and times
+    - Payment info (status, amount, stripe_payment_intent_id)
     """
-    service = get_service()
+    from db_models import Booking, Customer, Vehicle, Payment, BookingStatus
+
+    query = db.query(Booking).options(
+        joinedload(Booking.customer),
+        joinedload(Booking.vehicle),
+        joinedload(Booking.payment),
+        joinedload(Booking.departure),
+    )
 
     if date_filter:
-        bookings = service.get_bookings_for_date(date_filter)
-    else:
-        bookings = service.get_all_active_bookings()
+        # Filter bookings that overlap with the given date
+        query = query.filter(
+            Booking.dropoff_date <= date_filter,
+            Booking.pickup_date >= date_filter,
+        )
+
+    if not include_cancelled:
+        query = query.filter(Booking.status != BookingStatus.CANCELLED)
+
+    bookings = query.order_by(Booking.dropoff_date.asc()).all()
+
+    # Format bookings for frontend
+    result = []
+    for b in bookings:
+        result.append({
+            "id": b.id,
+            "reference": b.reference,
+            "status": b.status.value if b.status else None,
+            "booking_source": b.booking_source,
+            "package": b.package,
+            "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
+            "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
+            "dropoff_flight_number": b.dropoff_flight_number,
+            "dropoff_airline_name": b.departure.airline_name if b.departure else None,
+            "dropoff_destination": b.dropoff_destination,
+            "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
+            "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
+            # Calculate pickup collection time (45 min after landing)
+            "pickup_collection_time": (lambda t: f"{((t.hour * 60 + t.minute + 45) // 60) % 24:02d}:{(t.hour * 60 + t.minute + 45) % 60:02d}")(b.pickup_time) if b.pickup_time else None,
+            "pickup_time_from": b.pickup_time_from.strftime("%H:%M") if b.pickup_time_from else None,
+            "pickup_time_to": b.pickup_time_to.strftime("%H:%M") if b.pickup_time_to else None,
+            "pickup_flight_number": b.pickup_flight_number,
+            "pickup_origin": b.pickup_origin,
+            "notes": b.notes,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "customer": {
+                "id": b.customer.id,
+                "first_name": b.customer.first_name,
+                "last_name": b.customer.last_name,
+                "email": b.customer.email,
+                "phone": b.customer.phone,
+            } if b.customer else None,
+            "vehicle": {
+                "id": b.vehicle.id,
+                "registration": b.vehicle.registration,
+                "make": b.vehicle.make,
+                "model": b.vehicle.model,
+                "colour": b.vehicle.colour,
+            } if b.vehicle else None,
+            "payment": {
+                "id": b.payment.id,
+                "status": b.payment.status.value if b.payment.status else None,
+                "amount_pence": b.payment.amount_pence,
+                "currency": b.payment.currency,
+                "stripe_payment_intent_id": b.payment.stripe_payment_intent_id,
+                "stripe_customer_id": b.payment.stripe_customer_id,
+                "paid_at": b.payment.paid_at.isoformat() if b.payment.paid_at else None,
+                "refund_id": b.payment.refund_id,
+                "refund_amount_pence": b.payment.refund_amount_pence,
+                "refunded_at": b.payment.refunded_at.isoformat() if b.payment.refunded_at else None,
+            } if b.payment else None,
+        })
 
     return {
-        "count": len(bookings),
+        "count": len(result),
         "date_filter": date_filter.isoformat() if date_filter else None,
-        "bookings": bookings,
+        "bookings": result,
     }
 
 
 @app.get("/api/admin/occupancy/{target_date}")
-async def get_daily_occupancy(target_date: date):
+async def get_daily_occupancy(
+    target_date: date,
+    current_user: User = Depends(require_admin),
+):
     """
     Admin endpoint: Get occupancy count for a specific date.
     """
@@ -690,7 +834,10 @@ async def get_daily_occupancy(target_date: date):
 
 
 @app.post("/api/admin/bookings", response_model=BookingResponse)
-async def create_admin_booking(request: AdminBookingRequest):
+async def create_admin_booking(
+    request: AdminBookingRequest,
+    current_user: User = Depends(require_admin),
+):
     """
     Admin endpoint: Create a booking manually.
 
@@ -716,6 +863,706 @@ async def create_admin_booking(request: AdminBookingRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/api/admin/manual-booking")
+async def create_manual_booking(
+    request: ManualBookingRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Create a manual booking and send payment link email.
+
+    This creates a pending booking record and sends an email to the customer
+    with the booking summary and Stripe payment link. The booking is NOT
+    confirmed until the customer pays via the link.
+
+    Use this for phone/email enquiries where you create a Stripe payment link
+    in the Stripe dashboard and send it to the customer.
+    """
+    from email_service import send_manual_booking_payment_email
+    from db_models import Customer, Vehicle, Booking, BookingStatus, Payment, PaymentStatus
+    from datetime import datetime
+
+    try:
+        # Create or find customer
+        customer = db.query(Customer).filter(Customer.email == request.email).first()
+        if not customer:
+            customer = Customer(
+                first_name=request.first_name,
+                last_name=request.last_name,
+                email=request.email,
+                phone=request.phone or "",  # Phone is required in DB
+                billing_address1=request.billing_address1,
+                billing_address2=request.billing_address2,
+                billing_city=request.billing_city,
+                billing_county=request.billing_county,
+                billing_postcode=request.billing_postcode,
+                billing_country=request.billing_country,
+            )
+            db.add(customer)
+            db.flush()
+        else:
+            # Update customer details
+            customer.first_name = request.first_name
+            customer.last_name = request.last_name
+            customer.phone = request.phone or customer.phone
+            customer.billing_address1 = request.billing_address1
+            customer.billing_address2 = request.billing_address2
+            customer.billing_city = request.billing_city
+            customer.billing_county = request.billing_county
+            customer.billing_postcode = request.billing_postcode
+            customer.billing_country = request.billing_country
+
+        # Create or find vehicle
+        vehicle = db.query(Vehicle).filter(
+            Vehicle.registration == request.registration.upper()
+        ).first()
+        if not vehicle:
+            vehicle = Vehicle(
+                customer_id=customer.id,
+                registration=request.registration.upper(),
+                make=request.make,
+                model=request.model,
+                colour=request.colour,
+            )
+            db.add(vehicle)
+            db.flush()
+
+        # Determine package based on duration
+        dropoff = datetime.strptime(str(request.dropoff_date), "%Y-%m-%d")
+        pickup = datetime.strptime(str(request.pickup_date), "%Y-%m-%d")
+        duration_days = (pickup - dropoff).days
+        package = "quick" if duration_days <= 7 else "longer"
+
+        # Generate booking reference
+        import random
+        import string
+        reference = "TAG-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+
+        # Create pending booking
+        booking = Booking(
+            reference=reference,
+            customer_id=customer.id,
+            vehicle_id=vehicle.id,
+            dropoff_date=request.dropoff_date,
+            dropoff_time=datetime.strptime(request.dropoff_time, "%H:%M").time(),
+            pickup_date=request.pickup_date,
+            pickup_time=datetime.strptime(request.pickup_time, "%H:%M").time(),
+            package=package,
+            status=BookingStatus.PENDING,
+            booking_source="manual",
+            admin_notes=request.notes,
+        )
+        db.add(booking)
+        db.flush()
+
+        # Create pending payment record
+        payment = Payment(
+            booking_id=booking.id,
+            amount_pence=request.amount_pence,
+            currency="gbp",
+            status=PaymentStatus.PENDING,
+            stripe_payment_link=request.stripe_payment_link,
+        )
+        db.add(payment)
+
+        db.commit()
+
+        # Format dates for email
+        dropoff_date_formatted = dropoff.strftime("%A, %d %B %Y")
+        pickup_date_formatted = pickup.strftime("%A, %d %B %Y")
+        amount_formatted = f"£{request.amount_pence / 100:.2f}"
+
+        # Send payment link email
+        email_sent = send_manual_booking_payment_email(
+            email=request.email,
+            first_name=request.first_name,
+            dropoff_date=dropoff_date_formatted,
+            dropoff_time=request.dropoff_time,
+            pickup_date=pickup_date_formatted,
+            pickup_time=request.pickup_time,
+            vehicle_make=request.make,
+            vehicle_model=request.model,
+            vehicle_colour=request.colour,
+            vehicle_registration=request.registration.upper(),
+            amount=amount_formatted,
+            payment_link=request.stripe_payment_link,
+        )
+
+        return {
+            "success": True,
+            "message": "Manual booking created and payment link email sent" if email_sent else "Manual booking created but email failed to send",
+            "booking_reference": reference,
+            "email_sent": email_sent,
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/admin/bookings/{booking_id}/mark-paid")
+async def mark_booking_paid(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Mark a manual booking as paid (confirmed).
+
+    Updates booking status to CONFIRMED and payment status to PAID.
+    Sends booking confirmation email to customer.
+    Use this after verifying payment was received via Stripe Payment Link.
+    """
+    from db_models import Booking, Payment, BookingStatus, PaymentStatus
+    from email_service import send_booking_confirmation_email
+
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status == BookingStatus.CONFIRMED:
+        raise HTTPException(status_code=400, detail="Booking is already confirmed")
+
+    if booking.status == BookingStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Cannot confirm a cancelled booking")
+
+    if booking.status == BookingStatus.REFUNDED:
+        raise HTTPException(status_code=400, detail="Cannot confirm a refunded booking")
+
+    # Update booking status
+    booking.status = BookingStatus.CONFIRMED
+
+    # Update payment status if exists
+    payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
+    if payment:
+        payment.status = PaymentStatus.SUCCEEDED
+
+    db.commit()
+
+    # Send confirmation email
+    email_sent = False
+    try:
+        # Format dates
+        dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
+        dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else "TBC"
+        pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
+        pickup_time_str = booking.pickup_time.strftime("%H:%M") if booking.pickup_time else "TBC"
+
+        # Package name
+        package_name = "1 Week" if booking.package == "quick" else "2 Weeks"
+
+        # Amount paid
+        amount_paid = f"£{payment.amount_pence / 100:.2f}" if payment else "N/A"
+
+        # For manual bookings, flight info is not applicable
+        departure_flight = "-"
+        return_flight = "-"
+
+        email_sent = send_booking_confirmation_email(
+            email=booking.customer.email,
+            first_name=booking.customer.first_name,
+            booking_reference=booking.reference,
+            dropoff_date=dropoff_date_str,
+            dropoff_time=dropoff_time_str,
+            pickup_date=pickup_date_str,
+            pickup_time=pickup_time_str,
+            departure_flight=departure_flight,
+            return_flight=return_flight,
+            vehicle_make=booking.vehicle.make,
+            vehicle_model=booking.vehicle.model,
+            vehicle_colour=booking.vehicle.colour,
+            vehicle_registration=booking.vehicle.registration,
+            package_name=package_name,
+            amount_paid=amount_paid,
+        )
+
+        if email_sent:
+            booking.confirmation_email_sent = True
+            booking.confirmation_email_sent_at = datetime.utcnow()
+            db.commit()
+    except Exception as e:
+        print(f"Error sending confirmation email: {e}")
+
+    return {
+        "success": True,
+        "message": "Booking confirmed and confirmation email sent" if email_sent else "Booking confirmed but email failed to send",
+        "reference": booking.reference,
+        "email_sent": email_sent,
+    }
+
+
+@app.post("/api/admin/bookings/{booking_id}/cancel")
+async def cancel_booking_admin(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Cancel a booking.
+
+    Sets the booking status to CANCELLED and releases the flight slot
+    so it becomes available for other bookings.
+    Note: This does NOT automatically refund the payment -
+    use the Stripe dashboard for refunds.
+    """
+    from db_models import Booking, BookingStatus
+
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status == BookingStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Booking is already cancelled")
+
+    if booking.status == BookingStatus.REFUNDED:
+        raise HTTPException(status_code=400, detail="Cannot cancel a refunded booking")
+
+    # Release the flight slot using stored departure_id and dropoff_slot
+    slot_released = False
+    if booking.departure_id and booking.dropoff_slot:
+        result = db_service.release_departure_slot(db, booking.departure_id, booking.dropoff_slot)
+        slot_released = result.get("success", False)
+
+    # Update booking status
+    booking.status = BookingStatus.CANCELLED
+    db.commit()
+
+    message = f"Booking {booking.reference} has been cancelled"
+    if slot_released:
+        message += " and the flight slot has been released"
+
+    return {
+        "success": True,
+        "message": message,
+        "reference": booking.reference,
+        "slot_released": slot_released,
+    }
+
+
+@app.post("/api/admin/bookings/{booking_id}/resend-email")
+async def resend_booking_confirmation_email(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Resend booking confirmation email.
+
+    Sends the confirmation email again for a specific booking.
+    Useful when the original email failed or customer didn't receive it.
+    """
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    # Calculate pickup time (45 min after landing) - format as "From HH:MM onwards"
+    pickup_time_str = ""
+    if booking.pickup_time:
+        landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+        pickup_mins = landing_minutes + 45
+        if pickup_mins >= 24 * 60:
+            pickup_mins -= 24 * 60
+        pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
+
+    # Format dates
+    dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
+    pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
+    dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else ""
+
+    # Format flight info
+    departure_flight = f"{booking.dropoff_flight_number} to {booking.dropoff_destination or 'destination'}"
+    return_flight = f"{booking.pickup_flight_number or 'N/A'} from {booking.pickup_origin or 'origin'}"
+
+    # Package name
+    package_name = "1 Week" if booking.package == "quick" else "2 Weeks"
+
+    # Get payment amount
+    amount_paid = "£0.00"
+    if booking.payment and booking.payment.amount_pence:
+        amount_paid = f"£{booking.payment.amount_pence / 100:.2f}"
+
+    # Send the email
+    email_sent = send_booking_confirmation_email(
+        email=booking.customer.email,
+        first_name=booking.customer.first_name,
+        booking_reference=booking.reference,
+        dropoff_date=dropoff_date_str,
+        dropoff_time=dropoff_time_str,
+        pickup_date=pickup_date_str,
+        pickup_time=pickup_time_str,
+        departure_flight=departure_flight,
+        return_flight=return_flight,
+        vehicle_make=booking.vehicle.make,
+        vehicle_model=booking.vehicle.model,
+        vehicle_colour=booking.vehicle.colour,
+        vehicle_registration=booking.vehicle.registration,
+        package_name=package_name,
+        amount_paid=amount_paid,
+    )
+
+    if email_sent:
+        # Update email sent tracking
+        booking.confirmation_email_sent = True
+        booking.confirmation_email_sent_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Confirmation email sent to {booking.customer.email}",
+            "reference": booking.reference,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send confirmation email. Check SendGrid configuration."
+        )
+
+
+@app.post("/api/admin/bookings/{booking_id}/send-cancellation-email")
+async def send_cancellation_email_endpoint(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Send cancellation email to customer.
+
+    Sends the cancellation notification email for a cancelled booking.
+    """
+    from db_models import BookingStatus
+    from email_service import send_cancellation_email
+
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status != BookingStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Booking must be cancelled before sending cancellation email")
+
+    # Format dates
+    dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
+
+    # Send the email
+    email_sent = send_cancellation_email(
+        email=booking.customer.email,
+        first_name=booking.customer.first_name,
+        booking_reference=booking.reference,
+        dropoff_date=dropoff_date_str,
+    )
+
+    if email_sent:
+        # Update email sent tracking
+        booking.cancellation_email_sent = True
+        booking.cancellation_email_sent_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Cancellation email sent to {booking.customer.email}",
+            "reference": booking.reference,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send cancellation email. Check SendGrid configuration."
+        )
+
+
+@app.post("/api/admin/bookings/{booking_id}/send-refund-email")
+async def send_refund_email_endpoint(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Send refund confirmation email to customer.
+
+    Sends the refund notification email for a refunded booking.
+    """
+    from db_models import BookingStatus
+    from email_service import send_refund_email
+
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status != BookingStatus.CANCELLED:
+        raise HTTPException(status_code=400, detail="Booking must be cancelled before sending refund email")
+
+    # Get refund amount
+    refund_amount = "£0.00"
+    if booking.payment and booking.payment.refund_amount_pence:
+        refund_amount = f"£{booking.payment.refund_amount_pence / 100:.2f}"
+    elif booking.payment and booking.payment.amount_pence:
+        # Fall back to original amount if no specific refund amount
+        refund_amount = f"£{booking.payment.amount_pence / 100:.2f}"
+
+    # Send the email
+    email_sent = send_refund_email(
+        email=booking.customer.email,
+        first_name=booking.customer.first_name,
+        booking_reference=booking.reference,
+        refund_amount=refund_amount,
+    )
+
+    if email_sent:
+        # Update email sent tracking
+        booking.refund_email_sent = True
+        booking.refund_email_sent_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Refund email sent to {booking.customer.email}",
+            "reference": booking.reference,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send refund email. Check SendGrid configuration."
+        )
+
+
+# =============================================================================
+# Marketing Subscribers Admin Endpoints
+# =============================================================================
+
+@app.get("/api/admin/marketing-subscribers")
+async def get_marketing_subscribers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get all marketing subscribers for admin management.
+    """
+    subscribers = db.query(MarketingSubscriber).order_by(
+        MarketingSubscriber.subscribed_at.desc()
+    ).all()
+
+    return {
+        "count": len(subscribers),
+        "subscribers": [
+            {
+                "id": s.id,
+                "first_name": s.first_name,
+                "last_name": s.last_name,
+                "email": s.email,
+                "subscribed_at": s.subscribed_at.isoformat() if s.subscribed_at else None,
+                "welcome_email_sent": s.welcome_email_sent,
+                "welcome_email_sent_at": s.welcome_email_sent_at.isoformat() if s.welcome_email_sent_at else None,
+                # Legacy promo fields (kept for backwards compatibility)
+                "promo_code": s.promo_code,
+                "promo_code_sent": s.promo_code_sent,
+                "promo_code_sent_at": s.promo_code_sent_at.isoformat() if s.promo_code_sent_at else None,
+                "discount_percent": s.discount_percent,
+                "promo_code_used": s.promo_code_used,
+                "promo_code_used_at": s.promo_code_used_at.isoformat() if s.promo_code_used_at else None,
+                "promo_code_used_booking_id": s.promo_code_used_booking_id,
+                # 10% OFF promo (separate)
+                "promo_10_code": s.promo_10_code,
+                "promo_10_sent": s.promo_10_sent,
+                "promo_10_sent_at": s.promo_10_sent_at.isoformat() if s.promo_10_sent_at else None,
+                "promo_10_used": s.promo_10_used,
+                "promo_10_used_at": s.promo_10_used_at.isoformat() if s.promo_10_used_at else None,
+                # FREE promo (separate)
+                "promo_free_code": s.promo_free_code,
+                "promo_free_sent": s.promo_free_sent,
+                "promo_free_sent_at": s.promo_free_sent_at.isoformat() if s.promo_free_sent_at else None,
+                "promo_free_used": s.promo_free_used,
+                "promo_free_used_at": s.promo_free_used_at.isoformat() if s.promo_free_used_at else None,
+                # Unsubscribe
+                "unsubscribed": s.unsubscribed,
+                "unsubscribed_at": s.unsubscribed_at.isoformat() if s.unsubscribed_at else None,
+            }
+            for s in subscribers
+        ],
+    }
+
+
+@app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
+async def send_promo_email_to_subscriber(
+    subscriber_id: int,
+    discount_percent: int = Query(10, description="Discount percentage (10 or 100)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Generate a unique promo code and send promo email to a subscriber.
+
+    Supports SEPARATE 10% and FREE promos - a subscriber can receive both:
+    - 10% off promo (discount_percent=10) -> stored in promo_10_* fields
+    - FREE parking promo (discount_percent=100) -> stored in promo_free_* fields
+    """
+    from email_service import generate_promo_code, send_promo_code_email
+
+    subscriber = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.id == subscriber_id
+    ).first()
+
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+
+    if subscriber.unsubscribed:
+        raise HTTPException(status_code=400, detail="Subscriber has unsubscribed")
+
+    # Validate discount percent
+    if discount_percent not in [10, 100]:
+        raise HTTPException(status_code=400, detail="Discount must be 10 or 100 percent")
+
+    # Check if THIS specific promo type has already been used
+    if discount_percent == 10 and subscriber.promo_10_used:
+        raise HTTPException(status_code=400, detail="10% promo code has already been used")
+    if discount_percent == 100 and subscriber.promo_free_used:
+        raise HTTPException(status_code=400, detail="FREE promo code has already been used")
+
+    # Generate unique promo code for this specific promo type
+    if discount_percent == 10:
+        # 10% OFF promo
+        if not subscriber.promo_10_code:
+            for _ in range(10):
+                new_code = generate_promo_code()
+                # Check uniqueness across both promo code fields
+                existing = db.query(MarketingSubscriber).filter(
+                    (MarketingSubscriber.promo_10_code == new_code) |
+                    (MarketingSubscriber.promo_free_code == new_code) |
+                    (MarketingSubscriber.promo_code == new_code)
+                ).first()
+                if not existing:
+                    subscriber.promo_10_code = new_code
+                    break
+            else:
+                raise HTTPException(status_code=500, detail="Failed to generate unique promo code")
+        promo_code = subscriber.promo_10_code
+    else:
+        # FREE parking promo (100% off)
+        if not subscriber.promo_free_code:
+            for _ in range(10):
+                new_code = generate_promo_code()
+                existing = db.query(MarketingSubscriber).filter(
+                    (MarketingSubscriber.promo_10_code == new_code) |
+                    (MarketingSubscriber.promo_free_code == new_code) |
+                    (MarketingSubscriber.promo_code == new_code)
+                ).first()
+                if not existing:
+                    subscriber.promo_free_code = new_code
+                    break
+            else:
+                raise HTTPException(status_code=500, detail="Failed to generate unique promo code")
+        promo_code = subscriber.promo_free_code
+
+    db.commit()
+
+    # Send the email
+    if discount_percent == 100:
+        email_sent = send_free_parking_promo_email(
+            first_name=subscriber.first_name,
+            email=subscriber.email,
+            promo_code=promo_code,
+        )
+    else:
+        email_sent = send_promo_code_email(
+            first_name=subscriber.first_name,
+            email=subscriber.email,
+            promo_code=promo_code,
+        )
+
+    if email_sent:
+        # Update the appropriate promo tracking fields
+        if discount_percent == 10:
+            subscriber.promo_10_sent = True
+            subscriber.promo_10_sent_at = datetime.utcnow()
+        else:
+            subscriber.promo_free_sent = True
+            subscriber.promo_free_sent_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Promo code email ({discount_percent}% off) sent to {subscriber.email}",
+            "promo_code": promo_code,
+            "discount_percent": discount_percent,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send promo email. Check SendGrid configuration."
+        )
+
+
+def send_free_parking_promo_email(first_name: str, email: str, promo_code: str) -> bool:
+    """Send 100% off (FREE parking) promo code email."""
+    from email_service import send_email
+
+    subject = f"{first_name}, you've won FREE airport parking!"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
+            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+            .header {{ background: #1a1a1a; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+            .header h1 {{ color: #D9FF00; margin: 0; font-size: 28px; }}
+            .content {{ background: #ffffff; padding: 30px; }}
+            .promo-box {{ background: #1a1a1a; color: white; padding: 30px; text-align: center; border-radius: 10px; margin: 25px 0; }}
+            .promo-code {{ font-size: 42px; font-weight: bold; color: #D9FF00; letter-spacing: 4px; margin-bottom: 10px; }}
+            .promo-text {{ font-size: 18px; color: #D9FF00; font-weight: bold; }}
+            .free-text {{ font-size: 24px; color: #D9FF00; margin-top: 10px; }}
+            .cta-section {{ text-align: center; margin: 30px 0; }}
+            .button {{ display: inline-block; background: #D9FF00; color: #1a1a1a; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }}
+            .tagline {{ font-size: 18px; font-weight: bold; color: #1a1a1a; margin: 25px 0 15px 0; }}
+            .footer {{ background: #1a1a1a; padding: 25px; text-align: center; border-radius: 0 0 10px 10px; }}
+            .footer p {{ color: #ccc; margin: 5px 0; font-size: 12px; }}
+            .footer a {{ color: #D9FF00; text-decoration: none; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>TAG Parking</h1>
+            </div>
+            <div class="content">
+                <p>Hi {first_name},</p>
+                <p>Congratulations! You've been selected to receive <strong>100% FREE airport parking</strong> at Bournemouth Airport!</p>
+
+                <div class="promo-box">
+                    <div class="promo-text">YOUR EXCLUSIVE CODE</div>
+                    <div class="promo-code">{promo_code}</div>
+                    <div class="free-text">100% OFF - COMPLETELY FREE!</div>
+                </div>
+
+                <p class="tagline">How to claim your free parking:</p>
+                <ol>
+                    <li>Visit our website and start your booking</li>
+                    <li>Enter your promo code at checkout</li>
+                    <li>Enjoy free secure parking for your trip!</li>
+                </ol>
+
+                <p><strong>Note:</strong> This code can only be used once and is valid for a 1-week or 2-week booking.</p>
+
+                <div class="cta-section">
+                    <a href="https://tagparking.co.uk/bookings" class="button">Book Now - It's FREE!</a>
+                </div>
+            </div>
+            <div class="footer">
+                <p>TAG Parking - Bournemouth Airport</p>
+                <p>Secure Meet & Greet Parking</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return send_email(email, subject, html_content)
+
+
 # =============================================================================
 # Flight Schedule Endpoints (from database)
 # =============================================================================
@@ -727,7 +1574,7 @@ async def get_departures_for_date(flight_date: date, db: Session = Depends(get_d
 
     Returns flights in a format compatible with the frontend:
     - date, type, time, airlineCode, airlineName, destinationCode, destinationName, flightNumber
-    - Also includes slot availability (is_slot_1_booked, is_slot_2_booked)
+    - Capacity info: capacity_tier, early_slots_available, late_slots_available, is_call_us_only
     """
     departures = db.query(FlightDeparture).filter(
         FlightDeparture.date == flight_date
@@ -744,8 +1591,18 @@ async def get_departures_for_date(flight_date: date, db: Session = Depends(get_d
             "destinationCode": d.destination_code,
             "destinationName": d.destination_name,
             "flightNumber": d.flight_number,
-            "is_slot_1_booked": d.is_slot_1_booked,
-            "is_slot_2_booked": d.is_slot_2_booked,
+            # Capacity-based fields
+            "capacity_tier": d.capacity_tier,
+            "max_slots_per_time": d.max_slots_per_time,
+            "early_slots_available": d.early_slots_available,
+            "late_slots_available": d.late_slots_available,
+            "is_call_us_only": d.is_call_us_only,
+            "all_slots_booked": d.all_slots_booked,
+            # Last slot indicators
+            "total_slots_available": d.total_slots_available,
+            "is_last_slot": d.is_last_slot,
+            "early_is_last_slot": d.early_is_last_slot,
+            "late_is_last_slot": d.late_is_last_slot,
         }
         for d in departures
     ]
@@ -808,8 +1665,17 @@ async def get_schedule_for_date(flight_date: date, db: Session = Depends(get_db)
             "destinationCode": d.destination_code,
             "destinationName": d.destination_name,
             "flightNumber": d.flight_number,
-            "is_slot_1_booked": d.is_slot_1_booked,
-            "is_slot_2_booked": d.is_slot_2_booked,
+            "capacity_tier": d.capacity_tier,
+            "max_slots_per_time": d.max_slots_per_time,
+            "early_slots_available": d.early_slots_available,
+            "late_slots_available": d.late_slots_available,
+            "is_call_us_only": d.is_call_us_only,
+            "all_slots_booked": d.all_slots_booked,
+            # Last slot indicators
+            "total_slots_available": d.total_slots_available,
+            "is_last_slot": d.is_last_slot,
+            "early_is_last_slot": d.early_is_last_slot,
+            "late_is_last_slot": d.late_is_last_slot,
         })
 
     for a in arrivals:
@@ -832,25 +1698,32 @@ async def get_schedule_for_date(flight_date: date, db: Session = Depends(get_db)
 @app.post("/api/flights/departures/{departure_id}/book-slot")
 async def book_departure_slot(
     departure_id: int,
-    slot_id: str = Query(..., description="Slot ID: '165' for slot 1, '120' for slot 2"),
+    slot_id: str = Query(..., description="Slot ID: '165' for early slot (2¾h before), '120' for late slot (2h before)"),
     db: Session = Depends(get_db)
 ):
     """
     Book a slot on a departure flight.
 
-    Slot 1 (id='165'): 2¾ hours before departure
-    Slot 2 (id='120'): 2 hours before departure
+    Slot types (based on time before departure):
+    - '165' (early): 2¾ hours before departure
+    - '120' (late): 2 hours before departure
+
+    Returns success status and remaining slots available.
     """
-    # Convert slot_id to slot_number
-    slot_number = 1 if slot_id == "165" else 2 if slot_id == "120" else None
-    if slot_number is None:
-        raise HTTPException(status_code=400, detail="Invalid slot ID. Use '165' or '120'")
+    # Convert slot_id to slot_type
+    slot_type = 'early' if slot_id == "165" else 'late' if slot_id == "120" else None
+    if slot_type is None:
+        raise HTTPException(status_code=400, detail="Invalid slot ID. Use '165' (early) or '120' (late)")
 
-    success = db_service.book_departure_slot(db, departure_id, slot_number)
-    if not success:
-        raise HTTPException(status_code=400, detail="Slot already booked or flight not found")
+    result = db_service.book_departure_slot(db, departure_id, slot_type)
 
-    return {"success": True, "message": f"Slot {slot_number} booked successfully"}
+    if not result["success"]:
+        # Check if this is a "Call Us" situation
+        if result.get("call_us"):
+            raise HTTPException(status_code=400, detail="This flight requires calling to book")
+        raise HTTPException(status_code=400, detail=result["message"])
+
+    return result
 
 
 @app.get("/api/flights/dates")
@@ -1747,10 +2620,9 @@ class CreatePaymentRequest(BaseModel):
     drop_off_slot: Optional[str] = None  # "165" or "120" (minutes before flight)
     departure_id: Optional[int] = None  # ID of the flight departure to book slot on
 
-    # Return flight details
+    # Return flight details (destination/origin names are looked up from flight tables)
     pickup_flight_time: Optional[str] = None  # Landing time "HH:MM"
     pickup_flight_number: Optional[str] = None
-    pickup_origin: Optional[str] = None
 
     # Session tracking
     session_id: Optional[str] = None
@@ -1916,6 +2788,40 @@ async def create_payment(
             if not customer:
                 raise ValueError("Customer not found")
 
+            # Determine slot type from drop_off_slot ("165" = early, "120" = late)
+            slot_type = None
+            if request.drop_off_slot:
+                slot_type = 'early' if request.drop_off_slot == "165" else 'late'
+
+            # Look up destination name from departure table (more reliable than frontend)
+            dropoff_destination = None
+            if request.departure_id:
+                departure = db.query(FlightDeparture).filter(
+                    FlightDeparture.id == request.departure_id
+                ).first()
+                if departure and departure.destination_name:
+                    # Extract city name from "City, CountryCode" format
+                    parts = departure.destination_name.split(', ')
+                    dropoff_destination = parts[0] if parts else departure.destination_name
+                    # Shorten Tenerife-Reinasofia to Tenerife
+                    if dropoff_destination == 'Tenerife-Reinasofia':
+                        dropoff_destination = 'Tenerife'
+
+            # Look up origin name from arrival table
+            pickup_origin = None
+            if request.pickup_flight_number and pickup_date:
+                arrival = db.query(FlightArrival).filter(
+                    FlightArrival.date == pickup_date,
+                    FlightArrival.flight_number == request.pickup_flight_number
+                ).first()
+                if arrival and arrival.origin_name:
+                    # Extract city name from "City, CountryCode" format
+                    parts = arrival.origin_name.split(', ')
+                    pickup_origin = parts[0] if parts else arrival.origin_name
+                    # Shorten Tenerife-Reinasofia to Tenerife
+                    if pickup_origin == 'Tenerife-Reinasofia':
+                        pickup_origin = 'Tenerife'
+
             # Create booking with existing IDs
             booking = db_service.create_booking(
                 db=db,
@@ -1926,16 +2832,53 @@ async def create_payment(
                 dropoff_time=dropoff_time,
                 pickup_date=pickup_date,
                 dropoff_flight_number=request.flight_number,
+                dropoff_destination=dropoff_destination,
                 pickup_time=pickup_time,
                 pickup_time_from=pickup_time_from,
                 pickup_time_to=pickup_time_to,
                 pickup_flight_number=request.pickup_flight_number,
-                pickup_origin=request.pickup_origin,
+                pickup_origin=pickup_origin,
+                departure_id=request.departure_id,
+                dropoff_slot=slot_type,
             )
             booking_reference = booking.reference
             booking_id = booking.id
         else:
             # Fallback: Create everything from scratch (backwards compatible)
+            # Determine slot type from drop_off_slot ("165" = early, "120" = late)
+            slot_type = None
+            if request.drop_off_slot:
+                slot_type = 'early' if request.drop_off_slot == "165" else 'late'
+
+            # Look up destination name from departure table (more reliable than frontend)
+            dropoff_destination = None
+            if request.departure_id:
+                departure = db.query(FlightDeparture).filter(
+                    FlightDeparture.id == request.departure_id
+                ).first()
+                if departure and departure.destination_name:
+                    # Extract city name from "City, CountryCode" format
+                    parts = departure.destination_name.split(', ')
+                    dropoff_destination = parts[0] if parts else departure.destination_name
+                    # Shorten Tenerife-Reinasofia to Tenerife
+                    if dropoff_destination == 'Tenerife-Reinasofia':
+                        dropoff_destination = 'Tenerife'
+
+            # Look up origin name from arrival table
+            pickup_origin = None
+            if request.pickup_flight_number and pickup_date:
+                arrival = db.query(FlightArrival).filter(
+                    FlightArrival.date == pickup_date,
+                    FlightArrival.flight_number == request.pickup_flight_number
+                ).first()
+                if arrival and arrival.origin_name:
+                    # Extract city name from "City, CountryCode" format
+                    parts = arrival.origin_name.split(', ')
+                    pickup_origin = parts[0] if parts else arrival.origin_name
+                    # Shorten Tenerife-Reinasofia to Tenerife
+                    if pickup_origin == 'Tenerife-Reinasofia':
+                        pickup_origin = 'Tenerife'
+
             booking_data = db_service.create_full_booking(
                 db=db,
                 # Customer
@@ -1961,11 +2904,15 @@ async def create_payment(
                 dropoff_time=dropoff_time,
                 pickup_date=pickup_date,
                 dropoff_flight_number=request.flight_number,
+                dropoff_destination=dropoff_destination,
                 pickup_time=pickup_time,
                 pickup_time_from=pickup_time_from,
                 pickup_time_to=pickup_time_to,
                 pickup_flight_number=request.pickup_flight_number,
-                pickup_origin=request.pickup_origin,
+                pickup_origin=pickup_origin,
+                # Flight slot
+                departure_id=request.departure_id,
+                dropoff_slot=slot_type,
             )
             booking_reference = booking_data["booking"].reference
             booking_id = booking_data["booking"].id
@@ -1977,24 +2924,31 @@ async def create_payment(
                 FlightDeparture.id == request.departure_id
             ).first()
             if departure:
-                # Check if both slots are booked (fully booked)
-                if departure.is_slot_1_booked and departure.is_slot_2_booked:
+                # Check if this is a "Call Us only" flight (capacity_tier = 0)
+                if departure.is_call_us_only:
                     raise HTTPException(
                         status_code=400,
-                        detail="This flight is fully booked. Please contact us directly at hello@tagparking.com to arrange an alternative."
+                        detail="This flight requires calling to book. Please contact us directly."
                     )
 
-                # Slot "165" = 2¾ hours before = slot 1
-                # Slot "120" = 2 hours before = slot 2
-                if request.drop_off_slot == "165" and departure.is_slot_1_booked:
+                # Check if all slots are booked
+                if departure.all_slots_booked:
                     raise HTTPException(
                         status_code=400,
-                        detail="This slot is already booked. Please select the other available slot or contact us directly."
+                        detail="This flight is fully booked. Please contact us directly to arrange an alternative."
                     )
-                elif request.drop_off_slot == "120" and departure.is_slot_2_booked:
+
+                # Slot "165" = early (2¾ hours before)
+                # Slot "120" = late (2 hours before)
+                if request.drop_off_slot == "165" and departure.early_slots_available <= 0:
                     raise HTTPException(
                         status_code=400,
-                        detail="This slot is already booked. Please select the other available slot or contact us directly."
+                        detail="This slot is fully booked. Please select the other available slot or contact us directly."
+                    )
+                elif request.drop_off_slot == "120" and departure.late_slots_available <= 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="This slot is fully booked. Please select the other available slot or contact us directly."
                     )
                 # Note: Slot is NOT booked here - it will be booked after payment succeeds via webhook
 
@@ -2037,13 +2991,8 @@ async def create_payment(
 
             # Book the slot immediately for free bookings
             if request.departure_id and request.drop_off_slot:
-                departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
-                if departure:
-                    if request.drop_off_slot == "165":
-                        departure.is_slot_1_booked = True
-                    elif request.drop_off_slot == "120":
-                        departure.is_slot_2_booked = True
-                    db.commit()
+                slot_type = 'early' if request.drop_off_slot == "165" else 'late'
+                db_service.book_departure_slot(db, request.departure_id, slot_type)
 
             # Log payment success
             log_audit_event(
@@ -2085,10 +3034,15 @@ async def create_payment(
                 pickup_date_str = pickup_date.strftime("%A, %d %B %Y")
                 dropoff_time_str = dropoff_time.strftime("%H:%M") if dropoff_time else "TBC"
 
-                # Calculate pickup time window
-                pickup_time_window = ""
-                if pickup_time_from and pickup_time_to:
-                    pickup_time_window = f"{pickup_time_from.strftime('%H:%M')} - {pickup_time_to.strftime('%H:%M')}"
+                # Calculate pickup time (45 mins after scheduled arrival) - format as "From HH:MM onwards"
+                pickup_time_str = ""
+                if pickup_time:
+                    # pickup_time is the landing time, add 45 mins
+                    landing_mins = pickup_time.hour * 60 + pickup_time.minute
+                    pickup_mins = landing_mins + 45
+                    if pickup_mins >= 24 * 60:
+                        pickup_mins -= 24 * 60
+                    pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
 
                 # Package name
                 package_name = "1 Week" if request.package == "quick" else "2 Weeks"
@@ -2115,7 +3069,7 @@ async def create_payment(
                     dropoff_date=dropoff_date_str,
                     dropoff_time=dropoff_time_str,
                     pickup_date=pickup_date_str,
-                    pickup_time_window=pickup_time_window,
+                    pickup_time=pickup_time_str,
                     departure_flight=f"{request.flight_number}",
                     return_flight=f"{request.pickup_flight_number or 'TBC'} from {request.pickup_origin or 'TBC'}",
                     vehicle_make=vehicle_make,
@@ -2137,7 +3091,6 @@ async def create_payment(
 
             except Exception as email_error:
                 print(f"[FREE BOOKING] Failed to send confirmation email: {email_error}")
-                import traceback
                 traceback.print_exc()
 
             # Return response for free booking
@@ -2372,17 +3325,8 @@ async def stripe_webhook(
         # Book the slot on the departure flight (now that payment succeeded)
         if departure_id and drop_off_slot:
             try:
-                departure = db.query(FlightDeparture).filter(
-                    FlightDeparture.id == int(departure_id)
-                ).first()
-                if departure:
-                    # Slot "165" = 2¾ hours before = slot 1
-                    # Slot "120" = 2 hours before = slot 2
-                    if drop_off_slot == "165":
-                        departure.is_slot_1_booked = True
-                    elif drop_off_slot == "120":
-                        departure.is_slot_2_booked = True
-                    db.commit()
+                slot_type = 'early' if drop_off_slot == "165" else 'late'
+                db_service.book_departure_slot(db, int(departure_id), slot_type)
             except Exception as e:
                 log_error(
                     db=db,
@@ -2423,20 +3367,15 @@ async def stripe_webhook(
             print(f"[EMAIL] Booking found: {booking is not None}")
             if booking:
                 print(f"[EMAIL] Customer email: {booking.customer.email}, name: {booking.customer.first_name}")
-                # Calculate pickup time window (35-60 min after landing)
-                pickup_time_window = ""
+                # Calculate pickup time (45 min after landing) - format as "From HH:MM onwards"
+                pickup_time_str = ""
                 if booking.pickup_time:
                     landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
-                    pickup_start_mins = landing_minutes + 35
-                    pickup_end_mins = landing_minutes + 60
+                    pickup_mins = landing_minutes + 45
                     # Handle overnight
-                    if pickup_start_mins >= 24 * 60:
-                        pickup_start_mins -= 24 * 60
-                    if pickup_end_mins >= 24 * 60:
-                        pickup_end_mins -= 24 * 60
-                    pickup_start = f"{pickup_start_mins // 60:02d}:{pickup_start_mins % 60:02d}"
-                    pickup_end = f"{pickup_end_mins // 60:02d}:{pickup_end_mins % 60:02d}"
-                    pickup_time_window = f"{pickup_start} - {pickup_end}"
+                    if pickup_mins >= 24 * 60:
+                        pickup_mins -= 24 * 60
+                    pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
 
                 # Format dates nicely
                 dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
@@ -2469,7 +3408,7 @@ async def stripe_webhook(
                     dropoff_date=dropoff_date_str,
                     dropoff_time=dropoff_time_str,
                     pickup_date=pickup_date_str,
-                    pickup_time_window=pickup_time_window,
+                    pickup_time=pickup_time_str,
                     departure_flight=departure_flight,
                     return_flight=return_flight,
                     vehicle_make=booking.vehicle.make,
@@ -2566,6 +3505,7 @@ async def stripe_webhook(
 async def admin_refund_payment(
     payment_intent_id: str,
     reason: str = Query("requested_by_customer", description="Refund reason"),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Refund a payment.
@@ -2627,12 +3567,13 @@ def load_flight_schedule_json():
 async def seed_flights(
     secret: str = Query(..., description="Admin secret key"),
     clear_existing: bool = Query(True, description="Clear existing flight data"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Seed the database with flight schedule data.
 
-    Requires ADMIN_SECRET environment variable to be set and passed as query param.
+    Requires admin authentication AND ADMIN_SECRET for extra security.
     """
     admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
 
@@ -2664,8 +3605,9 @@ async def seed_flights(
                     departure_time=datetime.strptime(flight["time"], "%H:%M").time(),
                     destination_code=flight["destinationCode"],
                     destination_name=flight.get("destinationName"),
-                    is_slot_1_booked=False,
-                    is_slot_2_booked=False,
+                    capacity_tier=flight.get("capacity_tier", 2),  # Default to 2 slots for legacy data
+                    slots_booked_early=0,
+                    slots_booked_late=0,
                 )
                 db.add(departure)
                 departures_count += 1
@@ -2700,6 +3642,354 @@ async def seed_flights(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error seeding flights: {str(e)}")
+
+
+class ImportDeparturesRequest(BaseModel):
+    """Request body for importing departures with capacity tiers."""
+    tsv_data: str  # Tab-separated data
+    clear_existing: bool = True
+
+
+@app.post("/api/admin/import-departures")
+async def import_departures_with_capacity(
+    request: ImportDeparturesRequest,
+    secret: str = Query(..., description="Admin secret key"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Import departures with capacity tiers from TSV data.
+
+    Expected TSV format (tab-separated):
+    Date, Day, Op Al, Dest, Flight, Dep Time, Forming Service Arr Time, 0 Spaces, 2 Spaces, 4 Spaces, 6 Spaces, 8 Spaces
+
+    Each row should have exactly one TRUE in the capacity columns.
+    """
+    admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
+
+    if secret != admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
+
+    try:
+        from import_departures_capacity import import_from_tsv_string
+        result = import_from_tsv_string(request.tsv_data, request.clear_existing)
+
+        if result.get("error"):
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        return result
+
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=f"Import module not found: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error importing departures: {str(e)}")
+
+
+# =============================================================================
+# Authentication Endpoints (Passwordless)
+# =============================================================================
+
+class CreateUserRequest(BaseModel):
+    """Request to create a new user."""
+    email: str
+    first_name: str
+    last_name: str
+    phone: Optional[str] = None
+    is_admin: bool = False
+
+
+@app.post("/api/admin/users")
+async def create_user(
+    request: CreateUserRequest,
+    secret: str = Query(..., description="Admin secret key"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Create a new user.
+    Requires admin authentication AND ADMIN_SECRET for extra security.
+    """
+    admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
+
+    if secret != admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
+
+    email = request.email.strip().lower()
+
+    # Check if user already exists
+    existing = db.query(User).filter(User.email == email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+
+    # Create user
+    user = User(
+        email=email,
+        first_name=request.first_name.strip(),
+        last_name=request.last_name.strip(),
+        phone=request.phone.strip() if request.phone else None,
+        is_admin=request.is_admin,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "success": True,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_admin": user.is_admin,
+        }
+    }
+
+
+@app.get("/api/admin/users")
+async def list_users(
+    secret: str = Query(..., description="Admin secret key"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: List all users.
+    Requires admin authentication AND ADMIN_SECRET for extra security.
+    """
+    admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
+
+    if secret != admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
+
+    users = db.query(User).all()
+
+    return {
+        "users": [
+            {
+                "id": u.id,
+                "email": u.email,
+                "first_name": u.first_name,
+                "last_name": u.last_name,
+                "is_admin": u.is_admin,
+                "is_active": u.is_active,
+                "last_login": u.last_login.isoformat() if u.last_login else None,
+            }
+            for u in users
+        ]
+    }
+
+
+class AuthRequestCodeRequest(BaseModel):
+    """Request to send a login code."""
+    email: str
+
+
+class AuthRequestCodeResponse(BaseModel):
+    """Response from request-code endpoint."""
+    success: bool
+    message: str
+
+
+class AuthVerifyCodeRequest(BaseModel):
+    """Request to verify a login code."""
+    email: str
+    code: str
+
+
+class AuthVerifyCodeResponse(BaseModel):
+    """Response from verify-code endpoint."""
+    success: bool
+    message: str
+    token: Optional[str] = None
+    user: Optional[dict] = None
+
+
+class AuthMeResponse(BaseModel):
+    """Response from me endpoint."""
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+    is_admin: bool
+
+
+@app.post("/api/auth/request-code", response_model=AuthRequestCodeResponse)
+async def auth_request_code(
+    request: AuthRequestCodeRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Request a 6-digit login code via email.
+
+    The code expires after 10 minutes.
+    Only active users can request codes.
+    """
+    from datetime import timedelta
+
+    email = request.email.strip().lower()
+
+    # Find the user
+    user = db.query(User).filter(
+        User.email == email,
+        User.is_active == True
+    ).first()
+
+    if not user:
+        # Don't reveal whether email exists
+        return AuthRequestCodeResponse(
+            success=True,
+            message="If your email is registered, you will receive a login code shortly."
+        )
+
+    # Generate cryptographically secure 6-digit code
+    code = str(secrets.randbelow(900000) + 100000)
+
+    # Code expires in 10 minutes
+    expires_at = datetime.utcnow() + timedelta(minutes=10)
+
+    # Invalidate any existing unused codes for this user
+    db.query(LoginCode).filter(
+        LoginCode.user_id == user.id,
+        LoginCode.used == False
+    ).update({"used": True})
+
+    # Create new login code
+    login_code = LoginCode(
+        user_id=user.id,
+        code=code,
+        expires_at=expires_at,
+    )
+    db.add(login_code)
+    db.commit()
+
+    # Send email with code
+    email_sent = send_login_code_email(
+        email=user.email,
+        first_name=user.first_name,
+        code=code
+    )
+
+    if not email_sent:
+        print(f"WARNING: Failed to send login code email to {user.email}")
+
+    return AuthRequestCodeResponse(
+        success=True,
+        message="If your email is registered, you will receive a login code shortly."
+    )
+
+
+@app.post("/api/auth/verify-code", response_model=AuthVerifyCodeResponse)
+async def auth_verify_code(
+    request: AuthVerifyCodeRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Verify a 6-digit login code and create a session.
+
+    Sessions expire after 8 hours.
+    """
+    from datetime import timedelta
+
+    email = request.email.strip().lower()
+    code = request.code.strip()
+
+    # Find the user
+    user = db.query(User).filter(
+        User.email == email,
+        User.is_active == True
+    ).first()
+
+    if not user:
+        return AuthVerifyCodeResponse(
+            success=False,
+            message="Invalid email or code."
+        )
+
+    # Find valid login code
+    login_code = db.query(LoginCode).filter(
+        LoginCode.user_id == user.id,
+        LoginCode.code == code,
+        LoginCode.used == False,
+        LoginCode.expires_at > datetime.utcnow()
+    ).first()
+
+    if not login_code:
+        return AuthVerifyCodeResponse(
+            success=False,
+            message="Invalid or expired code."
+        )
+
+    # Mark code as used
+    login_code.used = True
+
+    # Generate session token (64-char hex string)
+    token = secrets.token_hex(32)
+
+    # Session expires in 8 hours
+    expires_at = datetime.utcnow() + timedelta(hours=8)
+
+    # Create session
+    session = DbSession(
+        user_id=user.id,
+        token=token,
+        expires_at=expires_at,
+    )
+    db.add(session)
+
+    # Update user's last login
+    user.last_login = datetime.utcnow()
+
+    db.commit()
+
+    return AuthVerifyCodeResponse(
+        success=True,
+        message="Login successful.",
+        token=token,
+        user={
+            "id": user.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_admin": user.is_admin,
+        }
+    )
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Logout the current user by invalidating their session.
+    """
+    if not authorization:
+        return {"success": True, "message": "Logged out"}
+
+    parts = authorization.split()
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        token = parts[1]
+        # Delete the session
+        db.query(DbSession).filter(DbSession.token == token).delete()
+        db.commit()
+
+    return {"success": True, "message": "Logged out"}
+
+
+@app.get("/api/auth/me", response_model=AuthMeResponse)
+async def auth_me(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get the current authenticated user's information.
+    """
+    return AuthMeResponse(
+        id=current_user.id,
+        email=current_user.email,
+        first_name=current_user.first_name,
+        last_name=current_user.last_name,
+        is_admin=current_user.is_admin,
+    )
 
 
 if __name__ == "__main__":

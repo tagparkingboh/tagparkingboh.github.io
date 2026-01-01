@@ -20,22 +20,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # Use batch mode for SQLite compatibility
-    with op.batch_alter_table('marketing_subscribers') as batch_op:
-        batch_op.add_column(sa.Column('promo_code', sa.String(20), nullable=True))
-        batch_op.add_column(sa.Column('promo_code_used', sa.Boolean(), nullable=True, server_default='0'))
-        batch_op.add_column(sa.Column('promo_code_used_booking_id', sa.Integer(), nullable=True))
-        batch_op.add_column(sa.Column('promo_code_used_at', sa.DateTime(timezone=True), nullable=True))
-        batch_op.create_index('ix_marketing_subscribers_promo_code', ['promo_code'], unique=True)
-        # Note: Foreign key is defined in model but not enforced at DB level for SQLite
-        # PostgreSQL in production will use the model's FK constraint
+    op.add_column('marketing_subscribers', sa.Column('promo_code', sa.String(20), nullable=True))
+    op.add_column('marketing_subscribers', sa.Column('promo_code_used', sa.Boolean(), nullable=True, server_default='false'))
+    op.add_column('marketing_subscribers', sa.Column('promo_code_used_booking_id', sa.Integer(), nullable=True))
+    op.add_column('marketing_subscribers', sa.Column('promo_code_used_at', sa.DateTime(timezone=True), nullable=True))
+    op.create_index('ix_marketing_subscribers_promo_code', 'marketing_subscribers', ['promo_code'], unique=True)
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    with op.batch_alter_table('marketing_subscribers') as batch_op:
-        batch_op.drop_index('ix_marketing_subscribers_promo_code')
-        batch_op.drop_column('promo_code_used_at')
-        batch_op.drop_column('promo_code_used_booking_id')
-        batch_op.drop_column('promo_code_used')
-        batch_op.drop_column('promo_code')
+    op.drop_index('ix_marketing_subscribers_promo_code', table_name='marketing_subscribers')
+    op.drop_column('marketing_subscribers', 'promo_code_used_at')
+    op.drop_column('marketing_subscribers', 'promo_code_used_booking_id')
+    op.drop_column('marketing_subscribers', 'promo_code_used')
+    op.drop_column('marketing_subscribers', 'promo_code')

@@ -3,9 +3,13 @@ Tests for the DVLA Vehicle Enquiry Service integration.
 
 Tests both unit tests (with mocked DVLA API) and integration tests
 against the DVLA UAT environment.
+
+Unit tests mock the httpx client to avoid real API calls.
+Integration tests require DVLA_API_KEY_TEST in .env file.
 """
 import pytest
 import pytest_asyncio
+import os
 from unittest.mock import patch, AsyncMock, MagicMock
 from httpx import AsyncClient, ASGITransport, Response
 
@@ -25,56 +29,73 @@ async def client():
 
 
 # =============================================================================
-# Unit Tests (validation only - no mocking of external API)
+# Unit Tests (validation only - mocked external API)
 # =============================================================================
 
+# Mock settings fixture for unit tests
+@pytest.fixture
+def mock_settings():
+    """Mock settings with fake API key for validation tests."""
+    mock = MagicMock()
+    mock.dvla_api_key_test = "test_api_key_12345"
+    mock.dvla_api_key_prod = ""
+    mock.environment = "development"
+    return mock
+
+
 class TestVehicleLookupUnit:
-    """Unit tests for vehicle lookup input validation."""
+    """Unit tests for vehicle lookup input validation.
+
+    These tests mock the external API to test input validation logic.
+    """
 
     @pytest.mark.asyncio
-    async def test_lookup_empty_registration(self, client):
+    async def test_lookup_empty_registration(self, client, mock_settings):
         """Should return error for empty registration."""
-        response = await client.post(
-            "/api/vehicles/lookup",
-            json={"registration": ""}
-        )
+        with patch('main.get_settings', return_value=mock_settings):
+            response = await client.post(
+                "/api/vehicles/dvla-lookup",
+                json={"registration": ""}
+            )
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is False
-        assert "Invalid" in data["error"]
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is False
+            assert "Invalid" in data["error"]
 
     @pytest.mark.asyncio
-    async def test_lookup_whitespace_only_registration(self, client):
+    async def test_lookup_whitespace_only_registration(self, client, mock_settings):
         """Should return error for whitespace-only registration."""
-        response = await client.post(
-            "/api/vehicles/lookup",
-            json={"registration": "   "}
-        )
+        with patch('main.get_settings', return_value=mock_settings):
+            response = await client.post(
+                "/api/vehicles/dvla-lookup",
+                json={"registration": "   "}
+            )
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is False
-        assert "Invalid" in data["error"]
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is False
+            assert "Invalid" in data["error"]
 
     @pytest.mark.asyncio
-    async def test_lookup_special_chars_only(self, client):
+    async def test_lookup_special_chars_only(self, client, mock_settings):
         """Should return error for special characters only."""
-        response = await client.post(
-            "/api/vehicles/lookup",
-            json={"registration": "!@#$%"}
-        )
+        with patch('main.get_settings', return_value=mock_settings):
+            response = await client.post(
+                "/api/vehicles/dvla-lookup",
+                json={"registration": "!@#$%"}
+            )
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is False
-        assert "Invalid" in data["error"]
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is False
+            assert "Invalid" in data["error"]
 
     @pytest.mark.asyncio
     async def test_lookup_missing_registration_field(self, client):
         """Should return 422 for missing registration field."""
         response = await client.post(
-            "/api/vehicles/lookup",
+            "/api/vehicles/dvla-lookup",
             json={}
         )
 
@@ -97,7 +118,7 @@ class TestVehicleLookupIntegration:
     async def test_dvla_uat_ford_red(self, client):
         """Test AA19AAA returns Ford Red from DVLA UAT."""
         response = await client.post(
-            "/api/vehicles/lookup",
+            "/api/vehicles/dvla-lookup",
             json={"registration": "AA19AAA"}
         )
 
@@ -111,7 +132,7 @@ class TestVehicleLookupIntegration:
     async def test_dvla_uat_audi_white(self, client):
         """Test AA19MOT returns Audi White from DVLA UAT."""
         response = await client.post(
-            "/api/vehicles/lookup",
+            "/api/vehicles/dvla-lookup",
             json={"registration": "AA19MOT"}
         )
 
@@ -125,7 +146,7 @@ class TestVehicleLookupIntegration:
     async def test_dvla_uat_skoda_grey(self, client):
         """Test AA19DSL returns Skoda Grey from DVLA UAT."""
         response = await client.post(
-            "/api/vehicles/lookup",
+            "/api/vehicles/dvla-lookup",
             json={"registration": "AA19DSL"}
         )
 
@@ -139,7 +160,7 @@ class TestVehicleLookupIntegration:
     async def test_dvla_uat_motorcycle(self, client):
         """Test L2WPS returns Kawasaki Black motorcycle from DVLA UAT."""
         response = await client.post(
-            "/api/vehicles/lookup",
+            "/api/vehicles/dvla-lookup",
             json={"registration": "L2WPS"}
         )
 
@@ -153,7 +174,7 @@ class TestVehicleLookupIntegration:
     async def test_dvla_uat_not_found(self, client):
         """Test ER19NFD returns not found from DVLA UAT."""
         response = await client.post(
-            "/api/vehicles/lookup",
+            "/api/vehicles/dvla-lookup",
             json={"registration": "ER19NFD"}
         )
 
@@ -166,7 +187,7 @@ class TestVehicleLookupIntegration:
     async def test_dvla_uat_bad_request(self, client):
         """Test ER19BAD returns bad request from DVLA UAT."""
         response = await client.post(
-            "/api/vehicles/lookup",
+            "/api/vehicles/dvla-lookup",
             json={"registration": "ER19BAD"}
         )
 
@@ -179,7 +200,7 @@ class TestVehicleLookupIntegration:
     async def test_dvla_uat_with_spaces(self, client):
         """Test registration with spaces is cleaned and works."""
         response = await client.post(
-            "/api/vehicles/lookup",
+            "/api/vehicles/dvla-lookup",
             json={"registration": "AA 19 AAA"}
         )
 
@@ -193,7 +214,7 @@ class TestVehicleLookupIntegration:
     async def test_dvla_uat_lowercase(self, client):
         """Test lowercase registration is uppercased and works."""
         response = await client.post(
-            "/api/vehicles/lookup",
+            "/api/vehicles/dvla-lookup",
             json={"registration": "aa19aaa"}
         )
 
