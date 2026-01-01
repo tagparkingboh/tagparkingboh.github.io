@@ -203,16 +203,20 @@ function Bookings() {
     return flightsForAirline.map(f => {
       // Parse destinationName to extract city and country code (e.g., "Faro, PT" or "Edinburgh, SC, GB")
       const parts = f.destinationName.split(', ')
-      const countryCode = parts[parts.length - 1]
-      let cityName = parts.slice(0, -1).join(', ')
-      // Shorten Tenerife-Reinasofia to Tenerife
-      if (cityName === 'Tenerife-Reinasofia') cityName = 'Tenerife'
-      const countryName = countryNames[countryCode] || countryCode
+      let displayDestination = f.destinationName
+      if (parts.length > 1) {
+        const countryCode = parts[parts.length - 1]
+        let cityName = parts.slice(0, -1).join(', ')
+        // Shorten Tenerife-Reinasofia to Tenerife
+        if (cityName === 'Tenerife-Reinasofia') cityName = 'Tenerife'
+        const countryName = countryNames[countryCode] || countryCode
+        displayDestination = `${cityName}, ${countryName}`
+      }
 
       return {
         ...f,
         flightKey: `${f.time}|${f.destinationCode}`,
-        displayText: `${f.time} ${f.airlineCode}${f.flightNumber} → ${cityName}, ${countryName}`
+        displayText: `${f.time} ${f.airlineCode}${f.flightNumber} → ${displayDestination}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
   }, [flightsForAirline])
@@ -379,14 +383,18 @@ function Bookings() {
     return filteredArrivalsForDate.map(f => {
       // Parse originName to get city
       const parts = f.originName.split(', ')
-      let cityName = parts.slice(0, -1).join(', ')
-      // Shorten Tenerife-Reinasofia to Tenerife
-      if (cityName === 'Tenerife-Reinasofia') cityName = 'Tenerife'
+      let displayOrigin = f.originName
+      if (parts.length > 1) {
+        let cityName = parts.slice(0, -1).join(', ')
+        // Shorten Tenerife-Reinasofia to Tenerife
+        if (cityName === 'Tenerife-Reinasofia') cityName = 'Tenerife'
+        displayOrigin = cityName
+      }
 
       return {
         ...f,
         flightKey: `${f.time}|${f.flightNumber}`,
-        displayText: `${f.airlineCode}${f.flightNumber} from ${cityName} → arrives ${f.time}`
+        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${f.time}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
   }, [filteredArrivalsForDate])
@@ -1116,10 +1124,13 @@ function Bookings() {
                   <p className="return-flight-info">
                     {selectedDropoffFlight && (() => {
                       const parts = selectedDropoffFlight.destinationName.split(', ')
-                      const countryCode = parts[parts.length - 1]
-                      const cityName = parts.slice(0, -1).join(', ')
-                      const country = countryNames[countryCode] || countryCode
-                      return `${formData.dropoffAirline} from ${cityName}, ${country}`
+                      if (parts.length > 1) {
+                        const countryCode = parts[parts.length - 1]
+                        const cityName = parts.slice(0, -1).join(', ')
+                        const country = countryNames[countryCode] || countryCode
+                        return `${formData.dropoffAirline} from ${cityName}, ${country}`
+                      }
+                      return `${formData.dropoffAirline} from ${selectedDropoffFlight.destinationName}`
                     })()}
                   </p>
 
