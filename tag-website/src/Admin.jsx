@@ -924,9 +924,6 @@ function Admin() {
                         <span className="subscriber-name">{subscriber.first_name} {subscriber.last_name}</span>
                         <span className="subscriber-email">{subscriber.email}</span>
                       </div>
-                      <div className="booking-expand-icon">
-                        {expandedSubscriberId === subscriber.id ? '−' : '+'}
-                      </div>
                     </div>
 
                     {/* Expanded Content */}
@@ -965,13 +962,13 @@ function Admin() {
                         <div className="booking-section">
                           <div className="section-header-with-action">
                             <h4>10% Off Promo</h4>
-                            {!subscriber.unsubscribed && !subscriber.promo_code_used && subscriber.discount_percent !== 100 && (
+                            {!subscriber.unsubscribed && !subscriber.promo_code_used && (!subscriber.promo_code || subscriber.discount_percent === 10) && (
                               <button
                                 className="action-btn promo-btn"
                                 onClick={(e) => { e.stopPropagation(); handleSendPromo(subscriber.id, 10); }}
-                                disabled={sendingPromoId === subscriber.id}
+                                disabled={sendingPromoId === subscriber.id || subscriber.promo_code_sent}
                               >
-                                {sendingPromoId === subscriber.id ? 'Sending...' : 'Send 10% Off'}
+                                {sendingPromoId === subscriber.id ? 'Sending...' : subscriber.promo_code_sent ? 'Sent' : 'Send 10% Off'}
                               </button>
                             )}
                           </div>
@@ -1009,13 +1006,13 @@ function Admin() {
                         <div className="booking-section">
                           <div className="section-header-with-action">
                             <h4>Free Parking Promo</h4>
-                            {!subscriber.unsubscribed && !subscriber.promo_code_used && subscriber.discount_percent !== 10 && (
+                            {!subscriber.unsubscribed && !subscriber.promo_code_used && (!subscriber.promo_code || subscriber.discount_percent === 100) && (
                               <button
                                 className="action-btn promo-btn free"
                                 onClick={(e) => { e.stopPropagation(); handleSendPromo(subscriber.id, 100); }}
-                                disabled={sendingPromoId === subscriber.id}
+                                disabled={sendingPromoId === subscriber.id || subscriber.promo_code_sent}
                               >
-                                {sendingPromoId === subscriber.id ? 'Sending...' : 'Send FREE'}
+                                {sendingPromoId === subscriber.id ? 'Sending...' : subscriber.promo_code_sent ? 'Sent' : 'Send FREE'}
                               </button>
                             )}
                           </div>
