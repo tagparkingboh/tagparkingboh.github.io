@@ -591,6 +591,15 @@
   min-width: 150px;
 }
 
+.subscriber-email-preview {
+  color: #666;
+  font-size: 13px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .booking-date {
   color: #666;
   font-size: 14px;

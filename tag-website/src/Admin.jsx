@@ -38,14 +38,15 @@ function Admin() {
   const [subscriberSearchTerm, setSubscriberSearchTerm] = useState('')
   const [subscriberStatusFilter, setSubscriberStatusFilter] = useState('all')
   const [hideTestEmails, setHideTestEmails] = useState(true)
+  const [expandedSubscriberId, setExpandedSubscriberId] = useState(null)
 
   // Test email domains to filter out
-  const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com']
+  const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
 
   const isTestEmail = (email) => {
     if (!email) return false
     const domain = email.toLowerCase().split('@')[1]
-    return testEmailDomains.includes(domain) || domain?.includes('test')
+    return testEmailDomains.includes(domain) || domain?.includes('test') || domain?.includes('staging')
   }
 
   // Redirect if not authenticated or not admin
@@ -850,119 +851,189 @@ function Admin() {
 
         {activeTab === 'marketing' && (
           <div className="admin-section">
-            <div className="admin-section-header">
-              <h2>Marketing Subscribers</h2>
-              <div className="admin-controls">
+            <h2>Marketing Subscribers</h2>
+
+            {/* Search and Filter Controls - matching Bookings style */}
+            <div className="admin-filters">
+              <div className="admin-search">
                 <input
                   type="text"
                   placeholder="Search by name, email, or promo code..."
                   value={subscriberSearchTerm}
                   onChange={(e) => setSubscriberSearchTerm(e.target.value)}
-                  className="admin-search"
+                  className="admin-search-input"
                 />
+                {subscriberSearchTerm && (
+                  <button
+                    className="admin-search-clear"
+                    onClick={() => setSubscriberSearchTerm('')}
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
+              <div className="admin-filter-group">
+                <label>Status:</label>
                 <select
                   value={subscriberStatusFilter}
                   onChange={(e) => setSubscriberStatusFilter(e.target.value)}
-                  className="admin-filter"
+                  className="admin-filter-select"
                 >
-                  <option value="all">All Status</option>
+                  <option value="all">All Statuses</option>
                   <option value="pending">Pending</option>
                   <option value="sent">Code Sent</option>
                   <option value="used">Code Used</option>
                   <option value="unsubscribed">Unsubscribed</option>
                 </select>
-                <label className="admin-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={hideTestEmails}
-                    onChange={(e) => setHideTestEmails(e.target.checked)}
-                  />
-                  Hide test emails
-                </label>
+              </div>
+              <label className="admin-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={hideTestEmails}
+                  onChange={(e) => setHideTestEmails(e.target.checked)}
+                />
+                Hide test emails
+              </label>
+              <div className="admin-filter-count">
+                Showing {filteredSubscribers.length} of {subscribers.length} subscribers
               </div>
             </div>
 
             {loadingSubscribers ? (
-              <p>Loading subscribers...</p>
+              <div className="admin-loading-inline">
+                <div className="spinner-small"></div>
+                <span>Loading subscribers...</span>
+              </div>
             ) : filteredSubscribers.length === 0 ? (
-              <p className="no-results">No subscribers found</p>
+              <p className="admin-empty">
+                {subscribers.length === 0 ? 'No subscribers found' : 'No subscribers match your search'}
+              </p>
             ) : (
-              <div className="subscribers-table-container">
-                <table className="subscribers-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Subscribed</th>
-                      <th>Promo Code</th>
-                      <th>Discount</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredSubscribers.map((subscriber) => (
-                      <tr key={subscriber.id} className={subscriber.unsubscribed ? 'unsubscribed' : ''}>
-                        <td>{subscriber.first_name} {subscriber.last_name}</td>
-                        <td>{subscriber.email}</td>
-                        <td>{subscriber.subscribed_at ? new Date(subscriber.subscribed_at).toLocaleDateString() : '-'}</td>
-                        <td>
-                          {subscriber.promo_code ? (
-                            <span className="promo-code-display">{subscriber.promo_code}</span>
-                          ) : (
-                            <span className="no-code">Not generated</span>
-                          )}
-                        </td>
-                        <td>
-                          {subscriber.promo_code ? (
-                            <span className={`discount-badge ${subscriber.discount_percent === 100 ? 'free' : ''}`}>
-                              {subscriber.discount_percent}% off
-                            </span>
-                          ) : '-'}
-                        </td>
-                        <td>
-                          {subscriber.unsubscribed ? (
-                            <span className="status-badge unsubscribed">Unsubscribed</span>
-                          ) : subscriber.promo_code_used ? (
-                            <span className="status-badge used">Code Used</span>
-                          ) : subscriber.promo_code_sent ? (
-                            <span className="status-badge sent">Code Sent</span>
-                          ) : (
-                            <span className="status-badge pending">Pending</span>
-                          )}
-                        </td>
-                        <td className="actions-cell">
-                          {!subscriber.unsubscribed && !subscriber.promo_code_used && (
-                            <>
-                              <button
-                                className="action-btn promo-btn"
-                                onClick={() => handleSendPromo(subscriber.id, 10)}
-                                disabled={sendingPromoId === subscriber.id}
-                                title="Send 10% off promo code"
-                              >
-                                {sendingPromoId === subscriber.id ? 'Sending...' : '10% Off'}
-                              </button>
-                              <button
-                                className="action-btn promo-btn free"
-                                onClick={() => handleSendPromo(subscriber.id, 100)}
-                                disabled={sendingPromoId === subscriber.id}
-                                title="Send FREE parking promo code"
-                              >
-                                {sendingPromoId === subscriber.id ? 'Sending...' : 'FREE'}
-                              </button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="booking-accordion">
+                {filteredSubscribers.map((subscriber) => (
+                  <div
+                    key={subscriber.id}
+                    className={`booking-card ${expandedSubscriberId === subscriber.id ? 'expanded' : ''} ${subscriber.unsubscribed ? 'unsubscribed' : ''}`}
+                  >
+                    {/* Collapsed Header Row */}
+                    <div
+                      className="booking-card-header"
+                      onClick={() => setExpandedSubscriberId(expandedSubscriberId === subscriber.id ? null : subscriber.id)}
+                    >
+                      <div className="booking-header-main">
+                        <span className="booking-name">
+                          {subscriber.first_name} {subscriber.last_name}
+                        </span>
+                        <span className="subscriber-email-preview">{subscriber.email}</span>
+                        {subscriber.unsubscribed ? (
+                          <span className="status-badge unsubscribed">Unsubscribed</span>
+                        ) : subscriber.promo_code_used ? (
+                          <span className="status-badge used">Used</span>
+                        ) : subscriber.promo_code_sent ? (
+                          <span className="status-badge sent">Sent</span>
+                        ) : (
+                          <span className="status-badge pending">Pending</span>
+                        )}
+                      </div>
+                      <div className="booking-expand-icon">
+                        {expandedSubscriberId === subscriber.id ? '−' : '+'}
+                      </div>
+                    </div>
+
+                    {/* Expanded Content */}
+                    {expandedSubscriberId === subscriber.id && (
+                      <div className="booking-card-body">
+                        <div className="booking-section">
+                          <h4>Subscriber Details</h4>
+                          <div className="booking-section-content">
+                            <div className="booking-detail-row">
+                              <div className="booking-detail">
+                                <span className="detail-label">Name</span>
+                                <span className="detail-value">{subscriber.first_name} {subscriber.last_name}</span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Email</span>
+                                <span className="detail-value">{subscriber.email}</span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Subscribed</span>
+                                <span className="detail-value">
+                                  {subscriber.subscribed_at ? new Date(subscriber.subscribed_at).toLocaleDateString() : '-'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="booking-section">
+                          <h4>Promo Code</h4>
+                          <div className="booking-section-content">
+                            <div className="booking-detail-row">
+                              <div className="booking-detail">
+                                <span className="detail-label">Code</span>
+                                <span className="detail-value">
+                                  {subscriber.promo_code ? (
+                                    <span className="promo-code-display">{subscriber.promo_code}</span>
+                                  ) : (
+                                    <span className="no-code">Not generated</span>
+                                  )}
+                                </span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Discount</span>
+                                <span className="detail-value">
+                                  {subscriber.promo_code ? (
+                                    <span className={`discount-badge ${subscriber.discount_percent === 100 ? 'free' : ''}`}>
+                                      {subscriber.discount_percent}% off
+                                    </span>
+                                  ) : '-'}
+                                </span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Status</span>
+                                <span className="detail-value">
+                                  {subscriber.unsubscribed ? (
+                                    <span className="status-badge unsubscribed">Unsubscribed</span>
+                                  ) : subscriber.promo_code_used ? (
+                                    <span className="status-badge used">Code Used</span>
+                                  ) : subscriber.promo_code_sent ? (
+                                    <span className="status-badge sent">Code Sent</span>
+                                  ) : (
+                                    <span className="status-badge pending">Pending</span>
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        {!subscriber.unsubscribed && !subscriber.promo_code_used && (
+                          <div className="booking-actions">
+                            <button
+                              className="action-btn promo-btn"
+                              onClick={() => handleSendPromo(subscriber.id, 10)}
+                              disabled={sendingPromoId === subscriber.id}
+                              title="Send 10% off promo code"
+                            >
+                              {sendingPromoId === subscriber.id ? 'Sending...' : 'Send 10% Off'}
+                            </button>
+                            <button
+                              className="action-btn promo-btn free"
+                              onClick={() => handleSendPromo(subscriber.id, 100)}
+                              disabled={sendingPromoId === subscriber.id}
+                              title="Send FREE parking promo code"
+                            >
+                              {sendingPromoId === subscriber.id ? 'Sending...' : 'Send FREE Parking'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
-
-            <div className="subscribers-summary">
-              <p>Total: {subscribers.length} subscribers | Showing: {filteredSubscribers.length}</p>
-            </div>
           </div>
         )}
 
