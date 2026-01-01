@@ -592,26 +592,28 @@
 }
 
 .subscriber-header {
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
+  gap: 1rem;
+  width: 100%;
 }
 
 .subscriber-header-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  flex: 1;
+  gap: 0.25rem;
 }
 
 .subscriber-name {
   font-weight: 600;
   color: #1a1a2e;
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 
 .subscriber-email {
   color: #666;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .booking-date {
