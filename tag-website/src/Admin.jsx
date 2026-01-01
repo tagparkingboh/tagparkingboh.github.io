@@ -920,15 +920,8 @@ function Admin() {
                       className="booking-card-header subscriber-header"
                       onClick={() => setExpandedSubscriberId(expandedSubscriberId === subscriber.id ? null : subscriber.id)}
                     >
-                      <div className="subscriber-header-info">
-                        <div className="subscriber-name">
-                          {subscriber.first_name} {subscriber.last_name}
-                        </div>
-                        <div className="subscriber-email">{subscriber.email}</div>
-                      </div>
-                      <div className="booking-expand-icon">
-                        {expandedSubscriberId === subscriber.id ? '−' : '+'}
-                      </div>
+                      <span className="subscriber-name">{subscriber.first_name} {subscriber.last_name}</span>
+                      <span className="subscriber-email">{subscriber.email}</span>
                     </div>
 
                     {/* Expanded Content */}

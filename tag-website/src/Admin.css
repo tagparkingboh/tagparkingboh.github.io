@@ -592,27 +592,21 @@
 }
 
 .booking-card-header.subscriber-header {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 1rem;
-}
-
-.subscriber-header-info {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 1.5rem;
 }
 
 .subscriber-name {
   font-weight: 600;
   color: #1a1a2e;
   font-size: 0.9375rem;
+  white-space: nowrap;
 }
 
 .subscriber-email {
   color: #666;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
 }
 
 .booking-date {
