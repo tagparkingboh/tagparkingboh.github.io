@@ -593,15 +593,15 @@
 
 .booking-card-header.subscriber-header {
   display: flex;
-  align-items: center;
-  gap: 1.5rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
 }
 
 .subscriber-name {
   font-weight: 600;
   color: #1a1a2e;
   font-size: 0.9375rem;
-  white-space: nowrap;
 }
 
 .subscriber-email {
