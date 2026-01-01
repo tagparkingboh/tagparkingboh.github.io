@@ -612,11 +612,13 @@
   font-weight: 700;
   font-size: 1.125rem;
   color: #1a1a2e;
+  white-space: nowrap;
 }
 
 .booking-customer-name {
   font-size: 0.875rem;
   color: #666;
+  white-space: nowrap;
 }
 
 .booking-card-header.subscriber-header {
