@@ -602,6 +602,7 @@
   font-weight: 600;
   color: #1a1a2e;
   font-size: 0.9375rem;
+  white-space: nowrap;
 }
 
 .subscriber-email {
