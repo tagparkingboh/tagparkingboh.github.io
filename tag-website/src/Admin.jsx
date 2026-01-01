@@ -917,23 +917,14 @@ function Admin() {
                   >
                     {/* Collapsed Header Row */}
                     <div
-                      className="booking-card-header"
+                      className="booking-card-header subscriber-header"
                       onClick={() => setExpandedSubscriberId(expandedSubscriberId === subscriber.id ? null : subscriber.id)}
                     >
-                      <div className="booking-header-main">
-                        <span className="booking-name">
+                      <div className="subscriber-header-info">
+                        <div className="subscriber-name">
                           {subscriber.first_name} {subscriber.last_name}
-                        </span>
-                        <span className="subscriber-email-preview">{subscriber.email}</span>
-                        {subscriber.unsubscribed ? (
-                          <span className="status-badge unsubscribed">Unsubscribed</span>
-                        ) : subscriber.promo_code_used ? (
-                          <span className="status-badge used">Used</span>
-                        ) : subscriber.promo_code_sent ? (
-                          <span className="status-badge sent">Sent</span>
-                        ) : (
-                          <span className="status-badge pending">Pending</span>
-                        )}
+                        </div>
+                        <div className="subscriber-email">{subscriber.email}</div>
                       </div>
                       <div className="booking-expand-icon">
                         {expandedSubscriberId === subscriber.id ? '−' : '+'}

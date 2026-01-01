@@ -591,13 +591,27 @@
   min-width: 150px;
 }
 
-.subscriber-email-preview {
+.subscriber-header {
+  flex-direction: row;
+  align-items: center;
+}
+
+.subscriber-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.subscriber-name {
+  font-weight: 600;
+  color: #1a1a2e;
+  font-size: 15px;
+}
+
+.subscriber-email {
   color: #666;
   font-size: 13px;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .booking-date {
