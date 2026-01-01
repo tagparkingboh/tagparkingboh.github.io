@@ -74,11 +74,12 @@ app.add_middleware(
         "http://localhost:5174",  # Vite dev server (alternate port)
         "http://localhost:3000",
         "https://tagparkingboh.github.io",  # GitHub Pages
-        "https://tagparking.co.uk",  # Production domain
-        "https://www.tagparking.co.uk",  # Production domain with www
+        "https://tagparking.co.uk",  # Production domain (root)
+        "https://www.tagparking.co.uk",  # Production domain (www)
         "https://staging.tagparking.co.uk",  # Staging environment
         "https://tagparkingbohgithubio-staging.up.railway.app",  # Railway staging
         "https://staging-tagparking.netlify.app",  # Netlify staging frontend
+        "https://prod-frontend-production.up.railway.app",  # Railway production frontend
     ],
     allow_credentials=True,
     allow_methods=["*"],
