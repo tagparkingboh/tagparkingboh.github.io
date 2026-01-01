@@ -36,6 +36,17 @@ function Admin() {
   const [loadingSubscribers, setLoadingSubscribers] = useState(false)
   const [sendingPromoId, setSendingPromoId] = useState(null)
   const [subscriberSearchTerm, setSubscriberSearchTerm] = useState('')
+  const [subscriberStatusFilter, setSubscriberStatusFilter] = useState('all')
+  const [hideTestEmails, setHideTestEmails] = useState(true)
+
+  // Test email domains to filter out
+  const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com']
+
+  const isTestEmail = (email) => {
+    if (!email) return false
+    const domain = email.toLowerCase().split('@')[1]
+    return testEmailDomains.includes(domain) || domain?.includes('test')
+  }
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -140,6 +151,11 @@ function Admin() {
   const filteredBookings = useMemo(() => {
     let filtered = [...bookings]
 
+    // Hide test emails by default
+    if (hideTestEmails) {
+      filtered = filtered.filter(b => !isTestEmail(b.customer?.email))
+    }
+
     // Apply status filter
     if (statusFilter !== 'all') {
       filtered = filtered.filter(b => b.status?.toLowerCase() === statusFilter)
@@ -166,21 +182,42 @@ function Admin() {
     })
 
     return filtered
-  }, [bookings, searchTerm, statusFilter])
+  }, [bookings, searchTerm, statusFilter, hideTestEmails])
 
   // Filter subscribers
   const filteredSubscribers = useMemo(() => {
-    if (!subscriberSearchTerm.trim()) return subscribers
+    let filtered = [...subscribers]
 
-    const search = subscriberSearchTerm.toLowerCase().trim()
-    return subscribers.filter(s =>
-      s.first_name?.toLowerCase().includes(search) ||
-      s.last_name?.toLowerCase().includes(search) ||
-      s.email?.toLowerCase().includes(search) ||
-      s.promo_code?.toLowerCase().includes(search) ||
-      `${s.first_name} ${s.last_name}`.toLowerCase().includes(search)
-    )
-  }, [subscribers, subscriberSearchTerm])
+    // Hide test emails by default
+    if (hideTestEmails) {
+      filtered = filtered.filter(s => !isTestEmail(s.email))
+    }
+
+    // Apply status filter
+    if (subscriberStatusFilter !== 'all') {
+      filtered = filtered.filter(s => {
+        if (subscriberStatusFilter === 'pending') return !s.promo_code_sent && !s.unsubscribed
+        if (subscriberStatusFilter === 'sent') return s.promo_code_sent && !s.promo_code_used && !s.unsubscribed
+        if (subscriberStatusFilter === 'used') return s.promo_code_used
+        if (subscriberStatusFilter === 'unsubscribed') return s.unsubscribed
+        return true
+      })
+    }
+
+    // Apply search filter
+    if (subscriberSearchTerm.trim()) {
+      const search = subscriberSearchTerm.toLowerCase().trim()
+      filtered = filtered.filter(s =>
+        s.first_name?.toLowerCase().includes(search) ||
+        s.last_name?.toLowerCase().includes(search) ||
+        s.email?.toLowerCase().includes(search) ||
+        s.promo_code?.toLowerCase().includes(search) ||
+        `${s.first_name} ${s.last_name}`.toLowerCase().includes(search)
+      )
+    }
+
+    return filtered
+  }, [subscribers, subscriberSearchTerm, subscriberStatusFilter, hideTestEmails])
 
   const toggleBookingExpanded = (bookingId) => {
     setExpandedBookingId(expandedBookingId === bookingId ? null : bookingId)
@@ -514,6 +551,14 @@ function Admin() {
                   <option value="refunded">Refunded</option>
                 </select>
               </div>
+              <label className="admin-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={hideTestEmails}
+                  onChange={(e) => setHideTestEmails(e.target.checked)}
+                />
+                Hide test emails
+              </label>
               <div className="admin-filter-count">
                 Showing {filteredBookings.length} of {bookings.length} bookings
               </div>
@@ -815,6 +860,25 @@ function Admin() {
                   onChange={(e) => setSubscriberSearchTerm(e.target.value)}
                   className="admin-search"
                 />
+                <select
+                  value={subscriberStatusFilter}
+                  onChange={(e) => setSubscriberStatusFilter(e.target.value)}
+                  className="admin-filter"
+                >
+                  <option value="all">All Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="sent">Code Sent</option>
+                  <option value="used">Code Used</option>
+                  <option value="unsubscribed">Unsubscribed</option>
+                </select>
+                <label className="admin-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={hideTestEmails}
+                    onChange={(e) => setHideTestEmails(e.target.checked)}
+                  />
+                  Hide test emails
+                </label>
               </div>
             </div>
 
