@@ -655,6 +655,7 @@ async def get_all_bookings(
     date_filter: Optional[date] = Query(None, description="Filter by parking date"),
     include_cancelled: bool = Query(True, description="Include cancelled bookings"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Get all bookings from database.
@@ -746,7 +747,10 @@ async def get_all_bookings(
 
 
 @app.get("/api/admin/occupancy/{target_date}")
-async def get_daily_occupancy(target_date: date):
+async def get_daily_occupancy(
+    target_date: date,
+    current_user: User = Depends(require_admin),
+):
     """
     Admin endpoint: Get occupancy count for a specific date.
     """
@@ -762,7 +766,10 @@ async def get_daily_occupancy(target_date: date):
 
 
 @app.post("/api/admin/bookings", response_model=BookingResponse)
-async def create_admin_booking(request: AdminBookingRequest):
+async def create_admin_booking(
+    request: AdminBookingRequest,
+    current_user: User = Depends(require_admin),
+):
     """
     Admin endpoint: Create a booking manually.
 
@@ -792,6 +799,7 @@ async def create_admin_booking(request: AdminBookingRequest):
 async def create_manual_booking(
     request: ManualBookingRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Create a manual booking and send payment link email.
@@ -929,6 +937,7 @@ async def create_manual_booking(
 async def mark_booking_paid(
     booking_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Mark a manual booking as paid (confirmed).
@@ -1020,6 +1029,7 @@ async def mark_booking_paid(
 async def cancel_booking_admin(
     booking_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Cancel a booking.
@@ -1068,6 +1078,7 @@ async def cancel_booking_admin(
 async def resend_booking_confirmation_email(
     booking_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Resend booking confirmation email.
@@ -1147,6 +1158,7 @@ async def resend_booking_confirmation_email(
 async def send_cancellation_email_endpoint(
     booking_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Send cancellation email to customer.
@@ -1197,6 +1209,7 @@ async def send_cancellation_email_endpoint(
 async def send_refund_email_endpoint(
     booking_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Send refund confirmation email to customer.
@@ -1255,6 +1268,7 @@ async def send_refund_email_endpoint(
 @app.get("/api/admin/marketing-subscribers")
 async def get_marketing_subscribers(
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Get all marketing subscribers for admin management.
@@ -1274,6 +1288,7 @@ async def get_marketing_subscribers(
                 "subscribed_at": s.subscribed_at.isoformat() if s.subscribed_at else None,
                 "welcome_email_sent": s.welcome_email_sent,
                 "welcome_email_sent_at": s.welcome_email_sent_at.isoformat() if s.welcome_email_sent_at else None,
+                # Legacy promo fields (kept for backwards compatibility)
                 "promo_code": s.promo_code,
                 "promo_code_sent": s.promo_code_sent,
                 "promo_code_sent_at": s.promo_code_sent_at.isoformat() if s.promo_code_sent_at else None,
@@ -1281,6 +1296,19 @@ async def get_marketing_subscribers(
                 "promo_code_used": s.promo_code_used,
                 "promo_code_used_at": s.promo_code_used_at.isoformat() if s.promo_code_used_at else None,
                 "promo_code_used_booking_id": s.promo_code_used_booking_id,
+                # 10% OFF promo (separate)
+                "promo_10_code": s.promo_10_code,
+                "promo_10_sent": s.promo_10_sent,
+                "promo_10_sent_at": s.promo_10_sent_at.isoformat() if s.promo_10_sent_at else None,
+                "promo_10_used": s.promo_10_used,
+                "promo_10_used_at": s.promo_10_used_at.isoformat() if s.promo_10_used_at else None,
+                # FREE promo (separate)
+                "promo_free_code": s.promo_free_code,
+                "promo_free_sent": s.promo_free_sent,
+                "promo_free_sent_at": s.promo_free_sent_at.isoformat() if s.promo_free_sent_at else None,
+                "promo_free_used": s.promo_free_used,
+                "promo_free_used_at": s.promo_free_used_at.isoformat() if s.promo_free_used_at else None,
+                # Unsubscribe
                 "unsubscribed": s.unsubscribed,
                 "unsubscribed_at": s.unsubscribed_at.isoformat() if s.unsubscribed_at else None,
             }
@@ -1294,14 +1322,14 @@ async def send_promo_email_to_subscriber(
     subscriber_id: int,
     discount_percent: int = Query(10, description="Discount percentage (10 or 100)"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Generate a unique promo code and send promo email to a subscriber.
 
-    - Generates a unique promo code if one doesn't exist
-    - Sets the discount percentage (10% or 100%)
-    - Sends the promo code email
-    - Marks promo_code_sent = True
+    Supports SEPARATE 10% and FREE promos - a subscriber can receive both:
+    - 10% off promo (discount_percent=10) -> stored in promo_10_* fields
+    - FREE parking promo (discount_percent=100) -> stored in promo_free_* fields
     """
     from email_service import generate_promo_code, send_promo_code_email
 
@@ -1315,55 +1343,81 @@ async def send_promo_email_to_subscriber(
     if subscriber.unsubscribed:
         raise HTTPException(status_code=400, detail="Subscriber has unsubscribed")
 
-    if subscriber.promo_code_used:
-        raise HTTPException(status_code=400, detail="Promo code has already been used")
-
     # Validate discount percent
     if discount_percent not in [10, 100]:
         raise HTTPException(status_code=400, detail="Discount must be 10 or 100 percent")
 
-    # Generate unique promo code if not already generated
-    if not subscriber.promo_code:
-        for _ in range(10):  # Max 10 attempts
-            new_code = generate_promo_code()
-            existing = db.query(MarketingSubscriber).filter(
-                MarketingSubscriber.promo_code == new_code
-            ).first()
-            if not existing:
-                subscriber.promo_code = new_code
-                break
-        else:
-            raise HTTPException(status_code=500, detail="Failed to generate unique promo code")
+    # Check if THIS specific promo type has already been used
+    if discount_percent == 10 and subscriber.promo_10_used:
+        raise HTTPException(status_code=400, detail="10% promo code has already been used")
+    if discount_percent == 100 and subscriber.promo_free_used:
+        raise HTTPException(status_code=400, detail="FREE promo code has already been used")
 
-    # Update discount percent
-    subscriber.discount_percent = discount_percent
+    # Generate unique promo code for this specific promo type
+    if discount_percent == 10:
+        # 10% OFF promo
+        if not subscriber.promo_10_code:
+            for _ in range(10):
+                new_code = generate_promo_code()
+                # Check uniqueness across both promo code fields
+                existing = db.query(MarketingSubscriber).filter(
+                    (MarketingSubscriber.promo_10_code == new_code) |
+                    (MarketingSubscriber.promo_free_code == new_code) |
+                    (MarketingSubscriber.promo_code == new_code)
+                ).first()
+                if not existing:
+                    subscriber.promo_10_code = new_code
+                    break
+            else:
+                raise HTTPException(status_code=500, detail="Failed to generate unique promo code")
+        promo_code = subscriber.promo_10_code
+    else:
+        # FREE parking promo (100% off)
+        if not subscriber.promo_free_code:
+            for _ in range(10):
+                new_code = generate_promo_code()
+                existing = db.query(MarketingSubscriber).filter(
+                    (MarketingSubscriber.promo_10_code == new_code) |
+                    (MarketingSubscriber.promo_free_code == new_code) |
+                    (MarketingSubscriber.promo_code == new_code)
+                ).first()
+                if not existing:
+                    subscriber.promo_free_code = new_code
+                    break
+            else:
+                raise HTTPException(status_code=500, detail="Failed to generate unique promo code")
+        promo_code = subscriber.promo_free_code
+
     db.commit()
 
     # Send the email
     if discount_percent == 100:
-        # Custom email for 100% off
         email_sent = send_free_parking_promo_email(
             first_name=subscriber.first_name,
             email=subscriber.email,
-            promo_code=subscriber.promo_code,
+            promo_code=promo_code,
         )
     else:
-        # Standard 10% off email
         email_sent = send_promo_code_email(
             first_name=subscriber.first_name,
             email=subscriber.email,
-            promo_code=subscriber.promo_code,
+            promo_code=promo_code,
         )
 
     if email_sent:
-        subscriber.promo_code_sent = True
-        subscriber.promo_code_sent_at = datetime.utcnow()
+        # Update the appropriate promo tracking fields
+        if discount_percent == 10:
+            subscriber.promo_10_sent = True
+            subscriber.promo_10_sent_at = datetime.utcnow()
+        else:
+            subscriber.promo_free_sent = True
+            subscriber.promo_free_sent_at = datetime.utcnow()
         db.commit()
 
         return {
             "success": True,
             "message": f"Promo code email ({discount_percent}% off) sent to {subscriber.email}",
-            "promo_code": subscriber.promo_code,
+            "promo_code": promo_code,
             "discount_percent": discount_percent,
         }
     else:
@@ -3383,6 +3437,7 @@ async def stripe_webhook(
 async def admin_refund_payment(
     payment_intent_id: str,
     reason: str = Query("requested_by_customer", description="Refund reason"),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Refund a payment.
@@ -3444,12 +3499,13 @@ def load_flight_schedule_json():
 async def seed_flights(
     secret: str = Query(..., description="Admin secret key"),
     clear_existing: bool = Query(True, description="Clear existing flight data"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Seed the database with flight schedule data.
 
-    Requires ADMIN_SECRET environment variable to be set and passed as query param.
+    Requires admin authentication AND ADMIN_SECRET for extra security.
     """
     admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
 
@@ -3530,7 +3586,8 @@ class ImportDeparturesRequest(BaseModel):
 async def import_departures_with_capacity(
     request: ImportDeparturesRequest,
     secret: str = Query(..., description="Admin secret key"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Import departures with capacity tiers from TSV data.
@@ -3578,10 +3635,11 @@ async def create_user(
     request: CreateUserRequest,
     secret: str = Query(..., description="Admin secret key"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: Create a new user.
-    Requires ADMIN_SECRET query parameter.
+    Requires admin authentication AND ADMIN_SECRET for extra security.
     """
     admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
 
@@ -3624,10 +3682,11 @@ async def create_user(
 async def list_users(
     secret: str = Query(..., description="Admin secret key"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     """
     Admin endpoint: List all users.
-    Requires ADMIN_SECRET query parameter.
+    Requires admin authentication AND ADMIN_SECRET for extra security.
     """
     admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
 
@@ -3866,6 +3925,26 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
     return user
+
+
+async def require_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """
+    Dependency to require admin privileges.
+
+    Use this for admin-only endpoints like:
+    - Managing bookings
+    - Viewing customer data
+    - Sending promo codes
+    - Refunds and payments
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin privileges required"
+        )
+    return current_user
 
 
 @app.post("/api/auth/logout")

@@ -355,14 +355,30 @@ class MarketingSubscriber(Base):
 
     # Email tracking
     welcome_email_sent = Column(Boolean, default=False)
-    promo_code_sent = Column(Boolean, default=False)
+    promo_code_sent = Column(Boolean, default=False)  # Legacy - kept for backwards compatibility
 
-    # Promo code tracking
+    # Legacy promo code tracking (kept for backwards compatibility)
     promo_code = Column(String(20), unique=True, index=True)  # Unique code like "TAG-XXXX-XXXX"
     promo_code_used = Column(Boolean, default=False)
     promo_code_used_booking_id = Column(Integer, ForeignKey("bookings.id"))  # Which booking used it
     promo_code_used_at = Column(DateTime(timezone=True))
     discount_percent = Column(Integer, default=10)  # Discount percentage (default 10%, can be up to 100%)
+
+    # 10% OFF Promo - separate tracking
+    promo_10_code = Column(String(20), unique=True, index=True)  # 10% off promo code
+    promo_10_sent = Column(Boolean, default=False)
+    promo_10_sent_at = Column(DateTime(timezone=True))
+    promo_10_used = Column(Boolean, default=False)
+    promo_10_used_at = Column(DateTime(timezone=True))
+    promo_10_used_booking_id = Column(Integer, ForeignKey("bookings.id"))
+
+    # FREE Parking Promo (100% off) - separate tracking
+    promo_free_code = Column(String(20), unique=True, index=True)  # Free parking promo code
+    promo_free_sent = Column(Boolean, default=False)
+    promo_free_sent_at = Column(DateTime(timezone=True))
+    promo_free_used = Column(Boolean, default=False)
+    promo_free_used_at = Column(DateTime(timezone=True))
+    promo_free_used_booking_id = Column(Integer, ForeignKey("bookings.id"))
 
     # Source tracking
     source = Column(String(50), default="landing_page")  # landing_page, homepage, etc.
@@ -376,10 +392,12 @@ class MarketingSubscriber(Base):
     # Timestamps
     subscribed_at = Column(DateTime(timezone=True), server_default=func.now())
     welcome_email_sent_at = Column(DateTime(timezone=True))
-    promo_code_sent_at = Column(DateTime(timezone=True))
+    promo_code_sent_at = Column(DateTime(timezone=True))  # Legacy
 
-    # Relationship to booking (optional)
+    # Relationships to bookings
     used_booking = relationship("Booking", foreign_keys=[promo_code_used_booking_id])
+    promo_10_booking = relationship("Booking", foreign_keys=[promo_10_used_booking_id])
+    promo_free_booking = relationship("Booking", foreign_keys=[promo_free_used_booking_id])
 
     def __repr__(self):
         return f"<MarketingSubscriber {self.first_name} {self.last_name} ({self.email})>"
