@@ -616,33 +616,31 @@
   font-size: 0.875rem;
 }
 
-.subscriber-meta {
+.section-header-with-action {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 1rem;
-  flex-shrink: 0;
+  margin-bottom: 0.75rem;
 }
 
-.subscriber-status {
-  font-size: 0.75rem;
-  font-weight: 500;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+.section-header-with-action h4 {
+  margin: 0;
 }
 
-.subscriber-status.sent {
-  background: #c6f6d5;
-  color: #22543d;
+.section-empty {
+  color: #999;
+  font-size: 0.875rem;
+  font-style: italic;
+  margin: 0;
 }
 
-.subscriber-status.pending {
-  background: #feebc8;
-  color: #c05621;
-}
-
-.subscriber-date {
-  font-size: 0.8125rem;
-  color: #666;
+.subscriber-unsubscribed-notice {
+  background: #fed7d7;
+  color: #c53030;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  text-align: center;
 }
 
 .booking-date {

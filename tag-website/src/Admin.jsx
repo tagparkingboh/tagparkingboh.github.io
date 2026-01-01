@@ -924,104 +924,134 @@ function Admin() {
                         <span className="subscriber-name">{subscriber.first_name} {subscriber.last_name}</span>
                         <span className="subscriber-email">{subscriber.email}</span>
                       </div>
-                      <div className="subscriber-meta">
-                        <span className={`subscriber-status ${subscriber.welcome_email_sent ? 'sent' : 'pending'}`}>
-                          Welcome: {subscriber.welcome_email_sent ? 'Sent' : 'Pending'}
-                        </span>
-                        {subscriber.subscribed_at && (
-                          <span className="subscriber-date">
-                            {new Date(subscriber.subscribed_at).toLocaleDateString()}
-                          </span>
-                        )}
+                      <div className="booking-expand-icon">
+                        {expandedSubscriberId === subscriber.id ? '−' : '+'}
                       </div>
                     </div>
 
                     {/* Expanded Content */}
                     {expandedSubscriberId === subscriber.id && (
                       <div className="booking-card-body">
+                        {/* Welcome Email Section */}
                         <div className="booking-section">
-                          <h4>Subscriber Details</h4>
+                          <h4>Welcome Email</h4>
                           <div className="booking-section-content">
                             <div className="booking-detail-row">
-                              <div className="booking-detail">
-                                <span className="detail-label">Name</span>
-                                <span className="detail-value">{subscriber.first_name} {subscriber.last_name}</span>
-                              </div>
-                              <div className="booking-detail">
-                                <span className="detail-label">Email</span>
-                                <span className="detail-value">{subscriber.email}</span>
-                              </div>
                               <div className="booking-detail">
                                 <span className="detail-label">Subscribed</span>
                                 <span className="detail-value">
                                   {subscriber.subscribed_at ? new Date(subscriber.subscribed_at).toLocaleDateString() : '-'}
                                 </span>
                               </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="booking-section">
-                          <h4>Promo Code</h4>
-                          <div className="booking-section-content">
-                            <div className="booking-detail-row">
-                              <div className="booking-detail">
-                                <span className="detail-label">Code</span>
-                                <span className="detail-value">
-                                  {subscriber.promo_code ? (
-                                    <span className="promo-code-display">{subscriber.promo_code}</span>
-                                  ) : (
-                                    <span className="no-code">Not generated</span>
-                                  )}
-                                </span>
-                              </div>
-                              <div className="booking-detail">
-                                <span className="detail-label">Discount</span>
-                                <span className="detail-value">
-                                  {subscriber.promo_code ? (
-                                    <span className={`discount-badge ${subscriber.discount_percent === 100 ? 'free' : ''}`}>
-                                      {subscriber.discount_percent}% off
-                                    </span>
-                                  ) : '-'}
-                                </span>
-                              </div>
                               <div className="booking-detail">
                                 <span className="detail-label">Status</span>
                                 <span className="detail-value">
-                                  {subscriber.unsubscribed ? (
-                                    <span className="status-badge unsubscribed">Unsubscribed</span>
-                                  ) : subscriber.promo_code_used ? (
-                                    <span className="status-badge used">Code Used</span>
-                                  ) : subscriber.promo_code_sent ? (
-                                    <span className="status-badge sent">Code Sent</span>
-                                  ) : (
-                                    <span className="status-badge pending">Pending</span>
-                                  )}
+                                  <span className={`status-badge ${subscriber.welcome_email_sent ? 'sent' : 'pending'}`}>
+                                    {subscriber.welcome_email_sent ? 'Sent' : 'Pending'}
+                                  </span>
+                                </span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Sent At</span>
+                                <span className="detail-value">
+                                  {subscriber.welcome_email_sent_at ? new Date(subscriber.welcome_email_sent_at).toLocaleString() : '-'}
                                 </span>
                               </div>
                             </div>
                           </div>
                         </div>
 
-                        {/* Actions */}
-                        {!subscriber.unsubscribed && !subscriber.promo_code_used && (
-                          <div className="booking-actions">
-                            <button
-                              className="action-btn promo-btn"
-                              onClick={() => handleSendPromo(subscriber.id, 10)}
-                              disabled={sendingPromoId === subscriber.id}
-                              title="Send 10% off promo code"
-                            >
-                              {sendingPromoId === subscriber.id ? 'Sending...' : 'Send 10% Off'}
-                            </button>
-                            <button
-                              className="action-btn promo-btn free"
-                              onClick={() => handleSendPromo(subscriber.id, 100)}
-                              disabled={sendingPromoId === subscriber.id}
-                              title="Send FREE parking promo code"
-                            >
-                              {sendingPromoId === subscriber.id ? 'Sending...' : 'Send FREE Parking'}
-                            </button>
+                        {/* 10% Off Promo Section */}
+                        <div className="booking-section">
+                          <div className="section-header-with-action">
+                            <h4>10% Off Promo</h4>
+                            {!subscriber.unsubscribed && !subscriber.promo_code_used && subscriber.discount_percent !== 100 && (
+                              <button
+                                className="action-btn promo-btn"
+                                onClick={(e) => { e.stopPropagation(); handleSendPromo(subscriber.id, 10); }}
+                                disabled={sendingPromoId === subscriber.id}
+                              >
+                                {sendingPromoId === subscriber.id ? 'Sending...' : 'Send 10% Off'}
+                              </button>
+                            )}
+                          </div>
+                          <div className="booking-section-content">
+                            {subscriber.promo_code && subscriber.discount_percent === 10 ? (
+                              <div className="booking-detail-row">
+                                <div className="booking-detail">
+                                  <span className="detail-label">Code</span>
+                                  <span className="detail-value">
+                                    <span className="promo-code-display">{subscriber.promo_code}</span>
+                                  </span>
+                                </div>
+                                <div className="booking-detail">
+                                  <span className="detail-label">Status</span>
+                                  <span className="detail-value">
+                                    <span className={`status-badge ${subscriber.promo_code_used ? 'used' : 'sent'}`}>
+                                      {subscriber.promo_code_used ? 'Used' : 'Sent'}
+                                    </span>
+                                  </span>
+                                </div>
+                                <div className="booking-detail">
+                                  <span className="detail-label">Sent At</span>
+                                  <span className="detail-value">
+                                    {subscriber.promo_code_sent_at ? new Date(subscriber.promo_code_sent_at).toLocaleString() : '-'}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="section-empty">No 10% promo sent</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Free Parking Promo Section */}
+                        <div className="booking-section">
+                          <div className="section-header-with-action">
+                            <h4>Free Parking Promo</h4>
+                            {!subscriber.unsubscribed && !subscriber.promo_code_used && subscriber.discount_percent !== 10 && (
+                              <button
+                                className="action-btn promo-btn free"
+                                onClick={(e) => { e.stopPropagation(); handleSendPromo(subscriber.id, 100); }}
+                                disabled={sendingPromoId === subscriber.id}
+                              >
+                                {sendingPromoId === subscriber.id ? 'Sending...' : 'Send FREE'}
+                              </button>
+                            )}
+                          </div>
+                          <div className="booking-section-content">
+                            {subscriber.promo_code && subscriber.discount_percent === 100 ? (
+                              <div className="booking-detail-row">
+                                <div className="booking-detail">
+                                  <span className="detail-label">Code</span>
+                                  <span className="detail-value">
+                                    <span className="promo-code-display">{subscriber.promo_code}</span>
+                                  </span>
+                                </div>
+                                <div className="booking-detail">
+                                  <span className="detail-label">Status</span>
+                                  <span className="detail-value">
+                                    <span className={`status-badge ${subscriber.promo_code_used ? 'used' : 'sent'}`}>
+                                      {subscriber.promo_code_used ? 'Used' : 'Sent'}
+                                    </span>
+                                  </span>
+                                </div>
+                                <div className="booking-detail">
+                                  <span className="detail-label">Sent At</span>
+                                  <span className="detail-value">
+                                    {subscriber.promo_code_sent_at ? new Date(subscriber.promo_code_sent_at).toLocaleString() : '-'}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="section-empty">No free promo sent</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {subscriber.unsubscribed && (
+                          <div className="subscriber-unsubscribed-notice">
+                            Unsubscribed on {subscriber.unsubscribed_at ? new Date(subscriber.unsubscribed_at).toLocaleDateString() : 'unknown date'}
                           </div>
                         )}
                       </div>
