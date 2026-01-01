@@ -678,6 +678,35 @@
   text-align: center;
 }
 
+.success-banner {
+  background: #c6f6d5;
+  color: #22543d;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  font-weight: 500;
+}
+
+.modal-warning {
+  color: #c05621;
+  font-size: 0.875rem;
+  background: #feebc8;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-top: 0.5rem;
+}
+
+.modal-btn-success {
+  background: #38a169;
+  color: white;
+}
+
+.modal-btn-success:hover {
+  background: #2f855a;
+}
+
 .booking-date {
   color: #666;
   font-size: 14px;

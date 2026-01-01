@@ -39,6 +39,9 @@ function Admin() {
   const [subscriberStatusFilter, setSubscriberStatusFilter] = useState('all')
   const [hideTestEmails, setHideTestEmails] = useState(true)
   const [expandedSubscriberId, setExpandedSubscriberId] = useState(null)
+  const [showPromoModal, setShowPromoModal] = useState(false)
+  const [promoToSend, setPromoToSend] = useState(null) // { subscriber, discountPercent }
+  const [promoSuccessMessage, setPromoSuccessMessage] = useState('')
 
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
@@ -96,13 +99,21 @@ function Admin() {
     }
   }
 
-  const handleSendPromo = async (subscriberId, discountPercent) => {
-    setSendingPromoId(subscriberId)
+  const openPromoModal = (subscriber, discountPercent) => {
+    setPromoToSend({ subscriber, discountPercent })
+    setShowPromoModal(true)
+  }
+
+  const confirmSendPromo = async () => {
+    if (!promoToSend) return
+
+    const { subscriber, discountPercent } = promoToSend
+    setSendingPromoId(subscriber.id)
     setError('')
 
     try {
       const response = await fetch(
-        `${API_URL}/api/admin/marketing-subscribers/${subscriberId}/send-promo?discount_percent=${discountPercent}`,
+        `${API_URL}/api/admin/marketing-subscribers/${subscriber.id}/send-promo?discount_percent=${discountPercent}`,
         {
           method: 'POST',
           headers: {
@@ -114,8 +125,14 @@ function Admin() {
       const data = await response.json()
 
       if (response.ok) {
+        // Show success message
+        const promoType = discountPercent === 100 ? 'FREE Parking' : '10% Off'
+        setPromoSuccessMessage(`${promoType} promo code sent to ${subscriber.email}`)
+        setTimeout(() => setPromoSuccessMessage(''), 5000) // Clear after 5 seconds
         // Refresh subscribers list
         fetchSubscribers()
+        setShowPromoModal(false)
+        setPromoToSend(null)
       } else {
         setError(data.detail || 'Failed to send promo email')
       }
@@ -852,6 +869,13 @@ function Admin() {
           <div className="admin-section">
             <h2>Marketing Subscribers</h2>
 
+            {/* Success Message Banner */}
+            {promoSuccessMessage && (
+              <div className="success-banner">
+                {promoSuccessMessage}
+              </div>
+            )}
+
             {/* Search and Filter Controls - matching Bookings style */}
             <div className="admin-filters">
               <div className="admin-search">
@@ -965,17 +989,15 @@ function Admin() {
                               <div className="promo-buttons">
                                 <button
                                   className="action-btn promo-btn"
-                                  onClick={(e) => { e.stopPropagation(); handleSendPromo(subscriber.id, 10); }}
-                                  disabled={sendingPromoId === subscriber.id}
+                                  onClick={(e) => { e.stopPropagation(); openPromoModal(subscriber, 10); }}
                                 >
-                                  {sendingPromoId === subscriber.id ? 'Sending...' : 'Send 10% Off'}
+                                  Send 10% Off
                                 </button>
                                 <button
                                   className="action-btn promo-btn free"
-                                  onClick={(e) => { e.stopPropagation(); handleSendPromo(subscriber.id, 100); }}
-                                  disabled={sendingPromoId === subscriber.id}
+                                  onClick={(e) => { e.stopPropagation(); openPromoModal(subscriber, 100); }}
                                 >
-                                  {sendingPromoId === subscriber.id ? 'Sending...' : 'Send FREE'}
+                                  Send FREE
                                 </button>
                               </div>
                             )}
@@ -1157,6 +1179,39 @@ function Admin() {
                 disabled={sendingRefundEmailId}
               >
                 {sendingRefundEmailId ? 'Sending...' : 'Yes, Send Email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Promo Code Confirmation Modal */}
+      {showPromoModal && promoToSend && (
+        <div className="modal-overlay" onClick={() => { setShowPromoModal(false); setPromoToSend(null); }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Send {promoToSend.discountPercent === 100 ? 'FREE Parking' : '10% Off'} Promo</h3>
+            <p>Are you sure you want to send this promo code?</p>
+            <div className="modal-booking-info">
+              <p><strong>Subscriber:</strong> {promoToSend.subscriber.first_name} {promoToSend.subscriber.last_name}</p>
+              <p><strong>Email:</strong> {promoToSend.subscriber.email}</p>
+              <p><strong>Discount:</strong> {promoToSend.discountPercent === 100 ? 'FREE Parking (100% off)' : '10% Off'}</p>
+            </div>
+            <p className="modal-warning">
+              This will generate a unique promo code and send an email to the subscriber.
+            </p>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => { setShowPromoModal(false); setPromoToSend(null); }}
+              >
+                Cancel
+              </button>
+              <button
+                className={`modal-btn ${promoToSend.discountPercent === 100 ? 'modal-btn-success' : 'modal-btn-primary'}`}
+                onClick={confirmSendPromo}
+                disabled={sendingPromoId}
+              >
+                {sendingPromoId ? 'Sending...' : `Yes, Send ${promoToSend.discountPercent === 100 ? 'FREE' : '10% Off'} Code`}
               </button>
             </div>
           </div>
