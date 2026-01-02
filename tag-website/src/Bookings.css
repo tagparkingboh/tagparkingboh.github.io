@@ -203,6 +203,10 @@
   margin-bottom: 1.5rem;
 }
 
+.form-group:last-child {
+  margin-bottom: 0;
+}
+
 .form-group.fade-in {
   animation: fadeIn 0.3s ease;
 }
