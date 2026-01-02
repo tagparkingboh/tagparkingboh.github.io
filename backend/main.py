@@ -206,7 +206,7 @@ def log_audit_event(
         audit_log = AuditLog(
             session_id=session_id,
             booking_reference=booking_reference,
-            event=event,
+            event=event.value,
             event_data=json.dumps(event_data) if event_data else None,
             ip_address=ip_address,
             user_agent=user_agent,
