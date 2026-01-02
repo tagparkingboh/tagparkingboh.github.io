@@ -26,9 +26,11 @@ def upgrade() -> None:
 
     # Also add welcome_email_sent if it doesn't exist
     op.add_column('marketing_subscribers', sa.Column('welcome_email_sent', sa.Boolean(), nullable=True, server_default='false'))
+    op.add_column('marketing_subscribers', sa.Column('welcome_email_sent_at', sa.DateTime(timezone=True), nullable=True))
 
 
 def downgrade() -> None:
+    op.drop_column('marketing_subscribers', 'welcome_email_sent_at')
     op.drop_column('marketing_subscribers', 'welcome_email_sent')
     op.drop_column('marketing_subscribers', 'last_name')
     op.drop_column('marketing_subscribers', 'first_name')
