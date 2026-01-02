@@ -30,6 +30,7 @@ function Admin() {
   const [sendingRefundEmailId, setSendingRefundEmailId] = useState(null)
   const [showRefundEmailModal, setShowRefundEmailModal] = useState(false)
   const [bookingForRefundEmail, setBookingForRefundEmail] = useState(null)
+  const [successMessage, setSuccessMessage] = useState('')
 
   // Marketing subscribers state
   const [subscribers, setSubscribers] = useState([])
@@ -382,9 +383,12 @@ function Admin() {
 
       if (response.ok) {
         setShowCancellationEmailModal(false)
+        setSuccessMessage(`Cancellation email sent to ${bookingForCancellationEmail.customer?.email}`)
         setBookingForCancellationEmail(null)
         // Refresh bookings to update email sent status
         await fetchBookings()
+        // Clear success message after 5 seconds
+        setTimeout(() => setSuccessMessage(''), 5000)
       } else {
         const data = await response.json()
         setError(data.detail || 'Failed to send cancellation email')
@@ -419,9 +423,12 @@ function Admin() {
 
       if (response.ok) {
         setShowRefundEmailModal(false)
+        setSuccessMessage(`Refund email sent to ${bookingForRefundEmail.customer?.email}`)
         setBookingForRefundEmail(null)
         // Refresh bookings to update email sent status
         await fetchBookings()
+        // Clear success message after 5 seconds
+        setTimeout(() => setSuccessMessage(''), 5000)
       } else {
         const data = await response.json()
         setError(data.detail || 'Failed to send refund email')
@@ -528,6 +535,7 @@ function Admin() {
 
       <main className="admin-content">
         {error && <div className="admin-error">{error}</div>}
+        {successMessage && <div className="admin-success">{successMessage}</div>}
 
         {activeTab === 'bookings' && (
           <div className="admin-section">
