@@ -207,7 +207,7 @@
   animation: fadeIn 0.3s ease;
 }
 
-.form-group label {
+.bookings-page .form-group label {
   font-size: 0.9rem;
   font-weight: 600;
   color: #cccccc;
