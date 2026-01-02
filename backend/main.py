@@ -268,7 +268,7 @@ def log_error(
             sanitized = None
 
         error_log = ErrorLog(
-            severity=severity,
+            severity=severity.value,
             error_type=error_type,
             error_code=error_code,
             message=message,
