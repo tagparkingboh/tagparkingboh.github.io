@@ -85,7 +85,7 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
 
 def send_welcome_email(first_name: str, email: str, unsubscribe_token: str = None) -> bool:
     """Send welcome email to new subscriber using the HTML template."""
-    subject = "Thanks for joining the waitlist!"
+    subject = "Thanks for signing up"
 
     # Build unsubscribe URL
     api_base_url = os.getenv("API_BASE_URL", "https://tagparkingbohgithubio-production.up.railway.app")
