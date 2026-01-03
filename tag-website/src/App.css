@@ -295,6 +295,25 @@
   transform: translateY(-2px);
 }
 
+.hero-cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.hero-cta-secondary span:last-child {
+  color: #D9FF00;
+}
+
+.hero-cta-secondary:hover {
+  opacity: 0.8;
+}
+
 .hero-video-link {
   display: flex;
   align-items: center;
