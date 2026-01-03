@@ -645,13 +645,13 @@
 }
 
 .pricing-btn {
-  background: #343434;
+  background: #D9FF00;
   border: none;
   border-radius: 8px;
   padding: 1rem 2.5rem;
   font-size: 1rem;
   font-weight: 600;
-  color: #ffffff;
+  color: #343434;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -666,7 +666,6 @@
 
 .pricing-btn span {
   font-size: 1.2rem;
-  color: #D9FF00;
 }
 
 /* Support Section */
