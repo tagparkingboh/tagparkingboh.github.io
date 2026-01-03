@@ -36,7 +36,7 @@ function HomePage() {
     const interval = setInterval(() => {
       setBannerFading(true)
       setTimeout(() => {
-        setHeroBannerIndex(prev => (prev + 1) % 4)
+        setHeroBannerIndex(prev => (prev + 1) % 2)
         setBannerFading(false)
       }, 300) // Fade out duration
     }, 10000)
@@ -188,10 +188,8 @@ function HomePage() {
           <div className="hero-text">
             <p className="hero-subtitle">TAG: MEET & GREET FOR BOURNEMOUTH AIRPORT</p>
             <h1 className={`hero-title ${bannerFading ? 'fading' : ''}`}>
-              {heroBannerIndex === 0 || heroBannerIndex === 2 ? (
-                <>Tag opens January 3rd 2026<br />Book it. Bag it. Tag it.</>
-              ) : heroBannerIndex === 1 ? (
-                <>Sign up early. Save more.</>
+              {heroBannerIndex === 0 ? (
+                <>It's time to Tag it.<br />Book your journey now</>
               ) : (
                 <>Enjoy peace of mind from<br />Palma to Paphos</>
               )}
@@ -199,14 +197,6 @@ function HomePage() {
           </div>
 
           <div className="hero-cta-group">
-            {heroBannerIndex === 1 && (
-              <div className={`intro-offer-banner ${bannerFading ? 'fading' : ''}`}>
-                <span className="intro-offer-discount">10% off</span>
-                <span className="intro-offer-text desktop-only">for subscribers – register your interest below</span>
-                <span className="intro-offer-text mobile-only">– register below</span>
-              </div>
-            )}
-
             <Link to="/tag-it" className="hero-cta">Book it <span>→</span></Link>
           </div>
 
