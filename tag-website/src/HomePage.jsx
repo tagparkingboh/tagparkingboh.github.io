@@ -207,7 +207,7 @@ function HomePage() {
               </div>
             )}
 
-            <a href="#subscribe" className="hero-cta">Join the waitlist <span>→</span></a>
+            <Link to="/tag-it" className="hero-cta">Book it <span>→</span></Link>
           </div>
 
           <a href="#how-it-works" className="scroll-indicator">
@@ -247,7 +247,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            {/* Hidden until launch: <Link to="/tag-it" className="pricing-btn">Book it <span>→</span></Link> */}
+            <Link to="/tag-it" className="pricing-btn">Book it <span>→</span></Link>
           </div>
 
           <div className="pricing-card">
@@ -267,7 +267,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            {/* Hidden until launch: <Link to="/tag-it" className="pricing-btn">Book it <span>→</span></Link> */}
+            <Link to="/tag-it" className="pricing-btn">Book it <span>→</span></Link>
           </div>
         </div>
       </section>
