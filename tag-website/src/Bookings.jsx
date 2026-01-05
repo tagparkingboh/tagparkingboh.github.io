@@ -887,7 +887,7 @@ function Bookings() {
       </nav>
 
       <div className="bookings-container">
-        <h1>Book your Tag</h1>
+        <h1>Book your parking</h1>
         <p className="bookings-subtitle">Bournemouth International Airport (BOH)</p>
 
         <div className="progress-bar">
