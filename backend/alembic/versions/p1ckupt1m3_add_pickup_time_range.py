@@ -18,9 +18,20 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def column_exists(table_name, column_name):
+    """Check if a column exists in a table."""
+    bind = op.get_bind()
+    result = bind.execute(sa.text(
+        "SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = :table_name AND column_name = :column_name)"
+    ), {"table_name": table_name, "column_name": column_name})
+    return result.scalar()
+
+
 def upgrade() -> None:
-    op.add_column('bookings', sa.Column('pickup_time_from', sa.Time(), nullable=True))
-    op.add_column('bookings', sa.Column('pickup_time_to', sa.Time(), nullable=True))
+    if not column_exists('bookings', 'pickup_time_from'):
+        op.add_column('bookings', sa.Column('pickup_time_from', sa.Time(), nullable=True))
+    if not column_exists('bookings', 'pickup_time_to'):
+        op.add_column('bookings', sa.Column('pickup_time_to', sa.Time(), nullable=True))
 
 
 def downgrade() -> None:
