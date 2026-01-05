@@ -1144,13 +1144,35 @@ function Admin() {
             <p className="admin-subtitle">Customers who started booking but didn't complete payment</p>
 
             <div className="admin-filters">
-              <input
-                type="text"
-                placeholder="Search by name, email, or phone..."
-                value={leadSearchTerm}
-                onChange={(e) => setLeadSearchTerm(e.target.value)}
-                className="admin-search"
-              />
+              <div className="admin-search">
+                <input
+                  type="text"
+                  placeholder="Search by name, email, or phone..."
+                  value={leadSearchTerm}
+                  onChange={(e) => setLeadSearchTerm(e.target.value)}
+                  className="admin-search-input"
+                />
+                {leadSearchTerm && (
+                  <button
+                    className="admin-search-clear"
+                    onClick={() => setLeadSearchTerm('')}
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
+              <div className="admin-filter-count">
+                Showing {leads.filter(lead => {
+                  if (!leadSearchTerm) return true
+                  const search = leadSearchTerm.toLowerCase()
+                  return (
+                    lead.first_name?.toLowerCase().includes(search) ||
+                    lead.last_name?.toLowerCase().includes(search) ||
+                    lead.email?.toLowerCase().includes(search) ||
+                    lead.phone?.includes(search)
+                  )
+                }).length} of {leads.length} leads
+              </div>
             </div>
 
             {loadingLeads ? (
@@ -1195,7 +1217,6 @@ function Admin() {
                           {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : 'Unknown'}
                         </span>
                       </div>
-                      <span className={`booking-expand-icon ${expandedLeadId === lead.id ? 'expanded' : ''}`}>▼</span>
                     </div>
 
                     {expandedLeadId === lead.id && (
