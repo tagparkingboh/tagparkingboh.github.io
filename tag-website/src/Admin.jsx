@@ -44,6 +44,12 @@ function Admin() {
   const [promoToSend, setPromoToSend] = useState(null) // { subscriber, discountPercent }
   const [promoSuccessMessage, setPromoSuccessMessage] = useState('')
 
+  // Abandoned leads state
+  const [leads, setLeads] = useState([])
+  const [loadingLeads, setLoadingLeads] = useState(false)
+  const [leadSearchTerm, setLeadSearchTerm] = useState('')
+  const [expandedLeadId, setExpandedLeadId] = useState(null)
+
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
 
@@ -78,6 +84,13 @@ function Admin() {
     }
   }, [activeTab, token])
 
+  // Fetch leads when leads tab is active
+  useEffect(() => {
+    if (activeTab === 'leads' && token) {
+      fetchLeads()
+    }
+  }, [activeTab, token])
+
   const fetchSubscribers = async () => {
     setLoadingSubscribers(true)
     setError('')
@@ -97,6 +110,28 @@ function Admin() {
       setError('Network error loading subscribers')
     } finally {
       setLoadingSubscribers(false)
+    }
+  }
+
+  const fetchLeads = async () => {
+    setLoadingLeads(true)
+    setError('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/abandoned-leads`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setLeads(data.leads || [])
+      } else {
+        setError('Failed to load leads')
+      }
+    } catch (err) {
+      setError('Network error loading leads')
+    } finally {
+      setLoadingLeads(false)
     }
   }
 
@@ -524,6 +559,12 @@ function Admin() {
           onClick={() => setActiveTab('marketing')}
         >
           Marketing
+        </button>
+        <button
+          className={`admin-nav-item ${activeTab === 'leads' ? 'active' : ''}`}
+          onClick={() => setActiveTab('leads')}
+        >
+          Leads
         </button>
         <button
           className={`admin-nav-item ${activeTab === 'reports' ? 'active' : ''}`}
@@ -1087,6 +1128,137 @@ function Admin() {
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'leads' && (
+          <div className="admin-section">
+            <div className="admin-section-header">
+              <h2>Abandoned Leads</h2>
+              <button onClick={fetchLeads} className="admin-refresh" disabled={loadingLeads}>
+                {loadingLeads ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+            <p className="admin-subtitle">Customers who started booking but didn't complete payment</p>
+
+            <div className="admin-filters">
+              <input
+                type="text"
+                placeholder="Search by name, email, or phone..."
+                value={leadSearchTerm}
+                onChange={(e) => setLeadSearchTerm(e.target.value)}
+                className="admin-search"
+              />
+            </div>
+
+            {loadingLeads ? (
+              <div className="admin-loading-inline">
+                <div className="loading-spinner-small"></div>
+                <span>Loading leads...</span>
+              </div>
+            ) : (
+              <div className="booking-accordion">
+                {leads
+                  .filter(lead => {
+                    if (!leadSearchTerm) return true
+                    const search = leadSearchTerm.toLowerCase()
+                    return (
+                      lead.first_name?.toLowerCase().includes(search) ||
+                      lead.last_name?.toLowerCase().includes(search) ||
+                      lead.email?.toLowerCase().includes(search) ||
+                      lead.phone?.includes(search)
+                    )
+                  })
+                  .map(lead => (
+                  <div
+                    key={lead.id}
+                    className={`booking-card ${expandedLeadId === lead.id ? 'expanded' : ''}`}
+                  >
+                    <div
+                      className="booking-card-header booking-header-stacked"
+                      onClick={() => setExpandedLeadId(expandedLeadId === lead.id ? null : lead.id)}
+                    >
+                      <div className="booking-header-info">
+                        <div className="booking-header-top">
+                          <span className="booking-customer-name">
+                            {lead.first_name} {lead.last_name}
+                          </span>
+                          {lead.booking_attempts > 0 && (
+                            <span className="booking-source-badge manual">
+                              {lead.booking_attempts} attempt{lead.booking_attempts > 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                        <span className="booking-date">
+                          {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : 'Unknown'}
+                        </span>
+                      </div>
+                      <span className={`booking-expand-icon ${expandedLeadId === lead.id ? 'expanded' : ''}`}>▼</span>
+                    </div>
+
+                    {expandedLeadId === lead.id && (
+                      <div className="booking-card-body">
+                        <div className="booking-section">
+                          <h4>Contact Details</h4>
+                          <div className="booking-section-content">
+                            <div className="booking-detail-row">
+                              <div className="booking-detail">
+                                <span className="detail-label">Email</span>
+                                <span className="detail-value">
+                                  <a href={`mailto:${lead.email}`}>{lead.email}</a>
+                                </span>
+                              </div>
+                              <div className="booking-detail">
+                                <span className="detail-label">Phone</span>
+                                <span className="detail-value">
+                                  <a href={`tel:${lead.phone}`}>{lead.phone}</a>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {(lead.billing_address1 || lead.billing_city || lead.billing_postcode) && (
+                          <div className="booking-section">
+                            <h4>Billing Address</h4>
+                            <div className="booking-section-content">
+                              <div className="booking-detail">
+                                <span className="detail-value">
+                                  {[lead.billing_address1, lead.billing_city, lead.billing_postcode].filter(Boolean).join(', ')}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="booking-section">
+                          <h4>Status</h4>
+                          <div className="booking-section-content">
+                            <div className="booking-detail-row">
+                              <div className="booking-detail">
+                                <span className="detail-label">Started</span>
+                                <span className="detail-value">
+                                  {lead.created_at ? new Date(lead.created_at).toLocaleString() : 'Unknown'}
+                                </span>
+                              </div>
+                              {lead.last_booking_status && (
+                                <div className="booking-detail">
+                                  <span className="detail-label">Last Booking Status</span>
+                                  <span className="detail-value">{lead.last_booking_status}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {leads.length === 0 && !loadingLeads && (
+                  <p className="admin-no-data">No abandoned leads found</p>
+                )}
               </div>
             )}
           </div>

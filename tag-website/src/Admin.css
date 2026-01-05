@@ -164,6 +164,18 @@
   font-style: italic;
 }
 
+.admin-subtitle {
+  color: #666;
+  margin-bottom: 20px;
+}
+
+.admin-no-data {
+  color: #999;
+  text-align: center;
+  padding: 40px;
+  font-style: italic;
+}
+
 .admin-loading {
   min-height: 100vh;
   display: flex;

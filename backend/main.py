@@ -1386,6 +1386,58 @@ async def get_marketing_subscribers(
     }
 
 
+@app.get("/api/admin/abandoned-leads")
+async def get_abandoned_leads(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),  # Requires admin auth
+):
+    """
+    Get customers who started the booking flow but didn't complete.
+    These are customers with no confirmed bookings.
+    """
+    from db_models import Customer, Booking, BookingStatus
+
+    # Subquery to find customers with at least one confirmed booking
+    confirmed_booking_exists = (
+        db.query(Booking.customer_id)
+        .filter(Booking.status == BookingStatus.CONFIRMED)
+        .subquery()
+    )
+
+    # Get customers who have NO confirmed bookings
+    abandoned_leads = (
+        db.query(Customer)
+        .filter(~Customer.id.in_(db.query(confirmed_booking_exists.c.customer_id)))
+        .order_by(Customer.created_at.desc())
+        .all()
+    )
+
+    # For each lead, get their booking attempts (if any)
+    leads_data = []
+    for customer in abandoned_leads:
+        # Get any bookings they might have (pending, failed, etc.)
+        bookings = db.query(Booking).filter(Booking.customer_id == customer.id).all()
+
+        leads_data.append({
+            "id": customer.id,
+            "first_name": customer.first_name,
+            "last_name": customer.last_name,
+            "email": customer.email,
+            "phone": customer.phone,
+            "billing_address1": customer.billing_address1,
+            "billing_city": customer.billing_city,
+            "billing_postcode": customer.billing_postcode,
+            "created_at": customer.created_at.isoformat() if customer.created_at else None,
+            "booking_attempts": len(bookings),
+            "last_booking_status": bookings[0].status.value if bookings else None,
+        })
+
+    return {
+        "count": len(leads_data),
+        "leads": leads_data,
+    }
+
+
 @app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
 async def send_promo_email_to_subscriber(
     subscriber_id: int,
