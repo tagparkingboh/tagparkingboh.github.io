@@ -456,6 +456,21 @@ function Bookings() {
         dropoffFlight: value,
         dropoffSlot: ''
       }))
+
+      // Track when user selects a flight with 0 capacity
+      if (value) {
+        const selectedFlight = flightsForDropoff.find(f => f.flightKey === value)
+        if (selectedFlight && (selectedFlight.capacity_tier === 0 || selectedFlight.is_call_us_only)) {
+          if (window.gtag) {
+            window.gtag('event', 'zero_capacity_flight_selected', {
+              flight_number: `${selectedFlight.airlineCode}${selectedFlight.flightNumber}`,
+              flight_date: formData.dropoffDate ? format(formData.dropoffDate, 'yyyy-MM-dd') : null,
+              destination_airport: selectedFlight.destinationCode,
+              departure_time: selectedFlight.time
+            })
+          }
+        }
+      }
     }
 
 
