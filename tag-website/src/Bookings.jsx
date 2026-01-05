@@ -67,6 +67,16 @@ function Bookings() {
   // Welcome modal state - shown once when user lands on booking page
   const [showWelcomeModal, setShowWelcomeModal] = useState(true)
 
+  // Google Analytics page view tracking for SPA
+  useEffect(() => {
+    if (window.gtag) {
+      window.gtag('config', 'G-RCP3538V5B', {
+        page_path: '/tag-it',
+        page_title: 'Book Parking - TAG'
+      })
+    }
+  }, [])
+
   // Session ID for audit trail - persists across the booking flow
   const sessionIdRef = useRef(generateSessionId())
   // DVLA lookup state
