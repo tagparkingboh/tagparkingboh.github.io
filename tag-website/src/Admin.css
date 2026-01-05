@@ -573,6 +573,23 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+/* Status-based left border colours */
+.booking-card.booking-status-confirmed {
+  border-left: 4px solid #28a745;
+}
+
+.booking-card.booking-status-pending {
+  border-left: 4px solid #ffc107;
+}
+
+.booking-card.booking-status-cancelled {
+  border-left: 4px solid #dc3545;
+}
+
+.booking-card.booking-status-refunded {
+  border-left: 4px solid #6c757d;
+}
+
 .booking-card-header {
   display: flex;
   justify-content: space-between;

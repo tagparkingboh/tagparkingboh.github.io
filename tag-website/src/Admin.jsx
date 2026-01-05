@@ -648,7 +648,7 @@ function Admin() {
                 {filteredBookings.map((booking) => (
                   <div
                     key={booking.id || booking.reference}
-                    className={`booking-card ${expandedBookingId === booking.id ? 'expanded' : ''}`}
+                    className={`booking-card ${expandedBookingId === booking.id ? 'expanded' : ''} booking-status-${booking.status?.toLowerCase() || 'pending'}`}
                   >
                     {/* Collapsed Header Row */}
                     <div
