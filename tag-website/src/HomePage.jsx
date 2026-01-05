@@ -189,7 +189,7 @@ function HomePage() {
             <p className="hero-subtitle">TAG: MEET & GREET FOR BOURNEMOUTH AIRPORT</p>
             <h1 className={`hero-title ${bannerFading ? 'fading' : ''}`}>
               {heroBannerIndex === 0 ? (
-                <>It's time to Tag it.<br />Book your journey now</>
+                <>It's time to Tag it.<br />Book your parking now</>
               ) : (
                 <>Enjoy peace of mind from<br />Palma to Paphos</>
               )}
