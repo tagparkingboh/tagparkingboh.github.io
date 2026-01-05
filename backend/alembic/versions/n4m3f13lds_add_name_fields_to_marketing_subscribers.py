@@ -18,15 +18,28 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def column_exists(table_name, column_name):
+    """Check if a column exists in a table."""
+    bind = op.get_bind()
+    result = bind.execute(sa.text(
+        "SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = :table_name AND column_name = :column_name)"
+    ), {"table_name": table_name, "column_name": column_name})
+    return result.scalar()
+
+
 def upgrade() -> None:
     # Add first_name and last_name columns
     # Using nullable=True initially, then we can backfill existing records
-    op.add_column('marketing_subscribers', sa.Column('first_name', sa.String(100), nullable=True))
-    op.add_column('marketing_subscribers', sa.Column('last_name', sa.String(100), nullable=True))
+    if not column_exists('marketing_subscribers', 'first_name'):
+        op.add_column('marketing_subscribers', sa.Column('first_name', sa.String(100), nullable=True))
+    if not column_exists('marketing_subscribers', 'last_name'):
+        op.add_column('marketing_subscribers', sa.Column('last_name', sa.String(100), nullable=True))
 
     # Also add welcome_email_sent if it doesn't exist
-    op.add_column('marketing_subscribers', sa.Column('welcome_email_sent', sa.Boolean(), nullable=True, server_default='false'))
-    op.add_column('marketing_subscribers', sa.Column('welcome_email_sent_at', sa.DateTime(timezone=True), nullable=True))
+    if not column_exists('marketing_subscribers', 'welcome_email_sent'):
+        op.add_column('marketing_subscribers', sa.Column('welcome_email_sent', sa.Boolean(), nullable=True, server_default='false'))
+    if not column_exists('marketing_subscribers', 'welcome_email_sent_at'):
+        op.add_column('marketing_subscribers', sa.Column('welcome_email_sent_at', sa.DateTime(timezone=True), nullable=True))
 
 
 def downgrade() -> None:
