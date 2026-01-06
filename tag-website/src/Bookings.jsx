@@ -903,7 +903,15 @@ function Bookings() {
               <button
                 type="button"
                 className="welcome-modal-btn"
-                onClick={() => setShowWelcomeModal(false)}
+                onClick={() => {
+                  if (window.gtag) {
+                    window.gtag('event', 'continue_to_booking', {
+                      event_category: 'booking_flow',
+                      event_label: 'welcome_modal'
+                    })
+                  }
+                  setShowWelcomeModal(false)
+                }}
               >
                 Continue to booking
               </button>
