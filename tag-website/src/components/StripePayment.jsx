@@ -10,6 +10,15 @@ import {
 // API base URL - adjust for production
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// Format date as YYYY-MM-DD in local timezone (avoids UTC conversion issues)
+const formatDateLocal = (date) => {
+  if (!date) return ''
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 // Convert country name to ISO 2-letter code for Stripe
 const getCountryCode = (countryName) => {
   const countryMap = {
@@ -224,9 +233,9 @@ function StripePayment({
         package: formData.package,
         // Flight details
         flight_number: selectedFlight?.flightNumber || formData.dropoffFlight?.split('|')[1] || 'Unknown',
-        flight_date: formData.dropoffDate ? formData.dropoffDate.toISOString().split('T')[0] : '',
-        drop_off_date: formData.dropoffDate ? formData.dropoffDate.toISOString().split('T')[0] : '',
-        pickup_date: formData.pickupDate ? formData.pickupDate.toISOString().split('T')[0] : '',
+        flight_date: formatDateLocal(formData.dropoffDate),
+        drop_off_date: formatDateLocal(formData.dropoffDate),
+        pickup_date: formatDateLocal(formData.pickupDate),
         drop_off_slot: formData.dropoffSlot || null,
         departure_id: selectedFlight?.id || null,
         // Return flight details (destination/origin names are looked up from flight tables on backend)
