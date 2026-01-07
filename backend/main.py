@@ -2759,7 +2759,9 @@ async def create_payment(
         print(f"[PROMO] Received request with promo_code: {request.promo_code}")
 
         # Parse dates first (needed for dynamic pricing)
+        print(f"[DEBUG] Received drop_off_date string: {request.drop_off_date}")
         dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
+        print(f"[DEBUG] Parsed dropoff_date: {dropoff_date}")
 
         # Calculate base amount in pence (using dynamic pricing based on drop-off date)
         original_amount = calculate_price_in_pence(request.package, drop_off_date=dropoff_date)
