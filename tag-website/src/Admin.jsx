@@ -482,13 +482,14 @@ function Admin() {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '-'
-    const date = new Date(dateStr)
-    return date.toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    })
+    // Parse date parts manually to avoid timezone conversion issues
+    // dateStr format: "YYYY-MM-DD" from API
+    const [year, month, day] = dateStr.split('-')
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    // Create date in local timezone for weekday calculation
+    const date = new Date(Number(year), Number(month) - 1, Number(day))
+    return `${days[date.getDay()]}, ${day} ${months[Number(month) - 1]} ${year}`
   }
 
   const formatTime = (timeStr) => {
