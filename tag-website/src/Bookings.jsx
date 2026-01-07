@@ -756,6 +756,23 @@ function Bookings() {
       } else if (currentStep === 5) {
         await saveBillingAddress()
       }
+
+      // Track booking flow progress in GA
+      const stepNames = {
+        1: 'continue_to_trip_details',
+        2: 'continue_to_vehicle_details',
+        3: 'continue_to_package_selection',
+        4: 'continue_to_billing_address',
+        5: 'continue_to_payment'
+      }
+      if (window.gtag && stepNames[currentStep]) {
+        window.gtag('event', stepNames[currentStep], {
+          event_category: 'booking_flow',
+          event_label: `Step ${currentStep} to ${currentStep + 1}`,
+          step_number: currentStep
+        })
+      }
+
       setCurrentStep(prev => Math.min(prev + 1, 6))
       window.scrollTo(0, 0)
     } finally {
@@ -886,7 +903,15 @@ function Bookings() {
               <button
                 type="button"
                 className="welcome-modal-btn"
-                onClick={() => setShowWelcomeModal(false)}
+                onClick={() => {
+                  if (window.gtag) {
+                    window.gtag('event', 'continue_to_booking', {
+                      event_category: 'booking_flow',
+                      event_label: 'welcome_modal'
+                    })
+                  }
+                  setShowWelcomeModal(false)
+                }}
               >
                 Continue to booking
               </button>

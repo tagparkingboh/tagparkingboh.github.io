@@ -197,7 +197,7 @@ function HomePage() {
           </div>
 
           <div className="hero-cta-group">
-            <Link to="/tag-it" className="hero-cta">Book it <span>→</span></Link>
+            <Link to="/tag-it" className="hero-cta" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'hero_section' })}>Book it <span>→</span></Link>
             <a href="#subscribe" className="hero-cta-secondary">
               <span className="desktop-only">Sign up for your chance to win free parking</span>
               <span className="mobile-only">Win free parking</span>
@@ -242,7 +242,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <Link to="/tag-it" className="pricing-btn">Book it <span>→</span></Link>
+            <Link to="/tag-it" className="pricing-btn" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_1_week' })}>Book it <span>→</span></Link>
           </div>
 
           <div className="pricing-card">
@@ -262,7 +262,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <Link to="/tag-it" className="pricing-btn">Book it <span>→</span></Link>
+            <Link to="/tag-it" className="pricing-btn" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_2_week' })}>Book it <span>→</span></Link>
           </div>
         </div>
       </section>
