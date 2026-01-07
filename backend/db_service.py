@@ -248,10 +248,15 @@ def create_booking(
     while get_booking_by_reference(db, reference):
         reference = generate_booking_reference()
 
+    # Fetch customer to snapshot their name at time of booking
+    customer = get_customer_by_id(db, customer_id)
+
     booking = Booking(
         reference=reference,
         customer_id=customer_id,
         vehicle_id=vehicle_id,
+        customer_first_name=customer.first_name if customer else None,
+        customer_last_name=customer.last_name if customer else None,
         package=package,
         status=BookingStatus.PENDING,
         dropoff_date=dropoff_date,

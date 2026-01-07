@@ -782,8 +782,9 @@ async def get_all_bookings(
             "created_at": b.created_at.isoformat() if b.created_at else None,
             "customer": {
                 "id": b.customer.id,
-                "first_name": b.customer.first_name,
-                "last_name": b.customer.last_name,
+                # Use snapshot name if available, fall back to current customer name
+                "first_name": b.customer_first_name or b.customer.first_name,
+                "last_name": b.customer_last_name or b.customer.last_name,
                 "email": b.customer.email,
                 "phone": b.customer.phone,
             } if b.customer else None,
@@ -945,6 +946,8 @@ async def create_manual_booking(
             reference=reference,
             customer_id=customer.id,
             vehicle_id=vehicle.id,
+            customer_first_name=request.first_name,
+            customer_last_name=request.last_name,
             dropoff_date=request.dropoff_date,
             dropoff_time=datetime.strptime(request.dropoff_time, "%H:%M").time(),
             pickup_date=request.pickup_date,
@@ -1063,7 +1066,7 @@ async def mark_booking_paid(
 
         email_sent = send_booking_confirmation_email(
             email=booking.customer.email,
-            first_name=booking.customer.first_name,
+            first_name=booking.customer_first_name or booking.customer.first_name,
             booking_reference=booking.reference,
             dropoff_date=dropoff_date_str,
             dropoff_time=dropoff_time_str,
@@ -1189,7 +1192,7 @@ async def resend_booking_confirmation_email(
     # Send the email
     email_sent = send_booking_confirmation_email(
         email=booking.customer.email,
-        first_name=booking.customer.first_name,
+        first_name=booking.customer_first_name or booking.customer.first_name,
         booking_reference=booking.reference,
         dropoff_date=dropoff_date_str,
         dropoff_time=dropoff_time_str,
@@ -1251,7 +1254,7 @@ async def send_cancellation_email_endpoint(
     # Send the email
     email_sent = send_cancellation_email(
         email=booking.customer.email,
-        first_name=booking.customer.first_name,
+        first_name=booking.customer_first_name or booking.customer.first_name,
         booking_reference=booking.reference,
         dropoff_date=dropoff_date_str,
     )
@@ -1307,7 +1310,7 @@ async def send_refund_email_endpoint(
     # Send the email
     email_sent = send_refund_email(
         email=booking.customer.email,
-        first_name=booking.customer.first_name,
+        first_name=booking.customer_first_name or booking.customer.first_name,
         booking_reference=booking.reference,
         refund_amount=refund_amount,
     )
@@ -3456,7 +3459,7 @@ async def stripe_webhook(
                 print(f"[EMAIL] Calling send_booking_confirmation_email...")
                 email_sent = send_booking_confirmation_email(
                     email=booking.customer.email,
-                    first_name=booking.customer.first_name,
+                    first_name=booking.customer_first_name or booking.customer.first_name,
                     booking_reference=booking_reference,
                     dropoff_date=dropoff_date_str,
                     dropoff_time=dropoff_time_str,

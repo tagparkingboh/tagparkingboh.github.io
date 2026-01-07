@@ -93,6 +93,11 @@ class Booking(Base):
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
 
+    # Snapshot of customer name at time of booking
+    # (prevents shared email addresses from overwriting historical booking names)
+    customer_first_name = Column(String(100), nullable=True)
+    customer_last_name = Column(String(100), nullable=True)
+
     # Package type: 'quick' (1 week) or 'longer' (2 weeks)
     package = Column(String(20), nullable=False)
     status = Column(Enum(BookingStatus), default=BookingStatus.PENDING, nullable=False)
