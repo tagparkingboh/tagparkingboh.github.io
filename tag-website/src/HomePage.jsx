@@ -36,10 +36,10 @@ function HomePage() {
     const interval = setInterval(() => {
       setBannerFading(true)
       setTimeout(() => {
-        setHeroBannerIndex(prev => (prev + 1) % 2)
+        setHeroBannerIndex(prev => (prev + 1) % 4)
         setBannerFading(false)
       }, 300) // Fade out duration
-    }, 10000)
+    }, 5000)
     return () => clearInterval(interval)
   }, [])
 
@@ -188,10 +188,17 @@ function HomePage() {
           <div className="hero-text">
             <p className="hero-subtitle">TAG: MEET & GREET FOR BOURNEMOUTH AIRPORT</p>
             <h1 className={`hero-title ${bannerFading ? 'fading' : ''}`}>
-              {heroBannerIndex === 0 ? (
+              {heroBannerIndex === 0 && (
                 <>It's time to Tag it.<br />Book your parking now</>
-              ) : (
+              )}
+              {heroBannerIndex === 1 && (
                 <>Enjoy peace of mind from<br />Palma to Paphos</>
+              )}
+              {heroBannerIndex === 2 && (
+                <>Secure parking, 24/7</>
+              )}
+              {heroBannerIndex === 3 && (
+                <>Free cancellation up to<br />24 hours before</>
               )}
             </h1>
           </div>
