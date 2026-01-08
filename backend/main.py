@@ -3983,8 +3983,8 @@ async def auth_verify_code(
     # Generate session token (64-char hex string)
     token = secrets.token_hex(32)
 
-    # Session expires in 8 hours
-    expires_at = datetime.utcnow() + timedelta(hours=8)
+    # Session expires in 12 hours
+    expires_at = datetime.utcnow() + timedelta(hours=12)
 
     # Create session
     session = DbSession(
