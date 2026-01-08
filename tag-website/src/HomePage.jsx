@@ -198,11 +198,6 @@ function HomePage() {
 
           <div className="hero-cta-group">
             <Link to="/tag-it" className="hero-cta" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'hero_section' })}>Book it <span>→</span></Link>
-            <a href="#subscribe" className="hero-cta-secondary">
-              <span className="desktop-only">Sign up for your chance to win free parking</span>
-              <span className="mobile-only">Win free parking</span>
-              <span>→</span>
-            </a>
           </div>
 
           <a href="#how-it-works" className="scroll-indicator">
