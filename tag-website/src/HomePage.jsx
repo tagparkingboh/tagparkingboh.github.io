@@ -195,7 +195,7 @@ function HomePage() {
                 <>Enjoy peace of mind from<br />Palma to Paphos</>
               )}
               {heroBannerIndex === 2 && (
-                <>Secure parking, 24/7</>
+                <>Secure parking<br />guaranteed, 24/7</>
               )}
               {heroBannerIndex === 3 && (
                 <>Free cancellation up to<br />24 hours before</>
