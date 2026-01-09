@@ -871,7 +871,7 @@ function Bookings() {
   }
 
   return (
-    <div className="bookings-page">
+    <div className="bookings-new-page">
       {/* Welcome Modal - shown once when user lands on booking page */}
       {showWelcomeModal && (
         <div className="welcome-modal-overlay">
@@ -924,15 +924,15 @@ function Bookings() {
         </div>
       )}
 
-      <nav className="bookings-nav">
+      <nav className="bookings-new-nav">
         <Link to="/" className="logo">
           <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
         </Link>
       </nav>
 
-      <div className="bookings-container">
+      <div className="bookings-new-container">
         <h1>Book your parking</h1>
-        <p className="bookings-subtitle">Bournemouth International Airport (BOH)</p>
+        <p className="bookings-new-subtitle">Bournemouth International Airport (BOH)</p>
 
         <div className="progress-bar">
           <div className="progress-steps">
@@ -953,7 +953,7 @@ function Bookings() {
           </div>
         </div>
 
-        <form className="bookings-form" onSubmit={handleSubmit}>
+        <form className="bookings-new-form" onSubmit={handleSubmit}>
           {/* Step 1: Your Details (Contact + Vehicle) */}
           {currentStep === 1 && (
             <div className="form-section">
@@ -1844,7 +1844,7 @@ function Bookings() {
         </form>
       </div>
 
-      <footer className="bookings-footer">
+      <footer className="bookings-new-footer">
         <img src="/assets/logo.svg" alt="TAG" className="footer-logo-small" />
         <p>© 2025 TAG Parking. All rights reserved.</p>
       </footer>
