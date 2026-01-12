@@ -409,6 +409,20 @@ function Bookings() {
     }).sort((a, b) => a.time.localeCompare(b.time))
   }, [filteredArrivalsForDate])
 
+  // Clear pickupFlightTime when arrival flights change and current selection is invalid
+  useEffect(() => {
+    if (formData.pickupFlightTime && arrivalFlightsForPickup.length === 0) {
+      // No valid return flights - clear the selection
+      setFormData(prev => ({ ...prev, pickupFlightTime: '' }))
+    } else if (formData.pickupFlightTime && arrivalFlightsForPickup.length > 0) {
+      // Check if current selection is still valid
+      const isValid = arrivalFlightsForPickup.some(f => f.flightKey === formData.pickupFlightTime)
+      if (!isValid) {
+        setFormData(prev => ({ ...prev, pickupFlightTime: '' }))
+      }
+    }
+  }, [arrivalFlightsForPickup, formData.pickupFlightTime])
+
   // Get selected arrival/return flight details
   const selectedArrivalFlight = useMemo(() => {
     if (!formData.pickupFlightTime) return null
@@ -1401,7 +1415,18 @@ function Bookings() {
 
               {formData.pickupDate && arrivalFlightsForPickup.length === 0 && (
                 <div className="form-group fade-in">
-                  <p className="no-flights-message">No return flights available on this date. Please select a different date.</p>
+                  <div className="fully-booked-banner">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                    </svg>
+                    <div className="fully-booked-content">
+                      <strong>No return flights available</strong>
+                      <p>This route may be seasonal or doesn't operate on your selected return date. Please try a different date or get in touch.</p>
+                      <div className="contact-details">
+                        <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
