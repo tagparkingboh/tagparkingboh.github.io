@@ -132,6 +132,9 @@ function Bookings() {
   const [departuresForDate, setDeparturesForDate] = useState([])
   const [arrivalsForDate, setArrivalsForDate] = useState([])
   const [loadingFlights, setLoadingFlights] = useState(false)
+  // Return flight availability for each duration option (checked upfront)
+  const [durationAvailability, setDurationAvailability] = useState({ 7: null, 14: null })
+  const [loadingDurationAvailability, setLoadingDurationAvailability] = useState(false)
 
   // Parking capacity management
   const MAX_PARKING_SPOTS = 60
@@ -303,6 +306,8 @@ function Bookings() {
         setArrivalsForDate([])
         return
       }
+      // Clear stale arrivals immediately when pickup date changes
+      setArrivalsForDate([])
       try {
         const dateStr = format(formData.pickupDate, 'yyyy-MM-dd')
         const response = await fetch(`${API_BASE_URL}/api/flights/arrivals/${dateStr}`)
@@ -315,6 +320,55 @@ function Bookings() {
     }
     fetchArrivals()
   }, [formData.pickupDate, API_BASE_URL])
+
+  // Check return flight availability for both duration options when departure slot is selected
+  useEffect(() => {
+    const checkDurationAvailability = async () => {
+      if (!formData.dropoffDate || !formData.dropoffSlot || !selectedDropoffFlight) {
+        setDurationAvailability({ 7: null, 14: null })
+        return
+      }
+
+      setLoadingDurationAvailability(true)
+      const availability = { 7: null, 14: null }
+
+      try {
+        // Check both 7-day and 14-day return dates in parallel
+        const checks = [7, 14].map(async (days) => {
+          const returnDate = new Date(formData.dropoffDate)
+          returnDate.setDate(returnDate.getDate() + days)
+          const dateStr = format(returnDate, 'yyyy-MM-dd')
+
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/flights/arrivals/${dateStr}`)
+            const arrivals = await response.json()
+
+            // Check if there's a matching return flight for this route
+            const hasMatchingFlight = arrivals.some(f =>
+              normalizeAirlineName(f.airlineName) === formData.dropoffAirline &&
+              f.originCode === selectedDropoffFlight.destinationCode
+            )
+
+            return { days, available: hasMatchingFlight }
+          } catch {
+            return { days, available: false }
+          }
+        })
+
+        const results = await Promise.all(checks)
+        results.forEach(({ days, available }) => {
+          availability[days] = available
+        })
+      } catch (error) {
+        console.error('Error checking duration availability:', error)
+      } finally {
+        setDurationAvailability(availability)
+        setLoadingDurationAvailability(false)
+      }
+    }
+
+    checkDurationAvailability()
+  }, [formData.dropoffDate, formData.dropoffSlot, formData.dropoffAirline, selectedDropoffFlight, API_BASE_URL])
 
   // Fetch dynamic pricing when dates change
   useEffect(() => {
@@ -460,16 +514,22 @@ function Bookings() {
         ...prev,
         dropoffAirline: value,
         dropoffFlight: '',
-        dropoffSlot: ''
+        dropoffSlot: '',
+        pickupDate: null,
+        pickupFlightTime: ''
       }))
+      setDurationAvailability({ 7: null, 14: null })
     }
 
     if (name === 'dropoffFlight') {
       setFormData(prev => ({
         ...prev,
         dropoffFlight: value,
-        dropoffSlot: ''
+        dropoffSlot: '',
+        pickupDate: null,
+        pickupFlightTime: ''
       }))
+      setDurationAvailability({ 7: null, 14: null })
 
       // Track when user selects a flight with 0 capacity
       if (value) {
@@ -523,8 +583,11 @@ function Bookings() {
         dropoffDate: date,
         dropoffAirline: '',
         dropoffFlight: '',
-        dropoffSlot: ''
+        dropoffSlot: '',
+        pickupDate: null,
+        pickupFlightTime: ''
       }))
+      setDurationAvailability({ 7: null, 14: null })
     } else if (field === 'pickupDate') {
       setFormData(prev => ({
         ...prev,
@@ -1205,42 +1268,67 @@ function Bookings() {
                     })()}
                   </p>
 
-                  <div className="form-group fade-in">
-                    <label>Select Trip Duration</label>
-                    <div className="duration-options">
-                      {[
-                        { days: 7, label: '1 Week' },
-                        { days: 14, label: '2 Weeks' },
-                      ].map(({ days, label }) => {
-                        const pickupDate = new Date(formData.dropoffDate)
-                        pickupDate.setDate(pickupDate.getDate() + days)
-                        const isSelected = formData.pickupDate &&
-                          format(formData.pickupDate, 'yyyy-MM-dd') === format(pickupDate, 'yyyy-MM-dd')
-
-                        return (
-                          <label key={days} className="duration-option">
-                            <input
-                              type="radio"
-                              name="tripDuration"
-                              value={days}
-                              checked={isSelected}
-                              onChange={() => handleDateChange(pickupDate, 'pickupDate')}
-                            />
-                            <div className={`duration-card ${isSelected ? 'selected' : ''}`}>
-                              <span className="duration-label">{label}</span>
-                              <span className="duration-date">Return: {format(pickupDate, 'EEE, d MMM yyyy')}</span>
-                              {pricingLoading && isSelected && (
-                                <span className="duration-price loading">Calculating...</span>
-                              )}
-                              {!pricingLoading && pricingInfo && isSelected && (
-                                <span className="duration-price">From £{pricingInfo.price.toFixed(0)}</span>
-                              )}
-                            </div>
-                          </label>
-                        )
-                      })}
+                  {loadingDurationAvailability && (
+                    <div className="form-group fade-in">
+                      <p className="loading-message">Checking return flight availability...</p>
                     </div>
-                  </div>
+                  )}
+
+                  {!loadingDurationAvailability && durationAvailability[7] === false && durationAvailability[14] === false && (
+                    <div className="form-group fade-in">
+                      <div className="fully-booked-banner">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                        </svg>
+                        <div className="fully-booked-content">
+                          <strong>No return flights available</strong>
+                          <p>This route may be seasonal and doesn't have return flights for our standard trip durations. Please contact us to arrange your booking.</p>
+                          <div className="contact-details">
+                            <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {!loadingDurationAvailability && (durationAvailability[7] === true || durationAvailability[14] === true) && (
+                    <div className="form-group fade-in">
+                      <label>Select Trip Duration</label>
+                      <div className="duration-options">
+                        {[
+                          { days: 7, label: '1 Week' },
+                          { days: 14, label: '2 Weeks' },
+                        ].filter(({ days }) => durationAvailability[days] === true).map(({ days, label }) => {
+                          const pickupDate = new Date(formData.dropoffDate)
+                          pickupDate.setDate(pickupDate.getDate() + days)
+                          const isSelected = formData.pickupDate &&
+                            format(formData.pickupDate, 'yyyy-MM-dd') === format(pickupDate, 'yyyy-MM-dd')
+
+                          return (
+                            <label key={days} className="duration-option">
+                              <input
+                                type="radio"
+                                name="tripDuration"
+                                value={days}
+                                checked={isSelected}
+                                onChange={() => handleDateChange(pickupDate, 'pickupDate')}
+                              />
+                              <div className={`duration-card ${isSelected ? 'selected' : ''}`}>
+                                <span className="duration-label">{label}</span>
+                                <span className="duration-date">Return: {format(pickupDate, 'EEE, d MMM yyyy')}</span>
+                                {pricingLoading && isSelected && (
+                                  <span className="duration-price loading">Calculating...</span>
+                                )}
+                                {!pricingLoading && pricingInfo && isSelected && (
+                                  <span className="duration-price">From £{pricingInfo.price.toFixed(0)}</span>
+                                )}
+                              </div>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1269,7 +1357,7 @@ function Bookings() {
                     </svg>
                     <div className="fully-booked-content">
                       <strong>No return flights available</strong>
-                      <p>This route may be seasonal or doesn't operate on your selected return date. Please try a different date or get in touch.</p>
+                      <p>This route may be seasonal or doesn't operate on your selected return date. Please contact us to arrange your booking.</p>
                       <div className="contact-details">
                         <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a>
                       </div>
