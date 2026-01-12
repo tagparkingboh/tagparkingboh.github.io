@@ -29,14 +29,14 @@
 
 .bookings-new-page {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: #343434;
   display: flex;
   flex-direction: column;
   font-family: 'Gilroy', sans-serif;
 }
 
 .bookings-new-nav {
-  background: #1a1a2e;
+  background: #2a2a2a;
   padding: 2rem 4rem;
   display: flex;
   justify-content: center;
@@ -67,7 +67,7 @@
 
 .bookings-new-container h1 {
   font-size: 2.5rem;
-  color: #1a1a2e;
+  color: #D9FF00;
   font-weight: 700;
   font-style: italic;
   margin-bottom: 0.5rem;
@@ -76,10 +76,11 @@
 }
 
 .bookings-new-subtitle {
-  color: #666;
+  color: #ffffff;
   text-align: center;
   margin-bottom: 2rem;
   font-weight: 500;
+  opacity: 0.8;
 }
 
 /* Progress Bar */
@@ -107,7 +108,7 @@
   left: 50%;
   width: 100%;
   height: 2px;
-  background: #e0e0e0;
+  background: #555555;
   z-index: 0;
 }
 
@@ -117,15 +118,15 @@
 
 .progress-step.active::after,
 .progress-step.completed::after {
-  background: #f7b32b;
+  background: #D9FF00;
 }
 
 .step-number {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #e0e0e0;
-  color: #666;
+  background: #555555;
+  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -138,29 +139,31 @@
 
 .progress-step.active .step-number,
 .progress-step.completed .step-number {
-  background: #f7b32b;
-  color: #1a1a2e;
+  background: #D9FF00;
+  color: #343434;
 }
 
 .step-label {
   font-size: 0.75rem;
-  color: #666;
+  color: #ffffff;
   margin-top: 0.5rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  opacity: 0.7;
 }
 
 .progress-step.active .step-label {
-  color: #1a1a2e;
+  color: #D9FF00;
   font-weight: 600;
+  opacity: 1;
 }
 
 /* Form */
 .bookings-new-form {
-  background: white;
+  background: #2a2a2a;
   border-radius: 12px;
   padding: 2.5rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .form-section {
@@ -180,11 +183,11 @@
 
 .form-section h2 {
   font-size: 1.25rem;
-  color: #1a1a2e;
+  color: #ffffff;
   font-weight: 600;
   margin-bottom: 1.5rem;
   padding-bottom: 0.75rem;
-  border-bottom: 2px solid #f7b32b;
+  border-bottom: 2px solid #D9FF00;
   font-family: 'Gilroy', sans-serif;
 }
 
@@ -211,18 +214,18 @@
 .bookings-new-page .form-group label {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #1a1a2e;
+  color: #cccccc;
   margin-bottom: 0.5rem;
 }
 
 .form-group input,
 .form-group select {
   padding: 0.875rem 1rem;
-  border: 1px solid #e0e0e0;
+  border: 2px solid #555555;
   border-radius: 8px;
   font-size: 1rem;
-  color: #1a1a2e;
-  background: white;
+  color: #ffffff;
+  background: #343434;
   transition: border-color 0.3s;
   width: 100%;
   font-family: 'Gilroy', sans-serif;
@@ -232,7 +235,7 @@
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23f7b32b' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23D9FF00' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 1rem center;
   padding-right: 2.5rem;
@@ -240,39 +243,37 @@
 }
 
 .form-group select:hover {
-  border-color: #f7b32b;
+  border-color: #D9FF00;
 }
 
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #f7b32b;
-  box-shadow: 0 0 0 2px rgba(247, 179, 43, 0.2);
+  border-color: #D9FF00;
 }
 
 .form-group input::placeholder {
-  color: #999;
+  color: #888888;
 }
 
 /* International Phone Input Styling */
 .phone-input {
   display: flex;
   align-items: center;
-  background: white;
-  border: 1px solid #e0e0e0;
+  background: #343434;
+  border: 2px solid #555555;
   border-radius: 8px;
   transition: border-color 0.3s;
 }
 
 .phone-input:focus-within {
-  border-color: #f7b32b;
-  box-shadow: 0 0 0 2px rgba(247, 179, 43, 0.2);
+  border-color: #D9FF00;
 }
 
 .phone-input .PhoneInputCountry {
   padding: 0.875rem 0.75rem;
-  background: #f5f7fa;
-  border-right: 1px solid #e0e0e0;
+  background: #3a3a3a;
+  border-right: 1px solid #555555;
   border-radius: 6px 0 0 6px;
 }
 
@@ -284,7 +285,7 @@
 }
 
 .phone-input .PhoneInputCountrySelectArrow {
-  color: #f7b32b;
+  color: #D9FF00;
   margin-left: 0.5rem;
 }
 
@@ -294,13 +295,13 @@
   background: transparent;
   border: none;
   outline: none;
-  color: #1a1a2e;
+  color: #ffffff;
   font-size: 1rem;
   font-family: 'Gilroy', sans-serif;
 }
 
 .phone-input .PhoneInputInput::placeholder {
-  color: #999;
+  color: #888888;
 }
 
 .phone-input.invalid {
@@ -332,7 +333,7 @@
 }
 
 .date-info {
-  color: #f7b32b;
+  color: #D9FF00;
   font-size: 0.85rem;
   margin-top: 0.5rem;
   margin-bottom: 0;
@@ -361,8 +362,8 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #e0e0e0;
-  color: #666;
+  background: #555555;
+  color: #ffffff;
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
@@ -370,8 +371,8 @@
 }
 
 .help-icon:hover {
-  background: #f7b32b;
-  color: #1a1a2e;
+  background: #D9FF00;
+  color: #1a1a1a;
 }
 
 .help-tooltip {
@@ -381,21 +382,21 @@
   margin-top: 0.5rem;
   width: 280px;
   padding: 0.75rem 1rem;
-  background: white;
-  border: 1px solid #e0e0e0;
+  background: #2a2a2a;
+  border: 1px solid #555555;
   border-radius: 8px;
   font-size: 0.85rem;
-  color: #666;
+  color: #cccccc;
   line-height: 1.5;
   z-index: 100;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.2s, visibility 0.2s;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .help-tooltip a {
-  color: #f7b32b;
+  color: #D9FF00;
   text-decoration: none;
 }
 
@@ -420,8 +421,8 @@
 }
 
 .PhoneInputCountrySelect option {
-  background: white;
-  color: #1a1a2e;
+  background: #343434;
+  color: #ffffff;
   padding: 0.5rem;
 }
 
@@ -437,8 +438,8 @@
 
 .validate-btn {
   padding: 0.875rem 1.25rem;
-  background: #f7b32b;
-  color: #1a1a2e;
+  background: #D9FF00;
+  color: #343434;
   border: none;
   border-radius: 8px;
   font-family: 'Gilroy', sans-serif;
@@ -450,7 +451,7 @@
 }
 
 .validate-btn:hover:not(:disabled) {
-  background: #e5a325;
+  background: #c4e600;
   transform: translateY(-1px);
 }
 
@@ -488,8 +489,8 @@
 
 .find-address-btn {
   padding: 0.875rem 1.25rem;
-  background: #f7b32b;
-  color: #1a1a2e;
+  background: #D9FF00;
+  color: #343434;
   border: none;
   border-radius: 8px;
   font-family: 'Gilroy', sans-serif;
@@ -501,7 +502,7 @@
 }
 
 .find-address-btn:hover:not(:disabled) {
-  background: #e5a325;
+  background: #c4e600;
   transform: translateY(-1px);
 }
 
@@ -514,16 +515,16 @@
 .address-select {
   width: 100%;
   padding: 0.875rem 1rem;
-  border: 2px solid #f7b32b;
+  border: 2px solid #D9FF00;
   border-radius: 8px;
   font-size: 1rem;
-  color: #1a1a2e;
-  background: white;
+  color: #ffffff;
+  background: #343434;
   font-family: 'Gilroy', sans-serif;
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23f7b32b' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23D9FF00' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 1rem center;
   padding-right: 2.5rem;
@@ -531,19 +532,19 @@
 }
 
 .address-select:hover {
-  border-color: #e5a325;
+  border-color: #c4e600;
 }
 
 .address-select:focus {
   outline: none;
-  border-color: #f7b32b;
-  box-shadow: 0 0 0 3px rgba(247, 179, 43, 0.2);
+  border-color: #D9FF00;
+  box-shadow: 0 0 0 3px rgba(217, 255, 0, 0.2);
 }
 
 .address-select option {
   padding: 0.5rem;
-  background: white;
-  color: #1a1a2e;
+  background: #343434;
+  color: #ffffff;
 }
 
 /* Error Text */
@@ -559,7 +560,7 @@
 .manual-entry-link {
   background: none;
   border: none;
-  color: #f7b32b;
+  color: #D9FF00;
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -570,7 +571,7 @@
 }
 
 .manual-entry-link:hover {
-  color: #1a1a2e;
+  color: #ffffff;
 }
 
 /* Manual Entry Header */
@@ -581,7 +582,7 @@
 .back-to-lookup-link {
   background: none;
   border: none;
-  color: #f7b32b;
+  color: #D9FF00;
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
@@ -593,38 +594,38 @@
 }
 
 .back-to-lookup-link:hover {
-  color: #1a1a2e;
+  color: #ffffff;
 }
 
 /* Read-only input styling */
 .readonly-input {
-  background: #f5f7fa !important;
+  background: #3a3a3a !important;
   border-color: #22c55e !important;
   cursor: default;
 }
 
 .form-group select option {
   padding: 0.5rem;
-  background: white;
-  color: #1a1a2e;
+  background: #343434;
+  color: #ffffff;
 }
 
 /* Date Picker Styling */
 .date-picker-input {
   width: 100%;
   padding: 0.875rem 1rem;
-  border: 1px solid #e0e0e0;
+  border: 2px solid #555555;
   border-radius: 8px;
   font-size: 1rem;
-  color: #1a1a2e;
-  background: white;
+  color: #ffffff;
+  background: #343434;
   transition: border-color 0.3s;
   font-family: 'Gilroy', sans-serif;
 }
 
 .date-picker-input:focus {
   outline: none;
-  border-color: #f7b32b;
+  border-color: #D9FF00;
 }
 
 .react-datepicker-wrapper {
@@ -633,15 +634,15 @@
 
 .react-datepicker {
   font-family: 'Gilroy', sans-serif;
-  border: 1px solid #e0e0e0;
+  border: 2px solid #555555;
   border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  background: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  background: #343434;
 }
 
 .react-datepicker__header {
-  background: #f5f7fa;
-  border-bottom: 1px solid #e0e0e0;
+  background: #2a2a2a;
+  border-bottom: none;
   border-radius: 6px 6px 0 0;
   padding-top: 1rem;
 }
@@ -649,48 +650,48 @@
 .react-datepicker__current-month,
 .react-datepicker__current-month--hasYearDropdown,
 .react-datepicker__current-month--hasMonthDropdown {
-  color: #1a1a2e !important;
+  color: #D9FF00 !important;
   font-weight: 600;
 }
 
 .react-datepicker__day-names {
-  background: white !important;
+  background: #343434 !important;
   padding: 0.5rem 0;
 }
 
 .react-datepicker__day-name {
-  color: #f7b32b !important;
+  color: #D9FF00 !important;
   font-weight: 900;
 }
 
 .react-datepicker__month {
-  background: white;
+  background: #343434;
 }
 
 .react-datepicker__day {
   border-radius: 50%;
   transition: all 0.2s;
-  color: #1a1a2e;
+  color: #ffffff;
 }
 
 .react-datepicker__day:hover {
-  background: rgba(247, 179, 43, 0.3);
+  background: rgba(217, 255, 0, 0.3);
   border-radius: 50%;
 }
 
 .react-datepicker__day--selected,
 .react-datepicker__day--keyboard-selected {
-  background: #f7b32b !important;
-  color: #1a1a2e !important;
+  background: #D9FF00 !important;
+  color: #343434 !important;
   font-weight: 600;
 }
 
 .react-datepicker__day--disabled {
-  color: #cccccc;
+  color: #666666;
 }
 
 .react-datepicker__navigation-icon::before {
-  border-color: #f7b32b;
+  border-color: #D9FF00;
 }
 
 .react-datepicker__triangle {
@@ -726,25 +727,25 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.25rem;
-  border: 1px solid #e0e0e0;
+  border: 2px solid #555555;
   border-radius: 8px;
   transition: all 0.3s;
-  background: white;
+  background: #343434;
 }
 
 .flight-slot input:checked + .slot-card {
-  border-color: #f7b32b;
-  background: rgba(247, 179, 43, 0.1);
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
 }
 
 .slot-time {
   font-weight: 700;
   font-size: 1.1rem;
-  color: #1a1a2e;
+  color: #ffffff;
 }
 
 .slot-label {
-  color: #666;
+  color: #bbbbbb;
   font-size: 0.9rem;
   font-weight: 500;
 }
@@ -752,7 +753,7 @@
 /* Section Subtitle */
 .section-subtitle {
   font-size: 1.1rem;
-  color: #f7b32b;
+  color: #D9FF00;
   margin: 1.5rem 0 1rem;
   font-weight: 600;
   font-family: 'Gilroy', sans-serif;
@@ -763,7 +764,7 @@
 }
 
 .section-info {
-  color: #f7b32b;
+  color: #D9FF00;
   font-size: 0.95rem;
   margin: -0.5rem 0 1.5rem;
   font-weight: 500;
@@ -771,7 +772,7 @@
 }
 
 .return-flight-info {
-  color: #666;
+  color: #bbbbbb;
   font-size: 0.9rem;
   margin: -0.5rem 0 1rem;
   font-style: italic;
@@ -787,10 +788,10 @@
 }
 
 .loading-message {
-  color: #f7b32b;
+  color: #D9FF00;
   font-size: 0.9rem;
   padding: 1rem;
-  background: rgba(247, 179, 43, 0.1);
+  background: rgba(217, 255, 0, 0.1);
   border-radius: 8px;
   text-align: center;
 }
@@ -837,7 +838,7 @@
 }
 
 .fully-booked-content .contact-link {
-  color: #f7b32b;
+  color: #D9FF00;
   text-decoration: none;
   font-weight: 500;
   font-size: 0.9rem;
@@ -863,8 +864,8 @@
 }
 
 .dropoff-slot input:checked + .slot-card {
-  border-color: #f7b32b;
-  background: rgba(247, 179, 43, 0.1);
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
 }
 
 /* Slot info wrapper */
@@ -922,8 +923,8 @@
 }
 
 .dropoff-slot input:checked + .slot-card.last-slot {
-  border-color: #f7b32b;
-  background: rgba(247, 179, 43, 0.1);
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
 }
 
 /* Pickup Times */
@@ -943,21 +944,21 @@
 
 .time-card {
   padding: 1rem 1.25rem;
-  border: 1px solid #e0e0e0;
+  border: 2px solid #555555;
   border-radius: 8px;
   transition: all 0.3s;
   text-align: center;
-  background: white;
+  background: #343434;
 }
 
 .pickup-time input:checked + .time-card {
-  border-color: #f7b32b;
-  background: rgba(247, 179, 43, 0.1);
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
 }
 
 .time-card span {
   font-weight: 500;
-  color: #1a1a2e;
+  color: #ffffff;
 }
 
 /* Package Options */
@@ -980,22 +981,22 @@
   display: flex;
   flex-direction: column;
   padding: 1.5rem;
-  border: 1px solid #e0e0e0;
+  border: 2px solid #555555;
   border-radius: 8px;
   transition: all 0.3s;
   height: 100%;
-  background: white;
+  background: #343434;
 }
 
 .package-option input:checked + .package-card {
-  border-color: #f7b32b;
-  background: rgba(247, 179, 43, 0.1);
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
 }
 
 .package-label {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #f7b32b;
+  color: #D9FF00;
   letter-spacing: 1px;
   margin-bottom: 0.5rem;
 }
@@ -1003,13 +1004,13 @@
 .package-price {
   font-size: 2.5rem;
   font-weight: 700;
-  color: #1a1a2e;
+  color: #ffffff;
   line-height: 1;
 }
 
 .package-period {
   font-size: 0.9rem;
-  color: #666;
+  color: #bbbbbb;
   margin-bottom: 1rem;
 }
 
@@ -1021,7 +1022,7 @@
 
 .package-features li {
   font-size: 0.85rem;
-  color: #666;
+  color: #bbbbbb;
   padding: 0.35rem 0;
   padding-left: 1.25rem;
   position: relative;
@@ -1031,25 +1032,25 @@
   content: '✓';
   position: absolute;
   left: 0;
-  color: #f7b32b;
+  color: #D9FF00;
   font-weight: 700;
 }
 
 /* Booking Summary */
 .booking-summary {
-  background: #f5f7fa;
+  background: #343434;
   border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
-  border: 1px solid #e0e0e0;
+  border: 1px solid #555555;
 }
 
 .booking-summary h3 {
   font-size: 1rem;
-  color: #1a1a2e;
+  color: #ffffff;
   margin-bottom: 1rem;
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid #555555;
   font-family: 'Gilroy', sans-serif;
 }
 
@@ -1062,19 +1063,19 @@
 }
 
 .summary-item span:first-child {
-  color: #666;
+  color: #bbbbbb;
   flex-shrink: 0;
 }
 
 .summary-item span:last-child {
-  color: #1a1a2e;
+  color: #ffffff;
   font-weight: 500;
   text-align: right;
   word-break: break-word;
 }
 
 .summary-item.total {
-  border-top: 2px solid #f7b32b;
+  border-top: 2px solid #D9FF00;
   margin-top: 0.5rem;
   padding-top: 1rem;
   font-size: 1.1rem;
@@ -1082,11 +1083,11 @@
 
 .summary-item.total span:last-child {
   font-weight: 700;
-  color: #f7b32b;
+  color: #D9FF00;
 }
 
 .summary-item.subtotal {
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid #555555;
   margin-top: 0.5rem;
   padding-top: 0.75rem;
 }
@@ -1101,16 +1102,16 @@
 
 /* Promo Code Section */
 .promo-code-section {
-  background: #f5f7fa;
+  background: #343434;
   border-radius: 8px;
   padding: 1.25rem;
   margin-bottom: 1.5rem;
-  border: 1px solid #e0e0e0;
+  border: 1px solid #555555;
 }
 
 .promo-code-section h4 {
   font-size: 0.95rem;
-  color: #1a1a2e;
+  color: #ffffff;
   margin: 0 0 1rem 0;
   font-family: 'Gilroy', sans-serif;
 }
@@ -1123,10 +1124,10 @@
 .promo-code-input input {
   flex: 1;
   padding: 0.75rem 1rem;
-  border: 1px solid #e0e0e0;
+  border: 1px solid #555555;
   border-radius: 6px;
-  background: white;
-  color: #1a1a2e;
+  background: #2a2a2a;
+  color: #ffffff;
   font-size: 0.9rem;
   font-family: 'Gilroy', sans-serif;
   text-transform: uppercase;
@@ -1134,18 +1135,18 @@
 
 .promo-code-input input::placeholder {
   text-transform: none;
-  color: #999;
+  color: #888888;
 }
 
 .promo-code-input input:focus {
   outline: none;
-  border-color: #f7b32b;
+  border-color: #D9FF00;
 }
 
 .promo-apply-btn {
   padding: 0.75rem 1.5rem;
-  background: #f7b32b;
-  color: #1a1a2e;
+  background: #D9FF00;
+  color: #1a1a1a;
   border: none;
   border-radius: 6px;
   font-weight: 600;
@@ -1155,7 +1156,7 @@
 }
 
 .promo-apply-btn:hover:not(:disabled) {
-  background: #e5a325;
+  background: #c4e600;
 }
 
 .promo-apply-btn:disabled {
@@ -1171,8 +1172,8 @@
 }
 
 .promo-badge {
-  background: #f7b32b;
-  color: #1a1a2e;
+  background: #D9FF00;
+  color: #1a1a1a;
   padding: 0.4rem 0.75rem;
   border-radius: 4px;
   font-weight: 600;
@@ -1187,8 +1188,8 @@
 
 .promo-remove {
   background: transparent;
-  border: 1px solid #ccc;
-  color: #666;
+  border: 1px solid #666666;
+  color: #bbbbbb;
   padding: 0.35rem 0.75rem;
   border-radius: 4px;
   font-size: 0.85rem;
@@ -1210,8 +1211,8 @@
 
 /* Stripe Payment Container */
 .stripe-payment-container {
-  background: #f5f7fa;
-  border: 1px solid #e0e0e0;
+  background: #2a2a2a;
+  border: 1px solid #555555;
   border-radius: 12px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
@@ -1222,18 +1223,18 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
-  background: white;
+  background: #343434;
   border-radius: 8px;
   margin-bottom: 1.5rem;
 }
 
 .stripe-payment-container .booking-reference span {
-  color: #666;
+  color: #bbbbbb;
   font-size: 0.9rem;
 }
 
 .stripe-payment-container .booking-reference strong {
-  color: #f7b32b;
+  color: #D9FF00;
   font-family: 'Gilroy', monospace;
   font-size: 1.1rem;
   letter-spacing: 1px;
@@ -1257,8 +1258,8 @@
 .stripe-pay-btn {
   width: 100%;
   padding: 1rem 2rem;
-  background: #f7b32b;
-  color: #1a1a2e;
+  background: #D9FF00;
+  color: #000;
   border: none;
   border-radius: 8px;
   font-family: 'Gilroy', sans-serif;
@@ -1269,7 +1270,7 @@
 }
 
 .stripe-pay-btn:hover:not(:disabled) {
-  background: #e5a325;
+  background: #c4e600;
   transform: translateY(-2px);
 }
 
@@ -1284,7 +1285,7 @@
   justify-content: center;
   gap: 0.5rem;
   margin-top: 1rem;
-  color: #666;
+  color: #888888;
   font-size: 0.85rem;
 }
 
@@ -1304,8 +1305,8 @@
 .stripe-loading .spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #e0e0e0;
-  border-top-color: #f7b32b;
+  border: 3px solid #555555;
+  border-top-color: #D9FF00;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -1315,7 +1316,7 @@
 }
 
 .stripe-loading p {
-  color: #666;
+  color: #bbbbbb;
   font-size: 0.95rem;
 }
 
@@ -1331,17 +1332,17 @@
 
 .stripe-error-container .retry-btn {
   padding: 0.75rem 1.5rem;
-  background: white;
-  color: #1a1a2e;
-  border: 1px solid #e0e0e0;
+  background: #343434;
+  color: #ffffff;
+  border: 1px solid #555555;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .stripe-error-container .retry-btn:hover {
-  background: #f5f7fa;
-  border-color: #f7b32b;
+  background: #444444;
+  border-color: #D9FF00;
 }
 
 /* Free Booking (100% off promo) */
@@ -1351,7 +1352,7 @@
 
 .free-booking-summary {
   padding: 1.5rem;
-  background: white;
+  background: #343434;
   border-radius: 8px;
   margin-bottom: 1.5rem;
 }
@@ -1368,7 +1369,7 @@
 }
 
 .free-booking-summary h3 {
-  color: #f7b32b;
+  color: #D9FF00;
   margin: 0 0 1rem 0;
   font-size: 1.25rem;
 }
@@ -1414,7 +1415,7 @@
 }
 
 .price-row .free-amount {
-  color: #f7b32b;
+  color: #D9FF00;
 }
 
 .free-booking-btn {
@@ -1430,10 +1431,9 @@
 .payment-success {
   text-align: center;
   padding: 2rem;
-  background: white;
+  background: #2a2a2a;
   border-radius: 12px;
   margin-bottom: 1.5rem;
-  border: 1px solid #e0e0e0;
 }
 
 .payment-success .success-icon {
@@ -1456,13 +1456,13 @@
 }
 
 .payment-success p {
-  color: #666;
+  color: #bbbbbb;
   margin-bottom: 0.5rem;
 }
 
 .payment-success .spam-notice {
   font-size: 0.85rem;
-  color: #999;
+  color: #888888;
   font-style: italic;
   margin-top: 0.25rem;
 }
@@ -1471,8 +1471,8 @@
   font-family: 'Gilroy', monospace;
   font-size: 1.5rem;
   font-weight: 700;
-  color: #f7b32b;
-  background: #f5f7fa;
+  color: #D9FF00;
+  background: #343434;
   padding: 1rem 2rem;
   border-radius: 8px;
   margin: 1rem 0;
@@ -1482,20 +1482,20 @@
 .terms-required {
   text-align: center;
   padding: 2rem;
-  background: #f5f7fa;
+  background: #343434;
   border-radius: 8px;
   margin-bottom: 1.5rem;
 }
 
 .terms-required p {
-  color: #666;
+  color: #bbbbbb;
   margin: 0;
 }
 
 /* Legacy Stripe Placeholder (can be removed) */
 .stripe-placeholder {
-  background: #f5f7fa;
-  border: 2px dashed #e0e0e0;
+  background: #3a3a3a;
+  border: 2px dashed #555555;
   border-radius: 8px;
   padding: 2rem;
   text-align: center;
@@ -1503,7 +1503,7 @@
 }
 
 .stripe-placeholder p {
-  color: #666;
+  color: #bbbbbb;
   margin: 0;
 }
 
@@ -1529,22 +1529,22 @@
   margin-top: 0.25rem;
   width: 18px;
   height: 18px;
-  accent-color: #f7b32b;
+  accent-color: #D9FF00;
 }
 
 .checkbox-label span {
   font-size: 0.9rem;
-  color: #666;
+  color: #bbbbbb;
   line-height: 1.5;
 }
 
 .checkbox-label a {
-  color: #f7b32b;
+  color: #D9FF00;
   font-weight: 500;
 }
 
 .checkbox-label a:hover {
-  color: #1a1a2e;
+  color: #ffffff;
 }
 
 /* Form Actions */
@@ -1558,31 +1558,31 @@
   flex: 0 0 auto;
   padding: 1rem 1.5rem;
   background: transparent;
-  border: 1px solid #e0e0e0;
+  border: 2px solid #555555;
   border-radius: 8px;
   font-size: 1rem;
   font-weight: 600;
-  color: #1a1a2e;
+  color: #ffffff;
   cursor: pointer;
   transition: all 0.2s;
   font-family: 'Gilroy', sans-serif;
 }
 
 .back-btn:hover {
-  border-color: #f7b32b;
-  color: #f7b32b;
+  border-color: #D9FF00;
+  color: #D9FF00;
 }
 
 .next-btn,
 .submit-btn {
   flex: 1;
   padding: 1rem 1.5rem;
-  background: #f7b32b;
+  background: #D9FF00;
   border: none;
   border-radius: 8px;
   font-size: 1rem;
   font-weight: 700;
-  color: #1a1a2e;
+  color: #343434;
   cursor: pointer;
   transition: all 0.2s;
   font-family: 'Gilroy', sans-serif;
@@ -1591,7 +1591,7 @@
 .next-btn:hover:not(:disabled),
 .submit-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(247, 179, 43, 0.3);
+  box-shadow: 0 4px 15px rgba(217, 255, 0, 0.3);
 }
 
 .next-btn:disabled,
@@ -1602,7 +1602,7 @@
 
 /* Footer */
 .bookings-new-footer {
-  background: #1a1a2e;
+  background: #2a2a2a;
   padding: 1.5rem;
   text-align: center;
 }
@@ -1614,7 +1614,7 @@
 }
 
 .bookings-new-footer p {
-  color: #999;
+  color: #888888;
   font-size: 0.85rem;
   margin: 0;
 }
@@ -1639,40 +1639,40 @@
   flex-direction: column;
   align-items: center;
   padding: 1.5rem 1rem;
-  border: 1px solid #e0e0e0;
+  border: 2px solid #555555;
   border-radius: 8px;
   transition: all 0.3s;
-  background: white;
+  background: #343434;
   text-align: center;
 }
 
 .duration-option input:checked + .duration-card,
 .duration-card.selected {
-  border-color: #f7b32b;
-  background: rgba(247, 179, 43, 0.1);
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
 }
 
 .duration-label {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #1a1a2e;
+  color: #ffffff;
   margin-bottom: 0.5rem;
 }
 
 .duration-date {
   font-size: 0.85rem;
-  color: #666;
+  color: #bbbbbb;
   margin-bottom: 0.75rem;
 }
 
 .duration-price {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #f7b32b;
+  color: #D9FF00;
 }
 
 .duration-price.loading {
-  color: #999;
+  color: #888888;
   font-style: italic;
 }
 
@@ -1688,8 +1688,8 @@
 }
 
 .package-summary .package-card.selected {
-  border-color: #f7b32b;
-  background: rgba(247, 179, 43, 0.1);
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
 }
 
 .package-summary .package-label {
@@ -1741,15 +1741,15 @@
 
 /* Pricing Tiers Info */
 .pricing-tiers-info {
-  background: #f5f7fa;
+  background: #343434;
   border-radius: 8px;
   padding: 1.25rem;
-  border: 1px solid #e0e0e0;
+  border: 1px solid #555555;
 }
 
 .pricing-tiers-info h4 {
   font-size: 0.85rem;
-  color: #666;
+  color: #bbbbbb;
   font-weight: 500;
   margin: 0 0 1rem 0;
   text-align: center;
@@ -1767,32 +1767,32 @@
   align-items: center;
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
-  background: white;
+  background: #2a2a2a;
 }
 
 .tier.active {
-  background: rgba(247, 179, 43, 0.15);
-  border: 1px solid #f7b32b;
+  background: rgba(217, 255, 0, 0.15);
+  border: 1px solid #D9FF00;
 }
 
 .tier-label {
   font-size: 0.85rem;
-  color: #666;
+  color: #bbbbbb;
 }
 
 .tier.active .tier-label {
-  color: #1a1a2e;
+  color: #ffffff;
   font-weight: 500;
 }
 
 .tier-price {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #999;
+  color: #888888;
 }
 
 .tier.active .tier-price {
-  color: #f7b32b;
+  color: #D9FF00;
 }
 
 /* Responsive */
@@ -1867,7 +1867,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1876,13 +1876,13 @@
 }
 
 .welcome-modal {
-  background: white;
+  background: #2a2a2a;
   border-radius: 16px;
   padding: 2.5rem;
   max-width: 480px;
   width: 100%;
   text-align: center;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   animation: modalFadeIn 0.3s ease-out;
 }
 
@@ -1909,14 +1909,14 @@
 
 .welcome-modal h2 {
   font-size: 1.75rem;
-  color: #1a1a2e;
+  color: white;
   margin: 0 0 1.25rem 0;
   font-weight: 700;
 }
 
 .welcome-modal p {
   font-size: 1rem;
-  color: #666;
+  color: #b0b0b0;
   line-height: 1.6;
   margin: 0 0 1rem 0;
 }
@@ -1937,7 +1937,7 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  color: #f7b32b;
+  color: #D9FF00;
   text-decoration: none;
   font-size: 1rem;
   font-weight: 600;
@@ -1945,7 +1945,7 @@
 }
 
 .welcome-modal-contact .contact-link:hover {
-  color: #e5a325;
+  color: #e8ff4d;
 }
 
 .welcome-modal-contact .contact-link svg {
@@ -1959,8 +1959,8 @@
 }
 
 .welcome-modal-btn {
-  background: #f7b32b;
-  color: #1a1a2e;
+  background: #D9FF00;
+  color: #1a1a1a;
   border: none;
   padding: 1rem 2.5rem;
   font-size: 1.1rem;
@@ -1972,7 +1972,7 @@
 }
 
 .welcome-modal-btn:hover {
-  background: #e5a325;
+  background: #e8ff4d;
   transform: translateY(-2px);
 }
 

@@ -64,8 +64,8 @@ function Bookings() {
   const [customerId, setCustomerId] = useState(null)
   const [vehicleId, setVehicleId] = useState(null)
   const [saving, setSaving] = useState(false)
-  // Welcome modal state - shown once when user lands on booking page
-  const [showWelcomeModal, setShowWelcomeModal] = useState(true)
+  // Welcome modal state - shown when user clicks Continue from Step 1
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false)
 
   // Google Analytics page view tracking for SPA
   useEffect(() => {
@@ -872,7 +872,7 @@ function Bookings() {
 
   return (
     <div className="bookings-new-page">
-      {/* Welcome Modal - shown once when user lands on booking page */}
+      {/* Welcome Modal - shown when user clicks Continue from Step 1 to Step 2 */}
       {showWelcomeModal && (
         <div className="welcome-modal-overlay">
           <div className="welcome-modal">
@@ -908,16 +908,17 @@ function Bookings() {
                     })
                   }
                   setShowWelcomeModal(false)
+                  nextStep()
                 }}
               >
-                Continue to booking
+                Continue to Trip Details
               </button>
               <button
                 type="button"
                 className="welcome-modal-back-btn"
-                onClick={() => navigate('/')}
+                onClick={() => setShowWelcomeModal(false)}
               >
-                Back to home
+                Go back
               </button>
             </div>
           </div>
@@ -1178,7 +1179,7 @@ function Bookings() {
                 <button
                   type="button"
                   className="next-btn"
-                  onClick={nextStep}
+                  onClick={() => setShowWelcomeModal(true)}
                   disabled={!isStep1Complete || saving}
                 >
                   {saving ? 'Saving...' : 'Continue to Trip Details'}
