@@ -132,6 +132,7 @@ function Bookings() {
   const [departuresForDate, setDeparturesForDate] = useState([])
   const [arrivalsForDate, setArrivalsForDate] = useState([])
   const [loadingFlights, setLoadingFlights] = useState(false)
+  const [loadingArrivals, setLoadingArrivals] = useState(false)
   // Return flight availability for each duration option (checked upfront)
   const [durationAvailability, setDurationAvailability] = useState({ 7: null, 14: null })
   const [loadingDurationAvailability, setLoadingDurationAvailability] = useState(false)
@@ -304,10 +305,12 @@ function Bookings() {
     const fetchArrivals = async () => {
       if (!formData.pickupDate) {
         setArrivalsForDate([])
+        setLoadingArrivals(false)
         return
       }
-      // Clear stale arrivals immediately when pickup date changes
+      // Clear stale arrivals and set loading state
       setArrivalsForDate([])
+      setLoadingArrivals(true)
       try {
         const dateStr = format(formData.pickupDate, 'yyyy-MM-dd')
         const response = await fetch(`${API_BASE_URL}/api/flights/arrivals/${dateStr}`)
@@ -316,6 +319,8 @@ function Bookings() {
       } catch (error) {
         console.error('Error fetching arrivals:', error)
         setArrivalsForDate([])
+      } finally {
+        setLoadingArrivals(false)
       }
     }
     fetchArrivals()
@@ -348,17 +353,6 @@ function Bookings() {
               normalizeAirlineName(f.airlineName) === formData.dropoffAirline &&
               f.originCode === selectedDropoffFlight.destinationCode
             )
-
-            console.log(`Duration check (${days} days):`, {
-              returnDate: dateStr,
-              arrivalsCount: arrivals.length,
-              targetAirline: formData.dropoffAirline,
-              targetOrigin: selectedDropoffFlight.destinationCode,
-              hasMatch: hasMatchingFlight,
-              matchingOrigins: arrivals
-                .filter(f => normalizeAirlineName(f.airlineName) === formData.dropoffAirline)
-                .map(f => f.originCode)
-            })
 
             return { days, available: hasMatchingFlight }
           } catch {
@@ -428,26 +422,11 @@ function Bookings() {
   const filteredArrivalsForDate = useMemo(() => {
     if (!formData.dropoffAirline || !selectedDropoffFlight) return []
 
-    // Debug logging for seasonal route filtering
-    console.log('Filtering arrivals:', {
-      dropoffAirline: formData.dropoffAirline,
-      destinationCode: selectedDropoffFlight.destinationCode,
-      arrivalsCount: arrivalsForDate.length,
-      arrivals: arrivalsForDate.map(f => ({
-        airline: f.airlineName,
-        normalized: normalizeAirlineName(f.airlineName),
-        originCode: f.originCode,
-        flightNumber: f.flightNumber
-      }))
-    })
-
     // Filter by same airline (normalized) and origin matching the departure destination
     const matchingFlights = arrivalsForDate.filter(f =>
       normalizeAirlineName(f.airlineName) === formData.dropoffAirline &&
       f.originCode === selectedDropoffFlight.destinationCode
     )
-
-    console.log('Matched flights:', matchingFlights.length, matchingFlights.map(f => f.originCode))
 
     // If only one or no flights, return as-is
     if (matchingFlights.length <= 1) return matchingFlights
@@ -1375,7 +1354,13 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.pickupDate && arrivalFlightsForPickup.length === 0 && (
+              {formData.pickupDate && loadingArrivals && (
+                <div className="form-group fade-in">
+                  <p className="loading-message">Loading return flights...</p>
+                </div>
+              )}
+
+              {formData.pickupDate && !loadingArrivals && arrivalFlightsForPickup.length === 0 && (
                 <div className="form-group fade-in">
                   <div className="fully-booked-banner">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
