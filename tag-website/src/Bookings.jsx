@@ -349,6 +349,17 @@ function Bookings() {
               f.originCode === selectedDropoffFlight.destinationCode
             )
 
+            console.log(`Duration check (${days} days):`, {
+              returnDate: dateStr,
+              arrivalsCount: arrivals.length,
+              targetAirline: formData.dropoffAirline,
+              targetOrigin: selectedDropoffFlight.destinationCode,
+              hasMatch: hasMatchingFlight,
+              matchingOrigins: arrivals
+                .filter(f => normalizeAirlineName(f.airlineName) === formData.dropoffAirline)
+                .map(f => f.originCode)
+            })
+
             return { days, available: hasMatchingFlight }
           } catch {
             return { days, available: false }
@@ -417,11 +428,26 @@ function Bookings() {
   const filteredArrivalsForDate = useMemo(() => {
     if (!formData.dropoffAirline || !selectedDropoffFlight) return []
 
+    // Debug logging for seasonal route filtering
+    console.log('Filtering arrivals:', {
+      dropoffAirline: formData.dropoffAirline,
+      destinationCode: selectedDropoffFlight.destinationCode,
+      arrivalsCount: arrivalsForDate.length,
+      arrivals: arrivalsForDate.map(f => ({
+        airline: f.airlineName,
+        normalized: normalizeAirlineName(f.airlineName),
+        originCode: f.originCode,
+        flightNumber: f.flightNumber
+      }))
+    })
+
     // Filter by same airline (normalized) and origin matching the departure destination
     const matchingFlights = arrivalsForDate.filter(f =>
       normalizeAirlineName(f.airlineName) === formData.dropoffAirline &&
       f.originCode === selectedDropoffFlight.destinationCode
     )
+
+    console.log('Matched flights:', matchingFlights.length, matchingFlights.map(f => f.originCode))
 
     // If only one or no flights, return as-is
     if (matchingFlights.length <= 1) return matchingFlights
