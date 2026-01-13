@@ -273,8 +273,8 @@ function HomePage() {
       <section className="features-banner">
         <div className="features-content">
           <div className="feature">
-            <h2>50%</h2>
-            <p>Save up to 50% off<br />official airport parking</p>
+            <h2>35%</h2>
+            <p>Save up to 35% off<br />official airport parking</p>
           </div>
           <div className="feature">
             <h2>£0</h2>
