@@ -67,8 +67,8 @@ class TestBookingServiceInit:
 
     def test_package_prices_configured(self, service):
         """Package prices should be set correctly."""
-        assert service.PACKAGE_PRICES["quick"]["early"] == 99.0
-        assert service.PACKAGE_PRICES["longer"]["early"] == 150.0
+        assert service.PACKAGE_PRICES["quick"]["early"] == 89.0
+        assert service.PACKAGE_PRICES["longer"]["early"] == 140.0
 
 
 class TestSlotAvailability:
@@ -163,7 +163,7 @@ class TestBookingCreation:
     def test_booking_calculates_correct_price(self, service, sample_booking_request):
         """Booking should have correct package price."""
         booking = service.create_booking(sample_booking_request)
-        assert booking.price == 99.0  # "quick" package
+        assert booking.price == 89.0  # "quick" package early tier
 
         # Test longer package
         longer_request = sample_booking_request.model_copy()
@@ -172,7 +172,7 @@ class TestBookingCreation:
         longer_request.drop_off_slot_type = SlotType.LATE  # Use different slot
 
         longer_booking = service.create_booking(longer_request)
-        assert longer_booking.price == 150.0
+        assert longer_booking.price == 140.0
 
     def test_booking_calculates_drop_off_time(self, service, sample_booking_request):
         """Booking should calculate correct drop-off time."""
@@ -561,7 +561,7 @@ class TestAdminBooking:
         assert booking.booking_id is not None
         assert booking.first_name == "Admin"
         assert booking.status == "confirmed"
-        assert booking.price == 99.0  # Standard quick price
+        assert booking.price == 89.0  # Early quick price
 
     def test_admin_booking_uses_custom_drop_off_time(
         self, service, admin_booking_request

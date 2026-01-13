@@ -215,7 +215,7 @@ async def test_create_booking(client):
     data = response.json()
     assert data["success"] is True
     assert data["booking_id"] is not None
-    assert data["booking"]["price"] == 99.0
+    assert data["booking"]["price"] == 89.0
 
 
 @pytest.mark.asyncio

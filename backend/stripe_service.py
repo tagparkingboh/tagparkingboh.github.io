@@ -218,6 +218,6 @@ def calculate_price_in_pence(
         price = BookingService.calculate_price(package, drop_off_date)
     else:
         # Fallback to base prices if no date provided
-        price = BookingService.PACKAGE_PRICES.get(package, {}).get("late", 119.0)
+        price = BookingService.PACKAGE_PRICES.get(package, {}).get("late", 109.0)
 
     return int(price * 100)

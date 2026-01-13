@@ -50,14 +50,14 @@ class BookingService:
     # Advance tiers: "early" (>=14 days), "standard" (7-13 days), "late" (<7 days)
     PACKAGE_PRICES = {
         "quick": {
-            "early": 99.0,     # >=14 days in advance
-            "standard": 109.0, # 7-13 days in advance
-            "late": 119.0,     # <7 days in advance
+            "early": 89.0,     # >=14 days in advance
+            "standard": 99.0,  # 7-13 days in advance
+            "late": 109.0,     # <7 days in advance
         },
         "longer": {
-            "early": 150.0,    # >=14 days in advance
-            "standard": 160.0, # 7-13 days in advance
-            "late": 170.0,     # <7 days in advance
+            "early": 140.0,    # >=14 days in advance
+            "standard": 150.0, # 7-13 days in advance
+            "late": 160.0,     # <7 days in advance
         },
     }
 
