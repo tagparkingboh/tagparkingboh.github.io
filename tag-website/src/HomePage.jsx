@@ -182,6 +182,7 @@ function HomePage() {
         </nav>
       </header>
 
+      <main>
       {/* Hero Section */}
       <section className="hero" id="hero">
         <div className="hero-content">
@@ -207,8 +208,8 @@ function HomePage() {
             <Link to="/tag-it" className="hero-cta" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'hero_section' })}>Book it <span>→</span></Link>
           </div>
 
-          <a href="#how-it-works" className="scroll-indicator">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <a href="#how-it-works" className="scroll-indicator" aria-label="Scroll down to how it works section">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <path d="M7 10l5 5 5-5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </a>
@@ -499,11 +500,12 @@ function HomePage() {
       </section>
 
       {/* Back to Top */}
-      <a href="#hero" className="scroll-to-top">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <a href="#hero" className="scroll-to-top" aria-label="Scroll back to top">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <path d="M17 14l-5-5-5 5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </a>
+      </main>
 
       {/* Footer */}
       <footer className="footer" id="contact">

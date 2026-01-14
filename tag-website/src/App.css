@@ -344,6 +344,8 @@
   align-items: center;
   justify-content: center;
   transition: border-color 0.3s;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .scroll-indicator:hover {
@@ -573,7 +575,7 @@
 }
 
 .pricing-label {
-  color: #A3CC00;
+  color: #5C7300;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 1px;
@@ -1030,6 +1032,10 @@
   text-decoration: none;
   font-size: 14px;
   transition: opacity 0.2s;
+  padding: 0.5rem;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
 }
 
 .footer-links-simple a:hover {
@@ -1048,6 +1054,10 @@
   text-decoration: none;
   font-size: 14px;
   transition: opacity 0.2s;
+  padding: 0.5rem;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
 }
 
 .footer-contact a:hover {
@@ -1097,6 +1107,11 @@
 .social-links a {
   color: var(--lime-green);
   transition: opacity 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .social-links a:hover {
@@ -1114,7 +1129,7 @@
 }
 
 .footer-legal p {
-  color: #999;
+  color: #B3B3B3;
   font-size: 0.85rem;
   margin: 0;
 }
