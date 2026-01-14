@@ -1,0 +1,6 @@
+# robots.txt for TAG Parking
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://tagparking.co.uk/sitemap.xml
