@@ -516,7 +516,7 @@
 }
 
 .card h3 {
-  font-size: 16px;
+  font-size: 20px;
   color: #343434;
   margin-bottom: 0.5rem;
   font-weight: 700;
@@ -526,7 +526,7 @@
 .card p {
   color: #343434;
   line-height: 1.5;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 600;
 }
 
