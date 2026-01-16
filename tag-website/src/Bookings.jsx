@@ -64,9 +64,6 @@ function Bookings() {
   const [customerId, setCustomerId] = useState(null)
   const [vehicleId, setVehicleId] = useState(null)
   const [saving, setSaving] = useState(false)
-  // Welcome modal state - shown once when user lands on booking page
-  const [showWelcomeModal, setShowWelcomeModal] = useState(true)
-
   // Google Analytics page view tracking for SPA
   useEffect(() => {
     if (window.gtag) {
@@ -957,58 +954,6 @@ function Bookings() {
 
   return (
     <div className="bookings-page">
-      {/* Welcome Modal - shown once when user lands on booking page */}
-      {showWelcomeModal && (
-        <div className="welcome-modal-overlay">
-          <div className="welcome-modal">
-            <div className="welcome-modal-icon">
-              <img src="/assets/departure-icon.webp" alt="Departure" />
-            </div>
-            <h2>Welcome to Tag Parking</h2>
-            <p>
-              As a new business, we're building our service and online booking isn't available for all flights just yet.
-              Availability changes regularly as we grow.
-            </p>
-            <p>
-              If your flight or preferred time slot isn't available online, please get in touch.
-              We'll do our best to accommodate your booking.
-            </p>
-            <div className="welcome-modal-contact">
-              <a href="mailto:sales@tagparking.co.uk" className="contact-link">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-                </svg>
-                sales@tagparking.co.uk
-              </a>
-            </div>
-            <div className="welcome-modal-actions">
-              <button
-                type="button"
-                className="welcome-modal-btn"
-                onClick={() => {
-                  if (window.gtag) {
-                    window.gtag('event', 'continue_to_booking', {
-                      event_category: 'booking_flow',
-                      event_label: 'welcome_modal'
-                    })
-                  }
-                  setShowWelcomeModal(false)
-                }}
-              >
-                Continue to booking
-              </button>
-              <button
-                type="button"
-                className="welcome-modal-back-btn"
-                onClick={() => navigate('/')}
-              >
-                Back to home
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <nav className="bookings-nav">
         <Link to="/" className="logo">
           <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
