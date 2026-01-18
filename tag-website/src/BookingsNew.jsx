@@ -893,14 +893,13 @@ function Bookings() {
             <div className="welcome-modal-icon">
               <img src="/assets/departure-icon.webp" alt="Departure" />
             </div>
-            <h2>Welcome to Tag Parking</h2>
+            <h2>Every trip is different</h2>
             <p>
-              As a new business, we're building our service and online booking isn't available for all flights just yet.
-              Availability changes regularly as we grow.
+              Book online for 1-week or 2-week trips.
             </p>
             <p>
-              If your flight or preferred time slot isn't available online, please get in touch.
-              We'll do our best to accommodate your booking.
+              Heading away for a shorter break, something in between, or a longer adventure?
+              Get in touch - we'll tailor your booking to fit.
             </p>
             <div className="welcome-modal-contact">
               <a href="mailto:sales@tagparking.co.uk" className="contact-link">
