@@ -497,8 +497,8 @@ async def test_create_payment_intent_success(client, sample_customer, sample_dep
     assert "booking_reference" in data
     assert data["booking_reference"].startswith("TAG-")
     assert "client_secret" in data
-    # Price depends on advance booking tier (quick package: early=£99, standard=£109, late=£119)
-    assert data["amount"] in [9900, 10900, 11900]
+    # Price depends on advance booking tier (quick package: early=£89, standard=£99, late=£109)
+    assert data["amount"] in [8900, 9900, 10900]
 
 
 @pytest.mark.asyncio
@@ -1268,8 +1268,8 @@ async def test_full_booking_flow(client, db_session):
 
     assert payment_response.status_code == 200
     payment_data = payment_response.json()
-    # Price depends on advance booking tier (longer package: early=£150, standard=£160, late=£170)
-    assert payment_data["amount"] in [15000, 16000, 17000]
+    # Price depends on advance booking tier (longer package: early=£140, standard=£150, late=£160)
+    assert payment_data["amount"] in [14000, 15000, 16000]
 
     # Step 7: Verify booking exists
     booking = db_session.query(Booking).filter(

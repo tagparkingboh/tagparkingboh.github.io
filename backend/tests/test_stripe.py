@@ -29,34 +29,34 @@ class TestCalculatePriceInPence:
     """Tests for price calculation."""
 
     def test_quick_package_early_bird_price(self):
-        """Quick package booked 14+ days in advance should be £99.00 = 9900 pence."""
+        """Quick package booked 14+ days in advance should be £89.00 = 8900 pence."""
         from datetime import date, timedelta
         early_date = date.today() + timedelta(days=20)
-        assert calculate_price_in_pence("quick", drop_off_date=early_date) == 9900
+        assert calculate_price_in_pence("quick", drop_off_date=early_date) == 8900
 
     def test_quick_package_standard_price(self):
-        """Quick package booked 7-13 days in advance should be £109.00 = 10900 pence."""
+        """Quick package booked 7-13 days in advance should be £99.00 = 9900 pence."""
         from datetime import date, timedelta
         standard_date = date.today() + timedelta(days=10)
-        assert calculate_price_in_pence("quick", drop_off_date=standard_date) == 10900
+        assert calculate_price_in_pence("quick", drop_off_date=standard_date) == 9900
 
     def test_quick_package_late_price(self):
-        """Quick package booked <7 days in advance should be £119.00 = 11900 pence."""
+        """Quick package booked <7 days in advance should be £109.00 = 10900 pence."""
         from datetime import date, timedelta
         late_date = date.today() + timedelta(days=3)
-        assert calculate_price_in_pence("quick", drop_off_date=late_date) == 11900
+        assert calculate_price_in_pence("quick", drop_off_date=late_date) == 10900
 
     def test_longer_package_early_bird_price(self):
-        """Longer package booked 14+ days in advance should be £150.00 = 15000 pence."""
+        """Longer package booked 14+ days in advance should be £140.00 = 14000 pence."""
         from datetime import date, timedelta
         early_date = date.today() + timedelta(days=20)
-        assert calculate_price_in_pence("longer", drop_off_date=early_date) == 15000
+        assert calculate_price_in_pence("longer", drop_off_date=early_date) == 14000
 
     def test_longer_package_late_price(self):
-        """Longer package booked <7 days in advance should be £170.00 = 17000 pence."""
+        """Longer package booked <7 days in advance should be £160.00 = 16000 pence."""
         from datetime import date, timedelta
         late_date = date.today() + timedelta(days=3)
-        assert calculate_price_in_pence("longer", drop_off_date=late_date) == 17000
+        assert calculate_price_in_pence("longer", drop_off_date=late_date) == 16000
 
     def test_custom_price_override(self):
         """Custom price should override package price regardless of date."""
@@ -67,9 +67,9 @@ class TestCalculatePriceInPence:
 
     def test_no_date_defaults_to_late_tier(self):
         """Without drop_off_date, should default to late tier price."""
-        # Without date, fallback to late tier: quick = £119, longer = £155
-        assert calculate_price_in_pence("quick") == 11900
-        assert calculate_price_in_pence("longer") == 17000
+        # Without date, fallback to late tier: quick = £109, longer = £160
+        assert calculate_price_in_pence("quick") == 10900
+        assert calculate_price_in_pence("longer") == 16000
 
 
 class TestStripeConfigEndpoint:
@@ -150,8 +150,8 @@ class TestCreatePaymentIntent:
                     assert response.status_code == 200
                     data = response.json()
                     assert data["client_secret"] == "pi_test_secret_123"
-                    assert data["amount"] == 9900
-                    assert data["amount_display"] == "£99.00"
+                    assert data["amount"] == 8900
+                    assert data["amount_display"] == "£89.00"
                     assert data["booking_reference"].startswith("TAG-")
                     assert data["publishable_key"] == "pk_test_123"
 
@@ -174,8 +174,8 @@ class TestPaymentStatus:
         mock_status = PaymentStatus(
             payment_intent_id="pi_test_123",
             status="succeeded",
-            amount=9900,
-            amount_received=9900,
+            amount=8900,
+            amount_received=8900,
             currency="gbp",
             customer_email="john@example.com",
             booking_reference="TAG-ABC12345",
@@ -189,7 +189,7 @@ class TestPaymentStatus:
                 data = response.json()
                 assert data["status"] == "succeeded"
                 assert data["paid"] is True
-                assert data["amount_display"] == "£99.00"
+                assert data["amount_display"] == "£89.00"
                 assert data["booking_reference"] == "TAG-ABC12345"
 
 
@@ -294,7 +294,7 @@ class TestAdminRefund:
                 data = response.json()
                 assert data["success"] is True
                 assert data["refund_id"] == "re_test_123"
-                assert data["amount_refunded"] == "£99.00"
+                assert data["amount_refunded"] == "£89.00"
 
 
 class TestUpdatePaymentStatusIdempotency:

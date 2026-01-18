@@ -233,7 +233,7 @@ function HomePage() {
             <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
-              <span className="price">99</span>
+              <span className="price">89</span>
             </div>
             <p className="pricing-note">one off payment</p>
 
@@ -245,7 +245,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <Link to="/tag-it" className="pricing-btn" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_1_week' })}>Book it <span>→</span></Link>
+            <p className="pricing-save">Save up to 50% off<br />official airport parking</p>
           </div>
 
           <div className="pricing-card">
@@ -253,7 +253,7 @@ function HomePage() {
             <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
-              <span className="price">150</span>
+              <span className="price">140</span>
             </div>
             <p className="pricing-note">one off payment</p>
 
@@ -265,9 +265,11 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <Link to="/tag-it" className="pricing-btn" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_2_week' })}>Book it <span>→</span></Link>
+            <p className="pricing-save">Save up to 50% off<br />official airport parking</p>
           </div>
         </div>
+
+        <Link to="/tag-it" className="pricing-btn pricing-btn-center" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_section' })}>Book it <span>→</span></Link>
       </section>
 
       {/* Features Banner Section */}
