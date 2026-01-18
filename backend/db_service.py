@@ -359,24 +359,36 @@ def update_payment_status(
     stripe_payment_intent_id: str,
     status: PaymentStatus,
     paid_at: datetime = None
-) -> Optional[Payment]:
-    """Update payment status."""
+) -> tuple[Optional[Payment], bool]:
+    """
+    Update payment status.
+
+    Returns:
+        tuple of (Payment or None, was_already_processed: bool)
+        was_already_processed is True if payment was already in SUCCEEDED status
+    """
     payment = get_payment_by_intent_id(db, stripe_payment_intent_id)
     if payment:
-        payment.status = status
-        if paid_at:
-            payment.paid_at = paid_at
-        db.commit()
-        db.refresh(payment)
+        # Check if already processed (idempotency for duplicate webhooks)
+        was_already_processed = payment.status == PaymentStatus.SUCCEEDED
 
-        # Also update booking status if payment succeeded
-        if status == PaymentStatus.SUCCEEDED:
-            booking = get_booking_by_id(db, payment.booking_id)
-            if booking:
-                booking.status = BookingStatus.CONFIRMED
-                db.commit()
+        if not was_already_processed:
+            payment.status = status
+            if paid_at:
+                payment.paid_at = paid_at
+            db.commit()
+            db.refresh(payment)
 
-    return payment
+            # Also update booking status if payment succeeded
+            if status == PaymentStatus.SUCCEEDED:
+                booking = get_booking_by_id(db, payment.booking_id)
+                if booking:
+                    booking.status = BookingStatus.CONFIRMED
+                    db.commit()
+
+        return payment, was_already_processed
+
+    return None, False
 
 
 def record_refund(

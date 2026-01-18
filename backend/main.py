@@ -3377,8 +3377,10 @@ async def stripe_webhook(
         promo_code = metadata.get("promo_code")
 
         # Update payment status in database (this also updates booking to CONFIRMED)
+        # Returns (payment, was_already_processed) for idempotency
+        was_already_processed = False
         try:
-            payment = db_service.update_payment_status(
+            payment, was_already_processed = db_service.update_payment_status(
                 db=db,
                 stripe_payment_intent_id=payment_intent_id,
                 status=PaymentStatus.SUCCEEDED,
@@ -3393,6 +3395,8 @@ async def stripe_webhook(
                     request=request,
                     booking_reference=booking_reference,
                 )
+            elif was_already_processed:
+                print(f"[WEBHOOK] Duplicate webhook - already processed for {booking_reference}")
         except Exception as e:
             log_error(
                 db=db,
@@ -3434,7 +3438,8 @@ async def stripe_webhook(
             print(f"[WEBHOOK] Failed to log audit event BOOKING_CONFIRMED: {e}")
 
         # Book the slot on the departure flight (now that payment succeeded)
-        if departure_id and drop_off_slot:
+        # Skip if this webhook was already processed (idempotency for duplicate webhooks)
+        if departure_id and drop_off_slot and payment and not was_already_processed:
             try:
                 slot_type = 'early' if drop_off_slot == "165" else 'late'
                 db_service.book_departure_slot(db, int(departure_id), slot_type)
@@ -3449,7 +3454,8 @@ async def stripe_webhook(
                 )
 
         # Mark promo code as used (if one was applied)
-        if promo_code:
+        # Skip if this webhook was already processed
+        if promo_code and not was_already_processed:
             try:
                 # Get booking ID from reference
                 booking = db_service.get_booking_by_reference(db, booking_reference)
