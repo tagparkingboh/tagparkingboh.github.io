@@ -98,8 +98,9 @@ class Booking(Base):
     customer_first_name = Column(String(100), nullable=True)
     customer_last_name = Column(String(100), nullable=True)
 
-    # Package type: 'quick' (1 week) or 'longer' (2 weeks)
-    package = Column(String(20), nullable=False)
+    # Package type: 'daily', 'quick' (1 week), or 'longer' (2 weeks)
+    # Nullable for manual bookings where price is set via Stripe link
+    package = Column(String(20), nullable=True)
     status = Column(Enum(BookingStatus), default=BookingStatus.PENDING, nullable=False)
 
     # Drop-off details

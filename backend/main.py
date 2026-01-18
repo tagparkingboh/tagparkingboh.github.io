@@ -930,18 +930,37 @@ async def create_manual_booking(
             db.add(vehicle)
             db.flush()
 
-        # Determine package based on duration
-        dropoff = datetime.strptime(str(request.dropoff_date), "%Y-%m-%d")
-        pickup = datetime.strptime(str(request.pickup_date), "%Y-%m-%d")
-        duration_days = (pickup - dropoff).days
-        package = "quick" if duration_days <= 7 else "longer"
+        # If departure_id and dropoff_slot provided, validate slot availability
+        from db_models import FlightDeparture
+        departure_flight = None
+        if request.departure_id and request.dropoff_slot:
+            departure_flight = db.query(FlightDeparture).filter(
+                FlightDeparture.id == request.departure_id
+            ).first()
+            if not departure_flight:
+                raise HTTPException(status_code=400, detail="Invalid departure flight")
+
+            # Check if this is a "Call Us only" flight (capacity_tier = 0)
+            if departure_flight.capacity_tier == 0:
+                raise HTTPException(status_code=400, detail="This flight requires calling to book")
+
+            # Check slot availability using same formula as online booking system
+            # max_slots_per_time = capacity_tier // 2 (e.g., capacity_tier=4 means 2 early + 2 late)
+            max_per_slot = departure_flight.capacity_tier // 2
+
+            if request.dropoff_slot == "165":  # Early slot
+                if departure_flight.slots_booked_early >= max_per_slot:
+                    raise HTTPException(status_code=400, detail="Early slot is fully booked")
+            elif request.dropoff_slot == "120":  # Late slot
+                if departure_flight.slots_booked_late >= max_per_slot:
+                    raise HTTPException(status_code=400, detail="Late slot is fully booked")
 
         # Generate booking reference
         import random
         import string
         reference = "TAG-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
-        # Create pending booking
+        # Create pending booking (no package - price is set via Stripe link)
         booking = Booking(
             reference=reference,
             customer_id=customer.id,
@@ -952,10 +971,14 @@ async def create_manual_booking(
             dropoff_time=datetime.strptime(request.dropoff_time, "%H:%M").time(),
             pickup_date=request.pickup_date,
             pickup_time=datetime.strptime(request.pickup_time, "%H:%M").time(),
-            package=package,
             status=BookingStatus.PENDING,
             booking_source="manual",
             admin_notes=request.notes,
+            # Flight integration fields
+            departure_id=request.departure_id,
+            dropoff_slot=request.dropoff_slot,
+            dropoff_flight_number=request.departure_flight_number,
+            pickup_flight_number=request.return_flight_number,
         )
         db.add(booking)
         db.flush()
@@ -973,8 +996,8 @@ async def create_manual_booking(
         db.commit()
 
         # Format dates for email
-        dropoff_date_formatted = dropoff.strftime("%A, %d %B %Y")
-        pickup_date_formatted = pickup.strftime("%A, %d %B %Y")
+        dropoff_date_formatted = request.dropoff_date.strftime("%A, %d %B %Y")
+        pickup_date_formatted = request.pickup_date.strftime("%A, %d %B %Y")
         amount_formatted = f"£{request.amount_pence / 100:.2f}"
 
         # Send payment link email
@@ -1000,6 +1023,10 @@ async def create_manual_booking(
             "email_sent": email_sent,
         }
 
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is (e.g., slot validation errors)
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -1018,7 +1045,7 @@ async def mark_booking_paid(
     Sends booking confirmation email to customer.
     Use this after verifying payment was received via Stripe Payment Link.
     """
-    from db_models import Booking, Payment, BookingStatus, PaymentStatus
+    from db_models import Booking, Payment, BookingStatus, PaymentStatus, FlightDeparture
     from email_service import send_booking_confirmation_email
 
     booking = db.query(Booking).filter(Booking.id == booking_id).first()
@@ -1034,6 +1061,25 @@ async def mark_booking_paid(
 
     if booking.status == BookingStatus.REFUNDED:
         raise HTTPException(status_code=400, detail="Cannot confirm a refunded booking")
+
+    # If booking has departure_id and dropoff_slot, increment the slot count
+    if booking.departure_id and booking.dropoff_slot:
+        departure_flight = db.query(FlightDeparture).filter(
+            FlightDeparture.id == booking.departure_id
+        ).first()
+        if departure_flight:
+            # Use same formula as online booking system: max_per_slot = capacity_tier // 2
+            max_per_slot = departure_flight.capacity_tier // 2
+
+            # Check slot availability before booking
+            if booking.dropoff_slot == "165":  # Early slot
+                if departure_flight.slots_booked_early >= max_per_slot:
+                    raise HTTPException(status_code=400, detail="Early slot is now fully booked")
+                departure_flight.slots_booked_early += 1
+            elif booking.dropoff_slot == "120":  # Late slot
+                if departure_flight.slots_booked_late >= max_per_slot:
+                    raise HTTPException(status_code=400, detail="Late slot is now fully booked")
+                departure_flight.slots_booked_late += 1
 
     # Update booking status
     booking.status = BookingStatus.CONFIRMED
@@ -1054,15 +1100,20 @@ async def mark_booking_paid(
         pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
         pickup_time_str = booking.pickup_time.strftime("%H:%M") if booking.pickup_time else "TBC"
 
-        # Package name
-        package_name = "1 Week" if booking.package == "quick" else "2 Weeks"
+        # Package name based on duration
+        if booking.package == "daily":
+            package_name = "Short Stay"
+        elif booking.package == "quick":
+            package_name = "1 Week"
+        else:
+            package_name = "2 Weeks"
 
         # Amount paid
         amount_paid = f"£{payment.amount_pence / 100:.2f}" if payment else "N/A"
 
-        # For manual bookings, flight info is not applicable
-        departure_flight = "-"
-        return_flight = "-"
+        # Use flight numbers if available, otherwise show as not applicable
+        departure_flight = booking.dropoff_flight_number or "-"
+        return_flight = booking.pickup_flight_number or "-"
 
         email_sent = send_booking_confirmation_email(
             email=booking.customer.email,
@@ -1127,7 +1178,9 @@ async def cancel_booking_admin(
     # Release the flight slot using stored departure_id and dropoff_slot
     slot_released = False
     if booking.departure_id and booking.dropoff_slot:
-        result = db_service.release_departure_slot(db, booking.departure_id, booking.dropoff_slot)
+        # Convert dropoff_slot from "165"/"120" to "early"/"late"
+        slot_type = "early" if booking.dropoff_slot == "165" else "late"
+        result = db_service.release_departure_slot(db, booking.departure_id, slot_type)
         slot_released = result.get("success", False)
 
     # Update booking status
