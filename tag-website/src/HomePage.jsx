@@ -244,7 +244,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <p className="pricing-save">Save up to 50% off</p>
+            <p className="pricing-save">Save up to 50% off<br />official airport parking</p>
           </div>
 
           <div className="pricing-card">
@@ -264,7 +264,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <p className="pricing-save">Save up to 50% off</p>
+            <p className="pricing-save">Save up to 50% off<br />official airport parking</p>
           </div>
         </div>
 
