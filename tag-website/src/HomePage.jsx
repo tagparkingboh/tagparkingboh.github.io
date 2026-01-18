@@ -228,27 +228,6 @@ function HomePage() {
 
         <div className="pricing-cards">
           <div className="pricing-card">
-            <span className="pricing-label">FOR SHORTER STAYS</span>
-            <p className="pricing-from">From</p>
-            <div className="pricing-amount">
-              <span className="currency">£</span>
-              <span className="price">13</span>
-              <span className="period">per day</span>
-            </div>
-            <p className="pricing-note">one off payment</p>
-
-            <ul className="pricing-features">
-              <li><span className="check">✓</span> Meet & Greet at terminal</li>
-              <li><span className="check">✓</span> Secure storage facility</li>
-              <li><span className="check">✓</span> 24/7 monitoring</li>
-              <li><span className="check">✓</span> No hidden fees</li>
-              <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
-            </ul>
-
-            <Link to="/tag-it" className="pricing-btn" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_daily' })}>Book it <span>→</span></Link>
-          </div>
-
-          <div className="pricing-card">
             <span className="pricing-label">1 WEEK TRIP</span>
             <p className="pricing-from">From</p>
             <div className="pricing-amount">
@@ -265,7 +244,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <Link to="/tag-it" className="pricing-btn" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_1_week' })}>Book it <span>→</span></Link>
+            <p className="pricing-save">Save up to 50% off</p>
           </div>
 
           <div className="pricing-card">
@@ -285,9 +264,11 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <Link to="/tag-it" className="pricing-btn" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_2_week' })}>Book it <span>→</span></Link>
+            <p className="pricing-save">Save up to 50% off</p>
           </div>
         </div>
+
+        <Link to="/tag-it" className="pricing-btn pricing-btn-center" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_section' })}>Book it <span>→</span></Link>
       </section>
 
       {/* Features Banner Section */}

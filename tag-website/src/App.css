@@ -669,6 +669,16 @@
   font-size: 1.2rem;
 }
 
+.pricing-btn-center {
+  margin-top: 2rem;
+}
+
+.pricing-save {
+  color: #5C7300;
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: auto;
+}
 
 /* Support Section */
 .support-section {
