@@ -1099,7 +1099,11 @@ function ManualBooking({ token }) {
                   <div className="summary-row">
                     <span className="summary-label">Pick-up:</span>
                     <span className="summary-value">
-                      {format(formData.pickupDate, 'dd/MM/yyyy')} after {selectedArrivalFlight.time}
+                      {format(formData.pickupDate, 'dd/MM/yyyy')} from {(() => {
+                        const [h, m] = selectedArrivalFlight.time.split(':').map(Number)
+                        const totalMins = h * 60 + m + 45
+                        return `${String(Math.floor(totalMins / 60) % 24).padStart(2, '0')}:${String(totalMins % 60).padStart(2, '0')}`
+                      })()}
                     </span>
                   </div>
                 </div>
