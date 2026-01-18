@@ -533,7 +533,7 @@
 /* Pricing Section */
 .pricing-section {
   background: var(--dark-gray);
-  padding: 5rem 4rem;
+  padding: 5rem 4rem 3rem;
   text-align: center;
 }
 
@@ -671,6 +671,12 @@
 
 .pricing-btn-center {
   margin-top: 2rem;
+  margin-bottom: 0;
+}
+
+.pricing-btn-center,
+.pricing-btn {
+  font-weight: 700;
 }
 
 .pricing-save {
