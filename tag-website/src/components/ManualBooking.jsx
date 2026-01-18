@@ -130,7 +130,7 @@ function ManualBooking({ token }) {
 
   // Get unique airlines from departures
   const airlines = useMemo(() => {
-    const uniqueAirlines = [...new Set(departuresForDate.map(f => f.airline_name))]
+    const uniqueAirlines = [...new Set(departuresForDate.map(f => f.airlineName))]
     return uniqueAirlines.sort()
   }, [departuresForDate])
 
@@ -138,11 +138,11 @@ function ManualBooking({ token }) {
   const flightsForAirline = useMemo(() => {
     if (!formData.dropoffAirline) return []
     return departuresForDate
-      .filter(f => f.airline_name === formData.dropoffAirline)
+      .filter(f => f.airlineName === formData.dropoffAirline)
       .map(f => ({
         ...f,
         flightKey: `${f.id}`,
-        displayName: `${f.flight_number} to ${f.destination_name} (${f.departure_time})`,
+        displayName: `${f.flightNumber} to ${f.destinationName} (${f.time})`,
       }))
   }, [departuresForDate, formData.dropoffAirline])
 
@@ -156,12 +156,12 @@ function ManualBooking({ token }) {
   const availableSlots = useMemo(() => {
     if (!selectedDepartureFlight) return []
     const slots = []
-    const depTime = selectedDepartureFlight.departure_time
+    const depTime = selectedDepartureFlight.time
     const [hours, minutes] = depTime.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
     // Early slot (2¾ hours before = 165 minutes)
-    const earlyAvailable = selectedDepartureFlight.capacity_tier - selectedDepartureFlight.slots_booked_early
+    const earlyAvailable = selectedDepartureFlight.early_slots_available
     if (earlyAvailable > 0) {
       const earlyMinutes = departureMinutes - 165
       const earlyHours = Math.floor(earlyMinutes / 60)
@@ -175,7 +175,7 @@ function ManualBooking({ token }) {
     }
 
     // Late slot (2 hours before = 120 minutes)
-    const lateAvailable = selectedDepartureFlight.capacity_tier - selectedDepartureFlight.slots_booked_late
+    const lateAvailable = selectedDepartureFlight.late_slots_available
     if (lateAvailable > 0) {
       const lateMinutes = departureMinutes - 120
       const lateHours = Math.floor(lateMinutes / 60)
@@ -197,13 +197,13 @@ function ManualBooking({ token }) {
 
     return arrivalsForDate
       .filter(f =>
-        f.airline_name === selectedDepartureFlight.airline_name &&
-        f.origin_code === selectedDepartureFlight.destination_code
+        f.airlineName === selectedDepartureFlight.airlineName &&
+        f.originCode === selectedDepartureFlight.destinationCode
       )
       .map(f => ({
         ...f,
         flightKey: `${f.id}`,
-        displayName: `${f.flight_number} from ${f.origin_name} (arrives ${f.arrival_time})`,
+        displayName: `${f.flightNumber} from ${f.originName} (arrives ${f.time})`,
       }))
   }, [arrivalsForDate, selectedDepartureFlight])
 
@@ -493,12 +493,12 @@ function ManualBooking({ token }) {
     if (!formData.useManualTime && selectedDepartureFlight) {
       requestBody.departure_id = parseInt(formData.dropoffFlight)
       requestBody.dropoff_slot = formData.dropoffSlot
-      requestBody.departure_flight_number = selectedDepartureFlight.flight_number
+      requestBody.departure_flight_number = selectedDepartureFlight.flightNumber
 
       const selectedArrival = matchingArrivalFlights.find(f => f.flightKey === formData.pickupFlight)
       if (selectedArrival) {
         requestBody.arrival_id = parseInt(formData.pickupFlight)
-        requestBody.return_flight_number = selectedArrival.flight_number
+        requestBody.return_flight_number = selectedArrival.flightNumber
       }
     }
 
@@ -1081,7 +1081,7 @@ function ManualBooking({ token }) {
                   <div className="summary-row">
                     <span className="summary-label">Outbound:</span>
                     <span className="summary-value">
-                      {selectedDepartureFlight.flight_number} to {selectedDepartureFlight.destination_name} ({selectedDepartureFlight.departure_time})
+                      {selectedDepartureFlight.flightNumber} to {selectedDepartureFlight.destinationName} ({selectedDepartureFlight.time})
                     </span>
                   </div>
                   <div className="summary-row">
@@ -1093,13 +1093,13 @@ function ManualBooking({ token }) {
                   <div className="summary-row">
                     <span className="summary-label">Return:</span>
                     <span className="summary-value">
-                      {selectedArrivalFlight.flight_number} from {selectedArrivalFlight.origin_name} (arrives {selectedArrivalFlight.arrival_time})
+                      {selectedArrivalFlight.flightNumber} from {selectedArrivalFlight.originName} (arrives {selectedArrivalFlight.time})
                     </span>
                   </div>
                   <div className="summary-row">
                     <span className="summary-label">Pick-up:</span>
                     <span className="summary-value">
-                      {format(formData.pickupDate, 'dd/MM/yyyy')} after {selectedArrivalFlight.arrival_time}
+                      {format(formData.pickupDate, 'dd/MM/yyyy')} after {selectedArrivalFlight.time}
                     </span>
                   </div>
                 </div>
@@ -1167,10 +1167,10 @@ function ManualBooking({ token }) {
                 <li>Drop-off: {formatDate(formData.dropoffDate)} at {getDropoffTime()}</li>
                 <li>Pick-up: {formatDate(formData.pickupDate)} at {getPickupTime()}</li>
                 {!formData.useManualTime && selectedDepartureFlight && (
-                  <li>Outbound Flight: {selectedDepartureFlight.flight_number} to {selectedDepartureFlight.destination_name}</li>
+                  <li>Outbound Flight: {selectedDepartureFlight.flightNumber} to {selectedDepartureFlight.destinationName}</li>
                 )}
                 {!formData.useManualTime && selectedArrivalFlight && (
-                  <li>Return Flight: {selectedArrivalFlight.flight_number} from {selectedArrivalFlight.origin_name}</li>
+                  <li>Return Flight: {selectedArrivalFlight.flightNumber} from {selectedArrivalFlight.originName}</li>
                 )}
                 <li>Vehicle: {formData.colour} {formData.make === 'Other' ? formData.customMake : formData.make} {formData.model === 'Other' ? formData.customModel : formData.model}</li>
                 <li>Registration: {formData.registration.toUpperCase()}</li>
