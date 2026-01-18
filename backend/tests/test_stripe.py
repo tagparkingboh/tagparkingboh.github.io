@@ -295,3 +295,75 @@ class TestAdminRefund:
                 assert data["success"] is True
                 assert data["refund_id"] == "re_test_123"
                 assert data["amount_refunded"] == "£99.00"
+
+
+class TestUpdatePaymentStatusIdempotency:
+    """Tests for update_payment_status idempotency."""
+
+    def test_update_payment_status_returns_tuple(self):
+        """update_payment_status should return (payment, was_already_processed) tuple."""
+        from db_service import update_payment_status
+        from db_models import PaymentStatus
+        from unittest.mock import MagicMock
+
+        # Create mock session and payment
+        mock_db = MagicMock()
+        mock_payment = MagicMock()
+        mock_payment.status = PaymentStatus.PENDING
+
+        with patch('db_service.get_payment_by_intent_id', return_value=mock_payment):
+            with patch('db_service.get_booking_by_id', return_value=MagicMock()):
+                result = update_payment_status(
+                    mock_db,
+                    "pi_test_123",
+                    PaymentStatus.SUCCEEDED
+                )
+
+                assert isinstance(result, tuple)
+                assert len(result) == 2
+                payment, was_already_processed = result
+                assert payment == mock_payment
+                assert was_already_processed is False
+
+    def test_update_payment_status_detects_duplicate(self):
+        """update_payment_status should detect already processed payments."""
+        from db_service import update_payment_status
+        from db_models import PaymentStatus
+        from unittest.mock import MagicMock
+
+        # Create mock session and payment that's already SUCCEEDED
+        mock_db = MagicMock()
+        mock_payment = MagicMock()
+        mock_payment.status = PaymentStatus.SUCCEEDED  # Already processed
+
+        with patch('db_service.get_payment_by_intent_id', return_value=mock_payment):
+            result = update_payment_status(
+                mock_db,
+                "pi_test_123",
+                PaymentStatus.SUCCEEDED
+            )
+
+            payment, was_already_processed = result
+            assert payment == mock_payment
+            assert was_already_processed is True
+            # Should NOT have called commit (no changes made)
+            mock_db.commit.assert_not_called()
+
+    def test_update_payment_status_returns_none_for_missing(self):
+        """update_payment_status should return (None, False) for missing payment."""
+        from db_service import update_payment_status
+        from db_models import PaymentStatus
+        from unittest.mock import MagicMock
+
+        mock_db = MagicMock()
+
+        with patch('db_service.get_payment_by_intent_id', return_value=None):
+            result = update_payment_status(
+                mock_db,
+                "pi_nonexistent",
+                PaymentStatus.SUCCEEDED
+            )
+
+            payment, was_already_processed = result
+            assert payment is None
+            assert was_already_processed is False
