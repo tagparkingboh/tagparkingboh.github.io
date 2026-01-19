@@ -25,8 +25,8 @@ createRoot(document.getElementById('root')).render(
       <AuthProvider>
         <Routes>
           <Route path="/" element={IS_LAUNCHED ? <HomePage /> : <LandingPage />} />
-          <Route path="/tag-it" element={<Bookings />} />
-          <Route path="/charliemorton" element={<BookingsNew />} />
+          <Route path="/tag-it" element={<BookingsNew />} />
+          <Route path="/book-original" element={<Bookings />} />  {/* Original 6-part flow for A/B testing */}
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/terms-conditions" element={<TermsConditions />} />
           <Route path="/refund-policy" element={<RefundPolicy />} />
