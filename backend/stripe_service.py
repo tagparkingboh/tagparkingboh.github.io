@@ -192,6 +192,36 @@ def refund_payment(payment_intent_id: str, reason: str = "requested_by_customer"
     }
 
 
+def cancel_payment_intent(payment_intent_id: str) -> dict:
+    """
+    Cancel a PaymentIntent in Stripe.
+
+    Used when cancelling a pending booking where payment was never completed.
+    PaymentIntents can only be cancelled if they are not already succeeded.
+
+    Args:
+        payment_intent_id: The PaymentIntent ID to cancel
+
+    Returns:
+        Dict with cancellation status
+    """
+    init_stripe()
+
+    try:
+        intent = stripe.PaymentIntent.cancel(payment_intent_id)
+        return {
+            "success": True,
+            "status": intent.status,
+            "payment_intent_id": intent.id,
+        }
+    except stripe.error.InvalidRequestError as e:
+        # PaymentIntent may already be succeeded, cancelled, or in an uncancellable state
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
 def calculate_price_in_pence(
     package: str,
     drop_off_date: Optional[date] = None,

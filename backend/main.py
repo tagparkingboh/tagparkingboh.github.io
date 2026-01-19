@@ -42,6 +42,7 @@ from stripe_service import (
     get_payment_status,
     verify_webhook_signature,
     refund_payment,
+    cancel_payment_intent,
     calculate_price_in_pence,
 )
 
@@ -1162,9 +1163,9 @@ async def cancel_booking_admin(
     Note: This does NOT automatically refund the payment -
     use the Stripe dashboard for refunds.
     """
-    from db_models import Booking, BookingStatus
+    from db_models import Booking, BookingStatus, Payment
 
-    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+    booking = db.query(Booking).options(joinedload(Booking.payment)).filter(Booking.id == booking_id).first()
 
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -1183,6 +1184,14 @@ async def cancel_booking_admin(
         result = db_service.release_departure_slot(db, booking.departure_id, slot_type)
         slot_released = result.get("success", False)
 
+    # Cancel the Stripe PaymentIntent if payment exists and is not completed
+    stripe_cancelled = False
+    if booking.payment and booking.payment.stripe_payment_intent_id:
+        # Only cancel if payment is not already succeeded
+        if booking.payment.status != PaymentStatus.SUCCEEDED:
+            cancel_result = cancel_payment_intent(booking.payment.stripe_payment_intent_id)
+            stripe_cancelled = cancel_result.get("success", False)
+
     # Update booking status
     booking.status = BookingStatus.CANCELLED
     db.commit()
@@ -1190,12 +1199,15 @@ async def cancel_booking_admin(
     message = f"Booking {booking.reference} has been cancelled"
     if slot_released:
         message += " and the flight slot has been released"
+    if stripe_cancelled:
+        message += " and the Stripe payment has been cancelled"
 
     return {
         "success": True,
         "message": message,
         "reference": booking.reference,
         "slot_released": slot_released,
+        "stripe_cancelled": stripe_cancelled,
     }
 
 
