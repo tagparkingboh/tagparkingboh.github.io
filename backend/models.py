@@ -250,6 +250,10 @@ class ManualBookingRequest(BaseModel):
     pickup_date: date
     pickup_time: str  # "HH:MM"
 
+    # Flight/slot details (optional - for slot availability tracking)
+    departure_id: Optional[int] = None
+    dropoff_slot: Optional[str] = None  # "165" (early) or "120" (late)
+
     # Payment
     stripe_payment_link: str
     amount_pence: int
