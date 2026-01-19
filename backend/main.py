@@ -961,6 +961,32 @@ async def create_manual_booking(
         import string
         reference = "TAG-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
+        # Look up destination name from departure flight
+        dropoff_destination = None
+        if departure_flight and departure_flight.destination_name:
+            # Extract city name from "City, CountryCode" format
+            parts = departure_flight.destination_name.split(', ')
+            dropoff_destination = parts[0] if parts else departure_flight.destination_name
+            # Shorten Tenerife-Reinasofia to Tenerife
+            if dropoff_destination == 'Tenerife-Reinasofia':
+                dropoff_destination = 'Tenerife'
+
+        # Look up origin name from arrival flight
+        from db_models import FlightArrival
+        pickup_origin = None
+        if request.return_flight_number and request.pickup_date:
+            arrival = db.query(FlightArrival).filter(
+                FlightArrival.flight_number == request.return_flight_number,
+                FlightArrival.date == request.pickup_date
+            ).first()
+            if arrival and arrival.origin_name:
+                # Extract city name from "City, CountryCode" format
+                parts = arrival.origin_name.split(', ')
+                pickup_origin = parts[0] if parts else arrival.origin_name
+                # Shorten Tenerife-Reinasofia to Tenerife
+                if pickup_origin == 'Tenerife-Reinasofia':
+                    pickup_origin = 'Tenerife'
+
         # Create pending booking (no package - price is set via Stripe link)
         booking = Booking(
             reference=reference,
@@ -979,7 +1005,9 @@ async def create_manual_booking(
             departure_id=request.departure_id,
             dropoff_slot=request.dropoff_slot,
             dropoff_flight_number=request.departure_flight_number,
+            dropoff_destination=dropoff_destination,
             pickup_flight_number=request.return_flight_number,
+            pickup_origin=pickup_origin,
         )
         db.add(booking)
         db.flush()
