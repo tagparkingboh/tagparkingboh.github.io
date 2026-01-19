@@ -949,10 +949,10 @@ async def create_manual_booking(
             # max_slots_per_time = capacity_tier // 2 (e.g., capacity_tier=4 means 2 early + 2 late)
             max_per_slot = departure_flight.capacity_tier // 2
 
-            if request.dropoff_slot == "165":  # Early slot
+            if request.dropoff_slot in ("165", "early"):  # Early slot
                 if departure_flight.slots_booked_early >= max_per_slot:
                     raise HTTPException(status_code=400, detail="Early slot is fully booked")
-            elif request.dropoff_slot == "120":  # Late slot
+            elif request.dropoff_slot in ("120", "late"):  # Late slot
                 if departure_flight.slots_booked_late >= max_per_slot:
                     raise HTTPException(status_code=400, detail="Late slot is fully booked")
 
@@ -1101,11 +1101,11 @@ async def mark_booking_paid(
             max_per_slot = departure_flight.capacity_tier // 2
 
             # Check slot availability before booking
-            if booking.dropoff_slot == "165":  # Early slot
+            if booking.dropoff_slot in ("165", "early"):  # Early slot
                 if departure_flight.slots_booked_early >= max_per_slot:
                     raise HTTPException(status_code=400, detail="Early slot is now fully booked")
                 departure_flight.slots_booked_early += 1
-            elif booking.dropoff_slot == "120":  # Late slot
+            elif booking.dropoff_slot in ("120", "late"):  # Late slot
                 if departure_flight.slots_booked_late >= max_per_slot:
                     raise HTTPException(status_code=400, detail="Late slot is now fully booked")
                 departure_flight.slots_booked_late += 1
@@ -1207,8 +1207,8 @@ async def cancel_booking_admin(
     # Release the flight slot using stored departure_id and dropoff_slot
     slot_released = False
     if booking.departure_id and booking.dropoff_slot:
-        # Convert dropoff_slot from "165"/"120" to "early"/"late"
-        slot_type = "early" if booking.dropoff_slot == "165" else "late"
+        # Normalize dropoff_slot to "early"/"late" (handle both old "165"/"120" and new "early"/"late" formats)
+        slot_type = "early" if booking.dropoff_slot in ("165", "early") else "late"
         result = db_service.release_departure_slot(db, booking.departure_id, slot_type)
         slot_released = result.get("success", False)
 

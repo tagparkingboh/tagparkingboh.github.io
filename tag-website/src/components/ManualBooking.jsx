@@ -167,7 +167,7 @@ function ManualBooking({ token }) {
       const earlyHours = Math.floor(earlyMinutes / 60)
       const earlyMins = earlyMinutes % 60
       slots.push({
-        id: '165',
+        id: 'early',
         time: `${String(earlyHours).padStart(2, '0')}:${String(earlyMins).padStart(2, '0')}`,
         label: `Early - ${String(earlyHours).padStart(2, '0')}:${String(earlyMins).padStart(2, '0')} (${earlyAvailable} available)`,
         available: earlyAvailable,
@@ -181,7 +181,7 @@ function ManualBooking({ token }) {
       const lateHours = Math.floor(lateMinutes / 60)
       const lateMins = lateMinutes % 60
       slots.push({
-        id: '120',
+        id: 'late',
         time: `${String(lateHours).padStart(2, '0')}:${String(lateMins).padStart(2, '0')}`,
         label: `Late - ${String(lateHours).padStart(2, '0')}:${String(lateMins).padStart(2, '0')} (${lateAvailable} available)`,
         available: lateAvailable,
