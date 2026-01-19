@@ -1185,7 +1185,7 @@ function ManualBooking({ token }) {
               <p><strong>Booking Summary:</strong></p>
               <ul>
                 <li>Drop-off: {formatDate(formData.dropoffDate)} at {getDropoffTime()}</li>
-                <li>Pick-up: {formatDate(formData.pickupDate)} at {getPickupTime()}</li>
+                <li>Pick-up: {formatDate(formData.pickupDate)} from {getPickupTime()}</li>
                 {!formData.useManualTime && selectedDepartureFlight && (
                   <li>Outbound Flight: {selectedDepartureFlight.flightNumber} to {selectedDepartureFlight.destinationName}</li>
                 )}
