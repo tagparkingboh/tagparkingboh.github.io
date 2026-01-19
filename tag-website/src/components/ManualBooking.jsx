@@ -447,12 +447,19 @@ function ManualBooking({ token }) {
   }
 
   // Get pickup time based on flight selection or manual entry
+  // For flight selection, pickup time is arrival time + 45 minutes
   const getPickupTime = () => {
     if (formData.useManualTime) {
-      return format(formData.pickupTime, 'HH:mm')
+      return formData.pickupTime ? format(formData.pickupTime, 'HH:mm') : ''
     }
     const arrival = matchingArrivalFlights.find(f => f.flightKey === formData.pickupFlight)
-    return arrival ? arrival.arrival_time : ''
+    if (!arrival || !arrival.time) return ''
+    // Add 45 minutes to arrival time
+    const [h, m] = arrival.time.split(':').map(Number)
+    const totalMins = h * 60 + m + 45
+    const pickupHours = Math.floor(totalMins / 60) % 24
+    const pickupMins = totalMins % 60
+    return `${String(pickupHours).padStart(2, '0')}:${String(pickupMins).padStart(2, '0')}`
   }
 
   // Submit manual booking
@@ -551,7 +558,16 @@ function ManualBooking({ token }) {
         setArrivalsForDate([])
       } else {
         const data = await response.json()
-        setError(data.detail || 'Failed to create manual booking')
+        // Handle Pydantic validation errors (array) or string errors
+        let errorMsg = 'Failed to create manual booking'
+        if (data.detail) {
+          if (Array.isArray(data.detail)) {
+            errorMsg = data.detail.map(err => err.msg || JSON.stringify(err)).join(', ')
+          } else if (typeof data.detail === 'string') {
+            errorMsg = data.detail
+          }
+        }
+        setError(errorMsg)
       }
     } catch (err) {
       setError('Network error. Please try again.')
