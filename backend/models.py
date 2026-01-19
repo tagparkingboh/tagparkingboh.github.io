@@ -253,6 +253,8 @@ class ManualBookingRequest(BaseModel):
     # Flight/slot details (optional - for slot availability tracking)
     departure_id: Optional[int] = None
     dropoff_slot: Optional[str] = None  # "165" (early) or "120" (late)
+    departure_flight_number: Optional[str] = None
+    return_flight_number: Optional[str] = None
 
     # Payment
     stripe_payment_link: str
