@@ -775,9 +775,9 @@ function Bookings() {
 
       // Track booking flow progress in GA
       const stepNames = {
-        1: 'continue_to_trip_details',
-        2: 'continue_to_package_selection',
-        3: 'continue_to_payment'
+        1: 'continue_to_details',      // Your Details → Trip Details
+        2: 'continue_to_details',      // Trip Details → Package
+        3: 'continue_to_package_selection'  // Package → Payment
       }
       if (window.gtag && stepNames[currentStep]) {
         window.gtag('event', stepNames[currentStep], {
@@ -915,9 +915,10 @@ function Bookings() {
                 className="welcome-modal-btn"
                 onClick={() => {
                   if (window.gtag) {
-                    window.gtag('event', 'continue_to_booking', {
+                    window.gtag('event', 'continue_to_details', {
                       event_category: 'booking_flow',
-                      event_label: 'welcome_modal'
+                      event_label: 'welcome_modal',
+                      step_number: 1
                     })
                   }
                   setShowWelcomeModal(false)

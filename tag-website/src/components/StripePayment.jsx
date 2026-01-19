@@ -96,6 +96,14 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
       return
     }
 
+    // Track "continue_to_payment" event when Pay button is clicked
+    if (window.gtag) {
+      window.gtag('event', 'continue_to_payment', {
+        event_category: 'booking_flow',
+        event_label: 'pay_button_click'
+      })
+    }
+
     setIsProcessing(true)
     setErrorMessage('')
 
@@ -117,6 +125,14 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
         onError?.(error)
       } else if (paymentIntent && paymentIntent.status === 'succeeded') {
         console.log('Payment succeeded!')
+        // Track "pay" event on successful payment
+        if (window.gtag) {
+          window.gtag('event', 'pay', {
+            event_category: 'booking_flow',
+            event_label: 'payment_success',
+            value: paymentIntent.amount / 100
+          })
+        }
         onSuccess?.(paymentIntent, bookingReference)
       }
     } catch (err) {
@@ -330,6 +346,14 @@ function StripePayment({
 
   // Handle free booking confirmation (no Stripe needed)
   const handleFreeBookingConfirm = async () => {
+    // Track "continue_to_payment" event when Confirm button is clicked
+    if (window.gtag) {
+      window.gtag('event', 'continue_to_payment', {
+        event_category: 'booking_flow',
+        event_label: 'free_booking_confirm_click'
+      })
+    }
+
     setIsProcessingFreeBooking(true)
     setError('')
 
@@ -338,6 +362,14 @@ function StripePayment({
       const data = await createPaymentIntent()
 
       if (data.is_free_booking) {
+        // Track "pay" event for free booking
+        if (window.gtag) {
+          window.gtag('event', 'pay', {
+            event_category: 'booking_flow',
+            event_label: 'free_booking_success',
+            value: 0
+          })
+        }
         // Success - notify parent with booking details
         onPaymentSuccess?.({
           paymentIntentId: data.payment_intent_id,
