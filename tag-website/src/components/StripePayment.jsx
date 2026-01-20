@@ -83,6 +83,7 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
   const stripe = useStripe()
   const elements = useElements()
   const [isProcessing, setIsProcessing] = useState(false)
+  const [paymentSucceeded, setPaymentSucceeded] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
   const handleSubmit = async (e) => {
@@ -93,6 +94,12 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
 
     if (!stripe || !elements) {
       console.error('Stripe or Elements not loaded')
+      return
+    }
+
+    // Prevent double-clicks
+    if (isProcessing || paymentSucceeded) {
+      console.log('Payment already in progress or succeeded, ignoring click')
       return
     }
 
@@ -122,9 +129,11 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
       if (error) {
         console.error('Payment error:', error)
         setErrorMessage(error.message)
+        setIsProcessing(false) // Allow retry on error
         onError?.(error)
       } else if (paymentIntent && paymentIntent.status === 'succeeded') {
         console.log('Payment succeeded!')
+        setPaymentSucceeded(true) // Keep button disabled permanently
         // Track "pay" event on successful payment
         if (window.gtag) {
           window.gtag('event', 'pay', {
@@ -134,13 +143,15 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
           })
         }
         onSuccess?.(paymentIntent, bookingReference)
+      } else {
+        // Unexpected state - allow retry
+        setIsProcessing(false)
       }
     } catch (err) {
       console.error('Unexpected error:', err)
       setErrorMessage('An unexpected error occurred.')
+      setIsProcessing(false) // Allow retry on error
       onError?.(err)
-    } finally {
-      setIsProcessing(false)
     }
   }
 
@@ -172,10 +183,10 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
       <button
         type="button"
         onClick={handleSubmit}
-        disabled={!stripe || isProcessing}
+        disabled={!stripe || isProcessing || paymentSucceeded}
         className="stripe-pay-btn"
       >
-        {isProcessing ? 'Processing...' : `Pay ${amount}`}
+        {paymentSucceeded ? 'Payment Complete' : isProcessing ? 'Processing...' : `Pay ${amount}`}
       </button>
     </div>
   )
@@ -270,6 +281,9 @@ function StripePayment({
     return await response.json()
   }
 
+  // Track if payment intent has already been created to prevent duplicates
+  const [paymentInitialized, setPaymentInitialized] = useState(false)
+
   useEffect(() => {
     // For FREE bookings (100% off), don't call API on mount - wait for button click
     if (promoCodeDiscount === 100) {
@@ -277,6 +291,11 @@ function StripePayment({
       setOriginalAmount(amounts.original)
       setDiscountAmount(amounts.discount)
       setLoading(false)
+      return
+    }
+
+    // Only create payment intent ONCE - prevents duplicate bookings from re-renders
+    if (paymentInitialized) {
       return
     }
 
@@ -296,6 +315,7 @@ function StripePayment({
         setStripeLoaded(stripe)
 
         const data = await createPaymentIntent()
+        setPaymentInitialized(true) // Mark as initialized to prevent re-runs
 
         // Handle response (should not be free booking if we got here)
         if (data.is_free_booking) {
@@ -318,7 +338,8 @@ function StripePayment({
     }
 
     initPayment()
-  }, [formData, selectedFlight, selectedArrivalFlight, customerId, vehicleId, sessionId, promoCode, promoCodeDiscount])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promoCodeDiscount]) // Only run once on mount (promoCodeDiscount won't change)
 
   const handleSuccess = async (paymentIntent, reference) => {
     // Book the slot now that payment succeeded
