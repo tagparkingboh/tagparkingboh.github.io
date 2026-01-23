@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import ManualBooking from './components/ManualBooking'
+import BookingCalendar from './components/BookingCalendar'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -538,6 +539,12 @@ function Admin() {
           Bookings
         </button>
         <button
+          className={`admin-nav-item ${activeTab === 'calendar' ? 'active' : ''}`}
+          onClick={() => setActiveTab('calendar')}
+        >
+          Calendar
+        </button>
+        <button
           className={`admin-nav-item ${activeTab === 'manual-booking' ? 'active' : ''}`}
           onClick={() => setActiveTab('manual-booking')}
         >
@@ -895,6 +902,12 @@ function Admin() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'calendar' && (
+          <div className="admin-section">
+            <BookingCalendar token={token} />
           </div>
         )}
 
