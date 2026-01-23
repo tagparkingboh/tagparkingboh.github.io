@@ -320,10 +320,15 @@
   flex: 1;
 }
 
-.booking-ref {
-  color: #fff;
-  font-size: 0.8rem;
+.booking-calendar .booking-ref {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1a1a2e;
   font-family: monospace;
+  background: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #444;
 }
 
 .booking-details-row {
