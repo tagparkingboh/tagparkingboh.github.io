@@ -285,53 +285,94 @@
 .detail-bookings {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
-.detail-booking {
-  display: grid;
-  grid-template-columns: 100px 1fr auto;
-  gap: 15px;
-  padding: 12px 15px;
+.detail-booking-card {
   background: #2a2a2a;
-  border-radius: 8px;
+  border-radius: 10px;
+  padding: 15px;
+  border-left: 3px solid #D9FF00;
+}
+
+.booking-header-row {
+  display: flex;
   align-items: center;
+  gap: 15px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #3a3a3a;
 }
 
 .booking-time {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 1.1rem;
+  font-weight: 700;
   color: #D9FF00;
   font-family: monospace;
-}
-
-.booking-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.booking-customer {
-  color: #fff;
-  font-weight: 500;
-}
-
-.booking-vehicle {
-  color: #888;
-  font-size: 0.85rem;
-  font-family: monospace;
-  letter-spacing: 0.5px;
+  min-width: 110px;
 }
 
 .booking-destination {
-  color: #aaa;
-  font-size: 0.85rem;
+  color: #fff;
+  font-size: 0.95rem;
+  flex: 1;
 }
 
 .booking-ref {
   color: #666;
   font-size: 0.8rem;
   font-family: monospace;
+  background: #1e1e1e;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.booking-details-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-top: 8px;
+}
+
+.booking-customer,
+.booking-phone,
+.booking-vehicle,
+.booking-reg {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.detail-label {
+  font-size: 0.7rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-value {
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.phone-link {
+  color: #4a90e2;
+  text-decoration: none;
+}
+
+.phone-link:hover {
+  text-decoration: underline;
+}
+
+.reg-plate {
+  font-family: monospace;
+  font-weight: 600;
+  letter-spacing: 1px;
+  background: #ffe033;
+  color: #000;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-block;
 }
 
 .no-bookings {

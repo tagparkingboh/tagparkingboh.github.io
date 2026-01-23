@@ -281,23 +281,45 @@ function BookingCalendar({ token }) {
                   {selectedDayBookings.dropoffs
                     .sort((a, b) => (a.dropoff_time || '').localeCompare(b.dropoff_time || ''))
                     .map(booking => (
-                      <div key={booking.id} className="detail-booking">
-                        <div className="booking-time">
-                          {formatTime(booking.dropoff_time)}
-                        </div>
-                        <div className="booking-info">
-                          <div className="booking-customer">
-                            {booking.customer_first_name} {booking.customer_last_name}
-                          </div>
-                          <div className="booking-vehicle">
-                            {booking.vehicle_registration}
+                      <div key={booking.id} className="detail-booking-card">
+                        <div className="booking-header-row">
+                          <div className="booking-time">
+                            {formatTime(booking.dropoff_time)}
                           </div>
                           <div className="booking-destination">
                             → {booking.dropoff_destination || 'Unknown'}
                           </div>
+                          <div className="booking-ref">
+                            {booking.reference}
+                          </div>
                         </div>
-                        <div className="booking-ref">
-                          {booking.reference}
+                        <div className="booking-details-row">
+                          <div className="booking-customer">
+                            <span className="detail-label">Customer</span>
+                            <span className="detail-value">
+                              {booking.customer?.first_name || booking.customer_first_name} {booking.customer?.last_name || booking.customer_last_name}
+                            </span>
+                          </div>
+                          <div className="booking-phone">
+                            <span className="detail-label">Mobile</span>
+                            <a href={`tel:${booking.customer?.phone}`} className="detail-value phone-link">
+                              {booking.customer?.phone || 'N/A'}
+                            </a>
+                          </div>
+                        </div>
+                        <div className="booking-details-row">
+                          <div className="booking-vehicle">
+                            <span className="detail-label">Vehicle</span>
+                            <span className="detail-value">
+                              {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
+                            </span>
+                          </div>
+                          <div className="booking-reg">
+                            <span className="detail-label">Reg</span>
+                            <span className="detail-value reg-plate">
+                              {booking.vehicle?.registration || booking.vehicle_registration}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -315,26 +337,48 @@ function BookingCalendar({ token }) {
                   {selectedDayBookings.pickups
                     .sort((a, b) => (a.pickup_time_from || a.pickup_time || '').localeCompare(b.pickup_time_from || b.pickup_time || ''))
                     .map(booking => (
-                      <div key={booking.id} className="detail-booking">
-                        <div className="booking-time">
-                          {booking.pickup_time_from && booking.pickup_time_to
-                            ? `${formatTime(booking.pickup_time_from)}-${formatTime(booking.pickup_time_to)}`
-                            : formatTime(booking.pickup_time)
-                          }
-                        </div>
-                        <div className="booking-info">
-                          <div className="booking-customer">
-                            {booking.customer_first_name} {booking.customer_last_name}
-                          </div>
-                          <div className="booking-vehicle">
-                            {booking.vehicle_registration}
+                      <div key={booking.id} className="detail-booking-card">
+                        <div className="booking-header-row">
+                          <div className="booking-time">
+                            {booking.pickup_time_from && booking.pickup_time_to
+                              ? `${formatTime(booking.pickup_time_from)}-${formatTime(booking.pickup_time_to)}`
+                              : formatTime(booking.pickup_time)
+                            }
                           </div>
                           <div className="booking-destination">
                             ← {booking.pickup_origin || 'Unknown'}
                           </div>
+                          <div className="booking-ref">
+                            {booking.reference}
+                          </div>
                         </div>
-                        <div className="booking-ref">
-                          {booking.reference}
+                        <div className="booking-details-row">
+                          <div className="booking-customer">
+                            <span className="detail-label">Customer</span>
+                            <span className="detail-value">
+                              {booking.customer?.first_name || booking.customer_first_name} {booking.customer?.last_name || booking.customer_last_name}
+                            </span>
+                          </div>
+                          <div className="booking-phone">
+                            <span className="detail-label">Mobile</span>
+                            <a href={`tel:${booking.customer?.phone}`} className="detail-value phone-link">
+                              {booking.customer?.phone || 'N/A'}
+                            </a>
+                          </div>
+                        </div>
+                        <div className="booking-details-row">
+                          <div className="booking-vehicle">
+                            <span className="detail-label">Vehicle</span>
+                            <span className="detail-value">
+                              {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
+                            </span>
+                          </div>
+                          <div className="booking-reg">
+                            <span className="detail-label">Reg</span>
+                            <span className="detail-value reg-plate">
+                              {booking.vehicle?.registration || booking.vehicle_registration}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     ))}
