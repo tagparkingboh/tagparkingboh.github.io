@@ -22,7 +22,7 @@
   gap: 15px;
 }
 
-.calendar-title {
+.booking-calendar .calendar-title {
   font-size: 1.5rem;
   font-weight: 700;
   color: #D9FF00;
@@ -345,24 +345,24 @@
   gap: 3px;
 }
 
-.detail-label {
+.booking-calendar .detail-label {
   font-size: 0.7rem;
   color: #666;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.detail-value {
+.booking-calendar .detail-value {
   color: #fff;
   font-size: 0.95rem;
 }
 
-.phone-link {
+.booking-calendar .phone-link {
   color: #4a90e2;
   text-decoration: none;
 }
 
-.phone-link:hover {
+.booking-calendar .phone-link:hover {
   text-decoration: underline;
 }
 
