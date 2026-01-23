@@ -93,11 +93,14 @@ function BookingCalendar({ token }) {
     return { year, month, weeks, daysInMonth }
   }, [currentDate])
 
-  // Group bookings by date
+  // Group bookings by date (only confirmed bookings)
   const bookingsByDate = useMemo(() => {
     const grouped = {}
 
-    bookings.forEach(booking => {
+    // Filter to only include confirmed bookings
+    const confirmedBookings = bookings.filter(b => b.status === 'confirmed')
+
+    confirmedBookings.forEach(booking => {
       // Add to dropoff date
       if (booking.dropoff_date) {
         const dropoffKey = booking.dropoff_date
