@@ -1873,3 +1873,203 @@ async def test_send_refund_email_not_found(client):
     """
     response = await client.post("/api/admin/bookings/99999/send-refund-email")
     assert response.status_code == 404
+
+
+# =============================================================================
+# Overnight Pickup Date Tests
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_late_flight_pickup_date_crosses_midnight(client, db_session):
+    """
+    When a return flight lands at 23:30 on 1/4/2026, the pickup time window
+    (35-60 mins after landing) should be 00:05-00:30, and the pickup_date
+    should automatically adjust to 2/4/2026 (next day).
+    """
+    from db_models import FlightDeparture, FlightArrival
+    import uuid
+
+    # Create a departure flight for the outbound journey
+    departure = FlightDeparture(
+        date=date(2026, 4, 1),
+        flight_number="TEST123",
+        airline_code="FR",
+        airline_name="Ryanair",
+        departure_time=time(10, 30),
+        destination_code="PMI",
+        destination_name="Palma, ES",
+        capacity_tier=4,
+        slots_booked_early=0,
+        slots_booked_late=0,
+    )
+    db_session.add(departure)
+    db_session.commit()
+    db_session.refresh(departure)
+
+    # Create an arrival flight landing at 23:30
+    arrival = FlightArrival(
+        date=date(2026, 4, 8),
+        flight_number="TEST124",
+        airline_code="FR",
+        airline_name="Ryanair",
+        departure_time=time(20, 0),
+        arrival_time=time(23, 30),  # Late night arrival
+        origin_code="PMI",
+        origin_name="Palma, ES",
+    )
+    db_session.add(arrival)
+    db_session.commit()
+    db_session.refresh(arrival)
+
+    unique_pi_id = f"pi_test_overnight_{uuid.uuid4().hex[:12]}"
+
+    # Mock Stripe payment intent creation
+    with patch("main.create_payment_intent") as mock_create:
+        mock_create.return_value = MagicMock(
+            client_secret=f"{unique_pi_id}_secret",
+            payment_intent_id=unique_pi_id,
+        )
+        with patch("main.is_stripe_configured", return_value=True):
+            with patch("main.get_settings") as mock_settings:
+                mock_settings.return_value.stripe_publishable_key = "pk_test_overnight"
+
+                # Create a booking with late night return flight
+                response = await client.post("/api/payments/create-intent", json={
+                    "first_name": "Night",
+                    "last_name": "Owl",
+                    "email": "night.owl@test.com",
+                    "phone": "+447777123456",
+                    "drop_off_date": "2026-04-01",
+                    "pickup_date": "2026-04-08",  # Original pickup date
+                    "pickup_flight_time": "23:30",  # Landing at 23:30
+                    "pickup_flight_number": "TEST124",
+                    "flight_number": "TEST123",
+                    "flight_date": "2026-04-01",
+                    "departure_id": departure.id,
+                    "drop_off_slot": "165",
+                    "registration": "NIGHT01",
+                    "make": "Tesla",
+                    "model": "Model 3",
+                    "colour": "Black",
+                    "package": "quick",
+                    "billing_address1": "123 Night St",
+                    "billing_city": "Edinburgh",
+                    "billing_postcode": "EH1 1AA",
+                    "billing_country": "United Kingdom",
+                })
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Verify the booking was created
+    assert data.get("booking_reference") is not None
+    booking_ref = data["booking_reference"]
+
+    # Get the booking from DB and verify pickup_date was adjusted
+    from db_models import Booking
+    booking = db_session.query(Booking).filter(
+        Booking.reference == booking_ref
+    ).first()
+
+    assert booking is not None
+    # Pickup date should be April 9th (next day) because 23:30 + 35min = 00:05 next day
+    assert booking.pickup_date == date(2026, 4, 9), f"Expected pickup_date to be 2026-04-09 but got {booking.pickup_date}"
+    # Pickup time window should be 00:05-00:30
+    assert booking.pickup_time_from == time(0, 5), f"Expected pickup_time_from to be 00:05 but got {booking.pickup_time_from}"
+    assert booking.pickup_time_to == time(0, 30), f"Expected pickup_time_to to be 00:30 but got {booking.pickup_time_to}"
+
+
+@pytest.mark.asyncio
+async def test_normal_flight_pickup_date_unchanged(client, db_session):
+    """
+    When a return flight lands at 14:30 on 8/4/2026, the pickup time window
+    (35-60 mins after landing) should be 15:05-15:30, and the pickup_date
+    should remain 8/4/2026 (same day).
+    """
+    from db_models import FlightDeparture, FlightArrival
+    import uuid
+
+    # Create a departure flight
+    departure = FlightDeparture(
+        date=date(2026, 4, 1),
+        flight_number="TEST456",
+        airline_code="FR",
+        airline_name="Ryanair",
+        departure_time=time(10, 30),
+        destination_code="FAO",
+        destination_name="Faro, PT",
+        capacity_tier=4,
+        slots_booked_early=0,
+        slots_booked_late=0,
+    )
+    db_session.add(departure)
+    db_session.commit()
+    db_session.refresh(departure)
+
+    # Create an arrival flight landing at 14:30 (normal daytime)
+    arrival = FlightArrival(
+        date=date(2026, 4, 8),
+        flight_number="TEST457",
+        airline_code="FR",
+        airline_name="Ryanair",
+        departure_time=time(11, 0),
+        arrival_time=time(14, 30),  # Normal daytime arrival
+        origin_code="FAO",
+        origin_name="Faro, PT",
+    )
+    db_session.add(arrival)
+    db_session.commit()
+    db_session.refresh(arrival)
+
+    unique_pi_id = f"pi_test_normal_{uuid.uuid4().hex[:12]}"
+
+    # Mock Stripe
+    with patch("main.create_payment_intent") as mock_create:
+        mock_create.return_value = MagicMock(
+            client_secret=f"{unique_pi_id}_secret",
+            payment_intent_id=unique_pi_id,
+        )
+        with patch("main.is_stripe_configured", return_value=True):
+            with patch("main.get_settings") as mock_settings:
+                mock_settings.return_value.stripe_publishable_key = "pk_test_normal"
+
+                response = await client.post("/api/payments/create-intent", json={
+                    "first_name": "Day",
+                    "last_name": "Flyer",
+                    "email": "day.flyer@test.com",
+                    "phone": "+447777654321",
+                    "drop_off_date": "2026-04-01",
+                    "pickup_date": "2026-04-08",
+                    "pickup_flight_time": "14:30",  # Landing at 14:30
+                    "pickup_flight_number": "TEST457",
+                    "flight_number": "TEST456",
+                    "flight_date": "2026-04-01",
+                    "departure_id": departure.id,
+                    "drop_off_slot": "165",
+                    "registration": "DAY001",
+                    "make": "BMW",
+                    "model": "3 Series",
+                    "colour": "White",
+                    "package": "quick",
+                    "billing_address1": "456 Day St",
+                    "billing_city": "Edinburgh",
+                    "billing_postcode": "EH2 2BB",
+                    "billing_country": "United Kingdom",
+                })
+
+    assert response.status_code == 200
+    data = response.json()
+
+    booking_ref = data["booking_reference"]
+
+    from db_models import Booking
+    booking = db_session.query(Booking).filter(
+        Booking.reference == booking_ref
+    ).first()
+
+    assert booking is not None
+    # Pickup date should remain April 8th (same day)
+    assert booking.pickup_date == date(2026, 4, 8), f"Expected pickup_date to be 2026-04-08 but got {booking.pickup_date}"
+    # Pickup time window should be 15:05-15:30
+    assert booking.pickup_time_from == time(15, 5), f"Expected pickup_time_from to be 15:05 but got {booking.pickup_time_from}"
+    assert booking.pickup_time_to == time(15, 30), f"Expected pickup_time_to to be 15:30 but got {booking.pickup_time_to}"

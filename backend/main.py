@@ -12,7 +12,7 @@ Provides REST API endpoints for the frontend to:
 """
 import uuid
 import secrets
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -2922,7 +2922,11 @@ async def create_payment(
             total_minutes_from = landing_hour * 60 + landing_min + 35
             total_minutes_to = landing_hour * 60 + landing_min + 60
 
-            # Handle overnight (e.g., 23:30 landing + 60 min = 00:30 next day)
+            # Handle overnight (e.g., 23:30 landing + 35 min = 00:05 next day)
+            # If pickup time crosses midnight, adjust pickup_date to next day
+            if total_minutes_from >= 24 * 60:
+                pickup_date = pickup_date + timedelta(days=1)
+
             pickup_time_from = time(
                 (total_minutes_from // 60) % 24,
                 total_minutes_from % 60
