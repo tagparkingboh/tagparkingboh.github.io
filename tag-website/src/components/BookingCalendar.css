@@ -321,35 +321,26 @@
 }
 
 .booking-ref {
-  color: #666;
+  color: #fff;
   font-size: 0.8rem;
   font-family: monospace;
-  background: #1e1e1e;
-  padding: 4px 8px;
-  border-radius: 4px;
 }
 
 .booking-details-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 15px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
   margin-top: 8px;
+  color: #fff;
+  font-size: 0.9rem;
 }
 
-.booking-customer,
-.booking-phone,
-.booking-vehicle,
-.booking-reg {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+.booking-details-row span {
+  color: #888;
 }
 
 .booking-calendar .detail-label {
-  font-size: 0.7rem;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  display: none;
 }
 
 .booking-calendar .detail-value {
@@ -366,15 +357,11 @@
   text-decoration: underline;
 }
 
-.reg-plate {
+.booking-calendar .reg-plate {
   font-family: monospace;
   font-weight: 600;
   letter-spacing: 1px;
-  background: #ffe033;
-  color: #000;
-  padding: 3px 8px;
-  border-radius: 4px;
-  display: inline-block;
+  color: #fff;
 }
 
 .no-bookings {

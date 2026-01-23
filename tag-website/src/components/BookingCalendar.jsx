@@ -297,32 +297,15 @@ function BookingCalendar({ token }) {
                           </div>
                         </div>
                         <div className="booking-details-row">
-                          <div className="booking-customer">
-                            <span className="detail-label">Customer</span>
-                            <span className="detail-value">
-                              {booking.customer?.first_name || booking.customer_first_name} {booking.customer?.last_name || booking.customer_last_name}
-                            </span>
-                          </div>
-                          <div className="booking-phone">
-                            <span className="detail-label">Mobile</span>
-                            <a href={`tel:${booking.customer?.phone}`} className="detail-value phone-link">
-                              {booking.customer?.phone || 'N/A'}
-                            </a>
-                          </div>
-                        </div>
-                        <div className="booking-details-row">
-                          <div className="booking-vehicle">
-                            <span className="detail-label">Vehicle</span>
-                            <span className="detail-value">
-                              {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
-                            </span>
-                          </div>
-                          <div className="booking-reg">
-                            <span className="detail-label">Reg</span>
-                            <span className="detail-value reg-plate">
-                              {booking.vehicle?.registration || booking.vehicle_registration}
-                            </span>
-                          </div>
+                          {booking.customer?.first_name || booking.customer_first_name} {booking.customer?.last_name || booking.customer_last_name}
+                          <span>|</span>
+                          <a href={`tel:${booking.customer?.phone}`} className="phone-link">
+                            {booking.customer?.phone || 'N/A'}
+                          </a>
+                          <span>|</span>
+                          {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
+                          <span>|</span>
+                          <span className="reg-plate">{booking.vehicle?.registration || booking.vehicle_registration}</span>
                         </div>
                       </div>
                     ))}
@@ -356,32 +339,15 @@ function BookingCalendar({ token }) {
                           </div>
                         </div>
                         <div className="booking-details-row">
-                          <div className="booking-customer">
-                            <span className="detail-label">Customer</span>
-                            <span className="detail-value">
-                              {booking.customer?.first_name || booking.customer_first_name} {booking.customer?.last_name || booking.customer_last_name}
-                            </span>
-                          </div>
-                          <div className="booking-phone">
-                            <span className="detail-label">Mobile</span>
-                            <a href={`tel:${booking.customer?.phone}`} className="detail-value phone-link">
-                              {booking.customer?.phone || 'N/A'}
-                            </a>
-                          </div>
-                        </div>
-                        <div className="booking-details-row">
-                          <div className="booking-vehicle">
-                            <span className="detail-label">Vehicle</span>
-                            <span className="detail-value">
-                              {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
-                            </span>
-                          </div>
-                          <div className="booking-reg">
-                            <span className="detail-label">Reg</span>
-                            <span className="detail-value reg-plate">
-                              {booking.vehicle?.registration || booking.vehicle_registration}
-                            </span>
-                          </div>
+                          {booking.customer?.first_name || booking.customer_first_name} {booking.customer?.last_name || booking.customer_last_name}
+                          <span>|</span>
+                          <a href={`tel:${booking.customer?.phone}`} className="phone-link">
+                            {booking.customer?.phone || 'N/A'}
+                          </a>
+                          <span>|</span>
+                          {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
+                          <span>|</span>
+                          <span className="reg-plate">{booking.vehicle?.registration || booking.vehicle_registration}</span>
                         </div>
                       </div>
                     ))}
