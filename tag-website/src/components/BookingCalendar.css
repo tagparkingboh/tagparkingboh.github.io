@@ -24,11 +24,13 @@
 
 .calendar-title {
   font-size: 1.5rem;
-  font-weight: 600;
-  color: #fff;
+  font-weight: 700;
+  color: #D9FF00;
   margin: 0;
-  min-width: 200px;
+  min-width: 220px;
   text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .calendar-nav-btn {
