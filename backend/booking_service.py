@@ -5,8 +5,10 @@ Manages time slot availability, booking creation, and slot visibility.
 When a slot is booked, it becomes hidden/unavailable for other users.
 """
 import json
+import os
 import uuid
 from datetime import date, time, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 from models import (
@@ -20,6 +22,50 @@ from models import (
     AvailableSlotsResponse,
 )
 from time_slots import calculate_drop_off_datetime, calculate_all_slots, SLOT_LABELS
+
+
+def get_pricing_from_db() -> dict:
+    """
+    Fetch pricing settings from database.
+
+    Returns:
+        Dictionary with week1_base_price, week2_base_price, tier_increment
+        Returns defaults if database is unavailable or no settings exist.
+    """
+    defaults = {
+        "week1_base_price": 89.0,
+        "week2_base_price": 140.0,
+        "tier_increment": 10.0,
+    }
+
+    try:
+        import psycopg2
+        database_url = os.getenv("DATABASE_URL")
+
+        if not database_url:
+            return defaults
+
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+        cur.execute("SELECT week1_base_price, week2_base_price, tier_increment FROM pricing_settings LIMIT 1")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if row:
+            return {
+                "week1_base_price": float(row[0]),
+                "week2_base_price": float(row[1]),
+                "tier_increment": float(row[2]),
+            }
+        return defaults
+    except Exception:
+        # If anything fails, use defaults
+        return defaults
+
+
+# Cache for pricing settings (refreshed every request in production)
+_cached_pricing: Optional[dict] = None
 
 # Contact message when all slots are booked
 NO_SLOTS_CONTACT_MESSAGE = (
@@ -46,9 +92,9 @@ class BookingService:
         "longer": 14,  # 2 weeks
     }
 
-    # Pricing matrix: package -> advance_tier -> price
+    # Default pricing matrix (used as fallback if database unavailable)
     # Advance tiers: "early" (>=14 days), "standard" (7-13 days), "late" (<7 days)
-    PACKAGE_PRICES = {
+    DEFAULT_PACKAGE_PRICES = {
         "quick": {
             "early": 89.0,     # >=14 days in advance
             "standard": 99.0,  # 7-13 days in advance
@@ -60,6 +106,40 @@ class BookingService:
             "late": 160.0,     # <7 days in advance
         },
     }
+
+    @classmethod
+    def get_package_prices(cls) -> dict:
+        """
+        Get current pricing from database, falling back to defaults.
+
+        Returns:
+            Dict with package prices for each tier
+        """
+        pricing = get_pricing_from_db()
+
+        week1_base = pricing["week1_base_price"]
+        week2_base = pricing["week2_base_price"]
+        increment = pricing["tier_increment"]
+
+        return {
+            "quick": {
+                "early": week1_base,
+                "standard": week1_base + increment,
+                "late": week1_base + (increment * 2),
+            },
+            "longer": {
+                "early": week2_base,
+                "standard": week2_base + increment,
+                "late": week2_base + (increment * 2),
+            },
+        }
+
+    # Property for backwards compatibility with existing code
+    @classmethod
+    @property
+    def PACKAGE_PRICES(cls) -> dict:
+        """Dynamic pricing - fetches from database."""
+        return cls.get_package_prices()
 
     @classmethod
     def get_advance_tier(cls, drop_off_date: date) -> str:
@@ -88,6 +168,8 @@ class BookingService:
         """
         Calculate the price based on package and advance booking tier.
 
+        Fetches current pricing from database.
+
         Args:
             package: "quick" (1 week) or "longer" (2 weeks)
             drop_off_date: The date of drop-off
@@ -96,7 +178,8 @@ class BookingService:
             The price in pounds
         """
         tier = cls.get_advance_tier(drop_off_date)
-        return cls.PACKAGE_PRICES[package][tier]
+        prices = cls.get_package_prices()
+        return prices[package][tier]
 
     @classmethod
     def get_package_for_duration(cls, drop_off_date: date, pickup_date: date) -> str:

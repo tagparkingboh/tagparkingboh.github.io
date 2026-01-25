@@ -30,6 +30,7 @@ function HomePage() {
   const [submitStatus, setSubmitStatus] = useState(null) // 'success' | 'error' | null
   const [heroBannerIndex, setHeroBannerIndex] = useState(0)
   const [bannerFading, setBannerFading] = useState(false)
+  const [prices, setPrices] = useState({ week1: 89, week2: 140 })
 
   // Alternate hero banner every 10 seconds
   useEffect(() => {
@@ -41,6 +42,22 @@ function HomePage() {
       }, 300) // Fade out duration
     }, 5000)
     return () => clearInterval(interval)
+  }, [])
+
+  // Fetch pricing from API
+  useEffect(() => {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    fetch(`${API_URL}/api/pricing`)
+      .then(res => res.json())
+      .then(data => {
+        setPrices({
+          week1: data.week1_base_price || 89,
+          week2: data.week2_base_price || 140,
+        })
+      })
+      .catch(() => {
+        // Keep defaults on error
+      })
   }, [])
 
   const isValidEmail = (email) => {
@@ -233,7 +250,7 @@ function HomePage() {
             <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
-              <span className="price">89</span>
+              <span className="price">{prices.week1}</span>
             </div>
             <p className="pricing-note">one off payment</p>
 
@@ -253,7 +270,7 @@ function HomePage() {
             <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
-              <span className="price">140</span>
+              <span className="price">{prices.week2}</span>
             </div>
             <p className="pricing-note">one off payment</p>
 

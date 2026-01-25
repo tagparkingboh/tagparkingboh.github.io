@@ -51,6 +51,16 @@ function Admin() {
   const [leadSearchTerm, setLeadSearchTerm] = useState('')
   const [expandedLeadId, setExpandedLeadId] = useState(null)
 
+  // Pricing settings state
+  const [pricing, setPricing] = useState({
+    week1_base_price: 89,
+    week2_base_price: 140,
+    tier_increment: 10,
+  })
+  const [loadingPricing, setLoadingPricing] = useState(false)
+  const [savingPricing, setSavingPricing] = useState(false)
+  const [pricingMessage, setPricingMessage] = useState('')
+
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
 
@@ -89,6 +99,13 @@ function Admin() {
   useEffect(() => {
     if (activeTab === 'leads' && token) {
       fetchLeads()
+    }
+  }, [activeTab, token])
+
+  // Fetch pricing when pricing tab is active
+  useEffect(() => {
+    if (activeTab === 'pricing' && token) {
+      fetchPricing()
     }
   }, [activeTab, token])
 
@@ -133,6 +150,60 @@ function Admin() {
       setError('Network error loading leads')
     } finally {
       setLoadingLeads(false)
+    }
+  }
+
+  const fetchPricing = async () => {
+    setLoadingPricing(true)
+    setPricingMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/pricing`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPricing({
+          week1_base_price: data.week1_base_price,
+          week2_base_price: data.week2_base_price,
+          tier_increment: data.tier_increment,
+        })
+      } else {
+        setError('Failed to load pricing settings')
+      }
+    } catch (err) {
+      setError('Network error loading pricing')
+    } finally {
+      setLoadingPricing(false)
+    }
+  }
+
+  const savePricing = async () => {
+    setSavingPricing(true)
+    setPricingMessage('')
+    setError('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/pricing`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(pricing),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPricingMessage('Pricing updated successfully')
+        setTimeout(() => setPricingMessage(''), 5000)
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to save pricing')
+      }
+    } catch (err) {
+      setError('Network error saving pricing')
+    } finally {
+      setSavingPricing(false)
     }
   }
 
@@ -573,6 +644,12 @@ function Admin() {
           onClick={() => setActiveTab('leads')}
         >
           Leads
+        </button>
+        <button
+          className={`admin-nav-item ${activeTab === 'pricing' ? 'active' : ''}`}
+          onClick={() => setActiveTab('pricing')}
+        >
+          Pricing
         </button>
         <button
           className={`admin-nav-item ${activeTab === 'reports' ? 'active' : ''}`}
@@ -1294,6 +1371,122 @@ function Admin() {
                 {leads.length === 0 && !loadingLeads && (
                   <p className="admin-no-data">No abandoned leads found</p>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'pricing' && (
+          <div className="admin-section">
+            <div className="admin-section-header">
+              <h2>Pricing Settings</h2>
+              <button onClick={fetchPricing} className="admin-refresh" disabled={loadingPricing}>
+                {loadingPricing ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
+
+            {pricingMessage && <div className="admin-success">{pricingMessage}</div>}
+
+            {loadingPricing ? (
+              <div className="admin-loading-inline">
+                <div className="spinner-small"></div>
+                <span>Loading pricing settings...</span>
+              </div>
+            ) : (
+              <div className="pricing-settings-form">
+                <div className="pricing-section">
+                  <h3>Base Prices (Early Booking Tier)</h3>
+                  <p className="pricing-hint">These are the prices when customers book 14+ days in advance.</p>
+
+                  <div className="pricing-inputs">
+                    <div className="pricing-input-group">
+                      <label>1 Week Trip (1-7 days)</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="number"
+                          value={pricing.week1_base_price}
+                          onChange={(e) => setPricing({ ...pricing, week1_base_price: parseFloat(e.target.value) || 0 })}
+                          min="0"
+                          step="1"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pricing-input-group">
+                      <label>2 Week Trip (8-14 days)</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="number"
+                          value={pricing.week2_base_price}
+                          onChange={(e) => setPricing({ ...pricing, week2_base_price: parseFloat(e.target.value) || 0 })}
+                          min="0"
+                          step="1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pricing-section">
+                  <h3>Tier Increment</h3>
+                  <p className="pricing-hint">Price increase for each booking tier (Early → Standard → Late).</p>
+
+                  <div className="pricing-inputs">
+                    <div className="pricing-input-group">
+                      <label>Increment per Tier</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="number"
+                          value={pricing.tier_increment}
+                          onChange={(e) => setPricing({ ...pricing, tier_increment: parseFloat(e.target.value) || 0 })}
+                          min="0"
+                          step="1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pricing-preview">
+                  <h3>Price Preview</h3>
+                  <table className="pricing-preview-table">
+                    <thead>
+                      <tr>
+                        <th>Package</th>
+                        <th>Early (14+ days)</th>
+                        <th>Standard (7-13 days)</th>
+                        <th>Late (&lt;7 days)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>1 Week</td>
+                        <td>£{pricing.week1_base_price}</td>
+                        <td>£{pricing.week1_base_price + pricing.tier_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>2 Weeks</td>
+                        <td>£{pricing.week2_base_price}</td>
+                        <td>£{pricing.week2_base_price + pricing.tier_increment}</td>
+                        <td>£{pricing.week2_base_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="pricing-actions">
+                  <button
+                    className="pricing-save-btn"
+                    onClick={savePricing}
+                    disabled={savingPricing}
+                  >
+                    {savingPricing ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
               </div>
             )}
           </div>

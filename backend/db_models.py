@@ -3,7 +3,7 @@ SQLAlchemy database models for TAG booking system.
 """
 from sqlalchemy import (
     Column, Integer, String, DateTime, Date, Time,
-    ForeignKey, Enum, Boolean, Text
+    ForeignKey, Enum, Boolean, Text, Numeric
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -495,3 +495,26 @@ class Session(Base):
 
     def __repr__(self):
         return f"<Session for user {self.user_id}>"
+
+
+class PricingSettings(Base):
+    """Dynamic pricing configuration for booking packages."""
+    __tablename__ = "pricing_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Base prices for early booking tier
+    week1_base_price = Column(Numeric(10, 2), nullable=False, default=89.00)  # 1-7 days
+    week2_base_price = Column(Numeric(10, 2), nullable=False, default=140.00)  # 8-14 days
+
+    # Price increment per booking tier (early -> standard -> late)
+    tier_increment = Column(Numeric(10, 2), nullable=False, default=10.00)
+
+    # Audit fields
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_by = Column(Integer, ForeignKey("users.id"))
+
+    updater = relationship("User")
+
+    def __repr__(self):
+        return f"<PricingSettings week1={self.week1_base_price} week2={self.week2_base_price} increment={self.tier_increment}>"

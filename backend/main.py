@@ -462,6 +462,7 @@ async def calculate_price(request: PriceCalculationRequest):
     # Calculate price
     price = BookingService.calculate_price(package, request.drop_off_date)
 
+    prices = BookingService.get_package_prices()
     return PriceCalculationResponse(
         package=package,
         package_name=package_name,
@@ -471,9 +472,9 @@ async def calculate_price(request: PriceCalculationRequest):
         price=price,
         price_pence=int(price * 100),
         all_prices={
-            "early": BookingService.PACKAGE_PRICES[package]["early"],
-            "standard": BookingService.PACKAGE_PRICES[package]["standard"],
-            "late": BookingService.PACKAGE_PRICES[package]["late"],
+            "early": prices[package]["early"],
+            "standard": prices[package]["standard"],
+            "late": prices[package]["late"],
         }
     )
 
@@ -485,17 +486,18 @@ async def get_pricing_tiers():
     """
     from booking_service import BookingService
 
+    prices = BookingService.get_package_prices()
     return {
         "packages": {
             "quick": {
                 "name": "1 Week",
                 "duration_days": 7,
-                "prices": BookingService.PACKAGE_PRICES["quick"],
+                "prices": prices["quick"],
             },
             "longer": {
                 "name": "2 Weeks",
                 "duration_days": 14,
-                "prices": BookingService.PACKAGE_PRICES["longer"],
+                "prices": prices["longer"],
             },
         },
         "tiers": {
@@ -3937,6 +3939,113 @@ async def list_users(
             }
             for u in users
         ]
+    }
+
+
+# ============================================================================
+# PRICING SETTINGS ENDPOINTS
+# ============================================================================
+
+
+class PricingSettingsResponse(BaseModel):
+    """Response model for pricing settings."""
+    week1_base_price: float
+    week2_base_price: float
+    tier_increment: float
+    updated_at: Optional[str] = None
+
+
+class PricingSettingsUpdate(BaseModel):
+    """Request model for updating pricing settings."""
+    week1_base_price: float
+    week2_base_price: float
+    tier_increment: float
+
+
+@app.get("/api/pricing")
+async def get_pricing():
+    """
+    Public endpoint: Get current pricing settings.
+    Used by HomePage to display dynamic prices.
+    Uses get_pricing_from_db() for consistency with other pricing logic.
+    """
+    from booking_service import get_pricing_from_db
+
+    return get_pricing_from_db()
+
+
+@app.get("/api/admin/pricing")
+async def get_admin_pricing(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Get current pricing settings with metadata.
+    """
+    from db_models import PricingSettings
+
+    settings = db.query(PricingSettings).first()
+
+    if not settings:
+        return {
+            "week1_base_price": 89.0,
+            "week2_base_price": 140.0,
+            "tier_increment": 10.0,
+            "updated_at": None,
+            "updated_by": None,
+        }
+
+    return {
+        "week1_base_price": float(settings.week1_base_price),
+        "week2_base_price": float(settings.week2_base_price),
+        "tier_increment": float(settings.tier_increment),
+        "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
+        "updated_by": settings.updater.first_name if settings.updater else None,
+    }
+
+
+@app.put("/api/admin/pricing")
+async def update_pricing(
+    update: PricingSettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Update pricing settings.
+    """
+    from db_models import PricingSettings
+    from decimal import Decimal
+
+    settings = db.query(PricingSettings).first()
+
+    if not settings:
+        # Create new settings
+        settings = PricingSettings(
+            week1_base_price=Decimal(str(update.week1_base_price)),
+            week2_base_price=Decimal(str(update.week2_base_price)),
+            tier_increment=Decimal(str(update.tier_increment)),
+            updated_by=current_user.id,
+        )
+        db.add(settings)
+    else:
+        # Update existing
+        settings.week1_base_price = Decimal(str(update.week1_base_price))
+        settings.week2_base_price = Decimal(str(update.week2_base_price))
+        settings.tier_increment = Decimal(str(update.tier_increment))
+        settings.updated_by = current_user.id
+
+    db.commit()
+    db.refresh(settings)
+
+    return {
+        "success": True,
+        "message": "Pricing updated successfully",
+        "pricing": {
+            "week1_base_price": float(settings.week1_base_price),
+            "week2_base_price": float(settings.week2_base_price),
+            "tier_increment": float(settings.tier_increment),
+            "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
+        }
     }
 
 
