@@ -1404,11 +1404,13 @@ function Admin() {
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={pricing.week1_base_price}
-                          onChange={(e) => setPricing({ ...pricing, week1_base_price: parseFloat(e.target.value) || 0 })}
-                          min="0"
-                          step="1"
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, week1_base_price: parseFloat(val) || 0 })
+                          }}
                         />
                       </div>
                     </div>
@@ -1418,34 +1420,32 @@ function Admin() {
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={pricing.week2_base_price}
-                          onChange={(e) => setPricing({ ...pricing, week2_base_price: parseFloat(e.target.value) || 0 })}
-                          min="0"
-                          step="1"
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, week2_base_price: parseFloat(val) || 0 })
+                          }}
                         />
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                <div className="admin-pricing-section">
-                  <h3>Tier Increment</h3>
-                  <p className="pricing-hint">Price increase for each booking tier (Early → Standard → Late).</p>
-
-                  <div className="pricing-inputs">
-                    <div className="pricing-input-group">
-                      <label>Increment per Tier</label>
+                    <div className="pricing-input-group pricing-input-small">
+                      <label>Tier Increment</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={pricing.tier_increment}
-                          onChange={(e) => setPricing({ ...pricing, tier_increment: parseFloat(e.target.value) || 0 })}
-                          min="0"
-                          step="1"
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, tier_increment: parseFloat(val) || 0 })
+                          }}
                         />
                       </div>
+                      <span className="pricing-input-hint">per tier level</span>
                     </div>
                   </div>
                 </div>
