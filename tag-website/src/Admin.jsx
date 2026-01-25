@@ -1404,7 +1404,7 @@ function Admin() {
 
                   <div className="pricing-inputs">
                     <div className="pricing-input-group">
-                      <label>1 Week Trip (1-7 days)</label>
+                      <label>1 Week Trip</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
@@ -1420,7 +1420,7 @@ function Admin() {
                     </div>
 
                     <div className="pricing-input-group">
-                      <label>2 Week Trip (8-14 days)</label>
+                      <label>2 Week Trip</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
