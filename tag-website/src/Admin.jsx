@@ -1394,7 +1394,7 @@ function Admin() {
               </div>
             ) : (
               <div className="pricing-settings-form">
-                <div className="pricing-section">
+                <div className="admin-pricing-section">
                   <h3>Base Prices (Early Booking Tier)</h3>
                   <p className="pricing-hint">These are the prices when customers book 14+ days in advance.</p>
 
@@ -1429,7 +1429,7 @@ function Admin() {
                   </div>
                 </div>
 
-                <div className="pricing-section">
+                <div className="admin-pricing-section">
                   <h3>Tier Increment</h3>
                   <p className="pricing-hint">Price increase for each booking tier (Early → Standard → Late).</p>
 

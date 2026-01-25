@@ -47,7 +47,9 @@ function HomePage() {
   // Fetch pricing from API
   useEffect(() => {
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-    fetch(`${API_URL}/api/pricing`)
+    fetch(`${API_URL}/api/pricing`, {
+      cache: 'no-store',
+    })
       .then(res => res.json())
       .then(data => {
         setPrices({
