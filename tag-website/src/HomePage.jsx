@@ -45,7 +45,7 @@ function HomePage() {
   }, [])
 
   // Fetch pricing from API
-  useEffect(() => {
+  const fetchPricing = () => {
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
     fetch(`${API_URL}/api/pricing`, {
       cache: 'no-store',
@@ -60,6 +60,19 @@ function HomePage() {
       .catch(() => {
         // Keep defaults on error
       })
+  }
+
+  useEffect(() => {
+    fetchPricing()
+
+    // Listen for pricing updates from Admin page via BroadcastChannel
+    const channel = new BroadcastChannel('pricing-updates')
+    channel.onmessage = (event) => {
+      if (event.data === 'pricing-updated') {
+        fetchPricing()
+      }
+    }
+    return () => channel.close()
   }, [])
 
   const isValidEmail = (email) => {

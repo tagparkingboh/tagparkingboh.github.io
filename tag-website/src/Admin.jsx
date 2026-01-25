@@ -196,6 +196,10 @@ function Admin() {
         const data = await response.json()
         setPricingMessage('Pricing updated successfully')
         setTimeout(() => setPricingMessage(''), 5000)
+        // Notify other tabs (e.g., HomePage) that pricing was updated
+        const channel = new BroadcastChannel('pricing-updates')
+        channel.postMessage('pricing-updated')
+        channel.close()
       } else {
         const data = await response.json()
         setError(data.detail || 'Failed to save pricing')
