@@ -486,7 +486,7 @@ function HomePage() {
           <img src="/assets/departure-icon.webp" alt="Departure" className="subscribe-icon" loading="lazy" />
           <div className="subscribe-content">
             <h2>Sign up today</h2>
-            <p className="subscribe-subtitle">Sign up and get the chance to win one week's free parking:</p>
+            <p className="subscribe-subtitle">Sign up for news and offers:</p>
             <div className="subscribe-form">
               <input
                 type="text"
