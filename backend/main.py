@@ -1681,25 +1681,28 @@ def send_free_parking_promo_email(first_name: str, email: str, promo_code: str) 
             </div>
             <div class="content">
                 <p>Hi {first_name},</p>
-                <p>Congratulations! You've been selected to receive <strong>100% FREE airport parking</strong> at Bournemouth Airport!</p>
+                <p>Congratulations! You've been selected to receive <strong>one week of FREE airport parking</strong> at Bournemouth Airport.</p>
 
                 <div class="promo-box">
                     <div class="promo-text">YOUR EXCLUSIVE CODE</div>
                     <div class="promo-code">{promo_code}</div>
-                    <div class="free-text">100% OFF - COMPLETELY FREE!</div>
+                    <div class="free-text">1 WEEK — COMPLETELY FREE!</div>
                 </div>
 
                 <p class="tagline">How to claim your free parking:</p>
-                <ol>
-                    <li>Visit our website and start your booking</li>
-                    <li>Enter your promo code at checkout</li>
-                    <li>Enjoy free secure parking for your trip!</li>
-                </ol>
+                <p>Visit our website and start your booking</p>
+                <p>Enter your promo code at checkout</p>
+                <p>Enjoy free, secure parking for your trip!*</p>
 
-                <p><strong>Note:</strong> This code can only be used once and is valid for a 1-week or 2-week booking.</p>
+                <p><strong>Please note:</strong></p>
+                <ul style="padding-left: 20px;">
+                    <li>This promo code can only be used once</li>
+                    <li>The offer covers one week of parking</li>
+                    <li>For trips longer than one week, our cheapest one-week price will be deducted from the total*</li>
+                </ul>
 
                 <div class="cta-section">
-                    <a href="https://tagparking.co.uk/bookings" class="button">Book Now - It's FREE!</a>
+                    <a href="https://tagparking.co.uk/bookings" class="button" style="background: #1a1a1a; color: #D9FF00; display: inline-block; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px;">Book Now - It's FREE!</a>
                 </div>
             </div>
             <div class="footer">
