@@ -155,7 +155,7 @@ def send_promo_code_email(first_name: str, email: str, promo_code: str = "TAG10"
 
                 <div class="cta-section">
                     <p style="font-size: 16px; margin-bottom: 15px;"><strong>Ready to book?</strong></p>
-                    <a href="https://tagparking.co.uk" class="button">Book now</a>
+                    <a href="https://tagparking.co.uk" class="button" style="background: #1a1a1a; color: #D9FF00; display: inline-block; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px;">Book now</a>
                 </div>
 
                 <p>Simply enter your code at checkout to apply the discount.</p>
