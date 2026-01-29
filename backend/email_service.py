@@ -115,7 +115,7 @@ def send_welcome_email(first_name: str, email: str, unsubscribe_token: str = Non
 
 def send_promo_code_email(first_name: str, email: str, promo_code: str = "TAG10") -> bool:
     """Send promo code email to subscriber."""
-    subject = f"{first_name} here's a 10% off promo code"
+    subject = f"{first_name}, here's a 10% off promo code"
 
     html_content = f"""
     <!DOCTYPE html>
@@ -127,11 +127,11 @@ def send_promo_code_email(first_name: str, email: str, promo_code: str = "TAG10"
             .header {{ background: #1a1a1a; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
             .header h1 {{ color: #D9FF00; margin: 0; font-size: 28px; }}
             .content {{ background: #ffffff; padding: 30px; }}
-            .promo-box {{ background: #1a1a1a; color: white; padding: 30px; text-align: center; border-radius: 10px; margin: 25px 0; }}
+            .promo-box {{ background: #1a1a1a; color: white; padding: 30px; text-align: center; border-radius: 16px; margin: 25px 0; }}
             .promo-code {{ font-size: 42px; font-weight: bold; color: #D9FF00; letter-spacing: 4px; margin-bottom: 10px; }}
             .promo-text {{ font-size: 16px; color: #ccc; }}
             .cta-section {{ text-align: center; margin: 30px 0; }}
-            .button {{ display: inline-block; background: #D9FF00; color: #1a1a1a; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }}
+            .button {{ display: inline-block; background: #1a1a1a; color: #D9FF00; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }}
             .tagline {{ font-size: 18px; font-weight: bold; color: #1a1a1a; margin: 25px 0 15px 0; }}
             .footer {{ background: #1a1a1a; padding: 25px; text-align: center; border-radius: 0 0 10px 10px; }}
             .footer p {{ color: #999; font-size: 12px; margin: 5px 0; }}
