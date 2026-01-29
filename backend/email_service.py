@@ -115,7 +115,7 @@ def send_welcome_email(first_name: str, email: str, unsubscribe_token: str = Non
 
 def send_promo_code_email(first_name: str, email: str, promo_code: str = "TAG10") -> bool:
     """Send promo code email to subscriber."""
-    subject = f"{first_name}, here's your 10% off promo code!"
+    subject = f"{first_name} here's a 10% off promo code"
 
     html_content = f"""
     <!DOCTYPE html>
@@ -146,7 +146,7 @@ def send_promo_code_email(first_name: str, email: str, promo_code: str = "TAG10"
             <div class="content">
                 <h2 style="margin-top: 0;">Hi {first_name},</h2>
 
-                <p>Thanks for signing up! As promised, here's your exclusive <strong>10% off</strong> promo code for your first trip with TAG.</p>
+                <p>Thanks for signing up! Although you weren't one of our winners this time, we'd still love to offer you an exclusive <strong>10% off</strong> promo code to use when you book your trip with Tag.</p>
 
                 <div class="promo-box">
                     <div class="promo-code">{promo_code}</div>
