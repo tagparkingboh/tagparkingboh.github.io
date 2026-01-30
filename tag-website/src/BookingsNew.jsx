@@ -86,34 +86,6 @@ function Bookings() {
     }
   }, [])
 
-  // Persist booking state to sessionStorage so hard refresh keeps the user on their current step
-  useEffect(() => {
-    sessionStorage.setItem('booking_step', JSON.stringify(currentStep))
-  }, [currentStep])
-
-  useEffect(() => {
-    sessionStorage.setItem('booking_formData', JSON.stringify(formData))
-  }, [formData])
-
-  useEffect(() => {
-    sessionStorage.setItem('booking_customerId', JSON.stringify(customerId))
-  }, [customerId])
-
-  useEffect(() => {
-    sessionStorage.setItem('booking_vehicleId', JSON.stringify(vehicleId))
-  }, [vehicleId])
-
-  useEffect(() => {
-    sessionStorage.setItem('booking_promoCode', JSON.stringify(promoCode))
-    sessionStorage.setItem('booking_promoCodeValid', JSON.stringify(promoCodeValid))
-    sessionStorage.setItem('booking_promoCodeMessage', JSON.stringify(promoCodeMessage))
-    sessionStorage.setItem('booking_promoCodeDiscount', JSON.stringify(promoCodeDiscount))
-  }, [promoCode, promoCodeValid, promoCodeMessage, promoCodeDiscount])
-
-  useEffect(() => {
-    sessionStorage.setItem('booking_dvlaVerified', JSON.stringify(dvlaVerified))
-  }, [dvlaVerified])
-
   // Session ID for audit trail - persists across the booking flow (survives hard refresh)
   const sessionIdRef = useRef(
     sessionStorage.getItem('booking_sessionId') || (() => {
@@ -197,6 +169,34 @@ function Bookings() {
   // Dynamic pricing state
   const [pricingInfo, setPricingInfo] = useState(null)
   const [pricingLoading, setPricingLoading] = useState(false)
+
+  // Persist booking state to sessionStorage so hard refresh keeps the user on their current step
+  useEffect(() => {
+    sessionStorage.setItem('booking_step', JSON.stringify(currentStep))
+  }, [currentStep])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_formData', JSON.stringify(formData))
+  }, [formData])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_customerId', JSON.stringify(customerId))
+  }, [customerId])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_vehicleId', JSON.stringify(vehicleId))
+  }, [vehicleId])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_promoCode', JSON.stringify(promoCode))
+    sessionStorage.setItem('booking_promoCodeValid', JSON.stringify(promoCodeValid))
+    sessionStorage.setItem('booking_promoCodeMessage', JSON.stringify(promoCodeMessage))
+    sessionStorage.setItem('booking_promoCodeDiscount', JSON.stringify(promoCodeDiscount))
+  }, [promoCode, promoCodeValid, promoCodeMessage, promoCodeDiscount])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_dvlaVerified', JSON.stringify(dvlaVerified))
+  }, [dvlaVerified])
 
   // Check availability for a date range
   const checkAvailability = (dropoffDate, pickupDate) => {
