@@ -3189,15 +3189,27 @@ async def create_payment(
             payment.paid_at = datetime.utcnow()
             db.commit()
 
-            # Mark promo code as used
+            # Mark promo code as used (search across all code fields)
             if promo_code_applied:
                 subscriber = db.query(MarketingSubscriber).filter(
-                    MarketingSubscriber.promo_code == promo_code_applied
+                    (MarketingSubscriber.promo_code == promo_code_applied) |
+                    (MarketingSubscriber.promo_10_code == promo_code_applied) |
+                    (MarketingSubscriber.promo_free_code == promo_code_applied)
                 ).first()
                 if subscriber:
-                    subscriber.promo_code_used = True
-                    subscriber.promo_code_used_booking_id = booking_id
-                    subscriber.promo_code_used_at = datetime.utcnow()
+                    now = datetime.utcnow()
+                    if subscriber.promo_10_code and subscriber.promo_10_code == promo_code_applied:
+                        subscriber.promo_10_used = True
+                        subscriber.promo_10_used_at = now
+                        subscriber.promo_10_used_booking_id = booking_id
+                    elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code_applied:
+                        subscriber.promo_free_used = True
+                        subscriber.promo_free_used_at = now
+                        subscriber.promo_free_used_booking_id = booking_id
+                    elif subscriber.promo_code and subscriber.promo_code == promo_code_applied:
+                        subscriber.promo_code_used = True
+                        subscriber.promo_code_used_at = now
+                        subscriber.promo_code_used_booking_id = booking_id
                     db.commit()
 
             # Book the slot immediately for free bookings
@@ -3559,13 +3571,26 @@ async def stripe_webhook(
             try:
                 # Get booking ID from reference
                 booking = db_service.get_booking_by_reference(db, booking_reference)
+                bid = booking.id if booking else None
                 subscriber = db.query(MarketingSubscriber).filter(
-                    MarketingSubscriber.promo_code == promo_code
+                    (MarketingSubscriber.promo_code == promo_code) |
+                    (MarketingSubscriber.promo_10_code == promo_code) |
+                    (MarketingSubscriber.promo_free_code == promo_code)
                 ).first()
                 if subscriber:
-                    subscriber.promo_code_used = True
-                    subscriber.promo_code_used_booking_id = booking.id if booking else None
-                    subscriber.promo_code_used_at = datetime.utcnow()
+                    now = datetime.utcnow()
+                    if subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
+                        subscriber.promo_10_used = True
+                        subscriber.promo_10_used_at = now
+                        subscriber.promo_10_used_booking_id = bid
+                    elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code:
+                        subscriber.promo_free_used = True
+                        subscriber.promo_free_used_at = now
+                        subscriber.promo_free_used_booking_id = bid
+                    elif subscriber.promo_code and subscriber.promo_code == promo_code:
+                        subscriber.promo_code_used = True
+                        subscriber.promo_code_used_at = now
+                        subscriber.promo_code_used_booking_id = bid
                     db.commit()
             except Exception as e:
                 log_error(

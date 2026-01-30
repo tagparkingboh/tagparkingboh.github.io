@@ -158,6 +158,8 @@ function Bookings() {
   const [departuresForDate, setDeparturesForDate] = useState([])
   const [arrivalsForDate, setArrivalsForDate] = useState([])
   const [loadingFlights, setLoadingFlights] = useState(false)
+  const [departuresLoaded, setDeparturesLoaded] = useState(false)
+  const [arrivalsLoaded, setArrivalsLoaded] = useState(false)
 
   // Parking capacity management
   const MAX_PARKING_SPOTS = 60
@@ -232,9 +234,11 @@ function Bookings() {
     const fetchDepartures = async () => {
       if (!formData.dropoffDate) {
         setDeparturesForDate([])
+        setDeparturesLoaded(false)
         return
       }
       setLoadingFlights(true)
+      setDeparturesLoaded(false)
       try {
         const dateStr = format(formData.dropoffDate, 'yyyy-MM-dd')
         const response = await fetch(`${API_BASE_URL}/api/flights/departures/${dateStr}`)
@@ -245,6 +249,7 @@ function Bookings() {
         setDeparturesForDate([])
       } finally {
         setLoadingFlights(false)
+        setDeparturesLoaded(true)
       }
     }
     fetchDepartures()
@@ -355,8 +360,10 @@ function Bookings() {
     const fetchArrivals = async () => {
       if (!formData.pickupDate) {
         setArrivalsForDate([])
+        setArrivalsLoaded(false)
         return
       }
+      setArrivalsLoaded(false)
       try {
         const dateStr = format(formData.pickupDate, 'yyyy-MM-dd')
         const response = await fetch(`${API_BASE_URL}/api/flights/arrivals/${dateStr}`)
@@ -365,6 +372,8 @@ function Bookings() {
       } catch (error) {
         console.error('Error fetching arrivals:', error)
         setArrivalsForDate([])
+      } finally {
+        setArrivalsLoaded(true)
       }
     }
     fetchArrivals()
@@ -464,7 +473,10 @@ function Bookings() {
   }, [filteredArrivalsForDate])
 
   // Clear pickupFlightTime when arrival flights change and current selection is invalid
+  // Guard: wait until both departures and arrivals have loaded to avoid race condition
+  // on page refresh where sessionStorage restores pickupFlightTime but flight data hasn't loaded yet
   useEffect(() => {
+    if (!departuresLoaded || !arrivalsLoaded) return
     if (formData.pickupFlightTime && arrivalFlightsForPickup.length === 0) {
       // No valid return flights - clear the selection
       setFormData(prev => ({ ...prev, pickupFlightTime: '' }))
@@ -475,7 +487,7 @@ function Bookings() {
         setFormData(prev => ({ ...prev, pickupFlightTime: '' }))
       }
     }
-  }, [arrivalFlightsForPickup, formData.pickupFlightTime])
+  }, [arrivalFlightsForPickup, formData.pickupFlightTime, departuresLoaded, arrivalsLoaded])
 
   // Get selected arrival/return flight details
   const selectedArrivalFlight = useMemo(() => {
