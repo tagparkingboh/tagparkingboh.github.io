@@ -209,12 +209,10 @@ function StripePayment({
   const [clientSecret, setClientSecret] = useState('')
   const [bookingReference, setBookingReference] = useState('')
   const [amount, setAmount] = useState('')
-  // Free booking only for 1-week trips with 100% promo (2-week trips pay the difference)
-  const isInitiallyFree = promoCodeDiscount === 100 && formData.package === 'quick'
-  const [loading, setLoading] = useState(!isInitiallyFree) // Don't show loading for free bookings
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [stripeLoaded, setStripeLoaded] = useState(null)
-  const [isFreeBooking, setIsFreeBooking] = useState(isInitiallyFree)
+  const [isFreeBooking, setIsFreeBooking] = useState(false)
   const [originalAmount, setOriginalAmount] = useState('')
   const [discountAmount, setDiscountAmount] = useState('')
   const [isProcessingFreeBooking, setIsProcessingFreeBooking] = useState(false)
@@ -283,28 +281,33 @@ function StripePayment({
     return await response.json()
   }
 
-  // Track if payment intent has already been created to prevent duplicates
-  const [paymentInitialized, setPaymentInitialized] = useState(false)
+  // Track the promo code that was used to create the current payment intent
+  const [initializedWithPromo, setInitializedWithPromo] = useState(undefined)
 
   useEffect(() => {
-    // For FREE bookings (1-week + 100% promo), don't call API on mount - wait for button click
-    if (isInitiallyFree) {
+    const isFree = promoCodeDiscount === 100 && formData.package === 'quick'
+
+    // For FREE bookings (1-week + 100% promo), show free booking UI
+    if (isFree) {
       const amounts = calculateAmounts()
       setOriginalAmount(amounts.original)
       setDiscountAmount(amounts.discount)
+      setIsFreeBooking(true)
       setLoading(false)
+      setClientSecret('') // Clear any existing payment intent
       return
     }
 
-    // Only create payment intent ONCE - prevents duplicate bookings from re-renders
-    if (paymentInitialized) {
+    // Skip if we already created a payment intent with the same promo code
+    if (initializedWithPromo !== undefined && initializedWithPromo === (promoCode || null)) {
       return
     }
 
-    // For PAID bookings, load Stripe and create payment intent on mount
+    // For PAID bookings, load Stripe and create payment intent
     const initPayment = async () => {
       setLoading(true)
       setError('')
+      setIsFreeBooking(false)
 
       try {
         // Load Stripe
@@ -317,9 +320,9 @@ function StripePayment({
         setStripeLoaded(stripe)
 
         const data = await createPaymentIntent()
-        setPaymentInitialized(true) // Mark as initialized to prevent re-runs
+        setInitializedWithPromo(promoCode || null) // Track which promo was used
 
-        // Handle response (should not be free booking if we got here)
+        // Handle response
         if (data.is_free_booking) {
           setBookingReference(data.booking_reference)
           setAmount(data.amount_display)
@@ -330,6 +333,10 @@ function StripePayment({
           setClientSecret(data.client_secret)
           setBookingReference(data.booking_reference)
           setAmount(data.amount_display)
+          if (data.discount_amount_display) {
+            setOriginalAmount(data.original_amount_display)
+            setDiscountAmount(data.discount_amount_display)
+          }
         }
       } catch (err) {
         console.error('Payment init error:', err)
@@ -341,7 +348,7 @@ function StripePayment({
 
     initPayment()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isInitiallyFree]) // Only run once on mount
+  }, [promoCode, promoCodeDiscount]) // Re-run when promo code changes
 
   const handleSuccess = async (paymentIntent, reference) => {
     // Book the slot now that payment succeeded
