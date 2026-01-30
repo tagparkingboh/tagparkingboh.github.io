@@ -219,14 +219,12 @@ function StripePayment({
   const [discountAmount, setDiscountAmount] = useState('')
   const [isProcessingFreeBooking, setIsProcessingFreeBooking] = useState(false)
 
-  // Calculate display amounts for free booking preview
+  // Calculate display amounts for free booking preview (1-week + 100% promo only)
   const calculateAmounts = () => {
     const pricePounds = pricingInfo ? pricingInfo.price : 0
-    const week1BasePounds = pricingInfo?.week1_price || 0
-    const discountPounds = Math.min(week1BasePounds, pricePounds)
     return {
       original: `£${pricePounds.toFixed(2)}`,
-      discount: `£${discountPounds.toFixed(2)}`,
+      discount: `£${pricePounds.toFixed(2)}`,
     }
   }
 

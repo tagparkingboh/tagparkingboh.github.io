@@ -2921,11 +2921,16 @@ async def create_payment(
                 print(f"[PROMO] Found subscriber: {subscriber.email}, used: {promo_used}")
                 if not promo_used:
                     if discount_percent == 100:
-                        # Free parking promo: deduct the 1-week base rate (early tier) price
-                        # e.g. 2-week standard £150 - 1-week base £89 = customer pays £61
-                        week1_base_pence = int(BookingService.get_package_prices()["quick"]["early"] * 100)
-                        discount_amount = min(week1_base_pence, original_amount)  # Cap at original amount
-                        is_free_booking = (discount_amount >= original_amount)  # Only free if 1-week trip
+                        if request.package == "quick":
+                            # 1-week trip: completely free regardless of tier
+                            discount_amount = original_amount
+                            is_free_booking = True
+                        else:
+                            # 2-week trip: deduct the 1-week base rate (early tier) price
+                            # e.g. 2-week standard £150 - 1-week base £89 = customer pays £61
+                            week1_base_pence = int(BookingService.get_package_prices()["quick"]["early"] * 100)
+                            discount_amount = min(week1_base_pence, original_amount)
+                            is_free_booking = False
                     else:
                         discount_amount = int(original_amount * discount_percent / 100)
                         is_free_booking = False

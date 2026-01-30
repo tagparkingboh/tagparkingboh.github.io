@@ -56,13 +56,22 @@ const normalizeAirlineName = (name) => {
   return name
 }
 
+// Helper to load booking state from sessionStorage
+function loadBookingState(key, fallback) {
+  try {
+    const saved = sessionStorage.getItem(`booking_${key}`)
+    if (saved !== null) return JSON.parse(saved)
+  } catch (e) { /* ignore parse errors */ }
+  return fallback
+}
+
 function Bookings() {
   const navigate = useNavigate()
-  const [currentStep, setCurrentStep] = useState(1)
+  const [currentStep, setCurrentStep] = useState(() => loadBookingState('step', 1))
   const [paymentComplete, setPaymentComplete] = useState(false)
   const [bookingConfirmation, setBookingConfirmation] = useState(null)
-  const [customerId, setCustomerId] = useState(null)
-  const [vehicleId, setVehicleId] = useState(null)
+  const [customerId, setCustomerId] = useState(() => loadBookingState('customerId', null))
+  const [vehicleId, setVehicleId] = useState(() => loadBookingState('vehicleId', null))
   const [saving, setSaving] = useState(false)
   // Welcome modal state - shown when user clicks Continue from Step 1
   const [showWelcomeModal, setShowWelcomeModal] = useState(false)
@@ -77,12 +86,46 @@ function Bookings() {
     }
   }, [])
 
-  // Session ID for audit trail - persists across the booking flow
-  const sessionIdRef = useRef(generateSessionId())
+  // Persist booking state to sessionStorage so hard refresh keeps the user on their current step
+  useEffect(() => {
+    sessionStorage.setItem('booking_step', JSON.stringify(currentStep))
+  }, [currentStep])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_formData', JSON.stringify(formData))
+  }, [formData])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_customerId', JSON.stringify(customerId))
+  }, [customerId])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_vehicleId', JSON.stringify(vehicleId))
+  }, [vehicleId])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_promoCode', JSON.stringify(promoCode))
+    sessionStorage.setItem('booking_promoCodeValid', JSON.stringify(promoCodeValid))
+    sessionStorage.setItem('booking_promoCodeMessage', JSON.stringify(promoCodeMessage))
+    sessionStorage.setItem('booking_promoCodeDiscount', JSON.stringify(promoCodeDiscount))
+  }, [promoCode, promoCodeValid, promoCodeMessage, promoCodeDiscount])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_dvlaVerified', JSON.stringify(dvlaVerified))
+  }, [dvlaVerified])
+
+  // Session ID for audit trail - persists across the booking flow (survives hard refresh)
+  const sessionIdRef = useRef(
+    sessionStorage.getItem('booking_sessionId') || (() => {
+      const newId = generateSessionId()
+      sessionStorage.setItem('booking_sessionId', newId)
+      return newId
+    })()
+  )
   // DVLA lookup state
   const [dvlaLoading, setDvlaLoading] = useState(false)
   const [dvlaError, setDvlaError] = useState('')
-  const [dvlaVerified, setDvlaVerified] = useState(false)
+  const [dvlaVerified, setDvlaVerified] = useState(() => loadBookingState('dvlaVerified', false))
   // Address lookup state
   const [addressLoading, setAddressLoading] = useState(false)
   const [addressError, setAddressError] = useState('')
@@ -91,38 +134,49 @@ function Bookings() {
   const [postcodeSearched, setPostcodeSearched] = useState('')
   const [manualAddressEntry, setManualAddressEntry] = useState(false)
   // Promo code state
-  const [promoCode, setPromoCode] = useState('')
+  const [promoCode, setPromoCode] = useState(() => loadBookingState('promoCode', ''))
   const [promoCodeValidating, setPromoCodeValidating] = useState(false)
-  const [promoCodeValid, setPromoCodeValid] = useState(false)
-  const [promoCodeMessage, setPromoCodeMessage] = useState('')
-  const [promoCodeDiscount, setPromoCodeDiscount] = useState(0) // Discount percentage (10)
-  const [formData, setFormData] = useState({
-    dropoffDate: null,
-    dropoffAirline: '',
-    dropoffFlight: '',
-    dropoffSlot: '',
-    pickupDate: null,
-    pickupFlightTime: '',
-    registration: '',
-    make: '',
-    customMake: '',
-    model: '',
-    customModel: '',
-    colour: '',
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    flightNumber: '',
-    package: '',
-    // Billing Address
-    billingAddress1: '',
-    billingAddress2: '',
-    billingCity: '',
-    billingCounty: '',
-    billingPostcode: '',
-    billingCountry: 'United Kingdom',
-    terms: false
+  const [promoCodeValid, setPromoCodeValid] = useState(() => loadBookingState('promoCodeValid', false))
+  const [promoCodeMessage, setPromoCodeMessage] = useState(() => loadBookingState('promoCodeMessage', ''))
+  const [promoCodeDiscount, setPromoCodeDiscount] = useState(() => loadBookingState('promoCodeDiscount', 0))
+  const [formData, setFormData] = useState(() => {
+    const defaults = {
+      dropoffDate: null,
+      dropoffAirline: '',
+      dropoffFlight: '',
+      dropoffSlot: '',
+      pickupDate: null,
+      pickupFlightTime: '',
+      registration: '',
+      make: '',
+      customMake: '',
+      model: '',
+      customModel: '',
+      colour: '',
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      flightNumber: '',
+      package: '',
+      // Billing Address
+      billingAddress1: '',
+      billingAddress2: '',
+      billingCity: '',
+      billingCounty: '',
+      billingPostcode: '',
+      billingCountry: 'United Kingdom',
+      terms: false
+    }
+    const saved = loadBookingState('formData', null)
+    if (!saved) return defaults
+    // Restore dates from ISO strings
+    return {
+      ...defaults,
+      ...saved,
+      dropoffDate: saved.dropoffDate ? new Date(saved.dropoffDate) : null,
+      pickupDate: saved.pickupDate ? new Date(saved.pickupDate) : null,
+    }
   })
 
   // API base URL
@@ -822,6 +876,10 @@ function Bookings() {
 
   const handlePaymentSuccess = (paymentData) => {
     console.log('Payment successful:', paymentData)
+    // Clear saved booking state - booking is complete
+    Object.keys(sessionStorage).forEach(key => {
+      if (key.startsWith('booking_')) sessionStorage.removeItem(key)
+    })
     setPaymentComplete(true)
     setBookingConfirmation({
       reference: paymentData.bookingReference,
@@ -1762,6 +1820,9 @@ function Bookings() {
                       <span className="discount-amount">-£{(() => {
                         const basePrice = pricingInfo ? pricingInfo.price : 0
                         if (promoCodeDiscount === 100) {
+                          if (formData.package === 'quick') {
+                            return basePrice.toFixed(2)
+                          }
                           const week1BasePrice = pricingInfo?.week1_price || 0
                           return Math.min(week1BasePrice, basePrice).toFixed(2)
                         }
@@ -1778,8 +1839,12 @@ function Bookings() {
                       let discount = 0
                       if (promoCodeValid && promoCodeDiscount > 0) {
                         if (promoCodeDiscount === 100) {
-                          const week1BasePrice = pricingInfo?.week1_price || 0
-                          discount = Math.min(week1BasePrice, basePrice)
+                          if (formData.package === 'quick') {
+                            discount = basePrice
+                          } else {
+                            const week1BasePrice = pricingInfo?.week1_price || 0
+                            discount = Math.min(week1BasePrice, basePrice)
+                          }
                         } else {
                           discount = basePrice * promoCodeDiscount / 100
                         }
