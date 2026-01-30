@@ -1167,11 +1167,36 @@ async def mark_booking_paid(
             package_name = "2 Weeks"
 
         # Amount paid
-        amount_paid = f"£{payment.amount_pence / 100:.2f}" if payment else "N/A"
+        payment_pence = payment.amount_pence if payment else 0
+        amount_paid = f"£{payment_pence / 100:.2f}" if payment else "N/A"
 
         # Use flight numbers if available, otherwise show as not applicable
         departure_flight = booking.dropoff_flight_number or "-"
         return_flight = booking.pickup_flight_number or "-"
+
+        # Look up promo code used for this booking
+        promo_code_display = None
+        discount_display = None
+        original_display = None
+        subscriber = db.query(MarketingSubscriber).filter(
+            (MarketingSubscriber.promo_10_used_booking_id == booking_id) |
+            (MarketingSubscriber.promo_free_used_booking_id == booking_id) |
+            (MarketingSubscriber.promo_code_used_booking_id == booking_id)
+        ).first()
+        if subscriber:
+            if subscriber.promo_10_used_booking_id == booking_id:
+                promo_code_display = subscriber.promo_10_code
+            elif subscriber.promo_free_used_booking_id == booking_id:
+                promo_code_display = subscriber.promo_free_code
+            elif subscriber.promo_code_used_booking_id == booking_id:
+                promo_code_display = subscriber.promo_code
+
+            if promo_code_display:
+                orig_pence = calculate_price_in_pence(booking.package, drop_off_date=booking.dropoff_date)
+                disc_pence = orig_pence - payment_pence
+                if disc_pence > 0:
+                    original_display = f"£{orig_pence / 100:.2f}"
+                    discount_display = f"£{disc_pence / 100:.2f}"
 
         email_sent = send_booking_confirmation_email(
             email=booking.customer.email,
@@ -1189,6 +1214,9 @@ async def mark_booking_paid(
             vehicle_registration=booking.vehicle.registration,
             package_name=package_name,
             amount_paid=amount_paid,
+            promo_code=promo_code_display,
+            discount_amount=discount_display,
+            original_amount=original_display,
         )
 
         if email_sent:
