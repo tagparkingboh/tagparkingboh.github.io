@@ -256,6 +256,7 @@ def send_booking_confirmation_email(
     amount_paid: str,
     promo_code: str = None,
     discount_amount: str = None,
+    original_amount: str = None,
 ) -> bool:
     """
     Send booking confirmation email after successful payment using the HTML template.
@@ -284,10 +285,25 @@ def send_booking_confirmation_email(
     """
     subject = f"Booking Confirmed - {booking_reference}"
 
-    # Build discount section if applicable
+    # Build discount section if applicable (subtotal + discount rows)
     discount_section = ""
     if promo_code and discount_amount:
-        discount_section = f"""
+        # Show original price as subtotal when available
+        subtotal_row = ""
+        if original_amount:
+            subtotal_row = f"""
+<tr>
+<td style="padding:10px 0; border-bottom:1px solid #e5e5e5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr>
+<td style="font-family: Helvetica, Arial, sans-serif; color:#666666; font-size:16px;">Subtotal</td>
+<td align="right" style="font-family: Helvetica, Arial, sans-serif; color:#343434; font-size:16px;">{original_amount}</td>
+</tr>
+</table>
+</td>
+</tr>
+"""
+        discount_section = f"""{subtotal_row}
 <tr>
 <td style="padding:10px 0; border-bottom:1px solid #e5e5e5;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">

@@ -3302,7 +3302,8 @@ async def create_payment(
                     package_name=package_name,
                     amount_paid="£0.00",
                     promo_code=promo_code_applied,
-                    discount_amount=f"£{original_amount / 100:.2f}",
+                    discount_amount=f"£{discount_amount / 100:.2f}",
+                    original_amount=f"£{original_amount / 100:.2f}",
                 )
 
                 # Update booking with email sent status
@@ -3347,6 +3348,8 @@ async def create_payment(
             departure_id=request.departure_id,
             drop_off_slot=request.drop_off_slot,
             promo_code=promo_code_applied,
+            original_amount=original_amount if promo_code_applied else None,
+            discount_amount=discount_amount if promo_code_applied else None,
         )
 
         intent = create_payment_intent(intent_request)
@@ -3487,6 +3490,8 @@ async def stripe_webhook(
         departure_id = metadata.get("departure_id")
         drop_off_slot = metadata.get("drop_off_slot")
         promo_code = metadata.get("promo_code")
+        meta_original_amount = metadata.get("original_amount")  # pence, as string
+        meta_discount_amount = metadata.get("discount_amount")  # pence, as string
 
         # Update payment status in database (this also updates booking to CONFIRMED)
         # Returns (payment, was_already_processed) for idempotency
@@ -3635,12 +3640,21 @@ async def stripe_webhook(
                 amount_pence = data.get("amount", 0)
                 amount_paid = f"£{amount_pence / 100:.2f}"
 
-                # Calculate discount if promo code was used
-                discount_amount = None
-                if promo_code:
-                    # 10% discount
-                    original_amount = amount_pence / 0.9  # Work backwards from discounted amount
-                    discount_amount = f"£{(original_amount - amount_pence) / 100:.2f}"
+                # Calculate discount from Stripe metadata (original_amount & discount_amount in pence)
+                discount_display = None
+                original_display = None
+                if promo_code and meta_original_amount and meta_discount_amount:
+                    try:
+                        orig_pence = int(meta_original_amount)
+                        disc_pence = int(meta_discount_amount)
+                        original_display = f"£{orig_pence / 100:.2f}"
+                        discount_display = f"£{disc_pence / 100:.2f}"
+                    except (ValueError, TypeError):
+                        pass
+                elif promo_code:
+                    # Fallback for older payment intents without metadata
+                    original_amount_calc = amount_pence / 0.9
+                    discount_display = f"£{(original_amount_calc - amount_pence) / 100:.2f}"
 
                 print(f"[EMAIL] Calling send_booking_confirmation_email...")
                 email_sent = send_booking_confirmation_email(
@@ -3660,7 +3674,8 @@ async def stripe_webhook(
                     package_name=package_name,
                     amount_paid=amount_paid,
                     promo_code=promo_code if promo_code else None,
-                    discount_amount=discount_amount,
+                    discount_amount=discount_display,
+                    original_amount=original_display,
                 )
                 print(f"[EMAIL] send_booking_confirmation_email returned: {email_sent}")
 
