@@ -1308,8 +1308,36 @@ async def resend_booking_confirmation_email(
 
     # Get payment amount
     amount_paid = "£0.00"
+    payment_pence = 0
     if booking.payment and booking.payment.amount_pence:
-        amount_paid = f"£{booking.payment.amount_pence / 100:.2f}"
+        payment_pence = booking.payment.amount_pence
+        amount_paid = f"£{payment_pence / 100:.2f}"
+
+    # Look up promo code used for this booking
+    promo_code_display = None
+    discount_display = None
+    original_display = None
+    subscriber = db.query(MarketingSubscriber).filter(
+        (MarketingSubscriber.promo_10_used_booking_id == booking_id) |
+        (MarketingSubscriber.promo_free_used_booking_id == booking_id) |
+        (MarketingSubscriber.promo_code_used_booking_id == booking_id)
+    ).first()
+    if subscriber:
+        # Determine which promo code was used
+        if subscriber.promo_10_used_booking_id == booking_id:
+            promo_code_display = subscriber.promo_10_code
+        elif subscriber.promo_free_used_booking_id == booking_id:
+            promo_code_display = subscriber.promo_free_code
+        elif subscriber.promo_code_used_booking_id == booking_id:
+            promo_code_display = subscriber.promo_code
+
+        if promo_code_display:
+            # Calculate original price from booking date and package
+            orig_pence = calculate_price_in_pence(booking.package, drop_off_date=booking.dropoff_date)
+            disc_pence = orig_pence - payment_pence
+            if disc_pence > 0:
+                original_display = f"£{orig_pence / 100:.2f}"
+                discount_display = f"£{disc_pence / 100:.2f}"
 
     # Send the email
     email_sent = send_booking_confirmation_email(
@@ -1328,6 +1356,9 @@ async def resend_booking_confirmation_email(
         vehicle_registration=booking.vehicle.registration,
         package_name=package_name,
         amount_paid=amount_paid,
+        promo_code=promo_code_display,
+        discount_amount=discount_display,
+        original_amount=original_display,
     )
 
     if email_sent:
