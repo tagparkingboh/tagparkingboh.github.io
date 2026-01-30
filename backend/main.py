@@ -551,9 +551,11 @@ async def validate_promo_code(
             message="Please enter a promo code",
         )
 
-    # Look up the promo code in marketing subscribers
+    # Look up the promo code across all code fields (legacy, 10%, and free)
     subscriber = db.query(MarketingSubscriber).filter(
-        MarketingSubscriber.promo_code == code
+        (MarketingSubscriber.promo_code == code) |
+        (MarketingSubscriber.promo_10_code == code) |
+        (MarketingSubscriber.promo_free_code == code)
     ).first()
 
     if not subscriber:
@@ -562,14 +564,35 @@ async def validate_promo_code(
             message="Invalid promo code",
         )
 
-    if subscriber.promo_code_used:
+    # Determine which promo type this code belongs to and check if used
+    if subscriber.promo_10_code and subscriber.promo_10_code == code:
+        if subscriber.promo_10_used:
+            return PromoCodeValidateResponse(
+                valid=False,
+                message="This promo code has already been used",
+            )
+        discount = 10
+    elif subscriber.promo_free_code and subscriber.promo_free_code == code:
+        if subscriber.promo_free_used:
+            return PromoCodeValidateResponse(
+                valid=False,
+                message="This promo code has already been used",
+            )
+        discount = 100
+    elif subscriber.promo_code and subscriber.promo_code == code:
+        # Legacy field
+        if subscriber.promo_code_used:
+            return PromoCodeValidateResponse(
+                valid=False,
+                message="This promo code has already been used",
+            )
+        discount = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
+    else:
         return PromoCodeValidateResponse(
             valid=False,
-            message="This promo code has already been used",
+            message="Invalid promo code",
         )
 
-    # Valid and unused - use per-code discount percent (default to 10% if not set)
-    discount = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
     if discount == 100:
         message = "Promo code applied! 1 week free parking!"
     else:
@@ -2878,13 +2901,25 @@ async def create_payment(
             promo_code = request.promo_code.strip().upper()
             print(f"[PROMO] Looking up promo code: {promo_code}")
             subscriber = db.query(MarketingSubscriber).filter(
-                MarketingSubscriber.promo_code == promo_code
+                (MarketingSubscriber.promo_code == promo_code) |
+                (MarketingSubscriber.promo_10_code == promo_code) |
+                (MarketingSubscriber.promo_free_code == promo_code)
             ).first()
             if subscriber:
-                print(f"[PROMO] Found subscriber: {subscriber.email}, used: {subscriber.promo_code_used}")
-                if not subscriber.promo_code_used:
-                    # Valid promo code - use per-code discount (default 10%)
+                # Determine which promo type this code belongs to
+                promo_used = False
+                if subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
+                    promo_used = subscriber.promo_10_used
+                    discount_percent = 10
+                elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code:
+                    promo_used = subscriber.promo_free_used
+                    discount_percent = 100
+                elif subscriber.promo_code and subscriber.promo_code == promo_code:
+                    promo_used = subscriber.promo_code_used
                     discount_percent = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
+
+                print(f"[PROMO] Found subscriber: {subscriber.email}, used: {promo_used}")
+                if not promo_used:
                     if discount_percent == 100:
                         # Free parking promo: deduct the 1-week base rate (early tier) price
                         # e.g. 2-week standard £150 - 1-week base £89 = customer pays £61
