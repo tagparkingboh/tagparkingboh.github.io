@@ -3294,7 +3294,7 @@ async def create_payment(
                     pickup_date=pickup_date_str,
                     pickup_time=pickup_time_str,
                     departure_flight=f"{request.flight_number}",
-                    return_flight=f"{request.pickup_flight_number or 'TBC'} from {request.pickup_origin or 'TBC'}",
+                    return_flight=f"{request.pickup_flight_number or 'TBC'} from {pickup_origin or 'TBC'}",
                     vehicle_make=vehicle_make,
                     vehicle_model=vehicle_model,
                     vehicle_colour=vehicle_colour,
