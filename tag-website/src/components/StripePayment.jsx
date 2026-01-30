@@ -202,27 +202,31 @@ function StripePayment({
   sessionId,
   promoCode,
   promoCodeDiscount = 0,
+  pricingInfo,
   onPaymentSuccess,
   onPaymentError,
 }) {
   const [clientSecret, setClientSecret] = useState('')
   const [bookingReference, setBookingReference] = useState('')
   const [amount, setAmount] = useState('')
-  const [loading, setLoading] = useState(promoCodeDiscount !== 100) // Don't show loading for free bookings
+  // Free booking only for 1-week trips with 100% promo (2-week trips pay the difference)
+  const isInitiallyFree = promoCodeDiscount === 100 && formData.package === 'quick'
+  const [loading, setLoading] = useState(!isInitiallyFree) // Don't show loading for free bookings
   const [error, setError] = useState('')
   const [stripeLoaded, setStripeLoaded] = useState(null)
-  const [isFreeBooking, setIsFreeBooking] = useState(promoCodeDiscount === 100)
+  const [isFreeBooking, setIsFreeBooking] = useState(isInitiallyFree)
   const [originalAmount, setOriginalAmount] = useState('')
   const [discountAmount, setDiscountAmount] = useState('')
   const [isProcessingFreeBooking, setIsProcessingFreeBooking] = useState(false)
 
   // Calculate display amounts for free booking preview
   const calculateAmounts = () => {
-    // Base prices in pence
-    const basePrice = formData.package === 'quick' ? 9900 : 15000
+    const pricePounds = pricingInfo ? pricingInfo.price : 0
+    const week1BasePounds = pricingInfo?.week1_price || 0
+    const discountPounds = Math.min(week1BasePounds, pricePounds)
     return {
-      original: `£${(basePrice / 100).toFixed(2)}`,
-      discount: `£${(basePrice / 100).toFixed(2)}`,
+      original: `£${pricePounds.toFixed(2)}`,
+      discount: `£${discountPounds.toFixed(2)}`,
     }
   }
 
@@ -285,8 +289,8 @@ function StripePayment({
   const [paymentInitialized, setPaymentInitialized] = useState(false)
 
   useEffect(() => {
-    // For FREE bookings (100% off), don't call API on mount - wait for button click
-    if (promoCodeDiscount === 100) {
+    // For FREE bookings (1-week + 100% promo), don't call API on mount - wait for button click
+    if (isInitiallyFree) {
       const amounts = calculateAmounts()
       setOriginalAmount(amounts.original)
       setDiscountAmount(amounts.discount)
@@ -339,7 +343,7 @@ function StripePayment({
 
     initPayment()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [promoCodeDiscount]) // Only run once on mount (promoCodeDiscount won't change)
+  }, [isInitiallyFree]) // Only run once on mount
 
   const handleSuccess = async (paymentIntent, reference) => {
     // Book the slot now that payment succeeded
@@ -438,7 +442,7 @@ function StripePayment({
     return (
       <div className="stripe-payment-container free-booking">
         <div className="free-booking-summary">
-          <div className="free-booking-badge">100% OFF</div>
+          <div className="free-booking-badge">1 WEEK FREE</div>
           <h3>Your booking is free!</h3>
           <div className="price-breakdown">
             <div className="price-row original">

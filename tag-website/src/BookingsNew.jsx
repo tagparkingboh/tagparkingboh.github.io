@@ -1758,8 +1758,15 @@ function Bookings() {
                       <span>£{pricingInfo ? pricingInfo.price.toFixed(2) : (formData.package === 'quick' ? '99.00' : '150.00')}</span>
                     </div>
                     <div className="summary-item discount">
-                      <span>Promo Discount ({promoCodeDiscount}%)</span>
-                      <span className="discount-amount">-£{((pricingInfo ? pricingInfo.price : (formData.package === 'quick' ? 99 : 150)) * promoCodeDiscount / 100).toFixed(2)}</span>
+                      <span>{promoCodeDiscount === 100 ? '1 Week Free Parking' : `Promo Discount (${promoCodeDiscount}%)`}</span>
+                      <span className="discount-amount">-£{(() => {
+                        const basePrice = pricingInfo ? pricingInfo.price : 0
+                        if (promoCodeDiscount === 100) {
+                          const week1BasePrice = pricingInfo?.week1_price || 0
+                          return Math.min(week1BasePrice, basePrice).toFixed(2)
+                        }
+                        return (basePrice * promoCodeDiscount / 100).toFixed(2)
+                      })()}</span>
                     </div>
                   </>
                 )}
@@ -1767,8 +1774,16 @@ function Bookings() {
                   <span>Total</span>
                   <span>
                     £{(() => {
-                      const basePrice = pricingInfo ? pricingInfo.price : (formData.package === 'quick' ? 99 : 150)
-                      const discount = promoCodeValid && promoCodeDiscount > 0 ? basePrice * promoCodeDiscount / 100 : 0
+                      const basePrice = pricingInfo ? pricingInfo.price : 0
+                      let discount = 0
+                      if (promoCodeValid && promoCodeDiscount > 0) {
+                        if (promoCodeDiscount === 100) {
+                          const week1BasePrice = pricingInfo?.week1_price || 0
+                          discount = Math.min(week1BasePrice, basePrice)
+                        } else {
+                          discount = basePrice * promoCodeDiscount / 100
+                        }
+                      }
                       return (basePrice - discount).toFixed(2)
                     })()}
                   </span>
@@ -1849,6 +1864,7 @@ function Bookings() {
                   sessionId={sessionIdRef.current}
                   promoCode={promoCodeValid ? promoCode : null}
                   promoCodeDiscount={promoCodeValid ? promoCodeDiscount : 0}
+                  pricingInfo={pricingInfo}
                   onPaymentSuccess={handlePaymentSuccess}
                   onPaymentError={handlePaymentError}
                 />

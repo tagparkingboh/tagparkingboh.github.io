@@ -696,11 +696,10 @@ class TestPromoCodePaymentIntegration:
     @pytest.mark.asyncio
     async def test_payment_intent_without_promo_code(self, client):
         """Payment without promo code should charge full price."""
-        # Note: 2026-02-10 is 14+ days away = early bird pricing (£99)
         mock_intent = MagicMock()
         mock_intent.client_secret = "pi_test_secret_123"
         mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 9900  # £99.00 (early bird tier)
+        mock_intent.amount = 7900  # £79.00 (1 week base)
         mock_intent.currency = "gbp"
         mock_intent.status = "requires_payment_method"
 
@@ -708,17 +707,18 @@ class TestPromoCodePaymentIntegration:
             with patch('main.create_payment_intent', return_value=mock_intent) as mock_create:
                 with patch('main.get_settings') as mock_settings:
                     mock_settings.return_value.stripe_publishable_key = "pk_test_123"
+                    with patch('main.calculate_price_in_pence', return_value=7900):
 
-                    response = await client.post(
-                        "/api/payments/create-intent",
-                        json=self._get_payment_request()
-                    )
+                        response = await client.post(
+                            "/api/payments/create-intent",
+                            json=self._get_payment_request()
+                        )
 
-                    assert response.status_code == 200
-                    data = response.json()
-                    # No discount applied - full early bird price
-                    assert data["amount"] == 9900
-                    assert data["amount_display"] == "£99.00"
+                        assert response.status_code == 200
+                        data = response.json()
+                        # No discount applied - full price
+                        assert data["amount"] == 7900
+                        assert data["amount_display"] == "£79.00"
 
     @pytest.mark.asyncio
     async def test_payment_intent_with_valid_promo_code(self, client):
@@ -729,11 +729,11 @@ class TestPromoCodePaymentIntegration:
         finally:
             db.close()
 
-        # 10% off £99 (early bird) = £89.10
+        # 10% off £79 = £71.10
         mock_intent = MagicMock()
         mock_intent.client_secret = "pi_test_secret_123"
         mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 8910  # £89.10
+        mock_intent.amount = 7110  # £71.10
         mock_intent.currency = "gbp"
         mock_intent.status = "requires_payment_method"
 
@@ -741,21 +741,22 @@ class TestPromoCodePaymentIntegration:
             with patch('main.create_payment_intent', return_value=mock_intent) as mock_create:
                 with patch('main.get_settings') as mock_settings:
                     mock_settings.return_value.stripe_publishable_key = "pk_test_123"
+                    with patch('main.calculate_price_in_pence', return_value=7900):
 
-                    response = await client.post(
-                        "/api/payments/create-intent",
-                        json=self._get_payment_request(promo_code="SAVE10")
-                    )
+                        response = await client.post(
+                            "/api/payments/create-intent",
+                            json=self._get_payment_request(promo_code="SAVE10")
+                        )
 
-                    assert response.status_code == 200
-                    data = response.json()
-                    # 10% discount applied to early bird price
-                    assert data["amount"] == 8910
-                    assert data["amount_display"] == "£89.10"
+                        assert response.status_code == 200
+                        data = response.json()
+                        # 10% discount applied: £79 - £7.90 = £71.10
+                        assert data["amount"] == 7110
+                        assert data["amount_display"] == "£71.10"
 
-                    # Verify promo code was passed to create_payment_intent
-                    call_args = mock_create.call_args
-                    assert call_args[0][0].promo_code == "SAVE10"
+                        # Verify promo code was passed to create_payment_intent
+                        call_args = mock_create.call_args
+                        assert call_args[0][0].promo_code == "SAVE10"
 
     @pytest.mark.asyncio
     async def test_payment_intent_with_invalid_promo_code(self, client):
@@ -763,7 +764,7 @@ class TestPromoCodePaymentIntegration:
         mock_intent = MagicMock()
         mock_intent.client_secret = "pi_test_secret_123"
         mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 9900  # Full early bird price
+        mock_intent.amount = 7900  # Full price
         mock_intent.currency = "gbp"
         mock_intent.status = "requires_payment_method"
 
@@ -771,16 +772,17 @@ class TestPromoCodePaymentIntegration:
             with patch('main.create_payment_intent', return_value=mock_intent):
                 with patch('main.get_settings') as mock_settings:
                     mock_settings.return_value.stripe_publishable_key = "pk_test_123"
+                    with patch('main.calculate_price_in_pence', return_value=7900):
 
-                    response = await client.post(
-                        "/api/payments/create-intent",
-                        json=self._get_payment_request(promo_code="INVALIDCODE")
-                    )
+                        response = await client.post(
+                            "/api/payments/create-intent",
+                            json=self._get_payment_request(promo_code="INVALIDCODE")
+                        )
 
-                    assert response.status_code == 200
-                    data = response.json()
-                    # No discount - invalid code ignored
-                    assert data["amount"] == 9900
+                        assert response.status_code == 200
+                        data = response.json()
+                        # No discount - invalid code ignored
+                        assert data["amount"] == 7900
 
     @pytest.mark.asyncio
     async def test_payment_intent_with_used_promo_code(self, client):
@@ -796,7 +798,7 @@ class TestPromoCodePaymentIntegration:
         mock_intent = MagicMock()
         mock_intent.client_secret = "pi_test_secret_123"
         mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 9900  # Full early bird price
+        mock_intent.amount = 7900  # Full price
         mock_intent.currency = "gbp"
         mock_intent.status = "requires_payment_method"
 
@@ -804,16 +806,17 @@ class TestPromoCodePaymentIntegration:
             with patch('main.create_payment_intent', return_value=mock_intent):
                 with patch('main.get_settings') as mock_settings:
                     mock_settings.return_value.stripe_publishable_key = "pk_test_123"
+                    with patch('main.calculate_price_in_pence', return_value=7900):
 
-                    response = await client.post(
-                        "/api/payments/create-intent",
-                        json=self._get_payment_request(promo_code="USEDCODE")
-                    )
+                        response = await client.post(
+                            "/api/payments/create-intent",
+                            json=self._get_payment_request(promo_code="USEDCODE")
+                        )
 
-                    assert response.status_code == 200
-                    data = response.json()
-                    # No discount - code already used
-                    assert data["amount"] == 9900
+                        assert response.status_code == 200
+                        data = response.json()
+                        # No discount - code already used
+                        assert data["amount"] == 7900
 
     @pytest.mark.asyncio
     async def test_payment_intent_promo_code_case_insensitive(self, client):
@@ -824,11 +827,11 @@ class TestPromoCodePaymentIntegration:
         finally:
             db.close()
 
-        # 10% off £99 = £89.10
+        # 10% off £79 = £71.10
         mock_intent = MagicMock()
         mock_intent.client_secret = "pi_test_secret_123"
         mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 8910  # Discounted
+        mock_intent.amount = 7110  # Discounted
         mock_intent.currency = "gbp"
         mock_intent.status = "requires_payment_method"
 
@@ -836,16 +839,17 @@ class TestPromoCodePaymentIntegration:
             with patch('main.create_payment_intent', return_value=mock_intent) as mock_create:
                 with patch('main.get_settings') as mock_settings:
                     mock_settings.return_value.stripe_publishable_key = "pk_test_123"
+                    with patch('main.calculate_price_in_pence', return_value=7900):
 
-                    # Use lowercase
-                    response = await client.post(
-                        "/api/payments/create-intent",
-                        json=self._get_payment_request(promo_code="mycode")
-                    )
+                        # Use lowercase
+                        response = await client.post(
+                            "/api/payments/create-intent",
+                            json=self._get_payment_request(promo_code="mycode")
+                        )
 
-                    assert response.status_code == 200
-                    # Discount should be applied
-                    assert response.json()["amount"] == 8910
+                        assert response.status_code == 200
+                        # Discount should be applied: £79 - 10% = £71.10
+                        assert response.json()["amount"] == 7110
 
     @pytest.mark.asyncio
     async def test_payment_intent_promo_code_whitespace_trimmed(self, client):
@@ -856,11 +860,11 @@ class TestPromoCodePaymentIntegration:
         finally:
             db.close()
 
-        # 10% off £99 = £89.10
+        # 10% off £79 = £71.10
         mock_intent = MagicMock()
         mock_intent.client_secret = "pi_test_secret_123"
         mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 8910
+        mock_intent.amount = 7110
         mock_intent.currency = "gbp"
         mock_intent.status = "requires_payment_method"
 
@@ -868,14 +872,15 @@ class TestPromoCodePaymentIntegration:
             with patch('main.create_payment_intent', return_value=mock_intent):
                 with patch('main.get_settings') as mock_settings:
                     mock_settings.return_value.stripe_publishable_key = "pk_test_123"
+                    with patch('main.calculate_price_in_pence', return_value=7900):
 
-                    response = await client.post(
-                        "/api/payments/create-intent",
-                        json=self._get_payment_request(promo_code="  TRIMCODE  ")
-                    )
+                        response = await client.post(
+                            "/api/payments/create-intent",
+                            json=self._get_payment_request(promo_code="  TRIMCODE  ")
+                        )
 
-                    assert response.status_code == 200
-                    assert response.json()["amount"] == 8910
+                        assert response.status_code == 200
+                        assert response.json()["amount"] == 7110
 
 
 # =============================================================================
@@ -1173,7 +1178,7 @@ class TestPromoCodeEndToEndFlow:
         mock_intent = MagicMock()
         mock_intent.client_secret = "pi_test_secret"
         mock_intent.payment_intent_id = "pi_test"
-        mock_intent.amount = 9900  # Full early bird price
+        mock_intent.amount = 7900  # Full price
         mock_intent.currency = "gbp"
         mock_intent.status = "requires_payment_method"
 
@@ -1181,21 +1186,22 @@ class TestPromoCodeEndToEndFlow:
             with patch('main.create_payment_intent', return_value=mock_intent):
                 with patch('main.get_settings') as mock_settings:
                     mock_settings.return_value.stripe_publishable_key = "pk_test"
+                    with patch('main.calculate_price_in_pence', return_value=7900):
 
-                    response = await client.post(
-                        "/api/payments/create-intent",
-                        json={
-                            "first_name": "Test",
-                            "last_name": "User",
-                            "email": "test@example.com",
-                            "package": "quick",
-                            "flight_number": "FR123",
-                            "flight_date": "2026-02-10",
-                            "drop_off_date": "2026-02-10",
-                            "pickup_date": "2026-02-17",
-                            "promo_code": "ALREADYUSED",
-                        }
-                    )
+                        response = await client.post(
+                            "/api/payments/create-intent",
+                            json={
+                                "first_name": "Test",
+                                "last_name": "User",
+                                "email": "test@example.com",
+                                "package": "quick",
+                                "flight_number": "FR123",
+                                "flight_date": "2026-02-10",
+                                "drop_off_date": "2026-02-10",
+                                "pickup_date": "2026-02-17",
+                                "promo_code": "ALREADYUSED",
+                            }
+                        )
 
-                    # Full early bird price charged - no discount
-                    assert response.json()["amount"] == 9900
+                        # Full price charged - no discount
+                        assert response.json()["amount"] == 7900

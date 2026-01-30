@@ -424,6 +424,7 @@ class PriceCalculationResponse(BaseModel):
     days_in_advance: int
     price: float
     price_pence: int
+    week1_price: float  # 1-week base rate price (early tier, used for free parking promo)
     all_prices: dict  # Show all tier prices for reference
 
 
@@ -463,6 +464,8 @@ async def calculate_price(request: PriceCalculationRequest):
     price = BookingService.calculate_price(package, request.drop_off_date)
 
     prices = BookingService.get_package_prices()
+    # 1-week base rate price (early tier) used for free parking promo discount
+    week1_price = prices["quick"]["early"]
     return PriceCalculationResponse(
         package=package,
         package_name=package_name,
@@ -471,6 +474,7 @@ async def calculate_price(request: PriceCalculationRequest):
         days_in_advance=days_in_advance,
         price=price,
         price_pence=int(price * 100),
+        week1_price=week1_price,
         all_prices={
             "early": prices[package]["early"],
             "standard": prices[package]["standard"],
@@ -567,7 +571,7 @@ async def validate_promo_code(
     # Valid and unused - use per-code discount percent (default to 10% if not set)
     discount = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
     if discount == 100:
-        message = "Promo code applied! 100% off - FREE parking!"
+        message = "Promo code applied! 1 week free parking!"
     else:
         message = f"Promo code applied! {discount}% off"
     return PromoCodeValidateResponse(
@@ -2881,9 +2885,16 @@ async def create_payment(
                 if not subscriber.promo_code_used:
                     # Valid promo code - use per-code discount (default 10%)
                     discount_percent = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
-                    discount_amount = int(original_amount * discount_percent / 100)
+                    if discount_percent == 100:
+                        # Free parking promo: deduct the 1-week base rate (early tier) price
+                        # e.g. 2-week standard £150 - 1-week base £89 = customer pays £61
+                        week1_base_pence = int(BookingService.get_package_prices()["quick"]["early"] * 100)
+                        discount_amount = min(week1_base_pence, original_amount)  # Cap at original amount
+                        is_free_booking = (discount_amount >= original_amount)  # Only free if 1-week trip
+                    else:
+                        discount_amount = int(original_amount * discount_percent / 100)
+                        is_free_booking = False
                     promo_code_applied = promo_code
-                    is_free_booking = (discount_percent == 100)
                     print(f"[PROMO] Discount applied: {discount_percent}% = {discount_amount} pence (free: {is_free_booking})")
                 else:
                     print(f"[PROMO] Code already used!")

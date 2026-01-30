@@ -17,20 +17,34 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from main import app
-from db_models import MarketingSubscriber
+from main import app, require_admin
+from db_models import MarketingSubscriber, User
 
 
 # =============================================================================
 # Fixtures
 # =============================================================================
 
+def mock_admin_user():
+    """Return a mock admin user for auth override."""
+    user = MagicMock(spec=User)
+    user.id = 1
+    user.email = "admin@test.com"
+    user.first_name = "Test"
+    user.last_name = "Admin"
+    user.is_admin = True
+    user.is_active = True
+    return user
+
+
 @pytest_asyncio.fixture
 async def client():
-    """Create an async test client."""
+    """Create an async test client with admin auth bypassed."""
+    app.dependency_overrides[require_admin] = lambda: mock_admin_user()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+    app.dependency_overrides.pop(require_admin, None)
 
 
 @pytest.fixture
@@ -357,10 +371,9 @@ async def test_send_promo_updates_database(client, db_session, sample_subscriber
         MarketingSubscriber.id == subscriber_id
     ).first()
 
-    assert subscriber.promo_code is not None
-    assert subscriber.promo_code_sent is True
-    assert subscriber.promo_code_sent_at is not None
-    assert subscriber.discount_percent == 10
+    assert subscriber.promo_10_code is not None
+    assert subscriber.promo_10_sent is True
+    assert subscriber.promo_10_sent_at is not None
 
 
 @pytest.mark.asyncio
@@ -423,10 +436,10 @@ async def test_send_promo_code_already_used(client, db_session):
         last_name="Promo",
         email=f"used-{unique_suffix}@test-promo.example.com",
         unsubscribe_token=f"used-token-{unique_suffix}",
-        promo_code=f"TAG-USED-{unique_suffix[:8].upper()}",
-        promo_code_sent=True,
-        promo_code_used=True,
-        promo_code_used_at=datetime.utcnow(),
+        promo_10_code=f"TAG-USED-{unique_suffix[:8].upper()}",
+        promo_10_sent=True,
+        promo_10_used=True,
+        promo_10_used_at=datetime.utcnow(),
     )
     db_session.add(subscriber)
     db_session.commit()
@@ -665,7 +678,7 @@ async def test_full_promo_flow(client, db_session):
     subscriber_id = subscriber.id
 
     try:
-        assert subscriber.promo_code is None
+        assert subscriber.promo_10_code is None
 
         # Step 2: Admin sends promo code
         with patch('email_service.send_promo_code_email') as mock_email:
@@ -686,10 +699,9 @@ async def test_full_promo_flow(client, db_session):
             MarketingSubscriber.id == subscriber_id
         ).first()
 
-        assert subscriber.promo_code == promo_data["promo_code"]
-        assert subscriber.discount_percent == 10
-        assert subscriber.promo_code_sent is True
-        assert subscriber.promo_code_used is False
+        assert subscriber.promo_10_code == promo_data["promo_code"]
+        assert subscriber.promo_10_sent is True
+        assert subscriber.promo_10_used is False
 
         # Step 4: Verify code appears in admin list
         list_response = await client.get("/api/admin/marketing-subscribers")
@@ -700,9 +712,8 @@ async def test_full_promo_flow(client, db_session):
             None
         )
         assert flow_subscriber is not None
-        assert flow_subscriber["promo_code"] == promo_data["promo_code"]
-        assert flow_subscriber["discount_percent"] == 10
-        assert flow_subscriber["promo_code_sent"] is True
+        assert flow_subscriber["promo_10_code"] == promo_data["promo_code"]
+        assert flow_subscriber["promo_10_sent"] is True
     finally:
         # Cleanup
         subscriber = db_session.query(MarketingSubscriber).filter(
