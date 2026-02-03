@@ -4158,6 +4158,14 @@ async def delete_user(
     if user.id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
 
+    # Clean up related records (foreign key constraints)
+    db.query(LoginCode).filter(LoginCode.user_id == user.id).delete()
+    db.query(DbSession).filter(DbSession.user_id == user.id).delete()
+
+    # Nullify pricing_settings.updated_by references
+    from db_models import PricingSettings
+    db.query(PricingSettings).filter(PricingSettings.updated_by == user.id).update({"updated_by": None})
+
     db.delete(user)
     db.commit()
 
