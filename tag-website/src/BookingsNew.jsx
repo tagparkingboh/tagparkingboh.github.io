@@ -1144,11 +1144,11 @@ function Bookings() {
               {(formData.registration && (dvlaVerified || dvlaError || formData.make)) && (
                 <div className="form-group fade-in">
                   <label htmlFor="make">Vehicle Make <span className="required">*</span></label>
-                  {dvlaVerified && formData.make !== 'Other' ? (
+                  {dvlaVerified && (formData.make !== 'Other' || formData.customMake) ? (
                     <input
                       type="text"
                       id="make"
-                      value={formData.make}
+                      value={formData.make !== 'Other' ? formData.make : formData.customMake}
                       readOnly
                       className="readonly-input"
                     />
@@ -1170,7 +1170,7 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.make === 'Other' && (
+              {formData.make === 'Other' && !(dvlaVerified && formData.customMake) && (
                 <div className="form-group fade-in">
                   <label htmlFor="customMake">Enter Vehicle Make <span className="required">*</span></label>
                   <input
