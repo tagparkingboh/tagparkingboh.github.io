@@ -396,6 +396,58 @@
   background: #e53e3e;
 }
 
+/* ============================================
+   Customer Acknowledgement
+   ============================================ */
+
+.inspection-acknowledgement {
+  margin-top: 20px;
+  padding: 16px;
+  background: #333;
+  border-radius: 8px;
+  border: 1px solid #444;
+}
+
+.inspection-acknowledgement h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #D9FF00;
+}
+
+.acknowledgement-text {
+  font-size: 13px;
+  color: #aaa !important;
+  margin: 0 0 14px 0 !important;
+  line-height: 1.4;
+}
+
+.acknowledgement-fields {
+  display: flex;
+  gap: 12px;
+}
+
+.acknowledgement-fields .inspection-field {
+  flex: 1;
+}
+
+.acknowledgement-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  border: 1px solid #444;
+  border-radius: 8px;
+  background: #2a2a2a;
+  color: #e0e0e0;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.acknowledgement-input:focus {
+  border-color: #D9FF00;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .employee-header {

@@ -22,6 +22,8 @@ function Employee() {
   const [editingInspection, setEditingInspection] = useState(null)
   const [inspectionNotes, setInspectionNotes] = useState('')
   const [inspectionPhotos, setInspectionPhotos] = useState([]) // base64 strings
+  const [customerName, setCustomerName] = useState('')
+  const [signedDate, setSignedDate] = useState('')
   const [savingInspection, setSavingInspection] = useState(false)
 
   // Complete modal state
@@ -70,10 +72,14 @@ function Employee() {
       setEditingInspection(existing)
       setInspectionNotes(existing.notes || '')
       setInspectionPhotos(existing.photos || [])
+      setCustomerName(existing.customer_name || '')
+      setSignedDate(existing.signed_date || '')
     } else {
       setEditingInspection(null)
       setInspectionNotes('')
       setInspectionPhotos([])
+      setCustomerName('')
+      setSignedDate(new Date().toISOString().split('T')[0])
     }
     setShowInspectionModal(true)
   }
@@ -105,8 +111,8 @@ function Employee() {
         : `${API_URL}/api/employee/inspections`
       const method = editingInspection ? 'PUT' : 'POST'
       const body = editingInspection
-        ? { notes: inspectionNotes, photos: inspectionPhotos }
-        : { booking_id: inspectionBooking.id, inspection_type: inspectionType, notes: inspectionNotes, photos: inspectionPhotos }
+        ? { notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate }
+        : { booking_id: inspectionBooking.id, inspection_type: inspectionType, notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate }
 
       const response = await fetch(url, {
         method,
@@ -303,6 +309,34 @@ function Employee() {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+
+            <div className="inspection-acknowledgement">
+              <h4>Customer Acknowledgement</h4>
+              <p className="acknowledgement-text">
+                I confirm that I have reviewed the vehicle condition and agree with the inspection findings.
+              </p>
+              <div className="acknowledgement-fields">
+                <div className="inspection-field">
+                  <label>Customer Name</label>
+                  <input
+                    type="text"
+                    value={customerName}
+                    onChange={e => setCustomerName(e.target.value)}
+                    placeholder="Enter full name"
+                    className="acknowledgement-input"
+                  />
+                </div>
+                <div className="inspection-field">
+                  <label>Date</label>
+                  <input
+                    type="date"
+                    value={signedDate}
+                    onChange={e => setSignedDate(e.target.value)}
+                    className="acknowledgement-input"
+                  />
+                </div>
               </div>
             </div>
 

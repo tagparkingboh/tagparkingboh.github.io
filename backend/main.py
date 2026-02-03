@@ -4182,11 +4182,15 @@ class CreateInspectionRequest(BaseModel):
     inspection_type: str  # "dropoff" or "pickup"
     notes: Optional[str] = None
     photos: Optional[list] = None  # List of base64-encoded image strings
+    customer_name: Optional[str] = None
+    signed_date: Optional[str] = None  # ISO date string YYYY-MM-DD
 
 
 class UpdateInspectionRequest(BaseModel):
     notes: Optional[str] = None
     photos: Optional[list] = None
+    customer_name: Optional[str] = None
+    signed_date: Optional[str] = None
 
 
 @app.post("/api/employee/inspections")
@@ -4215,11 +4219,21 @@ async def create_inspection(
     if existing:
         raise HTTPException(status_code=400, detail=f"{request.inspection_type} inspection already exists for this booking")
 
+    from datetime import date as date_type
+    signed_date = None
+    if request.signed_date:
+        try:
+            signed_date = date_type.fromisoformat(request.signed_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid signed_date format. Use YYYY-MM-DD")
+
     inspection = VehicleInspection(
         booking_id=request.booking_id,
         inspection_type=insp_type,
         notes=request.notes,
         photos=json.dumps(request.photos) if request.photos else None,
+        customer_name=request.customer_name,
+        signed_date=signed_date,
         inspector_id=current_user.id,
     )
     db.add(inspection)
@@ -4234,6 +4248,8 @@ async def create_inspection(
             "inspection_type": inspection.inspection_type.value,
             "notes": inspection.notes,
             "photos": json.loads(inspection.photos) if inspection.photos else [],
+            "customer_name": inspection.customer_name,
+            "signed_date": inspection.signed_date.isoformat() if inspection.signed_date else None,
             "inspector_id": inspection.inspector_id,
             "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
         }
@@ -4259,6 +4275,8 @@ async def get_inspections(
                 "inspection_type": i.inspection_type.value,
                 "notes": i.notes,
                 "photos": json.loads(i.photos) if i.photos else [],
+                "customer_name": i.customer_name,
+                "signed_date": i.signed_date.isoformat() if i.signed_date else None,
                 "inspector_id": i.inspector_id,
                 "created_at": i.created_at.isoformat() if i.created_at else None,
                 "updated_at": i.updated_at.isoformat() if i.updated_at else None,
@@ -4284,6 +4302,14 @@ async def update_inspection(
         inspection.notes = request.notes
     if request.photos is not None:
         inspection.photos = json.dumps(request.photos)
+    if request.customer_name is not None:
+        inspection.customer_name = request.customer_name
+    if request.signed_date is not None:
+        from datetime import date as date_type
+        try:
+            inspection.signed_date = date_type.fromisoformat(request.signed_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid signed_date format. Use YYYY-MM-DD")
 
     db.commit()
     db.refresh(inspection)
@@ -4296,6 +4322,8 @@ async def update_inspection(
             "inspection_type": inspection.inspection_type.value,
             "notes": inspection.notes,
             "photos": json.loads(inspection.photos) if inspection.photos else [],
+            "customer_name": inspection.customer_name,
+            "signed_date": inspection.signed_date.isoformat() if inspection.signed_date else None,
             "inspector_id": inspection.inspector_id,
             "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
             "updated_at": inspection.updated_at.isoformat() if inspection.updated_at else None,
