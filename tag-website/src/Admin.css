@@ -1421,3 +1421,97 @@
     padding: 10px 12px;
   }
 }
+
+/* ============================================
+   USER MANAGEMENT
+   ============================================ */
+
+.users-table .toggle-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggle-btn.toggle-on {
+  background: #c6f6d5;
+  color: #22543d;
+}
+
+.toggle-btn.toggle-on:hover {
+  background: #9ae6b4;
+}
+
+.toggle-btn.toggle-off {
+  background: #f0f0f0;
+  color: #888;
+}
+
+.toggle-btn.toggle-off:hover {
+  background: #e0e0e0;
+}
+
+.user-inactive {
+  opacity: 0.5;
+}
+
+.user-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.user-form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.user-form-row .user-form-field {
+  flex: 1;
+}
+
+.user-form-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #555;
+  margin-bottom: 6px;
+}
+
+.user-form-field input[type="text"],
+.user-form-field input[type="email"] {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.user-form-field input:focus {
+  border-color: #f7b32b;
+  box-shadow: 0 0 0 3px rgba(247, 179, 43, 0.15);
+}
+
+.user-form-toggles {
+  display: flex;
+  gap: 24px;
+  padding-top: 4px;
+}
+
+@media (max-width: 768px) {
+  .user-form-row {
+    flex-direction: column;
+  }
+
+  .users-table th:nth-child(6),
+  .users-table td:nth-child(6) {
+    display: none;
+  }
+}
