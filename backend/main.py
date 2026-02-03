@@ -4014,22 +4014,23 @@ class CreateUserRequest(BaseModel):
     is_admin: bool = False
 
 
+class UpdateUserRequest(BaseModel):
+    """Request to update a user."""
+    email: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    is_admin: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
 @app.post("/api/admin/users")
 async def create_user(
     request: CreateUserRequest,
-    secret: str = Query(..., description="Admin secret key"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """
-    Admin endpoint: Create a new user.
-    Requires admin authentication AND ADMIN_SECRET for extra security.
-    """
-    admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
-
-    if secret != admin_secret:
-        raise HTTPException(status_code=403, detail="Invalid admin secret")
-
+    """Admin endpoint: Create a new user."""
     email = request.email.strip().lower()
 
     # Check if user already exists
@@ -4057,26 +4058,19 @@ async def create_user(
             "email": user.email,
             "first_name": user.first_name,
             "last_name": user.last_name,
+            "phone": user.phone,
             "is_admin": user.is_admin,
+            "is_active": user.is_active,
         }
     }
 
 
 @app.get("/api/admin/users")
 async def list_users(
-    secret: str = Query(..., description="Admin secret key"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """
-    Admin endpoint: List all users.
-    Requires admin authentication AND ADMIN_SECRET for extra security.
-    """
-    admin_secret = os.getenv("ADMIN_SECRET", "tag-admin-2024")
-
-    if secret != admin_secret:
-        raise HTTPException(status_code=403, detail="Invalid admin secret")
-
+    """Admin endpoint: List all users."""
     users = db.query(User).all()
 
     return {
@@ -4086,6 +4080,7 @@ async def list_users(
                 "email": u.email,
                 "first_name": u.first_name,
                 "last_name": u.last_name,
+                "phone": u.phone,
                 "is_admin": u.is_admin,
                 "is_active": u.is_active,
                 "last_login": u.last_login.isoformat() if u.last_login else None,
@@ -4093,6 +4088,80 @@ async def list_users(
             for u in users
         ]
     }
+
+
+@app.put("/api/admin/users/{user_id}")
+async def update_user(
+    user_id: int,
+    request: UpdateUserRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Admin endpoint: Update a user."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Can't remove your own admin privileges
+    if user.id == current_user.id and request.is_admin is False:
+        raise HTTPException(status_code=400, detail="Cannot remove your own admin privileges")
+
+    # Can't deactivate yourself
+    if user.id == current_user.id and request.is_active is False:
+        raise HTTPException(status_code=400, detail="Cannot deactivate your own account")
+
+    if request.email is not None:
+        email = request.email.strip().lower()
+        existing = db.query(User).filter(User.email == email, User.id != user_id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already in use by another user")
+        user.email = email
+    if request.first_name is not None:
+        user.first_name = request.first_name.strip()
+    if request.last_name is not None:
+        user.last_name = request.last_name.strip()
+    if request.phone is not None:
+        user.phone = request.phone.strip() if request.phone else None
+    if request.is_admin is not None:
+        user.is_admin = request.is_admin
+    if request.is_active is not None:
+        user.is_active = request.is_active
+
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "success": True,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "phone": user.phone,
+            "is_admin": user.is_admin,
+            "is_active": user.is_active,
+        }
+    }
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Admin endpoint: Delete a user."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+    db.delete(user)
+    db.commit()
+
+    return {"success": True, "message": f"User {user.email} deleted"}
 
 
 # ============================================================================
