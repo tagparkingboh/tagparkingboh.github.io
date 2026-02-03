@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
+import BookingCalendar from './components/BookingCalendar'
 import './Employee.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -9,14 +10,24 @@ function Employee() {
   const { user, token, loading, isAuthenticated, logout } = useAuth()
   const navigate = useNavigate()
 
-  const [activeTab, setActiveTab] = useState('today')
-  const [bookings, setBookings] = useState([])
-  const [loadingData, setLoadingData] = useState(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [inspections, setInspections] = useState({}) // { bookingId: [inspections] }
   const [error, setError] = useState('')
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const today = new Date()
-    return today.toISOString().split('T')[0]
-  })
+  const [successMessage, setSuccessMessage] = useState('')
+
+  // Inspection modal state
+  const [showInspectionModal, setShowInspectionModal] = useState(false)
+  const [inspectionBooking, setInspectionBooking] = useState(null)
+  const [inspectionType, setInspectionType] = useState(null) // 'dropoff' or 'pickup'
+  const [editingInspection, setEditingInspection] = useState(null)
+  const [inspectionNotes, setInspectionNotes] = useState('')
+  const [inspectionPhotos, setInspectionPhotos] = useState([]) // base64 strings
+  const [savingInspection, setSavingInspection] = useState(false)
+
+  // Complete modal state
+  const [showCompleteModal, setShowCompleteModal] = useState(false)
+  const [completingBooking, setCompletingBooking] = useState(null)
+  const [completing, setCompleting] = useState(false)
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -25,69 +36,181 @@ function Employee() {
     }
   }, [loading, isAuthenticated, navigate])
 
-  // Fetch bookings when date changes
-  useEffect(() => {
-    if (token && selectedDate) {
-      fetchBookingsForDate(selectedDate)
-    }
-  }, [token, selectedDate])
-
-  const fetchBookingsForDate = async (date) => {
-    setLoadingData(true)
-    setError('')
-    try {
-      const response = await fetch(`${API_URL}/api/admin/occupancy/${date}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setBookings(data.bookings || [])
-      } else {
-        setError('Failed to load bookings')
-      }
-    } catch (err) {
-      setError('Network error')
-    } finally {
-      setLoadingData(false)
-    }
-  }
-
   const handleLogout = async () => {
     await logout()
     navigate('/login', { replace: true })
   }
 
-  const formatDate = (dateStr) => {
-    const date = new Date(dateStr)
-    return date.toLocaleDateString('en-GB', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
+  const triggerRefresh = () => setRefreshTrigger(prev => prev + 1)
+
+  // Fetch inspections for a booking
+  const fetchInspections = async (bookingId) => {
+    try {
+      const response = await fetch(`${API_URL}/api/employee/inspections/${bookingId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setInspections(prev => ({ ...prev, [bookingId]: data.inspections || [] }))
+      }
+    } catch (err) {
+      // Silently fail - inspections just won't show status
+    }
+  }
+
+  // Open inspection modal
+  const openInspection = (booking, type) => {
+    const bookingInspections = inspections[booking.id] || []
+    const existing = bookingInspections.find(i => i.inspection_type === type)
+
+    setInspectionBooking(booking)
+    setInspectionType(type)
+
+    if (existing) {
+      setEditingInspection(existing)
+      setInspectionNotes(existing.notes || '')
+      setInspectionPhotos(existing.photos || [])
+    } else {
+      setEditingInspection(null)
+      setInspectionNotes('')
+      setInspectionPhotos([])
+    }
+    setShowInspectionModal(true)
+  }
+
+  // Handle photo file selection
+  const handlePhotoSelect = (e) => {
+    const files = Array.from(e.target.files)
+    files.forEach(file => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setInspectionPhotos(prev => [...prev, reader.result])
+      }
+      reader.readAsDataURL(file)
     })
+    e.target.value = '' // Reset input
   }
 
-  const goToToday = () => {
-    const today = new Date().toISOString().split('T')[0]
-    setSelectedDate(today)
-    setActiveTab('today')
+  const removePhoto = (index) => {
+    setInspectionPhotos(prev => prev.filter((_, i) => i !== index))
   }
 
-  const goToPrevDay = () => {
-    const current = new Date(selectedDate)
-    current.setDate(current.getDate() - 1)
-    setSelectedDate(current.toISOString().split('T')[0])
-    setActiveTab('custom')
+  // Save inspection
+  const handleSaveInspection = async () => {
+    setSavingInspection(true)
+    setError('')
+    try {
+      const url = editingInspection
+        ? `${API_URL}/api/employee/inspections/${editingInspection.id}`
+        : `${API_URL}/api/employee/inspections`
+      const method = editingInspection ? 'PUT' : 'POST'
+      const body = editingInspection
+        ? { notes: inspectionNotes, photos: inspectionPhotos }
+        : { booking_id: inspectionBooking.id, inspection_type: inspectionType, notes: inspectionNotes, photos: inspectionPhotos }
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      })
+      if (response.ok) {
+        setShowInspectionModal(false)
+        setSuccessMessage(`${inspectionType === 'dropoff' ? 'Drop-off' : 'Return'} inspection saved`)
+        setTimeout(() => setSuccessMessage(''), 3000)
+        fetchInspections(inspectionBooking.id)
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to save inspection')
+        setTimeout(() => setError(''), 5000)
+      }
+    } catch (err) {
+      setError('Network error saving inspection')
+      setTimeout(() => setError(''), 5000)
+    } finally {
+      setSavingInspection(false)
+    }
   }
 
-  const goToNextDay = () => {
-    const current = new Date(selectedDate)
-    current.setDate(current.getDate() + 1)
-    setSelectedDate(current.toISOString().split('T')[0])
-    setActiveTab('custom')
+  // Complete booking
+  const handleCompleteBooking = async () => {
+    if (!completingBooking) return
+    setCompleting(true)
+    try {
+      const response = await fetch(`${API_URL}/api/employee/bookings/${completingBooking.id}/complete`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setShowCompleteModal(false)
+        setCompletingBooking(null)
+        setSuccessMessage(`Booking ${completingBooking.reference} marked as completed`)
+        setTimeout(() => setSuccessMessage(''), 3000)
+        triggerRefresh()
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to complete booking')
+        setTimeout(() => setError(''), 5000)
+      }
+    } catch (err) {
+      setError('Network error completing booking')
+      setTimeout(() => setError(''), 5000)
+    } finally {
+      setCompleting(false)
+    }
   }
+
+  // Render action buttons for each booking in the calendar
+  const renderBookingActions = useCallback((booking, type) => {
+    // Fetch inspections if we haven't yet
+    if (!inspections[booking.id]) {
+      fetchInspections(booking.id)
+    }
+
+    const bookingInspections = inspections[booking.id] || []
+    const hasInspection = bookingInspections.some(i => i.inspection_type === type)
+    const isCompleted = booking.status === 'completed'
+
+    if (type === 'dropoff') {
+      return (
+        <div className="booking-actions-row">
+          <button
+            className={`inspection-btn ${hasInspection ? 'inspection-done' : ''}`}
+            onClick={(e) => { e.stopPropagation(); openInspection(booking, 'dropoff') }}
+          >
+            {hasInspection ? 'View/Edit Inspection' : 'Vehicle Inspection'}
+          </button>
+        </div>
+      )
+    }
+
+    if (type === 'pickup') {
+      return (
+        <div className="booking-actions-row">
+          <button
+            className={`inspection-btn ${hasInspection ? 'inspection-done' : ''}`}
+            onClick={(e) => { e.stopPropagation(); openInspection(booking, 'pickup') }}
+          >
+            {hasInspection ? 'View/Edit Inspection' : 'Return Inspection'}
+          </button>
+          {isCompleted ? (
+            <span className="completed-badge">Completed</span>
+          ) : (
+            <button
+              className="complete-btn"
+              onClick={(e) => { e.stopPropagation(); setCompletingBooking(booking); setShowCompleteModal(true) }}
+            >
+              Complete Booking
+            </button>
+          )}
+        </div>
+      )
+    }
+
+    return null
+  }, [inspections, token])
 
   if (loading) {
     return (
@@ -102,10 +225,6 @@ function Employee() {
     return null
   }
 
-  // Separate drop-offs and pick-ups
-  const dropOffs = bookings.filter((b) => b.type === 'dropoff' || b.dropoff_date === selectedDate)
-  const pickUps = bookings.filter((b) => b.type === 'pickup' || b.pickup_date === selectedDate)
-
   return (
     <div className="employee-container">
       <header className="employee-header">
@@ -113,7 +232,7 @@ function Employee() {
           <Link to="/">
             <img src="/assets/logo.svg" alt="TAG Parking" className="employee-logo" />
           </Link>
-          <h1>Daily Operations</h1>
+          <h1>Employee Portal</h1>
         </div>
         <div className="employee-header-right">
           <span className="employee-user">
@@ -125,129 +244,100 @@ function Employee() {
         </div>
       </header>
 
-      <div className="employee-date-nav">
-        <button onClick={goToPrevDay} className="date-nav-btn">
-          &larr; Previous
-        </button>
-        <div className="date-display">
-          <button onClick={goToToday} className="today-btn">
-            Today
-          </button>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => {
-              setSelectedDate(e.target.value)
-              setActiveTab('custom')
-            }}
-            className="date-picker"
-          />
-          <span className="date-text">{formatDate(selectedDate)}</span>
-        </div>
-        <button onClick={goToNextDay} className="date-nav-btn">
-          Next &rarr;
-        </button>
-      </div>
-
       <main className="employee-content">
+        {successMessage && <div className="employee-success">{successMessage}</div>}
         {error && <div className="employee-error">{error}</div>}
 
-        <div className="employee-grid">
-          {/* Drop-offs Section */}
-          <div className="employee-section">
-            <div className="section-header dropoff">
-              <h2>Drop-offs</h2>
-              <span className="section-count">{dropOffs.length}</span>
-            </div>
-            {loadingData ? (
-              <div className="employee-loading-inline">
-                <div className="spinner-small"></div>
-              </div>
-            ) : dropOffs.length === 0 ? (
-              <p className="employee-empty">No drop-offs scheduled</p>
-            ) : (
-              <div className="booking-list">
-                {dropOffs.map((booking, index) => (
-                  <div key={booking.reference || index} className="booking-card">
-                    <div className="booking-time">
-                      {booking.dropoff_time || booking.time}
-                    </div>
-                    <div className="booking-details">
-                      <div className="booking-ref">{booking.reference}</div>
-                      <div className="booking-customer">
-                        {booking.customer?.first_name} {booking.customer?.last_name}
-                      </div>
-                      <div className="booking-vehicle">
-                        <span className="vehicle-reg">{booking.vehicle?.registration}</span>
-                        <span className="vehicle-info">
-                          {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
-                        </span>
-                      </div>
-                      {booking.dropoff_flight_number && (
-                        <div className="booking-flight">
-                          Flight: {booking.dropoff_flight_number}
-                        </div>
-                      )}
-                    </div>
-                    <div className="booking-status">
-                      <span className={`status-badge status-${booking.status?.toLowerCase()}`}>
-                        {booking.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        <BookingCalendar
+          token={token}
+          renderBookingActions={renderBookingActions}
+          refreshTrigger={refreshTrigger}
+        />
+      </main>
 
-          {/* Pick-ups Section */}
-          <div className="employee-section">
-            <div className="section-header pickup">
-              <h2>Pick-ups</h2>
-              <span className="section-count">{pickUps.length}</span>
+      {/* Inspection Modal */}
+      {showInspectionModal && inspectionBooking && (
+        <div className="modal-overlay" onClick={() => setShowInspectionModal(false)}>
+          <div className="modal-content inspection-modal" onClick={e => e.stopPropagation()}>
+            <h3>{editingInspection ? 'Edit' : 'New'} {inspectionType === 'dropoff' ? 'Drop-off' : 'Return'} Inspection</h3>
+            <div className="inspection-booking-info">
+              <span className="inspection-ref">{inspectionBooking.reference}</span>
+              <span>{inspectionBooking.customer?.first_name || inspectionBooking.customer_first_name} {inspectionBooking.customer?.last_name || inspectionBooking.customer_last_name}</span>
+              <span>{inspectionBooking.vehicle?.registration || inspectionBooking.vehicle_registration}</span>
             </div>
-            {loadingData ? (
-              <div className="employee-loading-inline">
-                <div className="spinner-small"></div>
+
+            <div className="inspection-form">
+              <div className="inspection-field">
+                <label>Notes</label>
+                <textarea
+                  value={inspectionNotes}
+                  onChange={e => setInspectionNotes(e.target.value)}
+                  placeholder="Add inspection notes..."
+                  rows={4}
+                />
               </div>
-            ) : pickUps.length === 0 ? (
-              <p className="employee-empty">No pick-ups scheduled</p>
-            ) : (
-              <div className="booking-list">
-                {pickUps.map((booking, index) => (
-                  <div key={booking.reference || index} className="booking-card">
-                    <div className="booking-time">
-                      {booking.pickup_time_from} - {booking.pickup_time_to}
-                    </div>
-                    <div className="booking-details">
-                      <div className="booking-ref">{booking.reference}</div>
-                      <div className="booking-customer">
-                        {booking.customer?.first_name} {booking.customer?.last_name}
+
+              <div className="inspection-field">
+                <label>Photos</label>
+                <div className="photo-upload-area">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    capture="environment"
+                    onChange={handlePhotoSelect}
+                    id="photo-input"
+                    className="photo-input-hidden"
+                  />
+                  <label htmlFor="photo-input" className="photo-upload-btn">
+                    + Add Photos
+                  </label>
+                </div>
+                {inspectionPhotos.length > 0 && (
+                  <div className="photo-previews">
+                    {inspectionPhotos.map((photo, index) => (
+                      <div key={index} className="photo-preview">
+                        <img src={photo} alt={`Inspection photo ${index + 1}`} />
+                        <button className="photo-remove" onClick={() => removePhoto(index)}>&times;</button>
                       </div>
-                      <div className="booking-vehicle">
-                        <span className="vehicle-reg">{booking.vehicle?.registration}</span>
-                        <span className="vehicle-info">
-                          {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
-                        </span>
-                      </div>
-                      {booking.pickup_flight_number && (
-                        <div className="booking-flight">
-                          Flight: {booking.pickup_flight_number}
-                        </div>
-                      )}
-                    </div>
-                    <div className="booking-status">
-                      <span className={`status-badge status-${booking.status?.toLowerCase()}`}>
-                        {booking.status}
-                      </span>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            )}
+            </div>
+
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setShowInspectionModal(false)}>Cancel</button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={handleSaveInspection}
+                disabled={savingInspection}
+              >
+                {savingInspection ? 'Saving...' : 'Save Inspection'}
+              </button>
+            </div>
           </div>
         </div>
-      </main>
+      )}
+
+      {/* Complete Booking Modal */}
+      {showCompleteModal && completingBooking && (
+        <div className="modal-overlay" onClick={() => setShowCompleteModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <h3>Complete Booking</h3>
+            <p>Mark booking <strong>{completingBooking.reference}</strong> as completed?</p>
+            <p className="modal-subtext">
+              {completingBooking.customer?.first_name || completingBooking.customer_first_name} {completingBooking.customer?.last_name || completingBooking.customer_last_name} — {completingBooking.vehicle?.registration || completingBooking.vehicle_registration}
+            </p>
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setShowCompleteModal(false)}>Cancel</button>
+              <button className="modal-btn modal-btn-success" onClick={handleCompleteBooking} disabled={completing}>
+                {completing ? 'Completing...' : 'Confirm Complete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

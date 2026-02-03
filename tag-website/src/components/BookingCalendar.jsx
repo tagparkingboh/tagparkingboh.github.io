@@ -3,7 +3,7 @@ import './BookingCalendar.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-function BookingCalendar({ token }) {
+function BookingCalendar({ token, renderBookingActions, refreshTrigger }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(false)
@@ -16,7 +16,7 @@ function BookingCalendar({ token }) {
     if (token) {
       fetchBookings()
     }
-  }, [token, currentDate])
+  }, [token, currentDate, refreshTrigger])
 
   const fetchBookings = async () => {
     setLoading(true)
@@ -307,6 +307,7 @@ function BookingCalendar({ token }) {
                           <span>|</span>
                           <span className="reg-plate">{booking.vehicle?.registration || booking.vehicle_registration}</span>
                         </div>
+                        {renderBookingActions && renderBookingActions(booking, 'dropoff')}
                       </div>
                     ))}
                 </div>
@@ -349,6 +350,7 @@ function BookingCalendar({ token }) {
                           <span>|</span>
                           <span className="reg-plate">{booking.vehicle?.registration || booking.vehicle_registration}</span>
                         </div>
+                        {renderBookingActions && renderBookingActions(booking, 'pickup')}
                       </div>
                     ))}
                 </div>

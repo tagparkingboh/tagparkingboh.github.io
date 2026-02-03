@@ -48,7 +48,7 @@ from stripe_service import (
 
 # Database imports
 from database import get_db, init_db
-from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession
+from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession, VehicleInspection, InspectionType
 import db_service
 import json
 import traceback
@@ -4170,6 +4170,157 @@ async def delete_user(
     db.commit()
 
     return {"success": True, "message": f"User {user.email} deleted"}
+
+
+# ============================================================================
+# VEHICLE INSPECTION ENDPOINTS (Employee + Admin)
+# ============================================================================
+
+
+class CreateInspectionRequest(BaseModel):
+    booking_id: int
+    inspection_type: str  # "dropoff" or "pickup"
+    notes: Optional[str] = None
+    photos: Optional[list] = None  # List of base64-encoded image strings
+
+
+class UpdateInspectionRequest(BaseModel):
+    notes: Optional[str] = None
+    photos: Optional[list] = None
+
+
+@app.post("/api/employee/inspections")
+async def create_inspection(
+    request: CreateInspectionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a vehicle inspection (drop-off or pick-up)."""
+    # Validate inspection type
+    try:
+        insp_type = InspectionType(request.inspection_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid inspection type. Must be 'dropoff' or 'pickup'")
+
+    # Check booking exists
+    booking = db.query(DbBooking).filter(DbBooking.id == request.booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    # Check for existing inspection of this type
+    existing = db.query(VehicleInspection).filter(
+        VehicleInspection.booking_id == request.booking_id,
+        VehicleInspection.inspection_type == insp_type,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"{request.inspection_type} inspection already exists for this booking")
+
+    inspection = VehicleInspection(
+        booking_id=request.booking_id,
+        inspection_type=insp_type,
+        notes=request.notes,
+        photos=json.dumps(request.photos) if request.photos else None,
+        inspector_id=current_user.id,
+    )
+    db.add(inspection)
+    db.commit()
+    db.refresh(inspection)
+
+    return {
+        "success": True,
+        "inspection": {
+            "id": inspection.id,
+            "booking_id": inspection.booking_id,
+            "inspection_type": inspection.inspection_type.value,
+            "notes": inspection.notes,
+            "photos": json.loads(inspection.photos) if inspection.photos else [],
+            "inspector_id": inspection.inspector_id,
+            "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
+        }
+    }
+
+
+@app.get("/api/employee/inspections/{booking_id}")
+async def get_inspections(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all inspections for a booking."""
+    inspections = db.query(VehicleInspection).filter(
+        VehicleInspection.booking_id == booking_id
+    ).all()
+
+    return {
+        "inspections": [
+            {
+                "id": i.id,
+                "booking_id": i.booking_id,
+                "inspection_type": i.inspection_type.value,
+                "notes": i.notes,
+                "photos": json.loads(i.photos) if i.photos else [],
+                "inspector_id": i.inspector_id,
+                "created_at": i.created_at.isoformat() if i.created_at else None,
+                "updated_at": i.updated_at.isoformat() if i.updated_at else None,
+            }
+            for i in inspections
+        ]
+    }
+
+
+@app.put("/api/employee/inspections/{inspection_id}")
+async def update_inspection(
+    inspection_id: int,
+    request: UpdateInspectionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update a vehicle inspection."""
+    inspection = db.query(VehicleInspection).filter(VehicleInspection.id == inspection_id).first()
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+
+    if request.notes is not None:
+        inspection.notes = request.notes
+    if request.photos is not None:
+        inspection.photos = json.dumps(request.photos)
+
+    db.commit()
+    db.refresh(inspection)
+
+    return {
+        "success": True,
+        "inspection": {
+            "id": inspection.id,
+            "booking_id": inspection.booking_id,
+            "inspection_type": inspection.inspection_type.value,
+            "notes": inspection.notes,
+            "photos": json.loads(inspection.photos) if inspection.photos else [],
+            "inspector_id": inspection.inspector_id,
+            "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
+            "updated_at": inspection.updated_at.isoformat() if inspection.updated_at else None,
+        }
+    }
+
+
+@app.post("/api/employee/bookings/{booking_id}/complete")
+async def mark_booking_completed(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark a booking as completed."""
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status != BookingStatus.CONFIRMED:
+        raise HTTPException(status_code=400, detail=f"Booking must be confirmed to complete. Current status: {booking.status.value}")
+
+    booking.status = BookingStatus.COMPLETED
+    db.commit()
+
+    return {"success": True, "message": f"Booking {booking.reference} marked as completed"}
 
 
 # ============================================================================
