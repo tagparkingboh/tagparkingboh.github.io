@@ -45,6 +45,11 @@ class PaymentIntentRequest(BaseModel):
     # Promo code (if applied)
     promo_code: Optional[str] = None
 
+    # Original amount before discount (in pence) - for email display
+    original_amount: Optional[int] = None
+    # Discount amount (in pence) - for email display
+    discount_amount: Optional[int] = None
+
 
 class PaymentIntentResponse(BaseModel):
     """Response containing payment intent details."""
@@ -102,6 +107,8 @@ def create_payment_intent(request: PaymentIntentRequest) -> PaymentIntentRespons
             "departure_id": str(request.departure_id) if request.departure_id else "",
             "drop_off_slot": request.drop_off_slot or "",
             "promo_code": request.promo_code or "",
+            "original_amount": str(request.original_amount) if request.original_amount else "",
+            "discount_amount": str(request.discount_amount) if request.discount_amount else "",
         },
         receipt_email=request.customer_email,
         description=f"TAG Parking - {request.flight_number} ({request.flight_date})",

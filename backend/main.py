@@ -424,6 +424,7 @@ class PriceCalculationResponse(BaseModel):
     days_in_advance: int
     price: float
     price_pence: int
+    week1_price: float  # 1-week base rate price (early tier, used for free parking promo)
     all_prices: dict  # Show all tier prices for reference
 
 
@@ -463,6 +464,8 @@ async def calculate_price(request: PriceCalculationRequest):
     price = BookingService.calculate_price(package, request.drop_off_date)
 
     prices = BookingService.get_package_prices()
+    # 1-week base rate price (early tier) used for free parking promo discount
+    week1_price = prices["quick"]["early"]
     return PriceCalculationResponse(
         package=package,
         package_name=package_name,
@@ -471,6 +474,7 @@ async def calculate_price(request: PriceCalculationRequest):
         days_in_advance=days_in_advance,
         price=price,
         price_pence=int(price * 100),
+        week1_price=week1_price,
         all_prices={
             "early": prices[package]["early"],
             "standard": prices[package]["standard"],
@@ -547,9 +551,11 @@ async def validate_promo_code(
             message="Please enter a promo code",
         )
 
-    # Look up the promo code in marketing subscribers
+    # Look up the promo code across all code fields (legacy, 10%, and free)
     subscriber = db.query(MarketingSubscriber).filter(
-        MarketingSubscriber.promo_code == code
+        (MarketingSubscriber.promo_code == code) |
+        (MarketingSubscriber.promo_10_code == code) |
+        (MarketingSubscriber.promo_free_code == code)
     ).first()
 
     if not subscriber:
@@ -558,16 +564,37 @@ async def validate_promo_code(
             message="Invalid promo code",
         )
 
-    if subscriber.promo_code_used:
+    # Determine which promo type this code belongs to and check if used
+    if subscriber.promo_10_code and subscriber.promo_10_code == code:
+        if subscriber.promo_10_used:
+            return PromoCodeValidateResponse(
+                valid=False,
+                message="This promo code has already been used",
+            )
+        discount = 10
+    elif subscriber.promo_free_code and subscriber.promo_free_code == code:
+        if subscriber.promo_free_used:
+            return PromoCodeValidateResponse(
+                valid=False,
+                message="This promo code has already been used",
+            )
+        discount = 100
+    elif subscriber.promo_code and subscriber.promo_code == code:
+        # Legacy field
+        if subscriber.promo_code_used:
+            return PromoCodeValidateResponse(
+                valid=False,
+                message="This promo code has already been used",
+            )
+        discount = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
+    else:
         return PromoCodeValidateResponse(
             valid=False,
-            message="This promo code has already been used",
+            message="Invalid promo code",
         )
 
-    # Valid and unused - use per-code discount percent (default to 10% if not set)
-    discount = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
     if discount == 100:
-        message = "Promo code applied! 100% off - FREE parking!"
+        message = "Promo code applied! 1 week free parking!"
     else:
         message = f"Promo code applied! {discount}% off"
     return PromoCodeValidateResponse(
@@ -1140,11 +1167,36 @@ async def mark_booking_paid(
             package_name = "2 Weeks"
 
         # Amount paid
-        amount_paid = f"£{payment.amount_pence / 100:.2f}" if payment else "N/A"
+        payment_pence = payment.amount_pence if payment else 0
+        amount_paid = f"£{payment_pence / 100:.2f}" if payment else "N/A"
 
         # Use flight numbers if available, otherwise show as not applicable
         departure_flight = booking.dropoff_flight_number or "-"
         return_flight = booking.pickup_flight_number or "-"
+
+        # Look up promo code used for this booking
+        promo_code_display = None
+        discount_display = None
+        original_display = None
+        subscriber = db.query(MarketingSubscriber).filter(
+            (MarketingSubscriber.promo_10_used_booking_id == booking_id) |
+            (MarketingSubscriber.promo_free_used_booking_id == booking_id) |
+            (MarketingSubscriber.promo_code_used_booking_id == booking_id)
+        ).first()
+        if subscriber:
+            if subscriber.promo_10_used_booking_id == booking_id:
+                promo_code_display = subscriber.promo_10_code
+            elif subscriber.promo_free_used_booking_id == booking_id:
+                promo_code_display = subscriber.promo_free_code
+            elif subscriber.promo_code_used_booking_id == booking_id:
+                promo_code_display = subscriber.promo_code
+
+            if promo_code_display:
+                orig_pence = calculate_price_in_pence(booking.package, drop_off_date=booking.dropoff_date)
+                disc_pence = orig_pence - payment_pence
+                if disc_pence > 0:
+                    original_display = f"£{orig_pence / 100:.2f}"
+                    discount_display = f"£{disc_pence / 100:.2f}"
 
         email_sent = send_booking_confirmation_email(
             email=booking.customer.email,
@@ -1162,6 +1214,9 @@ async def mark_booking_paid(
             vehicle_registration=booking.vehicle.registration,
             package_name=package_name,
             amount_paid=amount_paid,
+            promo_code=promo_code_display,
+            discount_amount=discount_display,
+            original_amount=original_display,
         )
 
         if email_sent:
@@ -1281,8 +1336,36 @@ async def resend_booking_confirmation_email(
 
     # Get payment amount
     amount_paid = "£0.00"
+    payment_pence = 0
     if booking.payment and booking.payment.amount_pence:
-        amount_paid = f"£{booking.payment.amount_pence / 100:.2f}"
+        payment_pence = booking.payment.amount_pence
+        amount_paid = f"£{payment_pence / 100:.2f}"
+
+    # Look up promo code used for this booking
+    promo_code_display = None
+    discount_display = None
+    original_display = None
+    subscriber = db.query(MarketingSubscriber).filter(
+        (MarketingSubscriber.promo_10_used_booking_id == booking_id) |
+        (MarketingSubscriber.promo_free_used_booking_id == booking_id) |
+        (MarketingSubscriber.promo_code_used_booking_id == booking_id)
+    ).first()
+    if subscriber:
+        # Determine which promo code was used
+        if subscriber.promo_10_used_booking_id == booking_id:
+            promo_code_display = subscriber.promo_10_code
+        elif subscriber.promo_free_used_booking_id == booking_id:
+            promo_code_display = subscriber.promo_free_code
+        elif subscriber.promo_code_used_booking_id == booking_id:
+            promo_code_display = subscriber.promo_code
+
+        if promo_code_display:
+            # Calculate original price from booking date and package
+            orig_pence = calculate_price_in_pence(booking.package, drop_off_date=booking.dropoff_date)
+            disc_pence = orig_pence - payment_pence
+            if disc_pence > 0:
+                original_display = f"£{orig_pence / 100:.2f}"
+                discount_display = f"£{disc_pence / 100:.2f}"
 
     # Send the email
     email_sent = send_booking_confirmation_email(
@@ -1301,6 +1384,9 @@ async def resend_booking_confirmation_email(
         vehicle_registration=booking.vehicle.registration,
         package_name=package_name,
         amount_paid=amount_paid,
+        promo_code=promo_code_display,
+        discount_amount=discount_display,
+        original_amount=original_display,
     )
 
     if email_sent:
@@ -2874,16 +2960,40 @@ async def create_payment(
             promo_code = request.promo_code.strip().upper()
             print(f"[PROMO] Looking up promo code: {promo_code}")
             subscriber = db.query(MarketingSubscriber).filter(
-                MarketingSubscriber.promo_code == promo_code
+                (MarketingSubscriber.promo_code == promo_code) |
+                (MarketingSubscriber.promo_10_code == promo_code) |
+                (MarketingSubscriber.promo_free_code == promo_code)
             ).first()
             if subscriber:
-                print(f"[PROMO] Found subscriber: {subscriber.email}, used: {subscriber.promo_code_used}")
-                if not subscriber.promo_code_used:
-                    # Valid promo code - use per-code discount (default 10%)
+                # Determine which promo type this code belongs to
+                promo_used = False
+                if subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
+                    promo_used = subscriber.promo_10_used
+                    discount_percent = 10
+                elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code:
+                    promo_used = subscriber.promo_free_used
+                    discount_percent = 100
+                elif subscriber.promo_code and subscriber.promo_code == promo_code:
+                    promo_used = subscriber.promo_code_used
                     discount_percent = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
-                    discount_amount = int(original_amount * discount_percent / 100)
+
+                print(f"[PROMO] Found subscriber: {subscriber.email}, used: {promo_used}")
+                if not promo_used:
+                    if discount_percent == 100:
+                        if request.package == "quick":
+                            # 1-week trip: completely free regardless of tier
+                            discount_amount = original_amount
+                            is_free_booking = True
+                        else:
+                            # 2-week trip: deduct the 1-week base rate (early tier) price
+                            # e.g. 2-week standard £150 - 1-week base £89 = customer pays £61
+                            week1_base_pence = int(BookingService.get_package_prices()["quick"]["early"] * 100)
+                            discount_amount = min(week1_base_pence, original_amount)
+                            is_free_booking = False
+                    else:
+                        discount_amount = int(original_amount * discount_percent / 100)
+                        is_free_booking = False
                     promo_code_applied = promo_code
-                    is_free_booking = (discount_percent == 100)
                     print(f"[PROMO] Discount applied: {discount_percent}% = {discount_amount} pence (free: {is_free_booking})")
                 else:
                     print(f"[PROMO] Code already used!")
@@ -3138,15 +3248,27 @@ async def create_payment(
             payment.paid_at = datetime.utcnow()
             db.commit()
 
-            # Mark promo code as used
+            # Mark promo code as used (search across all code fields)
             if promo_code_applied:
                 subscriber = db.query(MarketingSubscriber).filter(
-                    MarketingSubscriber.promo_code == promo_code_applied
+                    (MarketingSubscriber.promo_code == promo_code_applied) |
+                    (MarketingSubscriber.promo_10_code == promo_code_applied) |
+                    (MarketingSubscriber.promo_free_code == promo_code_applied)
                 ).first()
                 if subscriber:
-                    subscriber.promo_code_used = True
-                    subscriber.promo_code_used_booking_id = booking_id
-                    subscriber.promo_code_used_at = datetime.utcnow()
+                    now = datetime.utcnow()
+                    if subscriber.promo_10_code and subscriber.promo_10_code == promo_code_applied:
+                        subscriber.promo_10_used = True
+                        subscriber.promo_10_used_at = now
+                        subscriber.promo_10_used_booking_id = booking_id
+                    elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code_applied:
+                        subscriber.promo_free_used = True
+                        subscriber.promo_free_used_at = now
+                        subscriber.promo_free_used_booking_id = booking_id
+                    elif subscriber.promo_code and subscriber.promo_code == promo_code_applied:
+                        subscriber.promo_code_used = True
+                        subscriber.promo_code_used_at = now
+                        subscriber.promo_code_used_booking_id = booking_id
                     db.commit()
 
             # Book the slot immediately for free bookings
@@ -3231,7 +3353,7 @@ async def create_payment(
                     pickup_date=pickup_date_str,
                     pickup_time=pickup_time_str,
                     departure_flight=f"{request.flight_number}",
-                    return_flight=f"{request.pickup_flight_number or 'TBC'} from {request.pickup_origin or 'TBC'}",
+                    return_flight=f"{request.pickup_flight_number or 'TBC'} from {pickup_origin or 'TBC'}",
                     vehicle_make=vehicle_make,
                     vehicle_model=vehicle_model,
                     vehicle_colour=vehicle_colour,
@@ -3239,7 +3361,8 @@ async def create_payment(
                     package_name=package_name,
                     amount_paid="£0.00",
                     promo_code=promo_code_applied,
-                    discount_amount=f"£{original_amount / 100:.2f}",
+                    discount_amount=f"£{discount_amount / 100:.2f}",
+                    original_amount=f"£{original_amount / 100:.2f}",
                 )
 
                 # Update booking with email sent status
@@ -3284,6 +3407,8 @@ async def create_payment(
             departure_id=request.departure_id,
             drop_off_slot=request.drop_off_slot,
             promo_code=promo_code_applied,
+            original_amount=original_amount if promo_code_applied else None,
+            discount_amount=discount_amount if promo_code_applied else None,
         )
 
         intent = create_payment_intent(intent_request)
@@ -3424,6 +3549,8 @@ async def stripe_webhook(
         departure_id = metadata.get("departure_id")
         drop_off_slot = metadata.get("drop_off_slot")
         promo_code = metadata.get("promo_code")
+        meta_original_amount = metadata.get("original_amount")  # pence, as string
+        meta_discount_amount = metadata.get("discount_amount")  # pence, as string
 
         # Update payment status in database (this also updates booking to CONFIRMED)
         # Returns (payment, was_already_processed) for idempotency
@@ -3508,13 +3635,26 @@ async def stripe_webhook(
             try:
                 # Get booking ID from reference
                 booking = db_service.get_booking_by_reference(db, booking_reference)
+                bid = booking.id if booking else None
                 subscriber = db.query(MarketingSubscriber).filter(
-                    MarketingSubscriber.promo_code == promo_code
+                    (MarketingSubscriber.promo_code == promo_code) |
+                    (MarketingSubscriber.promo_10_code == promo_code) |
+                    (MarketingSubscriber.promo_free_code == promo_code)
                 ).first()
                 if subscriber:
-                    subscriber.promo_code_used = True
-                    subscriber.promo_code_used_booking_id = booking.id if booking else None
-                    subscriber.promo_code_used_at = datetime.utcnow()
+                    now = datetime.utcnow()
+                    if subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
+                        subscriber.promo_10_used = True
+                        subscriber.promo_10_used_at = now
+                        subscriber.promo_10_used_booking_id = bid
+                    elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code:
+                        subscriber.promo_free_used = True
+                        subscriber.promo_free_used_at = now
+                        subscriber.promo_free_used_booking_id = bid
+                    elif subscriber.promo_code and subscriber.promo_code == promo_code:
+                        subscriber.promo_code_used = True
+                        subscriber.promo_code_used_at = now
+                        subscriber.promo_code_used_booking_id = bid
                     db.commit()
             except Exception as e:
                 log_error(
@@ -3559,12 +3699,21 @@ async def stripe_webhook(
                 amount_pence = data.get("amount", 0)
                 amount_paid = f"£{amount_pence / 100:.2f}"
 
-                # Calculate discount if promo code was used
-                discount_amount = None
-                if promo_code:
-                    # 10% discount
-                    original_amount = amount_pence / 0.9  # Work backwards from discounted amount
-                    discount_amount = f"£{(original_amount - amount_pence) / 100:.2f}"
+                # Calculate discount from Stripe metadata (original_amount & discount_amount in pence)
+                discount_display = None
+                original_display = None
+                if promo_code and meta_original_amount and meta_discount_amount:
+                    try:
+                        orig_pence = int(meta_original_amount)
+                        disc_pence = int(meta_discount_amount)
+                        original_display = f"£{orig_pence / 100:.2f}"
+                        discount_display = f"£{disc_pence / 100:.2f}"
+                    except (ValueError, TypeError):
+                        pass
+                elif promo_code:
+                    # Fallback for older payment intents without metadata
+                    original_amount_calc = amount_pence / 0.9
+                    discount_display = f"£{(original_amount_calc - amount_pence) / 100:.2f}"
 
                 print(f"[EMAIL] Calling send_booking_confirmation_email...")
                 email_sent = send_booking_confirmation_email(
@@ -3584,7 +3733,8 @@ async def stripe_webhook(
                     package_name=package_name,
                     amount_paid=amount_paid,
                     promo_code=promo_code if promo_code else None,
-                    discount_amount=discount_amount,
+                    discount_amount=discount_display,
+                    original_amount=original_display,
                 )
                 print(f"[EMAIL] send_booking_confirmation_email returned: {email_sent}")
 
