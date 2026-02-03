@@ -869,7 +869,7 @@ function Bookings() {
   const isPhoneValid = formData.phone && isValidPhoneNumber(formData.phone)
   const isEmailValid = formData.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)
   const isMakeComplete = formData.make && (formData.make !== 'Other' || formData.customMake)
-  const isModelComplete = formData.model && (formData.model !== 'Other' || formData.customModel)
+  const isModelComplete = formData.make === 'Other' ? formData.customModel : (formData.model && (formData.model !== 'Other' || formData.customModel))
   const isStep1Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid && formData.registration && isMakeComplete && isModelComplete && formData.colour
   // Step 2: Trip Details
   const isStep2Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable

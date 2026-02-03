@@ -409,7 +409,7 @@ function ManualBooking({ token }) {
       formData.billingPostcode &&
       formData.registration &&
       (formData.make && (formData.make !== 'Other' || formData.customMake)) &&
-      (formData.model && (formData.model !== 'Other' || formData.customModel)) &&
+      (formData.make === 'Other' ? formData.customModel : (formData.model && (formData.model !== 'Other' || formData.customModel))) &&
       formData.colour &&
       formData.dropoffDate &&
       formData.pickupDate &&
