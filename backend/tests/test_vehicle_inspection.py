@@ -1,7 +1,8 @@
 """
-Tests for vehicle inspection and booking completion endpoints.
+Tests for employee endpoints: vehicle inspections, booking completion, and booking list.
 
 Covers:
+- GET /api/employee/bookings (list bookings for calendar)
 - POST /api/employee/inspections (create inspection)
 - GET /api/employee/inspections/{booking_id} (get inspections)
 - PUT /api/employee/inspections/{inspection_id} (update inspection)
@@ -987,3 +988,215 @@ class TestInspectionEdgeCases:
         # Cleanup
         db_session.delete(expired)
         db_session.commit()
+
+
+# =============================================================================
+# Employee Bookings List Tests
+# =============================================================================
+
+@pytest.fixture
+def cancelled_booking(db_session, test_customer, test_vehicle):
+    """Create a cancelled booking."""
+    from db_models import Booking, BookingStatus
+    unique = uuid.uuid4().hex[:6].upper()
+    booking = Booking(
+        reference=f"CXL-{unique}",
+        customer_id=test_customer.id,
+        vehicle_id=test_vehicle.id,
+        customer_first_name="John",
+        customer_last_name="TestInspection",
+        status=BookingStatus.CANCELLED,
+        dropoff_date=date.today(),
+        dropoff_time=datetime.strptime("09:00", "%H:%M").time(),
+        pickup_date=date.today() + timedelta(days=3),
+        pickup_time=datetime.strptime("12:00", "%H:%M").time(),
+        dropoff_destination="Madrid",
+        pickup_origin="Madrid",
+    )
+    db_session.add(booking)
+    db_session.commit()
+    db_session.refresh(booking)
+    yield booking
+    db_session.delete(booking)
+    db_session.commit()
+
+
+class TestEmployeeBookingsList:
+    """Tests for GET /api/employee/bookings."""
+
+    @pytest.mark.asyncio
+    async def test_list_bookings_success(self, client, auth_headers, confirmed_booking):
+        """Should return bookings for an authenticated employee."""
+        response = await client.get(
+            "/api/employee/bookings",
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "bookings" in data
+        assert "count" in data
+        assert isinstance(data["bookings"], list)
+        assert data["count"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_list_bookings_contains_confirmed(self, client, auth_headers, confirmed_booking):
+        """Should include confirmed bookings in the results."""
+        response = await client.get(
+            "/api/employee/bookings",
+            headers=auth_headers,
+        )
+
+        refs = [b["reference"] for b in response.json()["bookings"]]
+        assert confirmed_booking.reference in refs
+
+    @pytest.mark.asyncio
+    async def test_list_bookings_excludes_cancelled_by_default(self, client, auth_headers, cancelled_booking):
+        """Should exclude cancelled bookings by default."""
+        response = await client.get(
+            "/api/employee/bookings",
+            headers=auth_headers,
+        )
+
+        refs = [b["reference"] for b in response.json()["bookings"]]
+        assert cancelled_booking.reference not in refs
+
+    @pytest.mark.asyncio
+    async def test_list_bookings_include_cancelled(self, client, auth_headers, cancelled_booking):
+        """Should include cancelled bookings when requested."""
+        response = await client.get(
+            "/api/employee/bookings?include_cancelled=true",
+            headers=auth_headers,
+        )
+
+        refs = [b["reference"] for b in response.json()["bookings"]]
+        assert cancelled_booking.reference in refs
+
+    @pytest.mark.asyncio
+    async def test_list_bookings_response_shape(self, client, auth_headers, confirmed_booking):
+        """Should return bookings with expected fields for the calendar."""
+        response = await client.get(
+            "/api/employee/bookings",
+            headers=auth_headers,
+        )
+
+        booking = None
+        for b in response.json()["bookings"]:
+            if b["reference"] == confirmed_booking.reference:
+                booking = b
+                break
+        assert booking is not None
+
+        # Core booking fields
+        assert "id" in booking
+        assert "reference" in booking
+        assert "status" in booking
+        assert booking["status"] == "confirmed"
+        assert "dropoff_date" in booking
+        assert "dropoff_time" in booking
+        assert "dropoff_destination" in booking
+        assert "pickup_date" in booking
+        assert "pickup_time" in booking
+        assert "pickup_time_from" in booking
+        assert "pickup_time_to" in booking
+        assert "pickup_origin" in booking
+        assert "notes" in booking
+
+        # Customer info
+        assert "customer" in booking
+        assert booking["customer"] is not None
+        assert "first_name" in booking["customer"]
+        assert "last_name" in booking["customer"]
+        assert "phone" in booking["customer"]
+
+        # Vehicle info
+        assert "vehicle" in booking
+        assert booking["vehicle"] is not None
+        assert "registration" in booking["vehicle"]
+        assert "make" in booking["vehicle"]
+        assert "model" in booking["vehicle"]
+        assert "colour" in booking["vehicle"]
+
+    @pytest.mark.asyncio
+    async def test_list_bookings_no_payment_data(self, client, auth_headers, confirmed_booking):
+        """Employee bookings endpoint should not expose payment details."""
+        response = await client.get(
+            "/api/employee/bookings",
+            headers=auth_headers,
+        )
+
+        booking = None
+        for b in response.json()["bookings"]:
+            if b["reference"] == confirmed_booking.reference:
+                booking = b
+                break
+        assert booking is not None
+        assert "payment" not in booking
+
+    @pytest.mark.asyncio
+    async def test_list_bookings_no_auth(self, client):
+        """Should reject unauthenticated request."""
+        response = await client.get("/api/employee/bookings")
+
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_list_bookings_expired_session(self, client, db_session, employee_user):
+        """Should reject request with expired session token."""
+        from db_models import Session as DbSession
+        expired = DbSession(
+            user_id=employee_user.id,
+            token=f"expired_empbk_{uuid.uuid4().hex}",
+            expires_at=datetime.utcnow() - timedelta(hours=1),
+        )
+        db_session.add(expired)
+        db_session.commit()
+
+        response = await client.get(
+            "/api/employee/bookings",
+            headers={"Authorization": f"Bearer {expired.token}"},
+        )
+
+        assert response.status_code == 401
+
+        db_session.delete(expired)
+        db_session.commit()
+
+    @pytest.mark.asyncio
+    async def test_list_bookings_includes_completed(self, client, auth_headers, completed_booking):
+        """Should include completed bookings (they are not cancelled)."""
+        response = await client.get(
+            "/api/employee/bookings",
+            headers=auth_headers,
+        )
+
+        refs = [b["reference"] for b in response.json()["bookings"]]
+        assert completed_booking.reference in refs
+
+    @pytest.mark.asyncio
+    async def test_list_bookings_non_admin_can_access(self, client, auth_headers):
+        """Non-admin employees should be able to access this endpoint."""
+        response = await client.get(
+            "/api/employee/bookings",
+            headers=auth_headers,
+        )
+
+        # auth_headers uses a non-admin employee user
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_list_bookings_customer_snapshot_name(self, client, auth_headers, confirmed_booking):
+        """Should use snapshot name (customer_first_name) when available."""
+        response = await client.get(
+            "/api/employee/bookings",
+            headers=auth_headers,
+        )
+
+        booking = None
+        for b in response.json()["bookings"]:
+            if b["reference"] == confirmed_booking.reference:
+                booking = b
+                break
+        assert booking is not None
+        # Our fixture sets customer_first_name="John" as snapshot
+        assert booking["customer"]["first_name"] == "John"

@@ -3,7 +3,7 @@ import './BookingCalendar.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-function BookingCalendar({ token, renderBookingActions, refreshTrigger }) {
+function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpoint }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(false)
@@ -23,7 +23,8 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger }) {
     setError('')
     try {
       // Get bookings - we'll filter client-side for the calendar view
-      const response = await fetch(`${API_URL}/api/admin/bookings?include_cancelled=false`, {
+      const endpoint = apiEndpoint || '/api/admin/bookings'
+      const response = await fetch(`${API_URL}${endpoint}?include_cancelled=false`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

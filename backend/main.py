@@ -4193,6 +4193,61 @@ class UpdateInspectionRequest(BaseModel):
     signed_date: Optional[str] = None
 
 
+@app.get("/api/employee/bookings")
+async def get_employee_bookings(
+    include_cancelled: bool = Query(False, description="Include cancelled bookings"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Employee endpoint: Get all bookings for the calendar view."""
+    from db_models import Booking, Customer, Vehicle, Payment, BookingStatus
+
+    query = db.query(Booking).options(
+        joinedload(Booking.customer),
+        joinedload(Booking.vehicle),
+        joinedload(Booking.payment),
+        joinedload(Booking.departure),
+    )
+
+    if not include_cancelled:
+        query = query.filter(Booking.status != BookingStatus.CANCELLED)
+
+    bookings = query.order_by(Booking.dropoff_date.asc()).all()
+
+    result = []
+    for b in bookings:
+        result.append({
+            "id": b.id,
+            "reference": b.reference,
+            "status": b.status.value if b.status else None,
+            "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
+            "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
+            "dropoff_destination": b.dropoff_destination,
+            "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
+            "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
+            "pickup_time_from": b.pickup_time_from.strftime("%H:%M") if b.pickup_time_from else None,
+            "pickup_time_to": b.pickup_time_to.strftime("%H:%M") if b.pickup_time_to else None,
+            "pickup_origin": b.pickup_origin,
+            "notes": b.notes,
+            "customer": {
+                "first_name": b.customer_first_name or b.customer.first_name,
+                "last_name": b.customer_last_name or b.customer.last_name,
+                "phone": b.customer.phone,
+            } if b.customer else None,
+            "vehicle": {
+                "registration": b.vehicle.registration,
+                "make": b.vehicle.make,
+                "model": b.vehicle.model,
+                "colour": b.vehicle.colour,
+            } if b.vehicle else None,
+        })
+
+    return {
+        "count": len(result),
+        "bookings": result,
+    }
+
+
 @app.post("/api/employee/inspections")
 async def create_inspection(
     request: CreateInspectionRequest,

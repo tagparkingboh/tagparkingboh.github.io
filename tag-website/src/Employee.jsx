@@ -272,6 +272,7 @@ function Employee() {
           token={token}
           renderBookingActions={renderBookingActions}
           refreshTrigger={refreshTrigger}
+          apiEndpoint="/api/employee/bookings"
         />
       </main>
 
