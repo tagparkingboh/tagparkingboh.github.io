@@ -9,80 +9,51 @@ These tests verify that:
 This covers the bug fix where selecting a seasonal route (e.g., Edinburgh) with a return
 date after the route ends was showing incorrect return flights from different destinations.
 
-Uses an isolated in-memory SQLite database with mocked data for deterministic testing.
+Uses the staging PostgreSQL database with mocked data for deterministic testing.
 """
 import pytest
 import pytest_asyncio
 from datetime import date, time
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 import sys
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from database import Base, get_db
 from db_models import FlightDeparture, FlightArrival
 from main import app
 
 
 # =============================================================================
-# Test Database Setup - Isolated In-Memory SQLite
+# Test Database Setup - Use staging PostgreSQL via conftest
 # =============================================================================
 
-# Create in-memory SQLite engine for isolated testing
-TEST_DATABASE_URL = "sqlite:///:memory:"
-test_engine = create_engine(
-    TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,  # Share connection across threads for in-memory DB
-)
-TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+from sqlalchemy.orm import sessionmaker
+from database import engine
 
+TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-def override_get_db():
-    """Override database dependency for isolated testing."""
-    db = TestSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-@pytest.fixture(scope="module", autouse=True)
-def setup_test_database():
-    """Create all tables in the test database before tests run."""
-    Base.metadata.create_all(bind=test_engine)
-    # Override the dependency for all tests in this module
-    app.dependency_overrides[get_db] = override_get_db
-    yield
-    # Clean up
-    app.dependency_overrides.clear()
-    Base.metadata.drop_all(bind=test_engine)
+# Test dates used by fixtures in this module
+_TEST_DATES = [date(2026, 3, 27), date(2026, 4, 3), date(2026, 4, 5), date(2026, 4, 10)]
 
 
 @pytest.fixture(autouse=True)
-def clean_tables():
-    """Clean tables before each test for isolation."""
+def clean_test_flight_data():
+    """Clean test flight data before and after each test."""
     db = TestSessionLocal()
     try:
-        db.query(FlightArrival).delete()
-        db.query(FlightDeparture).delete()
+        db.query(FlightArrival).filter(FlightArrival.date.in_(_TEST_DATES)).delete(synchronize_session=False)
+        db.query(FlightDeparture).filter(FlightDeparture.date.in_(_TEST_DATES)).delete(synchronize_session=False)
         db.commit()
     finally:
         db.close()
     yield
-
-
-@pytest.fixture
-def db_session():
-    """Get a test database session."""
     db = TestSessionLocal()
     try:
-        yield db
+        db.query(FlightArrival).filter(FlightArrival.date.in_(_TEST_DATES)).delete(synchronize_session=False)
+        db.query(FlightDeparture).filter(FlightDeparture.date.in_(_TEST_DATES)).delete(synchronize_session=False)
+        db.commit()
     finally:
         db.close()
 
@@ -219,7 +190,8 @@ async def test_arrivals_empty_for_date_without_flights(client):
     """
     When no flights exist for a date, should return empty array.
     """
-    response = await client.get("/api/flights/arrivals/2026-05-15")
+    # Use a far-future date that won't have any real flight data
+    response = await client.get("/api/flights/arrivals/2099-12-31")
     assert response.status_code == 200
     data = response.json()
     assert data == []

@@ -877,7 +877,7 @@ function Bookings() {
   const isStep3Complete = formData.package
   // Step 4: Payment (Billing + Payment)
   const isBillingComplete = formData.billingAddress1 && formData.billingCity && formData.billingPostcode && formData.billingCountry
-  const isStep4Complete = formData.terms
+  const isStep4Complete = formData.terms && isBillingComplete
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -1931,7 +1931,7 @@ function Bookings() {
                     Return to Home
                   </button>
                 </div>
-              ) : formData.terms ? (
+              ) : isStep4Complete ? (
                 <StripePayment
                   formData={formData}
                   selectedFlight={selectedDropoffFlight}
@@ -1947,7 +1947,12 @@ function Bookings() {
                 />
               ) : (
                 <div className="terms-required">
-                  <p>Please accept the Terms & Conditions to proceed with payment</p>
+                  {!isBillingComplete && formData.terms && (
+                    <p>Please complete your billing address to proceed with payment</p>
+                  )}
+                  {!formData.terms && (
+                    <p>Please accept the Terms & Conditions to proceed with payment</p>
+                  )}
                 </div>
               )}
 

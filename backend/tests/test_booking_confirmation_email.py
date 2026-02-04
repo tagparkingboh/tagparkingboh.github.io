@@ -9,12 +9,9 @@ import pytest
 import pytest_asyncio
 from unittest.mock import patch, MagicMock, call
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 from datetime import datetime, date, time
 
 from main import app
-from database import Base, get_db
 from db_models import (
     Customer, Vehicle, Booking, Payment, FlightDeparture,
     BookingStatus, PaymentStatus
@@ -22,39 +19,54 @@ from db_models import (
 from email_service import send_booking_confirmation_email, send_email
 
 
-# Test database setup
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_booking_email.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# =============================================================================
+# Test Database Setup - Use staging PostgreSQL via conftest
+# =============================================================================
+
+from sqlalchemy.orm import sessionmaker
+from database import engine
+
+TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def _cleanup_test_booking_data():
+    """Helper to clean test booking data respecting FK constraints."""
+    db = TestSessionLocal()
+    try:
+        # Delete in FK order: payments → bookings (don't delete customers/vehicles as they may be shared)
+        db.query(Payment).filter(
+            Payment.stripe_payment_intent_id.in_(['pi_test_123456', 'pi_test_2week'])
+        ).delete(synchronize_session=False)
+        db.query(Booking).filter(
+            Booking.reference.in_(['TAG-TEST1234', 'TAG-2WEEK123'])
+        ).delete(synchronize_session=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+
+@pytest.fixture(autouse=True)
+def cleanup_test_booking_email_data():
+    """Clean test data before and after each test."""
+    _cleanup_test_booking_data()
+    yield
+    _cleanup_test_booking_data()
 
 
 @pytest.fixture(scope="function")
 def db():
-    """Create a fresh database for each test."""
-    Base.metadata.create_all(bind=engine)
-    db = TestingSessionLocal()
+    """Get a database session for testing."""
+    db = TestSessionLocal()
     try:
         yield db
     finally:
         db.close()
-        Base.metadata.drop_all(bind=engine)
-
-
-@pytest.fixture(scope="function")
-def override_get_db(db):
-    """Override the database dependency."""
-    def _override_get_db():
-        try:
-            yield db
-        finally:
-            pass
-    app.dependency_overrides[get_db] = _override_get_db
-    yield
-    app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
-async def client(override_get_db):
+async def client():
     """Create an async test client."""
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -406,25 +418,43 @@ class TestWebhookEmailIntegration:
 
     def _create_test_booking(self, db, booking_reference="TAG-TEST1234"):
         """Helper to create a test booking with all related records."""
-        # Create customer
-        customer = Customer(
-            first_name="John",
-            last_name="Doe",
-            email="john.doe@example.com",
-            phone="+447123456789",
-        )
-        db.add(customer)
-        db.flush()
+        # Get or create customer
+        customer = db.query(Customer).filter(
+            Customer.email == "john.doe@example.com"
+        ).first()
+        if not customer:
+            customer = Customer(
+                first_name="John",
+                last_name="Doe",
+                email="john.doe@example.com",
+                phone="+447123456789",
+            )
+            db.add(customer)
+            db.flush()
+        else:
+            customer.first_name = "John"
+            customer.last_name = "Doe"
+            customer.phone = "+447123456789"
+            db.flush()
 
-        # Create vehicle
-        vehicle = Vehicle(
-            customer_id=customer.id,
-            registration="AB12 CDE",
-            make="Ford",
-            model="Focus",
-            colour="Blue",
-        )
-        db.add(vehicle)
+        # Get or create vehicle (update if exists to ensure test values)
+        vehicle = db.query(Vehicle).filter(
+            Vehicle.registration == "AB12 CDE",
+            Vehicle.customer_id == customer.id,
+        ).first()
+        if not vehicle:
+            vehicle = Vehicle(
+                customer_id=customer.id,
+                registration="AB12 CDE",
+                make="Ford",
+                model="Focus",
+                colour="Blue",
+            )
+            db.add(vehicle)
+        else:
+            vehicle.make = "Ford"
+            vehicle.model = "Focus"
+            vehicle.colour = "Blue"
         db.flush()
 
         # Create booking
@@ -727,24 +757,37 @@ class TestWebhookEmailIntegration:
         self, mock_verify, mock_send_email, client, db
     ):
         """Test that 2-week package is correctly identified."""
-        # Create booking with "longer" package
-        customer = Customer(
-            first_name="Jane",
-            last_name="Smith",
-            email="jane@example.com",
-            phone="+447123456789",
-        )
-        db.add(customer)
-        db.flush()
+        # Get or create customer with "longer" package
+        customer = db.query(Customer).filter(
+            Customer.email == "jane@example.com"
+        ).first()
+        if not customer:
+            customer = Customer(
+                first_name="Jane",
+                last_name="Smith",
+                email="jane@example.com",
+                phone="+447123456789",
+            )
+            db.add(customer)
+            db.flush()
 
-        vehicle = Vehicle(
-            customer_id=customer.id,
-            registration="XY99 ZZZ",
-            make="BMW",
-            model="3 Series",
-            colour="Black",
-        )
-        db.add(vehicle)
+        vehicle = db.query(Vehicle).filter(
+            Vehicle.registration == "XY99 ZZZ",
+            Vehicle.customer_id == customer.id,
+        ).first()
+        if not vehicle:
+            vehicle = Vehicle(
+                customer_id=customer.id,
+                registration="XY99 ZZZ",
+                make="BMW",
+                model="3 Series",
+                colour="Black",
+            )
+            db.add(vehicle)
+        else:
+            vehicle.make = "BMW"
+            vehicle.model = "3 Series"
+            vehicle.colour = "Black"
         db.flush()
 
         booking = Booking(

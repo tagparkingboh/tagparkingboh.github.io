@@ -2939,6 +2939,14 @@ async def create_payment(
         )
 
     try:
+        # Validate billing address is provided
+        if not request.billing_address1 or not request.billing_address1.strip():
+            raise HTTPException(status_code=400, detail="Billing address is required")
+        if not request.billing_city or not request.billing_city.strip():
+            raise HTTPException(status_code=400, detail="Billing city is required")
+        if not request.billing_postcode or not request.billing_postcode.strip():
+            raise HTTPException(status_code=400, detail="Billing postcode is required")
+
         # Debug: log incoming promo code
         print(f"[PROMO] Received request with promo_code: {request.promo_code}")
 

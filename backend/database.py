@@ -1,27 +1,23 @@
 """
 Database configuration and session management.
-Uses SQLite for development, PostgreSQL for production.
+Uses PostgreSQL via Railway.
 """
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 
-# Get database URL from environment, default to SQLite for development
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./tag.db")
+# Get database URL from environment (PostgreSQL required)
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is required")
 
 # Handle PostgreSQL URL format from some providers (postgres:// vs postgresql://)
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# SQLite needs special connect_args for async compatibility
-if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(
-        DATABASE_URL,
-        connect_args={"check_same_thread": False}
-    )
-else:
-    engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
