@@ -446,6 +446,22 @@
   box-shadow: 0 0 0 3px rgba(247, 179, 43, 0.15);
 }
 
+.admin-sort-btn {
+  background: none;
+  border: 1px solid #555;
+  color: #ccc;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.admin-sort-btn:hover {
+  border-color: #f7b32b;
+  color: #f7b32b;
+}
+
 .admin-filter-count {
   font-size: 13px;
   color: #888;
