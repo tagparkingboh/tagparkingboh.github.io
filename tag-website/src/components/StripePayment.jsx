@@ -120,6 +120,20 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
         elements,
         confirmParams: {
           return_url: `${window.location.origin}/booking-confirmation`,
+          payment_method_data: {
+            billing_details: {
+              name: billingDetails.name || '',
+              email: billingDetails.email || '',
+              phone: billingDetails.phone || '',
+              address: {
+                line1: billingDetails.address1 || '',
+                line2: billingDetails.address2 || '',
+                city: billingDetails.city || '',
+                postal_code: billingDetails.postcode || '',
+                country: billingDetails.country || 'GB',
+              },
+            },
+          },
         },
         redirect: 'if_required',
       })
@@ -160,6 +174,14 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
       <PaymentElement
         options={{
           layout: 'tabs',
+          fields: {
+            billingDetails: {
+              address: {
+                country: 'never',
+                postalCode: 'never',
+              },
+            },
+          },
           defaultValues: {
             billingDetails: {
               name: billingDetails.name || '',
@@ -546,6 +568,9 @@ function StripePayment({
             name: `${formData.firstName} ${formData.lastName}`,
             email: formData.email,
             phone: formData.phone, // Already in E.164 format from react-phone-number-input
+            address1: formData.billingAddress1,
+            address2: formData.billingAddress2,
+            city: formData.billingCity,
             postcode: formData.billingPostcode,
             country: getCountryCode(formData.billingCountry),
           }}
