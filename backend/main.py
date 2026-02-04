@@ -48,7 +48,7 @@ from stripe_service import (
 
 # Database imports
 from database import get_db, init_db
-from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession
+from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession, VehicleInspection, InspectionType
 import db_service
 import json
 import traceback
@@ -2939,6 +2939,14 @@ async def create_payment(
         )
 
     try:
+        # Validate billing address is provided
+        if not request.billing_address1 or not request.billing_address1.strip():
+            raise HTTPException(status_code=400, detail="Billing address is required")
+        if not request.billing_city or not request.billing_city.strip():
+            raise HTTPException(status_code=400, detail="Billing city is required")
+        if not request.billing_postcode or not request.billing_postcode.strip():
+            raise HTTPException(status_code=400, detail="Billing postcode is required")
+
         # Debug: log incoming promo code
         print(f"[PROMO] Received request with promo_code: {request.promo_code}")
 
@@ -4170,6 +4178,241 @@ async def delete_user(
     db.commit()
 
     return {"success": True, "message": f"User {user.email} deleted"}
+
+
+# ============================================================================
+# VEHICLE INSPECTION ENDPOINTS (Employee + Admin)
+# ============================================================================
+
+
+class CreateInspectionRequest(BaseModel):
+    booking_id: int
+    inspection_type: str  # "dropoff" or "pickup"
+    notes: Optional[str] = None
+    photos: Optional[dict] = None  # { "front": "base64...", "rear": "base64...", ... }
+    customer_name: Optional[str] = None
+    signed_date: Optional[str] = None  # ISO date string YYYY-MM-DD
+
+
+class UpdateInspectionRequest(BaseModel):
+    notes: Optional[str] = None
+    photos: Optional[dict] = None
+    customer_name: Optional[str] = None
+    signed_date: Optional[str] = None
+
+
+@app.get("/api/employee/bookings")
+async def get_employee_bookings(
+    include_cancelled: bool = Query(False, description="Include cancelled bookings"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Employee endpoint: Get all bookings for the calendar view."""
+    from db_models import Booking, Customer, Vehicle, Payment, BookingStatus
+
+    query = db.query(Booking).options(
+        joinedload(Booking.customer),
+        joinedload(Booking.vehicle),
+        joinedload(Booking.payment),
+        joinedload(Booking.departure),
+    )
+
+    if not include_cancelled:
+        query = query.filter(Booking.status != BookingStatus.CANCELLED)
+
+    bookings = query.order_by(Booking.dropoff_date.asc()).all()
+
+    result = []
+    for b in bookings:
+        result.append({
+            "id": b.id,
+            "reference": b.reference,
+            "status": b.status.value if b.status else None,
+            "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
+            "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
+            "dropoff_destination": b.dropoff_destination,
+            "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
+            "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
+            "pickup_time_from": b.pickup_time_from.strftime("%H:%M") if b.pickup_time_from else None,
+            "pickup_time_to": b.pickup_time_to.strftime("%H:%M") if b.pickup_time_to else None,
+            "pickup_origin": b.pickup_origin,
+            "notes": b.notes,
+            "customer": {
+                "first_name": b.customer_first_name or b.customer.first_name,
+                "last_name": b.customer_last_name or b.customer.last_name,
+                "phone": b.customer.phone,
+            } if b.customer else None,
+            "vehicle": {
+                "registration": b.vehicle.registration,
+                "make": b.vehicle.make,
+                "model": b.vehicle.model,
+                "colour": b.vehicle.colour,
+            } if b.vehicle else None,
+        })
+
+    return {
+        "count": len(result),
+        "bookings": result,
+    }
+
+
+@app.post("/api/employee/inspections")
+async def create_inspection(
+    request: CreateInspectionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a vehicle inspection (drop-off or pick-up)."""
+    # Validate inspection type
+    try:
+        insp_type = InspectionType(request.inspection_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid inspection type. Must be 'dropoff' or 'pickup'")
+
+    # Check booking exists
+    booking = db.query(DbBooking).filter(DbBooking.id == request.booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    # Check for existing inspection of this type
+    existing = db.query(VehicleInspection).filter(
+        VehicleInspection.booking_id == request.booking_id,
+        VehicleInspection.inspection_type == insp_type,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"{request.inspection_type} inspection already exists for this booking")
+
+    from datetime import date as date_type
+    signed_date = None
+    if request.signed_date:
+        try:
+            signed_date = date_type.fromisoformat(request.signed_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid signed_date format. Use YYYY-MM-DD")
+
+    inspection = VehicleInspection(
+        booking_id=request.booking_id,
+        inspection_type=insp_type,
+        notes=request.notes,
+        photos=json.dumps(request.photos) if request.photos else None,
+        customer_name=request.customer_name,
+        signed_date=signed_date,
+        inspector_id=current_user.id,
+    )
+    db.add(inspection)
+    db.commit()
+    db.refresh(inspection)
+
+    return {
+        "success": True,
+        "inspection": {
+            "id": inspection.id,
+            "booking_id": inspection.booking_id,
+            "inspection_type": inspection.inspection_type.value,
+            "notes": inspection.notes,
+            "photos": json.loads(inspection.photos) if inspection.photos else {},
+            "customer_name": inspection.customer_name,
+            "signed_date": inspection.signed_date.isoformat() if inspection.signed_date else None,
+            "inspector_id": inspection.inspector_id,
+            "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
+        }
+    }
+
+
+@app.get("/api/employee/inspections/{booking_id}")
+async def get_inspections(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all inspections for a booking."""
+    inspections = db.query(VehicleInspection).filter(
+        VehicleInspection.booking_id == booking_id
+    ).all()
+
+    return {
+        "inspections": [
+            {
+                "id": i.id,
+                "booking_id": i.booking_id,
+                "inspection_type": i.inspection_type.value,
+                "notes": i.notes,
+                "photos": json.loads(i.photos) if i.photos else {},
+                "customer_name": i.customer_name,
+                "signed_date": i.signed_date.isoformat() if i.signed_date else None,
+                "inspector_id": i.inspector_id,
+                "created_at": i.created_at.isoformat() if i.created_at else None,
+                "updated_at": i.updated_at.isoformat() if i.updated_at else None,
+            }
+            for i in inspections
+        ]
+    }
+
+
+@app.put("/api/employee/inspections/{inspection_id}")
+async def update_inspection(
+    inspection_id: int,
+    request: UpdateInspectionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update a vehicle inspection."""
+    inspection = db.query(VehicleInspection).filter(VehicleInspection.id == inspection_id).first()
+    if not inspection:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+
+    if request.notes is not None:
+        inspection.notes = request.notes
+    if request.photos is not None:
+        inspection.photos = json.dumps(request.photos)
+    if request.customer_name is not None:
+        inspection.customer_name = request.customer_name
+    if request.signed_date is not None:
+        from datetime import date as date_type
+        try:
+            inspection.signed_date = date_type.fromisoformat(request.signed_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid signed_date format. Use YYYY-MM-DD")
+
+    db.commit()
+    db.refresh(inspection)
+
+    return {
+        "success": True,
+        "inspection": {
+            "id": inspection.id,
+            "booking_id": inspection.booking_id,
+            "inspection_type": inspection.inspection_type.value,
+            "notes": inspection.notes,
+            "photos": json.loads(inspection.photos) if inspection.photos else {},
+            "customer_name": inspection.customer_name,
+            "signed_date": inspection.signed_date.isoformat() if inspection.signed_date else None,
+            "inspector_id": inspection.inspector_id,
+            "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
+            "updated_at": inspection.updated_at.isoformat() if inspection.updated_at else None,
+        }
+    }
+
+
+@app.post("/api/employee/bookings/{booking_id}/complete")
+async def mark_booking_completed(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark a booking as completed."""
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status != BookingStatus.CONFIRMED:
+        raise HTTPException(status_code=400, detail=f"Booking must be confirmed to complete. Current status: {booking.status.value}")
+
+    booking.status = BookingStatus.COMPLETED
+    db.commit()
+
+    return {"success": True, "message": f"Booking {booking.reference} marked as completed"}
+
 
 
 # ============================================================================

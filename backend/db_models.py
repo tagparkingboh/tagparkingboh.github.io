@@ -3,7 +3,7 @@ SQLAlchemy database models for TAG booking system.
 """
 from sqlalchemy import (
     Column, Integer, String, DateTime, Date, Time,
-    ForeignKey, Enum, Boolean, Text, Numeric
+    ForeignKey, Enum, Boolean, Text, Numeric, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -495,6 +495,42 @@ class Session(Base):
 
     def __repr__(self):
         return f"<Session for user {self.user_id}>"
+
+
+class InspectionType(enum.Enum):
+    """Type of vehicle inspection."""
+    DROPOFF = "dropoff"      # When customer drops car off
+    PICKUP = "pickup"        # When customer picks car up
+
+
+class VehicleInspection(Base):
+    """Vehicle inspection record - one per type per booking."""
+    __tablename__ = "vehicle_inspections"
+    __table_args__ = (
+        UniqueConstraint('booking_id', 'inspection_type', name='uq_inspection_booking_type'),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=False)
+    inspection_type = Column(Enum(InspectionType), nullable=False)
+
+    notes = Column(Text)
+    photos = Column(Text)  # JSON array of base64-encoded images
+
+    # Customer acknowledgement
+    customer_name = Column(String(200))  # Customer types their name to agree
+    signed_date = Column(Date)  # Date of acknowledgement
+
+    inspector_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    booking = relationship("Booking")
+    inspector = relationship("User")
+
+    def __repr__(self):
+        return f"<VehicleInspection {self.inspection_type.value} for booking {self.booking_id}>"
 
 
 class PricingSettings(Base):

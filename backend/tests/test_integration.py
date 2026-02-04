@@ -489,6 +489,9 @@ async def test_create_payment_intent_success(client, sample_customer, sample_dep
                         "pickup_date": "2025-12-22",
                         "drop_off_slot": "165",
                         "departure_id": sample_departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 
@@ -546,6 +549,9 @@ async def test_slot_booking_early(client, sample_customer, sample_departure, db_
                         "pickup_date": "2025-12-22",
                         "drop_off_slot": "165",  # Early slot
                         "departure_id": sample_departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 
@@ -615,6 +621,9 @@ async def test_slot_booking_late(client, sample_customer, db_session):
                         "pickup_date": "2025-12-30",
                         "drop_off_slot": "120",  # Late slot
                         "departure_id": departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 
@@ -659,6 +668,9 @@ async def test_booking_creates_record(client, sample_customer, sample_departure,
                         "pickup_date": "2025-12-22",
                         "drop_off_slot": "165",
                         "departure_id": sample_departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 
@@ -735,6 +747,9 @@ async def test_booking_fails_when_early_slot_full(client, sample_customer, db_se
                         "pickup_date": "2025-12-25",
                         "drop_off_slot": "165",  # Trying to book early slot
                         "departure_id": departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 
@@ -798,6 +813,9 @@ async def test_booking_fails_when_late_slot_full(client, sample_customer, db_ses
                         "pickup_date": "2026-01-02",
                         "drop_off_slot": "120",  # Trying to book late slot
                         "departure_id": departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 
@@ -860,6 +878,9 @@ async def test_booking_fails_when_all_slots_booked(client, sample_customer, db_s
                         "pickup_date": "2025-12-27",
                         "drop_off_slot": "165",  # Either slot
                         "departure_id": departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 
@@ -923,6 +944,9 @@ async def test_booking_fails_for_call_us_only_flight(client, sample_customer, db
                         "pickup_date": "2025-12-31",
                         "drop_off_slot": "165",
                         "departure_id": departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 
@@ -988,6 +1012,9 @@ async def test_can_book_late_slot_when_only_early_full(client, sample_customer, 
                         "pickup_date": "2025-12-28",
                         "drop_off_slot": "120",  # Booking late slot
                         "departure_id": departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 
@@ -1054,6 +1081,9 @@ async def test_can_book_early_slot_when_only_late_full(client, sample_customer, 
                         "pickup_date": "2026-01-06",
                         "drop_off_slot": "165",  # Booking early slot
                         "departure_id": departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 
@@ -1263,6 +1293,9 @@ async def test_full_booking_flow(client, db_session):
                         "pickup_date": "2026-01-08",
                         "drop_off_slot": "165",
                         "departure_id": departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 
@@ -1327,6 +1360,9 @@ async def test_booking_gets_destination_from_departure_table(client, sample_cust
                         "pickup_date": "2025-12-22",
                         "drop_off_slot": "165",
                         "departure_id": sample_departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                         # Note: NOT passing dropoff_destination - it should be looked up
                     }
                 )
@@ -1389,6 +1425,9 @@ async def test_booking_gets_origin_from_arrival_table(client, sample_customer, s
                         "departure_id": sample_departure.id,
                         "pickup_flight_number": "1235",  # Matches sample_arrival
                         "pickup_flight_time": "17:30",
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                         # Note: NOT passing pickup_origin - it should be looked up
                     }
                 )
@@ -1463,6 +1502,9 @@ async def test_tenerife_reinasofia_shortened_to_tenerife(client, sample_customer
                         "pickup_date": "2025-12-27",
                         "drop_off_slot": "165",
                         "departure_id": departure.id,
+                        "billing_address1": "123 Test Street",
+                        "billing_city": "Bournemouth",
+                        "billing_postcode": "BH1 1AA",
                     }
                 )
 

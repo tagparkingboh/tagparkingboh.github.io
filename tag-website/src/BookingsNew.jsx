@@ -877,7 +877,7 @@ function Bookings() {
   const isStep3Complete = formData.package
   // Step 4: Payment (Billing + Payment)
   const isBillingComplete = formData.billingAddress1 && formData.billingCity && formData.billingPostcode && formData.billingCountry
-  const isStep4Complete = formData.terms
+  const isStep4Complete = formData.terms && isBillingComplete
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -1709,17 +1709,21 @@ function Bookings() {
                 </div>
               </div>
 
-              {/* Only show postcode input for manual entry if non-UK country */}
-              {manualAddressEntry && formData.billingCountry !== 'United Kingdom' && (
+              {/* Show postcode input in manual entry mode */}
+              {manualAddressEntry && (
                 <div className="form-group">
-                  <label htmlFor="billingPostcodeManual">Postcode / ZIP Code</label>
+                  <label htmlFor="billingPostcodeManual">
+                    {formData.billingCountry === 'United Kingdom' ? 'Postcode' : 'Postcode / ZIP Code'} <span className="required">*</span>
+                  </label>
                   <input
                     type="text"
                     id="billingPostcodeManual"
                     name="billingPostcode"
-                    placeholder="Enter postcode"
+                    placeholder={formData.billingCountry === 'United Kingdom' ? 'BH1 1AA' : 'Enter postcode'}
                     value={formData.billingPostcode}
                     onChange={handleChange}
+                    style={formData.billingCountry === 'United Kingdom' ? { textTransform: 'uppercase' } : {}}
+                    required
                   />
                 </div>
               )}
@@ -1931,7 +1935,7 @@ function Bookings() {
                     Return to Home
                   </button>
                 </div>
-              ) : formData.terms ? (
+              ) : isStep4Complete ? (
                 <StripePayment
                   formData={formData}
                   selectedFlight={selectedDropoffFlight}
@@ -1947,7 +1951,12 @@ function Bookings() {
                 />
               ) : (
                 <div className="terms-required">
-                  <p>Please accept the Terms & Conditions to proceed with payment</p>
+                  {!isBillingComplete && formData.terms && (
+                    <p>Please complete your billing address to proceed with payment</p>
+                  )}
+                  {!formData.terms && (
+                    <p>Please accept the Terms & Conditions to proceed with payment</p>
+                  )}
                 </div>
               )}
 

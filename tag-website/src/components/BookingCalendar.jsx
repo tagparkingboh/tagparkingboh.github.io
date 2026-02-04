@@ -3,7 +3,7 @@ import './BookingCalendar.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-function BookingCalendar({ token }) {
+function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpoint }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(false)
@@ -16,14 +16,15 @@ function BookingCalendar({ token }) {
     if (token) {
       fetchBookings()
     }
-  }, [token, currentDate])
+  }, [token, currentDate, refreshTrigger])
 
   const fetchBookings = async () => {
     setLoading(true)
     setError('')
     try {
       // Get bookings - we'll filter client-side for the calendar view
-      const response = await fetch(`${API_URL}/api/admin/bookings?include_cancelled=false`, {
+      const endpoint = apiEndpoint || '/api/admin/bookings'
+      const response = await fetch(`${API_URL}${endpoint}?include_cancelled=false`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -307,6 +308,7 @@ function BookingCalendar({ token }) {
                           <span>|</span>
                           <span className="reg-plate">{booking.vehicle?.registration || booking.vehicle_registration}</span>
                         </div>
+                        {renderBookingActions && renderBookingActions(booking, 'dropoff')}
                       </div>
                     ))}
                 </div>
@@ -349,6 +351,7 @@ function BookingCalendar({ token }) {
                           <span>|</span>
                           <span className="reg-plate">{booking.vehicle?.registration || booking.vehicle_registration}</span>
                         </div>
+                        {renderBookingActions && renderBookingActions(booking, 'pickup')}
                       </div>
                     ))}
                 </div>

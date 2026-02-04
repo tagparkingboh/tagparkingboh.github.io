@@ -7,48 +7,45 @@ Includes both unit tests and integration tests for:
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from main import app
-from database import Base, get_db
 from db_models import MarketingSubscriber
 
 
 # =============================================================================
-# Test Database Setup
+# Test Database Setup - Use staging PostgreSQL via conftest
 # =============================================================================
 
-# Use in-memory SQLite for tests
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test_marketing.db"
+from sqlalchemy.orm import sessionmaker
+from database import engine
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def override_get_db():
-    """Override the database dependency for testing."""
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
+TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 @pytest.fixture(autouse=True)
-def setup_test_db():
-    """Create tables before each test and drop after."""
-    Base.metadata.create_all(bind=engine)
-    app.dependency_overrides[get_db] = override_get_db
+def cleanup_test_marketing_data():
+    """Clean test marketing data before and after each test."""
+    db = TestSessionLocal()
+    try:
+        db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email.like('%@example.com')
+        ).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
     yield
-    Base.metadata.drop_all(bind=engine)
-    app.dependency_overrides.clear()
+    db = TestSessionLocal()
+    try:
+        db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email.like('%@example.com')
+        ).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
 
 
 @pytest_asyncio.fixture
@@ -68,7 +65,7 @@ class TestMarketingSubscriberModel:
 
     def test_create_subscriber(self):
         """Should create a subscriber with required fields."""
-        db = TestingSessionLocal()
+        db = TestSessionLocal()
         try:
             subscriber = MarketingSubscriber(
                 first_name="John",
@@ -92,7 +89,7 @@ class TestMarketingSubscriberModel:
 
     def test_create_subscriber_with_source(self):
         """Should create a subscriber with custom source."""
-        db = TestingSessionLocal()
+        db = TestSessionLocal()
         try:
             subscriber = MarketingSubscriber(
                 first_name="Jane",
@@ -110,7 +107,7 @@ class TestMarketingSubscriberModel:
 
     def test_subscriber_email_unique(self):
         """Should enforce unique email constraint."""
-        db = TestingSessionLocal()
+        db = TestSessionLocal()
         try:
             subscriber1 = MarketingSubscriber(
                 first_name="John",
@@ -203,7 +200,7 @@ async def test_subscribe_resubscribe_after_unsubscribe(client):
     from datetime import datetime
 
     # Create an unsubscribed user directly in the database
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
         subscriber = MarketingSubscriber(
             first_name="John",
@@ -236,7 +233,7 @@ async def test_subscribe_resubscribe_after_unsubscribe(client):
     assert data["is_new_subscriber"] is True
 
     # Verify database was updated correctly
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
         subscriber = db.query(MarketingSubscriber).filter(
             MarketingSubscriber.email == "john@example.com"
@@ -293,9 +290,11 @@ async def test_subscribe_trims_whitespace(client):
     assert response.status_code == 200
 
     # Verify data was trimmed
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
-        subscriber = db.query(MarketingSubscriber).first()
+        subscriber = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email == "john@example.com"
+        ).first()
         assert subscriber.first_name == "John"
         assert subscriber.last_name == "Doe"
         assert subscriber.email == "john@example.com"
@@ -316,9 +315,11 @@ async def test_subscribe_default_source(client):
     )
     assert response.status_code == 200
 
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
-        subscriber = db.query(MarketingSubscriber).first()
+        subscriber = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email == "john@example.com"
+        ).first()
         assert subscriber.source == "website"  # API default
     finally:
         db.close()
@@ -338,9 +339,11 @@ async def test_subscribe_custom_source(client):
     )
     assert response.status_code == 200
 
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
-        subscriber = db.query(MarketingSubscriber).first()
+        subscriber = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email == "john@example.com"
+        ).first()
         assert subscriber.source == "landing_page"
     finally:
         db.close()
@@ -409,9 +412,11 @@ async def test_subscribe_multiple_users(client):
         assert response.status_code == 200
         assert response.json()["is_new_subscriber"] is True
 
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
-        count = db.query(MarketingSubscriber).count()
+        count = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email.in_(["user1@example.com", "user2@example.com", "user3@example.com"])
+        ).count()
         assert count == 3
     finally:
         db.close()
@@ -430,9 +435,11 @@ async def test_subscribe_sets_boolean_defaults(client):
     )
     assert response.status_code == 200
 
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
-        subscriber = db.query(MarketingSubscriber).first()
+        subscriber = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email == "john@example.com"
+        ).first()
         assert subscriber.welcome_email_sent is False
         assert subscriber.promo_code_sent is False
         assert subscriber.welcome_email_sent_at is None
@@ -454,9 +461,11 @@ async def test_subscribe_sets_timestamp(client):
     )
     assert response.status_code == 200
 
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
-        subscriber = db.query(MarketingSubscriber).first()
+        subscriber = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email == "john@example.com"
+        ).first()
         assert subscriber.subscribed_at is not None
     finally:
         db.close()
@@ -475,9 +484,11 @@ async def test_subscribe_special_characters_in_name(client):
     )
     assert response.status_code == 200
 
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
-        subscriber = db.query(MarketingSubscriber).first()
+        subscriber = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email == "jose@example.com"
+        ).first()
         assert subscriber.first_name == "José-María"
         assert subscriber.last_name == "O'Connor"
     finally:
@@ -512,9 +523,11 @@ async def test_subscribe_plus_addressing_email(client):
     )
     assert response.status_code == 200
 
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
-        subscriber = db.query(MarketingSubscriber).first()
+        subscriber = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email == "john+tag@example.com"
+        ).first()
         assert subscriber.email == "john+tag@example.com"
     finally:
         db.close()
@@ -533,9 +546,11 @@ async def test_subscribe_generates_unsubscribe_token(client):
     )
     assert response.status_code == 200
 
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
-        subscriber = db.query(MarketingSubscriber).first()
+        subscriber = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email == "john@example.com"
+        ).first()
         assert subscriber.unsubscribe_token is not None
         assert len(subscriber.unsubscribe_token) > 20  # Should be a secure token
     finally:
@@ -557,10 +572,13 @@ async def test_subscribe_unique_unsubscribe_tokens(client):
             }
         )
 
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
-        subscribers = db.query(MarketingSubscriber).all()
+        subscribers = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.email.in_(["user1@example.com", "user2@example.com", "user3@example.com"])
+        ).all()
         tokens = [s.unsubscribe_token for s in subscribers]
+        assert len(tokens) == 3
         assert len(tokens) == len(set(tokens))  # All tokens should be unique
     finally:
         db.close()
@@ -575,7 +593,7 @@ class TestUnsubscribeModelFields:
 
     def test_unsubscribed_defaults_to_false(self):
         """Unsubscribed should default to False."""
-        db = TestingSessionLocal()
+        db = TestSessionLocal()
         try:
             subscriber = MarketingSubscriber(
                 first_name="John",
@@ -596,7 +614,7 @@ class TestUnsubscribeModelFields:
         """Should be able to mark a subscriber as unsubscribed."""
         from datetime import datetime
 
-        db = TestingSessionLocal()
+        db = TestSessionLocal()
         try:
             subscriber = MarketingSubscriber(
                 first_name="John",
@@ -619,7 +637,7 @@ class TestUnsubscribeModelFields:
 
     def test_unsubscribe_token_unique(self):
         """Unsubscribe tokens should be unique."""
-        db = TestingSessionLocal()
+        db = TestSessionLocal()
         try:
             subscriber1 = MarketingSubscriber(
                 first_name="John",
@@ -652,7 +670,7 @@ class TestUnsubscribeModelFields:
 async def test_unsubscribe_confirmation_page(client):
     """GET should show confirmation page with 'Yes, I'm sure!' button."""
     # First, create a subscriber
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
         subscriber = MarketingSubscriber(
             first_name="John",
@@ -673,7 +691,7 @@ async def test_unsubscribe_confirmation_page(client):
     assert "john@example.com" in response.text
 
     # Verify NOT unsubscribed yet in database
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
         subscriber = db.query(MarketingSubscriber).filter(
             MarketingSubscriber.email == "john@example.com"
@@ -688,7 +706,7 @@ async def test_unsubscribe_confirmation_page(client):
 async def test_unsubscribe_success(client):
     """POST should successfully unsubscribe with valid token."""
     # First, create a subscriber
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
         subscriber = MarketingSubscriber(
             first_name="John",
@@ -708,7 +726,7 @@ async def test_unsubscribe_success(client):
     assert "john@example.com" in response.text
 
     # Verify in database
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
         subscriber = db.query(MarketingSubscriber).filter(
             MarketingSubscriber.email == "john@example.com"
@@ -733,7 +751,7 @@ async def test_unsubscribe_already_unsubscribed(client):
     from datetime import datetime
 
     # Create an already unsubscribed user
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
         subscriber = MarketingSubscriber(
             first_name="John",
@@ -757,7 +775,7 @@ async def test_unsubscribe_already_unsubscribed(client):
 @pytest.mark.asyncio
 async def test_unsubscribe_returns_html(client):
     """Should return HTML content type."""
-    db = TestingSessionLocal()
+    db = TestSessionLocal()
     try:
         subscriber = MarketingSubscriber(
             first_name="John",
@@ -858,7 +876,7 @@ class TestEmailSchedulerUnsubscribe:
         sys.path.insert(0, str(Path(__file__).parent.parent))
 
         # Create test data
-        db = TestingSessionLocal()
+        db = TestSessionLocal()
         try:
             # Active subscriber (should receive email)
             active = MarketingSubscriber(
@@ -896,7 +914,7 @@ class TestEmailSchedulerUnsubscribe:
             # Import and patch the database session
             from email_scheduler import process_pending_welcome_emails
             with patch('email_scheduler.get_db') as mock_get_db:
-                mock_get_db.return_value = TestingSessionLocal()
+                mock_get_db.return_value = TestSessionLocal()
                 with patch('email_scheduler.is_email_enabled', return_value=True):
                     process_pending_welcome_emails()
 

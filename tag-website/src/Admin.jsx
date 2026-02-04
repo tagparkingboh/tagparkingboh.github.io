@@ -17,6 +17,7 @@ function Admin() {
   const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [sortAsc, setSortAsc] = useState(true)
   const [expandedBookingId, setExpandedBookingId] = useState(null)
   const [cancellingId, setCancellingId] = useState(null)
   const [showCancelModal, setShowCancelModal] = useState(false)
@@ -452,15 +453,15 @@ function Admin() {
       )
     }
 
-    // Sort by dropoff date ASC (earliest first)
+    // Sort by dropoff date
     filtered.sort((a, b) => {
       const dateA = new Date(a.dropoff_date)
       const dateB = new Date(b.dropoff_date)
-      return dateA - dateB
+      return sortAsc ? dateA - dateB : dateB - dateA
     })
 
     return filtered
-  }, [bookings, searchTerm, statusFilter, hideTestEmails])
+  }, [bookings, searchTerm, statusFilter, hideTestEmails, sortAsc])
 
   // Filter subscribers
   const filteredSubscribers = useMemo(() => {
@@ -866,6 +867,13 @@ function Admin() {
                 />
                 Hide test emails
               </label>
+              <button
+                className="admin-sort-btn"
+                onClick={() => setSortAsc(!sortAsc)}
+                title={sortAsc ? 'Sorted by drop-off date (earliest first)' : 'Sorted by drop-off date (latest first)'}
+              >
+                Drop-off {sortAsc ? '↑' : '↓'}
+              </button>
               <div className="admin-filter-count">
                 Showing {filteredBookings.length} of {bookings.length} bookings
               </div>
