@@ -4181,14 +4181,14 @@ class CreateInspectionRequest(BaseModel):
     booking_id: int
     inspection_type: str  # "dropoff" or "pickup"
     notes: Optional[str] = None
-    photos: Optional[list] = None  # List of base64-encoded image strings
+    photos: Optional[dict] = None  # { "front": "base64...", "rear": "base64...", ... }
     customer_name: Optional[str] = None
     signed_date: Optional[str] = None  # ISO date string YYYY-MM-DD
 
 
 class UpdateInspectionRequest(BaseModel):
     notes: Optional[str] = None
-    photos: Optional[list] = None
+    photos: Optional[dict] = None
     customer_name: Optional[str] = None
     signed_date: Optional[str] = None
 
@@ -4247,7 +4247,7 @@ async def create_inspection(
             "booking_id": inspection.booking_id,
             "inspection_type": inspection.inspection_type.value,
             "notes": inspection.notes,
-            "photos": json.loads(inspection.photos) if inspection.photos else [],
+            "photos": json.loads(inspection.photos) if inspection.photos else {},
             "customer_name": inspection.customer_name,
             "signed_date": inspection.signed_date.isoformat() if inspection.signed_date else None,
             "inspector_id": inspection.inspector_id,
@@ -4274,7 +4274,7 @@ async def get_inspections(
                 "booking_id": i.booking_id,
                 "inspection_type": i.inspection_type.value,
                 "notes": i.notes,
-                "photos": json.loads(i.photos) if i.photos else [],
+                "photos": json.loads(i.photos) if i.photos else {},
                 "customer_name": i.customer_name,
                 "signed_date": i.signed_date.isoformat() if i.signed_date else None,
                 "inspector_id": i.inspector_id,
@@ -4321,7 +4321,7 @@ async def update_inspection(
             "booking_id": inspection.booking_id,
             "inspection_type": inspection.inspection_type.value,
             "notes": inspection.notes,
-            "photos": json.loads(inspection.photos) if inspection.photos else [],
+            "photos": json.loads(inspection.photos) if inspection.photos else {},
             "customer_name": inspection.customer_name,
             "signed_date": inspection.signed_date.isoformat() if inspection.signed_date else None,
             "inspector_id": inspection.inspector_id,

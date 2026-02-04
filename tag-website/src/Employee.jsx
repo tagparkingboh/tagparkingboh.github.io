@@ -6,6 +6,15 @@ import './Employee.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+const PHOTO_SLOTS = [
+  { key: 'front', label: 'Front' },
+  { key: 'rear', label: 'Rear' },
+  { key: 'driver_side', label: 'Driver Side' },
+  { key: 'passenger_side', label: 'Passenger Side' },
+  { key: 'additional_1', label: 'Additional 1' },
+  { key: 'additional_2', label: 'Additional 2' },
+]
+
 function Employee() {
   const { user, token, loading, isAuthenticated, logout } = useAuth()
   const navigate = useNavigate()
@@ -21,7 +30,7 @@ function Employee() {
   const [inspectionType, setInspectionType] = useState(null) // 'dropoff' or 'pickup'
   const [editingInspection, setEditingInspection] = useState(null)
   const [inspectionNotes, setInspectionNotes] = useState('')
-  const [inspectionPhotos, setInspectionPhotos] = useState([]) // base64 strings
+  const [inspectionPhotos, setInspectionPhotos] = useState({}) // { front: 'base64...', ... }
   const [customerName, setCustomerName] = useState('')
   const [signedDate, setSignedDate] = useState('')
   const [savingInspection, setSavingInspection] = useState(false)
@@ -71,34 +80,39 @@ function Employee() {
     if (existing) {
       setEditingInspection(existing)
       setInspectionNotes(existing.notes || '')
-      setInspectionPhotos(existing.photos || [])
+      // Handle both old array format and new object format
+      const photos = existing.photos || {}
+      setInspectionPhotos(Array.isArray(photos) ? {} : photos)
       setCustomerName(existing.customer_name || '')
       setSignedDate(existing.signed_date || '')
     } else {
       setEditingInspection(null)
       setInspectionNotes('')
-      setInspectionPhotos([])
+      setInspectionPhotos({})
       setCustomerName('')
       setSignedDate(new Date().toISOString().split('T')[0])
     }
     setShowInspectionModal(true)
   }
 
-  // Handle photo file selection
-  const handlePhotoSelect = (e) => {
-    const files = Array.from(e.target.files)
-    files.forEach(file => {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setInspectionPhotos(prev => [...prev, reader.result])
-      }
-      reader.readAsDataURL(file)
-    })
-    e.target.value = '' // Reset input
+  // Handle photo capture for a specific slot
+  const handlePhotoCapture = (slotKey, e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setInspectionPhotos(prev => ({ ...prev, [slotKey]: reader.result }))
+    }
+    reader.readAsDataURL(file)
+    e.target.value = '' // Reset input so same slot can retake
   }
 
-  const removePhoto = (index) => {
-    setInspectionPhotos(prev => prev.filter((_, i) => i !== index))
+  const removePhoto = (slotKey) => {
+    setInspectionPhotos(prev => {
+      const updated = { ...prev }
+      delete updated[slotKey]
+      return updated
+    })
   }
 
   // Save inspection
@@ -284,31 +298,38 @@ function Employee() {
               </div>
 
               <div className="inspection-field">
-                <label>Photos</label>
-                <div className="photo-upload-area">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    capture="environment"
-                    onChange={handlePhotoSelect}
-                    id="photo-input"
-                    className="photo-input-hidden"
-                  />
-                  <label htmlFor="photo-input" className="photo-upload-btn">
-                    + Add Photos
-                  </label>
+                <label>Vehicle Photos</label>
+                <div className="photo-slots-grid">
+                  {PHOTO_SLOTS.map(slot => (
+                    <div key={slot.key} className="photo-slot">
+                      <span className="photo-slot-label">{slot.label}</span>
+                      {inspectionPhotos[slot.key] ? (
+                        <div className="photo-slot-preview">
+                          <img src={inspectionPhotos[slot.key]} alt={slot.label} />
+                          <button
+                            className="photo-slot-retake"
+                            onClick={() => removePhoto(slot.key)}
+                          >
+                            Retake
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="photo-slot-capture" htmlFor={`photo-${slot.key}`}>
+                          <span className="photo-slot-icon">&#128247;</span>
+                          <span>Tap to capture</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={(e) => handlePhotoCapture(slot.key, e)}
+                            id={`photo-${slot.key}`}
+                            className="photo-input-hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                {inspectionPhotos.length > 0 && (
-                  <div className="photo-previews">
-                    {inspectionPhotos.map((photo, index) => (
-                      <div key={index} className="photo-preview">
-                        <img src={photo} alt={`Inspection photo ${index + 1}`} />
-                        <button className="photo-remove" onClick={() => removePhoto(index)}>&times;</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
 
