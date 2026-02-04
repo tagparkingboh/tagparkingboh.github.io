@@ -7,13 +7,15 @@ import './Employee.css'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const PHOTO_SLOTS = [
-  { key: 'front', label: 'Front' },
-  { key: 'rear', label: 'Rear' },
-  { key: 'driver_side', label: 'Driver Side' },
-  { key: 'passenger_side', label: 'Passenger Side' },
-  { key: 'additional_1', label: 'Additional 1' },
-  { key: 'additional_2', label: 'Additional 2' },
+  { key: 'front', label: 'Front', required: true },
+  { key: 'rear', label: 'Rear', required: true },
+  { key: 'driver_side', label: 'Driver Side', required: true },
+  { key: 'passenger_side', label: 'Passenger Side', required: true },
+  { key: 'additional_1', label: 'Additional 1', required: false },
+  { key: 'additional_2', label: 'Additional 2', required: false },
 ]
+
+const REQUIRED_PHOTO_KEYS = PHOTO_SLOTS.filter(s => s.required).map(s => s.key)
 
 function Employee() {
   const { user, token, loading, isAuthenticated, logout } = useAuth()
@@ -117,6 +119,14 @@ function Employee() {
 
   // Save inspection
   const handleSaveInspection = async () => {
+    // Validate required photos
+    const missingPhotos = REQUIRED_PHOTO_KEYS.filter(key => !inspectionPhotos[key])
+    if (missingPhotos.length > 0) {
+      const labels = missingPhotos.map(key => PHOTO_SLOTS.find(s => s.key === key)?.label)
+      setError(`Required photos missing: ${labels.join(', ')}`)
+      return
+    }
+
     setSavingInspection(true)
     setError('')
     try {
@@ -302,8 +312,10 @@ function Employee() {
                 <label>Vehicle Photos</label>
                 <div className="photo-slots-grid">
                   {PHOTO_SLOTS.map(slot => (
-                    <div key={slot.key} className="photo-slot">
-                      <span className="photo-slot-label">{slot.label}</span>
+                    <div key={slot.key} className={`photo-slot ${slot.required && !inspectionPhotos[slot.key] ? 'photo-slot-required' : ''}`}>
+                      <span className="photo-slot-label">
+                        {slot.label} {slot.required ? <span className="required">*</span> : <span className="optional">(optional)</span>}
+                      </span>
                       {inspectionPhotos[slot.key] ? (
                         <div className="photo-slot-preview">
                           <img src={inspectionPhotos[slot.key]} alt={slot.label} />
