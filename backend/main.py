@@ -118,7 +118,17 @@ def run_migrations():
         else:
             print("Migration check: confirmation_email_sent columns already exist")
 
-        # Migration 2: Add discount_percent column to marketing_subscribers
+        # Migration 2: Make inspector_id nullable on vehicle_inspections (allow user deletion)
+        try:
+            db.execute(text("""
+                ALTER TABLE vehicle_inspections ALTER COLUMN inspector_id DROP NOT NULL
+            """))
+            db.commit()
+            print("Migration completed: inspector_id is now nullable")
+        except Exception:
+            db.rollback()  # Already nullable or table doesn't exist
+
+        # Migration 3: Add discount_percent column to marketing_subscribers
         result = db.execute(text("""
             SELECT column_name
             FROM information_schema.columns
@@ -4169,6 +4179,9 @@ async def delete_user(
     # Clean up related records (foreign key constraints)
     db.query(LoginCode).filter(LoginCode.user_id == user.id).delete()
     db.query(DbSession).filter(DbSession.user_id == user.id).delete()
+
+    # Nullify vehicle_inspections.inspector_id references
+    db.query(VehicleInspection).filter(VehicleInspection.inspector_id == user.id).update({"inspector_id": None})
 
     # Nullify pricing_settings.updated_by references
     from db_models import PricingSettings
