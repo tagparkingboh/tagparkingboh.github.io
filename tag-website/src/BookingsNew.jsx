@@ -1709,17 +1709,21 @@ function Bookings() {
                 </div>
               </div>
 
-              {/* Only show postcode input for manual entry if non-UK country */}
-              {manualAddressEntry && formData.billingCountry !== 'United Kingdom' && (
+              {/* Show postcode input in manual entry mode */}
+              {manualAddressEntry && (
                 <div className="form-group">
-                  <label htmlFor="billingPostcodeManual">Postcode / ZIP Code</label>
+                  <label htmlFor="billingPostcodeManual">
+                    {formData.billingCountry === 'United Kingdom' ? 'Postcode' : 'Postcode / ZIP Code'} <span className="required">*</span>
+                  </label>
                   <input
                     type="text"
                     id="billingPostcodeManual"
                     name="billingPostcode"
-                    placeholder="Enter postcode"
+                    placeholder={formData.billingCountry === 'United Kingdom' ? 'BH1 1AA' : 'Enter postcode'}
                     value={formData.billingPostcode}
                     onChange={handleChange}
+                    style={formData.billingCountry === 'United Kingdom' ? { textTransform: 'uppercase' } : {}}
+                    required
                   />
                 </div>
               )}
