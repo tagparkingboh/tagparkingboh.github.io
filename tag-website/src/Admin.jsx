@@ -1608,7 +1608,7 @@ function Admin() {
                           )}
                         </div>
                         <span className="booking-date">
-                          {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : 'Unknown'}
+                          {lead.created_at ? new Date(lead.created_at).toLocaleDateString('en-GB') : 'Unknown'}
                         </span>
                       </div>
                     </div>
@@ -1655,7 +1655,7 @@ function Admin() {
                               <div className="booking-detail">
                                 <span className="detail-label">Started</span>
                                 <span className="detail-value">
-                                  {lead.created_at ? new Date(lead.created_at).toLocaleString() : 'Unknown'}
+                                  {lead.created_at ? new Date(lead.created_at).toLocaleString('en-GB') : 'Unknown'}
                                 </span>
                               </div>
                               {lead.last_booking_status && (
