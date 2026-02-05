@@ -143,8 +143,8 @@ function Bookings() {
     const saved = loadBookingState('formData', null)
     if (!saved) return defaults
     // Restore dates from ISO strings
-    // Bookings only available from 16th Feb 2026
-    const MIN_BOOKING_DATE = new Date('2026-02-16')
+    // Bookings only available from 16th Feb 2026 (UK time)
+    const MIN_BOOKING_DATE = new Date(2026, 1, 16) // month is 0-indexed
     let dropoffDate = saved.dropoffDate ? new Date(saved.dropoffDate) : null
     let pickupDate = saved.pickupDate ? new Date(saved.pickupDate) : null
 
@@ -1296,7 +1296,7 @@ function Bookings() {
                   selected={formData.dropoffDate}
                   onChange={(date) => handleDateChange(date, 'dropoffDate')}
                   dateFormat="dd/MM/yyyy"
-                  minDate={new Date('2026-02-16')}
+                  minDate={new Date(2026, 1, 16)}
                   placeholderText="Select date"
                   className="date-picker-input"
                   id="dropoffDate"
