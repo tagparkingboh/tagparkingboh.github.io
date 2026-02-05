@@ -1285,7 +1285,7 @@ function Bookings() {
                   selected={formData.dropoffDate}
                   onChange={(date) => handleDateChange(date, 'dropoffDate')}
                   dateFormat="dd/MM/yyyy"
-                  minDate={new Date('2026-02-07')}
+                  minDate={new Date('2026-02-16')}
                   placeholderText="Select date"
                   className="date-picker-input"
                   id="dropoffDate"
@@ -1293,7 +1293,7 @@ function Bookings() {
                   calendarClassName="fixed-height-calendar"
                   onFocus={(e) => e.target.readOnly = true}
                 />
-                <p className="date-info">Online bookings available from 7th February 2026</p>
+                <p className="date-info">Online bookings available from 16th February 2026</p>
               </div>
 
               {formData.dropoffDate && loadingFlights && (

@@ -2965,6 +2965,14 @@ async def create_payment(
         dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
         print(f"[DEBUG] Parsed dropoff_date: {dropoff_date}")
 
+        # Bookings open from 16th Feb 2026
+        BOOKINGS_OPEN_DATE = date(2026, 2, 16)
+        if dropoff_date < BOOKINGS_OPEN_DATE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Bookings are not available before {BOOKINGS_OPEN_DATE.strftime('%d %B %Y')}. Please select a date from 16th February 2026 onwards."
+            )
+
         # Calculate base amount in pence (using dynamic pricing based on drop-off date)
         original_amount = calculate_price_in_pence(request.package, drop_off_date=dropoff_date)
         pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
