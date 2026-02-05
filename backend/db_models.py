@@ -521,7 +521,7 @@ class VehicleInspection(Base):
     customer_name = Column(String(200))  # Customer types their name to agree
     signed_date = Column(Date)  # Date of acknowledgement
 
-    inspector_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    inspector_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

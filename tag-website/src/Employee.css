@@ -359,6 +359,17 @@
   letter-spacing: 0.5px;
 }
 
+.photo-slot-label .required {
+  color: #ff6b6b;
+}
+
+.photo-slot-label .optional {
+  font-weight: 400;
+  font-size: 10px;
+  color: #777;
+  text-transform: none;
+}
+
 .photo-slot-capture {
   display: flex;
   flex-direction: column;
