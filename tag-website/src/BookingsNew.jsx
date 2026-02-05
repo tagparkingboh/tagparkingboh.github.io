@@ -143,11 +143,22 @@ function Bookings() {
     const saved = loadBookingState('formData', null)
     if (!saved) return defaults
     // Restore dates from ISO strings
+    // Bookings only available from 16th Feb 2026
+    const MIN_BOOKING_DATE = new Date('2026-02-16')
+    let dropoffDate = saved.dropoffDate ? new Date(saved.dropoffDate) : null
+    let pickupDate = saved.pickupDate ? new Date(saved.pickupDate) : null
+
+    // Clear saved dates if they're before the minimum allowed date
+    if (dropoffDate && dropoffDate < MIN_BOOKING_DATE) {
+      dropoffDate = null
+      pickupDate = null // Also clear pickup since it depends on dropoff
+    }
+
     return {
       ...defaults,
       ...saved,
-      dropoffDate: saved.dropoffDate ? new Date(saved.dropoffDate) : null,
-      pickupDate: saved.pickupDate ? new Date(saved.pickupDate) : null,
+      dropoffDate,
+      pickupDate,
     }
   })
 
