@@ -1745,70 +1745,26 @@ async def send_promo_email_to_subscriber(
 def send_free_parking_promo_email(first_name: str, email: str, promo_code: str) -> bool:
     """Send 100% off (FREE parking) promo code email."""
     from email_service import send_email
+    from pathlib import Path
+    import logging
 
+    logger = logging.getLogger(__name__)
     subject = f"{first_name}, you've won FREE airport parking!"
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }}
-            .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background: #1a1a1a; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
-            .header h1 {{ color: #D9FF00; margin: 0; font-size: 28px; }}
-            .content {{ background: #ffffff; padding: 30px; }}
-            .promo-box {{ background: #1a1a1a; color: white; padding: 30px; text-align: center; border-radius: 10px; margin: 25px 0; }}
-            .promo-code {{ font-size: 42px; font-weight: bold; color: #D9FF00; letter-spacing: 4px; margin-bottom: 10px; }}
-            .promo-text {{ font-size: 18px; color: #D9FF00; font-weight: bold; }}
-            .free-text {{ font-size: 24px; color: #D9FF00; margin-top: 10px; }}
-            .cta-section {{ text-align: center; margin: 30px 0; }}
-            .button {{ display: inline-block; background: #D9FF00; color: #1a1a1a; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; }}
-            .tagline {{ font-size: 18px; font-weight: bold; color: #1a1a1a; margin: 25px 0 15px 0; }}
-            .footer {{ background: #1a1a1a; padding: 25px; text-align: center; border-radius: 0 0 10px 10px; }}
-            .footer p {{ color: #ccc; margin: 5px 0; font-size: 12px; }}
-            .footer a {{ color: #D9FF00; text-decoration: none; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>TAG Parking</h1>
-            </div>
-            <div class="content">
-                <p>Hi {first_name},</p>
-                <p>Congratulations! You've been selected to receive <strong>one week of FREE airport parking</strong> at Bournemouth Airport.</p>
-
-                <div class="promo-box">
-                    <div class="promo-text">YOUR EXCLUSIVE CODE</div>
-                    <div class="promo-code">{promo_code}</div>
-                    <div class="free-text">1 WEEK — COMPLETELY FREE!</div>
-                </div>
-
-                <p class="tagline">How to claim your free parking:</p>
-                <p>Visit our website and start your booking</p>
-                <p>Enter your promo code at checkout</p>
-                <p>Enjoy free, secure parking for your trip!*</p>
-
-                <p><strong>Please note:</strong></p>
-                <ul style="padding-left: 20px;">
-                    <li>This promo code can only be used once</li>
-                    <li>The offer covers one week of parking</li>
-                    <li>For trips longer than one week, our cheapest one-week price will be deducted from the total*</li>
-                </ul>
-
-                <div class="cta-section">
-                    <a href="https://tagparking.co.uk/bookings" class="button" style="background: #1a1a1a; color: #D9FF00; display: inline-block; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px;">Book Now - It's FREE!</a>
-                </div>
-            </div>
-            <div class="footer">
-                <p>TAG Parking - Bournemouth Airport</p>
-                <p>Secure Meet & Greet Parking</p>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
+    # Load the HTML template
+    template_path = Path(__file__).parent / "email_templates" / "free_parking_promo_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{PROMO_CODE}}", promo_code)
+    except FileNotFoundError:
+        logger.error(f"Free parking promo email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading free parking promo email template: {e}")
+        return False
 
     return send_email(email, subject, html_content)
 
