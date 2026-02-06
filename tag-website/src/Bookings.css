@@ -1182,10 +1182,9 @@
 }
 
 .promo-success {
-  color: #4CAF50;
+  color: #D9FF00;
   font-size: 1rem;
-  font-weight: 700;
-  text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+  font-weight: 600;
 }
 
 .promo-remove {
