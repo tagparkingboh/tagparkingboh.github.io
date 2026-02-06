@@ -1431,25 +1431,25 @@ function Bookings() {
                     <label>Select Return Date</label>
                     <p className="return-date-hint">Choose your return flight date (1-14 days from departure)</p>
                     <div className="return-date-picker">
-                      <input
-                        type="date"
-                        className="return-date-input"
-                        min={(() => {
+                      <DatePicker
+                        selected={formData.pickupDate}
+                        onChange={(date) => handleDateChange(date, 'pickupDate')}
+                        dateFormat="dd/MM/yyyy"
+                        minDate={(() => {
                           const minDate = new Date(formData.dropoffDate)
                           minDate.setDate(minDate.getDate() + 1)
-                          return format(minDate, 'yyyy-MM-dd')
+                          return minDate
                         })()}
-                        max={(() => {
+                        maxDate={(() => {
                           const maxDate = new Date(formData.dropoffDate)
                           maxDate.setDate(maxDate.getDate() + 14)
-                          return format(maxDate, 'yyyy-MM-dd')
+                          return maxDate
                         })()}
-                        value={formData.pickupDate ? format(formData.pickupDate, 'yyyy-MM-dd') : ''}
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            handleDateChange(new Date(e.target.value), 'pickupDate')
-                          }
-                        }}
+                        placeholderText="Select return date"
+                        className="date-picker-input"
+                        popperPlacement="bottom-start"
+                        calendarClassName="fixed-height-calendar"
+                        onFocus={(e) => e.target.readOnly = true}
                       />
                       {formData.pickupDate && (
                         <div className="return-date-summary">
