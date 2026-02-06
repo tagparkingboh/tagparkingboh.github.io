@@ -522,6 +522,20 @@ async def get_pricing_tiers():
     }
 
 
+@app.get("/api/prices/durations")
+async def get_duration_prices():
+    """
+    Get all flexible duration prices for display on frontend.
+
+    Returns pricing for all duration tiers (1-4, 5-6, 7, 8-9, 10-11, 12-13, 14 days)
+    combined with all advance booking tiers (early, standard, late).
+    """
+    from booking_service import BookingService
+
+    prices = BookingService.get_all_duration_prices()
+    return prices
+
+
 # =============================================================================
 # Promo Code Endpoints
 # =============================================================================
@@ -4433,17 +4447,27 @@ async def mark_booking_completed(
 
 
 class PricingSettingsResponse(BaseModel):
-    """Response model for pricing settings."""
-    week1_base_price: float
-    week2_base_price: float
+    """Response model for pricing settings with all duration tiers."""
+    days_1_4_price: float
+    days_5_6_price: float
+    week1_base_price: float    # 7 days
+    days_8_9_price: float
+    days_10_11_price: float
+    days_12_13_price: float
+    week2_base_price: float    # 14 days
     tier_increment: float
     updated_at: Optional[str] = None
 
 
 class PricingSettingsUpdate(BaseModel):
-    """Request model for updating pricing settings."""
-    week1_base_price: float
-    week2_base_price: float
+    """Request model for updating pricing settings with all duration tiers."""
+    days_1_4_price: float
+    days_5_6_price: float
+    week1_base_price: float    # 7 days
+    days_8_9_price: float
+    days_10_11_price: float
+    days_12_13_price: float
+    week2_base_price: float    # 14 days
     tier_increment: float
 
 
@@ -4473,7 +4497,12 @@ async def get_admin_pricing(
 
     if not settings:
         return {
-            "week1_base_price": 89.0,
+            "days_1_4_price": 60.0,
+            "days_5_6_price": 72.0,
+            "week1_base_price": 79.0,
+            "days_8_9_price": 99.0,
+            "days_10_11_price": 119.0,
+            "days_12_13_price": 130.0,
             "week2_base_price": 140.0,
             "tier_increment": 10.0,
             "updated_at": None,
@@ -4481,9 +4510,14 @@ async def get_admin_pricing(
         }
 
     return {
-        "week1_base_price": float(settings.week1_base_price),
-        "week2_base_price": float(settings.week2_base_price),
-        "tier_increment": float(settings.tier_increment),
+        "days_1_4_price": float(settings.days_1_4_price) if settings.days_1_4_price else 60.0,
+        "days_5_6_price": float(settings.days_5_6_price) if settings.days_5_6_price else 72.0,
+        "week1_base_price": float(settings.week1_base_price) if settings.week1_base_price else 79.0,
+        "days_8_9_price": float(settings.days_8_9_price) if settings.days_8_9_price else 99.0,
+        "days_10_11_price": float(settings.days_10_11_price) if settings.days_10_11_price else 119.0,
+        "days_12_13_price": float(settings.days_12_13_price) if settings.days_12_13_price else 130.0,
+        "week2_base_price": float(settings.week2_base_price) if settings.week2_base_price else 140.0,
+        "tier_increment": float(settings.tier_increment) if settings.tier_increment else 10.0,
         "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
         "updated_by": settings.updater.first_name if settings.updater else None,
     }
@@ -4496,7 +4530,7 @@ async def update_pricing(
     current_user: User = Depends(require_admin),
 ):
     """
-    Admin endpoint: Update pricing settings.
+    Admin endpoint: Update pricing settings for all duration tiers.
     """
     from db_models import PricingSettings
     from decimal import Decimal
@@ -4506,7 +4540,12 @@ async def update_pricing(
     if not settings:
         # Create new settings
         settings = PricingSettings(
+            days_1_4_price=Decimal(str(update.days_1_4_price)),
+            days_5_6_price=Decimal(str(update.days_5_6_price)),
             week1_base_price=Decimal(str(update.week1_base_price)),
+            days_8_9_price=Decimal(str(update.days_8_9_price)),
+            days_10_11_price=Decimal(str(update.days_10_11_price)),
+            days_12_13_price=Decimal(str(update.days_12_13_price)),
             week2_base_price=Decimal(str(update.week2_base_price)),
             tier_increment=Decimal(str(update.tier_increment)),
             updated_by=current_user.id,
@@ -4514,7 +4553,12 @@ async def update_pricing(
         db.add(settings)
     else:
         # Update existing
+        settings.days_1_4_price = Decimal(str(update.days_1_4_price))
+        settings.days_5_6_price = Decimal(str(update.days_5_6_price))
         settings.week1_base_price = Decimal(str(update.week1_base_price))
+        settings.days_8_9_price = Decimal(str(update.days_8_9_price))
+        settings.days_10_11_price = Decimal(str(update.days_10_11_price))
+        settings.days_12_13_price = Decimal(str(update.days_12_13_price))
         settings.week2_base_price = Decimal(str(update.week2_base_price))
         settings.tier_increment = Decimal(str(update.tier_increment))
         settings.updated_by = current_user.id
@@ -4526,7 +4570,12 @@ async def update_pricing(
         "success": True,
         "message": "Pricing updated successfully",
         "pricing": {
+            "days_1_4_price": float(settings.days_1_4_price),
+            "days_5_6_price": float(settings.days_5_6_price),
             "week1_base_price": float(settings.week1_base_price),
+            "days_8_9_price": float(settings.days_8_9_price),
+            "days_10_11_price": float(settings.days_10_11_price),
+            "days_12_13_price": float(settings.days_12_13_price),
             "week2_base_price": float(settings.week2_base_price),
             "tier_increment": float(settings.tier_increment),
             "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,

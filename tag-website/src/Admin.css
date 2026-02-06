@@ -1285,14 +1285,27 @@
   flex-wrap: wrap;
 }
 
+.pricing-inputs.pricing-inputs-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
 .pricing-input-group {
   flex: 1;
-  min-width: 200px;
+  min-width: 120px;
 }
 
 .pricing-input-group.pricing-input-small {
   flex: 0 0 160px;
   min-width: 160px;
+}
+
+.pricing-input-group.pricing-input-highlight {
+  background: #f0f7ff;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #cce0ff;
 }
 
 .pricing-input-hint {
@@ -1418,10 +1431,20 @@
   cursor: not-allowed;
 }
 
+@media (max-width: 1024px) {
+  .pricing-inputs.pricing-inputs-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
   .pricing-inputs {
     flex-direction: column;
     gap: 16px;
+  }
+
+  .pricing-inputs.pricing-inputs-grid {
+    grid-template-columns: 1fr;
   }
 
   .pricing-input-group {

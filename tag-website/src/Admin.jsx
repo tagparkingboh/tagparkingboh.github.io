@@ -52,10 +52,15 @@ function Admin() {
   const [leadSearchTerm, setLeadSearchTerm] = useState('')
   const [expandedLeadId, setExpandedLeadId] = useState(null)
 
-  // Pricing settings state
+  // Pricing settings state - all duration tiers
   const [pricing, setPricing] = useState({
-    week1_base_price: 89,
-    week2_base_price: 140,
+    days_1_4_price: 60,
+    days_5_6_price: 72,
+    week1_base_price: 79,    // 7 days
+    days_8_9_price: 99,
+    days_10_11_price: 119,
+    days_12_13_price: 130,
+    week2_base_price: 140,   // 14 days
     tier_increment: 10,
   })
   const [loadingPricing, setLoadingPricing] = useState(false)
@@ -314,9 +319,14 @@ function Admin() {
       if (response.ok) {
         const data = await response.json()
         setPricing({
-          week1_base_price: data.week1_base_price,
-          week2_base_price: data.week2_base_price,
-          tier_increment: data.tier_increment,
+          days_1_4_price: data.days_1_4_price ?? 60,
+          days_5_6_price: data.days_5_6_price ?? 72,
+          week1_base_price: data.week1_base_price ?? 79,
+          days_8_9_price: data.days_8_9_price ?? 99,
+          days_10_11_price: data.days_10_11_price ?? 119,
+          days_12_13_price: data.days_12_13_price ?? 130,
+          week2_base_price: data.week2_base_price ?? 140,
+          tier_increment: data.tier_increment ?? 10,
         })
       } else {
         setError('Failed to load pricing settings')
@@ -1699,11 +1709,43 @@ function Admin() {
               <div className="pricing-settings-form">
                 <div className="admin-pricing-section">
                   <h3>Base Prices (Early Booking Tier)</h3>
-                  <p className="pricing-hint">These are the prices when customers book 14+ days in advance.</p>
+                  <p className="pricing-hint">These are the prices when customers book 14+ days in advance. Standard tier adds the increment once, Late tier adds it twice.</p>
 
-                  <div className="pricing-inputs">
+                  <div className="pricing-inputs pricing-inputs-grid">
                     <div className="pricing-input-group">
-                      <label>1 Week Trip</label>
+                      <label>1-4 Days</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.days_1_4_price}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, days_1_4_price: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pricing-input-group">
+                      <label>5-6 Days</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.days_5_6_price}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, days_5_6_price: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pricing-input-group">
+                      <label>7 Days</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
@@ -1719,7 +1761,55 @@ function Admin() {
                     </div>
 
                     <div className="pricing-input-group">
-                      <label>2 Week Trip</label>
+                      <label>8-9 Days</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.days_8_9_price}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, days_8_9_price: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pricing-input-group">
+                      <label>10-11 Days</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.days_10_11_price}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, days_10_11_price: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pricing-input-group">
+                      <label>12-13 Days</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.days_12_13_price}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, days_12_13_price: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pricing-input-group">
+                      <label>14 Days</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
@@ -1734,7 +1824,7 @@ function Admin() {
                       </div>
                     </div>
 
-                    <div className="pricing-input-group pricing-input-small">
+                    <div className="pricing-input-group pricing-input-highlight">
                       <label>Tier Increment</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
@@ -1758,7 +1848,7 @@ function Admin() {
                   <table className="pricing-preview-table">
                     <thead>
                       <tr>
-                        <th>Package</th>
+                        <th>Duration</th>
                         <th>Early (14+ days)</th>
                         <th>Standard (7-13 days)</th>
                         <th>Late (&lt;7 days)</th>
@@ -1766,13 +1856,43 @@ function Admin() {
                     </thead>
                     <tbody>
                       <tr>
-                        <td>1 Week</td>
+                        <td>1-4 Days</td>
+                        <td>£{pricing.days_1_4_price}</td>
+                        <td>£{pricing.days_1_4_price + pricing.tier_increment}</td>
+                        <td>£{pricing.days_1_4_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>5-6 Days</td>
+                        <td>£{pricing.days_5_6_price}</td>
+                        <td>£{pricing.days_5_6_price + pricing.tier_increment}</td>
+                        <td>£{pricing.days_5_6_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>7 Days</td>
                         <td>£{pricing.week1_base_price}</td>
                         <td>£{pricing.week1_base_price + pricing.tier_increment}</td>
                         <td>£{pricing.week1_base_price + (pricing.tier_increment * 2)}</td>
                       </tr>
                       <tr>
-                        <td>2 Weeks</td>
+                        <td>8-9 Days</td>
+                        <td>£{pricing.days_8_9_price}</td>
+                        <td>£{pricing.days_8_9_price + pricing.tier_increment}</td>
+                        <td>£{pricing.days_8_9_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>10-11 Days</td>
+                        <td>£{pricing.days_10_11_price}</td>
+                        <td>£{pricing.days_10_11_price + pricing.tier_increment}</td>
+                        <td>£{pricing.days_10_11_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>12-13 Days</td>
+                        <td>£{pricing.days_12_13_price}</td>
+                        <td>£{pricing.days_12_13_price + pricing.tier_increment}</td>
+                        <td>£{pricing.days_12_13_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>14 Days</td>
                         <td>£{pricing.week2_base_price}</td>
                         <td>£{pricing.week2_base_price + pricing.tier_increment}</td>
                         <td>£{pricing.week2_base_price + (pricing.tier_increment * 2)}</td>
