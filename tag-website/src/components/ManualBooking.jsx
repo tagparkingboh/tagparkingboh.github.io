@@ -428,7 +428,7 @@ function ManualBooking({ token }) {
       const response = await fetch(`${API_URL}/api/promo/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promo_code: formData.promoCode.trim() }),
+        body: JSON.stringify({ code: formData.promoCode.trim() }),
       })
 
       const data = await response.json()
