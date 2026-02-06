@@ -2943,3 +2943,134 @@ class TestFreeBookingWithPromoCode:
         call_kwargs = mock_send_email.call_args[1]
         assert call_kwargs["email"] == request["email"]
         assert "FREE with promo code" in call_kwargs["amount_paid"]
+
+
+# =============================================================================
+# Admin Bookings List - Package Display Tests
+# =============================================================================
+
+class TestAdminBookingsListPackageDisplay:
+    """Tests for package display calculation in admin bookings list."""
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_manual_booking_shows_7_days_package(self, mock_send_email, client):
+        """Manual booking with 7-day duration should show '7 Days' in admin list."""
+        mock_send_email.return_value = True
+        unique_id = uuid.uuid4().hex[:8]
+
+        # Create a 7-day manual booking
+        request = {
+            "first_name": "Package",
+            "last_name": "TestSeven",
+            "email": f"pkg7.{unique_id}@example.com",
+            "billing_address1": "123 Street",
+            "billing_city": "Bournemouth",
+            "billing_postcode": "BH1 1AA",
+            "registration": f"PKG{unique_id[:5]}",
+            "make": "Toyota",
+            "model": "Corolla",
+            "colour": "Blue",
+            "dropoff_date": "2026-06-01",
+            "dropoff_time": "08:00",
+            "pickup_date": "2026-06-08",  # 7 days later
+            "pickup_time": "14:00",
+            "stripe_payment_link": "https://buy.stripe.com/test_pkg7",
+            "amount_pence": 7900,
+        }
+
+        response = await client.post("/api/admin/manual-booking", json=request)
+        assert response.status_code == 200
+        reference = response.json()["booking_reference"]
+
+        # Fetch admin bookings list
+        list_response = await client.get("/api/admin/bookings")
+        assert list_response.status_code == 200
+        bookings = list_response.json()["bookings"]
+
+        # Find our booking
+        booking = next((b for b in bookings if b["reference"] == reference), None)
+        assert booking is not None
+        assert booking["package"] == "7 Days"
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_manual_booking_shows_1_day_singular(self, mock_send_email, client):
+        """Manual booking with 1-day duration should show '1 Day' (singular)."""
+        mock_send_email.return_value = True
+        unique_id = uuid.uuid4().hex[:8]
+
+        # Create a 1-day manual booking
+        request = {
+            "first_name": "Package",
+            "last_name": "TestOne",
+            "email": f"pkg1.{unique_id}@example.com",
+            "billing_address1": "123 Street",
+            "billing_city": "Bournemouth",
+            "billing_postcode": "BH1 1AA",
+            "registration": f"PK1{unique_id[:5]}",
+            "make": "Honda",
+            "model": "Civic",
+            "colour": "Red",
+            "dropoff_date": "2026-06-01",
+            "dropoff_time": "08:00",
+            "pickup_date": "2026-06-02",  # 1 day later
+            "pickup_time": "14:00",
+            "stripe_payment_link": "https://buy.stripe.com/test_pkg1",
+            "amount_pence": 5900,
+        }
+
+        response = await client.post("/api/admin/manual-booking", json=request)
+        assert response.status_code == 200
+        reference = response.json()["booking_reference"]
+
+        # Fetch admin bookings list
+        list_response = await client.get("/api/admin/bookings")
+        assert list_response.status_code == 200
+        bookings = list_response.json()["bookings"]
+
+        # Find our booking
+        booking = next((b for b in bookings if b["reference"] == reference), None)
+        assert booking is not None
+        assert booking["package"] == "1 Day"  # Singular
+
+    @pytest.mark.asyncio
+    @patch('email_service.send_manual_booking_payment_email')
+    async def test_manual_booking_shows_14_days_package(self, mock_send_email, client):
+        """Manual booking with 14-day duration should show '14 Days'."""
+        mock_send_email.return_value = True
+        unique_id = uuid.uuid4().hex[:8]
+
+        # Create a 14-day manual booking
+        request = {
+            "first_name": "Package",
+            "last_name": "TestFourteen",
+            "email": f"pkg14.{unique_id}@example.com",
+            "billing_address1": "123 Street",
+            "billing_city": "Bournemouth",
+            "billing_postcode": "BH1 1AA",
+            "registration": f"P14{unique_id[:5]}",
+            "make": "Ford",
+            "model": "Focus",
+            "colour": "Black",
+            "dropoff_date": "2026-06-01",
+            "dropoff_time": "08:00",
+            "pickup_date": "2026-06-15",  # 14 days later
+            "pickup_time": "14:00",
+            "stripe_payment_link": "https://buy.stripe.com/test_pkg14",
+            "amount_pence": 15000,
+        }
+
+        response = await client.post("/api/admin/manual-booking", json=request)
+        assert response.status_code == 200
+        reference = response.json()["booking_reference"]
+
+        # Fetch admin bookings list
+        list_response = await client.get("/api/admin/bookings")
+        assert list_response.status_code == 200
+        bookings = list_response.json()["bookings"]
+
+        # Find our booking
+        booking = next((b for b in bookings if b["reference"] == reference), None)
+        assert booking is not None
+        assert booking["package"] == "14 Days"
