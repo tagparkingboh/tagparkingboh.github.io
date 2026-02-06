@@ -1676,6 +1676,81 @@
   font-style: italic;
 }
 
+/* Return Date Picker (Flexible Duration) */
+.return-date-hint {
+  font-size: 0.9rem;
+  color: #aaaaaa;
+  margin-bottom: 1rem;
+}
+
+.return-date-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.return-date-input {
+  width: 100%;
+  padding: 1rem;
+  font-size: 1.1rem;
+  background: #2a2a2a;
+  border: 2px solid #444444;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.return-date-input:hover {
+  border-color: #666666;
+}
+
+.return-date-input:focus {
+  outline: none;
+  border-color: #D9FF00;
+}
+
+.return-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+
+.return-date-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: rgba(217, 255, 0, 0.1);
+  border: 2px solid #D9FF00;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.return-date-formatted {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.trip-duration-display {
+  font-size: 0.9rem;
+  color: #aaaaaa;
+}
+
+.return-date-price {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #D9FF00;
+  margin-top: 0.5rem;
+}
+
+.return-date-price.loading {
+  color: #888888;
+  font-style: italic;
+  font-weight: normal;
+}
+
 /* Package Summary (Step 4) */
 .package-summary {
   margin-bottom: 1.5rem;

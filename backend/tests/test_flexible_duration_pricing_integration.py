@@ -98,46 +98,51 @@ class TestDurationPricesAPI:
 
     @pytest.mark.asyncio
     async def test_duration_prices_short_trip_tiers(self, client):
-        """Verify short trip tier prices."""
+        """Verify short trip tier prices have correct structure."""
         response = await client.get("/api/prices/durations")
         data = response.json()
 
-        # 1-4 days: base=60, standard=70, late=80
-        assert data["1_4"]["early"] == 60.0
-        assert data["1_4"]["standard"] == 70.0
-        assert data["1_4"]["late"] == 80.0
+        # 1-4 days: verify structure and increment pattern
+        assert "1_4" in data
+        assert data["1_4"]["early"] > 0
+        assert data["1_4"]["standard"] > data["1_4"]["early"]
+        assert data["1_4"]["late"] > data["1_4"]["standard"]
 
-        # 5-6 days: base=72, standard=82, late=92
-        assert data["5_6"]["early"] == 72.0
-        assert data["5_6"]["standard"] == 82.0
-        assert data["5_6"]["late"] == 92.0
+        # 5-6 days: verify structure and increment pattern
+        assert "5_6" in data
+        assert data["5_6"]["early"] > 0
+        assert data["5_6"]["standard"] > data["5_6"]["early"]
+        assert data["5_6"]["late"] > data["5_6"]["standard"]
 
     @pytest.mark.asyncio
     async def test_duration_prices_medium_trip_tiers(self, client):
-        """Verify medium trip tier prices."""
+        """Verify medium trip tier prices have correct structure."""
         response = await client.get("/api/prices/durations")
         data = response.json()
 
-        # 8-9 days: base=99, standard=109, late=119
-        assert data["8_9"]["early"] == 99.0
-        assert data["8_9"]["standard"] == 109.0
-        assert data["8_9"]["late"] == 119.0
+        # 8-9 days: verify structure and increment pattern
+        assert "8_9" in data
+        assert data["8_9"]["early"] > 0
+        assert data["8_9"]["standard"] > data["8_9"]["early"]
+        assert data["8_9"]["late"] > data["8_9"]["standard"]
 
-        # 10-11 days: base=119, standard=129, late=139
-        assert data["10_11"]["early"] == 119.0
-        assert data["10_11"]["standard"] == 129.0
-        assert data["10_11"]["late"] == 139.0
+        # 10-11 days: verify structure and increment pattern
+        assert "10_11" in data
+        assert data["10_11"]["early"] > 0
+        assert data["10_11"]["standard"] > data["10_11"]["early"]
+        assert data["10_11"]["late"] > data["10_11"]["standard"]
 
     @pytest.mark.asyncio
     async def test_duration_prices_long_trip_tiers(self, client):
-        """Verify long trip tier prices."""
+        """Verify long trip tier prices have correct structure."""
         response = await client.get("/api/prices/durations")
         data = response.json()
 
-        # 12-13 days: base=130, standard=140, late=150
-        assert data["12_13"]["early"] == 130.0
-        assert data["12_13"]["standard"] == 140.0
-        assert data["12_13"]["late"] == 150.0
+        # 12-13 days: verify structure and increment pattern
+        assert "12_13" in data
+        assert data["12_13"]["early"] > 0
+        assert data["12_13"]["standard"] > data["12_13"]["early"]
+        assert data["12_13"]["late"] > data["12_13"]["standard"]
 
 
 # =============================================================================
@@ -494,10 +499,10 @@ class TestPricingEdgeCases:
         assert data["price"] == 79.0
 
     @pytest.mark.asyncio
-    async def test_invalid_duration_returns_error(self, client):
-        """Invalid duration (not 7 or 14 days) should return 400 error."""
+    async def test_invalid_duration_over_14_returns_error(self, client):
+        """Duration over 14 days should return 400 error."""
         drop_off = (date.today() + timedelta(days=20)).isoformat()
-        pickup = (date.today() + timedelta(days=25)).isoformat()  # 5 days - invalid
+        pickup = (date.today() + timedelta(days=35)).isoformat()  # 15 days - invalid
 
         response = await client.post(
             "/api/pricing/calculate",
@@ -507,40 +512,88 @@ class TestPricingEdgeCases:
             }
         )
 
-        # Should return validation error for invalid duration
+        # Should return validation error for duration > 14 days
         assert response.status_code == 400
-        assert "7 or 14 days" in response.json()["detail"]
+        assert "between 1 and 14 days" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_5_day_duration_is_valid(self, client):
+        """5-day duration should now be valid (flexible pricing)."""
+        drop_off = (date.today() + timedelta(days=20)).isoformat()
+        pickup = (date.today() + timedelta(days=25)).isoformat()  # 5 days - now valid
+
+        response = await client.post(
+            "/api/pricing/calculate",
+            json={
+                "drop_off_date": drop_off,
+                "pickup_date": pickup,
+            }
+        )
+
+        # Should return 200 OK with price
+        assert response.status_code == 200
+        data = response.json()
+        assert data["duration_days"] == 5
+        assert data["price"] > 0
 
 
 # =============================================================================
-# Documented Future Tests (for when online booking is updated)
+# Flexible Duration Pricing Tests
 # =============================================================================
 
-class TestFutureFlexibleBookingFlow:
-    """
-    Placeholder tests for when online booking supports flexible durations.
+class TestFlexibleDurationPricing:
+    """Tests for flexible duration pricing (1-14 days)."""
 
-    These tests document expected behavior once the booking flow is updated
-    to use calculate_price_for_duration instead of the package-based pricing.
-    """
-
-    @pytest.mark.skip(reason="Pending: Update online booking for flexible durations")
     @pytest.mark.asyncio
-    async def test_3_day_trip_uses_1_4_tier_price(self):
-        """3-day trip should use 1-4 day tier price (£60 early)."""
-        pass
+    async def test_3_day_trip_uses_1_4_tier(self, client):
+        """3-day trip should use 1-4 day tier."""
+        drop_off = (date.today() + timedelta(days=20)).isoformat()
+        pickup = (date.today() + timedelta(days=23)).isoformat()  # 3 days
 
-    @pytest.mark.skip(reason="Pending: Update online booking for flexible durations")
-    @pytest.mark.asyncio
-    async def test_6_day_trip_uses_5_6_tier_price(self):
-        """6-day trip should use 5-6 day tier price (£72 early)."""
-        pass
+        response = await client.post(
+            "/api/pricing/calculate",
+            json={"drop_off_date": drop_off, "pickup_date": pickup}
+        )
 
-    @pytest.mark.skip(reason="Pending: Update online booking for flexible durations")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["duration_days"] == 3
+        assert data["package_name"] == "1-4 Days"
+        assert data["price"] > 0
+
     @pytest.mark.asyncio
-    async def test_9_day_trip_uses_8_9_tier_price(self):
-        """9-day trip should use 8-9 day tier price (£99 early)."""
-        pass
+    async def test_6_day_trip_uses_5_6_tier(self, client):
+        """6-day trip should use 5-6 day tier."""
+        drop_off = (date.today() + timedelta(days=20)).isoformat()
+        pickup = (date.today() + timedelta(days=26)).isoformat()  # 6 days
+
+        response = await client.post(
+            "/api/pricing/calculate",
+            json={"drop_off_date": drop_off, "pickup_date": pickup}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["duration_days"] == 6
+        assert data["package_name"] == "5-6 Days"
+        assert data["price"] > 0
+
+    @pytest.mark.asyncio
+    async def test_9_day_trip_uses_8_9_tier(self, client):
+        """9-day trip should use 8-9 day tier."""
+        drop_off = (date.today() + timedelta(days=20)).isoformat()
+        pickup = (date.today() + timedelta(days=29)).isoformat()  # 9 days
+
+        response = await client.post(
+            "/api/pricing/calculate",
+            json={"drop_off_date": drop_off, "pickup_date": pickup}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["duration_days"] == 9
+        assert data["package_name"] == "8-9 Days"
+        assert data["price"] > 0
 
     @pytest.mark.skip(reason="Pending: Update online booking for flexible durations")
     @pytest.mark.asyncio

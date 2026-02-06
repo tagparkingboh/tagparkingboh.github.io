@@ -230,17 +230,19 @@ def cancel_payment_intent(payment_intent_id: str) -> dict:
 
 
 def calculate_price_in_pence(
-    package: str,
+    package: str = None,
     drop_off_date: Optional[date] = None,
-    custom_price: Optional[float] = None
+    custom_price: Optional[float] = None,
+    duration_days: Optional[int] = None
 ) -> int:
     """
     Calculate the price in pence for Stripe based on dynamic pricing.
 
     Args:
-        package: "quick" (1 week) or "longer" (2 weeks)
+        package: "quick" (1 week) or "longer" (2 weeks) - legacy parameter
         drop_off_date: The drop-off date (used to determine advance booking tier)
         custom_price: Optional override price in pounds
+        duration_days: Trip duration in days (1-14) - takes precedence over package
 
     Returns:
         Price in pence
@@ -251,11 +253,18 @@ def calculate_price_in_pence(
     # Use dynamic pricing from BookingService
     from booking_service import BookingService
 
-    if drop_off_date:
+    # Use flexible duration pricing if duration provided
+    if duration_days is not None and drop_off_date:
+        price = BookingService.calculate_price_for_duration(duration_days, drop_off_date)
+    elif drop_off_date and package:
+        # Legacy package-based pricing
         price = BookingService.calculate_price(package, drop_off_date)
-    else:
+    elif package:
         # Fallback to late tier prices if no date provided
         prices = BookingService.get_package_prices()
         price = prices.get(package, {}).get("late", 109.0)
+    else:
+        # Default fallback
+        price = 99.0
 
     return int(price * 100)

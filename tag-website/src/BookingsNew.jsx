@@ -1428,39 +1428,50 @@ function Bookings() {
                   </p>
 
                   <div className="form-group fade-in">
-                    <label>Select Trip Duration</label>
-                    <div className="duration-options">
-                      {[
-                        { days: 7, label: '1 Week' },
-                        { days: 14, label: '2 Weeks' },
-                      ].map(({ days, label }) => {
-                        const pickupDate = new Date(formData.dropoffDate)
-                        pickupDate.setDate(pickupDate.getDate() + days)
-                        const isSelected = formData.pickupDate &&
-                          format(formData.pickupDate, 'yyyy-MM-dd') === format(pickupDate, 'yyyy-MM-dd')
-
-                        return (
-                          <label key={days} className="duration-option">
-                            <input
-                              type="radio"
-                              name="tripDuration"
-                              value={days}
-                              checked={isSelected}
-                              onChange={() => handleDateChange(pickupDate, 'pickupDate')}
-                            />
-                            <div className={`duration-card ${isSelected ? 'selected' : ''}`}>
-                              <span className="duration-label">{label}</span>
-                              <span className="duration-date">Return: {format(pickupDate, 'EEE, d MMM yyyy')}</span>
-                              {pricingLoading && isSelected && (
-                                <span className="duration-price loading">Calculating...</span>
-                              )}
-                              {!pricingLoading && pricingInfo && isSelected && (
-                                <span className="duration-price">From £{pricingInfo.price.toFixed(0)}</span>
-                              )}
-                            </div>
-                          </label>
-                        )
-                      })}
+                    <label>Select Return Date</label>
+                    <p className="return-date-hint">Choose your return flight date (1-14 days from departure)</p>
+                    <div className="return-date-picker">
+                      <input
+                        type="date"
+                        className="return-date-input"
+                        min={(() => {
+                          const minDate = new Date(formData.dropoffDate)
+                          minDate.setDate(minDate.getDate() + 1)
+                          return format(minDate, 'yyyy-MM-dd')
+                        })()}
+                        max={(() => {
+                          const maxDate = new Date(formData.dropoffDate)
+                          maxDate.setDate(maxDate.getDate() + 14)
+                          return format(maxDate, 'yyyy-MM-dd')
+                        })()}
+                        value={formData.pickupDate ? format(formData.pickupDate, 'yyyy-MM-dd') : ''}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleDateChange(new Date(e.target.value), 'pickupDate')
+                          }
+                        }}
+                      />
+                      {formData.pickupDate && (
+                        <div className="return-date-summary">
+                          <span className="return-date-formatted">
+                            {format(formData.pickupDate, 'EEEE, d MMMM yyyy')}
+                          </span>
+                          <span className="trip-duration-display">
+                            {(() => {
+                              const days = Math.round((formData.pickupDate - formData.dropoffDate) / (1000 * 60 * 60 * 24))
+                              if (days === 7) return '(1 week trip)'
+                              if (days === 14) return '(2 week trip)'
+                              return `(${days} day${days !== 1 ? 's' : ''} trip)`
+                            })()}
+                          </span>
+                          {pricingLoading && (
+                            <span className="return-date-price loading">Calculating price...</span>
+                          )}
+                          {!pricingLoading && pricingInfo && (
+                            <span className="return-date-price">From £{pricingInfo.price.toFixed(0)}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </>

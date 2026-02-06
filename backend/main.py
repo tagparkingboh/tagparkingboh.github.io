@@ -443,39 +443,56 @@ async def calculate_price(request: PriceCalculationRequest):
     """
     Calculate booking price based on dates.
 
-    Pricing tiers:
-    - Early (>=14 days in advance): 1 week £99, 2 weeks £150
-    - Standard (7-13 days in advance): 1 week £109, 2 weeks £160
-    - Late (<7 days in advance): 1 week £119, 2 weeks £170
+    Supports flexible durations from 1-14 days with tiered pricing:
+    - 1-4 days, 5-6 days, 7 days, 8-9 days, 10-11 days, 12-13 days, 14 days
 
-    Duration must be exactly 7 or 14 days.
+    Advance booking tiers:
+    - Early (>=14 days in advance): base price
+    - Standard (7-13 days in advance): base + increment
+    - Late (<7 days in advance): base + 2x increment
     """
-    from booking_service import BookingService
+    from booking_service import BookingService, get_duration_tier
 
     duration = (request.pickup_date - request.drop_off_date).days
 
-    # Validate duration
-    if duration not in [7, 14]:
+    # Validate duration (1-14 days supported)
+    if duration < 1 or duration > 14:
         raise HTTPException(
             status_code=400,
-            detail=f"Duration must be exactly 7 or 14 days. Got {duration} days."
+            detail=f"Duration must be between 1 and 14 days. Got {duration} days."
         )
 
-    # Determine package
+    # Determine package (for legacy compatibility)
     package = BookingService.get_package_for_duration(request.drop_off_date, request.pickup_date)
-    package_name = "1 Week" if package == "quick" else "2 Weeks"
+
+    # Get duration tier name for display
+    duration_tier = get_duration_tier(duration)
+    duration_labels = {
+        "1_4": "1-4 Days",
+        "5_6": "5-6 Days",
+        "7": "1 Week Trip",
+        "8_9": "8-9 Days",
+        "10_11": "10-11 Days",
+        "12_13": "12-13 Days",
+        "14": "2 Week Trip",
+    }
+    package_name = duration_labels.get(duration_tier, f"{duration} Days")
 
     # Calculate advance booking tier
     today = date.today()
     days_in_advance = (request.drop_off_date - today).days
     advance_tier = BookingService.get_advance_tier(request.drop_off_date)
 
-    # Calculate price
-    price = BookingService.calculate_price(package, request.drop_off_date)
+    # Calculate price using flexible duration pricing
+    price = BookingService.calculate_price_for_duration(duration, request.drop_off_date)
 
-    prices = BookingService.get_package_prices()
+    # Get all prices for this duration tier
+    all_duration_prices = BookingService.get_all_duration_prices()
+    tier_prices = all_duration_prices.get(duration_tier, {})
+
     # 1-week base rate price (early tier) used for free parking promo discount
-    week1_price = prices["quick"]["early"]
+    week1_price = all_duration_prices.get("7", {}).get("early", 79.0)
+
     return PriceCalculationResponse(
         package=package,
         package_name=package_name,
@@ -486,9 +503,9 @@ async def calculate_price(request: PriceCalculationRequest):
         price_pence=int(price * 100),
         week1_price=week1_price,
         all_prices={
-            "early": prices[package]["early"],
-            "standard": prices[package]["standard"],
-            "late": prices[package]["late"],
+            "early": tier_prices.get("early", price),
+            "standard": tier_prices.get("standard", price),
+            "late": tier_prices.get("late", price),
         }
     )
 
@@ -2977,11 +2994,19 @@ async def create_payment(
         # Parse dates first (needed for dynamic pricing)
         print(f"[DEBUG] Received drop_off_date string: {request.drop_off_date}")
         dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
-        print(f"[DEBUG] Parsed dropoff_date: {dropoff_date}")
-
-        # Calculate base amount in pence (using dynamic pricing based on drop-off date)
-        original_amount = calculate_price_in_pence(request.package, drop_off_date=dropoff_date)
         pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
+        print(f"[DEBUG] Parsed dropoff_date: {dropoff_date}, pickup_date: {pickup_date}")
+
+        # Calculate duration for flexible pricing
+        duration_days = (pickup_date - dropoff_date).days
+        print(f"[DEBUG] Trip duration: {duration_days} days")
+
+        # Calculate base amount in pence (using flexible duration pricing)
+        original_amount = calculate_price_in_pence(
+            package=request.package,
+            drop_off_date=dropoff_date,
+            duration_days=duration_days
+        )
 
         # Check for promo code and apply discount if valid
         discount_amount = 0
