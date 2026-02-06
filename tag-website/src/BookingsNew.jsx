@@ -1831,7 +1831,7 @@ function Bookings() {
                 </div>
                 <div className="summary-item">
                   <span>Package</span>
-                  <span>{pricingInfo?.package_name || (formData.package === 'quick' ? '1 Week' : '2 Weeks')}</span>
+                  <span>{pricingInfo ? `${pricingInfo.duration_days} Day${pricingInfo.duration_days !== 1 ? 's' : ''}` : (formData.package === 'quick' ? '1 Week' : '2 Weeks')}</span>
                 </div>
                 {promoCodeValid && promoCodeDiscount > 0 && (
                   <>
