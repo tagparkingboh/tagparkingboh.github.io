@@ -1183,7 +1183,9 @@
 
 .promo-success {
   color: #4CAF50;
-  font-size: 0.9rem;
+  font-size: 1rem;
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
 }
 
 .promo-remove {
