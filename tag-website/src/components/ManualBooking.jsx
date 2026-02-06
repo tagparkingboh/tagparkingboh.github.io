@@ -1059,18 +1059,20 @@ function ManualBooking({ token }) {
                 id="dropoffDate"
               />
             </div>
-            <div className="form-group">
-              <label htmlFor="pickupDate">Pick-up Date <span className="required">*</span></label>
-              <DatePicker
-                selected={formData.pickupDate}
-                onChange={(date) => handleDateChange(date, 'pickupDate')}
-                dateFormat="dd/MM/yyyy"
-                minDate={formData.dropoffDate || new Date()}
-                placeholderText="Select date"
-                className="date-picker-input"
-                id="pickupDate"
-              />
-            </div>
+            {formData.useManualTime && (
+              <div className="form-group">
+                <label htmlFor="pickupDate">Pick-up Date <span className="required">*</span></label>
+                <DatePicker
+                  selected={formData.pickupDate}
+                  onChange={(date) => handleDateChange(date, 'pickupDate')}
+                  dateFormat="dd/MM/yyyy"
+                  minDate={formData.dropoffDate || new Date()}
+                  placeholderText="Select date"
+                  className="date-picker-input"
+                  id="pickupDate"
+                />
+              </div>
+            )}
           </div>
 
           {formData.useManualTime ? (
@@ -1197,6 +1199,18 @@ function ManualBooking({ token }) {
               {/* Return Flight Selection */}
               <div className="flight-selection-group">
                 <h4>Return Flight</h4>
+                <div className="form-group">
+                  <label htmlFor="pickupDate">Pick-up Date <span className="required">*</span></label>
+                  <DatePicker
+                    selected={formData.pickupDate}
+                    onChange={(date) => handleDateChange(date, 'pickupDate')}
+                    dateFormat="dd/MM/yyyy"
+                    minDate={formData.dropoffDate || new Date()}
+                    placeholderText="Select date"
+                    className="date-picker-input"
+                    id="pickupDate"
+                  />
+                </div>
                 {loadingArrivals ? (
                   <p className="loading-text">Loading arrivals...</p>
                 ) : !formData.pickupDate ? (
