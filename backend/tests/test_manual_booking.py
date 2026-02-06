@@ -2720,3 +2720,226 @@ class TestCapacityTierEdgeCases:
         response2 = await client.post("/api/admin/manual-booking", json=request2)
         assert response2.status_code == 400
         assert "fully booked" in response2.json()["detail"].lower()
+
+
+# =============================================================================
+# Free Booking with Promo Code Tests
+# =============================================================================
+
+class TestFreeBookingWithPromoCode:
+    """Tests for free booking creation with promo code."""
+
+    @pytest.mark.asyncio
+    @patch('main.send_booking_confirmation_email')
+    async def test_create_free_booking_success(
+        self, mock_send_email, client
+    ):
+        """Should create free booking and send confirmation email."""
+        mock_send_email.return_value = True
+        unique_id = uuid.uuid4().hex[:8]
+
+        request = {
+            "first_name": "Free",
+            "last_name": "Customer",
+            "email": f"free.customer.{unique_id}@example.com",
+            "billing_address1": "123 Free Street",
+            "billing_city": "Bournemouth",
+            "billing_postcode": "BH1 1AA",
+            "registration": f"FREE{unique_id[:4]}",
+            "make": "Toyota",
+            "model": "Corolla",
+            "colour": "Silver",
+            "dropoff_date": "2026-03-15",
+            "dropoff_time": "08:30",
+            "pickup_date": "2026-03-22",
+            "pickup_time": "14:00",
+            "amount_pence": 0,
+            "is_free_booking": True,
+            "promo_code": "TESTFREE",
+        }
+
+        response = await client.post("/api/admin/manual-booking", json=request)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["is_free_booking"] is True
+        assert data["booking_reference"].startswith("TAG-")
+
+    @pytest.mark.asyncio
+    @patch('main.send_booking_confirmation_email')
+    async def test_free_booking_no_stripe_link_required(
+        self, mock_send_email, client
+    ):
+        """Free booking should not require stripe_payment_link."""
+        mock_send_email.return_value = True
+        unique_id = uuid.uuid4().hex[:8]
+
+        request = {
+            "first_name": "Free",
+            "last_name": "NoLink",
+            "email": f"free.nolink.{unique_id}@example.com",
+            "billing_address1": "123 Free Street",
+            "billing_city": "Bournemouth",
+            "billing_postcode": "BH1 1AA",
+            "registration": f"FRLN{unique_id[:4]}",
+            "make": "Honda",
+            "model": "Civic",
+            "colour": "Blue",
+            "dropoff_date": "2026-03-15",
+            "dropoff_time": "08:30",
+            "pickup_date": "2026-03-22",
+            "pickup_time": "14:00",
+            "amount_pence": 0,
+            "is_free_booking": True,
+        }
+
+        # Should succeed without stripe_payment_link
+        response = await client.post("/api/admin/manual-booking", json=request)
+        assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    @patch('main.send_booking_confirmation_email')
+    async def test_free_booking_confirmed_status(
+        self, mock_send_email, client, db_session
+    ):
+        """Free booking should be created with CONFIRMED status."""
+        mock_send_email.return_value = True
+        unique_id = uuid.uuid4().hex[:8]
+
+        request = {
+            "first_name": "Free",
+            "last_name": "Confirmed",
+            "email": f"free.confirmed.{unique_id}@example.com",
+            "billing_address1": "123 Free Street",
+            "billing_city": "Bournemouth",
+            "billing_postcode": "BH1 1AA",
+            "registration": f"FRCN{unique_id[:4]}",
+            "make": "Mazda",
+            "model": "3",
+            "colour": "Red",
+            "dropoff_date": "2026-03-15",
+            "dropoff_time": "08:30",
+            "pickup_date": "2026-03-22",
+            "pickup_time": "14:00",
+            "amount_pence": 0,
+            "is_free_booking": True,
+        }
+
+        response = await client.post("/api/admin/manual-booking", json=request)
+        assert response.status_code == 200
+        reference = response.json()["booking_reference"]
+
+        # Verify booking status is CONFIRMED
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+        assert booking is not None
+        assert booking.status == BookingStatus.CONFIRMED
+
+    @pytest.mark.asyncio
+    @patch('main.send_booking_confirmation_email')
+    async def test_free_booking_payment_succeeded_status(
+        self, mock_send_email, client, db_session
+    ):
+        """Free booking payment should be marked as SUCCEEDED."""
+        mock_send_email.return_value = True
+        unique_id = uuid.uuid4().hex[:8]
+
+        request = {
+            "first_name": "Free",
+            "last_name": "Paid",
+            "email": f"free.paid.{unique_id}@example.com",
+            "billing_address1": "123 Free Street",
+            "billing_city": "Bournemouth",
+            "billing_postcode": "BH1 1AA",
+            "registration": f"FRPD{unique_id[:4]}",
+            "make": "Nissan",
+            "model": "Note",
+            "colour": "White",
+            "dropoff_date": "2026-03-15",
+            "dropoff_time": "08:30",
+            "pickup_date": "2026-03-22",
+            "pickup_time": "14:00",
+            "amount_pence": 0,
+            "is_free_booking": True,
+        }
+
+        response = await client.post("/api/admin/manual-booking", json=request)
+        assert response.status_code == 200
+        reference = response.json()["booking_reference"]
+
+        # Verify payment status is SUCCEEDED
+        booking = db_session.query(Booking).filter(
+            Booking.reference == reference
+        ).first()
+        payment = db_session.query(Payment).filter(
+            Payment.booking_id == booking.id
+        ).first()
+        assert payment is not None
+        assert payment.status == PaymentStatus.SUCCEEDED
+        assert payment.amount_pence == 0
+
+    @pytest.mark.asyncio
+    async def test_paid_booking_requires_stripe_link(self, client):
+        """Paid booking (amount > 0, not free) should require stripe_payment_link."""
+        unique_id = uuid.uuid4().hex[:8]
+
+        request = {
+            "first_name": "Paid",
+            "last_name": "NoLink",
+            "email": f"paid.nolink.{unique_id}@example.com",
+            "billing_address1": "123 Test Street",
+            "billing_city": "Bournemouth",
+            "billing_postcode": "BH1 1AA",
+            "registration": f"PDNL{unique_id[:4]}",
+            "make": "Toyota",
+            "model": "Corolla",
+            "colour": "Silver",
+            "dropoff_date": "2026-03-15",
+            "dropoff_time": "08:30",
+            "pickup_date": "2026-03-22",
+            "pickup_time": "14:00",
+            "amount_pence": 9900,
+            # No stripe_payment_link
+            # Not a free booking
+        }
+
+        response = await client.post("/api/admin/manual-booking", json=request)
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    @patch('main.send_booking_confirmation_email')
+    async def test_free_booking_sends_confirmation_not_payment_link(
+        self, mock_send_email, client
+    ):
+        """Free booking should call send_booking_confirmation_email, not payment email."""
+        mock_send_email.return_value = True
+        unique_id = uuid.uuid4().hex[:8]
+
+        request = {
+            "first_name": "Free",
+            "last_name": "EmailTest",
+            "email": f"free.email.{unique_id}@example.com",
+            "billing_address1": "123 Free Street",
+            "billing_city": "Bournemouth",
+            "billing_postcode": "BH1 1AA",
+            "registration": f"FRET{unique_id[:4]}",
+            "make": "Kia",
+            "model": "Picanto",
+            "colour": "Green",
+            "dropoff_date": "2026-03-15",
+            "dropoff_time": "08:30",
+            "pickup_date": "2026-03-22",
+            "pickup_time": "14:00",
+            "amount_pence": 0,
+            "is_free_booking": True,
+        }
+
+        response = await client.post("/api/admin/manual-booking", json=request)
+        assert response.status_code == 200
+
+        # Verify confirmation email was called (not payment link email)
+        mock_send_email.assert_called_once()
+        call_kwargs = mock_send_email.call_args[1]
+        assert call_kwargs["email"] == request["email"]
+        assert "FREE with promo code" in call_kwargs["amount_paid"]

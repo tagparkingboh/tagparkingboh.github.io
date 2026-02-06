@@ -29,7 +29,7 @@ from models import (
     SlotType,
     AvailableSlotsResponse,
 )
-from booking_service import get_booking_service, BookingService
+from booking_service import get_booking_service, BookingService, get_base_price_for_duration
 from time_slots import get_drop_off_summary, get_pickup_summary
 from config import get_settings, is_stripe_configured
 import httpx
@@ -956,6 +956,14 @@ async def create_manual_booking(
     from db_models import Customer, Vehicle, Booking, BookingStatus, Payment, PaymentStatus
     from datetime import datetime
 
+    # Validate: stripe_payment_link is required for paid bookings
+    is_free = request.is_free_booking and request.amount_pence == 0
+    if not is_free and not request.stripe_payment_link:
+        raise HTTPException(
+            status_code=422,
+            detail=[{"loc": ["body", "stripe_payment_link"], "msg": "Field required for paid bookings", "type": "value_error.missing"}]
+        )
+
     try:
         # Create or find customer
         customer = db.query(Customer).filter(Customer.email == request.email).first()
@@ -1057,7 +1065,10 @@ async def create_manual_booking(
                 if pickup_origin == 'Tenerife-Reinasofia':
                     pickup_origin = 'Tenerife'
 
-        # Create pending booking (no package - price is set via Stripe link)
+        # Determine booking status based on whether it's a free booking
+        booking_status = BookingStatus.CONFIRMED if is_free else BookingStatus.PENDING
+
+        # Create booking
         booking = Booking(
             reference=reference,
             customer_id=customer.id,
@@ -1068,7 +1079,7 @@ async def create_manual_booking(
             dropoff_time=datetime.strptime(request.dropoff_time, "%H:%M").time(),
             pickup_date=request.pickup_date,
             pickup_time=datetime.strptime(request.pickup_time, "%H:%M").time(),
-            status=BookingStatus.PENDING,
+            status=booking_status,
             booking_source="manual",
             admin_notes=request.notes,
             # Flight integration fields
@@ -1082,15 +1093,35 @@ async def create_manual_booking(
         db.add(booking)
         db.flush()
 
-        # Create pending payment record
+        # Create payment record
         payment = Payment(
             booking_id=booking.id,
             amount_pence=request.amount_pence,
             currency="gbp",
-            status=PaymentStatus.PENDING,
-            stripe_payment_link=request.stripe_payment_link,
+            status=PaymentStatus.SUCCEEDED if is_free else PaymentStatus.PENDING,
+            stripe_payment_link=request.stripe_payment_link or "",
         )
         db.add(payment)
+
+        # For free bookings with promo code, mark promo as used
+        if is_free and request.promo_code:
+            promo_code = request.promo_code.strip().upper()
+            subscriber = db.query(MarketingSubscriber).filter(
+                (MarketingSubscriber.promo_free_code == promo_code)
+            ).first()
+            if subscriber and not subscriber.promo_free_used:
+                subscriber.promo_free_used = True
+                subscriber.promo_free_used_at = datetime.utcnow()
+                subscriber.promo_free_used_booking_id = booking.id
+
+        # For free bookings with flight selection, increment slot counts
+        if is_free and request.departure_id and request.dropoff_slot:
+            departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
+            if departure:
+                if request.dropoff_slot == "165":
+                    departure.slots_booked_early = (departure.slots_booked_early or 0) + 1
+                elif request.dropoff_slot == "120":
+                    departure.slots_booked_late = (departure.slots_booked_late or 0) + 1
 
         db.commit()
 
@@ -1099,28 +1130,52 @@ async def create_manual_booking(
         pickup_date_formatted = request.pickup_date.strftime("%A, %d %B %Y")
         amount_formatted = f"£{request.amount_pence / 100:.2f}"
 
-        # Send payment link email
-        email_sent = send_manual_booking_payment_email(
-            email=request.email,
-            first_name=request.first_name,
-            dropoff_date=dropoff_date_formatted,
-            dropoff_time=request.dropoff_time,
-            pickup_date=pickup_date_formatted,
-            pickup_time=request.pickup_time,
-            vehicle_make=request.make,
-            vehicle_model=request.model,
-            vehicle_colour=request.colour,
-            vehicle_registration=request.registration.upper(),
-            amount=amount_formatted,
-            payment_link=request.stripe_payment_link,
-        )
-
-        return {
-            "success": True,
-            "message": "Manual booking created and payment link email sent" if email_sent else "Manual booking created but email failed to send",
-            "booking_reference": reference,
-            "email_sent": email_sent,
-        }
+        if is_free:
+            # Send confirmation email for free booking
+            email_sent = send_booking_confirmation_email(
+                email=request.email,
+                first_name=request.first_name,
+                booking_reference=reference,
+                dropoff_date=dropoff_date_formatted,
+                dropoff_time=request.dropoff_time,
+                pickup_date=pickup_date_formatted,
+                pickup_time=request.pickup_time,
+                vehicle_registration=request.registration.upper(),
+                vehicle_make=request.make,
+                vehicle_model=request.model,
+                vehicle_colour=request.colour,
+                amount_paid="£0.00 (FREE with promo code)",
+            )
+            return {
+                "success": True,
+                "message": "Free booking confirmed and confirmation email sent" if email_sent else "Free booking confirmed but email failed to send",
+                "booking_reference": reference,
+                "email_sent": email_sent,
+                "is_free_booking": True,
+            }
+        else:
+            # Send payment link email for paid booking
+            email_sent = send_manual_booking_payment_email(
+                email=request.email,
+                first_name=request.first_name,
+                dropoff_date=dropoff_date_formatted,
+                dropoff_time=request.dropoff_time,
+                pickup_date=pickup_date_formatted,
+                pickup_time=request.pickup_time,
+                vehicle_make=request.make,
+                vehicle_model=request.model,
+                vehicle_colour=request.colour,
+                vehicle_registration=request.registration.upper(),
+                amount=amount_formatted,
+                payment_link=request.stripe_payment_link,
+            )
+            return {
+                "success": True,
+                "message": "Manual booking created and payment link email sent" if email_sent else "Manual booking created but email failed to send",
+                "booking_reference": reference,
+                "email_sent": email_sent,
+                "is_free_booking": False,
+            }
 
     except HTTPException:
         # Re-raise HTTPExceptions as-is (e.g., slot validation errors)
@@ -3037,21 +3092,23 @@ async def create_payment(
                 print(f"[PROMO] Found subscriber: {subscriber.email}, used: {promo_used}")
                 if not promo_used:
                     if discount_percent == 100:
-                        if request.package == "quick":
-                            # 1-week trip: completely free regardless of tier
+                        # FREE promo: based on trip duration (not package)
+                        if duration_days <= 7:
+                            # Trips up to 7 days: completely free
                             discount_amount = original_amount
                             is_free_booking = True
                         else:
-                            # 2-week trip: deduct the 1-week base rate (early tier) price
-                            # e.g. 2-week standard £150 - 1-week base £89 = customer pays £61
-                            week1_base_pence = int(BookingService.get_package_prices()["quick"]["early"] * 100)
+                            # Trips 8-14 days: deduct the 1-week base rate (7-day early tier)
+                            # e.g. 10-day trip £119 - 7-day base £79 = customer pays £40
+                            week1_base_pence = int(get_base_price_for_duration(7) * 100)
                             discount_amount = min(week1_base_pence, original_amount)
                             is_free_booking = False
                     else:
+                        # Percentage-based discount (10% or custom)
                         discount_amount = int(original_amount * discount_percent / 100)
                         is_free_booking = False
                     promo_code_applied = promo_code
-                    print(f"[PROMO] Discount applied: {discount_percent}% = {discount_amount} pence (free: {is_free_booking})")
+                    print(f"[PROMO] Discount applied: {discount_percent}% = {discount_amount} pence, duration: {duration_days} days (free: {is_free_booking})")
                 else:
                     print(f"[PROMO] Code already used!")
             else:
