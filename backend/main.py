@@ -1131,6 +1131,19 @@ async def create_manual_booking(
         amount_formatted = f"£{request.amount_pence / 100:.2f}"
 
         if is_free:
+            # Build flight info for email
+            departure_flight_str = request.departure_flight_number or "N/A"
+            if departure_flight and departure_flight.destination_name:
+                departure_flight_str = f"{departure_flight.flight_number} to {dropoff_destination or departure_flight.destination_name}"
+
+            return_flight_str = request.return_flight_number or "N/A"
+            if pickup_origin:
+                return_flight_str = f"{request.return_flight_number} from {pickup_origin}"
+
+            # Calculate duration for package name
+            duration_days = (request.pickup_date - request.dropoff_date).days
+            package_name = f"{duration_days} day{'s' if duration_days != 1 else ''}"
+
             # Send confirmation email for free booking
             email_sent = send_booking_confirmation_email(
                 email=request.email,
@@ -1140,10 +1153,13 @@ async def create_manual_booking(
                 dropoff_time=request.dropoff_time,
                 pickup_date=pickup_date_formatted,
                 pickup_time=request.pickup_time,
+                departure_flight=departure_flight_str,
+                return_flight=return_flight_str,
                 vehicle_registration=request.registration.upper(),
                 vehicle_make=request.make,
                 vehicle_model=request.model,
                 vehicle_colour=request.colour,
+                package_name=package_name,
                 amount_paid="£0.00 (FREE with promo code)",
             )
             return {
