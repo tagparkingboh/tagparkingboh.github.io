@@ -1745,7 +1745,7 @@ function Admin() {
                     </div>
 
                     <div className="pricing-input-group">
-                      <label>7 Days</label>
+                      <label>1 Week Trip</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
@@ -1809,7 +1809,7 @@ function Admin() {
                     </div>
 
                     <div className="pricing-input-group">
-                      <label>14 Days</label>
+                      <label>2 Week Trip</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
@@ -1823,9 +1823,15 @@ function Admin() {
                         />
                       </div>
                     </div>
+                  </div>
+                </div>
 
+                <div className="admin-pricing-section tier-increment-section">
+                  <h3>Tier Increment</h3>
+                  <p className="pricing-hint">This amount is added for Standard tier (+1x) and Late tier (+2x) bookings.</p>
+                  <div className="pricing-inputs">
                     <div className="pricing-input-group pricing-input-highlight">
-                      <label>Tier Increment</label>
+                      <label>Increment Amount</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
@@ -1868,7 +1874,7 @@ function Admin() {
                         <td>£{pricing.days_5_6_price + (pricing.tier_increment * 2)}</td>
                       </tr>
                       <tr>
-                        <td>7 Days</td>
+                        <td>1 Week Trip</td>
                         <td>£{pricing.week1_base_price}</td>
                         <td>£{pricing.week1_base_price + pricing.tier_increment}</td>
                         <td>£{pricing.week1_base_price + (pricing.tier_increment * 2)}</td>
@@ -1892,7 +1898,7 @@ function Admin() {
                         <td>£{pricing.days_12_13_price + (pricing.tier_increment * 2)}</td>
                       </tr>
                       <tr>
-                        <td>14 Days</td>
+                        <td>2 Week Trip</td>
                         <td>£{pricing.week2_base_price}</td>
                         <td>£{pricing.week2_base_price + pricing.tier_increment}</td>
                         <td>£{pricing.week2_base_price + (pricing.tier_increment * 2)}</td>
