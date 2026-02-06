@@ -743,21 +743,12 @@
   font-weight: 500;
 }
 
-.modal-warning {
-  color: #c05621;
-  font-size: 0.875rem;
-  background: #feebc8;
-  padding: 0.75rem 1rem;
-  border-radius: 6px;
-  margin-top: 0.5rem;
-}
-
-.modal-btn-success {
+.admin-container .modal-btn-success {
   background: #38a169;
   color: white;
 }
 
-.modal-btn-success:hover {
+.admin-container .modal-btn-success:hover {
   background: #2f855a;
 }
 
@@ -867,8 +858,8 @@
   color: #4a5568;
 }
 
-/* Modal styles */
-.modal-overlay {
+/* Modal styles - using .admin-container for specificity over Employee.css */
+.admin-container .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -882,50 +873,60 @@
   padding: 20px;
 }
 
-.modal-content {
+.admin-container .modal-content {
   background: white;
   border-radius: 12px;
   padding: 24px;
   max-width: 450px;
   width: 100%;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  color: #333;
 }
 
-.modal-content h3 {
+.admin-container .modal-content h3 {
   margin: 0 0 12px 0;
   font-size: 20px;
   color: #1a1a2e;
 }
 
-.modal-content > p {
+.admin-container .modal-content > p {
   color: #666;
   margin: 0 0 20px 0;
 }
 
-.modal-booking-info {
+.admin-container .modal-booking-info {
   background: #f8f9fa;
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 24px;
 }
 
-.modal-booking-info p {
+.admin-container .modal-booking-info p {
   margin: 0 0 8px 0;
   font-size: 14px;
   color: #333;
 }
 
-.modal-booking-info p:last-child {
+.admin-container .modal-booking-info p:last-child {
   margin-bottom: 0;
 }
 
-.modal-actions {
+.admin-container .modal-warning {
+  color: #856404;
+  background: #fff3cd;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin: 16px 0;
+}
+
+.admin-container .modal-actions {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
 }
 
-.modal-btn {
+.admin-container .modal-btn {
   padding: 10px 20px;
   font-size: 14px;
   font-weight: 500;
@@ -935,35 +936,35 @@
   transition: all 0.2s ease;
 }
 
-.modal-btn:disabled {
+.admin-container .modal-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.modal-btn-secondary {
+.admin-container .modal-btn-secondary {
   background: #f0f0f0;
   color: #333;
 }
 
-.modal-btn-secondary:hover:not(:disabled) {
+.admin-container .modal-btn-secondary:hover:not(:disabled) {
   background: #e0e0e0;
 }
 
-.modal-btn-danger {
+.admin-container .modal-btn-danger {
   background: #c53030;
   color: white;
 }
 
-.modal-btn-danger:hover:not(:disabled) {
+.admin-container .modal-btn-danger:hover:not(:disabled) {
   background: #9b2c2c;
 }
 
-.modal-btn-primary {
+.admin-container .modal-btn-primary {
   background: #f7b32b;
   color: #1a1a2e;
 }
 
-.modal-btn-primary:hover:not(:disabled) {
+.admin-container .modal-btn-primary:hover:not(:disabled) {
   background: #e5a320;
 }
 
@@ -1040,11 +1041,11 @@
     margin-left: 0;
   }
 
-  .modal-actions {
+  .admin-container .modal-actions {
     flex-direction: column;
   }
 
-  .modal-btn {
+  .admin-container .modal-btn {
     width: 100%;
   }
 
