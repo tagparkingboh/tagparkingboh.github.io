@@ -1580,9 +1580,6 @@ function Bookings() {
               {pricingInfo ? (
                 <div className="package-summary">
                   <div className="package-card selected">
-                    <span className="package-label">
-                      {pricingInfo.package_name.toUpperCase()}
-                    </span>
                     <span className="package-price">£{pricingInfo.price.toFixed(0)}</span>
                     <span className="package-period">/ {pricingInfo.duration_days} days</span>
 
