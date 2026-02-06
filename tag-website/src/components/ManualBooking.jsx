@@ -66,6 +66,10 @@ function ManualBooking({ token }) {
   const [loadingDepartures, setLoadingDepartures] = useState(false)
   const [loadingArrivals, setLoadingArrivals] = useState(false)
 
+  // Auto-pricing state
+  const [pricingLoading, setPricingLoading] = useState(false)
+  const [calculatedPrice, setCalculatedPrice] = useState(null)
+
   // Fetch departures when dropoff date changes
   useEffect(() => {
     const fetchDepartures = async () => {
@@ -127,6 +131,54 @@ function ManualBooking({ token }) {
       pickupFlight: '',
     }))
   }, [formData.pickupDate])
+
+  // Auto-calculate price when both dates are set
+  useEffect(() => {
+    const calculatePrice = async () => {
+      if (!formData.dropoffDate || !formData.pickupDate) {
+        setCalculatedPrice(null)
+        return
+      }
+
+      // Calculate duration
+      const duration = Math.round((formData.pickupDate - formData.dropoffDate) / (1000 * 60 * 60 * 24))
+      if (duration < 1 || duration > 14) {
+        setCalculatedPrice(null)
+        return
+      }
+
+      setPricingLoading(true)
+      try {
+        const dropoffStr = format(formData.dropoffDate, 'yyyy-MM-dd')
+        const pickupStr = format(formData.pickupDate, 'yyyy-MM-dd')
+        const response = await fetch(`${API_URL}/api/pricing/calculate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            drop_off_date: dropoffStr,
+            pickup_date: pickupStr,
+          }),
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setCalculatedPrice(data.price)
+          // Auto-fill amount if empty or if it matches a previous calculated price
+          setFormData(prev => {
+            if (!prev.amount || prev.amount === '' || prev.amount === String(calculatedPrice)) {
+              return { ...prev, amount: String(data.price) }
+            }
+            return prev
+          })
+        }
+      } catch (error) {
+        console.error('Error calculating price:', error)
+      } finally {
+        setPricingLoading(false)
+      }
+    }
+
+    calculatePrice()
+  }, [formData.dropoffDate, formData.pickupDate])
 
   // Get unique airlines from departures
   const airlines = useMemo(() => {
@@ -1131,6 +1183,26 @@ function ManualBooking({ token }) {
         {/* Payment Section */}
         <div className="manual-booking-section">
           <h3>Payment</h3>
+          {/* Auto-calculated price info */}
+          {formData.dropoffDate && formData.pickupDate && (
+            <div className="pricing-info-banner">
+              {(() => {
+                const days = Math.round((formData.pickupDate - formData.dropoffDate) / (1000 * 60 * 60 * 24))
+                const tripLabel = days === 7 ? '1 week trip' : days === 14 ? '2 week trip' : `${days} day${days !== 1 ? 's' : ''} trip`
+                return (
+                  <>
+                    <span className="trip-duration"><strong>{tripLabel}</strong></span>
+                    {pricingLoading && <span className="calculated-price">Calculating...</span>}
+                    {!pricingLoading && calculatedPrice && (
+                      <span className="calculated-price">
+                        Suggested price: <strong>£{calculatedPrice.toFixed(2)}</strong>
+                      </span>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+          )}
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="amount">Amount (£) <span className="required">*</span></label>
@@ -1142,9 +1214,12 @@ function ManualBooking({ token }) {
                 onChange={handleChange}
                 min="0"
                 step="0.01"
-                placeholder="99.00"
+                placeholder={calculatedPrice ? calculatedPrice.toFixed(2) : "99.00"}
                 required
               />
+              {calculatedPrice && formData.amount && parseFloat(formData.amount) !== calculatedPrice && (
+                <p className="price-override-note">Custom price (suggested: £{calculatedPrice.toFixed(2)})</p>
+              )}
             </div>
             <div className="form-group">
               <label htmlFor="stripePaymentLink">Stripe Payment Link <span className="required">*</span></label>
