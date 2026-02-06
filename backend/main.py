@@ -835,7 +835,10 @@ async def get_all_bookings(
             "reference": b.reference,
             "status": b.status.value if b.status else None,
             "booking_source": b.booking_source,
-            "package": b.package,
+            "package": b.package if b.package else (
+                f"{(b.pickup_date - b.dropoff_date).days} Day{'s' if (b.pickup_date - b.dropoff_date).days != 1 else ''}"
+                if b.dropoff_date and b.pickup_date else None
+            ),
             "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
             "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
             "dropoff_flight_number": b.dropoff_flight_number,
