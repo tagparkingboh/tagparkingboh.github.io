@@ -1182,7 +1182,7 @@
 }
 
 .promo-success {
-  color: #D9FF00;
+  color: #D9FF00 !important;
   font-size: 1rem;
   font-weight: 600;
 }
