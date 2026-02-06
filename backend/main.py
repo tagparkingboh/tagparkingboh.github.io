@@ -1123,8 +1123,6 @@ async def create_manual_booking(
                 elif request.dropoff_slot == "120":
                     departure.slots_booked_late = (departure.slots_booked_late or 0) + 1
 
-        db.commit()
-
         # Format dates for email
         dropoff_date_formatted = request.dropoff_date.strftime("%A, %d %B %Y")
         pickup_date_formatted = request.pickup_date.strftime("%A, %d %B %Y")
@@ -1144,7 +1142,8 @@ async def create_manual_booking(
             duration_days = (request.pickup_date - request.dropoff_date).days
             package_name = f"{duration_days} day{'s' if duration_days != 1 else ''}"
 
-            # Send confirmation email for free booking
+            # Send confirmation email for free booking BEFORE commit
+            # If email fails, the transaction will be rolled back
             email_sent = send_booking_confirmation_email(
                 email=request.email,
                 first_name=request.first_name,
@@ -1162,6 +1161,10 @@ async def create_manual_booking(
                 package_name=package_name,
                 amount_paid="£0.00 (FREE with promo code)",
             )
+
+            # Commit only after email succeeds
+            db.commit()
+
             return {
                 "success": True,
                 "message": "Free booking confirmed and confirmation email sent" if email_sent else "Free booking confirmed but email failed to send",
@@ -1170,7 +1173,8 @@ async def create_manual_booking(
                 "is_free_booking": True,
             }
         else:
-            # Send payment link email for paid booking
+            # Send payment link email for paid booking BEFORE commit
+            # If email fails, the transaction will be rolled back
             email_sent = send_manual_booking_payment_email(
                 email=request.email,
                 first_name=request.first_name,
@@ -1185,6 +1189,10 @@ async def create_manual_booking(
                 amount=amount_formatted,
                 payment_link=request.stripe_payment_link,
             )
+
+            # Commit only after email succeeds
+            db.commit()
+
             return {
                 "success": True,
                 "message": "Manual booking created and payment link email sent" if email_sent else "Manual booking created but email failed to send",
