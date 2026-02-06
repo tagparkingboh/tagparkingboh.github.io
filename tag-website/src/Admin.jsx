@@ -972,7 +972,9 @@ function Admin() {
                               <div className="booking-detail">
                                 <span className="detail-label">Package</span>
                                 <span className="detail-value">
-                                  {booking.package === 'quick' ? '1 Week' : '2 Weeks'}
+                                  {booking.package === 'quick' ? '1 Week' :
+                                   booking.package === 'longer' ? '2 Weeks' :
+                                   booking.package || 'N/A'}
                                 </span>
                               </div>
                               <div className="booking-detail">
