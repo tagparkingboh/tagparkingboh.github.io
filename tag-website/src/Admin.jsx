@@ -1690,7 +1690,7 @@ function Admin() {
                         ) : (
                           <>
                             <td>{d.date}</td>
-                            <td>{d.airline_code}</td>
+                            <td>{d.airline_name}</td>
                             <td>{d.flight_number}</td>
                             <td>{d.departure_time}</td>
                             <td>{d.destination_code}</td>
@@ -1797,7 +1797,7 @@ function Admin() {
                         ) : (
                           <>
                             <td>{a.date}</td>
-                            <td>{a.airline_code}</td>
+                            <td>{a.airline_name}</td>
                             <td>{a.flight_number}</td>
                             <td>{a.departure_time || '-'}</td>
                             <td>{a.arrival_time}</td>
