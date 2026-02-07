@@ -1728,9 +1728,8 @@ function Admin() {
                       <th>Date</th>
                       <th>Airline</th>
                       <th>Flight #</th>
-                      <th>Dep Time</th>
-                      <th>Arr Time</th>
                       <th>Origin</th>
+                      <th>Arrival Time</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -1765,10 +1764,10 @@ function Admin() {
                             </td>
                             <td>
                               <input
-                                type="time"
-                                value={editFlightForm.departure_time || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, departure_time: e.target.value})}
-                                className="flight-edit-input"
+                                type="text"
+                                value={editFlightForm.origin_code || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, origin_code: e.target.value})}
+                                className="flight-edit-input small"
                               />
                             </td>
                             <td>
@@ -1777,14 +1776,6 @@ function Admin() {
                                 value={editFlightForm.arrival_time || ''}
                                 onChange={(e) => setEditFlightForm({...editFlightForm, arrival_time: e.target.value})}
                                 className="flight-edit-input"
-                              />
-                            </td>
-                            <td>
-                              <input
-                                type="text"
-                                value={editFlightForm.origin_code || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, origin_code: e.target.value})}
-                                className="flight-edit-input small"
                               />
                             </td>
                             <td className="flight-actions">
@@ -1799,9 +1790,8 @@ function Admin() {
                             <td>{a.date}</td>
                             <td>{a.airline_name}</td>
                             <td>{a.flight_number}</td>
-                            <td>{a.departure_time || '-'}</td>
-                            <td>{a.arrival_time}</td>
                             <td>{a.origin_name}</td>
+                            <td>{a.arrival_time}</td>
                             <td className="flight-actions">
                               <button className="btn-edit" onClick={() => startEditFlight(a)}>Edit</button>
                             </td>
