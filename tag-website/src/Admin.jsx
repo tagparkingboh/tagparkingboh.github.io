@@ -1689,7 +1689,7 @@ function Admin() {
                           </>
                         ) : (
                           <>
-                            <td>{d.date}</td>
+                            <td>{d.date ? d.date.split('-').reverse().join('/') : ''}</td>
                             <td>{d.airline_name}</td>
                             <td>{d.flight_number}</td>
                             <td>{d.departure_time}</td>
@@ -1787,7 +1787,7 @@ function Admin() {
                           </>
                         ) : (
                           <>
-                            <td>{a.date}</td>
+                            <td>{a.date ? a.date.split('-').reverse().join('/') : ''}</td>
                             <td>{a.airline_name}</td>
                             <td>{a.flight_number}</td>
                             <td>{a.origin_name}</td>
