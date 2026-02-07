@@ -1594,11 +1594,11 @@ function Admin() {
                   <thead>
                     <tr>
                       <th>Date</th>
-                      <th>Flight</th>
                       <th>Airline</th>
-                      <th>Time</th>
+                      <th>Flight #</th>
+                      <th>Departure Time</th>
                       <th>Destination</th>
-                      <th>Capacity</th>
+                      <th>Capacity Tier</th>
                       <th>Early</th>
                       <th>Late</th>
                       <th>Actions</th>
@@ -1620,16 +1620,16 @@ function Admin() {
                             <td>
                               <input
                                 type="text"
-                                value={editFlightForm.flight_number || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, flight_number: e.target.value})}
+                                value={editFlightForm.airline_code || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, airline_code: e.target.value})}
                                 className="flight-edit-input small"
                               />
                             </td>
                             <td>
                               <input
                                 type="text"
-                                value={editFlightForm.airline_code || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, airline_code: e.target.value})}
+                                value={editFlightForm.flight_number || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, flight_number: e.target.value})}
                                 className="flight-edit-input small"
                               />
                             </td>
@@ -1690,8 +1690,8 @@ function Admin() {
                         ) : (
                           <>
                             <td>{d.date}</td>
-                            <td>{d.flight_number}</td>
                             <td>{d.airline_code}</td>
+                            <td>{d.flight_number}</td>
                             <td>{d.departure_time}</td>
                             <td>{d.destination_code}</td>
                             <td>
@@ -1726,8 +1726,8 @@ function Admin() {
                   <thead>
                     <tr>
                       <th>Date</th>
-                      <th>Flight</th>
                       <th>Airline</th>
+                      <th>Flight #</th>
                       <th>Dep Time</th>
                       <th>Arr Time</th>
                       <th>Origin</th>
@@ -1750,16 +1750,16 @@ function Admin() {
                             <td>
                               <input
                                 type="text"
-                                value={editFlightForm.flight_number || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, flight_number: e.target.value})}
+                                value={editFlightForm.airline_code || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, airline_code: e.target.value})}
                                 className="flight-edit-input small"
                               />
                             </td>
                             <td>
                               <input
                                 type="text"
-                                value={editFlightForm.airline_code || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, airline_code: e.target.value})}
+                                value={editFlightForm.flight_number || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, flight_number: e.target.value})}
                                 className="flight-edit-input small"
                               />
                             </td>
@@ -1797,8 +1797,8 @@ function Admin() {
                         ) : (
                           <>
                             <td>{a.date}</td>
-                            <td>{a.flight_number}</td>
                             <td>{a.airline_code}</td>
+                            <td>{a.flight_number}</td>
                             <td>{a.departure_time || '-'}</td>
                             <td>{a.arrival_time}</td>
                             <td>{a.origin_code}</td>
