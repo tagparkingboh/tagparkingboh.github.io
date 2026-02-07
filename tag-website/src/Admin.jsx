@@ -80,6 +80,23 @@ function Admin() {
   const [deletingUser, setDeletingUser] = useState(false)
   const [userSuccessMessage, setUserSuccessMessage] = useState('')
 
+  // Flights management state
+  const [flightsSubTab, setFlightsSubTab] = useState('departures')
+  const [departures, setDepartures] = useState([])
+  const [arrivals, setArrivals] = useState([])
+  const [loadingFlights, setLoadingFlights] = useState(false)
+  const [flightsSortAsc, setFlightsSortAsc] = useState(true)
+  const [flightFilters, setFlightFilters] = useState({ airlines: [], destinations: [], origins: [], months: [] })
+  const [flightDestFilter, setFlightDestFilter] = useState('')
+  const [flightOriginFilter, setFlightOriginFilter] = useState('')
+  const [flightAirlineFilter, setFlightAirlineFilter] = useState('')
+  const [flightMonthFilter, setFlightMonthFilter] = useState('')
+  const [editingFlightId, setEditingFlightId] = useState(null)
+  const [editFlightForm, setEditFlightForm] = useState({})
+  const [savingFlight, setSavingFlight] = useState(false)
+  const [flightsMessage, setFlightsMessage] = useState('')
+  const [exportingFlights, setExportingFlights] = useState(false)
+
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
 
@@ -135,6 +152,21 @@ function Admin() {
     }
   }, [activeTab, token])
 
+  // Fetch flights when flights tab is active
+  useEffect(() => {
+    if (activeTab === 'flights' && token) {
+      fetchFlightFilters()
+      fetchFlights()
+    }
+  }, [activeTab, token])
+
+  // Re-fetch flights when sub-tab or filters change
+  useEffect(() => {
+    if (activeTab === 'flights' && token) {
+      fetchFlights()
+    }
+  }, [flightsSubTab, flightsSortAsc, flightDestFilter, flightOriginFilter, flightAirlineFilter, flightMonthFilter])
+
   const fetchSubscribers = async () => {
     setLoadingSubscribers(true)
     setError('')
@@ -174,6 +206,134 @@ function Admin() {
       setError('Network error loading users')
     } finally {
       setLoadingUsers(false)
+    }
+  }
+
+  // Flights management functions
+  const fetchFlightFilters = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/flights/filters`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setFlightFilters(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch flight filters:', err)
+    }
+  }
+
+  const fetchFlights = async () => {
+    setLoadingFlights(true)
+    setError('')
+    try {
+      const params = new URLSearchParams()
+      params.append('sort_order', flightsSortAsc ? 'asc' : 'desc')
+      if (flightAirlineFilter) params.append('airline', flightAirlineFilter)
+      if (flightMonthFilter) {
+        const [year, month] = flightMonthFilter.split('-')
+        params.append('year', year)
+        params.append('month', month)
+      }
+
+      if (flightsSubTab === 'departures') {
+        if (flightDestFilter) params.append('destination', flightDestFilter)
+        const response = await fetch(`${API_URL}/api/admin/flights/departures?${params}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setDepartures(data.departures || [])
+        }
+      } else {
+        if (flightOriginFilter) params.append('origin', flightOriginFilter)
+        const response = await fetch(`${API_URL}/api/admin/flights/arrivals?${params}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setArrivals(data.arrivals || [])
+        }
+      }
+    } catch (err) {
+      setError('Network error loading flights')
+    } finally {
+      setLoadingFlights(false)
+    }
+  }
+
+  const startEditFlight = (flight) => {
+    setEditingFlightId(flight.id)
+    setEditFlightForm({ ...flight })
+  }
+
+  const cancelEditFlight = () => {
+    setEditingFlightId(null)
+    setEditFlightForm({})
+  }
+
+  const saveFlightEdit = async () => {
+    setSavingFlight(true)
+    setFlightsMessage('')
+    try {
+      const endpoint = flightsSubTab === 'departures'
+        ? `${API_URL}/api/admin/flights/departures/${editingFlightId}`
+        : `${API_URL}/api/admin/flights/arrivals/${editingFlightId}`
+
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editFlightForm),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.warnings && data.warnings.length > 0) {
+          setFlightsMessage(`Saved with warnings: ${data.warnings.join(', ')}`)
+        } else {
+          setFlightsMessage('Flight updated successfully')
+        }
+        setEditingFlightId(null)
+        setEditFlightForm({})
+        fetchFlights()
+        setTimeout(() => setFlightsMessage(''), 3000)
+      } else {
+        const err = await response.json()
+        setFlightsMessage(`Error: ${err.detail || 'Failed to save'}`)
+      }
+    } catch (err) {
+      setFlightsMessage('Network error saving flight')
+    } finally {
+      setSavingFlight(false)
+    }
+  }
+
+  const exportFlights = async () => {
+    setExportingFlights(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/flights/export?flight_type=all`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `flights-export-${new Date().toISOString().split('T')[0]}.json`
+        a.click()
+        URL.revokeObjectURL(url)
+        setFlightsMessage('Export downloaded successfully')
+        setTimeout(() => setFlightsMessage(''), 3000)
+      }
+    } catch (err) {
+      setFlightsMessage('Error exporting flights')
+    } finally {
+      setExportingFlights(false)
     }
   }
 
@@ -1318,8 +1478,342 @@ function Admin() {
 
         {activeTab === 'flights' && (
           <div className="admin-section">
-            <h2>Flight Schedule</h2>
-            <p className="admin-coming-soon">Flight management coming soon...</p>
+            <div className="flights-header">
+              <h2>Flight Schedule</h2>
+              <div className="flights-header-actions">
+                <button
+                  className="btn-secondary"
+                  onClick={() => fetchFlights()}
+                  disabled={loadingFlights}
+                >
+                  ↻ Refresh
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={exportFlights}
+                  disabled={exportingFlights}
+                >
+                  {exportingFlights ? 'Exporting...' : '↓ Export JSON'}
+                </button>
+              </div>
+            </div>
+
+            {flightsMessage && (
+              <div className={`flights-message ${flightsMessage.includes('Error') || flightsMessage.includes('Warning') ? 'warning' : 'success'}`}>
+                {flightsMessage}
+              </div>
+            )}
+
+            {/* Sub-tabs */}
+            <div className="flights-subtabs">
+              <button
+                className={`flights-subtab ${flightsSubTab === 'departures' ? 'active' : ''}`}
+                onClick={() => setFlightsSubTab('departures')}
+              >
+                Departures ({departures.length})
+              </button>
+              <button
+                className={`flights-subtab ${flightsSubTab === 'arrivals' ? 'active' : ''}`}
+                onClick={() => setFlightsSubTab('arrivals')}
+              >
+                Arrivals ({arrivals.length})
+              </button>
+            </div>
+
+            {/* Filters */}
+            <div className="flights-filters">
+              <div className="flight-filter-group">
+                <label>Airline:</label>
+                <select
+                  value={flightAirlineFilter}
+                  onChange={(e) => setFlightAirlineFilter(e.target.value)}
+                >
+                  <option value="">All Airlines</option>
+                  {flightFilters.airlines?.map(a => (
+                    <option key={a.code} value={a.code}>{a.code} - {a.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {flightsSubTab === 'departures' ? (
+                <div className="flight-filter-group">
+                  <label>Destination:</label>
+                  <select
+                    value={flightDestFilter}
+                    onChange={(e) => setFlightDestFilter(e.target.value)}
+                  >
+                    <option value="">All Destinations</option>
+                    {flightFilters.destinations?.map(d => (
+                      <option key={d.code} value={d.code}>{d.code} - {d.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="flight-filter-group">
+                  <label>Origin:</label>
+                  <select
+                    value={flightOriginFilter}
+                    onChange={(e) => setFlightOriginFilter(e.target.value)}
+                  >
+                    <option value="">All Origins</option>
+                    {flightFilters.origins?.map(o => (
+                      <option key={o.code} value={o.code}>{o.code} - {o.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="flight-filter-group">
+                <label>Month:</label>
+                <select
+                  value={flightMonthFilter}
+                  onChange={(e) => setFlightMonthFilter(e.target.value)}
+                >
+                  <option value="">All Months</option>
+                  {flightFilters.months?.map(m => (
+                    <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                className="sort-toggle-btn"
+                onClick={() => setFlightsSortAsc(!flightsSortAsc)}
+                title={flightsSortAsc ? 'Sorted oldest first' : 'Sorted newest first'}
+              >
+                Date {flightsSortAsc ? '↑' : '↓'}
+              </button>
+            </div>
+
+            {/* Data Table */}
+            {loadingFlights ? (
+              <p className="loading-text">Loading flights...</p>
+            ) : flightsSubTab === 'departures' ? (
+              <div className="flights-table-wrapper">
+                <table className="flights-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Flight</th>
+                      <th>Airline</th>
+                      <th>Time</th>
+                      <th>Destination</th>
+                      <th>Capacity</th>
+                      <th>Early</th>
+                      <th>Late</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {departures.map(d => (
+                      <tr key={d.id} className={editingFlightId === d.id ? 'editing' : ''}>
+                        {editingFlightId === d.id ? (
+                          <>
+                            <td>
+                              <input
+                                type="date"
+                                value={editFlightForm.date || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, date: e.target.value})}
+                                className="flight-edit-input"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                value={editFlightForm.flight_number || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, flight_number: e.target.value})}
+                                className="flight-edit-input small"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                value={editFlightForm.airline_code || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, airline_code: e.target.value})}
+                                className="flight-edit-input small"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="time"
+                                value={editFlightForm.departure_time || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, departure_time: e.target.value})}
+                                className="flight-edit-input"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                value={editFlightForm.destination_code || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, destination_code: e.target.value})}
+                                className="flight-edit-input small"
+                              />
+                            </td>
+                            <td>
+                              <select
+                                value={editFlightForm.capacity_tier ?? ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, capacity_tier: parseInt(e.target.value)})}
+                                className="flight-edit-input"
+                              >
+                                <option value="0">0 (Call Us)</option>
+                                <option value="2">2 (1+1)</option>
+                                <option value="4">4 (2+2)</option>
+                                <option value="6">6 (3+3)</option>
+                                <option value="8">8 (4+4)</option>
+                              </select>
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editFlightForm.slots_booked_early ?? ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, slots_booked_early: parseInt(e.target.value) || 0})}
+                                className="flight-edit-input tiny"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editFlightForm.slots_booked_late ?? ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, slots_booked_late: parseInt(e.target.value) || 0})}
+                                className="flight-edit-input tiny"
+                              />
+                            </td>
+                            <td className="flight-actions">
+                              <button className="btn-save" onClick={saveFlightEdit} disabled={savingFlight}>
+                                {savingFlight ? '...' : '✓'}
+                              </button>
+                              <button className="btn-cancel" onClick={cancelEditFlight}>✕</button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td>{d.date}</td>
+                            <td>{d.flight_number}</td>
+                            <td>{d.airline_code}</td>
+                            <td>{d.departure_time}</td>
+                            <td>{d.destination_code}</td>
+                            <td>
+                              <span className={`capacity-badge tier-${d.capacity_tier}`}>
+                                {d.capacity_tier === 0 ? 'Call' : d.capacity_tier}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="slots-display">
+                                {d.slots_booked_early}/{d.max_slots_per_time}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="slots-display">
+                                {d.slots_booked_late}/{d.max_slots_per_time}
+                              </span>
+                            </td>
+                            <td className="flight-actions">
+                              <button className="btn-edit" onClick={() => startEditFlight(d)}>Edit</button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {departures.length === 0 && <p className="no-data">No departures found</p>}
+              </div>
+            ) : (
+              <div className="flights-table-wrapper">
+                <table className="flights-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Flight</th>
+                      <th>Airline</th>
+                      <th>Dep Time</th>
+                      <th>Arr Time</th>
+                      <th>Origin</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {arrivals.map(a => (
+                      <tr key={a.id} className={editingFlightId === a.id ? 'editing' : ''}>
+                        {editingFlightId === a.id ? (
+                          <>
+                            <td>
+                              <input
+                                type="date"
+                                value={editFlightForm.date || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, date: e.target.value})}
+                                className="flight-edit-input"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                value={editFlightForm.flight_number || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, flight_number: e.target.value})}
+                                className="flight-edit-input small"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                value={editFlightForm.airline_code || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, airline_code: e.target.value})}
+                                className="flight-edit-input small"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="time"
+                                value={editFlightForm.departure_time || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, departure_time: e.target.value})}
+                                className="flight-edit-input"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="time"
+                                value={editFlightForm.arrival_time || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, arrival_time: e.target.value})}
+                                className="flight-edit-input"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                value={editFlightForm.origin_code || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, origin_code: e.target.value})}
+                                className="flight-edit-input small"
+                              />
+                            </td>
+                            <td className="flight-actions">
+                              <button className="btn-save" onClick={saveFlightEdit} disabled={savingFlight}>
+                                {savingFlight ? '...' : '✓'}
+                              </button>
+                              <button className="btn-cancel" onClick={cancelEditFlight}>✕</button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td>{a.date}</td>
+                            <td>{a.flight_number}</td>
+                            <td>{a.airline_code}</td>
+                            <td>{a.departure_time || '-'}</td>
+                            <td>{a.arrival_time}</td>
+                            <td>{a.origin_code}</td>
+                            <td className="flight-actions">
+                              <button className="btn-edit" onClick={() => startEditFlight(a)}>Edit</button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {arrivals.length === 0 && <p className="no-data">No arrivals found</p>}
+              </div>
+            )}
           </div>
         )}
 

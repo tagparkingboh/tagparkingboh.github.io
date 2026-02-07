@@ -215,6 +215,8 @@ class FlightDeparture(Base):
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=True)
+    updated_by = Column(String(100), nullable=True)  # Admin email who made the change
 
     def __repr__(self):
         return f"<FlightDeparture {self.flight_number} on {self.date} at {self.departure_time}>"
@@ -288,6 +290,8 @@ class FlightArrival(Base):
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=True)
+    updated_by = Column(String(100), nullable=True)  # Admin email who made the change
 
     def __repr__(self):
         return f"<FlightArrival {self.flight_number} on {self.date} at {self.arrival_time}>"

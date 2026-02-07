@@ -14,7 +14,7 @@ import uuid
 import secrets
 from datetime import date, time, datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -4903,6 +4903,414 @@ async def auth_me(
         last_name=current_user.last_name,
         is_admin=current_user.is_admin,
     )
+
+
+# =============================================================================
+# Admin Flights Management Endpoints
+# =============================================================================
+
+class UpdateDepartureRequest(BaseModel):
+    """Request model for updating a flight departure."""
+    date: Optional[date] = None
+    flight_number: Optional[str] = None
+    airline_code: Optional[str] = None
+    airline_name: Optional[str] = None
+    departure_time: Optional[time] = None
+    destination_code: Optional[str] = None
+    destination_name: Optional[str] = None
+    capacity_tier: Optional[int] = None
+    slots_booked_early: Optional[int] = None
+    slots_booked_late: Optional[int] = None
+
+
+class UpdateArrivalRequest(BaseModel):
+    """Request model for updating a flight arrival."""
+    date: Optional[date] = None
+    flight_number: Optional[str] = None
+    airline_code: Optional[str] = None
+    airline_name: Optional[str] = None
+    departure_time: Optional[time] = None
+    arrival_time: Optional[time] = None
+    origin_code: Optional[str] = None
+    origin_name: Optional[str] = None
+
+
+@app.get("/api/admin/flights/departures")
+async def get_admin_departures(
+    sort_order: str = Query("asc", regex="^(asc|desc)$"),
+    destination: Optional[str] = None,
+    airline: Optional[str] = None,
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get all departure flights with optional filters.
+    Sorted by date (ASC by default, DESC optional).
+    """
+    query = db.query(FlightDeparture)
+
+    # Apply filters
+    if destination:
+        query = query.filter(
+            (FlightDeparture.destination_code.ilike(f"%{destination}%")) |
+            (FlightDeparture.destination_name.ilike(f"%{destination}%"))
+        )
+
+    if airline:
+        query = query.filter(
+            (FlightDeparture.airline_code.ilike(f"%{airline}%")) |
+            (FlightDeparture.airline_name.ilike(f"%{airline}%"))
+        )
+
+    if month:
+        from sqlalchemy import extract
+        query = query.filter(extract('month', FlightDeparture.date) == month)
+
+    if year:
+        from sqlalchemy import extract
+        query = query.filter(extract('year', FlightDeparture.date) == year)
+
+    # Apply sorting
+    if sort_order == "desc":
+        query = query.order_by(FlightDeparture.date.desc(), FlightDeparture.departure_time.desc())
+    else:
+        query = query.order_by(FlightDeparture.date.asc(), FlightDeparture.departure_time.asc())
+
+    departures = query.all()
+
+    return {
+        "departures": [
+            {
+                "id": d.id,
+                "date": d.date.isoformat(),
+                "flight_number": d.flight_number,
+                "airline_code": d.airline_code,
+                "airline_name": d.airline_name,
+                "departure_time": d.departure_time.strftime("%H:%M") if d.departure_time else None,
+                "destination_code": d.destination_code,
+                "destination_name": d.destination_name,
+                "capacity_tier": d.capacity_tier,
+                "slots_booked_early": d.slots_booked_early,
+                "slots_booked_late": d.slots_booked_late,
+                "max_slots_per_time": d.max_slots_per_time,
+                "early_slots_available": d.early_slots_available,
+                "late_slots_available": d.late_slots_available,
+                "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+                "updated_by": d.updated_by,
+            }
+            for d in departures
+        ],
+        "total": len(departures),
+    }
+
+
+@app.get("/api/admin/flights/arrivals")
+async def get_admin_arrivals(
+    sort_order: str = Query("asc", regex="^(asc|desc)$"),
+    origin: Optional[str] = None,
+    airline: Optional[str] = None,
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get all arrival flights with optional filters.
+    Sorted by date (ASC by default, DESC optional).
+    """
+    query = db.query(FlightArrival)
+
+    # Apply filters
+    if origin:
+        query = query.filter(
+            (FlightArrival.origin_code.ilike(f"%{origin}%")) |
+            (FlightArrival.origin_name.ilike(f"%{origin}%"))
+        )
+
+    if airline:
+        query = query.filter(
+            (FlightArrival.airline_code.ilike(f"%{airline}%")) |
+            (FlightArrival.airline_name.ilike(f"%{airline}%"))
+        )
+
+    if month:
+        from sqlalchemy import extract
+        query = query.filter(extract('month', FlightArrival.date) == month)
+
+    if year:
+        from sqlalchemy import extract
+        query = query.filter(extract('year', FlightArrival.date) == year)
+
+    # Apply sorting
+    if sort_order == "desc":
+        query = query.order_by(FlightArrival.date.desc(), FlightArrival.arrival_time.desc())
+    else:
+        query = query.order_by(FlightArrival.date.asc(), FlightArrival.arrival_time.asc())
+
+    arrivals = query.all()
+
+    return {
+        "arrivals": [
+            {
+                "id": a.id,
+                "date": a.date.isoformat(),
+                "flight_number": a.flight_number,
+                "airline_code": a.airline_code,
+                "airline_name": a.airline_name,
+                "departure_time": a.departure_time.strftime("%H:%M") if a.departure_time else None,
+                "arrival_time": a.arrival_time.strftime("%H:%M") if a.arrival_time else None,
+                "origin_code": a.origin_code,
+                "origin_name": a.origin_name,
+                "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+                "updated_by": a.updated_by,
+            }
+            for a in arrivals
+        ],
+        "total": len(arrivals),
+    }
+
+
+@app.get("/api/admin/flights/filters")
+async def get_admin_flight_filters(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get unique filter options for flights (airlines, destinations, origins, months).
+    """
+    from sqlalchemy import distinct, extract
+
+    # Get unique airlines from both departures and arrivals
+    departure_airlines = db.query(
+        distinct(FlightDeparture.airline_code),
+        FlightDeparture.airline_name
+    ).all()
+    arrival_airlines = db.query(
+        distinct(FlightArrival.airline_code),
+        FlightArrival.airline_name
+    ).all()
+
+    # Combine and deduplicate airlines
+    airlines_dict = {}
+    for code, name in departure_airlines + arrival_airlines:
+        if code not in airlines_dict:
+            airlines_dict[code] = name
+    airlines = [{"code": code, "name": name} for code, name in sorted(airlines_dict.items())]
+
+    # Get unique destinations (departures only)
+    destinations = db.query(
+        distinct(FlightDeparture.destination_code),
+        FlightDeparture.destination_name
+    ).all()
+    destinations = [{"code": code, "name": name} for code, name in sorted(destinations)]
+
+    # Get unique origins (arrivals only)
+    origins = db.query(
+        distinct(FlightArrival.origin_code),
+        FlightArrival.origin_name
+    ).all()
+    origins = [{"code": code, "name": name} for code, name in sorted(origins)]
+
+    # Get months with data
+    departure_months = db.query(
+        distinct(extract('month', FlightDeparture.date)),
+        extract('year', FlightDeparture.date)
+    ).all()
+    arrival_months = db.query(
+        distinct(extract('month', FlightArrival.date)),
+        extract('year', FlightArrival.date)
+    ).all()
+
+    # Combine and format months
+    months_set = set()
+    for month, year in departure_months + arrival_months:
+        if month and year:
+            months_set.add((int(year), int(month)))
+
+    months = [
+        {"year": year, "month": month, "label": f"{['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month-1]} {year}"}
+        for year, month in sorted(months_set)
+    ]
+
+    return {
+        "airlines": airlines,
+        "destinations": destinations,
+        "origins": origins,
+        "months": months,
+    }
+
+
+@app.get("/api/admin/flights/export")
+async def export_admin_flights(
+    flight_type: str = Query("all", regex="^(all|departures|arrivals)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Export all flight data to JSON for backup/snapshot.
+    """
+    export_data = {
+        "exported_at": datetime.utcnow().isoformat(),
+        "exported_by": current_user.email,
+    }
+
+    if flight_type in ["all", "departures"]:
+        departures = db.query(FlightDeparture).order_by(FlightDeparture.date, FlightDeparture.departure_time).all()
+        export_data["departures"] = [
+            {
+                "id": d.id,
+                "date": d.date.isoformat(),
+                "flight_number": d.flight_number,
+                "airline_code": d.airline_code,
+                "airline_name": d.airline_name,
+                "departure_time": d.departure_time.strftime("%H:%M") if d.departure_time else None,
+                "destination_code": d.destination_code,
+                "destination_name": d.destination_name,
+                "capacity_tier": d.capacity_tier,
+                "slots_booked_early": d.slots_booked_early,
+                "slots_booked_late": d.slots_booked_late,
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+                "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+                "updated_by": d.updated_by,
+            }
+            for d in departures
+        ]
+
+    if flight_type in ["all", "arrivals"]:
+        arrivals = db.query(FlightArrival).order_by(FlightArrival.date, FlightArrival.arrival_time).all()
+        export_data["arrivals"] = [
+            {
+                "id": a.id,
+                "date": a.date.isoformat(),
+                "flight_number": a.flight_number,
+                "airline_code": a.airline_code,
+                "airline_name": a.airline_name,
+                "departure_time": a.departure_time.strftime("%H:%M") if a.departure_time else None,
+                "arrival_time": a.arrival_time.strftime("%H:%M") if a.arrival_time else None,
+                "origin_code": a.origin_code,
+                "origin_name": a.origin_name,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+                "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+                "updated_by": a.updated_by,
+            }
+            for a in arrivals
+        ]
+
+    return export_data
+
+
+@app.put("/api/admin/flights/departures/{departure_id}")
+async def update_admin_departure(
+    departure_id: int,
+    update: UpdateDepartureRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Update a departure flight.
+    Returns warning if capacity is reduced below current bookings.
+    """
+    departure = db.query(FlightDeparture).filter(FlightDeparture.id == departure_id).first()
+
+    if not departure:
+        raise HTTPException(status_code=404, detail="Departure not found")
+
+    warnings = []
+
+    # Check capacity reduction warning
+    if update.capacity_tier is not None:
+        new_max_per_time = update.capacity_tier // 2
+        current_early = departure.slots_booked_early
+        current_late = departure.slots_booked_late
+
+        if new_max_per_time < current_early or new_max_per_time < current_late:
+            warnings.append(
+                f"Warning: Reducing capacity to {update.capacity_tier} "
+                f"(max {new_max_per_time} per slot) but there are "
+                f"{current_early} early and {current_late} late bookings"
+            )
+
+    # Apply updates
+    update_data = update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(departure, field, value)
+
+    # Set audit fields
+    departure.updated_at = datetime.utcnow()
+    departure.updated_by = current_user.email
+
+    db.commit()
+    db.refresh(departure)
+
+    return {
+        "success": True,
+        "warnings": warnings,
+        "departure": {
+            "id": departure.id,
+            "date": departure.date.isoformat(),
+            "flight_number": departure.flight_number,
+            "airline_code": departure.airline_code,
+            "airline_name": departure.airline_name,
+            "departure_time": departure.departure_time.strftime("%H:%M") if departure.departure_time else None,
+            "destination_code": departure.destination_code,
+            "destination_name": departure.destination_name,
+            "capacity_tier": departure.capacity_tier,
+            "slots_booked_early": departure.slots_booked_early,
+            "slots_booked_late": departure.slots_booked_late,
+            "max_slots_per_time": departure.max_slots_per_time,
+            "early_slots_available": departure.early_slots_available,
+            "late_slots_available": departure.late_slots_available,
+            "updated_at": departure.updated_at.isoformat() if departure.updated_at else None,
+            "updated_by": departure.updated_by,
+        }
+    }
+
+
+@app.put("/api/admin/flights/arrivals/{arrival_id}")
+async def update_admin_arrival(
+    arrival_id: int,
+    update: UpdateArrivalRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Update an arrival flight.
+    """
+    arrival = db.query(FlightArrival).filter(FlightArrival.id == arrival_id).first()
+
+    if not arrival:
+        raise HTTPException(status_code=404, detail="Arrival not found")
+
+    # Apply updates
+    update_data = update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(arrival, field, value)
+
+    # Set audit fields
+    arrival.updated_at = datetime.utcnow()
+    arrival.updated_by = current_user.email
+
+    db.commit()
+    db.refresh(arrival)
+
+    return {
+        "success": True,
+        "arrival": {
+            "id": arrival.id,
+            "date": arrival.date.isoformat(),
+            "flight_number": arrival.flight_number,
+            "airline_code": arrival.airline_code,
+            "airline_name": arrival.airline_name,
+            "departure_time": arrival.departure_time.strftime("%H:%M") if arrival.departure_time else None,
+            "arrival_time": arrival.arrival_time.strftime("%H:%M") if arrival.arrival_time else None,
+            "origin_code": arrival.origin_code,
+            "origin_name": arrival.origin_name,
+            "updated_at": arrival.updated_at.isoformat() if arrival.updated_at else None,
+            "updated_by": arrival.updated_by,
+        }
+    }
 
 
 if __name__ == "__main__":
