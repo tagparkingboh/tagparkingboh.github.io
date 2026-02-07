@@ -1693,7 +1693,7 @@ function Admin() {
                             <td>{d.airline_name}</td>
                             <td>{d.flight_number}</td>
                             <td>{d.departure_time}</td>
-                            <td>{d.destination_code}</td>
+                            <td>{d.destination_name}</td>
                             <td>
                               <span className={`capacity-badge tier-${d.capacity_tier}`}>
                                 {d.capacity_tier === 0 ? 'Call' : d.capacity_tier}
@@ -1801,7 +1801,7 @@ function Admin() {
                             <td>{a.flight_number}</td>
                             <td>{a.departure_time || '-'}</td>
                             <td>{a.arrival_time}</td>
-                            <td>{a.origin_code}</td>
+                            <td>{a.origin_name}</td>
                             <td className="flight-actions">
                               <button className="btn-edit" onClick={() => startEditFlight(a)}>Edit</button>
                             </td>
