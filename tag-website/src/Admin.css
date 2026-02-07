@@ -1563,16 +1563,57 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 
 .flights-header h2 {
   margin: 0;
+  font-size: 1.5rem;
+  color: #fff;
 }
 
 .flights-header-actions {
   display: flex;
+  gap: 0.75rem;
+}
+
+.flights-header-actions button {
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
+}
+
+.flights-header-actions .btn-secondary {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #fff;
+}
+
+.flights-header-actions .btn-secondary:hover {
+  background: #3a3a3a;
+  border-color: #555;
+}
+
+.flights-header-actions .btn-primary {
+  background: #D9FF00;
+  border: none;
+  color: #000;
+}
+
+.flights-header-actions .btn-primary:hover {
+  background: #c4e600;
+}
+
+.flights-header-actions .btn-primary:disabled,
+.flights-header-actions .btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .flights-message {
@@ -1596,46 +1637,45 @@
 
 .flights-subtabs {
   display: flex;
-  gap: 0;
-  margin-bottom: 1rem;
-  border-bottom: 2px solid #333;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  background: #1a1a1a;
+  padding: 0.5rem;
+  border-radius: 12px;
+  width: fit-content;
 }
 
 .flights-subtab {
   padding: 0.75rem 1.5rem;
-  background: none;
+  background: transparent;
   border: none;
   color: #888;
-  font-size: 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
-  position: relative;
-  transition: color 0.2s ease;
+  border-radius: 8px;
+  transition: all 0.2s ease;
 }
 
 .flights-subtab:hover {
   color: #fff;
+  background: #2a2a2a;
 }
 
 .flights-subtab.active {
-  color: #D9FF00;
-}
-
-.flights-subtab.active::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  right: 0;
-  height: 2px;
+  color: #000;
   background: #D9FF00;
 }
 
 .flights-filters {
   display: flex;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
   flex-wrap: wrap;
   align-items: center;
+  background: #1a1a1a;
+  padding: 1rem;
+  border-radius: 12px;
 }
 
 .flight-filter-group {
@@ -1647,31 +1687,53 @@
 .flight-filter-group label {
   color: #888;
   font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .flight-filter-group select {
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: #2a2a2a;
+  border: 1px solid #444;
   color: #fff;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  min-width: 150px;
+  padding: 0.6rem 1rem;
+  padding-right: 2rem;
+  border-radius: 8px;
+  min-width: 160px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  transition: all 0.2s ease;
+}
+
+.flight-filter-group select:hover {
+  border-color: #666;
+}
+
+.flight-filter-group select:focus {
+  outline: none;
+  border-color: #D9FF00;
+  box-shadow: 0 0 0 2px rgba(217, 255, 0, 0.2);
 }
 
 .sort-toggle-btn {
-  padding: 0.5rem 1rem;
-  background: #1a1a1a;
-  border: 1px solid #333;
+  padding: 0.6rem 1rem;
+  background: #2a2a2a;
+  border: 1px solid #444;
   color: #fff;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 0.875rem;
+  font-weight: 500;
   transition: all 0.2s ease;
+  margin-left: auto;
 }
 
 .sort-toggle-btn:hover {
   border-color: #D9FF00;
   color: #D9FF00;
+  background: #333;
 }
 
 .flights-table-wrapper {
