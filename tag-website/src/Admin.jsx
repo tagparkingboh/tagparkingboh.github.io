@@ -237,6 +237,9 @@ function Admin() {
         params.append('month', month)
       }
 
+      // Get today's date in UK timezone (YYYY-MM-DD format for comparison)
+      const todayUK = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' })
+
       if (flightsSubTab === 'departures') {
         if (flightDestFilter) params.append('destination', flightDestFilter)
         const response = await fetch(`${API_URL}/api/admin/flights/departures?${params}`, {
@@ -244,7 +247,9 @@ function Admin() {
         })
         if (response.ok) {
           const data = await response.json()
-          setDepartures(data.departures || [])
+          // Filter to show only today and future flights
+          const filtered = (data.departures || []).filter(d => d.date >= todayUK)
+          setDepartures(filtered)
         }
       } else {
         if (flightOriginFilter) params.append('origin', flightOriginFilter)
@@ -253,7 +258,9 @@ function Admin() {
         })
         if (response.ok) {
           const data = await response.json()
-          setArrivals(data.arrivals || [])
+          // Filter to show only today and future flights
+          const filtered = (data.arrivals || []).filter(a => a.date >= todayUK)
+          setArrivals(filtered)
         }
       }
     } catch (err) {
