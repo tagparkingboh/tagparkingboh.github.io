@@ -4911,11 +4911,11 @@ async def auth_me(
 
 class UpdateDepartureRequest(BaseModel):
     """Request model for updating a flight departure."""
-    date: Optional[date] = None
+    date: Optional[str] = None  # ISO format: YYYY-MM-DD
     flight_number: Optional[str] = None
     airline_code: Optional[str] = None
     airline_name: Optional[str] = None
-    departure_time: Optional[time] = None
+    departure_time: Optional[str] = None  # HH:MM format
     destination_code: Optional[str] = None
     destination_name: Optional[str] = None
     capacity_tier: Optional[int] = None
@@ -4925,12 +4925,12 @@ class UpdateDepartureRequest(BaseModel):
 
 class UpdateArrivalRequest(BaseModel):
     """Request model for updating a flight arrival."""
-    date: Optional[date] = None
+    date: Optional[str] = None  # ISO format: YYYY-MM-DD
     flight_number: Optional[str] = None
     airline_code: Optional[str] = None
     airline_name: Optional[str] = None
-    departure_time: Optional[time] = None
-    arrival_time: Optional[time] = None
+    departure_time: Optional[str] = None  # HH:MM format
+    arrival_time: Optional[str] = None  # HH:MM format
     origin_code: Optional[str] = None
     origin_name: Optional[str] = None
 
@@ -5232,9 +5232,13 @@ async def update_admin_departure(
                 f"{current_early} early and {current_late} late bookings"
             )
 
-    # Apply updates
+    # Apply updates with type conversion
     update_data = update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        if field == 'date' and value:
+            value = date.fromisoformat(value)
+        elif field == 'departure_time' and value:
+            value = time.fromisoformat(value)
         setattr(departure, field, value)
 
     # Set audit fields
@@ -5283,9 +5287,13 @@ async def update_admin_arrival(
     if not arrival:
         raise HTTPException(status_code=404, detail="Arrival not found")
 
-    # Apply updates
+    # Apply updates with type conversion
     update_data = update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
+        if field == 'date' and value:
+            value = date.fromisoformat(value)
+        elif field in ('departure_time', 'arrival_time') and value:
+            value = time.fromisoformat(value)
         setattr(arrival, field, value)
 
     # Set audit fields
