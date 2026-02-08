@@ -1465,11 +1465,22 @@ async def delete_pending_booking(
         result = db_service.release_departure_slot(db, booking.departure_id, slot_type)
         slot_released = result.get("success", False)
 
-    # Delete associated payment record if exists
-    if booking.payment_id:
-        payment = db.query(Payment).filter(Payment.id == booking.payment_id).first()
-        if payment:
-            db.delete(payment)
+    # Delete associated payment record if exists (Payment references booking via booking_id)
+    payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
+    if payment:
+        db.delete(payment)
+
+    # Clear any promo code references to this booking
+    from db_models import MarketingSubscriber
+    db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.promo_code_used_booking_id == booking_id
+    ).update({MarketingSubscriber.promo_code_used_booking_id: None}, synchronize_session=False)
+    db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.promo_10_used_booking_id == booking_id
+    ).update({MarketingSubscriber.promo_10_used_booking_id: None}, synchronize_session=False)
+    db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.promo_free_used_booking_id == booking_id
+    ).update({MarketingSubscriber.promo_free_used_booking_id: None}, synchronize_session=False)
 
     # Delete the booking
     db.delete(booking)
