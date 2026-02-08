@@ -686,3 +686,275 @@ class TestFlightsIntegration:
         # Check origin from test arrival
         origin_codes = [o["code"] for o in data["origins"]]
         assert test_arrival.origin_code in origin_codes
+
+
+# =============================================================================
+# Departure Time Update - Booking Drop-off Time Recalculation Tests
+# =============================================================================
+
+class TestDepartureTimeUpdateRecalculatesBookings:
+    """Tests for automatic recalculation of booking drop-off times when departure time changes."""
+
+    @pytest.fixture
+    def booking_test_data(self, db_session):
+        """Create a complete test setup with customer, vehicle, departure and bookings."""
+        from db_models import Customer, Vehicle, FlightDeparture, Booking, BookingStatus
+        unique = uuid.uuid4().hex[:8]
+
+        # Create customer
+        customer = Customer(
+            first_name="Test",
+            last_name="Customer",
+            email=f"test-recalc-{unique}@example.com",
+            phone="07700900000",
+        )
+        db_session.add(customer)
+        db_session.flush()
+
+        # Create vehicle
+        vehicle = Vehicle(
+            customer_id=customer.id,
+            registration=f"RC{unique[:6]}",
+            make="Test",
+            model="Car",
+            colour="Blue",
+        )
+        db_session.add(vehicle)
+        db_session.flush()
+
+        # Create departure at 10:00
+        departure = FlightDeparture(
+            date=date(2025, 8, 15),
+            flight_number=f"RCL{unique[:6]}",
+            airline_code="RC",
+            airline_name="Recalc Airlines",
+            departure_time=time(10, 0),  # 10:00
+            destination_code="RCL",
+            destination_name="Recalc City",
+            capacity_tier=4,
+            slots_booked_early=1,
+            slots_booked_late=1,
+        )
+        db_session.add(departure)
+        db_session.flush()
+
+        # Early slot booking: 10:00 - 2h45m = 07:15
+        early_booking = Booking(
+            reference=f"ERL{unique[:6]}",
+            customer_id=customer.id,
+            vehicle_id=vehicle.id,
+            dropoff_date=date(2025, 8, 15),
+            dropoff_time=time(7, 15),  # 2h 45m before 10:00
+            departure_id=departure.id,
+            dropoff_slot="165",  # early slot
+            pickup_date=date(2025, 8, 22),
+            status=BookingStatus.CONFIRMED,
+        )
+        db_session.add(early_booking)
+
+        # Late slot booking: 10:00 - 2h = 08:00
+        late_booking = Booking(
+            reference=f"LAT{unique[:6]}",
+            customer_id=customer.id,
+            vehicle_id=vehicle.id,
+            dropoff_date=date(2025, 8, 15),
+            dropoff_time=time(8, 0),  # 2h before 10:00
+            departure_id=departure.id,
+            dropoff_slot="120",  # late slot
+            pickup_date=date(2025, 8, 22),
+            status=BookingStatus.CONFIRMED,
+        )
+        db_session.add(late_booking)
+        db_session.commit()
+
+        db_session.refresh(departure)
+        db_session.refresh(early_booking)
+        db_session.refresh(late_booking)
+
+        yield {
+            "customer": customer,
+            "vehicle": vehicle,
+            "departure": departure,
+            "early_booking": early_booking,
+            "late_booking": late_booking,
+        }
+
+        # Cleanup in reverse order of dependencies
+        try:
+            db_session.query(Booking).filter(Booking.id.in_([early_booking.id, late_booking.id])).delete(synchronize_session=False)
+            db_session.query(FlightDeparture).filter(FlightDeparture.id == departure.id).delete(synchronize_session=False)
+            db_session.query(Vehicle).filter(Vehicle.id == vehicle.id).delete(synchronize_session=False)
+            db_session.query(Customer).filter(Customer.id == customer.id).delete(synchronize_session=False)
+            db_session.commit()
+        except Exception:
+            db_session.rollback()
+
+    @pytest.mark.asyncio
+    async def test_update_departure_time_recalculates_early_slot(
+        self, client, admin_headers, db_session, booking_test_data
+    ):
+        """Updating departure time recalculates early slot booking drop-off time."""
+        departure = booking_test_data["departure"]
+        early_booking = booking_test_data["early_booking"]
+
+        # Original: departure 10:00, early dropoff 07:15
+        assert early_booking.dropoff_time == time(7, 15)
+
+        # Update departure time to 11:00
+        response = await client.put(
+            f"/api/admin/flights/departures/{departure.id}",
+            headers=admin_headers,
+            json={"departure_time": "11:00"}
+        )
+        assert response.status_code == 200
+
+        # Refresh booking from DB
+        db_session.refresh(early_booking)
+
+        # New: departure 11:00, early dropoff should be 08:15 (11:00 - 2h45m)
+        assert early_booking.dropoff_time == time(8, 15)
+
+    @pytest.mark.asyncio
+    async def test_update_departure_time_recalculates_late_slot(
+        self, client, admin_headers, db_session, booking_test_data
+    ):
+        """Updating departure time recalculates late slot booking drop-off time."""
+        departure = booking_test_data["departure"]
+        late_booking = booking_test_data["late_booking"]
+
+        # Original: departure 10:00, late dropoff 08:00
+        assert late_booking.dropoff_time == time(8, 0)
+
+        # Update departure time to 12:30
+        response = await client.put(
+            f"/api/admin/flights/departures/{departure.id}",
+            headers=admin_headers,
+            json={"departure_time": "12:30"}
+        )
+        assert response.status_code == 200
+
+        # Refresh booking from DB
+        db_session.refresh(late_booking)
+
+        # New: departure 12:30, late dropoff should be 10:30 (12:30 - 2h)
+        assert late_booking.dropoff_time == time(10, 30)
+
+    @pytest.mark.asyncio
+    async def test_update_departure_time_shows_warning_with_count(
+        self, client, admin_headers, booking_test_data
+    ):
+        """Updating departure time shows warning with number of bookings updated."""
+        departure = booking_test_data["departure"]
+
+        response = await client.put(
+            f"/api/admin/flights/departures/{departure.id}",
+            headers=admin_headers,
+            json={"departure_time": "14:00"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should have warning about updated bookings
+        assert len(data["warnings"]) > 0
+        assert "2 booking(s)" in data["warnings"][-1]
+
+    @pytest.mark.asyncio
+    async def test_update_departure_time_no_change_no_recalculation(
+        self, client, admin_headers, db_session, booking_test_data
+    ):
+        """Updating to same departure time does not trigger recalculation."""
+        departure = booking_test_data["departure"]
+
+        # Update to same time (10:00)
+        response = await client.put(
+            f"/api/admin/flights/departures/{departure.id}",
+            headers=admin_headers,
+            json={"departure_time": "10:00"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should not have booking update warning
+        booking_warnings = [w for w in data["warnings"] if "booking(s)" in w]
+        assert len(booking_warnings) == 0
+
+    @pytest.mark.asyncio
+    async def test_update_other_fields_does_not_recalculate(
+        self, client, admin_headers, db_session, booking_test_data
+    ):
+        """Updating fields other than departure time does not recalculate bookings."""
+        departure = booking_test_data["departure"]
+        early_booking = booking_test_data["early_booking"]
+
+        original_dropoff = early_booking.dropoff_time
+
+        # Update flight number only
+        response = await client.put(
+            f"/api/admin/flights/departures/{departure.id}",
+            headers=admin_headers,
+            json={"flight_number": "NEWNUM123"}
+        )
+        assert response.status_code == 200
+
+        # Refresh and check dropoff time unchanged
+        db_session.refresh(early_booking)
+        assert early_booking.dropoff_time == original_dropoff
+
+    @pytest.mark.asyncio
+    async def test_update_departure_time_with_alternate_slot_format(
+        self, client, admin_headers, db_session, booking_test_data
+    ):
+        """Recalculation works with 'early'/'late' slot format as well as '165'/'120'."""
+        from db_models import FlightDeparture, Booking, BookingStatus
+        unique = uuid.uuid4().hex[:6]
+        customer = booking_test_data["customer"]
+        vehicle = booking_test_data["vehicle"]
+
+        # Create departure
+        departure = FlightDeparture(
+            date=date(2025, 9, 1),
+            flight_number=f"ALT{unique}",
+            airline_code="AT",
+            airline_name="Alt Format Airways",
+            departure_time=time(9, 0),
+            destination_code="ALT",
+            destination_name="Alt City",
+            capacity_tier=4,
+        )
+        db_session.add(departure)
+        db_session.flush()
+
+        # Booking with 'early' format (not '165')
+        booking = Booking(
+            reference=f"ALT{unique}",
+            customer_id=customer.id,
+            vehicle_id=vehicle.id,
+            dropoff_date=date(2025, 9, 1),
+            dropoff_time=time(6, 15),  # 9:00 - 2h45m
+            departure_id=departure.id,
+            dropoff_slot="early",  # alternate format
+            pickup_date=date(2025, 9, 8),
+            status=BookingStatus.CONFIRMED,
+        )
+        db_session.add(booking)
+        db_session.commit()
+        db_session.refresh(departure)
+        db_session.refresh(booking)
+
+        try:
+            # Update departure to 10:00
+            response = await client.put(
+                f"/api/admin/flights/departures/{departure.id}",
+                headers=admin_headers,
+                json={"departure_time": "10:00"}
+            )
+            assert response.status_code == 200
+
+            db_session.refresh(booking)
+            # 10:00 - 2h45m = 07:15
+            assert booking.dropoff_time == time(7, 15)
+
+        finally:
+            db_session.query(Booking).filter(Booking.id == booking.id).delete(synchronize_session=False)
+            db_session.query(FlightDeparture).filter(FlightDeparture.id == departure.id).delete(synchronize_session=False)
+            db_session.commit()

@@ -5232,6 +5232,12 @@ async def update_admin_departure(
                 f"{current_early} early and {current_late} late bookings"
             )
 
+    # Track if departure time is changing
+    old_departure_time = departure.departure_time
+    new_departure_time = None
+    if update.departure_time:
+        new_departure_time = time.fromisoformat(update.departure_time)
+
     # Apply updates with type conversion
     update_data = update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -5244,6 +5250,31 @@ async def update_admin_departure(
     # Set audit fields
     departure.updated_at = datetime.utcnow()
     departure.updated_by = current_user.email
+
+    # Recalculate booking drop-off times if departure time changed
+    bookings_updated = 0
+    if new_departure_time and new_departure_time != old_departure_time:
+        # Find all bookings linked to this departure
+        linked_bookings = db.query(Booking).filter(Booking.departure_id == departure_id).all()
+
+        for booking in linked_bookings:
+            # Calculate new drop-off time based on slot
+            # Early slot (165 min = 2h 45m before), Late slot (120 min = 2h before)
+            if booking.dropoff_slot in ("165", "early"):
+                minutes_before = 165
+            elif booking.dropoff_slot in ("120", "late"):
+                minutes_before = 120
+            else:
+                continue  # Skip if no valid slot
+
+            # Calculate new drop-off time
+            departure_datetime = datetime.combine(datetime.today(), new_departure_time)
+            new_dropoff_datetime = departure_datetime - timedelta(minutes=minutes_before)
+            booking.dropoff_time = new_dropoff_datetime.time()
+            bookings_updated += 1
+
+        if bookings_updated > 0:
+            warnings.append(f"Updated drop-off times for {bookings_updated} booking(s)")
 
     db.commit()
     db.refresh(departure)
