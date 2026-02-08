@@ -1423,6 +1423,63 @@ async def cancel_booking_admin(
     }
 
 
+@app.delete("/api/admin/bookings/{booking_id}")
+async def delete_pending_booking(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Permanently delete a pending booking.
+
+    This completely removes the booking from the database.
+    Only works for bookings with PENDING status.
+    Releases the flight slot if one was reserved.
+    """
+    from db_models import Booking, BookingStatus, Payment
+
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status != BookingStatus.PENDING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only delete pending bookings. This booking has status: {booking.status.value}"
+        )
+
+    reference = booking.reference
+
+    # Release the flight slot if one was reserved
+    slot_released = False
+    if booking.departure_id and booking.dropoff_slot:
+        slot_type = "early" if booking.dropoff_slot in ("165", "early") else "late"
+        result = db_service.release_departure_slot(db, booking.departure_id, slot_type)
+        slot_released = result.get("success", False)
+
+    # Delete associated payment record if exists
+    if booking.payment_id:
+        payment = db.query(Payment).filter(Payment.id == booking.payment_id).first()
+        if payment:
+            db.delete(payment)
+
+    # Delete the booking
+    db.delete(booking)
+    db.commit()
+
+    message = f"Booking {reference} has been permanently deleted"
+    if slot_released:
+        message += " and the flight slot has been released"
+
+    return {
+        "success": True,
+        "message": message,
+        "reference": reference,
+        "slot_released": slot_released,
+    }
+
+
 @app.post("/api/admin/bookings/{booking_id}/resend-email")
 async def resend_booking_confirmation_email(
     booking_id: int,
