@@ -121,6 +121,9 @@ class Booking(Base):
     pickup_flight_number = Column(String(20))
     pickup_origin = Column(String(100))
 
+    # Flight arrival link (for pickup time recalculation when arrival time changes)
+    arrival_id = Column(Integer, ForeignKey("flight_arrivals.id"), nullable=True)
+
     # Admin notes
     notes = Column(Text)
     admin_notes = Column(Text)  # Internal notes from admin

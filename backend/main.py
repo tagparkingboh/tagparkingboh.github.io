@@ -5312,11 +5312,20 @@ async def update_admin_arrival(
 ):
     """
     Update an arrival flight.
+    Returns warning if pickup times are recalculated for linked bookings.
     """
     arrival = db.query(FlightArrival).filter(FlightArrival.id == arrival_id).first()
 
     if not arrival:
         raise HTTPException(status_code=404, detail="Arrival not found")
+
+    warnings = []
+
+    # Track if arrival time is changing
+    old_arrival_time = arrival.arrival_time
+    new_arrival_time = None
+    if update.arrival_time:
+        new_arrival_time = time.fromisoformat(update.arrival_time)
 
     # Apply updates with type conversion
     update_data = update.model_dump(exclude_unset=True)
@@ -5331,11 +5340,33 @@ async def update_admin_arrival(
     arrival.updated_at = datetime.utcnow()
     arrival.updated_by = current_user.email
 
+    # Recalculate booking pickup times if arrival time changed
+    bookings_updated = 0
+    if new_arrival_time and new_arrival_time != old_arrival_time:
+        # Find all bookings linked to this arrival
+        linked_bookings = db.query(Booking).filter(Booking.arrival_id == arrival_id).all()
+
+        for booking in linked_bookings:
+            # Calculate new pickup times based on arrival time
+            # pickup_time = landing time
+            # pickup_time_from = landing + 35 min
+            # pickup_time_to = landing + 60 min
+            arrival_datetime = datetime.combine(datetime.today(), new_arrival_time)
+
+            booking.pickup_time = new_arrival_time
+            booking.pickup_time_from = (arrival_datetime + timedelta(minutes=35)).time()
+            booking.pickup_time_to = (arrival_datetime + timedelta(minutes=60)).time()
+            bookings_updated += 1
+
+        if bookings_updated > 0:
+            warnings.append(f"Updated pickup times for {bookings_updated} booking(s)")
+
     db.commit()
     db.refresh(arrival)
 
     return {
         "success": True,
+        "warnings": warnings,
         "arrival": {
             "id": arrival.id,
             "date": arrival.date.isoformat(),

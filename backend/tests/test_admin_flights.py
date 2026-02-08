@@ -958,3 +958,248 @@ class TestDepartureTimeUpdateRecalculatesBookings:
             db_session.query(Booking).filter(Booking.id == booking.id).delete(synchronize_session=False)
             db_session.query(FlightDeparture).filter(FlightDeparture.id == departure.id).delete(synchronize_session=False)
             db_session.commit()
+
+
+# =============================================================================
+# Arrival Time Update - Booking Pickup Time Recalculation Tests
+# =============================================================================
+
+class TestArrivalTimeUpdateRecalculatesBookings:
+    """Tests for automatic recalculation of booking pickup times when arrival time changes."""
+
+    @pytest.fixture
+    def arrival_booking_test_data(self, db_session):
+        """Create a complete test setup with customer, vehicle, arrival and booking."""
+        from db_models import Customer, Vehicle, FlightArrival, Booking, BookingStatus, FlightDeparture
+        unique = uuid.uuid4().hex[:8]
+
+        # Create customer
+        customer = Customer(
+            first_name="Test",
+            last_name="ArrivalCustomer",
+            email=f"test-arrival-{unique}@example.com",
+            phone="07700900001",
+        )
+        db_session.add(customer)
+        db_session.flush()
+
+        # Create vehicle
+        vehicle = Vehicle(
+            customer_id=customer.id,
+            registration=f"AR{unique[:6]}",
+            make="Test",
+            model="Car",
+            colour="Red",
+        )
+        db_session.add(vehicle)
+        db_session.flush()
+
+        # Create a departure (needed for booking)
+        departure = FlightDeparture(
+            date=date(2025, 8, 15),
+            flight_number=f"DEP{unique[:6]}",
+            airline_code="DP",
+            airline_name="Departure Airlines",
+            departure_time=time(10, 0),
+            destination_code="AGP",
+            destination_name="Malaga",
+            capacity_tier=4,
+        )
+        db_session.add(departure)
+        db_session.flush()
+
+        # Create arrival at 14:00
+        arrival = FlightArrival(
+            date=date(2025, 8, 22),
+            flight_number=f"ARR{unique[:6]}",
+            airline_code="AR",
+            airline_name="Arrival Airlines",
+            departure_time=time(11, 0),
+            arrival_time=time(14, 0),  # Lands at 14:00
+            origin_code="AGP",
+            origin_name="Malaga",
+        )
+        db_session.add(arrival)
+        db_session.flush()
+
+        # Booking linked to arrival
+        # pickup_time = 14:00 (landing)
+        # pickup_time_from = 14:35 (landing + 35 min)
+        # pickup_time_to = 15:00 (landing + 60 min)
+        booking = Booking(
+            reference=f"ARB{unique[:6]}",
+            customer_id=customer.id,
+            vehicle_id=vehicle.id,
+            dropoff_date=date(2025, 8, 15),
+            dropoff_time=time(7, 15),
+            departure_id=departure.id,
+            dropoff_slot="165",
+            pickup_date=date(2025, 8, 22),
+            pickup_time=time(14, 0),
+            pickup_time_from=time(14, 35),
+            pickup_time_to=time(15, 0),
+            pickup_flight_number=f"ARR{unique[:6]}",
+            arrival_id=arrival.id,  # Link to arrival
+            status=BookingStatus.CONFIRMED,
+        )
+        db_session.add(booking)
+        db_session.commit()
+
+        db_session.refresh(arrival)
+        db_session.refresh(booking)
+
+        yield {
+            "customer": customer,
+            "vehicle": vehicle,
+            "departure": departure,
+            "arrival": arrival,
+            "booking": booking,
+        }
+
+        # Cleanup in reverse order of dependencies
+        try:
+            db_session.query(Booking).filter(Booking.id == booking.id).delete(synchronize_session=False)
+            db_session.query(FlightArrival).filter(FlightArrival.id == arrival.id).delete(synchronize_session=False)
+            db_session.query(FlightDeparture).filter(FlightDeparture.id == departure.id).delete(synchronize_session=False)
+            db_session.query(Vehicle).filter(Vehicle.id == vehicle.id).delete(synchronize_session=False)
+            db_session.query(Customer).filter(Customer.id == customer.id).delete(synchronize_session=False)
+            db_session.commit()
+        except Exception:
+            db_session.rollback()
+
+    @pytest.mark.asyncio
+    async def test_update_arrival_time_recalculates_pickup_time(
+        self, client, admin_headers, db_session, arrival_booking_test_data
+    ):
+        """Updating arrival time recalculates booking pickup_time."""
+        arrival = arrival_booking_test_data["arrival"]
+        booking = arrival_booking_test_data["booking"]
+
+        # Original: arrival 14:00, pickup_time 14:00
+        assert booking.pickup_time == time(14, 0)
+
+        # Update arrival time to 15:30
+        response = await client.put(
+            f"/api/admin/flights/arrivals/{arrival.id}",
+            headers=admin_headers,
+            json={"arrival_time": "15:30"}
+        )
+        assert response.status_code == 200
+
+        # Refresh booking from DB
+        db_session.refresh(booking)
+
+        # New: arrival 15:30, pickup_time should be 15:30
+        assert booking.pickup_time == time(15, 30)
+
+    @pytest.mark.asyncio
+    async def test_update_arrival_time_recalculates_pickup_time_from(
+        self, client, admin_headers, db_session, arrival_booking_test_data
+    ):
+        """Updating arrival time recalculates booking pickup_time_from (landing + 35 min)."""
+        arrival = arrival_booking_test_data["arrival"]
+        booking = arrival_booking_test_data["booking"]
+
+        # Original: arrival 14:00, pickup_time_from 14:35
+        assert booking.pickup_time_from == time(14, 35)
+
+        # Update arrival time to 16:00
+        response = await client.put(
+            f"/api/admin/flights/arrivals/{arrival.id}",
+            headers=admin_headers,
+            json={"arrival_time": "16:00"}
+        )
+        assert response.status_code == 200
+
+        # Refresh booking from DB
+        db_session.refresh(booking)
+
+        # New: arrival 16:00, pickup_time_from should be 16:35 (16:00 + 35 min)
+        assert booking.pickup_time_from == time(16, 35)
+
+    @pytest.mark.asyncio
+    async def test_update_arrival_time_recalculates_pickup_time_to(
+        self, client, admin_headers, db_session, arrival_booking_test_data
+    ):
+        """Updating arrival time recalculates booking pickup_time_to (landing + 60 min)."""
+        arrival = arrival_booking_test_data["arrival"]
+        booking = arrival_booking_test_data["booking"]
+
+        # Original: arrival 14:00, pickup_time_to 15:00
+        assert booking.pickup_time_to == time(15, 0)
+
+        # Update arrival time to 17:30
+        response = await client.put(
+            f"/api/admin/flights/arrivals/{arrival.id}",
+            headers=admin_headers,
+            json={"arrival_time": "17:30"}
+        )
+        assert response.status_code == 200
+
+        # Refresh booking from DB
+        db_session.refresh(booking)
+
+        # New: arrival 17:30, pickup_time_to should be 18:30 (17:30 + 60 min)
+        assert booking.pickup_time_to == time(18, 30)
+
+    @pytest.mark.asyncio
+    async def test_update_arrival_time_shows_warning_with_count(
+        self, client, admin_headers, arrival_booking_test_data
+    ):
+        """Updating arrival time shows warning with number of bookings updated."""
+        arrival = arrival_booking_test_data["arrival"]
+
+        response = await client.put(
+            f"/api/admin/flights/arrivals/{arrival.id}",
+            headers=admin_headers,
+            json={"arrival_time": "18:00"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should have warning about updated bookings
+        assert "warnings" in data
+        assert len(data["warnings"]) > 0
+        assert "1 booking(s)" in data["warnings"][-1]
+
+    @pytest.mark.asyncio
+    async def test_update_arrival_time_no_change_no_recalculation(
+        self, client, admin_headers, db_session, arrival_booking_test_data
+    ):
+        """Updating to same arrival time does not trigger recalculation."""
+        arrival = arrival_booking_test_data["arrival"]
+
+        # Update to same time (14:00)
+        response = await client.put(
+            f"/api/admin/flights/arrivals/{arrival.id}",
+            headers=admin_headers,
+            json={"arrival_time": "14:00"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should not have booking update warning
+        booking_warnings = [w for w in data.get("warnings", []) if "booking(s)" in w]
+        assert len(booking_warnings) == 0
+
+    @pytest.mark.asyncio
+    async def test_update_other_arrival_fields_does_not_recalculate(
+        self, client, admin_headers, db_session, arrival_booking_test_data
+    ):
+        """Updating fields other than arrival time does not recalculate bookings."""
+        arrival = arrival_booking_test_data["arrival"]
+        booking = arrival_booking_test_data["booking"]
+
+        original_pickup_time = booking.pickup_time
+
+        # Update flight number only
+        response = await client.put(
+            f"/api/admin/flights/arrivals/{arrival.id}",
+            headers=admin_headers,
+            json={"flight_number": "NEWNUM456"}
+        )
+        assert response.status_code == 200
+
+        # Refresh and check pickup time unchanged
+        db_session.refresh(booking)
+        assert booking.pickup_time == original_pickup_time
