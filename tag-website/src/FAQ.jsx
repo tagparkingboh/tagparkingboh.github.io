@@ -84,7 +84,7 @@ function FAQ() {
         { q: "What if I am running late?", a: "Call us immediately on the phone number provided in your booking confirmation. We will do our best to accommodate you, but additional charges may apply for extended waiting times." },
         { q: "What do I need to bring?", a: "Bring your booking reference number, your vehicle keys (including any spare keys), your driving licence, and any access codes for your vehicle." },
         { q: "Will you check my car condition?", a: "Yes, we conduct a thorough condition check at drop-off and take photographs. We do the same when returning your vehicle. This protects both you and us." },
-        { q: "When should I call for collection?", a: "Call us after you have collected your luggage and are ready to leave the terminal. We typically need 10-15 minutes to bring your car to the meeting point." }
+        { q: "When should I call for collection?", a: "There's no need to call us — we'll be tracking your return flight and will be ready when you arrive." }
       ]
     },
     {
