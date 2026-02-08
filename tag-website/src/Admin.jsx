@@ -1616,22 +1616,8 @@ function Admin() {
                       <tr key={d.id} className={editingFlightId === d.id ? 'editing' : ''}>
                         {editingFlightId === d.id ? (
                           <>
-                            <td>
-                              <input
-                                type="date"
-                                value={editFlightForm.date || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, date: e.target.value})}
-                                className="flight-edit-input"
-                              />
-                            </td>
-                            <td>
-                              <input
-                                type="text"
-                                value={editFlightForm.airline_code || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, airline_code: e.target.value})}
-                                className="flight-edit-input small"
-                              />
-                            </td>
+                            <td>{d.date ? d.date.split('-').reverse().join('/') : ''}</td>
+                            <td>{d.airline_name}</td>
                             <td>
                               <input
                                 type="text"
@@ -1648,14 +1634,7 @@ function Admin() {
                                 className="flight-edit-input"
                               />
                             </td>
-                            <td>
-                              <input
-                                type="text"
-                                value={editFlightForm.destination_code || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, destination_code: e.target.value})}
-                                className="flight-edit-input small"
-                              />
-                            </td>
+                            <td>{d.destination_name}</td>
                             <td>
                               <select
                                 value={editFlightForm.capacity_tier ?? ''}
@@ -1670,22 +1649,14 @@ function Admin() {
                               </select>
                             </td>
                             <td>
-                              <input
-                                type="number"
-                                min="0"
-                                value={editFlightForm.slots_booked_early ?? ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, slots_booked_early: parseInt(e.target.value) || 0})}
-                                className="flight-edit-input tiny"
-                              />
+                              <span className="slots-display">
+                                {d.slots_booked_early}/{d.max_slots_per_time}
+                              </span>
                             </td>
                             <td>
-                              <input
-                                type="number"
-                                min="0"
-                                value={editFlightForm.slots_booked_late ?? ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, slots_booked_late: parseInt(e.target.value) || 0})}
-                                className="flight-edit-input tiny"
-                              />
+                              <span className="slots-display">
+                                {d.slots_booked_late}/{d.max_slots_per_time}
+                              </span>
                             </td>
                             <td className="flight-actions">
                               <button className="btn-save" onClick={saveFlightEdit} disabled={savingFlight}>
@@ -1745,22 +1716,8 @@ function Admin() {
                       <tr key={a.id} className={editingFlightId === a.id ? 'editing' : ''}>
                         {editingFlightId === a.id ? (
                           <>
-                            <td>
-                              <input
-                                type="date"
-                                value={editFlightForm.date || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, date: e.target.value})}
-                                className="flight-edit-input"
-                              />
-                            </td>
-                            <td>
-                              <input
-                                type="text"
-                                value={editFlightForm.airline_code || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, airline_code: e.target.value})}
-                                className="flight-edit-input small"
-                              />
-                            </td>
+                            <td>{a.date ? a.date.split('-').reverse().join('/') : ''}</td>
+                            <td>{a.airline_name}</td>
                             <td>
                               <input
                                 type="text"
@@ -1769,14 +1726,7 @@ function Admin() {
                                 className="flight-edit-input small"
                               />
                             </td>
-                            <td>
-                              <input
-                                type="text"
-                                value={editFlightForm.origin_code || ''}
-                                onChange={(e) => setEditFlightForm({...editFlightForm, origin_code: e.target.value})}
-                                className="flight-edit-input small"
-                              />
-                            </td>
+                            <td>{a.origin_name}</td>
                             <td>
                               <input
                                 type="time"
