@@ -4952,6 +4952,7 @@ async def get_admin_departures(
     sort_order: str = Query("asc", regex="^(asc|desc)$"),
     destination: Optional[str] = None,
     airline: Optional[str] = None,
+    flight_number: Optional[str] = None,
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = None,
     db: Session = Depends(get_db),
@@ -4964,6 +4965,9 @@ async def get_admin_departures(
     query = db.query(FlightDeparture)
 
     # Apply filters
+    if flight_number:
+        query = query.filter(FlightDeparture.flight_number.ilike(f"%{flight_number}%"))
+
     if destination:
         query = query.filter(
             (FlightDeparture.destination_code.ilike(f"%{destination}%")) |
@@ -5023,6 +5027,7 @@ async def get_admin_arrivals(
     sort_order: str = Query("asc", regex="^(asc|desc)$"),
     origin: Optional[str] = None,
     airline: Optional[str] = None,
+    flight_number: Optional[str] = None,
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = None,
     db: Session = Depends(get_db),
@@ -5035,6 +5040,9 @@ async def get_admin_arrivals(
     query = db.query(FlightArrival)
 
     # Apply filters
+    if flight_number:
+        query = query.filter(FlightArrival.flight_number.ilike(f"%{flight_number}%"))
+
     if origin:
         query = query.filter(
             (FlightArrival.origin_code.ilike(f"%{origin}%")) |
