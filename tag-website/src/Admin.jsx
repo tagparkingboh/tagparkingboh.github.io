@@ -1515,13 +1515,13 @@ function Admin() {
             <div className="flights-subtabs">
               <button
                 className={`flights-subtab ${flightsSubTab === 'departures' ? 'active' : ''}`}
-                onClick={() => setFlightsSubTab('departures')}
+                onClick={() => { setEditingFlightId(null); setFlightsSubTab('departures'); }}
               >
                 Departures ({departures.length})
               </button>
               <button
                 className={`flights-subtab ${flightsSubTab === 'arrivals' ? 'active' : ''}`}
-                onClick={() => setFlightsSubTab('arrivals')}
+                onClick={() => { setEditingFlightId(null); setFlightsSubTab('arrivals'); }}
               >
                 Arrivals ({arrivals.length})
               </button>
