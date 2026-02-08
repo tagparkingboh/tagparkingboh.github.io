@@ -861,6 +861,13 @@ async def get_all_bookings(
                 "last_name": b.customer_last_name or b.customer.last_name,
                 "email": b.customer.email,
                 "phone": b.customer.phone,
+                # Billing address
+                "billing_address1": b.customer.billing_address1,
+                "billing_address2": b.customer.billing_address2,
+                "billing_city": b.customer.billing_city,
+                "billing_county": b.customer.billing_county,
+                "billing_postcode": b.customer.billing_postcode,
+                "billing_country": b.customer.billing_country,
             } if b.customer else None,
             "vehicle": {
                 "id": b.vehicle.id,
