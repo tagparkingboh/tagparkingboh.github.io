@@ -556,6 +556,17 @@
   background: #9ae6b4;
 }
 
+.delete-btn {
+  background: #1a1a1a;
+  color: #ff6b6b;
+  border: 1px solid #ff6b6b;
+}
+
+.delete-btn:hover:not(:disabled) {
+  background: #ff6b6b;
+  color: #fff;
+}
+
 .email-btn {
   background: #f0fff4;
   color: #276749;

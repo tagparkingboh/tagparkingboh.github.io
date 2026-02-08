@@ -23,6 +23,9 @@ function Admin() {
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [bookingToCancel, setBookingToCancel] = useState(null)
   const [markingPaidId, setMarkingPaidId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [bookingToDelete, setBookingToDelete] = useState(null)
   const [resendingEmailId, setResendingEmailId] = useState(null)
   const [showResendModal, setShowResendModal] = useState(false)
   const [bookingToResend, setBookingToResend] = useState(null)
@@ -749,6 +752,44 @@ function Admin() {
     }
   }
 
+  const handleDeleteClick = (booking, e) => {
+    e.stopPropagation()
+    setBookingToDelete(booking)
+    setShowDeleteModal(true)
+  }
+
+  const confirmDeleteBooking = async () => {
+    if (!bookingToDelete) return
+
+    setDeletingId(bookingToDelete.id)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccessMessage(data.message || 'Booking deleted successfully')
+        fetchBookings()
+        setTimeout(() => setSuccessMessage(''), 5000)
+      } else {
+        setError(data.detail || 'Failed to delete booking')
+      }
+    } catch (err) {
+      setError('Network error while deleting booking')
+    } finally {
+      setDeletingId(null)
+      setShowDeleteModal(false)
+      setBookingToDelete(null)
+    }
+  }
+
   const handleRefundClick = (booking, e) => {
     e.stopPropagation()
     // Open Stripe dashboard to the payment intent
@@ -1310,6 +1351,16 @@ function Admin() {
                                 disabled={markingPaidId === booking.id}
                               >
                                 {markingPaidId === booking.id ? 'Updating...' : 'Mark as Paid'}
+                              </button>
+                            )}
+                            {/* Delete button for pending bookings */}
+                            {booking.status?.toLowerCase() === 'pending' && (
+                              <button
+                                className="action-btn delete-btn"
+                                onClick={(e) => handleDeleteClick(booking, e)}
+                                disabled={deletingId === booking.id}
+                              >
+                                {deletingId === booking.id ? 'Deleting...' : 'Delete'}
                               </button>
                             )}
                           </div>
@@ -2409,6 +2460,36 @@ function Admin() {
                 disabled={cancellingId}
               >
                 {cancellingId ? 'Cancelling...' : 'Yes, Cancel Booking'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Pending Booking Modal */}
+      {showDeleteModal && bookingToDelete && (
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Pending Booking</h3>
+            <p>Are you sure you want to permanently delete this booking? This action cannot be undone.</p>
+            <div className="modal-booking-info">
+              <p><strong>Reference:</strong> {bookingToDelete.reference}</p>
+              <p><strong>Customer:</strong> {bookingToDelete.customer?.first_name} {bookingToDelete.customer?.last_name}</p>
+              <p><strong>Drop-off:</strong> {formatDate(bookingToDelete.dropoff_date)}</p>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowDeleteModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-danger"
+                onClick={confirmDeleteBooking}
+                disabled={deletingId}
+              >
+                {deletingId ? 'Deleting...' : 'Yes, Delete Booking'}
               </button>
             </div>
           </div>
