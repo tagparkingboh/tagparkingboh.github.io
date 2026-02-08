@@ -241,6 +241,7 @@ def create_booking(
     notes: str = None,
     departure_id: int = None,
     dropoff_slot: str = None,
+    arrival_id: int = None,
 ) -> Booking:
     """Create a new booking."""
     # Generate unique reference
@@ -272,6 +273,7 @@ def create_booking(
         notes=notes,
         departure_id=departure_id,
         dropoff_slot=dropoff_slot,
+        arrival_id=arrival_id,
     )
     db.add(booking)
     db.commit()
@@ -579,6 +581,7 @@ def create_full_booking(
     # Flight slot details
     departure_id: int = None,
     dropoff_slot: str = None,
+    arrival_id: int = None,
 ) -> dict:
     """
     Create a complete booking with customer, vehicle, booking, and payment records.
@@ -627,6 +630,7 @@ def create_full_booking(
         pickup_origin=pickup_origin,
         departure_id=departure_id,
         dropoff_slot=dropoff_slot,
+        arrival_id=arrival_id,
     )
 
     # 4. Create payment record if stripe details provided

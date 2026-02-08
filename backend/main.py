@@ -1052,21 +1052,24 @@ async def create_manual_booking(
             if dropoff_destination == 'Tenerife-Reinasofia':
                 dropoff_destination = 'Tenerife'
 
-        # Look up origin name from arrival flight
+        # Look up origin name and arrival_id from arrival flight
         from db_models import FlightArrival
         pickup_origin = None
+        arrival_id = None
         if request.return_flight_number and request.pickup_date:
             arrival = db.query(FlightArrival).filter(
                 FlightArrival.flight_number == request.return_flight_number,
                 FlightArrival.date == request.pickup_date
             ).first()
-            if arrival and arrival.origin_name:
-                # Extract city name from "City, CountryCode" format
-                parts = arrival.origin_name.split(', ')
-                pickup_origin = parts[0] if parts else arrival.origin_name
-                # Shorten Tenerife-Reinasofia to Tenerife
-                if pickup_origin == 'Tenerife-Reinasofia':
-                    pickup_origin = 'Tenerife'
+            if arrival:
+                arrival_id = arrival.id
+                if arrival.origin_name:
+                    # Extract city name from "City, CountryCode" format
+                    parts = arrival.origin_name.split(', ')
+                    pickup_origin = parts[0] if parts else arrival.origin_name
+                    # Shorten Tenerife-Reinasofia to Tenerife
+                    if pickup_origin == 'Tenerife-Reinasofia':
+                        pickup_origin = 'Tenerife'
 
         # Determine booking status based on whether it's a free booking
         booking_status = BookingStatus.CONFIRMED if is_free else BookingStatus.PENDING
@@ -1092,6 +1095,7 @@ async def create_manual_booking(
             dropoff_destination=dropoff_destination,
             pickup_flight_number=request.return_flight_number,
             pickup_origin=pickup_origin,
+            arrival_id=arrival_id,
         )
         db.add(booking)
         db.flush()
@@ -3218,20 +3222,23 @@ async def create_payment(
                     if dropoff_destination == 'Tenerife-Reinasofia':
                         dropoff_destination = 'Tenerife'
 
-            # Look up origin name from arrival table
+            # Look up origin name and arrival_id from arrival table
             pickup_origin = None
+            arrival_id = None
             if request.pickup_flight_number and pickup_date:
                 arrival = db.query(FlightArrival).filter(
                     FlightArrival.date == pickup_date,
                     FlightArrival.flight_number == request.pickup_flight_number
                 ).first()
-                if arrival and arrival.origin_name:
-                    # Extract city name from "City, CountryCode" format
-                    parts = arrival.origin_name.split(', ')
-                    pickup_origin = parts[0] if parts else arrival.origin_name
-                    # Shorten Tenerife-Reinasofia to Tenerife
-                    if pickup_origin == 'Tenerife-Reinasofia':
-                        pickup_origin = 'Tenerife'
+                if arrival:
+                    arrival_id = arrival.id
+                    if arrival.origin_name:
+                        # Extract city name from "City, CountryCode" format
+                        parts = arrival.origin_name.split(', ')
+                        pickup_origin = parts[0] if parts else arrival.origin_name
+                        # Shorten Tenerife-Reinasofia to Tenerife
+                        if pickup_origin == 'Tenerife-Reinasofia':
+                            pickup_origin = 'Tenerife'
 
             # Create booking with existing IDs
             booking = db_service.create_booking(
@@ -3251,6 +3258,7 @@ async def create_payment(
                 pickup_origin=pickup_origin,
                 departure_id=request.departure_id,
                 dropoff_slot=slot_type,
+                arrival_id=arrival_id,
             )
             booking_reference = booking.reference
             booking_id = booking.id
@@ -3275,20 +3283,23 @@ async def create_payment(
                     if dropoff_destination == 'Tenerife-Reinasofia':
                         dropoff_destination = 'Tenerife'
 
-            # Look up origin name from arrival table
+            # Look up origin name and arrival_id from arrival table
             pickup_origin = None
+            arrival_id = None
             if request.pickup_flight_number and pickup_date:
                 arrival = db.query(FlightArrival).filter(
                     FlightArrival.date == pickup_date,
                     FlightArrival.flight_number == request.pickup_flight_number
                 ).first()
-                if arrival and arrival.origin_name:
-                    # Extract city name from "City, CountryCode" format
-                    parts = arrival.origin_name.split(', ')
-                    pickup_origin = parts[0] if parts else arrival.origin_name
-                    # Shorten Tenerife-Reinasofia to Tenerife
-                    if pickup_origin == 'Tenerife-Reinasofia':
-                        pickup_origin = 'Tenerife'
+                if arrival:
+                    arrival_id = arrival.id
+                    if arrival.origin_name:
+                        # Extract city name from "City, CountryCode" format
+                        parts = arrival.origin_name.split(', ')
+                        pickup_origin = parts[0] if parts else arrival.origin_name
+                        # Shorten Tenerife-Reinasofia to Tenerife
+                        if pickup_origin == 'Tenerife-Reinasofia':
+                            pickup_origin = 'Tenerife'
 
             booking_data = db_service.create_full_booking(
                 db=db,
@@ -3324,6 +3335,7 @@ async def create_payment(
                 # Flight slot
                 departure_id=request.departure_id,
                 dropoff_slot=slot_type,
+                arrival_id=arrival_id,
             )
             booking_reference = booking_data["booking"].reference
             booking_id = booking_data["booking"].id
