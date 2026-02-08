@@ -962,13 +962,12 @@ function Bookings() {
             <div className="welcome-modal-icon">
               <img src="/assets/departure-icon.webp" alt="Departure" />
             </div>
-            <h2>Every trip is different</h2>
+            <h2>Flight schedules can change.</h2>
             <p>
-              Book online for 1-week or 2-week trips.
+              Airlines regularly adjust flight times due to demand and seasonal changes. While we do our best to keep the flight information for your trip accurate and up to date, occasional changes can be missed.
             </p>
             <p>
-              Heading away for a shorter break, something in between, or a longer adventure?
-              Get in touch - we'll tailor your booking to fit.
+              If any of your flight details change or you're unsure about anything, please get in touch — we're happy to help and make sure everything is aligned for your trip.
             </p>
             <div className="welcome-modal-contact">
               <a href="mailto:sales@tagparking.co.uk" className="contact-link">
