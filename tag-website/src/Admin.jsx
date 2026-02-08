@@ -1156,6 +1156,24 @@ function Admin() {
                                 <span className="detail-value">{booking.customer?.phone}</span>
                               </div>
                             )}
+                            {/* Billing Address - show for confirmed/completed bookings */}
+                            {booking.customer?.billing_address1 && (
+                              <div className="booking-detail billing-address-detail">
+                                <span className="detail-label">Billing Address</span>
+                                <span className="detail-value billing-address">
+                                  {booking.customer.billing_address1}
+                                  {booking.customer.billing_address2 && <><br />{booking.customer.billing_address2}</>}
+                                  <br />
+                                  {booking.customer.billing_city}
+                                  {booking.customer.billing_county && `, ${booking.customer.billing_county}`}
+                                  <br />
+                                  {booking.customer.billing_postcode}
+                                  {booking.customer.billing_country && booking.customer.billing_country !== 'United Kingdom' && (
+                                    <><br />{booking.customer.billing_country}</>
+                                  )}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
 

@@ -841,6 +841,16 @@
   color: #333;
 }
 
+.billing-address-detail {
+  min-width: 200px;
+  flex: 1;
+}
+
+.billing-address {
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
 .booking-actions-section {
   background: #fff;
   border: 1px solid #e0e0e0;
