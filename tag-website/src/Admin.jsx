@@ -91,6 +91,7 @@ function Admin() {
   const [flightOriginFilter, setFlightOriginFilter] = useState('')
   const [flightAirlineFilter, setFlightAirlineFilter] = useState('')
   const [flightMonthFilter, setFlightMonthFilter] = useState('')
+  const [flightNumberFilter, setFlightNumberFilter] = useState('')
   const [editingFlightId, setEditingFlightId] = useState(null)
   const [editFlightForm, setEditFlightForm] = useState({})
   const [savingFlight, setSavingFlight] = useState(false)
@@ -165,7 +166,7 @@ function Admin() {
     if (activeTab === 'flights' && token) {
       fetchFlights()
     }
-  }, [flightsSubTab, flightsSortAsc, flightDestFilter, flightOriginFilter, flightAirlineFilter, flightMonthFilter])
+  }, [flightsSubTab, flightsSortAsc, flightDestFilter, flightOriginFilter, flightAirlineFilter, flightMonthFilter, flightNumberFilter])
 
   const fetchSubscribers = async () => {
     setLoadingSubscribers(true)
@@ -236,6 +237,7 @@ function Admin() {
         params.append('year', year)
         params.append('month', month)
       }
+      if (flightNumberFilter) params.append('flight_number', flightNumberFilter)
 
       // Get today's date in UK timezone (YYYY-MM-DD format for comparison)
       const todayUK = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' })
@@ -1529,6 +1531,17 @@ function Admin() {
 
             {/* Filters */}
             <div className="flights-filters">
+              <div className="flight-filter-group">
+                <label>Flight #:</label>
+                <input
+                  type="text"
+                  value={flightNumberFilter}
+                  onChange={(e) => setFlightNumberFilter(e.target.value.toUpperCase())}
+                  placeholder="e.g. BA123"
+                  className="flight-number-input"
+                />
+              </div>
+
               <div className="flight-filter-group">
                 <label>Airline:</label>
                 <select

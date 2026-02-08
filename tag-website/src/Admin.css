@@ -1717,6 +1717,31 @@
   box-shadow: 0 0 0 2px rgba(217, 255, 0, 0.2);
 }
 
+.flight-number-input {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #fff;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  width: 120px;
+  transition: all 0.2s ease;
+}
+
+.flight-number-input::placeholder {
+  color: #666;
+}
+
+.flight-number-input:hover {
+  border-color: #666;
+}
+
+.flight-number-input:focus {
+  outline: none;
+  border-color: #D9FF00;
+  box-shadow: 0 0 0 2px rgba(217, 255, 0, 0.2);
+}
+
 .sort-toggle-btn {
   padding: 0.6rem 1rem;
   background: #2a2a2a;
