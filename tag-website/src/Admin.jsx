@@ -1532,17 +1532,6 @@ function Admin() {
             {/* Filters */}
             <div className="flights-filters">
               <div className="flight-filter-group">
-                <label>Flight #:</label>
-                <input
-                  type="text"
-                  value={flightNumberFilter}
-                  onChange={(e) => setFlightNumberFilter(e.target.value.toUpperCase())}
-                  placeholder="e.g. BA123"
-                  className="flight-number-input"
-                />
-              </div>
-
-              <div className="flight-filter-group">
                 <label>Airline:</label>
                 <select
                   value={flightAirlineFilter}
@@ -1553,6 +1542,17 @@ function Admin() {
                     <option key={a.code} value={a.code}>{a.code} - {a.name}</option>
                   ))}
                 </select>
+              </div>
+
+              <div className="flight-filter-group">
+                <label>Flight #:</label>
+                <input
+                  type="text"
+                  value={flightNumberFilter}
+                  onChange={(e) => setFlightNumberFilter(e.target.value.toUpperCase())}
+                  placeholder="e.g. BA123"
+                  className="flight-number-input"
+                />
               </div>
 
               {flightsSubTab === 'departures' ? (
