@@ -1616,6 +1616,84 @@ async def update_booking(
     }
 
 
+@app.post("/api/admin/fix-overnight-arrivals")
+async def fix_overnight_arrivals_endpoint(
+    dry_run: bool = Query(True, description="If true, only report issues without fixing"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Fix bookings with incorrect overnight arrival dates.
+
+    For flights that depart late evening and arrive after midnight,
+    the pickup_date should be the arrival date (next day), not departure date.
+
+    Use dry_run=true (default) to see what would be fixed.
+    Use dry_run=false to actually apply the fixes.
+    """
+    from db_models import Booking as DbBookingModel, FlightArrival
+    from datetime import timedelta
+
+    def is_overnight(dep_time, arr_time):
+        if not dep_time or not arr_time:
+            return False
+        return arr_time.hour < 6 and dep_time.hour >= 18
+
+    results = {
+        "dry_run": dry_run,
+        "bookings_checked": 0,
+        "overnight_found": 0,
+        "bookings_fixed": 0,
+        "details": []
+    }
+
+    # Get all bookings with linked arrival flights
+    bookings = db.query(DbBookingModel).filter(
+        DbBookingModel.arrival_id.isnot(None)
+    ).all()
+
+    results["bookings_checked"] = len(bookings)
+
+    for booking in bookings:
+        arrival = db.query(FlightArrival).filter(
+            FlightArrival.id == booking.arrival_id
+        ).first()
+
+        if not arrival:
+            continue
+
+        if is_overnight(arrival.departure_time, arrival.arrival_time):
+            results["overnight_found"] += 1
+
+            # For overnight flights, pickup should be arrival date
+            # Check if the arrival date in DB is correct (should already be next day after import fix)
+            # But booking's pickup_date might still be wrong
+
+            # Calculate what the correct pickup date should be
+            # If arrival time is after midnight, pickup_date should match arrival.date
+            correct_pickup_date = arrival.date
+
+            if booking.pickup_date != correct_pickup_date:
+                detail = {
+                    "booking_id": booking.id,
+                    "reference": booking.reference,
+                    "flight_number": booking.pickup_flight_number,
+                    "arrival_time": arrival.arrival_time.strftime("%H:%M") if arrival.arrival_time else None,
+                    "current_pickup_date": booking.pickup_date.isoformat(),
+                    "correct_pickup_date": correct_pickup_date.isoformat(),
+                }
+                results["details"].append(detail)
+
+                if not dry_run:
+                    booking.pickup_date = correct_pickup_date
+                    results["bookings_fixed"] += 1
+
+    if not dry_run and results["bookings_fixed"] > 0:
+        db.commit()
+
+    return results
+
+
 @app.post("/api/admin/bookings/{booking_id}/resend-email")
 async def resend_booking_confirmation_email(
     booking_id: int,
