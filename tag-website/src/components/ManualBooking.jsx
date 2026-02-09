@@ -259,11 +259,19 @@ function ManualBooking({ token }) {
         f.airlineName === selectedDepartureFlight.airlineName &&
         f.originCode === selectedDepartureFlight.destinationCode
       )
-      .map(f => ({
-        ...f,
-        flightKey: `${f.id}`,
-        displayName: `${f.flightNumber} from ${f.originName} (arrives ${f.time})`,
-      }))
+      .map(f => {
+        // Check if overnight flight (departs evening, arrives early morning)
+        const isOvernight = f.departureTime &&
+          parseInt(f.departureTime.split(':')[0]) >= 18 &&
+          parseInt(f.time.split(':')[0]) < 6
+
+        return {
+          ...f,
+          flightKey: `${f.id}`,
+          isOvernight,
+          displayName: `${f.flightNumber} from ${f.originName} (arrives ${f.time}${isOvernight ? ' +1' : ''})`,
+        }
+      })
   }, [arrivalsForDate, selectedDepartureFlight])
 
   // Get selected arrival flight details
@@ -1271,7 +1279,7 @@ function ManualBooking({ token }) {
                   <div className="summary-row">
                     <span className="summary-label">Return:</span>
                     <span className="summary-value">
-                      {selectedArrivalFlight.flightNumber} from {selectedArrivalFlight.originName} (arrives {selectedArrivalFlight.time})
+                      {selectedArrivalFlight.flightNumber} from {selectedArrivalFlight.originName} (arrives {selectedArrivalFlight.time}{selectedArrivalFlight.isOvernight ? ' +1' : ''})
                     </span>
                   </div>
                   <div className="summary-row">

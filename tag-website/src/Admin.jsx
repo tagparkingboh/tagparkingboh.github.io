@@ -1853,7 +1853,7 @@ function Admin() {
                             <td>{a.airline_name}</td>
                             <td>{a.flight_number}</td>
                             <td>{a.origin_name}</td>
-                            <td>{a.arrival_time}</td>
+                            <td>{a.arrival_time}{a.departure_time && parseInt(a.departure_time.split(':')[0]) >= 18 && parseInt(a.arrival_time.split(':')[0]) < 6 ? ' +1' : ''}</td>
                             <td className="flight-actions">
                               <button className="btn-edit" onClick={() => startEditFlight(a)}>Edit</button>
                             </td>

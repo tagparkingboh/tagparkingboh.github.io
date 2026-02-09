@@ -475,10 +475,15 @@ function Bookings() {
         displayOrigin = cityName
       }
 
+      // Check if overnight flight (departs evening, arrives early morning)
+      const isOvernight = f.departureTime &&
+        parseInt(f.departureTime.split(':')[0]) >= 18 &&
+        parseInt(f.time.split(':')[0]) < 6
+
       return {
         ...f,
         flightKey: `${f.time}|${f.flightNumber}`,
-        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${f.time}`
+        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${f.time}${isOvernight ? ' +1' : ''}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
   }, [filteredArrivalsForDate])
