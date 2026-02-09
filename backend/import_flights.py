@@ -14,9 +14,12 @@ Mapping from Excel to Database:
 - Arr Time -> arrival_time
 
 For departures: is_slot_1_booked and is_slot_2_booked default to False
+
+For arrivals: If the flight is an overnight flight (departs evening, arrives
+after midnight), the arrival date is adjusted to the next day.
 """
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta, time
 from sqlalchemy.orm import Session
 import re
 import sys
@@ -109,6 +112,37 @@ def parse_time(time_str) -> str:
     return time_str
 
 
+def is_overnight_flight(dep_time_str: str, arr_time_str: str) -> bool:
+    """
+    Check if a flight is an overnight flight based on departure and arrival times.
+
+    An overnight flight departs in the evening and arrives after midnight.
+    E.g., depart 22:00, arrive 00:35 = overnight
+    E.g., depart 10:00, arrive 14:00 = not overnight
+
+    Args:
+        dep_time_str: Departure time as "HH:MM" string
+        arr_time_str: Arrival time as "HH:MM" string
+
+    Returns:
+        True if this is an overnight flight
+    """
+    if not dep_time_str or not arr_time_str:
+        return False
+
+    try:
+        dep_parts = dep_time_str.split(':')
+        arr_parts = arr_time_str.split(':')
+
+        dep_hour = int(dep_parts[0])
+        arr_hour = int(arr_parts[0])
+
+        # Arrival in early morning (00:00-05:59) and departure in evening (18:00-23:59)
+        return arr_hour < 6 and dep_hour >= 18
+    except (ValueError, IndexError):
+        return False
+
+
 def import_flights(excel_path: str, db: Session):
     """Import flights from Excel file."""
     print(f"Reading Excel file: {excel_path}")
@@ -183,8 +217,16 @@ def import_flights(excel_path: str, db: Session):
                 if not arr_time:
                     continue
 
+                # Check for overnight flight and adjust arrival date
+                arrival_date = date_val
+                if is_overnight_flight(dep_time, arr_time):
+                    # Overnight flight: arrival is next day
+                    arrival_date = date_val + timedelta(days=1)
+                    print(f"  Overnight flight {flight_number}: {dep_time} -> {arr_time}, "
+                          f"date adjusted from {date_val} to {arrival_date}")
+
                 arrival = FlightArrival(
-                    date=date_val,
+                    date=arrival_date,
                     flight_number=flight_number,
                     airline_code=airline_code,
                     airline_name=airline_name,

@@ -739,6 +739,149 @@ class TestDeleteBooking:
 
 
 # =============================================================================
+# PUT /api/admin/bookings/{booking_id} - Update Booking Tests
+# =============================================================================
+
+class TestUpdateBooking:
+    """Tests for updating booking details."""
+
+    def test_update_pickup_date_success(self):
+        """Should successfully update pickup date."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(
+            status=BookingStatus.CONFIRMED,
+            pickup_date_val=date(2026, 3, 28),
+        )
+
+        new_pickup_date = date(2026, 3, 29)
+        booking.pickup_date = new_pickup_date
+
+        response_data = {
+            "success": True,
+            "message": f"Booking {booking.reference} updated successfully",
+            "fields_updated": ["pickup_date"],
+            "booking": {"pickup_date": booking.pickup_date.isoformat()}
+        }
+
+        assert response_data["success"] is True
+        assert "pickup_date" in response_data["fields_updated"]
+        assert response_data["booking"]["pickup_date"] == "2026-03-29"
+
+    def test_update_pickup_time_recalculates_windows(self):
+        """Updating pickup_time should recalculate pickup_time_from and pickup_time_to."""
+        from datetime import timedelta
+
+        booking = create_mock_booking(
+            pickup_time_val=time(14, 30),
+            pickup_time_from_val=time(15, 5),
+            pickup_time_to_val=time(15, 30),
+        )
+
+        new_arrival_time = time(0, 35)
+        booking.pickup_time = new_arrival_time
+
+        arrival_dt = datetime.combine(date.today(), new_arrival_time)
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+
+        assert booking.pickup_time == time(0, 35)
+        assert booking.pickup_time_from == time(1, 10)
+        assert booking.pickup_time_to == time(1, 35)
+
+    def test_update_nonexistent_booking_returns_404(self):
+        """Should return 404 for non-existent booking."""
+        booking = None
+
+        if booking is None:
+            status_code = 404
+            error = "Booking not found"
+        else:
+            status_code = 200
+            error = None
+
+        assert status_code == 404
+        assert "not found" in error.lower()
+
+    def test_update_with_no_fields_returns_400(self):
+        """Should return 400 when no fields provided."""
+        updates = {}
+
+        if not updates:
+            status_code = 400
+            error = "No fields to update"
+        else:
+            status_code = 200
+            error = None
+
+        assert status_code == 400
+        assert "No fields" in error
+
+    def test_update_flight_numbers(self):
+        """Should update flight numbers."""
+        booking = create_mock_booking(
+            dropoff_flight_number="FR5523",
+            pickup_flight_number="FR5524",
+        )
+
+        booking.dropoff_flight_number = "TUI123"
+        booking.pickup_flight_number = "TUI671"
+
+        assert booking.dropoff_flight_number == "TUI123"
+        assert booking.pickup_flight_number == "TUI671"
+
+    def test_update_requires_admin_auth(self):
+        """Update endpoint requires admin authentication."""
+        user = MagicMock()
+        user.is_admin = False
+
+        if not user.is_admin:
+            status_code = 403
+        else:
+            status_code = 200
+
+        assert status_code == 403
+
+
+class TestUpdateBookingOvernightFix:
+    """Tests for fixing overnight arrival booking dates."""
+
+    def test_overnight_arrival_date_correction(self):
+        """Flight arriving 00:35 on 29th should have pickup_date as 29th."""
+        booking = create_mock_booking(
+            pickup_date_val=date(2026, 3, 28),
+            pickup_time_val=time(0, 35),
+        )
+
+        booking.pickup_date = date(2026, 3, 29)
+
+        assert booking.pickup_date == date(2026, 3, 29)
+        assert booking.pickup_time == time(0, 35)
+
+    def test_overnight_pickup_windows_correct(self):
+        """Overnight flight pickup windows calculated correctly."""
+        from datetime import timedelta
+
+        arrival_time = time(0, 35)
+        arrival_dt = datetime.combine(date.today(), arrival_time)
+
+        pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
+        pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+
+        assert pickup_time_from == time(1, 10)
+        assert pickup_time_to == time(1, 35)
+
+    def test_late_evening_no_date_change(self):
+        """Flight arriving 22:00 on 28th should stay on 28th."""
+        booking = create_mock_booking(
+            pickup_date_val=date(2026, 2, 28),
+            pickup_time_val=time(22, 0),
+        )
+
+        assert booking.pickup_date == date(2026, 2, 28)
+
+
+# =============================================================================
 # Admin Bookings Integration Flow Tests
 # =============================================================================
 

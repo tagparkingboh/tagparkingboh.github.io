@@ -327,6 +327,22 @@ class CapacityCheckRequest(BaseModel):
     end_date: date
 
 
+class UpdateBookingRequest(BaseModel):
+    """Request to update booking details (admin only)."""
+    # Pickup/collection details - for fixing overnight arrival issues
+    pickup_date: Optional[date] = None
+    pickup_time: Optional[str] = None  # HH:MM format (arrival/landing time)
+    pickup_flight_number: Optional[str] = None
+    pickup_origin: Optional[str] = None
+    arrival_id: Optional[int] = None
+
+    # Dropoff details
+    dropoff_date: Optional[date] = None
+    dropoff_time: Optional[str] = None  # HH:MM format
+    dropoff_flight_number: Optional[str] = None
+    dropoff_destination: Optional[str] = None
+
+
 class BookingResponse(BaseModel):
     success: bool
     booking_id: Optional[str] = None
@@ -1495,6 +1511,108 @@ async def delete_booking(
         "message": message,
         "reference": reference,
         "slot_released": slot_released,
+    }
+
+
+@app.put("/api/admin/bookings/{booking_id}")
+async def update_booking(
+    booking_id: int,
+    request: UpdateBookingRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Update booking details.
+
+    Use this to fix booking information such as:
+    - Pickup date/time (e.g., for overnight arrival corrections)
+    - Dropoff date/time
+    - Flight numbers and destinations/origins
+
+    The pickup_time_from and pickup_time_to fields are automatically
+    recalculated when pickup_time is updated (35 and 60 min buffers).
+    """
+    from db_models import Booking as DbBookingModel
+    from datetime import time as dt_time, timedelta
+
+    booking = db.query(DbBookingModel).filter(DbBookingModel.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    updates_made = []
+
+    # Update pickup details
+    if request.pickup_date is not None:
+        booking.pickup_date = request.pickup_date
+        updates_made.append("pickup_date")
+
+    if request.pickup_time is not None:
+        # Parse time string HH:MM
+        parts = request.pickup_time.split(':')
+        new_pickup_time = dt_time(int(parts[0]), int(parts[1]))
+        booking.pickup_time = new_pickup_time
+
+        # Recalculate pickup_time_from (35 min after landing) and pickup_time_to (60 min after landing)
+        arrival_datetime = datetime.combine(datetime.today(), new_pickup_time)
+        booking.pickup_time_from = (arrival_datetime + timedelta(minutes=35)).time()
+        booking.pickup_time_to = (arrival_datetime + timedelta(minutes=60)).time()
+        updates_made.append("pickup_time")
+
+    if request.pickup_flight_number is not None:
+        booking.pickup_flight_number = request.pickup_flight_number
+        updates_made.append("pickup_flight_number")
+
+    if request.pickup_origin is not None:
+        booking.pickup_origin = request.pickup_origin
+        updates_made.append("pickup_origin")
+
+    if request.arrival_id is not None:
+        booking.arrival_id = request.arrival_id
+        updates_made.append("arrival_id")
+
+    # Update dropoff details
+    if request.dropoff_date is not None:
+        booking.dropoff_date = request.dropoff_date
+        updates_made.append("dropoff_date")
+
+    if request.dropoff_time is not None:
+        parts = request.dropoff_time.split(':')
+        booking.dropoff_time = dt_time(int(parts[0]), int(parts[1]))
+        updates_made.append("dropoff_time")
+
+    if request.dropoff_flight_number is not None:
+        booking.dropoff_flight_number = request.dropoff_flight_number
+        updates_made.append("dropoff_flight_number")
+
+    if request.dropoff_destination is not None:
+        booking.dropoff_destination = request.dropoff_destination
+        updates_made.append("dropoff_destination")
+
+    if not updates_made:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    db.commit()
+    db.refresh(booking)
+
+    return {
+        "success": True,
+        "message": f"Booking {booking.reference} updated successfully",
+        "fields_updated": updates_made,
+        "booking": {
+            "id": booking.id,
+            "reference": booking.reference,
+            "pickup_date": booking.pickup_date.isoformat() if booking.pickup_date else None,
+            "pickup_time": booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None,
+            "pickup_time_from": booking.pickup_time_from.strftime("%H:%M") if booking.pickup_time_from else None,
+            "pickup_time_to": booking.pickup_time_to.strftime("%H:%M") if booking.pickup_time_to else None,
+            "pickup_flight_number": booking.pickup_flight_number,
+            "pickup_origin": booking.pickup_origin,
+            "dropoff_date": booking.dropoff_date.isoformat() if booking.dropoff_date else None,
+            "dropoff_time": booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None,
+            "dropoff_flight_number": booking.dropoff_flight_number,
+            "dropoff_destination": booking.dropoff_destination,
+        }
     }
 
 
