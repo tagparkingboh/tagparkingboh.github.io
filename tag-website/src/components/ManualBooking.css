@@ -501,21 +501,21 @@
   font-style: italic;
 }
 
-/* Promo code styles */
-.promo-success {
+/* Promo code styles - scoped to override Bookings.css */
+.manual-booking .promo-success {
   font-size: 0.85rem;
-  color: #1a1a2e;
+  color: #1a1a2e !important;
   font-weight: 600;
   margin-top: 0.25rem;
 }
 
-.promo-success .discount-applied {
+.manual-booking .promo-success .discount-applied {
   font-weight: 700;
 }
 
-.promo-error {
+.manual-booking .promo-error {
   font-size: 0.85rem;
-  color: #721c24;
+  color: #721c24 !important;
   margin-top: 0.25rem;
 }
 
