@@ -577,6 +577,16 @@
   background: #c6f6d5;
 }
 
+.edit-btn {
+  background: #faf5ff;
+  color: #6b46c1;
+  border: 1px solid #d6bcfa;
+}
+
+.edit-btn:hover:not(:disabled) {
+  background: #e9d8fd;
+}
+
 /* Accordion Booking Cards */
 .booking-accordion {
   display: flex;
@@ -987,6 +997,41 @@
 
 .admin-container .modal-btn-primary:hover:not(:disabled) {
   background: #e5a320;
+}
+
+/* Modal form styles */
+.admin-container .modal-form {
+  margin: 16px 0;
+}
+
+.admin-container .modal-form-group {
+  margin-bottom: 16px;
+}
+
+.admin-container .modal-form-group:last-child {
+  margin-bottom: 0;
+}
+
+.admin-container .modal-form-group label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: #333;
+}
+
+.admin-container .modal-form-group input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.admin-container .modal-form-group input:focus {
+  outline: none;
+  border-color: #f7b32b;
+  box-shadow: 0 0 0 2px rgba(247, 179, 43, 0.2);
 }
 
 /* Payment refunded status */

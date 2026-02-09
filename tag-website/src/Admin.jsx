@@ -26,6 +26,10 @@ function Admin() {
   const [deletingId, setDeletingId] = useState(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [bookingToDelete, setBookingToDelete] = useState(null)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [bookingToEdit, setBookingToEdit] = useState(null)
+  const [editForm, setEditForm] = useState({ pickup_date: '' })
+  const [savingEdit, setSavingEdit] = useState(false)
   const [resendingEmailId, setResendingEmailId] = useState(null)
   const [showResendModal, setShowResendModal] = useState(false)
   const [bookingToResend, setBookingToResend] = useState(null)
@@ -795,6 +799,53 @@ function Admin() {
     }
   }
 
+  const handleEditClick = (booking, e) => {
+    e.stopPropagation()
+    setBookingToEdit(booking)
+    setEditForm({
+      pickup_date: booking.pickup_date || '',
+      pickup_time: booking.pickup_time || '',
+    })
+    setShowEditModal(true)
+  }
+
+  const confirmEditBooking = async () => {
+    if (!bookingToEdit) return
+
+    setSavingEdit(true)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingToEdit.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pickup_date: editForm.pickup_date || null,
+          pickup_time: editForm.pickup_time || null,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccessMessage(data.message || 'Booking updated successfully')
+        fetchBookings()
+        setTimeout(() => setSuccessMessage(''), 5000)
+        setShowEditModal(false)
+        setBookingToEdit(null)
+      } else {
+        setError(data.detail || 'Failed to update booking')
+      }
+    } catch (err) {
+      setError('Network error while updating booking')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   const handleRefundClick = (booking, e) => {
     e.stopPropagation()
     // Open Stripe dashboard to the payment intent
@@ -1332,6 +1383,12 @@ function Admin() {
                         <div className="booking-section booking-actions-section">
                           <h4>Actions</h4>
                           <div className="booking-actions">
+                            <button
+                              className="action-btn edit-btn"
+                              onClick={(e) => handleEditClick(booking, e)}
+                            >
+                              Edit Pickup Date
+                            </button>
                             <button
                               className="action-btn email-btn"
                               onClick={(e) => handleResendEmailClick(booking, e)}
@@ -2531,6 +2588,46 @@ function Admin() {
                 disabled={deletingId}
               >
                 {deletingId ? 'Deleting...' : 'Yes, Delete Booking'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Booking Modal */}
+      {showEditModal && bookingToEdit && (
+        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Edit Booking</h3>
+            <p>Update the pickup date for this booking.</p>
+            <div className="modal-booking-info">
+              <p><strong>Reference:</strong> {bookingToEdit.reference}</p>
+              <p><strong>Customer:</strong> {bookingToEdit.customer?.first_name} {bookingToEdit.customer?.last_name}</p>
+              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)}</p>
+            </div>
+            <div className="modal-form">
+              <label>
+                New Pickup Date:
+                <input
+                  type="date"
+                  value={editForm.pickup_date}
+                  onChange={(e) => setEditForm({ ...editForm, pickup_date: e.target.value })}
+                />
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowEditModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={confirmEditBooking}
+                disabled={savingEdit || !editForm.pickup_date}
+              >
+                {savingEdit ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>
