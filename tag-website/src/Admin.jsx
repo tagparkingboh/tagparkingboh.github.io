@@ -1371,8 +1371,8 @@ function Admin() {
                                 {markingPaidId === booking.id ? 'Updating...' : 'Mark as Paid'}
                               </button>
                             )}
-                            {/* Delete button for pending bookings */}
-                            {booking.status?.toLowerCase() === 'pending' && (
+                            {/* Delete button for pending and cancelled bookings */}
+                            {['pending', 'cancelled'].includes(booking.status?.toLowerCase()) && (
                               <button
                                 className="action-btn delete-btn"
                                 onClick={(e) => handleDeleteClick(booking, e)}
