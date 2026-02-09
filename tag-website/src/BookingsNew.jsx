@@ -483,6 +483,7 @@ function Bookings() {
       return {
         ...f,
         flightKey: `${f.time}|${f.flightNumber}`,
+        isOvernight,
         displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${f.time}${isOvernight ? ' +1' : ''}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
@@ -510,6 +511,17 @@ function Bookings() {
     if (!formData.pickupFlightTime) return null
     return arrivalFlightsForPickup.find(f => f.flightKey === formData.pickupFlightTime)
   }, [arrivalFlightsForPickup, formData.pickupFlightTime])
+
+  // Calculate actual pickup date (add 1 day for overnight flights)
+  const actualPickupDate = useMemo(() => {
+    if (!formData.pickupDate) return null
+    if (selectedArrivalFlight?.isOvernight) {
+      const nextDay = new Date(formData.pickupDate)
+      nextDay.setDate(nextDay.getDate() + 1)
+      return nextDay
+    }
+    return formData.pickupDate
+  }, [formData.pickupDate, selectedArrivalFlight])
 
   // Helper function to format minutes to HH:MM
   function formatMinutesToTime(totalMinutes) {
@@ -1825,7 +1837,7 @@ function Bookings() {
                 <div className="summary-item">
                   <span>Pick-up</span>
                   <span>
-                    {formatDisplayDate(formData.pickupDate)}
+                    {formatDisplayDate(actualPickupDate || formData.pickupDate)}
                     {formData.pickupFlightTime && (() => {
                       // pickupFlightTime is a flightKey in format "time|destinationCode"
                       const flightTime = formData.pickupFlightTime.split('|')[0]

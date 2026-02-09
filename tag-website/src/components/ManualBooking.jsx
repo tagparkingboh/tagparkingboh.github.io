@@ -280,6 +280,17 @@ function ManualBooking({ token }) {
     return matchingArrivalFlights.find(f => f.flightKey === formData.pickupFlight)
   }, [matchingArrivalFlights, formData.pickupFlight])
 
+  // Calculate actual pickup date (add 1 day for overnight flights)
+  const actualPickupDate = useMemo(() => {
+    if (!formData.pickupDate) return null
+    if (selectedArrivalFlight?.isOvernight) {
+      const nextDay = new Date(formData.pickupDate)
+      nextDay.setDate(nextDay.getDate() + 1)
+      return nextDay
+    }
+    return formData.pickupDate
+  }, [formData.pickupDate, selectedArrivalFlight])
+
   // Get car makes and models from car-info library
   const carMakes = useMemo(() => getMakes().sort(), [])
   const carModels = useMemo(() => {
@@ -626,7 +637,7 @@ function ManualBooking({ token }) {
       colour: formData.colour,
       dropoff_date: format(formData.dropoffDate, 'yyyy-MM-dd'),
       dropoff_time: getDropoffTime(),
-      pickup_date: format(formData.pickupDate, 'yyyy-MM-dd'),
+      pickup_date: format(actualPickupDate || formData.pickupDate, 'yyyy-MM-dd'),
       pickup_time: getPickupTime(),
       stripe_payment_link: isFreeBooking ? '' : formData.stripePaymentLink,
       amount_pence: Math.round(parseFloat(formData.amount) * 100),
@@ -1285,7 +1296,7 @@ function ManualBooking({ token }) {
                   <div className="summary-row">
                     <span className="summary-label">Pick-up:</span>
                     <span className="summary-value">
-                      {format(formData.pickupDate, 'dd/MM/yyyy')} from {(() => {
+                      {format(actualPickupDate || formData.pickupDate, 'dd/MM/yyyy')} from {(() => {
                         const [h, m] = selectedArrivalFlight.time.split(':').map(Number)
                         const totalMins = h * 60 + m + 45
                         return `${String(Math.floor(totalMins / 60) % 24).padStart(2, '0')}:${String(totalMins % 60).padStart(2, '0')}`
@@ -1431,7 +1442,7 @@ function ManualBooking({ token }) {
               <p><strong>Booking Summary:</strong></p>
               <ul>
                 <li>Drop-off: {formatDate(formData.dropoffDate)} at {getDropoffTime()}</li>
-                <li>Pick-up: {formatDate(formData.pickupDate)} from {getPickupTime()}</li>
+                <li>Pick-up: {formatDate(actualPickupDate || formData.pickupDate)} from {getPickupTime()}</li>
                 {!formData.useManualTime && selectedDepartureFlight && (
                   <li>Outbound Flight: {selectedDepartureFlight.flightNumber} to {selectedDepartureFlight.destinationName}</li>
                 )}

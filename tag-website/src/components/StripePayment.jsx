@@ -284,7 +284,15 @@ function StripePayment({
         flight_number: selectedFlight?.flightNumber || formData.dropoffFlight?.split('|')[1] || 'Unknown',
         flight_date: formatDateLocal(formData.dropoffDate),
         drop_off_date: formatDateLocal(formData.dropoffDate),
-        pickup_date: formatDateLocal(formData.pickupDate),
+        pickup_date: (() => {
+          // For overnight flights (+1), pickup is the next day
+          if (selectedArrivalFlight?.isOvernight && formData.pickupDate) {
+            const nextDay = new Date(formData.pickupDate)
+            nextDay.setDate(nextDay.getDate() + 1)
+            return formatDateLocal(nextDay)
+          }
+          return formatDateLocal(formData.pickupDate)
+        })(),
         drop_off_slot: formData.dropoffSlot || null,
         departure_id: selectedFlight?.id || null,
         // Return flight details (destination/origin names are looked up from flight tables on backend)
