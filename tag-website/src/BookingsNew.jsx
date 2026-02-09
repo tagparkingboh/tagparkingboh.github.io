@@ -1923,16 +1923,20 @@ function Bookings() {
               </div>
 
               <div className="form-group checkbox-group">
-                <label className="checkbox-label">
+                <label className={`checkbox-label ${!isBillingComplete ? 'disabled' : ''}`}>
                   <input
                     type="checkbox"
                     name="terms"
                     checked={formData.terms}
                     onChange={handleChange}
+                    disabled={!isBillingComplete}
                     required
                   />
                   <span>I agree to the <Link to="/terms-conditions" target="_blank">Terms & Conditions</Link> and <Link to="/privacy-policy" target="_blank">Privacy Policy</Link></span>
                 </label>
+                {!isBillingComplete && (
+                  <p className="field-hint">Please complete your billing address above first</p>
+                )}
               </div>
 
               {paymentComplete ? (
