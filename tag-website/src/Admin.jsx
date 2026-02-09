@@ -943,6 +943,20 @@ function Admin() {
     return timeStr.substring(0, 5)
   }
 
+  // UK date format: dd/mm/yyyy
+  const formatDateUK = (dateStr) => {
+    if (!dateStr) return '-'
+    const date = new Date(dateStr)
+    return date.toLocaleDateString('en-GB')
+  }
+
+  // UK datetime format: dd/mm/yyyy, HH:mm:ss
+  const formatDateTimeUK = (dateStr) => {
+    if (!dateStr) return '-'
+    const date = new Date(dateStr)
+    return date.toLocaleString('en-GB')
+  }
+
   if (loading) {
     return (
       <div className="admin-loading">
@@ -1941,7 +1955,7 @@ function Admin() {
                               <div className="booking-detail">
                                 <span className="detail-label">Subscribed</span>
                                 <span className="detail-value">
-                                  {subscriber.subscribed_at ? new Date(subscriber.subscribed_at).toLocaleDateString() : '-'}
+                                  {formatDateUK(subscriber.subscribed_at)}
                                 </span>
                               </div>
                               <div className="booking-detail">
@@ -1955,7 +1969,7 @@ function Admin() {
                               <div className="booking-detail">
                                 <span className="detail-label">Sent At</span>
                                 <span className="detail-value">
-                                  {subscriber.welcome_email_sent_at ? new Date(subscriber.welcome_email_sent_at).toLocaleString() : '-'}
+                                  {formatDateTimeUK(subscriber.welcome_email_sent_at)}
                                 </span>
                               </div>
                             </div>
@@ -1995,7 +2009,7 @@ function Admin() {
                                 <div className="booking-detail">
                                   <span className="detail-label">Sent At</span>
                                   <span className="detail-value">
-                                    {subscriber.promo_10_sent_at ? new Date(subscriber.promo_10_sent_at).toLocaleString() : '-'}
+                                    {formatDateTimeUK(subscriber.promo_10_sent_at)}
                                   </span>
                                 </div>
                               </div>
@@ -2038,7 +2052,7 @@ function Admin() {
                                 <div className="booking-detail">
                                   <span className="detail-label">Sent At</span>
                                   <span className="detail-value">
-                                    {subscriber.promo_free_sent_at ? new Date(subscriber.promo_free_sent_at).toLocaleString() : '-'}
+                                    {formatDateTimeUK(subscriber.promo_free_sent_at)}
                                   </span>
                                 </div>
                               </div>
@@ -2050,7 +2064,7 @@ function Admin() {
 
                         {subscriber.unsubscribed && (
                           <div className="subscriber-unsubscribed-notice">
-                            Unsubscribed on {subscriber.unsubscribed_at ? new Date(subscriber.unsubscribed_at).toLocaleDateString() : 'unknown date'}
+                            Unsubscribed on {formatDateUK(subscriber.unsubscribed_at)}
                           </div>
                         )}
                       </div>
