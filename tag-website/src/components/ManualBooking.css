@@ -504,16 +504,13 @@
 /* Promo code styles */
 .promo-success {
   font-size: 0.85rem;
-  color: #155724;
-  background: #d4edda;
-  border: 1px solid #c3e6cb;
-  border-radius: 4px;
-  padding: 0.5rem 0.75rem;
-  margin-top: 0.5rem;
+  color: #1a1a2e;
+  font-weight: 600;
+  margin-top: 0.25rem;
 }
 
 .promo-success .discount-applied {
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .promo-error {
