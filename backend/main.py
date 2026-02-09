@@ -1431,16 +1431,16 @@ async def cancel_booking_admin(
 
 
 @app.delete("/api/admin/bookings/{booking_id}")
-async def delete_pending_booking(
+async def delete_booking(
     booking_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
-    Admin endpoint: Permanently delete a pending booking.
+    Admin endpoint: Permanently delete a pending or cancelled booking.
 
     This completely removes the booking from the database.
-    Only works for bookings with PENDING status.
+    Only works for bookings with PENDING or CANCELLED status.
     Releases the flight slot if one was reserved.
     """
     from db_models import Booking, BookingStatus, Payment
@@ -1450,10 +1450,10 @@ async def delete_pending_booking(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    if booking.status != BookingStatus.PENDING:
+    if booking.status not in (BookingStatus.PENDING, BookingStatus.CANCELLED):
         raise HTTPException(
             status_code=400,
-            detail=f"Can only delete pending bookings. This booking has status: {booking.status.value}"
+            detail=f"Can only delete pending or cancelled bookings. This booking has status: {booking.status.value}"
         )
 
     reference = booking.reference
