@@ -1724,10 +1724,12 @@ function Admin() {
                             </td>
                             <td>
                               <input
-                                type="time"
+                                type="text"
+                                pattern="[0-2][0-9]:[0-5][0-9]"
+                                placeholder="HH:MM"
                                 value={editFlightForm.departure_time || ''}
                                 onChange={(e) => setEditFlightForm({...editFlightForm, departure_time: e.target.value})}
-                                className="flight-edit-input"
+                                className="flight-edit-input time-24h"
                               />
                             </td>
                             <td>{d.destination_name}</td>
@@ -1825,10 +1827,12 @@ function Admin() {
                             <td>{a.origin_name}</td>
                             <td>
                               <input
-                                type="time"
+                                type="text"
+                                pattern="[0-2][0-9]:[0-5][0-9]"
+                                placeholder="HH:MM"
                                 value={editFlightForm.arrival_time || ''}
                                 onChange={(e) => setEditFlightForm({...editFlightForm, arrival_time: e.target.value})}
-                                className="flight-edit-input"
+                                className="flight-edit-input time-24h"
                               />
                             </td>
                             <td className="flight-actions">

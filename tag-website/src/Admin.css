@@ -1834,6 +1834,12 @@
   max-width: 50px;
 }
 
+.flight-edit-input.time-24h {
+  max-width: 70px;
+  text-align: center;
+  font-family: monospace;
+}
+
 .flight-edit-input:focus {
   border-color: #D9FF00;
   outline: none;
