@@ -1045,78 +1045,88 @@ function ManualBooking({ token }) {
             </label>
           </div>
 
-          {/* Drop-off Date - Always shown */}
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="dropoffDate">Drop-off Date <span className="required">*</span></label>
-              <DatePicker
-                selected={formData.dropoffDate}
-                onChange={(date) => handleDateChange(date, 'dropoffDate')}
-                dateFormat="dd/MM/yyyy"
-                minDate={new Date()}
-                placeholderText="Select date"
-                className="date-picker-input"
-                id="dropoffDate"
-              />
-            </div>
-            {formData.useManualTime && (
-              <div className="form-group">
-                <label htmlFor="pickupDate">Pick-up Date <span className="required">*</span></label>
-                <DatePicker
-                  selected={formData.pickupDate}
-                  onChange={(date) => handleDateChange(date, 'pickupDate')}
-                  dateFormat="dd/MM/yyyy"
-                  minDate={formData.dropoffDate || new Date()}
-                  placeholderText="Select date"
-                  className="date-picker-input"
-                  id="pickupDate"
-                />
-              </div>
-            )}
-          </div>
-
           {formData.useManualTime ? (
             /* Manual Time Entry */
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="dropoffTime">Drop-off Time <span className="required">*</span></label>
-                <DatePicker
-                  selected={formData.dropoffTime}
-                  onChange={(time) => handleDateChange(time, 'dropoffTime')}
-                  showTimeSelect
-                  showTimeSelectOnly
-                  timeIntervals={15}
-                  timeCaption="Time"
-                  dateFormat="HH:mm"
-                  timeFormat="HH:mm"
-                  placeholderText="Select time"
-                  className="date-picker-input"
-                  id="dropoffTime"
-                />
+            <>
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="dropoffDate">Drop-off Date <span className="required">*</span></label>
+                  <DatePicker
+                    selected={formData.dropoffDate}
+                    onChange={(date) => handleDateChange(date, 'dropoffDate')}
+                    dateFormat="dd/MM/yyyy"
+                    minDate={new Date()}
+                    placeholderText="Select date"
+                    className="date-picker-input"
+                    id="dropoffDate"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="pickupDate">Pick-up Date <span className="required">*</span></label>
+                  <DatePicker
+                    selected={formData.pickupDate}
+                    onChange={(date) => handleDateChange(date, 'pickupDate')}
+                    dateFormat="dd/MM/yyyy"
+                    minDate={formData.dropoffDate || new Date()}
+                    placeholderText="Select date"
+                    className="date-picker-input"
+                    id="pickupDate"
+                  />
+                </div>
               </div>
-              <div className="form-group">
-                <label htmlFor="pickupTime">Pick-up Time <span className="required">*</span></label>
-                <DatePicker
-                  selected={formData.pickupTime}
-                  onChange={(time) => handleDateChange(time, 'pickupTime')}
-                  showTimeSelect
-                  showTimeSelectOnly
-                  timeIntervals={15}
-                  timeCaption="Time"
-                  dateFormat="HH:mm"
-                  timeFormat="HH:mm"
-                  placeholderText="Select time"
-                  className="date-picker-input"
-                  id="pickupTime"
-                />
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="dropoffTime">Drop-off Time <span className="required">*</span></label>
+                  <DatePicker
+                    selected={formData.dropoffTime}
+                    onChange={(time) => handleDateChange(time, 'dropoffTime')}
+                    showTimeSelect
+                    showTimeSelectOnly
+                    timeIntervals={15}
+                    timeCaption="Time"
+                    dateFormat="HH:mm"
+                    timeFormat="HH:mm"
+                    placeholderText="Select time"
+                    className="date-picker-input"
+                    id="dropoffTime"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="pickupTime">Pick-up Time <span className="required">*</span></label>
+                  <DatePicker
+                    selected={formData.pickupTime}
+                    onChange={(time) => handleDateChange(time, 'pickupTime')}
+                    showTimeSelect
+                    showTimeSelectOnly
+                    timeIntervals={15}
+                    timeCaption="Time"
+                    dateFormat="HH:mm"
+                    timeFormat="HH:mm"
+                    placeholderText="Select time"
+                    className="date-picker-input"
+                    id="pickupTime"
+                  />
+                </div>
               </div>
-            </div>
+            </>
           ) : (
             /* Flight-based Selection */
             <>
               {/* Departure Flight Selection */}
               <div className="flight-selection-group">
                 <h4>Departure Flight</h4>
+                <div className="form-group">
+                  <label htmlFor="dropoffDate">Drop-off Date <span className="required">*</span></label>
+                  <DatePicker
+                    selected={formData.dropoffDate}
+                    onChange={(date) => handleDateChange(date, 'dropoffDate')}
+                    dateFormat="dd/MM/yyyy"
+                    minDate={new Date()}
+                    placeholderText="Select date"
+                    className="date-picker-input"
+                    id="dropoffDate"
+                  />
+                </div>
                 {loadingDepartures ? (
                   <p className="loading-text">Loading departures...</p>
                 ) : !formData.dropoffDate ? (
