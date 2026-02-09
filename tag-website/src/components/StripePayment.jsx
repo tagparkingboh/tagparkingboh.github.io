@@ -295,9 +295,11 @@ function StripePayment({
         })(),
         drop_off_slot: formData.dropoffSlot || null,
         departure_id: selectedFlight?.id || null,
-        // Return flight details (destination/origin names are looked up from flight tables on backend)
+        // Return flight details
+        arrival_id: selectedArrivalFlight?.id || null,
         pickup_flight_time: selectedArrivalFlight?.time || null,
         pickup_flight_number: selectedArrivalFlight?.flightNumber || null,
+        pickup_origin: selectedArrivalFlight?.originName || null,
         // Promo code (if applied)
         promo_code: promoCode || null,
       }),

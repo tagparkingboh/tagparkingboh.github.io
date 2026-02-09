@@ -3214,9 +3214,11 @@ class CreatePaymentRequest(BaseModel):
     drop_off_slot: Optional[str] = None  # "165" or "120" (minutes before flight)
     departure_id: Optional[int] = None  # ID of the flight departure to book slot on
 
-    # Return flight details (destination/origin names are looked up from flight tables)
+    # Return flight details
+    arrival_id: Optional[int] = None  # ID of the flight arrival
     pickup_flight_time: Optional[str] = None  # Landing time "HH:MM"
     pickup_flight_number: Optional[str] = None
+    pickup_origin: Optional[str] = None  # Origin airport name
 
     # Session tracking
     session_id: Optional[str] = None
@@ -3449,23 +3451,25 @@ async def create_payment(
                     if dropoff_destination == 'Tenerife-Reinasofia':
                         dropoff_destination = 'Tenerife'
 
-            # Look up origin name and arrival_id from arrival table
+            # Use arrival_id and pickup_origin from request if provided
+            arrival_id = request.arrival_id
             pickup_origin = None
-            arrival_id = None
-            if request.pickup_flight_number and pickup_date:
-                arrival = db.query(FlightArrival).filter(
-                    FlightArrival.date == pickup_date,
-                    FlightArrival.flight_number == request.pickup_flight_number
-                ).first()
-                if arrival:
-                    arrival_id = arrival.id
-                    if arrival.origin_name:
-                        # Extract city name from "City, CountryCode" format
-                        parts = arrival.origin_name.split(', ')
-                        pickup_origin = parts[0] if parts else arrival.origin_name
-                        # Shorten Tenerife-Reinasofia to Tenerife
-                        if pickup_origin == 'Tenerife-Reinasofia':
-                            pickup_origin = 'Tenerife'
+
+            if request.pickup_origin:
+                # Format origin name (extract city from "City, CountryCode" format)
+                parts = request.pickup_origin.split(', ')
+                pickup_origin = parts[0] if parts else request.pickup_origin
+                # Shorten Tenerife-Reinasofia to Tenerife
+                if pickup_origin == 'Tenerife-Reinasofia':
+                    pickup_origin = 'Tenerife'
+            elif arrival_id:
+                # Fallback: look up from arrival record
+                arrival = db.query(FlightArrival).filter(FlightArrival.id == arrival_id).first()
+                if arrival and arrival.origin_name:
+                    parts = arrival.origin_name.split(', ')
+                    pickup_origin = parts[0] if parts else arrival.origin_name
+                    if pickup_origin == 'Tenerife-Reinasofia':
+                        pickup_origin = 'Tenerife'
 
             # Create booking with existing IDs
             booking = db_service.create_booking(
@@ -3510,23 +3514,25 @@ async def create_payment(
                     if dropoff_destination == 'Tenerife-Reinasofia':
                         dropoff_destination = 'Tenerife'
 
-            # Look up origin name and arrival_id from arrival table
+            # Use arrival_id and pickup_origin from request if provided
+            arrival_id = request.arrival_id
             pickup_origin = None
-            arrival_id = None
-            if request.pickup_flight_number and pickup_date:
-                arrival = db.query(FlightArrival).filter(
-                    FlightArrival.date == pickup_date,
-                    FlightArrival.flight_number == request.pickup_flight_number
-                ).first()
-                if arrival:
-                    arrival_id = arrival.id
-                    if arrival.origin_name:
-                        # Extract city name from "City, CountryCode" format
-                        parts = arrival.origin_name.split(', ')
-                        pickup_origin = parts[0] if parts else arrival.origin_name
-                        # Shorten Tenerife-Reinasofia to Tenerife
-                        if pickup_origin == 'Tenerife-Reinasofia':
-                            pickup_origin = 'Tenerife'
+
+            if request.pickup_origin:
+                # Format origin name (extract city from "City, CountryCode" format)
+                parts = request.pickup_origin.split(', ')
+                pickup_origin = parts[0] if parts else request.pickup_origin
+                # Shorten Tenerife-Reinasofia to Tenerife
+                if pickup_origin == 'Tenerife-Reinasofia':
+                    pickup_origin = 'Tenerife'
+            elif arrival_id:
+                # Fallback: look up from arrival record
+                arrival = db.query(FlightArrival).filter(FlightArrival.id == arrival_id).first()
+                if arrival and arrival.origin_name:
+                    parts = arrival.origin_name.split(', ')
+                    pickup_origin = parts[0] if parts else arrival.origin_name
+                    if pickup_origin == 'Tenerife-Reinasofia':
+                        pickup_origin = 'Tenerife'
 
             booking_data = db_service.create_full_booking(
                 db=db,
