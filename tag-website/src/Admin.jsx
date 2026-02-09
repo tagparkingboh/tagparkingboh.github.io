@@ -293,13 +293,18 @@ function Admin() {
         ? `${API_URL}/api/admin/flights/departures/${editingFlightId}`
         : `${API_URL}/api/admin/flights/arrivals/${editingFlightId}`
 
+      // Only send editable fields, not the entire flight object
+      const editableFields = flightsSubTab === 'departures'
+        ? { flight_number: editFlightForm.flight_number, departure_time: editFlightForm.departure_time, capacity_tier: editFlightForm.capacity_tier }
+        : { flight_number: editFlightForm.flight_number, arrival_time: editFlightForm.arrival_time }
+
       const response = await fetch(endpoint, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(editFlightForm),
+        body: JSON.stringify(editableFields),
       })
 
       if (response.ok) {
