@@ -5307,6 +5307,9 @@ async def update_admin_departure(
     Update a departure flight.
     Returns warning if capacity is reduced below current bookings.
     """
+    print(f"[FLIGHT UPDATE] Updating departure {departure_id}")
+    print(f"[FLIGHT UPDATE] Request: {update.model_dump()}")
+
     departure = db.query(FlightDeparture).filter(FlightDeparture.id == departure_id).first()
 
     if not departure:
@@ -5373,6 +5376,7 @@ async def update_admin_departure(
 
     db.commit()
     db.refresh(departure)
+    print(f"[FLIGHT UPDATE] Successfully updated departure {departure_id}")
 
     return {
         "success": True,
