@@ -5310,7 +5310,7 @@ async def update_admin_departure(
     bookings_updated = 0
     if new_departure_time and new_departure_time != old_departure_time:
         # Find all bookings linked to this departure
-        linked_bookings = db.query(Booking).filter(Booking.departure_id == departure_id).all()
+        linked_bookings = db.query(DbBooking).filter(DbBooking.departure_id == departure_id).all()
 
         for booking in linked_bookings:
             # Calculate new drop-off time based on slot
@@ -5400,7 +5400,7 @@ async def update_admin_arrival(
     bookings_updated = 0
     if new_arrival_time and new_arrival_time != old_arrival_time:
         # Find all bookings linked to this arrival
-        linked_bookings = db.query(Booking).filter(Booking.arrival_id == arrival_id).all()
+        linked_bookings = db.query(DbBooking).filter(DbBooking.arrival_id == arrival_id).all()
 
         for booking in linked_bookings:
             # Calculate new pickup times based on arrival time
