@@ -23,6 +23,9 @@ function Admin() {
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [bookingToCancel, setBookingToCancel] = useState(null)
   const [markingPaidId, setMarkingPaidId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [bookingToDelete, setBookingToDelete] = useState(null)
   const [resendingEmailId, setResendingEmailId] = useState(null)
   const [showResendModal, setShowResendModal] = useState(false)
   const [bookingToResend, setBookingToResend] = useState(null)
@@ -52,10 +55,15 @@ function Admin() {
   const [leadSearchTerm, setLeadSearchTerm] = useState('')
   const [expandedLeadId, setExpandedLeadId] = useState(null)
 
-  // Pricing settings state
+  // Pricing settings state - all duration tiers
   const [pricing, setPricing] = useState({
-    week1_base_price: 89,
-    week2_base_price: 140,
+    days_1_4_price: 60,
+    days_5_6_price: 72,
+    week1_base_price: 79,    // 7 days
+    days_8_9_price: 99,
+    days_10_11_price: 119,
+    days_12_13_price: 130,
+    week2_base_price: 140,   // 14 days
     tier_increment: 10,
   })
   const [loadingPricing, setLoadingPricing] = useState(false)
@@ -74,6 +82,24 @@ function Admin() {
   const [userToDelete, setUserToDelete] = useState(null)
   const [deletingUser, setDeletingUser] = useState(false)
   const [userSuccessMessage, setUserSuccessMessage] = useState('')
+
+  // Flights management state
+  const [flightsSubTab, setFlightsSubTab] = useState('departures')
+  const [departures, setDepartures] = useState([])
+  const [arrivals, setArrivals] = useState([])
+  const [loadingFlights, setLoadingFlights] = useState(false)
+  const [flightsSortAsc, setFlightsSortAsc] = useState(true)
+  const [flightFilters, setFlightFilters] = useState({ airlines: [], destinations: [], origins: [], months: [] })
+  const [flightDestFilter, setFlightDestFilter] = useState('')
+  const [flightOriginFilter, setFlightOriginFilter] = useState('')
+  const [flightAirlineFilter, setFlightAirlineFilter] = useState('')
+  const [flightMonthFilter, setFlightMonthFilter] = useState('')
+  const [flightNumberFilter, setFlightNumberFilter] = useState('')
+  const [editingFlightId, setEditingFlightId] = useState(null)
+  const [editFlightForm, setEditFlightForm] = useState({})
+  const [savingFlight, setSavingFlight] = useState(false)
+  const [flightsMessage, setFlightsMessage] = useState('')
+  const [exportingFlights, setExportingFlights] = useState(false)
 
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
@@ -130,6 +156,21 @@ function Admin() {
     }
   }, [activeTab, token])
 
+  // Fetch flights when flights tab is active
+  useEffect(() => {
+    if (activeTab === 'flights' && token) {
+      fetchFlightFilters()
+      fetchFlights()
+    }
+  }, [activeTab, token])
+
+  // Re-fetch flights when sub-tab or filters change
+  useEffect(() => {
+    if (activeTab === 'flights' && token) {
+      fetchFlights()
+    }
+  }, [flightsSubTab, flightsSortAsc, flightDestFilter, flightOriginFilter, flightAirlineFilter, flightMonthFilter, flightNumberFilter])
+
   const fetchSubscribers = async () => {
     setLoadingSubscribers(true)
     setError('')
@@ -169,6 +210,142 @@ function Admin() {
       setError('Network error loading users')
     } finally {
       setLoadingUsers(false)
+    }
+  }
+
+  // Flights management functions
+  const fetchFlightFilters = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/flights/filters`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setFlightFilters(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch flight filters:', err)
+    }
+  }
+
+  const fetchFlights = async () => {
+    setLoadingFlights(true)
+    setError('')
+    try {
+      const params = new URLSearchParams()
+      params.append('sort_order', flightsSortAsc ? 'asc' : 'desc')
+      if (flightAirlineFilter) params.append('airline', flightAirlineFilter)
+      if (flightMonthFilter) {
+        const [year, month] = flightMonthFilter.split('-')
+        params.append('year', year)
+        params.append('month', month)
+      }
+      if (flightNumberFilter) params.append('flight_number', flightNumberFilter)
+
+      // Get today's date in UK timezone (YYYY-MM-DD format for comparison)
+      const todayUK = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' })
+
+      if (flightsSubTab === 'departures') {
+        if (flightDestFilter) params.append('destination', flightDestFilter)
+        const response = await fetch(`${API_URL}/api/admin/flights/departures?${params}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        })
+        if (response.ok) {
+          const data = await response.json()
+          // Filter to show only today and future flights
+          const filtered = (data.departures || []).filter(d => d.date >= todayUK)
+          setDepartures(filtered)
+        }
+      } else {
+        if (flightOriginFilter) params.append('origin', flightOriginFilter)
+        const response = await fetch(`${API_URL}/api/admin/flights/arrivals?${params}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        })
+        if (response.ok) {
+          const data = await response.json()
+          // Filter to show only today and future flights
+          const filtered = (data.arrivals || []).filter(a => a.date >= todayUK)
+          setArrivals(filtered)
+        }
+      }
+    } catch (err) {
+      setError('Network error loading flights')
+    } finally {
+      setLoadingFlights(false)
+    }
+  }
+
+  const startEditFlight = (flight) => {
+    setEditingFlightId(flight.id)
+    setEditFlightForm({ ...flight })
+  }
+
+  const cancelEditFlight = () => {
+    setEditingFlightId(null)
+    setEditFlightForm({})
+  }
+
+  const saveFlightEdit = async () => {
+    setSavingFlight(true)
+    setFlightsMessage('')
+    try {
+      const endpoint = flightsSubTab === 'departures'
+        ? `${API_URL}/api/admin/flights/departures/${editingFlightId}`
+        : `${API_URL}/api/admin/flights/arrivals/${editingFlightId}`
+
+      const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editFlightForm),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.warnings && data.warnings.length > 0) {
+          setFlightsMessage(`Saved with warnings: ${data.warnings.join(', ')}`)
+        } else {
+          setFlightsMessage('Flight updated successfully')
+        }
+        setEditingFlightId(null)
+        setEditFlightForm({})
+        fetchFlights()
+        setTimeout(() => setFlightsMessage(''), 3000)
+      } else {
+        const err = await response.json()
+        setFlightsMessage(`Error: ${err.detail || 'Failed to save'}`)
+      }
+    } catch (err) {
+      setFlightsMessage('Network error saving flight')
+    } finally {
+      setSavingFlight(false)
+    }
+  }
+
+  const exportFlights = async () => {
+    setExportingFlights(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/flights/export?flight_type=all`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `flights-export-${new Date().toISOString().split('T')[0]}.json`
+        a.click()
+        URL.revokeObjectURL(url)
+        setFlightsMessage('Export downloaded successfully')
+        setTimeout(() => setFlightsMessage(''), 3000)
+      }
+    } catch (err) {
+      setFlightsMessage('Error exporting flights')
+    } finally {
+      setExportingFlights(false)
     }
   }
 
@@ -314,9 +491,14 @@ function Admin() {
       if (response.ok) {
         const data = await response.json()
         setPricing({
-          week1_base_price: data.week1_base_price,
-          week2_base_price: data.week2_base_price,
-          tier_increment: data.tier_increment,
+          days_1_4_price: data.days_1_4_price ?? 60,
+          days_5_6_price: data.days_5_6_price ?? 72,
+          week1_base_price: data.week1_base_price ?? 79,
+          days_8_9_price: data.days_8_9_price ?? 99,
+          days_10_11_price: data.days_10_11_price ?? 119,
+          days_12_13_price: data.days_12_13_price ?? 130,
+          week2_base_price: data.week2_base_price ?? 140,
+          tier_increment: data.tier_increment ?? 10,
         })
       } else {
         setError('Failed to load pricing settings')
@@ -567,6 +749,44 @@ function Admin() {
       setError('Network error while updating booking')
     } finally {
       setMarkingPaidId(null)
+    }
+  }
+
+  const handleDeleteClick = (booking, e) => {
+    e.stopPropagation()
+    setBookingToDelete(booking)
+    setShowDeleteModal(true)
+  }
+
+  const confirmDeleteBooking = async () => {
+    if (!bookingToDelete) return
+
+    setDeletingId(bookingToDelete.id)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccessMessage(data.message || 'Booking deleted successfully')
+        fetchBookings()
+        setTimeout(() => setSuccessMessage(''), 5000)
+      } else {
+        setError(data.detail || 'Failed to delete booking')
+      }
+    } catch (err) {
+      setError('Network error while deleting booking')
+    } finally {
+      setDeletingId(null)
+      setShowDeleteModal(false)
+      setBookingToDelete(null)
     }
   }
 
@@ -936,6 +1156,24 @@ function Admin() {
                                 <span className="detail-value">{booking.customer?.phone}</span>
                               </div>
                             )}
+                            {/* Billing Address - show for confirmed/completed bookings */}
+                            {booking.customer?.billing_address1 && (
+                              <div className="booking-detail billing-address-detail">
+                                <span className="detail-label">Billing Address</span>
+                                <span className="detail-value billing-address">
+                                  {booking.customer.billing_address1}
+                                  {booking.customer.billing_address2 && <><br />{booking.customer.billing_address2}</>}
+                                  <br />
+                                  {booking.customer.billing_city}
+                                  {booking.customer.billing_county && `, ${booking.customer.billing_county}`}
+                                  <br />
+                                  {booking.customer.billing_postcode}
+                                  {booking.customer.billing_country && booking.customer.billing_country !== 'United Kingdom' && (
+                                    <><br />{booking.customer.billing_country}</>
+                                  )}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -962,7 +1200,9 @@ function Admin() {
                               <div className="booking-detail">
                                 <span className="detail-label">Package</span>
                                 <span className="detail-value">
-                                  {booking.package === 'quick' ? '1 Week' : '2 Weeks'}
+                                  {booking.package === 'quick' ? '1 Week' :
+                                   booking.package === 'longer' ? '2 Weeks' :
+                                   booking.package || 'N/A'}
                                 </span>
                               </div>
                               <div className="booking-detail">
@@ -1129,6 +1369,16 @@ function Admin() {
                                 disabled={markingPaidId === booking.id}
                               >
                                 {markingPaidId === booking.id ? 'Updating...' : 'Mark as Paid'}
+                              </button>
+                            )}
+                            {/* Delete button for pending bookings */}
+                            {booking.status?.toLowerCase() === 'pending' && (
+                              <button
+                                className="action-btn delete-btn"
+                                onClick={(e) => handleDeleteClick(booking, e)}
+                                disabled={deletingId === booking.id}
+                              >
+                                {deletingId === booking.id ? 'Deleting...' : 'Delete'}
                               </button>
                             )}
                           </div>
@@ -1306,8 +1556,293 @@ function Admin() {
 
         {activeTab === 'flights' && (
           <div className="admin-section">
-            <h2>Flight Schedule</h2>
-            <p className="admin-coming-soon">Flight management coming soon...</p>
+            <div className="flights-header">
+              <h2>Flight Schedule</h2>
+              <div className="flights-header-actions">
+                <button
+                  className="btn-secondary"
+                  onClick={() => fetchFlights()}
+                  disabled={loadingFlights}
+                >
+                  ↻ Refresh
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={exportFlights}
+                  disabled={exportingFlights}
+                >
+                  {exportingFlights ? 'Exporting...' : '↓ Export JSON'}
+                </button>
+              </div>
+            </div>
+
+            {flightsMessage && (
+              <div className={`flights-message ${flightsMessage.includes('Error') || flightsMessage.includes('Warning') ? 'warning' : 'success'}`}>
+                {flightsMessage}
+              </div>
+            )}
+
+            {/* Sub-tabs */}
+            <div className="flights-subtabs">
+              <button
+                className={`flights-subtab ${flightsSubTab === 'departures' ? 'active' : ''}`}
+                onClick={() => { setEditingFlightId(null); setFlightsSubTab('departures'); }}
+              >
+                Departures ({departures.length})
+              </button>
+              <button
+                className={`flights-subtab ${flightsSubTab === 'arrivals' ? 'active' : ''}`}
+                onClick={() => { setEditingFlightId(null); setFlightsSubTab('arrivals'); }}
+              >
+                Arrivals ({arrivals.length})
+              </button>
+            </div>
+
+            {/* Filters */}
+            <div className="flights-filters">
+              <div className="flight-filter-group">
+                <label>Airline:</label>
+                <select
+                  value={flightAirlineFilter}
+                  onChange={(e) => setFlightAirlineFilter(e.target.value)}
+                >
+                  <option value="">All Airlines</option>
+                  {flightFilters.airlines?.map(a => (
+                    <option key={a.code} value={a.code}>{a.code} - {a.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flight-filter-group">
+                <label>Flight #:</label>
+                <input
+                  type="text"
+                  value={flightNumberFilter}
+                  onChange={(e) => setFlightNumberFilter(e.target.value.toUpperCase())}
+                  placeholder="e.g. BA123"
+                  className="flight-number-input"
+                />
+              </div>
+
+              {flightsSubTab === 'departures' ? (
+                <div className="flight-filter-group">
+                  <label>Destination:</label>
+                  <select
+                    value={flightDestFilter}
+                    onChange={(e) => setFlightDestFilter(e.target.value)}
+                  >
+                    <option value="">All Destinations</option>
+                    {flightFilters.destinations?.map(d => (
+                      <option key={d.code} value={d.code}>{d.code} - {d.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="flight-filter-group">
+                  <label>Origin:</label>
+                  <select
+                    value={flightOriginFilter}
+                    onChange={(e) => setFlightOriginFilter(e.target.value)}
+                  >
+                    <option value="">All Origins</option>
+                    {flightFilters.origins?.map(o => (
+                      <option key={o.code} value={o.code}>{o.code} - {o.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="flight-filter-group">
+                <label>Month:</label>
+                <select
+                  value={flightMonthFilter}
+                  onChange={(e) => setFlightMonthFilter(e.target.value)}
+                >
+                  <option value="">All Months</option>
+                  {flightFilters.months?.map(m => (
+                    <option key={`${m.year}-${m.month}`} value={`${m.year}-${m.month}`}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                className="sort-toggle-btn"
+                onClick={() => setFlightsSortAsc(!flightsSortAsc)}
+                title={flightsSortAsc ? 'Sorted oldest first' : 'Sorted newest first'}
+              >
+                Date {flightsSortAsc ? '↑' : '↓'}
+              </button>
+            </div>
+
+            {/* Data Table */}
+            {loadingFlights ? (
+              <p className="loading-text">Loading flights...</p>
+            ) : flightsSubTab === 'departures' ? (
+              <div className="flights-table-wrapper">
+                <table className="flights-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Airline</th>
+                      <th>Flight #</th>
+                      <th>Departure Time</th>
+                      <th>Destination</th>
+                      <th>Capacity Tier</th>
+                      <th>Early</th>
+                      <th>Late</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {departures.map(d => (
+                      <tr key={d.id} className={editingFlightId === d.id ? 'editing' : ''}>
+                        {editingFlightId === d.id ? (
+                          <>
+                            <td>{d.date ? d.date.split('-').reverse().join('/') : ''}</td>
+                            <td>{d.airline_name}</td>
+                            <td>
+                              <input
+                                type="text"
+                                value={editFlightForm.flight_number || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, flight_number: e.target.value})}
+                                className="flight-edit-input small"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="time"
+                                value={editFlightForm.departure_time || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, departure_time: e.target.value})}
+                                className="flight-edit-input"
+                              />
+                            </td>
+                            <td>{d.destination_name}</td>
+                            <td>
+                              <select
+                                value={editFlightForm.capacity_tier ?? ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, capacity_tier: parseInt(e.target.value)})}
+                                className="flight-edit-input"
+                              >
+                                <option value="0">0 (Call Us)</option>
+                                <option value="2">2 (1+1)</option>
+                                <option value="4">4 (2+2)</option>
+                                <option value="6">6 (3+3)</option>
+                                <option value="8">8 (4+4)</option>
+                              </select>
+                            </td>
+                            <td>
+                              <span className="slots-display">
+                                {d.slots_booked_early}/{d.max_slots_per_time}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="slots-display">
+                                {d.slots_booked_late}/{d.max_slots_per_time}
+                              </span>
+                            </td>
+                            <td className="flight-actions">
+                              <button className="btn-save" onClick={saveFlightEdit} disabled={savingFlight}>
+                                {savingFlight ? '...' : '✓'}
+                              </button>
+                              <button className="btn-cancel" onClick={cancelEditFlight}>✕</button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td>{d.date ? d.date.split('-').reverse().join('/') : ''}</td>
+                            <td>{d.airline_name}</td>
+                            <td>{d.flight_number}</td>
+                            <td>{d.departure_time}</td>
+                            <td>{d.destination_name}</td>
+                            <td>
+                              <span className={`capacity-badge tier-${d.capacity_tier}`}>
+                                {d.capacity_tier === 0 ? 'Call' : d.capacity_tier}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="slots-display">
+                                {d.slots_booked_early}/{d.max_slots_per_time}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="slots-display">
+                                {d.slots_booked_late}/{d.max_slots_per_time}
+                              </span>
+                            </td>
+                            <td className="flight-actions">
+                              <button className="btn-edit" onClick={() => startEditFlight(d)}>Edit</button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {departures.length === 0 && <p className="no-data">No departures found</p>}
+              </div>
+            ) : (
+              <div className="flights-table-wrapper">
+                <table className="flights-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Airline</th>
+                      <th>Flight #</th>
+                      <th>Origin</th>
+                      <th>Arrival Time</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {arrivals.map(a => (
+                      <tr key={a.id} className={editingFlightId === a.id ? 'editing' : ''}>
+                        {editingFlightId === a.id ? (
+                          <>
+                            <td>{a.date ? a.date.split('-').reverse().join('/') : ''}</td>
+                            <td>{a.airline_name}</td>
+                            <td>
+                              <input
+                                type="text"
+                                value={editFlightForm.flight_number || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, flight_number: e.target.value})}
+                                className="flight-edit-input small"
+                              />
+                            </td>
+                            <td>{a.origin_name}</td>
+                            <td>
+                              <input
+                                type="time"
+                                value={editFlightForm.arrival_time || ''}
+                                onChange={(e) => setEditFlightForm({...editFlightForm, arrival_time: e.target.value})}
+                                className="flight-edit-input"
+                              />
+                            </td>
+                            <td className="flight-actions">
+                              <button className="btn-save" onClick={saveFlightEdit} disabled={savingFlight}>
+                                {savingFlight ? '...' : '✓'}
+                              </button>
+                              <button className="btn-cancel" onClick={cancelEditFlight}>✕</button>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td>{a.date ? a.date.split('-').reverse().join('/') : ''}</td>
+                            <td>{a.airline_name}</td>
+                            <td>{a.flight_number}</td>
+                            <td>{a.origin_name}</td>
+                            <td>{a.arrival_time}</td>
+                            <td className="flight-actions">
+                              <button className="btn-edit" onClick={() => startEditFlight(a)}>Edit</button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {arrivals.length === 0 && <p className="no-data">No arrivals found</p>}
+              </div>
+            )}
           </div>
         )}
 
@@ -1699,9 +2234,41 @@ function Admin() {
               <div className="pricing-settings-form">
                 <div className="admin-pricing-section">
                   <h3>Base Prices (Early Booking Tier)</h3>
-                  <p className="pricing-hint">These are the prices when customers book 14+ days in advance.</p>
+                  <p className="pricing-hint">These are the prices when customers book 14+ days in advance. Standard tier adds the increment once, Late tier adds it twice.</p>
 
-                  <div className="pricing-inputs">
+                  <div className="pricing-inputs pricing-inputs-grid">
+                    <div className="pricing-input-group">
+                      <label>1-4 Days</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.days_1_4_price}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, days_1_4_price: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pricing-input-group">
+                      <label>5-6 Days</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.days_5_6_price}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, days_5_6_price: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                    </div>
+
                     <div className="pricing-input-group">
                       <label>1 Week Trip</label>
                       <div className="price-input-wrapper">
@@ -1713,6 +2280,54 @@ function Admin() {
                           onChange={(e) => {
                             const val = e.target.value.replace(/[^0-9.]/g, '')
                             setPricing({ ...pricing, week1_base_price: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pricing-input-group">
+                      <label>8-9 Days</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.days_8_9_price}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, days_8_9_price: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pricing-input-group">
+                      <label>10-11 Days</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.days_10_11_price}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, days_10_11_price: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pricing-input-group">
+                      <label>12-13 Days</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.days_12_13_price}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, days_12_13_price: parseFloat(val) || 0 })
                           }}
                         />
                       </div>
@@ -1733,9 +2348,15 @@ function Admin() {
                         />
                       </div>
                     </div>
+                  </div>
+                </div>
 
-                    <div className="pricing-input-group pricing-input-small">
-                      <label>Tier Increment</label>
+                <div className="admin-pricing-section tier-increment-section">
+                  <h3>Tier Increment</h3>
+                  <p className="pricing-hint">This amount is added for Standard tier (+1x) and Late tier (+2x) bookings.</p>
+                  <div className="pricing-inputs">
+                    <div className="pricing-input-group pricing-input-highlight">
+                      <label>Increment Amount</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
@@ -1758,7 +2379,7 @@ function Admin() {
                   <table className="pricing-preview-table">
                     <thead>
                       <tr>
-                        <th>Package</th>
+                        <th>Duration</th>
                         <th>Early (14+ days)</th>
                         <th>Standard (7-13 days)</th>
                         <th>Late (&lt;7 days)</th>
@@ -1766,13 +2387,43 @@ function Admin() {
                     </thead>
                     <tbody>
                       <tr>
-                        <td>1 Week</td>
+                        <td>1-4 Days</td>
+                        <td>£{pricing.days_1_4_price}</td>
+                        <td>£{pricing.days_1_4_price + pricing.tier_increment}</td>
+                        <td>£{pricing.days_1_4_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>5-6 Days</td>
+                        <td>£{pricing.days_5_6_price}</td>
+                        <td>£{pricing.days_5_6_price + pricing.tier_increment}</td>
+                        <td>£{pricing.days_5_6_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>1 Week Trip</td>
                         <td>£{pricing.week1_base_price}</td>
                         <td>£{pricing.week1_base_price + pricing.tier_increment}</td>
                         <td>£{pricing.week1_base_price + (pricing.tier_increment * 2)}</td>
                       </tr>
                       <tr>
-                        <td>2 Weeks</td>
+                        <td>8-9 Days</td>
+                        <td>£{pricing.days_8_9_price}</td>
+                        <td>£{pricing.days_8_9_price + pricing.tier_increment}</td>
+                        <td>£{pricing.days_8_9_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>10-11 Days</td>
+                        <td>£{pricing.days_10_11_price}</td>
+                        <td>£{pricing.days_10_11_price + pricing.tier_increment}</td>
+                        <td>£{pricing.days_10_11_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>12-13 Days</td>
+                        <td>£{pricing.days_12_13_price}</td>
+                        <td>£{pricing.days_12_13_price + pricing.tier_increment}</td>
+                        <td>£{pricing.days_12_13_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>2 Week Trip</td>
                         <td>£{pricing.week2_base_price}</td>
                         <td>£{pricing.week2_base_price + pricing.tier_increment}</td>
                         <td>£{pricing.week2_base_price + (pricing.tier_increment * 2)}</td>
@@ -1827,6 +2478,36 @@ function Admin() {
                 disabled={cancellingId}
               >
                 {cancellingId ? 'Cancelling...' : 'Yes, Cancel Booking'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Pending Booking Modal */}
+      {showDeleteModal && bookingToDelete && (
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Pending Booking</h3>
+            <p>Are you sure you want to permanently delete this booking? This action cannot be undone.</p>
+            <div className="modal-booking-info">
+              <p><strong>Reference:</strong> {bookingToDelete.reference}</p>
+              <p><strong>Customer:</strong> {bookingToDelete.customer?.first_name} {bookingToDelete.customer?.last_name}</p>
+              <p><strong>Drop-off:</strong> {formatDate(bookingToDelete.dropoff_date)}</p>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowDeleteModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-danger"
+                onClick={confirmDeleteBooking}
+                disabled={deletingId}
+              >
+                {deletingId ? 'Deleting...' : 'Yes, Delete Booking'}
               </button>
             </div>
           </div>

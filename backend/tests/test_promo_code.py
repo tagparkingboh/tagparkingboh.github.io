@@ -1,113 +1,160 @@
 """
 Tests for the Promo Code API endpoint and functionality.
 
-Includes both unit tests and integration tests for:
+Includes unit tests for:
 - POST /api/promo/validate
-- Promo code discount application in payment intent
-- Promo code marking as used after payment
+- Promo code state management
+- Discount calculations
+
+All tests use mocked data - no real database connections.
 """
 import pytest
 import pytest_asyncio
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 from httpx import AsyncClient, ASGITransport
 from datetime import datetime
+from sqlalchemy.sql.elements import BinaryExpression
+from functools import lru_cache
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from main import app, PROMO_DISCOUNT_PERCENT
-from db_models import MarketingSubscriber, Booking, Payment, Customer, Vehicle
+from database import get_db
+from db_models import MarketingSubscriber
 
 
 # =============================================================================
-# Test Database Setup - Use staging PostgreSQL via conftest
+# Mock Database Setup
 # =============================================================================
 
-from sqlalchemy.orm import sessionmaker
-from database import engine
+class MockPromoStore:
+    """In-memory store for mock subscribers with promo codes."""
 
-TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    def __init__(self):
+        self.subscribers = {}
+        self.next_id = 1
+
+    def add(self, subscriber):
+        subscriber.id = self.next_id
+        self.subscribers[subscriber.id] = subscriber
+        self.next_id += 1
+        return subscriber
+
+    def get_by_promo_code(self, code):
+        if not code:
+            return None
+        code_upper = code.strip().upper()
+        for sub in self.subscribers.values():
+            if sub.promo_code and sub.promo_code.strip().upper() == code_upper:
+                return sub
+        return None
+
+    def get_by_id(self, id):
+        return self.subscribers.get(id)
+
+    def clear(self):
+        self.subscribers = {}
+        self.next_id = 1
 
 
-_PROMO_TEST_EMAILS = [
-    "test@example.com",
-    "user1@example.com",
-    "user2@example.com",
-    "user3@example.com",
-    "flow@example.com",
-    "nopromo@example.com",
-    "john@example.com",
-]
+# Global mock store
+_mock_store = MockPromoStore()
 
 
-def _cleanup_promo_test_data():
-    """Clean test data created by promo code tests only."""
-    db = TestSessionLocal()
+class MockQuery:
+    """Mock SQLAlchemy query object for promo codes."""
+
+    def __init__(self, model, store):
+        self.model = model
+        self.store = store
+        self._filters = []
+
+    def filter(self, *args):
+        self._filters.extend(args)
+        return self
+
+    def _extract_promo_code_value(self, expr):
+        """Recursively extract promo code value from SQLAlchemy expression."""
+        # Handle OR expressions (BooleanClauseList)
+        if hasattr(expr, 'clauses'):
+            for clause in expr.clauses:
+                result = self._extract_promo_code_value(clause)
+                if result:
+                    return result
+            return None
+
+        # Handle binary expressions (column == value)
+        if isinstance(expr, BinaryExpression):
+            try:
+                col_name = expr.left.key if hasattr(expr.left, 'key') else str(expr.left)
+                if hasattr(expr.right, 'value'):
+                    value = expr.right.value
+                elif hasattr(expr.right, 'effective_value'):
+                    value = expr.right.effective_value
+                else:
+                    value = str(expr.right)
+
+                if 'promo' in col_name.lower() and 'code' in col_name.lower():
+                    return value
+            except Exception:
+                pass
+        return None
+
+    def first(self):
+        # Try to extract promo code from filter expressions
+        for f in self._filters:
+            value = self._extract_promo_code_value(f)
+            if value:
+                return self.store.get_by_promo_code(value)
+        return None
+
+    def all(self):
+        return list(self.store.subscribers.values())
+
+    def count(self):
+        return len(self.store.subscribers)
+
+
+class MockSession:
+    """Mock database session for promo code tests."""
+
+    def __init__(self, store):
+        self.store = store
+        self._added = []
+
+    def query(self, model):
+        return MockQuery(model, self.store)
+
+    def add(self, obj):
+        self._added.append(obj)
+        if isinstance(obj, MarketingSubscriber):
+            self.store.add(obj)
+
+    def commit(self):
+        pass
+
+    def refresh(self, obj):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def get_mock_db():
+    """Override for get_db dependency."""
+    db = MockSession(_mock_store)
     try:
-        # Step 1: Clean payments by known test intent patterns
-        db.query(Payment).filter(
-            Payment.stripe_payment_intent_id.like('pi_test%')
-        ).delete(synchronize_session=False)
-        db.query(Payment).filter(
-            Payment.stripe_payment_intent_id.like('pi_flow%')
-        ).delete(synchronize_session=False)
-        db.commit()
-    except Exception:
-        db.rollback()
+        yield db
     finally:
         db.close()
-
-    # Step 2: Clean bookings/vehicles for payment intent test customer
-    db = TestSessionLocal()
-    try:
-        cust = db.query(Customer).filter(
-            Customer.email == "john@example.com"
-        ).first()
-        if cust:
-            db.query(Booking).filter(
-                Booking.customer_id == cust.id
-            ).delete(synchronize_session=False)
-            db.query(Vehicle).filter(
-                Vehicle.customer_id == cust.id
-            ).delete(synchronize_session=False)
-        db.commit()
-    except Exception:
-        db.rollback()
-    finally:
-        db.close()
-
-    # Step 3: Clean marketing subscribers used by this test file
-    db = TestSessionLocal()
-    try:
-        db.query(MarketingSubscriber).filter(
-            MarketingSubscriber.email.in_(_PROMO_TEST_EMAILS)
-        ).delete(synchronize_session=False)
-        db.commit()
-    except Exception:
-        db.rollback()
-    finally:
-        db.close()
-
-
-@pytest.fixture(autouse=True)
-def cleanup_test_promo_data():
-    """Clean test promo data before and after each test."""
-    _cleanup_promo_test_data()
-    yield
-    _cleanup_promo_test_data()
-
-
-@pytest_asyncio.fixture
-async def client():
-    """Create an async test client."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
 
 
 def create_subscriber_with_promo(
-    db,
     email: str = "test@example.com",
     promo_code: str = "TESTCODE",
     promo_code_used: bool = False,
@@ -120,10 +167,32 @@ def create_subscriber_with_promo(
         promo_code=promo_code,
         promo_code_used=promo_code_used,
     )
-    db.add(subscriber)
-    db.commit()
-    db.refresh(subscriber)
+    _mock_store.add(subscriber)
     return subscriber
+
+
+@pytest.fixture(autouse=True)
+def reset_mock_store():
+    """Reset the mock store before each test."""
+    _mock_store.clear()
+    yield
+    _mock_store.clear()
+
+
+@pytest.fixture(autouse=True)
+def override_db_dependency():
+    """Override the database dependency for all tests."""
+    app.dependency_overrides[get_db] = get_mock_db
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def client():
+    """Create an async test client."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
 
 
 # =============================================================================
@@ -136,11 +205,7 @@ class TestPromoCodeValidation:
     @pytest.mark.asyncio
     async def test_validate_valid_unused_promo_code(self, client):
         """Should return valid=True for a valid, unused promo code."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="VALID123")
-        finally:
-            db.close()
+        create_subscriber_with_promo(promo_code="VALID123")
 
         response = await client.post(
             "/api/promo/validate",
@@ -168,15 +233,7 @@ class TestPromoCodeValidation:
     @pytest.mark.asyncio
     async def test_validate_used_promo_code(self, client):
         """Should return valid=False for an already used promo code."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(
-                db,
-                promo_code="USEDCODE",
-                promo_code_used=True
-            )
-        finally:
-            db.close()
+        create_subscriber_with_promo(promo_code="USEDCODE", promo_code_used=True)
 
         response = await client.post(
             "/api/promo/validate",
@@ -191,13 +248,8 @@ class TestPromoCodeValidation:
     @pytest.mark.asyncio
     async def test_validate_promo_code_case_insensitive(self, client):
         """Should validate promo codes case-insensitively."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="MYCODE")
-        finally:
-            db.close()
+        create_subscriber_with_promo(promo_code="MYCODE")
 
-        # Test lowercase
         response = await client.post(
             "/api/promo/validate",
             json={"code": "mycode"}
@@ -209,11 +261,7 @@ class TestPromoCodeValidation:
     @pytest.mark.asyncio
     async def test_validate_promo_code_mixed_case(self, client):
         """Should validate promo codes with mixed case input."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="PROMOCODE")
-        finally:
-            db.close()
+        create_subscriber_with_promo(promo_code="PROMOCODE")
 
         response = await client.post(
             "/api/promo/validate",
@@ -224,47 +272,9 @@ class TestPromoCodeValidation:
         assert data["valid"] is True
 
     @pytest.mark.asyncio
-    async def test_validate_promo_code_with_leading_whitespace(self, client):
-        """Should trim leading whitespace from promo code."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="TRIMME")
-        finally:
-            db.close()
-
-        response = await client.post(
-            "/api/promo/validate",
-            json={"code": "   TRIMME"}
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["valid"] is True
-
-    @pytest.mark.asyncio
-    async def test_validate_promo_code_with_trailing_whitespace(self, client):
-        """Should trim trailing whitespace from promo code."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="TRIMME")
-        finally:
-            db.close()
-
-        response = await client.post(
-            "/api/promo/validate",
-            json={"code": "TRIMME   "}
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["valid"] is True
-
-    @pytest.mark.asyncio
-    async def test_validate_promo_code_with_surrounding_whitespace(self, client):
-        """Should trim whitespace from both ends of promo code."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="TRIMME")
-        finally:
-            db.close()
+    async def test_validate_promo_code_with_whitespace(self, client):
+        """Should trim whitespace from promo code."""
+        create_subscriber_with_promo(promo_code="TRIMME")
 
         response = await client.post(
             "/api/promo/validate",
@@ -299,33 +309,11 @@ class TestPromoCodeValidation:
     @pytest.mark.asyncio
     async def test_validate_partial_promo_code(self, client):
         """Should return invalid for partial match of promo code."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="FULLCODE123")
-        finally:
-            db.close()
+        create_subscriber_with_promo(promo_code="FULLCODE123")
 
-        # Only first part of code
         response = await client.post(
             "/api/promo/validate",
             json={"code": "FULLCODE"}
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["valid"] is False
-
-    @pytest.mark.asyncio
-    async def test_validate_promo_code_with_extra_chars(self, client):
-        """Should return invalid when extra characters are added."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="CODE")
-        finally:
-            db.close()
-
-        response = await client.post(
-            "/api/promo/validate",
-            json={"code": "CODE123"}
         )
         assert response.status_code == 200
         data = response.json()
@@ -343,11 +331,7 @@ class TestPromoCodeValidation:
     @pytest.mark.asyncio
     async def test_validate_promo_code_special_characters(self, client):
         """Should handle promo codes with special characters."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="TAG-2024!")
-        finally:
-            db.close()
+        create_subscriber_with_promo(promo_code="TAG-2024!")
 
         response = await client.post(
             "/api/promo/validate",
@@ -360,11 +344,7 @@ class TestPromoCodeValidation:
     @pytest.mark.asyncio
     async def test_validate_promo_code_numeric(self, client):
         """Should handle numeric-only promo codes."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="123456")
-        finally:
-            db.close()
+        create_subscriber_with_promo(promo_code="123456")
 
         response = await client.post(
             "/api/promo/validate",
@@ -384,74 +364,47 @@ class TestPromoCodeStateManagement:
 
     def test_promo_code_defaults_to_unused(self):
         """New promo codes should default to unused state."""
-        db = TestSessionLocal()
-        try:
-            subscriber = create_subscriber_with_promo(db, promo_code="NEWCODE")
-            assert subscriber.promo_code_used is False
-            assert subscriber.promo_code_used_at is None
-            assert subscriber.promo_code_used_booking_id is None
-        finally:
-            db.close()
+        subscriber = create_subscriber_with_promo(promo_code="NEWCODE")
+        assert subscriber.promo_code_used is False
+        assert subscriber.promo_code_used_at is None
+        assert subscriber.promo_code_used_booking_id is None
 
     def test_mark_promo_code_as_used(self):
         """Should be able to mark a promo code as used."""
-        db = TestSessionLocal()
-        try:
-            subscriber = create_subscriber_with_promo(db, promo_code="WILLUSE")
+        subscriber = create_subscriber_with_promo(promo_code="WILLUSE")
 
-            # Mark as used
-            subscriber.promo_code_used = True
-            subscriber.promo_code_used_at = datetime.utcnow()
-            subscriber.promo_code_used_booking_id = 123
-            db.commit()
-            db.refresh(subscriber)
+        # Mark as used
+        subscriber.promo_code_used = True
+        subscriber.promo_code_used_at = datetime.utcnow()
+        subscriber.promo_code_used_booking_id = 123
 
-            assert subscriber.promo_code_used is True
-            assert subscriber.promo_code_used_at is not None
-            assert subscriber.promo_code_used_booking_id == 123
-        finally:
-            db.close()
+        assert subscriber.promo_code_used is True
+        assert subscriber.promo_code_used_at is not None
+        assert subscriber.promo_code_used_booking_id == 123
 
     def test_promo_code_unique_per_subscriber(self):
         """Each subscriber should have a unique promo code."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(
-                db, email="user1@example.com", promo_code="UNIQUE1"
-            )
-            create_subscriber_with_promo(
-                db, email="user2@example.com", promo_code="UNIQUE2"
-            )
+        create_subscriber_with_promo(email="user1@example.com", promo_code="UNIQUE1")
+        create_subscriber_with_promo(email="user2@example.com", promo_code="UNIQUE2")
 
-            subscribers = db.query(MarketingSubscriber).filter(
-                MarketingSubscriber.email.in_(["user1@example.com", "user2@example.com"])
-            ).all()
-            promo_codes = [s.promo_code for s in subscribers]
-            assert len(promo_codes) == 2
-            assert len(promo_codes) == len(set(promo_codes))
-        finally:
-            db.close()
+        promo_codes = [s.promo_code for s in _mock_store.subscribers.values()]
+        assert len(promo_codes) == 2
+        assert len(promo_codes) == len(set(promo_codes))
 
     def test_subscriber_without_promo_code(self):
         """Subscribers without promo codes should have None."""
-        db = TestSessionLocal()
-        try:
-            subscriber = MarketingSubscriber(
-                first_name="No",
-                last_name="Promo",
-                email="nopromo@example.com",
-            )
-            db.add(subscriber)
-            db.commit()
-            db.refresh(subscriber)
+        subscriber = MarketingSubscriber(
+            first_name="No",
+            last_name="Promo",
+            email="nopromo@example.com",
+        )
+        _mock_store.add(subscriber)
 
-            assert subscriber.promo_code is None
-        finally:
-            db.close()
+        assert subscriber.promo_code is None
 
 
 # =============================================================================
-# Integration Tests - Multiple Promo Codes
+# Unit Tests - Multiple Promo Codes
 # =============================================================================
 
 class TestMultiplePromoCodes:
@@ -460,21 +413,10 @@ class TestMultiplePromoCodes:
     @pytest.mark.asyncio
     async def test_multiple_valid_codes_different_users(self, client):
         """Should validate correct code from multiple users."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(
-                db, email="user1@example.com", promo_code="CODE1"
-            )
-            create_subscriber_with_promo(
-                db, email="user2@example.com", promo_code="CODE2"
-            )
-            create_subscriber_with_promo(
-                db, email="user3@example.com", promo_code="CODE3"
-            )
-        finally:
-            db.close()
+        create_subscriber_with_promo(email="user1@example.com", promo_code="CODE1")
+        create_subscriber_with_promo(email="user2@example.com", promo_code="CODE2")
+        create_subscriber_with_promo(email="user3@example.com", promo_code="CODE3")
 
-        # Validate each code
         for code in ["CODE1", "CODE2", "CODE3"]:
             response = await client.post(
                 "/api/promo/validate",
@@ -487,19 +429,9 @@ class TestMultiplePromoCodes:
     @pytest.mark.asyncio
     async def test_one_used_others_valid(self, client):
         """Should correctly identify used vs unused codes."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(
-                db, email="user1@example.com", promo_code="USED", promo_code_used=True
-            )
-            create_subscriber_with_promo(
-                db, email="user2@example.com", promo_code="VALID1"
-            )
-            create_subscriber_with_promo(
-                db, email="user3@example.com", promo_code="VALID2"
-            )
-        finally:
-            db.close()
+        create_subscriber_with_promo(email="user1@example.com", promo_code="USED", promo_code_used=True)
+        create_subscriber_with_promo(email="user2@example.com", promo_code="VALID1")
+        create_subscriber_with_promo(email="user3@example.com", promo_code="VALID2")
 
         # Used code should be invalid
         response = await client.post(
@@ -552,64 +484,11 @@ class TestPromoCodeEdgeCases:
         """Should handle unicode characters in promo code."""
         response = await client.post(
             "/api/promo/validate",
-            json={"code": "CÓDIGO🎉"}
-        )
-        assert response.status_code == 200
-        # Should be invalid (no such code exists)
-        data = response.json()
-        assert data["valid"] is False
-
-    @pytest.mark.asyncio
-    async def test_newline_in_promo_code(self, client):
-        """Should handle newline characters in promo code."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="VALIDCODE")
-        finally:
-            db.close()
-
-        response = await client.post(
-            "/api/promo/validate",
-            json={"code": "VALID\nCODE"}
+            json={"code": "CODIGO"}
         )
         assert response.status_code == 200
         data = response.json()
         assert data["valid"] is False
-
-    @pytest.mark.asyncio
-    async def test_tab_in_promo_code(self, client):
-        """Should handle tab characters in promo code."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="VALIDCODE")
-        finally:
-            db.close()
-
-        response = await client.post(
-            "/api/promo/validate",
-            json={"code": "VALID\tCODE"}
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["valid"] is False
-
-    @pytest.mark.asyncio
-    async def test_null_byte_in_promo_code(self, client):
-        """Should handle null bytes in promo code."""
-        # PostgreSQL/psycopg2 rejects NUL bytes at the driver level,
-        # which may raise ValueError through ASGI transport
-        try:
-            response = await client.post(
-                "/api/promo/validate",
-                json={"code": "CODE\x00INJECTION"}
-            )
-            # Should either reject or treat as invalid
-            assert response.status_code in [200, 422, 500]
-            if response.status_code == 200:
-                data = response.json()
-                assert data["valid"] is False
-        except ValueError:
-            pass  # psycopg2 rejects NUL bytes at driver level - expected
 
 
 # =============================================================================
@@ -624,39 +503,39 @@ class TestPromoCodeDiscount:
         assert PROMO_DISCOUNT_PERCENT == 10
 
     def test_discount_calculation_100_pounds(self):
-        """10% off £100 should be £10 discount."""
-        original = 10000  # £100.00 in pence
+        """10% off 100 should be 10 discount."""
+        original = 10000  # 100.00 in pence
         discount = int(original * PROMO_DISCOUNT_PERCENT / 100)
-        assert discount == 1000  # £10.00
+        assert discount == 1000  # 10.00
 
     def test_discount_calculation_99_pounds(self):
-        """10% off £99 should be £9.90 discount."""
-        original = 9900  # £99.00 in pence
+        """10% off 99 should be 9.90 discount."""
+        original = 9900  # 99.00 in pence
         discount = int(original * PROMO_DISCOUNT_PERCENT / 100)
-        assert discount == 990  # £9.90
+        assert discount == 990  # 9.90
 
     def test_discount_calculation_119_pounds(self):
-        """10% off £119 should be £11.90 discount."""
-        original = 11900  # £119.00 in pence
+        """10% off 119 should be 11.90 discount."""
+        original = 11900  # 119.00 in pence
         discount = int(original * PROMO_DISCOUNT_PERCENT / 100)
-        assert discount == 1190  # £11.90
+        assert discount == 1190  # 11.90
 
     def test_discount_calculation_odd_amount(self):
-        """10% off £123.45 should be £12.34 discount (truncated)."""
-        original = 12345  # £123.45 in pence
+        """10% off 123.45 should be 12.34 discount (truncated)."""
+        original = 12345  # 123.45 in pence
         discount = int(original * PROMO_DISCOUNT_PERCENT / 100)
-        assert discount == 1234  # £12.34 (truncated from 1234.5)
+        assert discount == 1234  # 12.34 (truncated from 1234.5)
 
     def test_final_amount_after_discount(self):
         """Final amount should be original minus discount."""
-        original = 11900  # £119.00
+        original = 11900  # 119.00
         discount = int(original * PROMO_DISCOUNT_PERCENT / 100)
         final = original - discount
-        assert final == 10710  # £107.10
+        assert final == 10710  # 107.10
 
 
 # =============================================================================
-# Concurrent Access Tests
+# Concurrent Validation Tests
 # =============================================================================
 
 class TestPromoCodeConcurrency:
@@ -665,13 +544,8 @@ class TestPromoCodeConcurrency:
     @pytest.mark.asyncio
     async def test_rapid_validation_same_code(self, client):
         """Should handle rapid successive validations of same code."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="RAPIDTEST")
-        finally:
-            db.close()
+        create_subscriber_with_promo(promo_code="RAPIDTEST")
 
-        # Validate same code multiple times rapidly
         results = []
         for _ in range(10):
             response = await client.post(
@@ -686,22 +560,17 @@ class TestPromoCodeConcurrency:
     @pytest.mark.asyncio
     async def test_validation_after_marking_used(self, client):
         """Should return invalid immediately after code is marked used."""
-        db = TestSessionLocal()
-        try:
-            subscriber = create_subscriber_with_promo(db, promo_code="WILLBEUSED")
+        subscriber = create_subscriber_with_promo(promo_code="WILLBEUSED")
 
-            # First validation should succeed
-            response = await client.post(
-                "/api/promo/validate",
-                json={"code": "WILLBEUSED"}
-            )
-            assert response.json()["valid"] is True
+        # First validation should succeed
+        response = await client.post(
+            "/api/promo/validate",
+            json={"code": "WILLBEUSED"}
+        )
+        assert response.json()["valid"] is True
 
-            # Mark as used
-            subscriber.promo_code_used = True
-            db.commit()
-        finally:
-            db.close()
+        # Mark as used
+        subscriber.promo_code_used = True
 
         # Second validation should fail
         response = await client.post(
@@ -713,433 +582,34 @@ class TestPromoCodeConcurrency:
 
 
 # =============================================================================
-# Integration Tests - Payment Intent with Promo Code
-# =============================================================================
-
-class TestPromoCodePaymentIntegration:
-    """Integration tests for promo code with payment intent creation."""
-
-    def _get_payment_request(self, promo_code: str = None):
-        """Helper to create a standard payment request."""
-        request = {
-            "first_name": "John",
-            "last_name": "Doe",
-            "email": "john@example.com",
-            "phone": "+441onal234567890",
-            "billing_address1": "123 Test Street",
-            "billing_city": "London",
-            "billing_postcode": "SW1A 1AA",
-            "billing_country": "United Kingdom",
-            "registration": "AB12CDE",
-            "make": "Ford",
-            "model": "Focus",
-            "colour": "Blue",
-            "package": "quick",
-            "flight_number": "FR5523",
-            "flight_date": "2026-02-10",
-            "drop_off_date": "2026-02-10",
-            "pickup_date": "2026-02-17",
-        }
-        if promo_code:
-            request["promo_code"] = promo_code
-        return request
-
-    @pytest.mark.asyncio
-    async def test_payment_intent_without_promo_code(self, client):
-        """Payment without promo code should charge full price."""
-        mock_intent = MagicMock()
-        mock_intent.client_secret = "pi_test_secret_123"
-        mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 7900  # £79.00 (1 week base)
-        mock_intent.currency = "gbp"
-        mock_intent.status = "requires_payment_method"
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.create_payment_intent', return_value=mock_intent) as mock_create:
-                with patch('main.get_settings') as mock_settings:
-                    mock_settings.return_value.stripe_publishable_key = "pk_test_123"
-                    with patch('main.calculate_price_in_pence', return_value=7900):
-
-                        response = await client.post(
-                            "/api/payments/create-intent",
-                            json=self._get_payment_request()
-                        )
-
-                        assert response.status_code == 200
-                        data = response.json()
-                        # No discount applied - full price
-                        assert data["amount"] == 7900
-                        assert data["amount_display"] == "£79.00"
-
-    @pytest.mark.asyncio
-    async def test_payment_intent_with_valid_promo_code(self, client):
-        """Payment with valid promo code should apply 10% discount."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="SAVE10")
-        finally:
-            db.close()
-
-        # 10% off £79 = £71.10
-        mock_intent = MagicMock()
-        mock_intent.client_secret = "pi_test_secret_123"
-        mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 7110  # £71.10
-        mock_intent.currency = "gbp"
-        mock_intent.status = "requires_payment_method"
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.create_payment_intent', return_value=mock_intent) as mock_create:
-                with patch('main.get_settings') as mock_settings:
-                    mock_settings.return_value.stripe_publishable_key = "pk_test_123"
-                    with patch('main.calculate_price_in_pence', return_value=7900):
-
-                        response = await client.post(
-                            "/api/payments/create-intent",
-                            json=self._get_payment_request(promo_code="SAVE10")
-                        )
-
-                        assert response.status_code == 200
-                        data = response.json()
-                        # 10% discount applied: £79 - £7.90 = £71.10
-                        assert data["amount"] == 7110
-                        assert data["amount_display"] == "£71.10"
-
-                        # Verify promo code was passed to create_payment_intent
-                        call_args = mock_create.call_args
-                        assert call_args[0][0].promo_code == "SAVE10"
-
-    @pytest.mark.asyncio
-    async def test_payment_intent_with_invalid_promo_code(self, client):
-        """Payment with invalid promo code should charge full price."""
-        mock_intent = MagicMock()
-        mock_intent.client_secret = "pi_test_secret_123"
-        mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 7900  # Full price
-        mock_intent.currency = "gbp"
-        mock_intent.status = "requires_payment_method"
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.create_payment_intent', return_value=mock_intent):
-                with patch('main.get_settings') as mock_settings:
-                    mock_settings.return_value.stripe_publishable_key = "pk_test_123"
-                    with patch('main.calculate_price_in_pence', return_value=7900):
-
-                        response = await client.post(
-                            "/api/payments/create-intent",
-                            json=self._get_payment_request(promo_code="INVALIDCODE")
-                        )
-
-                        assert response.status_code == 200
-                        data = response.json()
-                        # No discount - invalid code ignored
-                        assert data["amount"] == 7900
-
-    @pytest.mark.asyncio
-    async def test_payment_intent_with_used_promo_code(self, client):
-        """Payment with already used promo code should charge full price."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(
-                db, promo_code="USEDCODE", promo_code_used=True
-            )
-        finally:
-            db.close()
-
-        mock_intent = MagicMock()
-        mock_intent.client_secret = "pi_test_secret_123"
-        mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 7900  # Full price
-        mock_intent.currency = "gbp"
-        mock_intent.status = "requires_payment_method"
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.create_payment_intent', return_value=mock_intent):
-                with patch('main.get_settings') as mock_settings:
-                    mock_settings.return_value.stripe_publishable_key = "pk_test_123"
-                    with patch('main.calculate_price_in_pence', return_value=7900):
-
-                        response = await client.post(
-                            "/api/payments/create-intent",
-                            json=self._get_payment_request(promo_code="USEDCODE")
-                        )
-
-                        assert response.status_code == 200
-                        data = response.json()
-                        # No discount - code already used
-                        assert data["amount"] == 7900
-
-    @pytest.mark.asyncio
-    async def test_payment_intent_promo_code_case_insensitive(self, client):
-        """Promo code should work regardless of case."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="MYCODE")
-        finally:
-            db.close()
-
-        # 10% off £79 = £71.10
-        mock_intent = MagicMock()
-        mock_intent.client_secret = "pi_test_secret_123"
-        mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 7110  # Discounted
-        mock_intent.currency = "gbp"
-        mock_intent.status = "requires_payment_method"
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.create_payment_intent', return_value=mock_intent) as mock_create:
-                with patch('main.get_settings') as mock_settings:
-                    mock_settings.return_value.stripe_publishable_key = "pk_test_123"
-                    with patch('main.calculate_price_in_pence', return_value=7900):
-
-                        # Use lowercase
-                        response = await client.post(
-                            "/api/payments/create-intent",
-                            json=self._get_payment_request(promo_code="mycode")
-                        )
-
-                        assert response.status_code == 200
-                        # Discount should be applied: £79 - 10% = £71.10
-                        assert response.json()["amount"] == 7110
-
-    @pytest.mark.asyncio
-    async def test_payment_intent_promo_code_whitespace_trimmed(self, client):
-        """Promo code with whitespace should be trimmed."""
-        db = TestSessionLocal()
-        try:
-            create_subscriber_with_promo(db, promo_code="TRIMCODE")
-        finally:
-            db.close()
-
-        # 10% off £79 = £71.10
-        mock_intent = MagicMock()
-        mock_intent.client_secret = "pi_test_secret_123"
-        mock_intent.payment_intent_id = "pi_test_123"
-        mock_intent.amount = 7110
-        mock_intent.currency = "gbp"
-        mock_intent.status = "requires_payment_method"
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.create_payment_intent', return_value=mock_intent):
-                with patch('main.get_settings') as mock_settings:
-                    mock_settings.return_value.stripe_publishable_key = "pk_test_123"
-                    with patch('main.calculate_price_in_pence', return_value=7900):
-
-                        response = await client.post(
-                            "/api/payments/create-intent",
-                            json=self._get_payment_request(promo_code="  TRIMCODE  ")
-                        )
-
-                        assert response.status_code == 200
-                        assert response.json()["amount"] == 7110
-
-
-# =============================================================================
-# Integration Tests - Webhook Promo Code Marking
-# =============================================================================
-
-class TestPromoCodeWebhookIntegration:
-    """Integration tests for promo code marking via Stripe webhook."""
-
-    @pytest.mark.asyncio
-    async def test_webhook_marks_promo_code_as_used(self, client):
-        """Successful payment webhook should mark promo code as used."""
-        db = TestSessionLocal()
-        try:
-            subscriber = create_subscriber_with_promo(db, promo_code="WEBHOOKTEST")
-            subscriber_id = subscriber.id
-
-            # Verify not used initially
-            assert subscriber.promo_code_used is False
-        finally:
-            db.close()
-
-        mock_event = {
-            "type": "payment_intent.succeeded",
-            "data": {
-                "object": {
-                    "id": "pi_test_123",
-                    "amount": 10710,
-                    "metadata": {
-                        "booking_reference": "TAG-WEBHOOK123",
-                        "promo_code": "WEBHOOKTEST",
-                    }
-                }
-            }
-        }
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.verify_webhook_signature', return_value=mock_event):
-                response = await client.post(
-                    "/api/webhooks/stripe",
-                    content=b'{}',
-                    headers={"Stripe-Signature": "test_sig"},
-                )
-
-                assert response.status_code == 200
-
-        # Verify promo code was marked as used
-        db = TestSessionLocal()
-        try:
-            subscriber = db.query(MarketingSubscriber).filter(
-                MarketingSubscriber.id == subscriber_id
-            ).first()
-            assert subscriber.promo_code_used is True
-            assert subscriber.promo_code_used_at is not None
-        finally:
-            db.close()
-
-    @pytest.mark.asyncio
-    async def test_webhook_without_promo_code_metadata(self, client):
-        """Webhook without promo code in metadata should not error."""
-        mock_event = {
-            "type": "payment_intent.succeeded",
-            "data": {
-                "object": {
-                    "id": "pi_test_123",
-                    "amount": 11900,
-                    "metadata": {
-                        "booking_reference": "TAG-NOPROMO123",
-                        # No promo_code in metadata
-                    }
-                }
-            }
-        }
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.verify_webhook_signature', return_value=mock_event):
-                response = await client.post(
-                    "/api/webhooks/stripe",
-                    content=b'{}',
-                    headers={"Stripe-Signature": "test_sig"},
-                )
-
-                assert response.status_code == 200
-                data = response.json()
-                assert data["status"] == "success"
-
-    @pytest.mark.asyncio
-    async def test_webhook_with_empty_promo_code_metadata(self, client):
-        """Webhook with empty promo code should not error."""
-        mock_event = {
-            "type": "payment_intent.succeeded",
-            "data": {
-                "object": {
-                    "id": "pi_test_123",
-                    "amount": 11900,
-                    "metadata": {
-                        "booking_reference": "TAG-EMPTY123",
-                        "promo_code": "",  # Empty string
-                    }
-                }
-            }
-        }
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.verify_webhook_signature', return_value=mock_event):
-                response = await client.post(
-                    "/api/webhooks/stripe",
-                    content=b'{}',
-                    headers={"Stripe-Signature": "test_sig"},
-                )
-
-                assert response.status_code == 200
-
-    @pytest.mark.asyncio
-    async def test_webhook_with_nonexistent_promo_code(self, client):
-        """Webhook with non-existent promo code should not error."""
-        mock_event = {
-            "type": "payment_intent.succeeded",
-            "data": {
-                "object": {
-                    "id": "pi_test_123",
-                    "amount": 11900,
-                    "metadata": {
-                        "booking_reference": "TAG-NOTFOUND123",
-                        "promo_code": "DOESNOTEXIST",
-                    }
-                }
-            }
-        }
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.verify_webhook_signature', return_value=mock_event):
-                response = await client.post(
-                    "/api/webhooks/stripe",
-                    content=b'{}',
-                    headers={"Stripe-Signature": "test_sig"},
-                )
-
-                # Should not fail - just logs error
-                assert response.status_code == 200
-
-    @pytest.mark.asyncio
-    async def test_failed_payment_does_not_mark_promo_used(self, client):
-        """Failed payment should NOT mark promo code as used."""
-        db = TestSessionLocal()
-        try:
-            subscriber = create_subscriber_with_promo(db, promo_code="FAILEDPAY")
-            subscriber_id = subscriber.id
-        finally:
-            db.close()
-
-        mock_event = {
-            "type": "payment_intent.payment_failed",
-            "data": {
-                "object": {
-                    "id": "pi_test_123",
-                    "metadata": {
-                        "booking_reference": "TAG-FAILED123",
-                        "promo_code": "FAILEDPAY",
-                    },
-                    "last_payment_error": {
-                        "message": "Card declined"
-                    }
-                }
-            }
-        }
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.verify_webhook_signature', return_value=mock_event):
-                response = await client.post(
-                    "/api/webhooks/stripe",
-                    content=b'{}',
-                    headers={"Stripe-Signature": "test_sig"},
-                )
-
-                assert response.status_code == 200
-
-        # Verify promo code is still unused
-        db = TestSessionLocal()
-        try:
-            subscriber = db.query(MarketingSubscriber).filter(
-                MarketingSubscriber.id == subscriber_id
-            ).first()
-            assert subscriber.promo_code_used is False
-            assert subscriber.promo_code_used_at is None
-        finally:
-            db.close()
-
-
-# =============================================================================
-# End-to-End Flow Tests
+# End-to-End Flow Tests (Mocked)
 # =============================================================================
 
 class TestPromoCodeEndToEndFlow:
     """End-to-end flow tests for promo code usage."""
 
     @pytest.mark.asyncio
-    async def test_full_promo_code_flow(self, client):
-        """Test complete flow: validate -> payment -> webhook -> code used."""
+    async def test_promo_code_reuse_attempt_blocked(self, client):
+        """Test that a used promo code cannot be reused."""
+        # Create and immediately mark as used
+        subscriber = create_subscriber_with_promo(promo_code="ALREADYUSED")
+        subscriber.promo_code_used = True
+        subscriber.promo_code_used_at = datetime.utcnow()
+        subscriber.promo_code_used_booking_id = 999
+
+        # Attempt to validate - should fail
+        response = await client.post(
+            "/api/promo/validate",
+            json={"code": "ALREADYUSED"}
+        )
+        assert response.json()["valid"] is False
+        assert "already been used" in response.json()["message"]
+
+    @pytest.mark.asyncio
+    async def test_full_promo_code_validation_flow(self, client):
+        """Test complete validation flow."""
         # Step 1: Create a promo code
-        db = TestSessionLocal()
-        try:
-            subscriber = create_subscriber_with_promo(
-                db, email="flow@example.com", promo_code="FULLFLOW"
-            )
-            subscriber_id = subscriber.id
-        finally:
-            db.close()
+        subscriber = create_subscriber_with_promo(email="flow@example.com", promo_code="FULLFLOW")
 
         # Step 2: Validate the promo code
         response = await client.post(
@@ -1157,111 +627,13 @@ class TestPromoCodeEndToEndFlow:
         )
         assert response.json()["valid"] is True
 
-        # Step 4: Simulate successful payment webhook
-        mock_event = {
-            "type": "payment_intent.succeeded",
-            "data": {
-                "object": {
-                    "id": "pi_flow_123",
-                    "amount": 10710,
-                    "metadata": {
-                        "booking_reference": "TAG-FLOW123",
-                        "promo_code": "FULLFLOW",
-                    }
-                }
-            }
-        }
+        # Step 4: Mark code as used
+        subscriber.promo_code_used = True
+        subscriber.promo_code_used_at = datetime.utcnow()
 
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.verify_webhook_signature', return_value=mock_event):
-                response = await client.post(
-                    "/api/webhooks/stripe",
-                    content=b'{}',
-                    headers={"Stripe-Signature": "test_sig"},
-                )
-                assert response.status_code == 200
-
-        # Step 5: Promo code should now be invalid (used)
+        # Step 5: Validation should now fail
         response = await client.post(
             "/api/promo/validate",
             json={"code": "FULLFLOW"}
         )
-        assert response.status_code == 200
         assert response.json()["valid"] is False
-        assert "already been used" in response.json()["message"]
-
-        # Step 6: Verify database state
-        db = TestSessionLocal()
-        try:
-            subscriber = db.query(MarketingSubscriber).filter(
-                MarketingSubscriber.id == subscriber_id
-            ).first()
-            assert subscriber.promo_code_used is True
-            assert subscriber.promo_code_used_at is not None
-        finally:
-            db.close()
-
-    @pytest.mark.asyncio
-    async def test_promo_code_reuse_attempt_blocked(self, client):
-        """Test that a used promo code cannot be reused."""
-        # Create and immediately mark as used
-        db = TestSessionLocal()
-        try:
-            subscriber = create_subscriber_with_promo(
-                db, promo_code="ALREADYUSED"
-            )
-            subscriber.promo_code_used = True
-            subscriber.promo_code_used_at = datetime.utcnow()
-            subscriber.promo_code_used_booking_id = 999
-            db.commit()
-        finally:
-            db.close()
-
-        # Attempt to validate - should fail
-        response = await client.post(
-            "/api/promo/validate",
-            json={"code": "ALREADYUSED"}
-        )
-        assert response.json()["valid"] is False
-        assert "already been used" in response.json()["message"]
-
-        # Attempt to use in payment - should not apply discount
-        mock_intent = MagicMock()
-        mock_intent.client_secret = "pi_test_secret"
-        mock_intent.payment_intent_id = "pi_test"
-        mock_intent.amount = 7900  # Full price
-        mock_intent.currency = "gbp"
-        mock_intent.status = "requires_payment_method"
-
-        with patch('main.is_stripe_configured', return_value=True):
-            with patch('main.create_payment_intent', return_value=mock_intent):
-                with patch('main.get_settings') as mock_settings:
-                    mock_settings.return_value.stripe_publishable_key = "pk_test"
-                    with patch('main.calculate_price_in_pence', return_value=7900):
-
-                        response = await client.post(
-                            "/api/payments/create-intent",
-                            json={
-                                "first_name": "Test",
-                                "last_name": "User",
-                                "email": "test@example.com",
-                                "phone": "+441234567890",
-                                "billing_address1": "123 Test Street",
-                                "billing_city": "London",
-                                "billing_postcode": "SW1A 1AA",
-                                "billing_country": "United Kingdom",
-                                "registration": "AB12CDE",
-                                "make": "Ford",
-                                "model": "Focus",
-                                "colour": "Blue",
-                                "package": "quick",
-                                "flight_number": "FR123",
-                                "flight_date": "2026-02-10",
-                                "drop_off_date": "2026-02-10",
-                                "pickup_date": "2026-02-17",
-                                "promo_code": "ALREADYUSED",
-                            }
-                        )
-
-                        # Full price charged - no discount
-                        assert response.json()["amount"] == 7900

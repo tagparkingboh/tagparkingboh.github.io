@@ -29,12 +29,17 @@ def get_pricing_from_db() -> dict:
     Fetch pricing settings from database.
 
     Returns:
-        Dictionary with week1_base_price, week2_base_price, tier_increment
+        Dictionary with all duration-based prices and tier_increment.
         Returns defaults if database is unavailable or no settings exist.
     """
     defaults = {
-        "week1_base_price": 89.0,
-        "week2_base_price": 140.0,
+        "days_1_4_price": 60.0,
+        "days_5_6_price": 72.0,
+        "week1_base_price": 79.0,   # 7 days
+        "days_8_9_price": 99.0,
+        "days_10_11_price": 119.0,
+        "days_12_13_price": 130.0,
+        "week2_base_price": 140.0,  # 14 days
         "tier_increment": 10.0,
     }
 
@@ -47,21 +52,87 @@ def get_pricing_from_db() -> dict:
 
         conn = psycopg2.connect(database_url)
         cur = conn.cursor()
-        cur.execute("SELECT week1_base_price, week2_base_price, tier_increment FROM pricing_settings LIMIT 1")
+        cur.execute("""
+            SELECT days_1_4_price, days_5_6_price, week1_base_price,
+                   days_8_9_price, days_10_11_price, days_12_13_price,
+                   week2_base_price, tier_increment
+            FROM pricing_settings LIMIT 1
+        """)
         row = cur.fetchone()
         cur.close()
         conn.close()
 
         if row:
             return {
-                "week1_base_price": float(row[0]),
-                "week2_base_price": float(row[1]),
-                "tier_increment": float(row[2]),
+                "days_1_4_price": float(row[0]) if row[0] else defaults["days_1_4_price"],
+                "days_5_6_price": float(row[1]) if row[1] else defaults["days_5_6_price"],
+                "week1_base_price": float(row[2]) if row[2] else defaults["week1_base_price"],
+                "days_8_9_price": float(row[3]) if row[3] else defaults["days_8_9_price"],
+                "days_10_11_price": float(row[4]) if row[4] else defaults["days_10_11_price"],
+                "days_12_13_price": float(row[5]) if row[5] else defaults["days_12_13_price"],
+                "week2_base_price": float(row[6]) if row[6] else defaults["week2_base_price"],
+                "tier_increment": float(row[7]) if row[7] else defaults["tier_increment"],
             }
         return defaults
     except Exception:
         # If anything fails, use defaults
         return defaults
+
+
+def get_duration_tier(duration_days: int) -> str:
+    """
+    Get the duration tier key based on number of days.
+
+    Args:
+        duration_days: Number of days for the trip (1-14)
+
+    Returns:
+        Duration tier key: "1_4", "5_6", "7", "8_9", "10_11", "12_13", or "14"
+    """
+    if duration_days <= 4:
+        return "1_4"
+    elif duration_days <= 6:
+        return "5_6"
+    elif duration_days == 7:
+        return "7"
+    elif duration_days <= 9:
+        return "8_9"
+    elif duration_days <= 11:
+        return "10_11"
+    elif duration_days <= 13:
+        return "12_13"
+    else:
+        return "14"
+
+
+def get_base_price_for_duration(duration_days: int, pricing: dict = None) -> float:
+    """
+    Get the base (early tier) price for a given duration.
+
+    Args:
+        duration_days: Number of days for the trip (1-14)
+        pricing: Optional pricing dict, fetched from DB if not provided
+
+    Returns:
+        Base price in pounds for the early booking tier
+    """
+    if pricing is None:
+        pricing = get_pricing_from_db()
+
+    tier = get_duration_tier(duration_days)
+
+    # Map duration tier to pricing field
+    price_map = {
+        "1_4": pricing["days_1_4_price"],
+        "5_6": pricing["days_5_6_price"],
+        "7": pricing["week1_base_price"],
+        "8_9": pricing["days_8_9_price"],
+        "10_11": pricing["days_10_11_price"],
+        "12_13": pricing["days_12_13_price"],
+        "14": pricing["week2_base_price"],
+    }
+
+    return price_map.get(tier, pricing["week2_base_price"])
 
 
 # Cache for pricing settings (refreshed every request in production)
@@ -92,25 +163,60 @@ class BookingService:
         "longer": 14,  # 2 weeks
     }
 
-    # Default pricing matrix (used as fallback if database unavailable)
-    # Advance tiers: "early" (>=14 days), "standard" (7-13 days), "late" (<7 days)
-    DEFAULT_PACKAGE_PRICES = {
-        "quick": {
-            "early": 89.0,     # >=14 days in advance
-            "standard": 99.0,  # 7-13 days in advance
-            "late": 109.0,     # <7 days in advance
-        },
-        "longer": {
-            "early": 140.0,    # >=14 days in advance
-            "standard": 150.0, # 7-13 days in advance
-            "late": 160.0,     # <7 days in advance
-        },
-    }
+    @classmethod
+    def get_all_duration_prices(cls) -> dict:
+        """
+        Get current pricing for all duration tiers from database.
+
+        Returns:
+            Dict with prices for each duration tier and advance tier
+        """
+        pricing = get_pricing_from_db()
+        increment = pricing["tier_increment"]
+
+        return {
+            "1_4": {
+                "early": pricing["days_1_4_price"],
+                "standard": pricing["days_1_4_price"] + increment,
+                "late": pricing["days_1_4_price"] + (increment * 2),
+            },
+            "5_6": {
+                "early": pricing["days_5_6_price"],
+                "standard": pricing["days_5_6_price"] + increment,
+                "late": pricing["days_5_6_price"] + (increment * 2),
+            },
+            "7": {
+                "early": pricing["week1_base_price"],
+                "standard": pricing["week1_base_price"] + increment,
+                "late": pricing["week1_base_price"] + (increment * 2),
+            },
+            "8_9": {
+                "early": pricing["days_8_9_price"],
+                "standard": pricing["days_8_9_price"] + increment,
+                "late": pricing["days_8_9_price"] + (increment * 2),
+            },
+            "10_11": {
+                "early": pricing["days_10_11_price"],
+                "standard": pricing["days_10_11_price"] + increment,
+                "late": pricing["days_10_11_price"] + (increment * 2),
+            },
+            "12_13": {
+                "early": pricing["days_12_13_price"],
+                "standard": pricing["days_12_13_price"] + increment,
+                "late": pricing["days_12_13_price"] + (increment * 2),
+            },
+            "14": {
+                "early": pricing["week2_base_price"],
+                "standard": pricing["week2_base_price"] + increment,
+                "late": pricing["week2_base_price"] + (increment * 2),
+            },
+        }
 
     @classmethod
     def get_package_prices(cls) -> dict:
         """
-        Get current pricing from database, falling back to defaults.
+        Get current pricing from database for legacy "quick"/"longer" packages.
+        For backwards compatibility with existing code.
 
         Returns:
             Dict with package prices for each tier
@@ -134,13 +240,6 @@ class BookingService:
             },
         }
 
-    # Property for backwards compatibility with existing code
-    @classmethod
-    @property
-    def PACKAGE_PRICES(cls) -> dict:
-        """Dynamic pricing - fetches from database."""
-        return cls.get_package_prices()
-
     @classmethod
     def get_advance_tier(cls, drop_off_date: date) -> str:
         """
@@ -152,7 +251,6 @@ class BookingService:
         Returns:
             "early" if >=14 days, "standard" if 7-13 days, "late" if <7 days
         """
-        from datetime import timedelta
         today = date.today()
         days_in_advance = (drop_off_date - today).days
 
@@ -164,11 +262,27 @@ class BookingService:
             return "late"
 
     @classmethod
+    def calculate_price_for_duration(cls, duration_days: int, drop_off_date: date) -> float:
+        """
+        Calculate the price based on trip duration and advance booking tier.
+
+        Args:
+            duration_days: Number of days for the trip (1-14)
+            drop_off_date: The date of drop-off
+
+        Returns:
+            The price in pounds
+        """
+        advance_tier = cls.get_advance_tier(drop_off_date)
+        duration_tier = get_duration_tier(duration_days)
+        all_prices = cls.get_all_duration_prices()
+        return all_prices[duration_tier][advance_tier]
+
+    @classmethod
     def calculate_price(cls, package: str, drop_off_date: date) -> float:
         """
         Calculate the price based on package and advance booking tier.
-
-        Fetches current pricing from database.
+        Legacy method for backwards compatibility.
 
         Args:
             package: "quick" (1 week) or "longer" (2 weeks)
@@ -182,28 +296,45 @@ class BookingService:
         return prices[package][tier]
 
     @classmethod
-    def get_package_for_duration(cls, drop_off_date: date, pickup_date: date) -> str:
+    def get_duration_days(cls, drop_off_date: date, pickup_date: date) -> int:
         """
-        Determine the package based on the duration between drop-off and pickup.
+        Calculate the number of days between drop-off and pickup.
 
         Args:
             drop_off_date: The date of drop-off
             pickup_date: The date of pickup
 
         Returns:
-            "quick" for 7 days, "longer" for 14 days
+            Number of days
+        """
+        return (pickup_date - drop_off_date).days
+
+    @classmethod
+    def get_package_for_duration(cls, drop_off_date: date, pickup_date: date) -> str:
+        """
+        Determine the package based on the duration between drop-off and pickup.
+        Maps to "quick" (1-7 days) or "longer" (8-14 days) for backwards compatibility.
+
+        Args:
+            drop_off_date: The date of drop-off
+            pickup_date: The date of pickup
+
+        Returns:
+            "quick" for 1-7 days, "longer" for 8-14 days
 
         Raises:
-            ValueError: If duration is not exactly 7 or 14 days
+            ValueError: If duration is less than 1 or more than 14 days
         """
         duration = (pickup_date - drop_off_date).days
 
-        if duration == 7:
+        if duration < 1:
+            raise ValueError(f"Invalid duration: {duration} days. Must be at least 1 day.")
+        elif duration > 14:
+            raise ValueError(f"Invalid duration: {duration} days. Maximum is 14 days.")
+        elif duration <= 7:
             return "quick"
-        elif duration == 14:
-            return "longer"
         else:
-            raise ValueError(f"Invalid duration: {duration} days. Must be exactly 7 or 14 days.")
+            return "longer"
 
     def __init__(self, flights_data_path: Optional[str] = None):
         """

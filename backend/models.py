@@ -257,8 +257,12 @@ class ManualBookingRequest(BaseModel):
     return_flight_number: Optional[str] = None
 
     # Payment
-    stripe_payment_link: str
+    stripe_payment_link: Optional[str] = None  # Not required for free bookings
     amount_pence: int
+
+    # Promo code (optional)
+    promo_code: Optional[str] = None
+    is_free_booking: bool = False
 
     # Notes
     notes: Optional[str] = None

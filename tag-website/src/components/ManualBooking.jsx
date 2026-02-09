@@ -40,6 +40,7 @@ function ManualBooking({ token }) {
     dropoffTime: null,
     pickupTime: null,
     // Payment
+    promoCode: '',
     stripePaymentLink: '',
     amount: '',
     notes: '',
@@ -65,6 +66,16 @@ function ManualBooking({ token }) {
   const [arrivalsForDate, setArrivalsForDate] = useState([])
   const [loadingDepartures, setLoadingDepartures] = useState(false)
   const [loadingArrivals, setLoadingArrivals] = useState(false)
+
+  // Auto-pricing state
+  const [pricingLoading, setPricingLoading] = useState(false)
+  const [calculatedPrice, setCalculatedPrice] = useState(null)
+
+  // Promo code state
+  const [promoValidating, setPromoValidating] = useState(false)
+  const [promoValid, setPromoValid] = useState(null) // null = not checked, true/false
+  const [promoDiscount, setPromoDiscount] = useState(null) // { percent, amount, isFree }
+  const [promoMessage, setPromoMessage] = useState('')
 
   // Fetch departures when dropoff date changes
   useEffect(() => {
@@ -127,6 +138,54 @@ function ManualBooking({ token }) {
       pickupFlight: '',
     }))
   }, [formData.pickupDate])
+
+  // Auto-calculate price when both dates are set
+  useEffect(() => {
+    const calculatePrice = async () => {
+      if (!formData.dropoffDate || !formData.pickupDate) {
+        setCalculatedPrice(null)
+        return
+      }
+
+      // Calculate duration
+      const duration = Math.round((formData.pickupDate - formData.dropoffDate) / (1000 * 60 * 60 * 24))
+      if (duration < 1 || duration > 14) {
+        setCalculatedPrice(null)
+        return
+      }
+
+      setPricingLoading(true)
+      try {
+        const dropoffStr = format(formData.dropoffDate, 'yyyy-MM-dd')
+        const pickupStr = format(formData.pickupDate, 'yyyy-MM-dd')
+        const response = await fetch(`${API_URL}/api/pricing/calculate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            drop_off_date: dropoffStr,
+            pickup_date: pickupStr,
+          }),
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setCalculatedPrice(data.price)
+          // Auto-fill amount if empty or if it matches a previous calculated price
+          setFormData(prev => {
+            if (!prev.amount || prev.amount === '' || prev.amount === String(calculatedPrice)) {
+              return { ...prev, amount: String(data.price) }
+            }
+            return prev
+          })
+        }
+      } catch (error) {
+        console.error('Error calculating price:', error)
+      } finally {
+        setPricingLoading(false)
+      }
+    }
+
+    calculatePrice()
+  }, [formData.dropoffDate, formData.pickupDate])
 
   // Get unique airlines from departures
   const airlines = useMemo(() => {
@@ -353,6 +412,74 @@ function ManualBooking({ token }) {
     }
   }
 
+  // Validate promo code and calculate discount
+  const validatePromoCode = async () => {
+    if (!formData.promoCode.trim()) {
+      setPromoValid(null)
+      setPromoMessage('')
+      setPromoDiscount(null)
+      return
+    }
+
+    setPromoValidating(true)
+    setPromoMessage('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/promo/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: formData.promoCode.trim() }),
+      })
+
+      const data = await response.json()
+
+      if (data.valid) {
+        setPromoValid(true)
+        setPromoMessage(data.message)
+
+        // Calculate discount based on duration
+        if (calculatedPrice && formData.dropoffDate && formData.pickupDate) {
+          const duration = Math.round((formData.pickupDate - formData.dropoffDate) / (1000 * 60 * 60 * 24))
+
+          if (data.discount_percent === 100) {
+            // FREE promo
+            if (duration <= 7) {
+              // Completely free
+              setPromoDiscount({ percent: 100, amount: calculatedPrice, isFree: true })
+              setFormData(prev => ({ ...prev, amount: '0' }))
+            } else {
+              // Deduct 1-week base (need to fetch from pricing API)
+              const pricingResponse = await fetch(`${API_URL}/api/pricing`)
+              const pricing = await pricingResponse.json()
+              const week1Base = pricing.week1_base_price || 79
+              const discountAmount = Math.min(week1Base, calculatedPrice)
+              const finalPrice = calculatedPrice - discountAmount
+              setPromoDiscount({ percent: 100, amount: discountAmount, isFree: false })
+              setFormData(prev => ({ ...prev, amount: String(finalPrice) }))
+            }
+          } else {
+            // Percentage discount (e.g., 10%)
+            const discountAmount = calculatedPrice * data.discount_percent / 100
+            const finalPrice = calculatedPrice - discountAmount
+            setPromoDiscount({ percent: data.discount_percent, amount: discountAmount, isFree: false })
+            setFormData(prev => ({ ...prev, amount: String(finalPrice.toFixed(2)) }))
+          }
+        }
+      } else {
+        setPromoValid(false)
+        setPromoMessage(data.message || 'Invalid promo code')
+        setPromoDiscount(null)
+      }
+    } catch (error) {
+      console.error('Promo validation error:', error)
+      setPromoValid(false)
+      setPromoMessage('Unable to validate promo code')
+      setPromoDiscount(null)
+    } finally {
+      setPromoValidating(false)
+    }
+  }
+
   // Handle address selection from dropdown
   const handleAddressSelect = (e) => {
     const selectedUprn = e.target.value
@@ -400,6 +527,7 @@ function ManualBooking({ token }) {
 
   // Form validation
   const isFormValid = () => {
+    const isFreeBooking = promoDiscount?.isFree
     const baseValid = (
       formData.firstName &&
       formData.lastName &&
@@ -413,7 +541,7 @@ function ManualBooking({ token }) {
       formData.colour &&
       formData.dropoffDate &&
       formData.pickupDate &&
-      formData.stripePaymentLink &&
+      (isFreeBooking || formData.stripePaymentLink) &&
       formData.amount
     )
 
@@ -472,6 +600,7 @@ function ManualBooking({ token }) {
     setSuccess(false)
 
     // Build request body
+    const isFreeBooking = promoDiscount?.isFree
     const requestBody = {
       first_name: formData.firstName,
       last_name: formData.lastName,
@@ -491,9 +620,12 @@ function ManualBooking({ token }) {
       dropoff_time: getDropoffTime(),
       pickup_date: format(formData.pickupDate, 'yyyy-MM-dd'),
       pickup_time: getPickupTime(),
-      stripe_payment_link: formData.stripePaymentLink,
+      stripe_payment_link: isFreeBooking ? '' : formData.stripePaymentLink,
       amount_pence: Math.round(parseFloat(formData.amount) * 100),
       notes: formData.notes,
+      // Promo code info
+      promo_code: promoValid ? formData.promoCode.trim().toUpperCase() : null,
+      is_free_booking: isFreeBooking || false,
     }
 
     // Add flight data if using flight selection (not manual time)
@@ -548,6 +680,7 @@ function ManualBooking({ token }) {
           useManualTime: false,
           dropoffTime: null,
           pickupTime: null,
+          promoCode: '',
           stripePaymentLink: '',
           amount: '',
           notes: '',
@@ -556,6 +689,11 @@ function ManualBooking({ token }) {
         setAddressList([])
         setDeparturesForDate([])
         setArrivalsForDate([])
+        // Reset promo state
+        setPromoValid(null)
+        setPromoMessage('')
+        setPromoDiscount(null)
+        setCalculatedPrice(null)
       } else {
         const data = await response.json()
         // Handle Pydantic validation errors (array) or string errors
@@ -921,18 +1059,20 @@ function ManualBooking({ token }) {
                 id="dropoffDate"
               />
             </div>
-            <div className="form-group">
-              <label htmlFor="pickupDate">Pick-up Date <span className="required">*</span></label>
-              <DatePicker
-                selected={formData.pickupDate}
-                onChange={(date) => handleDateChange(date, 'pickupDate')}
-                dateFormat="dd/MM/yyyy"
-                minDate={formData.dropoffDate || new Date()}
-                placeholderText="Select date"
-                className="date-picker-input"
-                id="pickupDate"
-              />
-            </div>
+            {formData.useManualTime && (
+              <div className="form-group">
+                <label htmlFor="pickupDate">Pick-up Date <span className="required">*</span></label>
+                <DatePicker
+                  selected={formData.pickupDate}
+                  onChange={(date) => handleDateChange(date, 'pickupDate')}
+                  dateFormat="dd/MM/yyyy"
+                  minDate={formData.dropoffDate || new Date()}
+                  placeholderText="Select date"
+                  className="date-picker-input"
+                  id="pickupDate"
+                />
+              </div>
+            )}
           </div>
 
           {formData.useManualTime ? (
@@ -1059,6 +1199,18 @@ function ManualBooking({ token }) {
               {/* Return Flight Selection */}
               <div className="flight-selection-group">
                 <h4>Return Flight</h4>
+                <div className="form-group">
+                  <label htmlFor="pickupDate">Pick-up Date <span className="required">*</span></label>
+                  <DatePicker
+                    selected={formData.pickupDate}
+                    onChange={(date) => handleDateChange(date, 'pickupDate')}
+                    dateFormat="dd/MM/yyyy"
+                    minDate={formData.dropoffDate || new Date()}
+                    placeholderText="Select date"
+                    className="date-picker-input"
+                    id="pickupDate"
+                  />
+                </div>
                 {loadingArrivals ? (
                   <p className="loading-text">Loading arrivals...</p>
                 ) : !formData.pickupDate ? (
@@ -1131,6 +1283,73 @@ function ManualBooking({ token }) {
         {/* Payment Section */}
         <div className="manual-booking-section">
           <h3>Payment</h3>
+          {/* Auto-calculated price info */}
+          {formData.dropoffDate && formData.pickupDate && (
+            <div className="pricing-info-banner">
+              {(() => {
+                const days = Math.round((formData.pickupDate - formData.dropoffDate) / (1000 * 60 * 60 * 24))
+                const tripLabel = days === 7 ? '1 week trip' : days === 14 ? '2 week trip' : `${days} day${days !== 1 ? 's' : ''} trip`
+                return (
+                  <>
+                    <span className="trip-duration"><strong>{tripLabel}</strong></span>
+                    {pricingLoading && <span className="calculated-price">Calculating...</span>}
+                    {!pricingLoading && calculatedPrice && (
+                      <span className="calculated-price">
+                        Suggested price: <strong>£{calculatedPrice.toFixed(2)}</strong>
+                      </span>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+          )}
+
+          {/* Promo Code */}
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="promoCode">Promo Code (Optional)</label>
+              <div className="input-with-button">
+                <input
+                  type="text"
+                  id="promoCode"
+                  name="promoCode"
+                  value={formData.promoCode}
+                  onChange={(e) => {
+                    handleChange(e)
+                    // Reset validation when code changes
+                    setPromoValid(null)
+                    setPromoMessage('')
+                    setPromoDiscount(null)
+                  }}
+                  placeholder="Enter promo code"
+                />
+                <button
+                  type="button"
+                  className="lookup-btn"
+                  onClick={validatePromoCode}
+                  disabled={promoValidating || !formData.promoCode.trim() || !calculatedPrice}
+                >
+                  {promoValidating ? 'Validating...' : 'Apply'}
+                </button>
+              </div>
+              {promoValid === true && (
+                <p className="promo-success">
+                  {promoMessage}
+                  {promoDiscount && (
+                    <span className="discount-applied">
+                      {promoDiscount.isFree
+                        ? ' — Booking is FREE!'
+                        : ` — £${promoDiscount.amount.toFixed(2)} off`}
+                    </span>
+                  )}
+                </p>
+              )}
+              {promoValid === false && (
+                <p className="promo-error">{promoMessage}</p>
+              )}
+            </div>
+          </div>
+
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="amount">Amount (£) <span className="required">*</span></label>
@@ -1142,20 +1361,29 @@ function ManualBooking({ token }) {
                 onChange={handleChange}
                 min="0"
                 step="0.01"
-                placeholder="99.00"
+                placeholder={calculatedPrice ? calculatedPrice.toFixed(2) : "99.00"}
                 required
               />
+              {promoDiscount?.isFree && (
+                <p className="free-booking-note">FREE booking - no payment required</p>
+              )}
+              {!promoDiscount?.isFree && calculatedPrice && formData.amount && parseFloat(formData.amount) !== calculatedPrice && (
+                <p className="price-override-note">Custom price (suggested: £{calculatedPrice.toFixed(2)})</p>
+              )}
             </div>
             <div className="form-group">
-              <label htmlFor="stripePaymentLink">Stripe Payment Link <span className="required">*</span></label>
+              <label htmlFor="stripePaymentLink">
+                Stripe Payment Link {!promoDiscount?.isFree && <span className="required">*</span>}
+              </label>
               <input
                 type="url"
                 id="stripePaymentLink"
                 name="stripePaymentLink"
                 value={formData.stripePaymentLink}
                 onChange={handleChange}
-                placeholder="https://buy.stripe.com/..."
-                required
+                placeholder={promoDiscount?.isFree ? "Not required for free bookings" : "https://buy.stripe.com/..."}
+                required={!promoDiscount?.isFree}
+                disabled={promoDiscount?.isFree}
               />
             </div>
           </div>

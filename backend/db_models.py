@@ -121,6 +121,9 @@ class Booking(Base):
     pickup_flight_number = Column(String(20))
     pickup_origin = Column(String(100))
 
+    # Flight arrival link (for pickup time recalculation when arrival time changes)
+    arrival_id = Column(Integer, ForeignKey("flight_arrivals.id"), nullable=True)
+
     # Admin notes
     notes = Column(Text)
     admin_notes = Column(Text)  # Internal notes from admin
@@ -215,6 +218,8 @@ class FlightDeparture(Base):
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=True)
+    updated_by = Column(String(100), nullable=True)  # Admin email who made the change
 
     def __repr__(self):
         return f"<FlightDeparture {self.flight_number} on {self.date} at {self.departure_time}>"
@@ -288,6 +293,8 @@ class FlightArrival(Base):
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=True)
+    updated_by = Column(String(100), nullable=True)  # Admin email who made the change
 
     def __repr__(self):
         return f"<FlightArrival {self.flight_number} on {self.date} at {self.arrival_time}>"
@@ -534,14 +541,20 @@ class VehicleInspection(Base):
 
 
 class PricingSettings(Base):
-    """Dynamic pricing configuration for booking packages."""
+    """Dynamic pricing configuration for booking packages with flexible duration tiers."""
     __tablename__ = "pricing_settings"
 
     id = Column(Integer, primary_key=True, index=True)
 
-    # Base prices for early booking tier
-    week1_base_price = Column(Numeric(10, 2), nullable=False, default=89.00)  # 1-7 days
-    week2_base_price = Column(Numeric(10, 2), nullable=False, default=140.00)  # 8-14 days
+    # Base prices for early booking tier (by duration)
+    # These are the "early" tier prices - standard adds increment, late adds 2x increment
+    days_1_4_price = Column(Numeric(10, 2), nullable=False, default=60.00)    # 1-4 days
+    days_5_6_price = Column(Numeric(10, 2), nullable=False, default=72.00)    # 5-6 days
+    week1_base_price = Column(Numeric(10, 2), nullable=False, default=79.00)  # 7 days
+    days_8_9_price = Column(Numeric(10, 2), nullable=False, default=99.00)    # 8-9 days
+    days_10_11_price = Column(Numeric(10, 2), nullable=False, default=119.00) # 10-11 days
+    days_12_13_price = Column(Numeric(10, 2), nullable=False, default=130.00) # 12-13 days
+    week2_base_price = Column(Numeric(10, 2), nullable=False, default=140.00) # 14 days
 
     # Price increment per booking tier (early -> standard -> late)
     tier_increment = Column(Numeric(10, 2), nullable=False, default=10.00)
@@ -553,4 +566,4 @@ class PricingSettings(Base):
     updater = relationship("User")
 
     def __repr__(self):
-        return f"<PricingSettings week1={self.week1_base_price} week2={self.week2_base_price} increment={self.tier_increment}>"
+        return f"<PricingSettings 1-4d={self.days_1_4_price} 5-6d={self.days_5_6_price} 7d={self.week1_base_price} 8-9d={self.days_8_9_price} 10-11d={self.days_10_11_price} 12-13d={self.days_12_13_price} 14d={self.week2_base_price} increment={self.tier_increment}>"

@@ -3,6 +3,8 @@ Tests for concurrent booking scenarios.
 
 Tests what happens when multiple users try to book the same time slot
 simultaneously (race condition scenarios).
+
+All tests use mocked data - no real database connections.
 """
 import pytest
 import pytest_asyncio
@@ -14,7 +16,52 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from main import app
+from database import get_db
 from booking_service import _booking_service, BookingService
+
+
+# =============================================================================
+# Mock Database Setup
+# =============================================================================
+
+class MockSession:
+    """Mock database session that does nothing."""
+
+    def query(self, model):
+        return self
+
+    def filter(self, *args):
+        return self
+
+    def first(self):
+        return None
+
+    def all(self):
+        return []
+
+    def add(self, obj):
+        pass
+
+    def commit(self):
+        pass
+
+    def refresh(self, obj):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def get_mock_db():
+    """Override for get_db dependency."""
+    db = MockSession()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @pytest.fixture(autouse=True)
@@ -25,6 +72,14 @@ def reset_service():
     booking_service._booking_service = BookingService()
     yield
     booking_service._booking_service = None
+
+
+@pytest.fixture(autouse=True)
+def override_db_dependency():
+    """Override the database dependency for all tests."""
+    app.dependency_overrides[get_db] = get_mock_db
+    yield
+    app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
@@ -374,7 +429,10 @@ class TestRaceConditionDetection:
     async def test_no_double_booking_after_concurrent_attempts(self, client):
         """
         After concurrent booking attempts, verify no double-booking occurred.
+        Uses in-memory BookingService to check bookings.
         """
+        import booking_service
+
         # Run concurrent bookings
         async def book_slot(user_num: int):
             return await client.post(
@@ -388,16 +446,15 @@ class TestRaceConditionDetection:
             book_slot(3),
         )
 
-        # Check all bookings
-        response = await client.get("/api/admin/bookings")
-        bookings = response.json()["bookings"]
+        # Check bookings from in-memory service
+        all_bookings = booking_service._booking_service.get_all_active_bookings()
 
         # Should only have 1 booking for this slot
         flight_bookings = [
-            b for b in bookings
-            if b["flight_number"] == "5523"
-            and b["flight_date"] == "2026-02-10"
-            and b["drop_off_slot_type"] == "165"
+            b for b in all_bookings
+            if b.flight_number == "5523"
+            and str(b.flight_date) == "2026-02-10"
+            and b.drop_off_slot_type == "165"
         ]
 
         assert len(flight_bookings) == 1, \
@@ -408,7 +465,10 @@ class TestRaceConditionDetection:
         """
         After concurrent booking attempts, occupancy should reflect
         only the successful bookings.
+        Uses in-memory BookingService to count bookings.
         """
+        import booking_service
+
         # Try 5 concurrent bookings for the same slot
         async def book_slot(user_num: int):
             return await client.post(
@@ -418,13 +478,18 @@ class TestRaceConditionDetection:
 
         await asyncio.gather(*[book_slot(i) for i in range(5)])
 
-        # Check occupancy
-        response = await client.get("/api/admin/occupancy/2026-02-10")
-        data = response.json()
+        # Check bookings from in-memory service
+        all_bookings = booking_service._booking_service.get_all_active_bookings()
 
-        # Should have occupancy of 1 (only one booking succeeded)
-        assert data["occupied"] == 1, \
-            f"Expected occupancy of 1, got {data['occupied']} - possible race condition!"
+        # Count bookings for the date
+        bookings_for_date = [
+            b for b in all_bookings
+            if str(b.flight_date) == "2026-02-10"
+        ]
+
+        # Should have occupancy of 1 (only one booking succeeded for that slot)
+        assert len(bookings_for_date) == 1, \
+            f"Expected occupancy of 1, got {len(bookings_for_date)} - possible race condition!"
 
 
 # =============================================================================
@@ -503,3 +568,47 @@ class TestConcurrentEdgeCases:
         # If it fails, the slot wasn't released in time
         # Both are acceptable outcomes
         assert book_response.status_code in [200, 400]
+
+    @pytest.mark.asyncio
+    async def test_concurrent_multiple_different_dates(self, client):
+        """
+        Concurrent bookings for different dates should all succeed.
+        """
+        dates = ["2026-02-10", "2026-02-11", "2026-02-12", "2026-02-13", "2026-02-14"]
+
+        async def book_date(user_num: int, date: str):
+            data = get_booking_data(user_num)
+            data["flight_date"] = date
+            data["drop_off_date"] = date
+            response = await client.post("/api/bookings", json=data)
+            return {
+                "user": user_num,
+                "date": date,
+                "status_code": response.status_code
+            }
+
+        # Book 5 different dates concurrently
+        results = await asyncio.gather(*[
+            book_date(i, date) for i, date in enumerate(dates)
+        ])
+
+        # All should succeed
+        for result in results:
+            assert result["status_code"] == 200, \
+                f"Booking for {result['date']} failed unexpectedly"
+
+    @pytest.mark.asyncio
+    async def test_same_user_cannot_double_book(self, client):
+        """
+        Same user trying to book twice should fail on second attempt.
+        """
+        booking_data = get_booking_data(1)
+
+        # First booking should succeed
+        response1 = await client.post("/api/bookings", json=booking_data)
+        assert response1.status_code == 200
+
+        # Same user trying again should fail
+        response2 = await client.post("/api/bookings", json=booking_data)
+        assert response2.status_code == 400
+        assert "already booked" in response2.json()["detail"].lower()

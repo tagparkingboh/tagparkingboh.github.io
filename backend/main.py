@@ -14,7 +14,7 @@ import uuid
 import secrets
 from datetime import date, time, datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,7 +29,7 @@ from models import (
     SlotType,
     AvailableSlotsResponse,
 )
-from booking_service import get_booking_service, BookingService
+from booking_service import get_booking_service, BookingService, get_base_price_for_duration
 from time_slots import get_drop_off_summary, get_pickup_summary
 from config import get_settings, is_stripe_configured
 import httpx
@@ -443,39 +443,56 @@ async def calculate_price(request: PriceCalculationRequest):
     """
     Calculate booking price based on dates.
 
-    Pricing tiers:
-    - Early (>=14 days in advance): 1 week £99, 2 weeks £150
-    - Standard (7-13 days in advance): 1 week £109, 2 weeks £160
-    - Late (<7 days in advance): 1 week £119, 2 weeks £170
+    Supports flexible durations from 1-14 days with tiered pricing:
+    - 1-4 days, 5-6 days, 7 days, 8-9 days, 10-11 days, 12-13 days, 14 days
 
-    Duration must be exactly 7 or 14 days.
+    Advance booking tiers:
+    - Early (>=14 days in advance): base price
+    - Standard (7-13 days in advance): base + increment
+    - Late (<7 days in advance): base + 2x increment
     """
-    from booking_service import BookingService
+    from booking_service import BookingService, get_duration_tier
 
     duration = (request.pickup_date - request.drop_off_date).days
 
-    # Validate duration
-    if duration not in [7, 14]:
+    # Validate duration (1-14 days supported)
+    if duration < 1 or duration > 14:
         raise HTTPException(
             status_code=400,
-            detail=f"Duration must be exactly 7 or 14 days. Got {duration} days."
+            detail=f"Duration must be between 1 and 14 days. Got {duration} days."
         )
 
-    # Determine package
+    # Determine package (for legacy compatibility)
     package = BookingService.get_package_for_duration(request.drop_off_date, request.pickup_date)
-    package_name = "1 Week" if package == "quick" else "2 Weeks"
+
+    # Get duration tier name for display
+    duration_tier = get_duration_tier(duration)
+    duration_labels = {
+        "1_4": "1-4 Days",
+        "5_6": "5-6 Days",
+        "7": "1 Week Trip",
+        "8_9": "8-9 Days",
+        "10_11": "10-11 Days",
+        "12_13": "12-13 Days",
+        "14": "2 Week Trip",
+    }
+    package_name = duration_labels.get(duration_tier, f"{duration} Days")
 
     # Calculate advance booking tier
     today = date.today()
     days_in_advance = (request.drop_off_date - today).days
     advance_tier = BookingService.get_advance_tier(request.drop_off_date)
 
-    # Calculate price
-    price = BookingService.calculate_price(package, request.drop_off_date)
+    # Calculate price using flexible duration pricing
+    price = BookingService.calculate_price_for_duration(duration, request.drop_off_date)
 
-    prices = BookingService.get_package_prices()
+    # Get all prices for this duration tier
+    all_duration_prices = BookingService.get_all_duration_prices()
+    tier_prices = all_duration_prices.get(duration_tier, {})
+
     # 1-week base rate price (early tier) used for free parking promo discount
-    week1_price = prices["quick"]["early"]
+    week1_price = all_duration_prices.get("7", {}).get("early", 79.0)
+
     return PriceCalculationResponse(
         package=package,
         package_name=package_name,
@@ -486,9 +503,9 @@ async def calculate_price(request: PriceCalculationRequest):
         price_pence=int(price * 100),
         week1_price=week1_price,
         all_prices={
-            "early": prices[package]["early"],
-            "standard": prices[package]["standard"],
-            "late": prices[package]["late"],
+            "early": tier_prices.get("early", price),
+            "standard": tier_prices.get("standard", price),
+            "late": tier_prices.get("late", price),
         }
     )
 
@@ -520,6 +537,20 @@ async def get_pricing_tiers():
             "late": {"label": "Less than 7 days", "max_days": 6},
         }
     }
+
+
+@app.get("/api/prices/durations")
+async def get_duration_prices():
+    """
+    Get all flexible duration prices for display on frontend.
+
+    Returns pricing for all duration tiers (1-4, 5-6, 7, 8-9, 10-11, 12-13, 14 days)
+    combined with all advance booking tiers (early, standard, late).
+    """
+    from booking_service import BookingService
+
+    prices = BookingService.get_all_duration_prices()
+    return prices
 
 
 # =============================================================================
@@ -804,7 +835,10 @@ async def get_all_bookings(
             "reference": b.reference,
             "status": b.status.value if b.status else None,
             "booking_source": b.booking_source,
-            "package": b.package,
+            "package": b.package if b.package else (
+                f"{(b.pickup_date - b.dropoff_date).days} Day{'s' if (b.pickup_date - b.dropoff_date).days != 1 else ''}"
+                if b.dropoff_date and b.pickup_date else None
+            ),
             "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
             "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
             "dropoff_flight_number": b.dropoff_flight_number,
@@ -827,6 +861,13 @@ async def get_all_bookings(
                 "last_name": b.customer_last_name or b.customer.last_name,
                 "email": b.customer.email,
                 "phone": b.customer.phone,
+                # Billing address
+                "billing_address1": b.customer.billing_address1,
+                "billing_address2": b.customer.billing_address2,
+                "billing_city": b.customer.billing_city,
+                "billing_county": b.customer.billing_county,
+                "billing_postcode": b.customer.billing_postcode,
+                "billing_country": b.customer.billing_country,
             } if b.customer else None,
             "vehicle": {
                 "id": b.vehicle.id,
@@ -925,6 +966,14 @@ async def create_manual_booking(
     from db_models import Customer, Vehicle, Booking, BookingStatus, Payment, PaymentStatus
     from datetime import datetime
 
+    # Validate: stripe_payment_link is required for paid bookings
+    is_free = request.is_free_booking and request.amount_pence == 0
+    if not is_free and not request.stripe_payment_link:
+        raise HTTPException(
+            status_code=422,
+            detail=[{"loc": ["body", "stripe_payment_link"], "msg": "Field required for paid bookings", "type": "value_error.missing"}]
+        )
+
     try:
         # Create or find customer
         customer = db.query(Customer).filter(Customer.email == request.email).first()
@@ -1010,23 +1059,29 @@ async def create_manual_booking(
             if dropoff_destination == 'Tenerife-Reinasofia':
                 dropoff_destination = 'Tenerife'
 
-        # Look up origin name from arrival flight
+        # Look up origin name and arrival_id from arrival flight
         from db_models import FlightArrival
         pickup_origin = None
+        arrival_id = None
         if request.return_flight_number and request.pickup_date:
             arrival = db.query(FlightArrival).filter(
                 FlightArrival.flight_number == request.return_flight_number,
                 FlightArrival.date == request.pickup_date
             ).first()
-            if arrival and arrival.origin_name:
-                # Extract city name from "City, CountryCode" format
-                parts = arrival.origin_name.split(', ')
-                pickup_origin = parts[0] if parts else arrival.origin_name
-                # Shorten Tenerife-Reinasofia to Tenerife
-                if pickup_origin == 'Tenerife-Reinasofia':
-                    pickup_origin = 'Tenerife'
+            if arrival:
+                arrival_id = arrival.id
+                if arrival.origin_name:
+                    # Extract city name from "City, CountryCode" format
+                    parts = arrival.origin_name.split(', ')
+                    pickup_origin = parts[0] if parts else arrival.origin_name
+                    # Shorten Tenerife-Reinasofia to Tenerife
+                    if pickup_origin == 'Tenerife-Reinasofia':
+                        pickup_origin = 'Tenerife'
 
-        # Create pending booking (no package - price is set via Stripe link)
+        # Determine booking status based on whether it's a free booking
+        booking_status = BookingStatus.CONFIRMED if is_free else BookingStatus.PENDING
+
+        # Create booking
         booking = Booking(
             reference=reference,
             customer_id=customer.id,
@@ -1037,7 +1092,7 @@ async def create_manual_booking(
             dropoff_time=datetime.strptime(request.dropoff_time, "%H:%M").time(),
             pickup_date=request.pickup_date,
             pickup_time=datetime.strptime(request.pickup_time, "%H:%M").time(),
-            status=BookingStatus.PENDING,
+            status=booking_status,
             booking_source="manual",
             admin_notes=request.notes,
             # Flight integration fields
@@ -1047,49 +1102,118 @@ async def create_manual_booking(
             dropoff_destination=dropoff_destination,
             pickup_flight_number=request.return_flight_number,
             pickup_origin=pickup_origin,
+            arrival_id=arrival_id,
         )
         db.add(booking)
         db.flush()
 
-        # Create pending payment record
+        # Create payment record
         payment = Payment(
             booking_id=booking.id,
             amount_pence=request.amount_pence,
             currency="gbp",
-            status=PaymentStatus.PENDING,
-            stripe_payment_link=request.stripe_payment_link,
+            status=PaymentStatus.SUCCEEDED if is_free else PaymentStatus.PENDING,
+            stripe_payment_link=request.stripe_payment_link or "",
         )
         db.add(payment)
 
-        db.commit()
+        # For free bookings with promo code, mark promo as used
+        if is_free and request.promo_code:
+            promo_code = request.promo_code.strip().upper()
+            subscriber = db.query(MarketingSubscriber).filter(
+                (MarketingSubscriber.promo_free_code == promo_code)
+            ).first()
+            if subscriber and not subscriber.promo_free_used:
+                subscriber.promo_free_used = True
+                subscriber.promo_free_used_at = datetime.utcnow()
+                subscriber.promo_free_used_booking_id = booking.id
+
+        # For free bookings with flight selection, increment slot counts
+        if is_free and request.departure_id and request.dropoff_slot:
+            departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
+            if departure:
+                if request.dropoff_slot == "165":
+                    departure.slots_booked_early = (departure.slots_booked_early or 0) + 1
+                elif request.dropoff_slot == "120":
+                    departure.slots_booked_late = (departure.slots_booked_late or 0) + 1
 
         # Format dates for email
         dropoff_date_formatted = request.dropoff_date.strftime("%A, %d %B %Y")
         pickup_date_formatted = request.pickup_date.strftime("%A, %d %B %Y")
         amount_formatted = f"£{request.amount_pence / 100:.2f}"
 
-        # Send payment link email
-        email_sent = send_manual_booking_payment_email(
-            email=request.email,
-            first_name=request.first_name,
-            dropoff_date=dropoff_date_formatted,
-            dropoff_time=request.dropoff_time,
-            pickup_date=pickup_date_formatted,
-            pickup_time=request.pickup_time,
-            vehicle_make=request.make,
-            vehicle_model=request.model,
-            vehicle_colour=request.colour,
-            vehicle_registration=request.registration.upper(),
-            amount=amount_formatted,
-            payment_link=request.stripe_payment_link,
-        )
+        if is_free:
+            # Build flight info for email
+            departure_flight_str = request.departure_flight_number or "N/A"
+            if departure_flight and departure_flight.destination_name:
+                departure_flight_str = f"{departure_flight.flight_number} to {dropoff_destination or departure_flight.destination_name}"
 
-        return {
-            "success": True,
-            "message": "Manual booking created and payment link email sent" if email_sent else "Manual booking created but email failed to send",
-            "booking_reference": reference,
-            "email_sent": email_sent,
-        }
+            return_flight_str = request.return_flight_number or "N/A"
+            if pickup_origin:
+                return_flight_str = f"{request.return_flight_number} from {pickup_origin}"
+
+            # Calculate duration for package name
+            duration_days = (request.pickup_date - request.dropoff_date).days
+            package_name = f"{duration_days} day{'s' if duration_days != 1 else ''}"
+
+            # Send confirmation email for free booking BEFORE commit
+            # If email fails, the transaction will be rolled back
+            email_sent = send_booking_confirmation_email(
+                email=request.email,
+                first_name=request.first_name,
+                booking_reference=reference,
+                dropoff_date=dropoff_date_formatted,
+                dropoff_time=request.dropoff_time,
+                pickup_date=pickup_date_formatted,
+                pickup_time=request.pickup_time,
+                departure_flight=departure_flight_str,
+                return_flight=return_flight_str,
+                vehicle_registration=request.registration.upper(),
+                vehicle_make=request.make,
+                vehicle_model=request.model,
+                vehicle_colour=request.colour,
+                package_name=package_name,
+                amount_paid="£0.00 (FREE with promo code)",
+            )
+
+            # Commit only after email succeeds
+            db.commit()
+
+            return {
+                "success": True,
+                "message": "Free booking confirmed and confirmation email sent" if email_sent else "Free booking confirmed but email failed to send",
+                "booking_reference": reference,
+                "email_sent": email_sent,
+                "is_free_booking": True,
+            }
+        else:
+            # Send payment link email for paid booking BEFORE commit
+            # If email fails, the transaction will be rolled back
+            email_sent = send_manual_booking_payment_email(
+                email=request.email,
+                first_name=request.first_name,
+                dropoff_date=dropoff_date_formatted,
+                dropoff_time=request.dropoff_time,
+                pickup_date=pickup_date_formatted,
+                pickup_time=request.pickup_time,
+                vehicle_make=request.make,
+                vehicle_model=request.model,
+                vehicle_colour=request.colour,
+                vehicle_registration=request.registration.upper(),
+                amount=amount_formatted,
+                payment_link=request.stripe_payment_link,
+            )
+
+            # Commit only after email succeeds
+            db.commit()
+
+            return {
+                "success": True,
+                "message": "Manual booking created and payment link email sent" if email_sent else "Manual booking created but email failed to send",
+                "booking_reference": reference,
+                "email_sent": email_sent,
+                "is_free_booking": False,
+            }
 
     except HTTPException:
         # Re-raise HTTPExceptions as-is (e.g., slot validation errors)
@@ -1303,6 +1427,74 @@ async def cancel_booking_admin(
         "reference": booking.reference,
         "slot_released": slot_released,
         "stripe_cancelled": stripe_cancelled,
+    }
+
+
+@app.delete("/api/admin/bookings/{booking_id}")
+async def delete_pending_booking(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Permanently delete a pending booking.
+
+    This completely removes the booking from the database.
+    Only works for bookings with PENDING status.
+    Releases the flight slot if one was reserved.
+    """
+    from db_models import Booking, BookingStatus, Payment
+
+    booking = db.query(Booking).filter(Booking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status != BookingStatus.PENDING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Can only delete pending bookings. This booking has status: {booking.status.value}"
+        )
+
+    reference = booking.reference
+
+    # Release the flight slot if one was reserved
+    slot_released = False
+    if booking.departure_id and booking.dropoff_slot:
+        slot_type = "early" if booking.dropoff_slot in ("165", "early") else "late"
+        result = db_service.release_departure_slot(db, booking.departure_id, slot_type)
+        slot_released = result.get("success", False)
+
+    # Delete associated payment record if exists (Payment references booking via booking_id)
+    payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
+    if payment:
+        db.delete(payment)
+
+    # Clear any promo code references to this booking
+    from db_models import MarketingSubscriber
+    db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.promo_code_used_booking_id == booking_id
+    ).update({MarketingSubscriber.promo_code_used_booking_id: None}, synchronize_session=False)
+    db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.promo_10_used_booking_id == booking_id
+    ).update({MarketingSubscriber.promo_10_used_booking_id: None}, synchronize_session=False)
+    db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.promo_free_used_booking_id == booking_id
+    ).update({MarketingSubscriber.promo_free_used_booking_id: None}, synchronize_session=False)
+
+    # Delete the booking
+    db.delete(booking)
+    db.commit()
+
+    message = f"Booking {reference} has been permanently deleted"
+    if slot_released:
+        message += " and the flight slot has been released"
+
+    return {
+        "success": True,
+        "message": message,
+        "reference": reference,
+        "slot_released": slot_released,
     }
 
 
@@ -2919,19 +3111,19 @@ async def create_payment(
         # Parse dates first (needed for dynamic pricing)
         print(f"[DEBUG] Received drop_off_date string: {request.drop_off_date}")
         dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
-        print(f"[DEBUG] Parsed dropoff_date: {dropoff_date}")
-
-        # Bookings open from 16th Feb 2026
-        BOOKINGS_OPEN_DATE = date(2026, 2, 16)
-        if dropoff_date < BOOKINGS_OPEN_DATE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Bookings are not available before {BOOKINGS_OPEN_DATE.strftime('%d %B %Y')}. Please select a date from 16th February 2026 onwards."
-            )
-
-        # Calculate base amount in pence (using dynamic pricing based on drop-off date)
-        original_amount = calculate_price_in_pence(request.package, drop_off_date=dropoff_date)
         pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
+        print(f"[DEBUG] Parsed dropoff_date: {dropoff_date}, pickup_date: {pickup_date}")
+
+        # Calculate duration for flexible pricing
+        duration_days = (pickup_date - dropoff_date).days
+        print(f"[DEBUG] Trip duration: {duration_days} days")
+
+        # Calculate base amount in pence (using flexible duration pricing)
+        original_amount = calculate_price_in_pence(
+            package=request.package,
+            drop_off_date=dropoff_date,
+            duration_days=duration_days
+        )
 
         # Check for promo code and apply discount if valid
         discount_amount = 0
@@ -2962,21 +3154,23 @@ async def create_payment(
                 print(f"[PROMO] Found subscriber: {subscriber.email}, used: {promo_used}")
                 if not promo_used:
                     if discount_percent == 100:
-                        if request.package == "quick":
-                            # 1-week trip: completely free regardless of tier
+                        # FREE promo: based on trip duration (not package)
+                        if duration_days <= 7:
+                            # Trips up to 7 days: completely free
                             discount_amount = original_amount
                             is_free_booking = True
                         else:
-                            # 2-week trip: deduct the 1-week base rate (early tier) price
-                            # e.g. 2-week standard £150 - 1-week base £89 = customer pays £61
-                            week1_base_pence = int(BookingService.get_package_prices()["quick"]["early"] * 100)
+                            # Trips 8-14 days: deduct the 1-week base rate (7-day early tier)
+                            # e.g. 10-day trip £119 - 7-day base £79 = customer pays £40
+                            week1_base_pence = int(get_base_price_for_duration(7) * 100)
                             discount_amount = min(week1_base_pence, original_amount)
                             is_free_booking = False
                     else:
+                        # Percentage-based discount (10% or custom)
                         discount_amount = int(original_amount * discount_percent / 100)
                         is_free_booking = False
                     promo_code_applied = promo_code
-                    print(f"[PROMO] Discount applied: {discount_percent}% = {discount_amount} pence (free: {is_free_booking})")
+                    print(f"[PROMO] Discount applied: {discount_percent}% = {discount_amount} pence, duration: {duration_days} days (free: {is_free_booking})")
                 else:
                     print(f"[PROMO] Code already used!")
             else:
@@ -3059,20 +3253,23 @@ async def create_payment(
                     if dropoff_destination == 'Tenerife-Reinasofia':
                         dropoff_destination = 'Tenerife'
 
-            # Look up origin name from arrival table
+            # Look up origin name and arrival_id from arrival table
             pickup_origin = None
+            arrival_id = None
             if request.pickup_flight_number and pickup_date:
                 arrival = db.query(FlightArrival).filter(
                     FlightArrival.date == pickup_date,
                     FlightArrival.flight_number == request.pickup_flight_number
                 ).first()
-                if arrival and arrival.origin_name:
-                    # Extract city name from "City, CountryCode" format
-                    parts = arrival.origin_name.split(', ')
-                    pickup_origin = parts[0] if parts else arrival.origin_name
-                    # Shorten Tenerife-Reinasofia to Tenerife
-                    if pickup_origin == 'Tenerife-Reinasofia':
-                        pickup_origin = 'Tenerife'
+                if arrival:
+                    arrival_id = arrival.id
+                    if arrival.origin_name:
+                        # Extract city name from "City, CountryCode" format
+                        parts = arrival.origin_name.split(', ')
+                        pickup_origin = parts[0] if parts else arrival.origin_name
+                        # Shorten Tenerife-Reinasofia to Tenerife
+                        if pickup_origin == 'Tenerife-Reinasofia':
+                            pickup_origin = 'Tenerife'
 
             # Create booking with existing IDs
             booking = db_service.create_booking(
@@ -3092,6 +3289,7 @@ async def create_payment(
                 pickup_origin=pickup_origin,
                 departure_id=request.departure_id,
                 dropoff_slot=slot_type,
+                arrival_id=arrival_id,
             )
             booking_reference = booking.reference
             booking_id = booking.id
@@ -3116,20 +3314,23 @@ async def create_payment(
                     if dropoff_destination == 'Tenerife-Reinasofia':
                         dropoff_destination = 'Tenerife'
 
-            # Look up origin name from arrival table
+            # Look up origin name and arrival_id from arrival table
             pickup_origin = None
+            arrival_id = None
             if request.pickup_flight_number and pickup_date:
                 arrival = db.query(FlightArrival).filter(
                     FlightArrival.date == pickup_date,
                     FlightArrival.flight_number == request.pickup_flight_number
                 ).first()
-                if arrival and arrival.origin_name:
-                    # Extract city name from "City, CountryCode" format
-                    parts = arrival.origin_name.split(', ')
-                    pickup_origin = parts[0] if parts else arrival.origin_name
-                    # Shorten Tenerife-Reinasofia to Tenerife
-                    if pickup_origin == 'Tenerife-Reinasofia':
-                        pickup_origin = 'Tenerife'
+                if arrival:
+                    arrival_id = arrival.id
+                    if arrival.origin_name:
+                        # Extract city name from "City, CountryCode" format
+                        parts = arrival.origin_name.split(', ')
+                        pickup_origin = parts[0] if parts else arrival.origin_name
+                        # Shorten Tenerife-Reinasofia to Tenerife
+                        if pickup_origin == 'Tenerife-Reinasofia':
+                            pickup_origin = 'Tenerife'
 
             booking_data = db_service.create_full_booking(
                 db=db,
@@ -3165,6 +3366,7 @@ async def create_payment(
                 # Flight slot
                 departure_id=request.departure_id,
                 dropoff_slot=slot_type,
+                arrival_id=arrival_id,
             )
             booking_reference = booking_data["booking"].reference
             booking_id = booking_data["booking"].id
@@ -4398,17 +4600,27 @@ async def mark_booking_completed(
 
 
 class PricingSettingsResponse(BaseModel):
-    """Response model for pricing settings."""
-    week1_base_price: float
-    week2_base_price: float
+    """Response model for pricing settings with all duration tiers."""
+    days_1_4_price: float
+    days_5_6_price: float
+    week1_base_price: float    # 7 days
+    days_8_9_price: float
+    days_10_11_price: float
+    days_12_13_price: float
+    week2_base_price: float    # 14 days
     tier_increment: float
     updated_at: Optional[str] = None
 
 
 class PricingSettingsUpdate(BaseModel):
-    """Request model for updating pricing settings."""
-    week1_base_price: float
-    week2_base_price: float
+    """Request model for updating pricing settings with all duration tiers."""
+    days_1_4_price: float
+    days_5_6_price: float
+    week1_base_price: float    # 7 days
+    days_8_9_price: float
+    days_10_11_price: float
+    days_12_13_price: float
+    week2_base_price: float    # 14 days
     tier_increment: float
 
 
@@ -4438,7 +4650,12 @@ async def get_admin_pricing(
 
     if not settings:
         return {
-            "week1_base_price": 89.0,
+            "days_1_4_price": 60.0,
+            "days_5_6_price": 72.0,
+            "week1_base_price": 79.0,
+            "days_8_9_price": 99.0,
+            "days_10_11_price": 119.0,
+            "days_12_13_price": 130.0,
             "week2_base_price": 140.0,
             "tier_increment": 10.0,
             "updated_at": None,
@@ -4446,9 +4663,14 @@ async def get_admin_pricing(
         }
 
     return {
-        "week1_base_price": float(settings.week1_base_price),
-        "week2_base_price": float(settings.week2_base_price),
-        "tier_increment": float(settings.tier_increment),
+        "days_1_4_price": float(settings.days_1_4_price) if settings.days_1_4_price else 60.0,
+        "days_5_6_price": float(settings.days_5_6_price) if settings.days_5_6_price else 72.0,
+        "week1_base_price": float(settings.week1_base_price) if settings.week1_base_price else 79.0,
+        "days_8_9_price": float(settings.days_8_9_price) if settings.days_8_9_price else 99.0,
+        "days_10_11_price": float(settings.days_10_11_price) if settings.days_10_11_price else 119.0,
+        "days_12_13_price": float(settings.days_12_13_price) if settings.days_12_13_price else 130.0,
+        "week2_base_price": float(settings.week2_base_price) if settings.week2_base_price else 140.0,
+        "tier_increment": float(settings.tier_increment) if settings.tier_increment else 10.0,
         "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
         "updated_by": settings.updater.first_name if settings.updater else None,
     }
@@ -4461,7 +4683,7 @@ async def update_pricing(
     current_user: User = Depends(require_admin),
 ):
     """
-    Admin endpoint: Update pricing settings.
+    Admin endpoint: Update pricing settings for all duration tiers.
     """
     from db_models import PricingSettings
     from decimal import Decimal
@@ -4471,7 +4693,12 @@ async def update_pricing(
     if not settings:
         # Create new settings
         settings = PricingSettings(
+            days_1_4_price=Decimal(str(update.days_1_4_price)),
+            days_5_6_price=Decimal(str(update.days_5_6_price)),
             week1_base_price=Decimal(str(update.week1_base_price)),
+            days_8_9_price=Decimal(str(update.days_8_9_price)),
+            days_10_11_price=Decimal(str(update.days_10_11_price)),
+            days_12_13_price=Decimal(str(update.days_12_13_price)),
             week2_base_price=Decimal(str(update.week2_base_price)),
             tier_increment=Decimal(str(update.tier_increment)),
             updated_by=current_user.id,
@@ -4479,7 +4706,12 @@ async def update_pricing(
         db.add(settings)
     else:
         # Update existing
+        settings.days_1_4_price = Decimal(str(update.days_1_4_price))
+        settings.days_5_6_price = Decimal(str(update.days_5_6_price))
         settings.week1_base_price = Decimal(str(update.week1_base_price))
+        settings.days_8_9_price = Decimal(str(update.days_8_9_price))
+        settings.days_10_11_price = Decimal(str(update.days_10_11_price))
+        settings.days_12_13_price = Decimal(str(update.days_12_13_price))
         settings.week2_base_price = Decimal(str(update.week2_base_price))
         settings.tier_increment = Decimal(str(update.tier_increment))
         settings.updated_by = current_user.id
@@ -4491,7 +4723,12 @@ async def update_pricing(
         "success": True,
         "message": "Pricing updated successfully",
         "pricing": {
+            "days_1_4_price": float(settings.days_1_4_price),
+            "days_5_6_price": float(settings.days_5_6_price),
             "week1_base_price": float(settings.week1_base_price),
+            "days_8_9_price": float(settings.days_8_9_price),
+            "days_10_11_price": float(settings.days_10_11_price),
+            "days_12_13_price": float(settings.days_12_13_price),
             "week2_base_price": float(settings.week2_base_price),
             "tier_increment": float(settings.tier_increment),
             "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
@@ -4710,6 +4947,492 @@ async def auth_me(
         last_name=current_user.last_name,
         is_admin=current_user.is_admin,
     )
+
+
+# =============================================================================
+# Admin Flights Management Endpoints
+# =============================================================================
+
+class UpdateDepartureRequest(BaseModel):
+    """Request model for updating a flight departure."""
+    date: Optional[str] = None  # ISO format: YYYY-MM-DD
+    flight_number: Optional[str] = None
+    airline_code: Optional[str] = None
+    airline_name: Optional[str] = None
+    departure_time: Optional[str] = None  # HH:MM format
+    destination_code: Optional[str] = None
+    destination_name: Optional[str] = None
+    capacity_tier: Optional[int] = None
+    slots_booked_early: Optional[int] = None
+    slots_booked_late: Optional[int] = None
+
+
+class UpdateArrivalRequest(BaseModel):
+    """Request model for updating a flight arrival."""
+    date: Optional[str] = None  # ISO format: YYYY-MM-DD
+    flight_number: Optional[str] = None
+    airline_code: Optional[str] = None
+    airline_name: Optional[str] = None
+    departure_time: Optional[str] = None  # HH:MM format
+    arrival_time: Optional[str] = None  # HH:MM format
+    origin_code: Optional[str] = None
+    origin_name: Optional[str] = None
+
+
+@app.get("/api/admin/flights/departures")
+async def get_admin_departures(
+    sort_order: str = Query("asc", regex="^(asc|desc)$"),
+    destination: Optional[str] = None,
+    airline: Optional[str] = None,
+    flight_number: Optional[str] = None,
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get all departure flights with optional filters.
+    Sorted by date (ASC by default, DESC optional).
+    """
+    query = db.query(FlightDeparture)
+
+    # Apply filters
+    if flight_number:
+        query = query.filter(FlightDeparture.flight_number.ilike(f"%{flight_number}%"))
+
+    if destination:
+        query = query.filter(
+            (FlightDeparture.destination_code.ilike(f"%{destination}%")) |
+            (FlightDeparture.destination_name.ilike(f"%{destination}%"))
+        )
+
+    if airline:
+        query = query.filter(
+            (FlightDeparture.airline_code.ilike(f"%{airline}%")) |
+            (FlightDeparture.airline_name.ilike(f"%{airline}%"))
+        )
+
+    if month:
+        from sqlalchemy import extract
+        query = query.filter(extract('month', FlightDeparture.date) == month)
+
+    if year:
+        from sqlalchemy import extract
+        query = query.filter(extract('year', FlightDeparture.date) == year)
+
+    # Apply sorting
+    if sort_order == "desc":
+        query = query.order_by(FlightDeparture.date.desc(), FlightDeparture.departure_time.desc())
+    else:
+        query = query.order_by(FlightDeparture.date.asc(), FlightDeparture.departure_time.asc())
+
+    departures = query.all()
+
+    return {
+        "departures": [
+            {
+                "id": d.id,
+                "date": d.date.isoformat(),
+                "flight_number": d.flight_number,
+                "airline_code": d.airline_code,
+                "airline_name": d.airline_name,
+                "departure_time": d.departure_time.strftime("%H:%M") if d.departure_time else None,
+                "destination_code": d.destination_code,
+                "destination_name": d.destination_name,
+                "capacity_tier": d.capacity_tier,
+                "slots_booked_early": d.slots_booked_early,
+                "slots_booked_late": d.slots_booked_late,
+                "max_slots_per_time": d.max_slots_per_time,
+                "early_slots_available": d.early_slots_available,
+                "late_slots_available": d.late_slots_available,
+                "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+                "updated_by": d.updated_by,
+            }
+            for d in departures
+        ],
+        "total": len(departures),
+    }
+
+
+@app.get("/api/admin/flights/arrivals")
+async def get_admin_arrivals(
+    sort_order: str = Query("asc", regex="^(asc|desc)$"),
+    origin: Optional[str] = None,
+    airline: Optional[str] = None,
+    flight_number: Optional[str] = None,
+    month: Optional[int] = Query(None, ge=1, le=12),
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get all arrival flights with optional filters.
+    Sorted by date (ASC by default, DESC optional).
+    """
+    query = db.query(FlightArrival)
+
+    # Apply filters
+    if flight_number:
+        query = query.filter(FlightArrival.flight_number.ilike(f"%{flight_number}%"))
+
+    if origin:
+        query = query.filter(
+            (FlightArrival.origin_code.ilike(f"%{origin}%")) |
+            (FlightArrival.origin_name.ilike(f"%{origin}%"))
+        )
+
+    if airline:
+        query = query.filter(
+            (FlightArrival.airline_code.ilike(f"%{airline}%")) |
+            (FlightArrival.airline_name.ilike(f"%{airline}%"))
+        )
+
+    if month:
+        from sqlalchemy import extract
+        query = query.filter(extract('month', FlightArrival.date) == month)
+
+    if year:
+        from sqlalchemy import extract
+        query = query.filter(extract('year', FlightArrival.date) == year)
+
+    # Apply sorting
+    if sort_order == "desc":
+        query = query.order_by(FlightArrival.date.desc(), FlightArrival.arrival_time.desc())
+    else:
+        query = query.order_by(FlightArrival.date.asc(), FlightArrival.arrival_time.asc())
+
+    arrivals = query.all()
+
+    return {
+        "arrivals": [
+            {
+                "id": a.id,
+                "date": a.date.isoformat(),
+                "flight_number": a.flight_number,
+                "airline_code": a.airline_code,
+                "airline_name": a.airline_name,
+                "departure_time": a.departure_time.strftime("%H:%M") if a.departure_time else None,
+                "arrival_time": a.arrival_time.strftime("%H:%M") if a.arrival_time else None,
+                "origin_code": a.origin_code,
+                "origin_name": a.origin_name,
+                "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+                "updated_by": a.updated_by,
+            }
+            for a in arrivals
+        ],
+        "total": len(arrivals),
+    }
+
+
+@app.get("/api/admin/flights/filters")
+async def get_admin_flight_filters(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get unique filter options for flights (airlines, destinations, origins, months).
+    """
+    from sqlalchemy import distinct, extract
+
+    # Get unique airlines from both departures and arrivals
+    departure_airlines = db.query(
+        distinct(FlightDeparture.airline_code),
+        FlightDeparture.airline_name
+    ).all()
+    arrival_airlines = db.query(
+        distinct(FlightArrival.airline_code),
+        FlightArrival.airline_name
+    ).all()
+
+    # Combine and deduplicate airlines
+    airlines_dict = {}
+    for code, name in departure_airlines + arrival_airlines:
+        if code not in airlines_dict:
+            airlines_dict[code] = name
+    airlines = [{"code": code, "name": name} for code, name in sorted(airlines_dict.items())]
+
+    # Get unique destinations (departures only)
+    destinations = db.query(
+        distinct(FlightDeparture.destination_code),
+        FlightDeparture.destination_name
+    ).all()
+    destinations = [{"code": code, "name": name} for code, name in sorted(destinations)]
+
+    # Get unique origins (arrivals only)
+    origins = db.query(
+        distinct(FlightArrival.origin_code),
+        FlightArrival.origin_name
+    ).all()
+    origins = [{"code": code, "name": name} for code, name in sorted(origins)]
+
+    # Get months with data
+    departure_months = db.query(
+        distinct(extract('month', FlightDeparture.date)),
+        extract('year', FlightDeparture.date)
+    ).all()
+    arrival_months = db.query(
+        distinct(extract('month', FlightArrival.date)),
+        extract('year', FlightArrival.date)
+    ).all()
+
+    # Combine and format months
+    months_set = set()
+    for month, year in departure_months + arrival_months:
+        if month and year:
+            months_set.add((int(year), int(month)))
+
+    months = [
+        {"year": year, "month": month, "label": f"{['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][month-1]} {year}"}
+        for year, month in sorted(months_set)
+    ]
+
+    return {
+        "airlines": airlines,
+        "destinations": destinations,
+        "origins": origins,
+        "months": months,
+    }
+
+
+@app.get("/api/admin/flights/export")
+async def export_admin_flights(
+    flight_type: str = Query("all", regex="^(all|departures|arrivals)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Export all flight data to JSON for backup/snapshot.
+    """
+    export_data = {
+        "exported_at": datetime.utcnow().isoformat(),
+        "exported_by": current_user.email,
+    }
+
+    if flight_type in ["all", "departures"]:
+        departures = db.query(FlightDeparture).order_by(FlightDeparture.date, FlightDeparture.departure_time).all()
+        export_data["departures"] = [
+            {
+                "id": d.id,
+                "date": d.date.isoformat(),
+                "flight_number": d.flight_number,
+                "airline_code": d.airline_code,
+                "airline_name": d.airline_name,
+                "departure_time": d.departure_time.strftime("%H:%M") if d.departure_time else None,
+                "destination_code": d.destination_code,
+                "destination_name": d.destination_name,
+                "capacity_tier": d.capacity_tier,
+                "slots_booked_early": d.slots_booked_early,
+                "slots_booked_late": d.slots_booked_late,
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+                "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+                "updated_by": d.updated_by,
+            }
+            for d in departures
+        ]
+
+    if flight_type in ["all", "arrivals"]:
+        arrivals = db.query(FlightArrival).order_by(FlightArrival.date, FlightArrival.arrival_time).all()
+        export_data["arrivals"] = [
+            {
+                "id": a.id,
+                "date": a.date.isoformat(),
+                "flight_number": a.flight_number,
+                "airline_code": a.airline_code,
+                "airline_name": a.airline_name,
+                "departure_time": a.departure_time.strftime("%H:%M") if a.departure_time else None,
+                "arrival_time": a.arrival_time.strftime("%H:%M") if a.arrival_time else None,
+                "origin_code": a.origin_code,
+                "origin_name": a.origin_name,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+                "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+                "updated_by": a.updated_by,
+            }
+            for a in arrivals
+        ]
+
+    return export_data
+
+
+@app.put("/api/admin/flights/departures/{departure_id}")
+async def update_admin_departure(
+    departure_id: int,
+    update: UpdateDepartureRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Update a departure flight.
+    Returns warning if capacity is reduced below current bookings.
+    """
+    departure = db.query(FlightDeparture).filter(FlightDeparture.id == departure_id).first()
+
+    if not departure:
+        raise HTTPException(status_code=404, detail="Departure not found")
+
+    warnings = []
+
+    # Check capacity reduction warning
+    if update.capacity_tier is not None:
+        new_max_per_time = update.capacity_tier // 2
+        current_early = departure.slots_booked_early
+        current_late = departure.slots_booked_late
+
+        if new_max_per_time < current_early or new_max_per_time < current_late:
+            warnings.append(
+                f"Warning: Reducing capacity to {update.capacity_tier} "
+                f"(max {new_max_per_time} per slot) but there are "
+                f"{current_early} early and {current_late} late bookings"
+            )
+
+    # Track if departure time is changing
+    old_departure_time = departure.departure_time
+    new_departure_time = None
+    if update.departure_time:
+        new_departure_time = time.fromisoformat(update.departure_time)
+
+    # Apply updates with type conversion
+    update_data = update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field == 'date' and value:
+            value = date.fromisoformat(value)
+        elif field == 'departure_time' and value:
+            value = time.fromisoformat(value)
+        setattr(departure, field, value)
+
+    # Set audit fields
+    departure.updated_at = datetime.utcnow()
+    departure.updated_by = current_user.email
+
+    # Recalculate booking drop-off times if departure time changed
+    bookings_updated = 0
+    if new_departure_time and new_departure_time != old_departure_time:
+        # Find all bookings linked to this departure
+        linked_bookings = db.query(Booking).filter(Booking.departure_id == departure_id).all()
+
+        for booking in linked_bookings:
+            # Calculate new drop-off time based on slot
+            # Early slot (165 min = 2h 45m before), Late slot (120 min = 2h before)
+            if booking.dropoff_slot in ("165", "early"):
+                minutes_before = 165
+            elif booking.dropoff_slot in ("120", "late"):
+                minutes_before = 120
+            else:
+                continue  # Skip if no valid slot
+
+            # Calculate new drop-off time
+            departure_datetime = datetime.combine(datetime.today(), new_departure_time)
+            new_dropoff_datetime = departure_datetime - timedelta(minutes=minutes_before)
+            booking.dropoff_time = new_dropoff_datetime.time()
+            bookings_updated += 1
+
+        if bookings_updated > 0:
+            warnings.append(f"Updated drop-off times for {bookings_updated} booking(s)")
+
+    db.commit()
+    db.refresh(departure)
+
+    return {
+        "success": True,
+        "warnings": warnings,
+        "departure": {
+            "id": departure.id,
+            "date": departure.date.isoformat(),
+            "flight_number": departure.flight_number,
+            "airline_code": departure.airline_code,
+            "airline_name": departure.airline_name,
+            "departure_time": departure.departure_time.strftime("%H:%M") if departure.departure_time else None,
+            "destination_code": departure.destination_code,
+            "destination_name": departure.destination_name,
+            "capacity_tier": departure.capacity_tier,
+            "slots_booked_early": departure.slots_booked_early,
+            "slots_booked_late": departure.slots_booked_late,
+            "max_slots_per_time": departure.max_slots_per_time,
+            "early_slots_available": departure.early_slots_available,
+            "late_slots_available": departure.late_slots_available,
+            "updated_at": departure.updated_at.isoformat() if departure.updated_at else None,
+            "updated_by": departure.updated_by,
+        }
+    }
+
+
+@app.put("/api/admin/flights/arrivals/{arrival_id}")
+async def update_admin_arrival(
+    arrival_id: int,
+    update: UpdateArrivalRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Update an arrival flight.
+    Returns warning if pickup times are recalculated for linked bookings.
+    """
+    arrival = db.query(FlightArrival).filter(FlightArrival.id == arrival_id).first()
+
+    if not arrival:
+        raise HTTPException(status_code=404, detail="Arrival not found")
+
+    warnings = []
+
+    # Track if arrival time is changing
+    old_arrival_time = arrival.arrival_time
+    new_arrival_time = None
+    if update.arrival_time:
+        new_arrival_time = time.fromisoformat(update.arrival_time)
+
+    # Apply updates with type conversion
+    update_data = update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field == 'date' and value:
+            value = date.fromisoformat(value)
+        elif field in ('departure_time', 'arrival_time') and value:
+            value = time.fromisoformat(value)
+        setattr(arrival, field, value)
+
+    # Set audit fields
+    arrival.updated_at = datetime.utcnow()
+    arrival.updated_by = current_user.email
+
+    # Recalculate booking pickup times if arrival time changed
+    bookings_updated = 0
+    if new_arrival_time and new_arrival_time != old_arrival_time:
+        # Find all bookings linked to this arrival
+        linked_bookings = db.query(Booking).filter(Booking.arrival_id == arrival_id).all()
+
+        for booking in linked_bookings:
+            # Calculate new pickup times based on arrival time
+            # pickup_time = landing time
+            # pickup_time_from = landing + 35 min
+            # pickup_time_to = landing + 60 min
+            arrival_datetime = datetime.combine(datetime.today(), new_arrival_time)
+
+            booking.pickup_time = new_arrival_time
+            booking.pickup_time_from = (arrival_datetime + timedelta(minutes=35)).time()
+            booking.pickup_time_to = (arrival_datetime + timedelta(minutes=60)).time()
+            bookings_updated += 1
+
+        if bookings_updated > 0:
+            warnings.append(f"Updated pickup times for {bookings_updated} booking(s)")
+
+    db.commit()
+    db.refresh(arrival)
+
+    return {
+        "success": True,
+        "warnings": warnings,
+        "arrival": {
+            "id": arrival.id,
+            "date": arrival.date.isoformat(),
+            "flight_number": arrival.flight_number,
+            "airline_code": arrival.airline_code,
+            "airline_name": arrival.airline_name,
+            "departure_time": arrival.departure_time.strftime("%H:%M") if arrival.departure_time else None,
+            "arrival_time": arrival.arrival_time.strftime("%H:%M") if arrival.arrival_time else None,
+            "origin_code": arrival.origin_code,
+            "origin_name": arrival.origin_name,
+            "updated_at": arrival.updated_at.isoformat() if arrival.updated_at else None,
+            "updated_by": arrival.updated_by,
+        }
+    }
 
 
 if __name__ == "__main__":
