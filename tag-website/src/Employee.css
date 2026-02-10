@@ -483,6 +483,108 @@
   border-color: #D9FF00;
 }
 
+/* ============================================
+   Fullscreen Image Viewer
+   ============================================ */
+
+.image-viewer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.image-viewer-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  color: white;
+  font-size: 32px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 2001;
+}
+
+.image-viewer-close:hover,
+.image-viewer-close:active {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.image-viewer-label {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  padding: 8px 20px;
+  border-radius: 20px;
+  color: #D9FF00;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  z-index: 2001;
+}
+
+.image-viewer-img {
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: default;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+/* Make photo preview thumbnails look clickable */
+.photo-slot-img-clickable {
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.photo-slot-img-clickable:hover {
+  opacity: 0.9;
+}
+
+.photo-slot-img-clickable:active {
+  transform: scale(0.98);
+}
+
+/* iPad-friendly touch target hint */
+.photo-slot-preview::after {
+  content: 'Tap to expand';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #D9FF00;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border-radius: 4px;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .employee-header {
@@ -527,5 +629,23 @@
 
   .acknowledgement-fields {
     flex-direction: column;
+  }
+
+  /* Image viewer adjustments for mobile/tablet */
+  .image-viewer-close {
+    width: 56px;
+    height: 56px;
+    font-size: 36px;
+    top: 16px;
+    right: 16px;
+  }
+
+  .image-viewer-label {
+    top: 80px;
+    font-size: 12px;
+  }
+
+  .image-viewer-img {
+    max-height: 75vh;
   }
 }
