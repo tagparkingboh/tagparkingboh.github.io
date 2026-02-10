@@ -3303,6 +3303,36 @@ async def create_payment(
         if not request.billing_postcode or not request.billing_postcode.strip():
             raise HTTPException(status_code=400, detail="Billing postcode is required")
 
+        # Check for existing PENDING booking with same session_id (prevent duplicates from Terms toggle)
+        if request.session_id:
+            existing_booking = db_service.get_pending_booking_by_session(db, request.session_id)
+            if existing_booking:
+                print(f"[DEDUP] Found existing PENDING booking {existing_booking.reference} for session {request.session_id}")
+                # Check if there's an existing payment record with a valid PaymentIntent
+                existing_payment = existing_booking.payment
+                if existing_payment and existing_payment.stripe_payment_intent_id:
+                    try:
+                        # Retrieve the existing PaymentIntent from Stripe
+                        intent = stripe.PaymentIntent.retrieve(existing_payment.stripe_payment_intent_id)
+                        if intent.status in ['requires_payment_method', 'requires_confirmation', 'requires_action']:
+                            # PaymentIntent is still usable - return it
+                            print(f"[DEDUP] Reusing existing PaymentIntent {intent.id} (status: {intent.status})")
+                            settings = get_settings()
+                            return CreatePaymentResponse(
+                                client_secret=intent.client_secret,
+                                payment_intent_id=intent.id,
+                                booking_reference=existing_booking.reference,
+                                amount=intent.amount,
+                                amount_display=f"£{intent.amount / 100:.2f}",
+                                publishable_key=settings.stripe_publishable_key,
+                            )
+                        else:
+                            print(f"[DEDUP] Existing PaymentIntent {intent.id} not usable (status: {intent.status})")
+                    except stripe.error.StripeError as e:
+                        print(f"[DEDUP] Could not retrieve PaymentIntent: {e}")
+                # If we get here, existing payment isn't usable - continue to create new one
+                # But we'll still use the existing booking reference
+
         # Debug: log incoming promo code
         print(f"[PROMO] Received request with promo_code: {request.promo_code}")
 
@@ -3490,6 +3520,7 @@ async def create_payment(
                 departure_id=request.departure_id,
                 dropoff_slot=slot_type,
                 arrival_id=arrival_id,
+                session_id=request.session_id,
             )
             booking_reference = booking.reference
             booking_id = booking.id
@@ -3569,6 +3600,8 @@ async def create_payment(
                 departure_id=request.departure_id,
                 dropoff_slot=slot_type,
                 arrival_id=arrival_id,
+                # Session tracking
+                session_id=request.session_id,
             )
             booking_reference = booking_data["booking"].reference
             booking_id = booking_data["booking"].id
