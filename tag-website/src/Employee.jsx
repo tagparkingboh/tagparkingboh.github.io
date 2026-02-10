@@ -42,6 +42,9 @@ function Employee() {
   const [completingBooking, setCompletingBooking] = useState(null)
   const [completing, setCompleting] = useState(false)
 
+  // Expanded image viewer state
+  const [expandedImage, setExpandedImage] = useState(null) // { src: 'base64...', label: 'Front' }
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -318,7 +321,12 @@ function Employee() {
                       </span>
                       {inspectionPhotos[slot.key] ? (
                         <div className="photo-slot-preview">
-                          <img src={inspectionPhotos[slot.key]} alt={slot.label} />
+                          <img
+                            src={inspectionPhotos[slot.key]}
+                            alt={slot.label}
+                            onClick={() => setExpandedImage({ src: inspectionPhotos[slot.key], label: slot.label })}
+                            className="photo-slot-img-clickable"
+                          />
                           <button
                             className="photo-slot-retake"
                             onClick={() => removePhoto(slot.key)}
@@ -404,6 +412,22 @@ function Employee() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Fullscreen Image Viewer */}
+      {expandedImage && (
+        <div className="image-viewer-overlay" onClick={() => setExpandedImage(null)}>
+          <button className="image-viewer-close" onClick={() => setExpandedImage(null)}>
+            &times;
+          </button>
+          <div className="image-viewer-label">{expandedImage.label}</div>
+          <img
+            src={expandedImage.src}
+            alt={expandedImage.label}
+            className="image-viewer-img"
+            onClick={e => e.stopPropagation()}
+          />
         </div>
       )}
     </div>
