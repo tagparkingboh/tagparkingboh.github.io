@@ -223,6 +223,16 @@ def get_booking_by_id(db: Session, booking_id: int) -> Optional[Booking]:
     return db.query(Booking).filter(Booking.id == booking_id).first()
 
 
+def get_pending_booking_by_session(db: Session, session_id: str) -> Optional[Booking]:
+    """Get existing PENDING booking for a session (to prevent duplicates)."""
+    if not session_id:
+        return None
+    return db.query(Booking).filter(
+        Booking.session_id == session_id,
+        Booking.status == BookingStatus.PENDING
+    ).first()
+
+
 def create_booking(
     db: Session,
     customer_id: int,
@@ -242,6 +252,7 @@ def create_booking(
     departure_id: int = None,
     dropoff_slot: str = None,
     arrival_id: int = None,
+    session_id: str = None,
 ) -> Booking:
     """Create a new booking."""
     # Generate unique reference
@@ -274,6 +285,7 @@ def create_booking(
         departure_id=departure_id,
         dropoff_slot=dropoff_slot,
         arrival_id=arrival_id,
+        session_id=session_id,
     )
     db.add(booking)
     db.commit()
@@ -582,6 +594,8 @@ def create_full_booking(
     departure_id: int = None,
     dropoff_slot: str = None,
     arrival_id: int = None,
+    # Session tracking
+    session_id: str = None,
 ) -> dict:
     """
     Create a complete booking with customer, vehicle, booking, and payment records.
@@ -631,6 +645,7 @@ def create_full_booking(
         departure_id=departure_id,
         dropoff_slot=dropoff_slot,
         arrival_id=arrival_id,
+        session_id=session_id,
     )
 
     # 4. Create payment record if stripe details provided

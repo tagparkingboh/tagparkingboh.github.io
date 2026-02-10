@@ -131,6 +131,9 @@ class Booking(Base):
     # Booking source (online, manual, admin, phone)
     booking_source = Column(String(20), default="online")
 
+    # Frontend session ID (for deduplicating repeated payment intents)
+    session_id = Column(String(100), index=True)
+
     # Email tracking
     confirmation_email_sent = Column(Boolean, default=False)
     confirmation_email_sent_at = Column(DateTime(timezone=True))
