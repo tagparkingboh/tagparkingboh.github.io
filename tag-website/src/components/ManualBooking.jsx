@@ -509,27 +509,35 @@ function ManualBooking({ token }) {
       let address1 = ''
       let address2 = ''
 
-      let streetParts = []
-      if (selectedAddress.building_number) {
-        streetParts.push(selectedAddress.building_number)
-      }
-      if (selectedAddress.thoroughfare) {
-        streetParts.push(selectedAddress.thoroughfare)
-      }
-      const streetAddress = streetParts.join(' ')
+      // Parse address from the full address string
+      // Examples:
+      // "84 High Street, Sturminster Marshall, Wimborne, BH21 4AY" -> Line1: "84 High Street", Line2: "Sturminster Marshall"
+      // "1 Ascham Lodge, 11 Ascham Road, Bournemouth, BH8 8LY" -> Line1: "1 Ascham Lodge, 11 Ascham Road", Line2: ""
+      const fullAddress = selectedAddress.address
+      const postTown = selectedAddress.post_town
+      const dependentLocality = selectedAddress.dependent_locality
+      const postcode = selectedAddress.postcode
 
-      if (selectedAddress.building_name) {
-        address1 = selectedAddress.building_name
-        address2 = streetAddress
+      // Remove postcode and post_town from the end to get the street portion
+      let streetPortion = fullAddress
+        .replace(new RegExp(`,?\\s*${postcode}\\s*$`, 'i'), '')
+        .replace(new RegExp(`,?\\s*${postTown}\\s*$`, 'i'), '')
+        .trim()
+
+      // If dependent_locality exists, it goes in address2
+      if (dependentLocality) {
+        // Remove dependent_locality from street portion for address1
+        address1 = streetPortion
+          .replace(new RegExp(`,?\\s*${dependentLocality}\\s*$`, 'i'), '')
+          .trim()
+        address2 = dependentLocality
       } else {
-        address1 = streetAddress
+        address1 = streetPortion
+        address2 = ''
       }
 
-      if (!address1) {
-        const parts = selectedAddress.address.split(', ')
-        address1 = parts[0] || ''
-        address2 = parts.length > 2 ? parts.slice(1, -2).join(', ') : ''
-      }
+      // Clean up any trailing commas
+      address1 = address1.replace(/,\s*$/, '').trim()
 
       setFormData(prev => ({
         ...prev,
