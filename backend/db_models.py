@@ -530,6 +530,8 @@ class VehicleInspection(Base):
     # Customer acknowledgement
     customer_name = Column(String(200))  # Customer types their name to agree
     signed_date = Column(Date)  # Date of acknowledgement
+    signature = Column(Text)  # Base64-encoded signature image
+    vehicle_inspection_read = Column(Boolean, default=False)  # Confirmed they read T&C
 
     inspector_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
