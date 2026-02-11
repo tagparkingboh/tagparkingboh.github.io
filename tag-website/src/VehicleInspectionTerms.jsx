@@ -33,7 +33,7 @@ function VehicleInspectionTerms() {
         </button>
 
         <h1>Vehicle Inspection Terms & Conditions</h1>
-        <p className="legal-subtitle">Last Updated: February 2025</p>
+        <p className="legal-subtitle">Last Updated: February 2026</p>
 
         <div className="legal-content">
           <h2>1. Introduction</h2>
