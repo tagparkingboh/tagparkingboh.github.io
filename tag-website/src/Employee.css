@@ -638,7 +638,6 @@
 
 .inspection-document-content .document-logo img {
   height: 40px;
-  filter: brightness(0);
 }
 
 .inspection-document-content h2 {
@@ -664,6 +663,8 @@
 
 .inspection-document-content p {
   margin: 0 0 8px 0;
+  color: #333;
+  font-weight: 400;
 }
 
 .inspection-document-content ul {
@@ -673,6 +674,8 @@
 
 .inspection-document-content li {
   margin-bottom: 4px;
+  color: #333;
+  font-weight: 400;
 }
 
 .inspection-document-content .document-footer {
