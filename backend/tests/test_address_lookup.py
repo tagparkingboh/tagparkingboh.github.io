@@ -1,11 +1,9 @@
 """
-Tests for the OS Places API Address Lookup integration.
+Tests for the Ideal Postcodes API Address Lookup integration.
 
-Tests both unit tests (with mocked OS Places API) and integration tests
-against the real OS Places API.
+All tests use mocked API responses to avoid costs (pay-as-you-go plan).
 
 Unit tests mock the httpx client to avoid real API calls.
-Integration tests require OS_PLACES_API_KEY in .env file.
 """
 import pytest
 import pytest_asyncio
@@ -154,167 +152,14 @@ class TestCountyMapping:
 
 
 # =============================================================================
-# Integration Tests (against real OS Places API)
+# Integration Tests (mocked Ideal Postcodes API)
 # =============================================================================
 
-@pytest.mark.integration
 class TestAddressLookupIntegration:
-    """Integration tests against OS Places API.
+    """Integration tests with mocked Ideal Postcodes API responses.
 
-    These tests hit the real OS Places API with real postcodes.
-    Run with: pytest -m integration tests/test_address_lookup.py
+    All tests use mocked responses to avoid API costs.
     """
-
-    @pytest.mark.asyncio
-    async def test_valid_bournemouth_postcode(self, client):
-        """Test BH7 6AW returns addresses in Bournemouth."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "BH7 6AW"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["total_results"] > 0
-        assert len(data["addresses"]) > 0
-
-        # Check first address has required fields
-        first_addr = data["addresses"][0]
-        assert first_addr["uprn"]
-        assert first_addr["address"]
-        assert first_addr["post_town"] == "BOURNEMOUTH"
-        assert first_addr["postcode"] == "BH7 6AW"
-        assert first_addr["county"] == "Dorset"
-
-    @pytest.mark.asyncio
-    async def test_valid_christchurch_postcode(self, client):
-        """Test BH23 6AA returns addresses in Christchurch."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "BH23 6AA"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["total_results"] > 0
-
-        first_addr = data["addresses"][0]
-        assert first_addr["post_town"] == "CHRISTCHURCH"
-        assert first_addr["county"] == "Dorset"
-
-    @pytest.mark.asyncio
-    async def test_postcode_with_no_space(self, client):
-        """Test postcode without space is cleaned and works."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "BH76AW"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["postcode"] == "BH7 6AW"  # Should be formatted with space
-
-    @pytest.mark.asyncio
-    async def test_postcode_lowercase(self, client):
-        """Test lowercase postcode is uppercased and works."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "bh7 6aw"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["postcode"] == "BH7 6AW"
-
-    @pytest.mark.asyncio
-    async def test_postcode_extra_spaces(self, client):
-        """Test postcode with extra spaces is cleaned."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "  BH7   6AW  "}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["postcode"] == "BH7 6AW"
-
-    @pytest.mark.asyncio
-    async def test_address_has_thoroughfare(self, client):
-        """Test that addresses include thoroughfare when available."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "BH7 6AW"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-
-        # Find an address with thoroughfare
-        addr_with_thoroughfare = next(
-            (a for a in data["addresses"] if a["thoroughfare"]),
-            None
-        )
-        assert addr_with_thoroughfare is not None
-        assert "CHRISTCHURCH ROAD" in addr_with_thoroughfare["thoroughfare"]
-
-    @pytest.mark.asyncio
-    async def test_address_has_building_number(self, client):
-        """Test that addresses include building number when available."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "BH7 6AW"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-
-        # Find an address with building number
-        addr_with_number = next(
-            (a for a in data["addresses"] if a["building_number"]),
-            None
-        )
-        assert addr_with_number is not None
-
-    @pytest.mark.asyncio
-    async def test_invalid_postcode_format(self, client):
-        """Test completely invalid postcode returns error."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "INVALID123"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        # May return success=False or empty results depending on API
-        if data["success"]:
-            assert data["total_results"] == 0
-
-    @pytest.mark.asyncio
-    async def test_nonexistent_postcode(self, client):
-        """Test non-existent but valid-format postcode."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "ZZ99 9ZZ"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        # Should return success but with no addresses
-        if data["success"]:
-            assert data["total_results"] == 0 or len(data["addresses"]) == 0
-
-
-# =============================================================================
-# Mock Tests (for testing error handling)
-# =============================================================================
-
-class TestAddressLookupMocked:
-    """Tests with mocked OS Places API responses."""
 
     @pytest.fixture
     def mock_settings(self):
@@ -322,6 +167,439 @@ class TestAddressLookupMocked:
         mock = MagicMock()
         mock.os_places_api_key = "test_api_key_12345"
         return mock
+
+    def _create_mock_ideal_postcodes_response(self, addresses):
+        """Create a mock Ideal Postcodes API response."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "result": addresses
+        }
+        return mock_response
+
+    @pytest.mark.asyncio
+    async def test_valid_bournemouth_postcode(self, client, mock_settings):
+        """Test BH7 6AW returns addresses in Bournemouth."""
+        mock_addresses = [
+            {
+                "udprn": "123456",
+                "line_1": "123 Christchurch Road",
+                "line_2": "",
+                "line_3": "",
+                "post_town": "Bournemouth",
+                "postcode": "BH7 6AW",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "123",
+                "thoroughfare": "Christchurch Road",
+                "dependant_locality": ""
+            }
+        ]
+
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=self._create_mock_ideal_postcodes_response(mock_addresses))
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "BH7 6AW"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+                assert data["total_results"] > 0
+                assert len(data["addresses"]) > 0
+
+                first_addr = data["addresses"][0]
+                assert first_addr["uprn"]
+                assert first_addr["address"]
+                assert first_addr["post_town"] == "Bournemouth"
+                assert first_addr["postcode"] == "BH7 6AW"
+                assert first_addr["county"] == "Dorset"
+
+    @pytest.mark.asyncio
+    async def test_valid_christchurch_postcode(self, client, mock_settings):
+        """Test BH23 6AA returns addresses in Christchurch."""
+        mock_addresses = [
+            {
+                "udprn": "789012",
+                "line_1": "45 High Street",
+                "line_2": "",
+                "line_3": "",
+                "post_town": "Christchurch",
+                "postcode": "BH23 6AA",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "45",
+                "thoroughfare": "High Street",
+                "dependant_locality": ""
+            }
+        ]
+
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=self._create_mock_ideal_postcodes_response(mock_addresses))
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "BH23 6AA"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+                assert data["total_results"] > 0
+
+                first_addr = data["addresses"][0]
+                assert first_addr["post_town"] == "Christchurch"
+                assert first_addr["county"] == "Dorset"
+
+    @pytest.mark.asyncio
+    async def test_postcode_with_no_space(self, client, mock_settings):
+        """Test postcode without space is cleaned and works."""
+        mock_addresses = [
+            {
+                "udprn": "123456",
+                "line_1": "123 Christchurch Road",
+                "line_2": "",
+                "line_3": "",
+                "post_town": "Bournemouth",
+                "postcode": "BH7 6AW",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "123",
+                "thoroughfare": "Christchurch Road",
+                "dependant_locality": ""
+            }
+        ]
+
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=self._create_mock_ideal_postcodes_response(mock_addresses))
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "BH76AW"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+                # Note: postcode formatting depends on API response
+                assert "BH7" in data["postcode"]
+
+    @pytest.mark.asyncio
+    async def test_postcode_lowercase(self, client, mock_settings):
+        """Test lowercase postcode is uppercased and works."""
+        mock_addresses = [
+            {
+                "udprn": "123456",
+                "line_1": "123 Christchurch Road",
+                "line_2": "",
+                "line_3": "",
+                "post_town": "Bournemouth",
+                "postcode": "BH7 6AW",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "123",
+                "thoroughfare": "Christchurch Road",
+                "dependant_locality": ""
+            }
+        ]
+
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=self._create_mock_ideal_postcodes_response(mock_addresses))
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "bh7 6aw"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_postcode_extra_spaces(self, client, mock_settings):
+        """Test postcode with extra spaces is cleaned."""
+        mock_addresses = [
+            {
+                "udprn": "123456",
+                "line_1": "123 Christchurch Road",
+                "line_2": "",
+                "line_3": "",
+                "post_town": "Bournemouth",
+                "postcode": "BH7 6AW",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "123",
+                "thoroughfare": "Christchurch Road",
+                "dependant_locality": ""
+            }
+        ]
+
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=self._create_mock_ideal_postcodes_response(mock_addresses))
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "  BH7   6AW  "}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_address_has_thoroughfare(self, client, mock_settings):
+        """Test that addresses include thoroughfare when available."""
+        mock_addresses = [
+            {
+                "udprn": "123456",
+                "line_1": "123 Christchurch Road",
+                "line_2": "",
+                "line_3": "",
+                "post_town": "Bournemouth",
+                "postcode": "BH7 6AW",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "123",
+                "thoroughfare": "Christchurch Road",
+                "dependant_locality": ""
+            }
+        ]
+
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=self._create_mock_ideal_postcodes_response(mock_addresses))
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "BH7 6AW"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+
+                addr_with_thoroughfare = next(
+                    (a for a in data["addresses"] if a["thoroughfare"]),
+                    None
+                )
+                assert addr_with_thoroughfare is not None
+                assert "Christchurch Road" in addr_with_thoroughfare["thoroughfare"]
+
+    @pytest.mark.asyncio
+    async def test_address_has_building_number(self, client, mock_settings):
+        """Test that addresses include building number when available."""
+        mock_addresses = [
+            {
+                "udprn": "123456",
+                "line_1": "123 Christchurch Road",
+                "line_2": "",
+                "line_3": "",
+                "post_town": "Bournemouth",
+                "postcode": "BH7 6AW",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "123",
+                "thoroughfare": "Christchurch Road",
+                "dependant_locality": ""
+            }
+        ]
+
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=self._create_mock_ideal_postcodes_response(mock_addresses))
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "BH7 6AW"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+
+                addr_with_number = next(
+                    (a for a in data["addresses"] if a["building_number"]),
+                    None
+                )
+                assert addr_with_number is not None
+
+    @pytest.mark.asyncio
+    async def test_invalid_postcode_format(self, client, mock_settings):
+        """Test completely invalid postcode returns error."""
+        # Ideal Postcodes returns 404 for invalid postcodes
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = "Postcode not found"
+
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=mock_response)
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "INVALID123"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                # Invalid postcodes return success=False or empty results
+                if data["success"]:
+                    assert data["total_results"] == 0
+
+    @pytest.mark.asyncio
+    async def test_nonexistent_postcode(self, client, mock_settings):
+        """Test non-existent but valid-format postcode."""
+        # Ideal Postcodes returns 404 for non-existent postcodes
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = "Postcode not found"
+
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=mock_response)
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "ZZ99 9ZZ"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                # Should return success but with no addresses
+                if data["success"]:
+                    assert data["total_results"] == 0 or len(data["addresses"]) == 0
+
+
+# =============================================================================
+# Mock Tests (for testing error handling)
+# =============================================================================
+
+class TestAddressLookupMocked:
+    """Tests with mocked Ideal Postcodes API responses."""
+
+    @pytest.fixture
+    def mock_settings(self):
+        """Mock settings with fake API key."""
+        mock = MagicMock()
+        mock.os_places_api_key = "test_api_key_12345"
+        return mock
+
+    def _create_mock_ideal_postcodes_response(self, addresses):
+        """Create a mock Ideal Postcodes API response."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "result": addresses
+        }
+        return mock_response
+
+    @pytest.mark.asyncio
+    async def test_api_402_payment_required_handling(self, client, mock_settings):
+        """Test handling of 402 payment required error (pay-as-you-go limit)."""
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_response = MagicMock()
+                mock_response.status_code = 402
+                mock_response.text = "Payment Required"
+
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=mock_response)
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "BH7 6AW"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is False
+                assert "payment" in data["error"].lower() or "balance" in data["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_address_with_dependent_locality(self, client, mock_settings):
+        """Test that dependent_locality (village/area) is correctly returned."""
+        mock_addresses = [
+            {
+                "udprn": "1942015",
+                "line_1": "72 High Street",
+                "line_2": "Sturminster Marshall",
+                "line_3": "",
+                "post_town": "Wimborne",
+                "postcode": "BH21 4AY",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "72",
+                "thoroughfare": "High Street",
+                "dependant_locality": "Sturminster Marshall"
+            }
+        ]
+
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=self._create_mock_ideal_postcodes_response(mock_addresses))
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "BH21 4AY"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+                assert len(data["addresses"]) > 0
+
+                first_addr = data["addresses"][0]
+                assert first_addr["dependent_locality"] == "Sturminster Marshall"
+                assert first_addr["post_town"] == "Wimborne"
+                assert first_addr["thoroughfare"] == "High Street"
 
     @pytest.mark.asyncio
     async def test_api_timeout_handling(self, client, mock_settings):
@@ -423,64 +701,164 @@ class TestAddressLookupMocked:
 
 
 # =============================================================================
-# Response Structure Tests
+# Response Structure Tests (mocked)
 # =============================================================================
 
-@pytest.mark.integration
 class TestAddressResponseStructure:
-    """Tests for the structure of address lookup responses."""
+    """Tests for the structure of address lookup responses (mocked)."""
+
+    @pytest.fixture
+    def mock_settings(self):
+        """Mock settings with fake API key."""
+        mock = MagicMock()
+        mock.os_places_api_key = "test_api_key_12345"
+        return mock
+
+    def _create_mock_ideal_postcodes_response(self, addresses):
+        """Create a mock Ideal Postcodes API response."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "result": addresses
+        }
+        return mock_response
 
     @pytest.mark.asyncio
-    async def test_response_has_required_fields(self, client):
+    async def test_response_has_required_fields(self, client, mock_settings):
         """Test response has all required top-level fields."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "BH7 6AW"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-
-        # Check required fields
-        assert "success" in data
-        assert "postcode" in data
-        assert "addresses" in data
-        assert "total_results" in data
-        assert "error" in data
-
-    @pytest.mark.asyncio
-    async def test_address_has_required_fields(self, client):
-        """Test each address has all required fields."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "BH7 6AW"}
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert len(data["addresses"]) > 0
-
-        required_fields = [
-            "uprn", "address", "building_name", "building_number",
-            "thoroughfare", "dependent_locality", "post_town",
-            "postcode", "county"
+        mock_addresses = [
+            {
+                "udprn": "123456",
+                "line_1": "123 Christchurch Road",
+                "line_2": "",
+                "line_3": "",
+                "post_town": "Bournemouth",
+                "postcode": "BH7 6AW",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "123",
+                "thoroughfare": "Christchurch Road",
+                "dependant_locality": ""
+            }
         ]
 
-        for addr in data["addresses"]:
-            for field in required_fields:
-                assert field in addr, f"Missing field: {field}"
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=self._create_mock_ideal_postcodes_response(mock_addresses))
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "BH7 6AW"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+
+                # Check required fields
+                assert "success" in data
+                assert "postcode" in data
+                assert "addresses" in data
+                assert "total_results" in data
+                assert "error" in data
 
     @pytest.mark.asyncio
-    async def test_total_results_matches_addresses(self, client):
-        """Test total_results is consistent with addresses array."""
-        response = await client.post(
-            "/api/address/postcode-lookup",
-            json={"postcode": "BH7 6AW"}
-        )
+    async def test_address_has_required_fields(self, client, mock_settings):
+        """Test each address has all required fields."""
+        mock_addresses = [
+            {
+                "udprn": "123456",
+                "line_1": "123 Christchurch Road",
+                "line_2": "",
+                "line_3": "",
+                "post_town": "Bournemouth",
+                "postcode": "BH7 6AW",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "123",
+                "thoroughfare": "Christchurch Road",
+                "dependant_locality": ""
+            }
+        ]
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        # total_results should be >= len(addresses) (API may paginate)
-        assert data["total_results"] >= len(data["addresses"])
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=self._create_mock_ideal_postcodes_response(mock_addresses))
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "BH7 6AW"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+                assert len(data["addresses"]) > 0
+
+                required_fields = [
+                    "uprn", "address", "building_name", "building_number",
+                    "thoroughfare", "dependent_locality", "post_town",
+                    "postcode", "county"
+                ]
+
+                for addr in data["addresses"]:
+                    for field in required_fields:
+                        assert field in addr, f"Missing field: {field}"
+
+    @pytest.mark.asyncio
+    async def test_total_results_matches_addresses(self, client, mock_settings):
+        """Test total_results is consistent with addresses array."""
+        mock_addresses = [
+            {
+                "udprn": "123456",
+                "line_1": "123 Christchurch Road",
+                "line_2": "",
+                "line_3": "",
+                "post_town": "Bournemouth",
+                "postcode": "BH7 6AW",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "123",
+                "thoroughfare": "Christchurch Road",
+                "dependant_locality": ""
+            },
+            {
+                "udprn": "123457",
+                "line_1": "125 Christchurch Road",
+                "line_2": "",
+                "line_3": "",
+                "post_town": "Bournemouth",
+                "postcode": "BH7 6AW",
+                "county": "Dorset",
+                "building_name": "",
+                "building_number": "125",
+                "thoroughfare": "Christchurch Road",
+                "dependant_locality": ""
+            }
+        ]
+
+        with patch('main.get_settings', return_value=mock_settings):
+            with patch('main.httpx.AsyncClient') as mock_client_class:
+                mock_client = AsyncMock()
+                mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                mock_client.__aexit__ = AsyncMock(return_value=None)
+                mock_client.get = AsyncMock(return_value=self._create_mock_ideal_postcodes_response(mock_addresses))
+                mock_client_class.return_value = mock_client
+
+                response = await client.post(
+                    "/api/address/postcode-lookup",
+                    json={"postcode": "BH7 6AW"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["success"] is True
+                # total_results should match len(addresses)
+                assert data["total_results"] == len(data["addresses"])

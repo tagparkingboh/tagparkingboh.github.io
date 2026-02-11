@@ -552,6 +552,7 @@ function HomePage() {
           <Link to="/terms-conditions">Terms & Conditions</Link>
           <Link to="/refund-policy">Refund Policy</Link>
           <Link to="/cookie-policy">Cookie Policy</Link>
+          <Link to="/vehicle-inspection-terms">Vehicle Inspection T&Cs</Link>
         </div>
         <div className="footer-contact">
           <a href="mailto:support@tagparking.co.uk">support@tagparking.co.uk</a>
