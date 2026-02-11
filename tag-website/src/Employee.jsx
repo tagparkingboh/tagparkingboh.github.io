@@ -430,7 +430,7 @@ function Employee() {
                   <button
                     className="modal-btn modal-btn-primary"
                     onClick={handleSaveInspection}
-                    disabled={savingInspection || !signature || !vehicleInspectionRead}
+                    disabled={savingInspection || !signature || !vehicleInspectionRead || !signedDate || !customerName}
                   >
                     {savingInspection ? 'Saving...' : 'Save Inspection'}
                   </button>

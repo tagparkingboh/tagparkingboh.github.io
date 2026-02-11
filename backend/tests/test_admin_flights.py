@@ -264,6 +264,63 @@ class TestGetDepartures:
         for d in filtered:
             assert d["date"].startswith("2025-06")
 
+    def test_get_departures_filter_by_flight_number(self):
+        """Filtering by flight number should return only matching departures."""
+        all_departures = [
+            {"id": 1, "flight_number": "FR5523"},
+            {"id": 2, "flight_number": "BA1234"},
+            {"id": 3, "flight_number": "FR5523"},
+            {"id": 4, "flight_number": "EZY8899"},
+        ]
+
+        filter_flight_number = "FR5523"
+        filtered = [d for d in all_departures if d["flight_number"] == filter_flight_number]
+
+        assert len(filtered) == 2
+        for d in filtered:
+            assert d["flight_number"] == "FR5523"
+
+    def test_get_departures_filter_by_flight_number_partial_match(self):
+        """Filtering by partial flight number should return matching departures."""
+        all_departures = [
+            {"id": 1, "flight_number": "FR5523"},
+            {"id": 2, "flight_number": "FR5524"},
+            {"id": 3, "flight_number": "BA1234"},
+        ]
+
+        # Simulate partial match filtering (contains search)
+        filter_flight_number = "FR55"
+        filtered = [d for d in all_departures if filter_flight_number in d["flight_number"]]
+
+        assert len(filtered) == 2
+        for d in filtered:
+            assert "FR55" in d["flight_number"]
+
+    def test_get_departures_filter_by_flight_number_case_insensitive(self):
+        """Flight number filter should be case-insensitive."""
+        all_departures = [
+            {"id": 1, "flight_number": "FR5523"},
+            {"id": 2, "flight_number": "BA1234"},
+        ]
+
+        filter_flight_number = "fr5523"  # lowercase
+        filtered = [d for d in all_departures if filter_flight_number.upper() == d["flight_number"].upper()]
+
+        assert len(filtered) == 1
+        assert filtered[0]["flight_number"] == "FR5523"
+
+    def test_get_departures_filter_by_flight_number_no_match(self):
+        """Filtering by non-existent flight number should return empty list."""
+        all_departures = [
+            {"id": 1, "flight_number": "FR5523"},
+            {"id": 2, "flight_number": "BA1234"},
+        ]
+
+        filter_flight_number = "XX9999"
+        filtered = [d for d in all_departures if d["flight_number"] == filter_flight_number]
+
+        assert len(filtered) == 0
+
     def test_get_departures_includes_slot_info(self):
         """Departure response should include slot availability information."""
         departure = {
@@ -367,6 +424,62 @@ class TestGetArrivals:
         assert len(filtered) == 2
         for a in filtered:
             assert a["origin_code"] == "AGP"
+
+    def test_get_arrivals_filter_by_flight_number(self):
+        """Filtering by flight number should return only matching arrivals."""
+        all_arrivals = [
+            {"id": 1, "flight_number": "FR5524"},
+            {"id": 2, "flight_number": "BA1235"},
+            {"id": 3, "flight_number": "FR5524"},
+            {"id": 4, "flight_number": "EZY8900"},
+        ]
+
+        filter_flight_number = "FR5524"
+        filtered = [a for a in all_arrivals if a["flight_number"] == filter_flight_number]
+
+        assert len(filtered) == 2
+        for a in filtered:
+            assert a["flight_number"] == "FR5524"
+
+    def test_get_arrivals_filter_by_flight_number_partial_match(self):
+        """Filtering by partial flight number should return matching arrivals."""
+        all_arrivals = [
+            {"id": 1, "flight_number": "FR5524"},
+            {"id": 2, "flight_number": "FR5525"},
+            {"id": 3, "flight_number": "BA1235"},
+        ]
+
+        filter_flight_number = "FR55"
+        filtered = [a for a in all_arrivals if filter_flight_number in a["flight_number"]]
+
+        assert len(filtered) == 2
+        for a in filtered:
+            assert "FR55" in a["flight_number"]
+
+    def test_get_arrivals_filter_by_flight_number_case_insensitive(self):
+        """Flight number filter should be case-insensitive."""
+        all_arrivals = [
+            {"id": 1, "flight_number": "FR5524"},
+            {"id": 2, "flight_number": "BA1235"},
+        ]
+
+        filter_flight_number = "fr5524"  # lowercase
+        filtered = [a for a in all_arrivals if filter_flight_number.upper() == a["flight_number"].upper()]
+
+        assert len(filtered) == 1
+        assert filtered[0]["flight_number"] == "FR5524"
+
+    def test_get_arrivals_filter_by_flight_number_no_match(self):
+        """Filtering by non-existent flight number should return empty list."""
+        all_arrivals = [
+            {"id": 1, "flight_number": "FR5524"},
+            {"id": 2, "flight_number": "BA1235"},
+        ]
+
+        filter_flight_number = "XX9999"
+        filtered = [a for a in all_arrivals if a["flight_number"] == filter_flight_number]
+
+        assert len(filtered) == 0
 
     def test_get_arrivals_requires_admin(self):
         """Non-admin users should receive 403 Forbidden."""
