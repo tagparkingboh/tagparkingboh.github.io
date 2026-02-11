@@ -4606,6 +4606,8 @@ class CreateInspectionRequest(BaseModel):
     photos: Optional[dict] = None  # { "front": "base64...", "rear": "base64...", ... }
     customer_name: Optional[str] = None
     signed_date: Optional[str] = None  # ISO date string YYYY-MM-DD
+    signature: Optional[str] = None  # Base64-encoded signature image
+    vehicle_inspection_read: Optional[bool] = False  # Confirmed they read the T&C
 
 
 class UpdateInspectionRequest(BaseModel):
@@ -4613,6 +4615,8 @@ class UpdateInspectionRequest(BaseModel):
     photos: Optional[dict] = None
     customer_name: Optional[str] = None
     signed_date: Optional[str] = None
+    signature: Optional[str] = None
+    vehicle_inspection_read: Optional[bool] = None
 
 
 @app.get("/api/employee/bookings")
@@ -4711,6 +4715,8 @@ async def create_inspection(
         photos=json.dumps(request.photos) if request.photos else None,
         customer_name=request.customer_name,
         signed_date=signed_date,
+        signature=request.signature,
+        vehicle_inspection_read=request.vehicle_inspection_read or False,
         inspector_id=current_user.id,
     )
     db.add(inspection)
@@ -4727,6 +4733,8 @@ async def create_inspection(
             "photos": json.loads(inspection.photos) if inspection.photos else {},
             "customer_name": inspection.customer_name,
             "signed_date": inspection.signed_date.isoformat() if inspection.signed_date else None,
+            "signature": inspection.signature,
+            "vehicle_inspection_read": inspection.vehicle_inspection_read,
             "inspector_id": inspection.inspector_id,
             "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
         }
@@ -4754,6 +4762,8 @@ async def get_inspections(
                 "photos": json.loads(i.photos) if i.photos else {},
                 "customer_name": i.customer_name,
                 "signed_date": i.signed_date.isoformat() if i.signed_date else None,
+                "signature": i.signature,
+                "vehicle_inspection_read": i.vehicle_inspection_read,
                 "inspector_id": i.inspector_id,
                 "created_at": i.created_at.isoformat() if i.created_at else None,
                 "updated_at": i.updated_at.isoformat() if i.updated_at else None,
@@ -4787,6 +4797,10 @@ async def update_inspection(
             inspection.signed_date = date_type.fromisoformat(request.signed_date)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid signed_date format. Use YYYY-MM-DD")
+    if request.signature is not None:
+        inspection.signature = request.signature
+    if request.vehicle_inspection_read is not None:
+        inspection.vehicle_inspection_read = request.vehicle_inspection_read
 
     db.commit()
     db.refresh(inspection)
@@ -4801,6 +4815,8 @@ async def update_inspection(
             "photos": json.loads(inspection.photos) if inspection.photos else {},
             "customer_name": inspection.customer_name,
             "signed_date": inspection.signed_date.isoformat() if inspection.signed_date else None,
+            "signature": inspection.signature,
+            "vehicle_inspection_read": inspection.vehicle_inspection_read,
             "inspector_id": inspection.inspector_id,
             "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
             "updated_at": inspection.updated_at.isoformat() if inspection.updated_at else None,
