@@ -10,6 +10,7 @@ import PrivacyPolicy from './PrivacyPolicy.jsx'
 import TermsConditions from './TermsConditions.jsx'
 import RefundPolicy from './RefundPolicy.jsx'
 import CookiePolicy from './CookiePolicy.jsx'
+import VehicleInspectionTerms from './VehicleInspectionTerms.jsx'
 import FAQ from './FAQ.jsx'
 import Login from './Login.jsx'
 import Admin from './Admin.jsx'
@@ -31,6 +32,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/terms-conditions" element={<TermsConditions />} />
           <Route path="/refund-policy" element={<RefundPolicy />} />
           <Route path="/cookie-policy" element={<CookiePolicy />} />
+          <Route path="/vehicle-inspection-terms" element={<VehicleInspectionTerms />} />
           <Route path="/faq" element={<FAQ />} />
           <Route path="/login" element={<Login />} />
           <Route path="/admin" element={<Admin />} />
