@@ -2686,7 +2686,7 @@ async def lookup_vehicle(
 
 
 # =============================================================================
-# OS Places API - Address Lookup
+# Ideal Postcodes API - Address Lookup
 # =============================================================================
 
 class AddressLookupRequest(BaseModel):
@@ -2695,7 +2695,7 @@ class AddressLookupRequest(BaseModel):
 
 
 class Address(BaseModel):
-    """A single address from OS Places API."""
+    """A single address from Ideal Postcodes API."""
     uprn: str
     address: str
     building_name: Optional[str] = None
@@ -2756,7 +2756,7 @@ async def lookup_address(
     db: Session = Depends(get_db),
 ):
     """
-    Lookup addresses by postcode using OS Places API.
+    Lookup addresses by postcode using Ideal Postcodes API.
 
     Returns a list of addresses at the given postcode for the user to select from.
     """
@@ -2778,7 +2778,7 @@ async def lookup_address(
         )
 
     settings = get_settings()
-    api_key = settings.os_places_api_key
+    api_key = settings.os_places_api_key  # Reusing same env var for Ideal Postcodes key
 
     if not api_key:
         raise HTTPException(
@@ -2786,32 +2786,42 @@ async def lookup_address(
             detail="Address lookup service is not configured"
         )
 
-    # Call OS Places API
-    os_url = f"https://api.os.uk/search/places/v1/postcode?postcode={clean_postcode}&key={api_key}"
+    # Call Ideal Postcodes API
+    ideal_url = f"https://api.ideal-postcodes.co.uk/v1/postcodes/{clean_postcode}?api_key={api_key}"
 
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(os_url, timeout=10.0)
+            response = await client.get(ideal_url, timeout=10.0)
 
             if response.status_code == 200:
                 data = response.json()
-                results = data.get("results", [])
+                results = data.get("result", [])
 
                 addresses = []
                 for result in results:
-                    dpa = result.get("DPA", {})
-                    post_town = dpa.get("POST_TOWN", "")
-                    # Look up county from post town
-                    county = POST_TOWN_TO_COUNTY.get(post_town.upper())
+                    post_town = result.get("post_town", "")
+                    # Use county from API, fallback to lookup
+                    county = result.get("county") or POST_TOWN_TO_COUNTY.get(post_town.upper())
+
+                    # Build full address from line_1, line_2, line_3, post_town, postcode
+                    address_parts = [
+                        result.get("line_1", ""),
+                        result.get("line_2", ""),
+                        result.get("line_3", ""),
+                        post_town,
+                        result.get("postcode", ""),
+                    ]
+                    full_address = ", ".join(part for part in address_parts if part)
+
                     addresses.append(Address(
-                        uprn=dpa.get("UPRN", ""),
-                        address=dpa.get("ADDRESS", ""),
-                        building_name=dpa.get("BUILDING_NAME"),
-                        building_number=dpa.get("BUILDING_NUMBER"),
-                        thoroughfare=dpa.get("THOROUGHFARE_NAME") or dpa.get("DEPENDENT_THOROUGHFARE_NAME"),
-                        dependent_locality=dpa.get("DEPENDENT_LOCALITY"),
+                        uprn=str(result.get("udprn", "")),
+                        address=full_address,
+                        building_name=result.get("building_name") or result.get("sub_building_name"),
+                        building_number=result.get("building_number"),
+                        thoroughfare=result.get("thoroughfare") or result.get("dependant_thoroughfare"),
+                        dependent_locality=result.get("dependant_locality"),
                         post_town=post_town,
-                        postcode=dpa.get("POSTCODE", ""),
+                        postcode=result.get("postcode", ""),
                         county=county,
                     ))
 
@@ -2824,19 +2834,35 @@ async def lookup_address(
                     success=True,
                     postcode=formatted_postcode,
                     addresses=addresses,
-                    total_results=data.get("header", {}).get("totalresults", len(addresses))
+                    total_results=len(addresses)
                 )
-            elif response.status_code == 400:
+            elif response.status_code == 404:
+                # Postcode not found
                 return AddressLookupResponse(
                     success=False,
                     postcode=clean_postcode,
-                    error="Invalid postcode"
+                    error="Postcode not found"
+                )
+            elif response.status_code == 402:
+                # Payment required / key exhausted
+                log_error(
+                    db=db,
+                    error_type="ideal_postcodes_api",
+                    message="Ideal Postcodes API key exhausted or payment required",
+                    request=http_request,
+                    error_code="402",
+                    request_data={"postcode": clean_postcode},
+                )
+                return AddressLookupResponse(
+                    success=False,
+                    postcode=clean_postcode,
+                    error="Address service temporarily unavailable"
                 )
             elif response.status_code == 401:
                 log_error(
                     db=db,
-                    error_type="os_places_api",
-                    message="OS Places API authentication failed",
+                    error_type="ideal_postcodes_api",
+                    message="Ideal Postcodes API authentication failed",
                     request=http_request,
                     error_code="401",
                     request_data={"postcode": clean_postcode},
@@ -2849,8 +2875,8 @@ async def lookup_address(
             else:
                 log_error(
                     db=db,
-                    error_type="os_places_api",
-                    message=f"OS Places API error: {response.status_code}",
+                    error_type="ideal_postcodes_api",
+                    message=f"Ideal Postcodes API error: {response.status_code}",
                     request=http_request,
                     error_code=str(response.status_code),
                     request_data={"postcode": clean_postcode},
@@ -2864,8 +2890,8 @@ async def lookup_address(
     except httpx.TimeoutException:
         log_error(
             db=db,
-            error_type="os_places_api",
-            message="OS Places API timeout",
+            error_type="ideal_postcodes_api",
+            message="Ideal Postcodes API timeout",
             request=http_request,
             severity=ErrorSeverity.WARNING,
             request_data={"postcode": clean_postcode},
@@ -2878,7 +2904,7 @@ async def lookup_address(
     except Exception as e:
         log_error(
             db=db,
-            error_type="os_places_api",
+            error_type="ideal_postcodes_api",
             message=str(e),
             request=http_request,
             stack_trace=traceback.format_exc(),
