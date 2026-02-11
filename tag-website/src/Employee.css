@@ -638,6 +638,7 @@
 
 .inspection-document-content .document-logo img {
   height: 40px;
+  filter: brightness(0);
 }
 
 .inspection-document-content h2 {
