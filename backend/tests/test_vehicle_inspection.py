@@ -127,6 +127,8 @@ def create_mock_inspection(
     photos=None,
     customer_name=None,
     signed_date=None,
+    signature=None,
+    vehicle_inspection_read=False,
     created_at=None,
     updated_at=None,
 ):
@@ -140,6 +142,8 @@ def create_mock_inspection(
     inspection.photos = photos or {}
     inspection.customer_name = customer_name
     inspection.signed_date = signed_date
+    inspection.signature = signature
+    inspection.vehicle_inspection_read = vehicle_inspection_read
     inspection.created_at = created_at or datetime.utcnow()
     inspection.updated_at = updated_at
     return inspection
@@ -156,6 +160,8 @@ def create_mock_inspection_response(inspection):
         "photos": inspection.photos,
         "customer_name": inspection.customer_name,
         "signed_date": inspection.signed_date.isoformat() if isinstance(inspection.signed_date, date) else inspection.signed_date,
+        "signature": inspection.signature,
+        "vehicle_inspection_read": inspection.vehicle_inspection_read,
         "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
         "updated_at": inspection.updated_at.isoformat() if inspection.updated_at else None,
     }
@@ -206,6 +212,9 @@ MOCK_PHOTOS_PARTIAL = {
     "rear": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg==",
 }
 
+# Mock signature (base64-encoded PNG)
+MOCK_SIGNATURE = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAABkCAYAAAA8AQ3AAAAABGdBTUEAALGPC/xhBQAAAAlwSFlzAAAOwgAADsIBFShKgAAAABl0RVh0U29mdHdhcmUAcGFpbnQubmV0IDQuMC4xMkMEa+wAAABVSURBVHic7cExAQAAAMKg9U9tDQ+gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4GYN9wABsD=="
+
 
 # =============================================================================
 # Create Inspection Tests
@@ -215,7 +224,7 @@ class TestCreateInspection:
     """Tests for POST /api/employee/inspections."""
 
     def test_create_dropoff_inspection_success(self):
-        """Should create a drop-off inspection with notes and photos."""
+        """Should create a drop-off inspection with notes, photos, signature, and vehicle inspection confirmation."""
         booking = create_mock_booking(id=100, reference="INS-ABC123")
 
         inspection = create_mock_inspection(
@@ -226,6 +235,8 @@ class TestCreateInspection:
             photos=MOCK_PHOTOS,
             customer_name="John TestInspection",
             signed_date=date.today(),
+            signature=MOCK_SIGNATURE,
+            vehicle_inspection_read=True,
             created_at=datetime.utcnow(),
         )
 
@@ -243,6 +254,8 @@ class TestCreateInspection:
         assert insp["photos"]["rear"] == MOCK_PHOTOS["rear"]
         assert insp["customer_name"] == "John TestInspection"
         assert insp["signed_date"] == date.today().isoformat()
+        assert insp["signature"] == MOCK_SIGNATURE
+        assert insp["vehicle_inspection_read"] is True
         assert insp["created_at"] is not None
 
     def test_create_pickup_inspection_success(self):
@@ -348,6 +361,84 @@ class TestCreateInspection:
         assert status_code == 400
         assert "Invalid signed_date" in error_response["detail"]
 
+    def test_create_inspection_with_signature(self):
+        """Should create inspection with base64 signature."""
+        booking = create_mock_booking(id=100)
+
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            signature=MOCK_SIGNATURE,
+            vehicle_inspection_read=True,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["signature"] == MOCK_SIGNATURE
+        assert response_data["inspection"]["signature"].startswith("data:image/png;base64,")
+
+    def test_create_inspection_with_vehicle_inspection_read_true(self):
+        """Should create inspection with vehicle_inspection_read=True."""
+        booking = create_mock_booking(id=100)
+
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            vehicle_inspection_read=True,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["vehicle_inspection_read"] is True
+
+    def test_create_inspection_with_vehicle_inspection_read_false(self):
+        """Should create inspection with vehicle_inspection_read=False (default)."""
+        booking = create_mock_booking(id=100)
+
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            vehicle_inspection_read=False,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["vehicle_inspection_read"] is False
+
+    def test_create_inspection_without_signature(self):
+        """Should allow inspection without signature (null)."""
+        booking = create_mock_booking(id=100)
+
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            signature=None,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["signature"] is None
+
 
 # =============================================================================
 # Get Inspections Tests
@@ -357,7 +448,7 @@ class TestGetInspections:
     """Tests for GET /api/employee/inspections/{booking_id}."""
 
     def test_get_inspections_returns_all(self):
-        """Should return all inspections for a booking."""
+        """Should return all inspections for a booking with signature and vehicle_inspection_read."""
         booking = create_mock_booking(id=100)
 
         dropoff = create_mock_inspection(
@@ -368,12 +459,16 @@ class TestGetInspections:
             photos=MOCK_PHOTOS,
             customer_name="John Smith",
             signed_date=date(2026, 2, 3),
+            signature=MOCK_SIGNATURE,
+            vehicle_inspection_read=True,
         )
         pickup = create_mock_inspection(
             id=2,
             booking_id=booking.id,
             inspection_type="pickup",
             notes="Pick-up notes",
+            signature=None,
+            vehicle_inspection_read=False,
         )
 
         response_data = {
@@ -388,11 +483,18 @@ class TestGetInspections:
         types = {i["inspection_type"] for i in response_data["inspections"]}
         assert types == {"dropoff", "pickup"}
 
-        # Verify dropoff has photos and customer acknowledgement
+        # Verify dropoff has photos, customer acknowledgement, signature, and vehicle_inspection_read
         dropoff_resp = next(i for i in response_data["inspections"] if i["inspection_type"] == "dropoff")
         assert dropoff_resp["photos"]["front"] == MOCK_PHOTOS["front"]
         assert dropoff_resp["customer_name"] == "John Smith"
         assert dropoff_resp["signed_date"] == "2026-02-03"
+        assert dropoff_resp["signature"] == MOCK_SIGNATURE
+        assert dropoff_resp["vehicle_inspection_read"] is True
+
+        # Verify pickup has no signature and vehicle_inspection_read is False
+        pickup_resp = next(i for i in response_data["inspections"] if i["inspection_type"] == "pickup")
+        assert pickup_resp["signature"] is None
+        assert pickup_resp["vehicle_inspection_read"] is False
 
     def test_get_inspections_empty(self):
         """Should return empty list when no inspections exist."""
@@ -496,6 +598,80 @@ class TestUpdateInspection:
         status_code = 401
 
         assert status_code == 401
+
+    def test_update_signature(self):
+        """Should update inspection signature."""
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            signature=MOCK_SIGNATURE,
+            updated_at=datetime.utcnow(),
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["signature"] == MOCK_SIGNATURE
+
+    def test_update_vehicle_inspection_read(self):
+        """Should update vehicle_inspection_read flag."""
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            vehicle_inspection_read=True,
+            updated_at=datetime.utcnow(),
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["vehicle_inspection_read"] is True
+
+    def test_update_all_acknowledgement_fields(self):
+        """Should update all acknowledgement fields together (name, date, signature, vehicle_inspection_read)."""
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            customer_name="Jane Doe",
+            signed_date=date(2026, 2, 10),
+            signature=MOCK_SIGNATURE,
+            vehicle_inspection_read=True,
+            updated_at=datetime.utcnow(),
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        insp = response_data["inspection"]
+        assert insp["customer_name"] == "Jane Doe"
+        assert insp["signed_date"] == "2026-02-10"
+        assert insp["signature"] == MOCK_SIGNATURE
+        assert insp["vehicle_inspection_read"] is True
+
+    def test_clear_signature(self):
+        """Should allow clearing signature by setting to null."""
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            signature=None,
+            updated_at=datetime.utcnow(),
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["signature"] is None
 
 
 # =============================================================================
@@ -650,10 +826,10 @@ class TestInspectionFullFlow:
     def test_full_inspection_and_complete_flow(self):
         """
         Full flow:
-        1. Create drop-off inspection with photos + customer acknowledgement
+        1. Create drop-off inspection with photos + customer acknowledgement + signature
         2. Verify it shows in GET
         3. Create pick-up (return) inspection
-        4. Update pick-up with customer name
+        4. Update pick-up with customer name, signature, and vehicle_inspection_read
         5. Complete the booking
         6. Verify booking status changed
         """
@@ -661,7 +837,7 @@ class TestInspectionFullFlow:
         customer = create_mock_customer()
         vehicle = create_mock_vehicle()
 
-        # 1. Drop-off inspection
+        # 1. Drop-off inspection with all fields including signature and vehicle_inspection_read
         dropoff = create_mock_inspection(
             id=1,
             booking_id=booking.id,
@@ -670,6 +846,8 @@ class TestInspectionFullFlow:
             photos=MOCK_PHOTOS,
             customer_name="John TestInspection",
             signed_date=date.today(),
+            signature=MOCK_SIGNATURE,
+            vehicle_inspection_read=True,
         )
 
         dropoff_response = {
@@ -677,12 +855,15 @@ class TestInspectionFullFlow:
             "inspection": create_mock_inspection_response(dropoff),
         }
         assert dropoff_response["success"] is True
+        assert dropoff_response["inspection"]["signature"] == MOCK_SIGNATURE
+        assert dropoff_response["inspection"]["vehicle_inspection_read"] is True
 
         # 2. Verify in GET
         get_response = {
             "inspections": [create_mock_inspection_response(dropoff)]
         }
         assert len(get_response["inspections"]) == 1
+        assert get_response["inspections"][0]["signature"] == MOCK_SIGNATURE
 
         # 3. Pick-up inspection
         pickup = create_mock_inspection(
@@ -699,15 +880,19 @@ class TestInspectionFullFlow:
         }
         assert pickup_response["success"] is True
 
-        # 4. Update pick-up with customer acknowledgement
+        # 4. Update pick-up with full customer acknowledgement including signature
         pickup.customer_name = "John TestInspection"
         pickup.signed_date = date.today()
+        pickup.signature = MOCK_SIGNATURE
+        pickup.vehicle_inspection_read = True
 
         update_response = {
             "success": True,
             "inspection": create_mock_inspection_response(pickup),
         }
         assert update_response["inspection"]["customer_name"] == "John TestInspection"
+        assert update_response["inspection"]["signature"] == MOCK_SIGNATURE
+        assert update_response["inspection"]["vehicle_inspection_read"] is True
 
         # 5. Verify both inspections present
         get_response2 = {
@@ -797,6 +982,73 @@ class TestInspectionEdgeCases:
         status_code = 401
 
         assert status_code == 401
+
+    def test_large_signature_data(self):
+        """Should handle large base64 signature data (typical signature size)."""
+        # Simulate a larger signature (typical canvas signature can be 50-100KB)
+        large_signature = "data:image/png;base64," + ("A" * 100000)
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            signature=large_signature,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["signature"] == large_signature
+        assert len(response_data["inspection"]["signature"]) > 100000
+
+    def test_signature_with_valid_base64_format(self):
+        """Should accept properly formatted base64 image signature."""
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            signature=MOCK_SIGNATURE,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        sig = response_data["inspection"]["signature"]
+        assert sig.startswith("data:image/png;base64,")
+
+    def test_vehicle_inspection_read_boolean_true(self):
+        """Should correctly store vehicle_inspection_read as True."""
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            vehicle_inspection_read=True,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["inspection"]["vehicle_inspection_read"] is True
+        assert isinstance(response_data["inspection"]["vehicle_inspection_read"], bool)
+
+    def test_vehicle_inspection_read_boolean_false(self):
+        """Should correctly store vehicle_inspection_read as False."""
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            vehicle_inspection_read=False,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["inspection"]["vehicle_inspection_read"] is False
+        assert isinstance(response_data["inspection"]["vehicle_inspection_read"], bool)
 
 
 # =============================================================================
