@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, Link, useBlocker } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import BookingCalendar from './components/BookingCalendar'
 import SignaturePad from './components/SignaturePad'
@@ -111,9 +111,6 @@ function Employee() {
 
   // Check if there's unsaved inspection data
   const hasUnsavedData = showInspectionModal && (Object.keys(inspectionPhotos).length > 0 || inspectionNotes || signature)
-
-  // Block in-app navigation when there's unsaved data
-  const blocker = useBlocker(hasUnsavedData)
 
   // Warn before leaving page with unsaved inspection data (browser navigation)
   useEffect(() => {
@@ -716,25 +713,6 @@ disabled={savingInspection || !signature || !vehicleInspectionRead || !signedDat
               </button>
               <button className="modal-btn modal-btn-primary" onClick={() => restoreDraft(pendingDraft)}>
                 Restore
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Navigation Blocker Modal */}
-      {blocker.state === 'blocked' && (
-        <div className="modal-overlay">
-          <div className="modal-content draft-modal" onClick={e => e.stopPropagation()}>
-            <h3>Unsaved Inspection</h3>
-            <p>You have unsaved inspection data. Are you sure you want to leave?</p>
-            <p className="modal-subtext">Your photos and notes have been saved locally and can be restored later.</p>
-            <div className="modal-actions">
-              <button className="modal-btn modal-btn-secondary" onClick={() => blocker.reset()}>
-                Stay
-              </button>
-              <button className="modal-btn modal-btn-danger" onClick={() => blocker.proceed()}>
-                Leave
               </button>
             </div>
           </div>
