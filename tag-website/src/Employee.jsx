@@ -53,6 +53,9 @@ function Employee() {
   const [showDraftModal, setShowDraftModal] = useState(false)
   const [pendingDraft, setPendingDraft] = useState(null)
 
+  // Close confirmation modal
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+
   // Helper to get localStorage key for inspection draft
   const getDraftKey = (bookingId, type) => `inspection_draft_${bookingId}_${type}`
 
@@ -111,6 +114,27 @@ function Employee() {
 
   // Check if there's unsaved inspection data
   const hasUnsavedData = showInspectionModal && (Object.keys(inspectionPhotos).length > 0 || inspectionNotes || signature)
+
+  // Handle attempt to close inspection modal
+  const handleCloseInspection = () => {
+    if (savingInspection) return // Don't allow close while saving
+
+    const hasData = Object.keys(inspectionPhotos).length > 0 || inspectionNotes || signature
+    if (hasData && !editingInspection) {
+      // Show confirmation for new inspections with data
+      setShowCloseConfirm(true)
+    } else {
+      // Close directly for existing inspections or empty new ones
+      setShowInspectionModal(false)
+    }
+  }
+
+  // Confirm close and discard data
+  const confirmCloseInspection = () => {
+    setShowCloseConfirm(false)
+    setShowInspectionModal(false)
+    // Note: draft is already saved to localStorage, so user can restore later
+  }
 
   // Warn before leaving page with unsaved inspection data (browser navigation)
   useEffect(() => {
@@ -427,7 +451,7 @@ function Employee() {
 
       {/* Inspection Modal */}
       {showInspectionModal && inspectionBooking && (
-        <div className="modal-overlay" onClick={() => !savingInspection && setShowInspectionModal(false)}>
+        <div className="modal-overlay" onClick={handleCloseInspection}>
           <div className="modal-content inspection-modal" onClick={e => e.stopPropagation()}>
 
             {/* Saving Overlay */}
@@ -564,7 +588,7 @@ function Employee() {
                 <div className="modal-actions">
                   <button
                     className="modal-btn modal-btn-secondary"
-                    onClick={() => setShowInspectionModal(false)}
+                    onClick={handleCloseInspection}
                     disabled={savingInspection}
                   >
                     Cancel
@@ -572,7 +596,7 @@ function Employee() {
                   <button
                     className="modal-btn modal-btn-primary"
                     onClick={handleSaveInspection}
-disabled={savingInspection || !signature || !vehicleInspectionRead || !signedDate || !customerName}
+                    disabled={savingInspection || !signature || !vehicleInspectionRead || !signedDate || !customerName}
                   >
                     {savingInspection ? 'Saving...' : 'Save Inspection'}
                   </button>
@@ -713,6 +737,25 @@ disabled={savingInspection || !signature || !vehicleInspectionRead || !signedDat
               </button>
               <button className="modal-btn modal-btn-primary" onClick={() => restoreDraft(pendingDraft)}>
                 Restore
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close Confirmation Modal */}
+      {showCloseConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-content draft-modal" onClick={e => e.stopPropagation()}>
+            <h3>Discard Inspection?</h3>
+            <p>You have unsaved photos and data. Are you sure you want to close?</p>
+            <p className="draft-time">Your progress has been saved as a draft and can be restored later.</p>
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setShowCloseConfirm(false)}>
+                Continue Editing
+              </button>
+              <button className="modal-btn modal-btn-danger" onClick={confirmCloseInspection}>
+                Discard & Close
               </button>
             </div>
           </div>
