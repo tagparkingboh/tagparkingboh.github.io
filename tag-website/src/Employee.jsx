@@ -49,6 +49,87 @@ function Employee() {
   // Expanded image viewer state
   const [expandedImage, setExpandedImage] = useState(null) // { src: 'base64...', label: 'Front' }
 
+  // Draft restoration modal
+  const [showDraftModal, setShowDraftModal] = useState(false)
+  const [pendingDraft, setPendingDraft] = useState(null)
+
+  // Helper to get localStorage key for inspection draft
+  const getDraftKey = (bookingId, type) => `inspection_draft_${bookingId}_${type}`
+
+  // Save inspection draft to localStorage
+  const saveDraft = useCallback(() => {
+    if (!inspectionBooking || !inspectionType) return
+    const key = getDraftKey(inspectionBooking.id, inspectionType)
+    const draft = {
+      notes: inspectionNotes,
+      photos: inspectionPhotos,
+      customerName,
+      signedDate,
+      vehicleInspectionRead,
+      signature,
+      savedAt: new Date().toISOString(),
+    }
+    try {
+      localStorage.setItem(key, JSON.stringify(draft))
+    } catch (e) {
+      // localStorage might be full - silently fail
+      console.warn('Could not save draft to localStorage:', e)
+    }
+  }, [inspectionBooking, inspectionType, inspectionNotes, inspectionPhotos, customerName, signedDate, vehicleInspectionRead, signature])
+
+  // Clear draft from localStorage
+  const clearDraft = (bookingId, type) => {
+    const key = getDraftKey(bookingId, type)
+    localStorage.removeItem(key)
+  }
+
+  // Check for existing draft
+  const checkForDraft = (bookingId, type) => {
+    const key = getDraftKey(bookingId, type)
+    try {
+      const saved = localStorage.getItem(key)
+      if (saved) {
+        return JSON.parse(saved)
+      }
+    } catch (e) {
+      // Corrupted data - remove it
+      localStorage.removeItem(key)
+    }
+    return null
+  }
+
+  // Auto-save draft when inspection data changes
+  useEffect(() => {
+    if (showInspectionModal && inspectionBooking && !editingInspection) {
+      // Only auto-save for new inspections, not when editing
+      const hasData = Object.keys(inspectionPhotos).length > 0 || inspectionNotes || signature
+      if (hasData) {
+        saveDraft()
+      }
+    }
+  }, [showInspectionModal, inspectionBooking, editingInspection, inspectionPhotos, inspectionNotes, signature, saveDraft])
+
+  // Warn before leaving page with unsaved inspection data
+  useEffect(() => {
+    const hasUnsavedData = showInspectionModal && (Object.keys(inspectionPhotos).length > 0 || inspectionNotes || signature)
+
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedData) {
+        e.preventDefault()
+        e.returnValue = ''
+        return ''
+      }
+    }
+
+    if (hasUnsavedData) {
+      window.addEventListener('beforeunload', handleBeforeUnload)
+    }
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [showInspectionModal, inspectionPhotos, inspectionNotes, signature])
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -78,6 +159,37 @@ function Employee() {
     }
   }
 
+  // Restore draft data
+  const restoreDraft = (draft) => {
+    setInspectionNotes(draft.notes || '')
+    setInspectionPhotos(draft.photos || {})
+    setCustomerName(draft.customerName || '')
+    setSignedDate(draft.signedDate || new Date().toISOString().split('T')[0])
+    setVehicleInspectionRead(draft.vehicleInspectionRead || false)
+    setSignature(draft.signature || null)
+    setShowDraftModal(false)
+    setPendingDraft(null)
+    setInspectionPage(1)
+    setShowInspectionModal(true)
+  }
+
+  // Discard draft and start fresh
+  const discardDraft = () => {
+    if (pendingDraft && inspectionBooking) {
+      clearDraft(inspectionBooking.id, inspectionType)
+    }
+    setInspectionNotes('')
+    setInspectionPhotos({})
+    setCustomerName('')
+    setSignedDate(new Date().toISOString().split('T')[0])
+    setVehicleInspectionRead(false)
+    setSignature(null)
+    setShowDraftModal(false)
+    setPendingDraft(null)
+    setInspectionPage(1)
+    setShowInspectionModal(true)
+  }
+
   // Open inspection modal
   const openInspection = (booking, type) => {
     const bookingInspections = inspections[booking.id] || []
@@ -87,6 +199,7 @@ function Employee() {
     setInspectionType(type)
 
     if (existing) {
+      // Editing existing inspection - load from database
       setEditingInspection(existing)
       setInspectionNotes(existing.notes || '')
       // Handle both old array format and new object format
@@ -96,17 +209,28 @@ function Employee() {
       setSignedDate(existing.signed_date || '')
       setVehicleInspectionRead(existing.vehicle_inspection_read || false)
       setSignature(existing.signature || null)
+      setInspectionPage(1)
+      setShowInspectionModal(true)
     } else {
+      // New inspection - check for draft
       setEditingInspection(null)
-      setInspectionNotes('')
-      setInspectionPhotos({})
-      setCustomerName('')
-      setSignedDate(new Date().toISOString().split('T')[0])
-      setVehicleInspectionRead(false)
-      setSignature(null)
+      const draft = checkForDraft(booking.id, type)
+      if (draft && (Object.keys(draft.photos || {}).length > 0 || draft.notes || draft.signature)) {
+        // Found draft with data - ask user
+        setPendingDraft(draft)
+        setShowDraftModal(true)
+      } else {
+        // No draft - start fresh
+        setInspectionNotes('')
+        setInspectionPhotos({})
+        setCustomerName('')
+        setSignedDate(new Date().toISOString().split('T')[0])
+        setVehicleInspectionRead(false)
+        setSignature(null)
+        setInspectionPage(1)
+        setShowInspectionModal(true)
+      }
     }
-    setInspectionPage(1)
-    setShowInspectionModal(true)
   }
 
   // Handle photo capture for a specific slot
@@ -159,6 +283,8 @@ function Employee() {
         body: JSON.stringify(body),
       })
       if (response.ok) {
+        // Clear draft from localStorage on successful save
+        clearDraft(inspectionBooking.id, inspectionType)
         setShowInspectionModal(false)
         setSuccessMessage(`${inspectionType === 'dropoff' ? 'Drop-off' : 'Return'} inspection saved`)
         setTimeout(() => setSuccessMessage(''), 3000)
@@ -563,6 +689,29 @@ disabled={savingInspection || !signature || !vehicleInspectionRead || !signedDat
               <button className="modal-btn modal-btn-secondary" onClick={() => setShowCompleteModal(false)}>Cancel</button>
               <button className="modal-btn modal-btn-success" onClick={handleCompleteBooking} disabled={completing}>
                 {completing ? 'Completing...' : 'Confirm Complete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Draft Restoration Modal */}
+      {showDraftModal && pendingDraft && (
+        <div className="modal-overlay">
+          <div className="modal-content draft-modal" onClick={e => e.stopPropagation()}>
+            <h3>Restore Previous Work?</h3>
+            <p>You have an unsaved inspection from earlier.</p>
+            <div className="draft-info">
+              <p><strong>Photos:</strong> {Object.keys(pendingDraft.photos || {}).length} captured</p>
+              {pendingDraft.notes && <p><strong>Notes:</strong> {pendingDraft.notes.substring(0, 50)}{pendingDraft.notes.length > 50 ? '...' : ''}</p>}
+              <p className="draft-time">Saved: {new Date(pendingDraft.savedAt).toLocaleString()}</p>
+            </div>
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={discardDraft}>
+                Start Fresh
+              </button>
+              <button className="modal-btn modal-btn-primary" onClick={() => restoreDraft(pendingDraft)}>
+                Restore
               </button>
             </div>
           </div>
