@@ -328,6 +328,34 @@
   100% { transform: rotate(360deg); }
 }
 
+/* Draft Restoration Modal */
+.draft-modal {
+  max-width: 400px;
+}
+
+.draft-info {
+  background: #333;
+  padding: 16px;
+  border-radius: 8px;
+  margin: 16px 0;
+}
+
+.draft-info p {
+  margin: 8px 0;
+  color: #ccc;
+  font-size: 14px;
+}
+
+.draft-info p strong {
+  color: #fff;
+}
+
+.draft-time {
+  color: #888 !important;
+  font-size: 12px !important;
+  margin-top: 12px !important;
+}
+
 .inspection-booking-info {
   display: flex;
   gap: 16px;
