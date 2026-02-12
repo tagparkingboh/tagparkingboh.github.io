@@ -300,8 +300,17 @@ function Employee() {
 
       {/* Inspection Modal */}
       {showInspectionModal && inspectionBooking && (
-        <div className="modal-overlay" onClick={() => setShowInspectionModal(false)}>
+        <div className="modal-overlay" onClick={() => !savingInspection && setShowInspectionModal(false)}>
           <div className="modal-content inspection-modal" onClick={e => e.stopPropagation()}>
+
+            {/* Saving Overlay */}
+            {savingInspection && (
+              <div className="saving-overlay">
+                <div className="saving-spinner"></div>
+                <p>Saving inspection...</p>
+                <p className="saving-subtext">Please wait, this may take a moment</p>
+              </div>
+            )}
 
             {/* Page 1: Inspection Form */}
             {inspectionPage === 1 && (
@@ -426,7 +435,13 @@ function Employee() {
                 </div>
 
                 <div className="modal-actions">
-                  <button className="modal-btn modal-btn-secondary" onClick={() => setShowInspectionModal(false)}>Cancel</button>
+                  <button
+                    className="modal-btn modal-btn-secondary"
+                    onClick={() => setShowInspectionModal(false)}
+                    disabled={savingInspection}
+                  >
+                    Cancel
+                  </button>
                   <button
                     className="modal-btn modal-btn-primary"
                     onClick={handleSaveInspection}
