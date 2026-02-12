@@ -271,6 +271,16 @@
   background: #2f855a;
 }
 
+.modal-btn-danger {
+  background: #e53e3e;
+  color: white;
+  font-weight: 600;
+}
+
+.modal-btn-danger:hover:not(:disabled) {
+  background: #c53030;
+}
+
 /* ============================================
    Inspection Modal
    ============================================ */
