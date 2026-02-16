@@ -2014,3 +2014,79 @@
     flex: 1;
   }
 }
+
+/* Reports Section - Booking Location Map */
+.reports-description {
+  color: #666;
+  margin-bottom: 1.5rem;
+  font-size: 14px;
+}
+
+.booking-map-container {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.map-count {
+  margin-top: 0.75rem;
+  font-size: 13px;
+  color: #666;
+  text-align: right;
+}
+
+.map-empty {
+  background: #fff;
+  border-radius: 8px;
+  padding: 3rem;
+  text-align: center;
+  color: #888;
+  border: 1px dashed #ddd;
+}
+
+/* Map popup styles */
+.map-popup {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.map-popup strong {
+  color: #1a1a2e;
+  font-size: 14px;
+}
+
+.map-popup p {
+  margin: 4px 0;
+  color: #444;
+}
+
+.map-popup .popup-location {
+  color: #666;
+  font-size: 12px;
+}
+
+.map-popup .popup-date {
+  color: #888;
+  font-size: 12px;
+}
+
+.map-popup .popup-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: capitalize;
+  margin-top: 6px;
+}
+
+.map-popup .status-confirmed {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.map-popup .status-completed {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
