@@ -36,8 +36,8 @@ const getMarkerIcon = (status) => {
 }
 
 function BookingLocationMap({ locations = [] }) {
-  // Center on South Coast (slightly south of Bournemouth to show more coastline)
-  const center = [50.65, -1.5]
+  // Center higher to show south coast near bottom of map
+  const center = [51.2, -1.3]
   const zoom = 8
 
   if (locations.length === 0) {
