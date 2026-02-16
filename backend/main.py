@@ -2082,25 +2082,36 @@ async def get_booking_locations(
 
     # Build response with booking details
     locations = []
+    skipped = []
     for b in bookings:
-        if b.customer and b.customer.billing_postcode:
-            postcode = b.customer.billing_postcode.strip().upper()
-            if postcode in coordinates:
-                coord = coordinates[postcode]
-                locations.append({
-                    "id": b.id,
-                    "reference": b.reference,
-                    "customer_name": f"{b.customer_first_name or b.customer.first_name} {b.customer_last_name or b.customer.last_name}",
-                    "postcode": postcode,
-                    "city": b.customer.billing_city,
-                    "lat": coord["lat"],
-                    "lng": coord["lng"],
-                    "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
-                    "status": b.status.value if b.status else None,
-                })
+        if not b.customer:
+            skipped.append({"reference": b.reference, "reason": "No customer"})
+            continue
+        if not b.customer.billing_postcode:
+            skipped.append({"reference": b.reference, "reason": "No postcode"})
+            continue
+        postcode = b.customer.billing_postcode.strip().upper()
+        if postcode not in coordinates:
+            skipped.append({"reference": b.reference, "reason": f"Postcode '{postcode}' not found"})
+            continue
+        coord = coordinates[postcode]
+        locations.append({
+            "id": b.id,
+            "reference": b.reference,
+            "customer_name": f"{b.customer_first_name or b.customer.first_name} {b.customer_last_name or b.customer.last_name}",
+            "postcode": postcode,
+            "city": b.customer.billing_city,
+            "lat": coord["lat"],
+            "lng": coord["lng"],
+            "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
+            "status": b.status.value if b.status else None,
+        })
 
     return {
         "count": len(locations),
+        "total_bookings": len(bookings),
+        "skipped_count": len(skipped),
+        "skipped": skipped,
         "locations": locations,
     }
 
