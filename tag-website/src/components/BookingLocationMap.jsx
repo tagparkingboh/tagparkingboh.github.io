@@ -36,9 +36,9 @@ const getMarkerIcon = (status) => {
 }
 
 function BookingLocationMap({ locations = [] }) {
-  // Center on Bournemouth
-  const center = [50.7192, -1.8808]
-  const zoom = 9
+  // Center on South Coast (slightly south of Bournemouth to show more coastline)
+  const center = [50.65, -1.5]
+  const zoom = 8
 
   if (locations.length === 0) {
     return (
@@ -53,7 +53,7 @@ function BookingLocationMap({ locations = [] }) {
       <MapContainer
         center={center}
         zoom={zoom}
-        style={{ height: '500px', width: '100%', borderRadius: '8px' }}
+        style={{ height: '650px', width: '100%', borderRadius: '8px' }}
         scrollWheelZoom={true}
       >
         <TileLayer
