@@ -2564,7 +2564,7 @@ function Admin() {
           <div className="admin-section">
             <h2>Reports</h2>
             <h3>Booking Locations</h3>
-            <p className="reports-description">Map showing customer locations based on billing postcodes for all confirmed and completed bookings.</p>
+            <p className="reports-description">Map showing customer locations based on billing postcodes.</p>
             {loadingLocations ? (
               <div className="admin-loading-inline">
                 <div className="spinner-small"></div>
