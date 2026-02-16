@@ -1,4 +1,5 @@
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -60,31 +61,38 @@ function BookingLocationMap({ locations = [] }) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {locations.map((location) => (
-          <Marker
-            key={location.id}
-            position={[location.lat, location.lng]}
-            icon={getMarkerIcon(location.status)}
-          >
-            <Popup>
-              <div className="map-popup">
-                <strong>{location.reference}</strong>
-                <p>{location.customer_name}</p>
-                <p className="popup-location">{location.city || location.postcode}</p>
-                <p className="popup-date">
-                  {location.dropoff_date && new Date(location.dropoff_date).toLocaleDateString('en-GB', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric'
-                  })}
-                </p>
-                <span className={`popup-status status-${location.status}`}>
-                  {location.status}
-                </span>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+        <MarkerClusterGroup
+          chunkedLoading
+          maxClusterRadius={40}
+          spiderfyOnMaxZoom={true}
+          showCoverageOnHover={false}
+        >
+          {locations.map((location) => (
+            <Marker
+              key={location.id}
+              position={[location.lat, location.lng]}
+              icon={getMarkerIcon(location.status)}
+            >
+              <Popup>
+                <div className="map-popup">
+                  <strong>{location.reference}</strong>
+                  <p>{location.customer_name}</p>
+                  <p className="popup-location">{location.city || location.postcode}</p>
+                  <p className="popup-date">
+                    {location.dropoff_date && new Date(location.dropoff_date).toLocaleDateString('en-GB', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric'
+                    })}
+                  </p>
+                  <span className={`popup-status status-${location.status}`}>
+                    {location.status}
+                  </span>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+        </MarkerClusterGroup>
       </MapContainer>
       <p className="map-count">{locations.length} bookings displayed</p>
     </div>
