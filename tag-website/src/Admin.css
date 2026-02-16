@@ -2100,3 +2100,29 @@
   background: #fff3e0;
   color: #e65100;
 }
+
+/* Skipped bookings info */
+.skipped-bookings {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #fff8e1;
+  border: 1px solid #ffcc80;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.skipped-summary {
+  margin: 0 0 0.5rem 0;
+  color: #e65100;
+  font-weight: 500;
+}
+
+.skipped-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #666;
+}
+
+.skipped-list li {
+  margin: 0.25rem 0;
+}

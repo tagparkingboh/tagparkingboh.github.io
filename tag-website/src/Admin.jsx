@@ -108,6 +108,8 @@ function Admin() {
 
   // Reports / Booking Locations state
   const [bookingLocations, setBookingLocations] = useState([])
+  const [skippedBookings, setSkippedBookings] = useState([])
+  const [totalBookings, setTotalBookings] = useState(0)
   const [loadingLocations, setLoadingLocations] = useState(false)
 
   // Test email domains to filter out
@@ -199,6 +201,8 @@ function Admin() {
       if (response.ok) {
         const data = await response.json()
         setBookingLocations(data.locations || [])
+        setSkippedBookings(data.skipped || [])
+        setTotalBookings(data.total_bookings || 0)
       } else {
         setError('Failed to load booking locations')
       }
@@ -2571,7 +2575,22 @@ function Admin() {
                 <span>Loading booking locations...</span>
               </div>
             ) : (
-              <BookingLocationMap locations={bookingLocations} />
+              <>
+                <BookingLocationMap locations={bookingLocations} />
+                {skippedBookings.length > 0 && (
+                  <div className="skipped-bookings">
+                    <p className="skipped-summary">
+                      {bookingLocations.length} of {totalBookings} bookings mapped.
+                      {skippedBookings.length} skipped:
+                    </p>
+                    <ul className="skipped-list">
+                      {skippedBookings.map((s, i) => (
+                        <li key={i}>{s.reference}: {s.reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
