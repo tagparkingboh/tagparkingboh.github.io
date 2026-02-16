@@ -2020,6 +2020,92 @@ async def get_abandoned_leads(
     }
 
 
+@app.get("/api/admin/reports/booking-locations")
+async def get_booking_locations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get booking locations for map visualization.
+    Returns confirmed/completed bookings with geocoded coordinates from billing postcodes.
+    """
+    from db_models import Booking, BookingStatus
+
+    # Query confirmed and completed bookings with customer data
+    bookings = (
+        db.query(Booking)
+        .options(joinedload(Booking.customer))
+        .filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
+        .order_by(Booking.dropoff_date.desc())
+        .all()
+    )
+
+    # Extract unique postcodes
+    postcode_to_bookings = {}
+    for b in bookings:
+        if b.customer and b.customer.billing_postcode:
+            postcode = b.customer.billing_postcode.strip().upper()
+            if postcode:
+                if postcode not in postcode_to_bookings:
+                    postcode_to_bookings[postcode] = []
+                postcode_to_bookings[postcode].append(b)
+
+    if not postcode_to_bookings:
+        return {"count": 0, "locations": []}
+
+    # Bulk geocode postcodes via postcodes.io
+    postcodes_list = list(postcode_to_bookings.keys())
+    coordinates = {}
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # postcodes.io supports bulk lookup (max 100 per request)
+            for i in range(0, len(postcodes_list), 100):
+                batch = postcodes_list[i:i + 100]
+                response = await client.post(
+                    "https://api.postcodes.io/postcodes",
+                    json={"postcodes": batch},
+                    timeout=10.0,
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    for item in data.get("result", []):
+                        if item.get("result"):
+                            pc = item["query"].upper()
+                            coordinates[pc] = {
+                                "lat": item["result"]["latitude"],
+                                "lng": item["result"]["longitude"],
+                                "admin_district": item["result"].get("admin_district"),
+                            }
+    except Exception as e:
+        # Log error but continue with whatever we have
+        log_error(db=db, error_type="geocoding_error", message=str(e))
+
+    # Build response with booking details
+    locations = []
+    for b in bookings:
+        if b.customer and b.customer.billing_postcode:
+            postcode = b.customer.billing_postcode.strip().upper()
+            if postcode in coordinates:
+                coord = coordinates[postcode]
+                locations.append({
+                    "id": b.id,
+                    "reference": b.reference,
+                    "customer_name": f"{b.customer_first_name or b.customer.first_name} {b.customer_last_name or b.customer.last_name}",
+                    "postcode": postcode,
+                    "city": b.customer.billing_city,
+                    "lat": coord["lat"],
+                    "lng": coord["lng"],
+                    "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
+                    "status": b.status.value if b.status else None,
+                })
+
+    return {
+        "count": len(locations),
+        "locations": locations,
+    }
+
+
 @app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
 async def send_promo_email_to_subscriber(
     subscriber_id: int,

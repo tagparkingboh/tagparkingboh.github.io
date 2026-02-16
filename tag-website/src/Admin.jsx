@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import ManualBooking from './components/ManualBooking'
 import BookingCalendar from './components/BookingCalendar'
+import BookingLocationMap from './components/BookingLocationMap'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -105,6 +106,10 @@ function Admin() {
   const [flightsMessage, setFlightsMessage] = useState('')
   const [exportingFlights, setExportingFlights] = useState(false)
 
+  // Reports / Booking Locations state
+  const [bookingLocations, setBookingLocations] = useState([])
+  const [loadingLocations, setLoadingLocations] = useState(false)
+
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
 
@@ -174,6 +179,35 @@ function Admin() {
       fetchFlights()
     }
   }, [flightsSubTab, flightsSortAsc, flightDestFilter, flightOriginFilter, flightAirlineFilter, flightMonthFilter, flightNumberFilter])
+
+  // Fetch booking locations when reports tab is active
+  useEffect(() => {
+    if (activeTab === 'reports' && token) {
+      fetchBookingLocations()
+    }
+  }, [activeTab, token])
+
+  const fetchBookingLocations = async () => {
+    setLoadingLocations(true)
+    setError('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/reports/booking-locations`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setBookingLocations(data.locations || [])
+      } else {
+        setError('Failed to load booking locations')
+      }
+    } catch (err) {
+      setError('Network error loading booking locations')
+    } finally {
+      setLoadingLocations(false)
+    }
+  }
 
   const fetchSubscribers = async () => {
     setLoadingSubscribers(true)
@@ -2529,7 +2563,16 @@ function Admin() {
         {activeTab === 'reports' && (
           <div className="admin-section">
             <h2>Reports</h2>
-            <p className="admin-coming-soon">Reports coming soon...</p>
+            <h3>Booking Locations</h3>
+            <p className="reports-description">Map showing customer locations based on billing postcodes for all confirmed and completed bookings.</p>
+            {loadingLocations ? (
+              <div className="admin-loading-inline">
+                <div className="spinner-small"></div>
+                <span>Loading booking locations...</span>
+              </div>
+            ) : (
+              <BookingLocationMap locations={bookingLocations} />
+            )}
           </div>
         )}
       </main>
