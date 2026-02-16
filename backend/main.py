@@ -2027,15 +2027,14 @@ async def get_booking_locations(
 ):
     """
     Get booking locations for map visualization.
-    Returns confirmed/completed bookings with geocoded coordinates from billing postcodes.
+    Returns all bookings with geocoded coordinates from billing postcodes.
     """
-    from db_models import Booking, BookingStatus
+    from db_models import Booking
 
-    # Query confirmed and completed bookings with customer data
+    # Query all bookings with customer data
     bookings = (
         db.query(Booking)
         .options(joinedload(Booking.customer))
-        .filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
         .order_by(Booking.dropoff_date.desc())
         .all()
     )
