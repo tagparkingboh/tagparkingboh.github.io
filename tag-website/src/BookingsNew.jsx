@@ -651,10 +651,10 @@ function Bookings() {
         })
         const data = await response.json()
         console.log('Customer updated:', customerId)
-        return data.success
+        return data.success ? customerId : null
       } catch (error) {
         console.error('Error updating customer:', error)
-        return false
+        return null
       }
     }
 
@@ -675,16 +675,18 @@ function Bookings() {
       if (data.success) {
         setCustomerId(data.customer_id)
         console.log('Customer created:', data.customer_id)
+        return data.customer_id
       }
-      return data.success
+      return null
     } catch (error) {
       console.error('Error saving customer:', error)
-      return false
+      return null
     }
   }
 
-  const saveVehicle = async () => {
-    if (!customerId) return false
+  const saveVehicle = async (custId) => {
+    const customerIdToUse = custId || customerId
+    if (!customerIdToUse) return false
 
     // If vehicle already exists, update instead of create
     if (vehicleId) {
@@ -715,7 +717,7 @@ function Bookings() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customer_id: customerId,
+          customer_id: customerIdToUse,
           registration: formData.registration.toUpperCase(),
           make: formData.make === 'Other' ? formData.customMake : formData.make,
           model: formData.model === 'Other' ? formData.customModel : formData.model,
@@ -735,10 +737,11 @@ function Bookings() {
     }
   }
 
-  const saveBillingAddress = async () => {
-    if (!customerId) return false
+  const saveBillingAddress = async (custId) => {
+    const customerIdToUse = custId || customerId
+    if (!customerIdToUse) return false
     try {
-      const response = await fetch(`${API_BASE_URL}/api/customers/${customerId}/billing`, {
+      const response = await fetch(`${API_BASE_URL}/api/customers/${customerIdToUse}/billing`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -912,9 +915,11 @@ function Bookings() {
       // Save data based on current step
       // Step 1: Contact + Billing + Vehicle - save customer, billing, and vehicle
       if (currentStep === 1) {
-        await saveCustomer()
-        await saveBillingAddress()
-        await saveVehicle()
+        const custId = await saveCustomer()
+        if (custId) {
+          await saveBillingAddress(custId)
+          await saveVehicle(custId)
+        }
       }
       // Steps 2, 3, 4 don't need incremental saves (data already captured)
 
