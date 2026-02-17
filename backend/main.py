@@ -2037,24 +2037,39 @@ async def get_booking_locations(
     if map_type == "origins":
         # Query customers with billing postcodes who have billing_updated_at set
         # This filters to only show leads captured since the feature was deployed
-        # Excludes customers who have any booking (shown on Bookings Map instead)
+        # Shows customers who either:
+        #   1. Have no bookings (pure leads), OR
+        #   2. Started a new booking flow AFTER their last booking (returning customer lead)
         from datetime import datetime, timezone
+        from sqlalchemy import func, and_, or_
         feature_launch_date = datetime(2026, 2, 16, 20, 0, 0, tzinfo=timezone.utc)
 
-        # Subquery to get customer IDs with any booking (they're on Bookings Map, not leads)
-        customers_with_bookings = (
-            db.query(Booking.customer_id)
-            .distinct()
+        # Subquery to get the most recent booking created_at for each customer
+        latest_booking = (
+            db.query(
+                Booking.customer_id,
+                func.max(Booking.created_at).label('last_booking_date')
+            )
+            .group_by(Booking.customer_id)
             .subquery()
         )
 
+        # Get customers who are leads for their current booking attempt
         customers = (
             db.query(Customer)
+            .outerjoin(latest_booking, Customer.id == latest_booking.c.customer_id)
             .filter(Customer.billing_postcode.isnot(None))
             .filter(Customer.billing_postcode != "")
             .filter(Customer.billing_updated_at.isnot(None))
             .filter(Customer.billing_updated_at >= feature_launch_date)
-            .filter(~Customer.id.in_(customers_with_bookings))  # Exclude converted customers
+            .filter(
+                or_(
+                    # No bookings at all (pure lead)
+                    latest_booking.c.last_booking_date.is_(None),
+                    # billing_updated_at is after their last booking (new lead attempt)
+                    Customer.billing_updated_at > latest_booking.c.last_booking_date
+                )
+            )
             .order_by(Customer.billing_updated_at.desc())
             .all()
         )
