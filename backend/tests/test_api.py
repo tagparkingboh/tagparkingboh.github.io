@@ -6,7 +6,7 @@ Tests the full request/response cycle for the booking API.
 import pytest
 import pytest_asyncio
 from datetime import date
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 import sys
@@ -205,41 +205,43 @@ async def test_check_capacity(client):
 @pytest.mark.asyncio
 async def test_create_booking(client):
     """Should create a booking successfully."""
-    response = await client.post(
-        "/api/bookings",
-        json={
-            "first_name": "John",
-            "last_name": "Doe",
-            "email": "john@example.com",
-            "phone": "07700900000",
-            "drop_off_date": "2026-02-10",
-            "drop_off_slot_type": "165",
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR",
-            "airline_name": "Ryanair",
-            "destination_code": "KRK",
-            "destination_name": "Krakow, PL",
-            "pickup_date": "2026-02-17",
-            "return_flight_time": "14:30",
-            "return_flight_number": "5524",
-            "registration": "AB12 CDE",
-            "make": "Ford",
-            "model": "Focus",
-            "colour": "Blue",
-            "package": "quick",
-            "billing_address1": "123 Test St",
-            "billing_city": "London",
-            "billing_postcode": "SW1A 1AA",
-            "billing_country": "United Kingdom"
-        }
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    assert data["booking_id"] is not None
-    assert data["booking"]["price"] == 89.0
+    # Mock pricing to avoid dependency on database pricing config
+    with patch.object(BookingService, 'calculate_price', return_value=89.0):
+        response = await client.post(
+            "/api/bookings",
+            json={
+                "first_name": "John",
+                "last_name": "Doe",
+                "email": "john@example.com",
+                "phone": "07700900000",
+                "drop_off_date": "2026-02-10",
+                "drop_off_slot_type": "165",
+                "flight_date": "2026-02-10",
+                "flight_time": "10:00",
+                "flight_number": "5523",
+                "airline_code": "FR",
+                "airline_name": "Ryanair",
+                "destination_code": "KRK",
+                "destination_name": "Krakow, PL",
+                "pickup_date": "2026-02-17",
+                "return_flight_time": "14:30",
+                "return_flight_number": "5524",
+                "registration": "AB12 CDE",
+                "make": "Ford",
+                "model": "Focus",
+                "colour": "Blue",
+                "package": "quick",
+                "billing_address1": "123 Test St",
+                "billing_city": "London",
+                "billing_postcode": "SW1A 1AA",
+                "billing_country": "United Kingdom"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["booking_id"] is not None
+        assert data["booking"]["price"] == 89.0
 
 
 @pytest.mark.asyncio
