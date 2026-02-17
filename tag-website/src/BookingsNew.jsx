@@ -695,6 +695,7 @@ function Bookings() {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            customer_id: customerIdToUse,
             registration: formData.registration.toUpperCase(),
             make: formData.make === 'Other' ? formData.customMake : formData.make,
             model: formData.model === 'Other' ? formData.customModel : formData.model,
