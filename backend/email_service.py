@@ -426,8 +426,6 @@ def send_2_day_reminder_email(
         html_content = html_content.replace("{{DROPOFF_DATE}}", dropoff_date)
         html_content = html_content.replace("{{DROPOFF_TIME}}", dropoff_time)
         html_content = html_content.replace("{{FLIGHT_DEPARTURE_TIME}}", flight_departure_time)
-        # Use the departure icon from the website (needs to be deployed)
-        html_content = html_content.replace("{{DEPARTURE_ICON_URL}}", "https://tagparking.co.uk/assets/departure-icon.webp")
 
     except FileNotFoundError:
         logger.error(f"2-day reminder email template not found at {template_path}")
