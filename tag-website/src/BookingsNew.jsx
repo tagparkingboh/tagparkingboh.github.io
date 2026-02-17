@@ -926,18 +926,28 @@ function Bookings() {
     }
   }
 
+  // Save Step 1 data and show welcome modal (called on first Continue click)
+  const saveStep1AndShowModal = async () => {
+    setSaving(true)
+    try {
+      const { customerId: custId, isNewCustomer } = await saveCustomer()
+      if (custId) {
+        await saveBillingAddress(custId)
+        await saveVehicle(custId, isNewCustomer)
+      }
+      // Data saved, now show the welcome modal
+      setShowWelcomeModal(true)
+    } catch (error) {
+      console.error('Error saving step 1 data:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const nextStep = async () => {
     setSaving(true)
     try {
-      // Save data based on current step
-      // Step 1: Contact + Billing + Vehicle - save customer, billing, and vehicle
-      if (currentStep === 1) {
-        const { customerId: custId, isNewCustomer } = await saveCustomer()
-        if (custId) {
-          await saveBillingAddress(custId)
-          await saveVehicle(custId, isNewCustomer)
-        }
-      }
+      // Step 1 data is already saved via saveStep1AndShowModal
       // Steps 2, 3, 4 don't need incremental saves (data already captured)
 
       // Track booking flow progress in GA
@@ -1094,7 +1104,7 @@ function Bookings() {
                     })
                   }
                   setShowWelcomeModal(false)
-                  nextStep()
+                  setCurrentStep(2)  // Data already saved, just advance step
                 }}
               >
                 Continue to Trip Details
@@ -1580,7 +1590,7 @@ function Bookings() {
                 <button
                   type="button"
                   className="next-btn"
-                  onClick={() => setShowWelcomeModal(true)}
+                  onClick={saveStep1AndShowModal}
                   disabled={!isStep1Complete || saving}
                 >
                   {saving ? 'Saving...' : 'Continue to Trip Details'}
