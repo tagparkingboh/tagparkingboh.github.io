@@ -387,6 +387,56 @@ def send_refund_email(
     return send_email(email, subject, html_content)
 
 
+def send_2_day_reminder_email(
+    email: str,
+    first_name: str,
+    last_name: str,
+    booking_reference: str,
+    dropoff_date: str,
+    dropoff_time: str,
+    departure_flight: str,
+) -> bool:
+    """
+    Send 2-day reminder email before booking.
+
+    Args:
+        email: Customer email address
+        first_name: Customer first name
+        last_name: Customer last name
+        booking_reference: Unique booking reference (e.g., TAG-XXXXXXXX)
+        dropoff_date: Formatted drop-off date (e.g., "Friday, 13 February 2026")
+        dropoff_time: Drop-off time (e.g., "12:10")
+        departure_flight: Flight details (e.g., "1178 to Tenerife South Airport")
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    subject = f"Two Days to Go - {booking_reference}"
+
+    # Load the HTML template
+    template_path = EMAIL_TEMPLATES_DIR / "2_day_reminder_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{LAST_NAME}}", last_name)
+        html_content = html_content.replace("{{BOOKING_REFERENCE}}", booking_reference)
+        html_content = html_content.replace("{{DROPOFF_DATE}}", dropoff_date)
+        html_content = html_content.replace("{{DROPOFF_TIME}}", dropoff_time)
+        html_content = html_content.replace("{{DEPARTURE_FLIGHT}}", departure_flight)
+
+    except FileNotFoundError:
+        logger.error(f"2-day reminder email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading 2-day reminder email template: {e}")
+        return False
+
+    return send_email(email, subject, html_content)
+
+
 def send_manual_booking_payment_email(
     email: str,
     first_name: str,
