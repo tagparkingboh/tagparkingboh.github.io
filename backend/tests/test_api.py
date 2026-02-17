@@ -803,6 +803,158 @@ async def test_update_vehicle_requires_customer_id(client):
 
 
 @pytest.mark.asyncio
+async def test_create_customer_same_email_returns_existing(client):
+    """POST /api/customers with same email should return existing customer."""
+    import uuid
+    unique_email = f"same_email_{uuid.uuid4().hex[:8]}@example.com"
+
+    # Create first customer
+    response1 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "Original",
+            "last_name": "User",
+            "email": unique_email,
+            "phone": "+44 7700 900010",
+            "session_id": "test_session_same1"
+        }
+    )
+    assert response1.status_code == 200
+    customer_id_1 = response1.json()["customer_id"]
+
+    # Create second customer with SAME email but different name
+    response2 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "Updated",
+            "last_name": "Name",
+            "email": unique_email,  # Same email
+            "phone": "+44 7700 900011",
+            "session_id": "test_session_same2"
+        }
+    )
+    assert response2.status_code == 200
+    customer_id_2 = response2.json()["customer_id"]
+
+    # Should return the SAME customer ID (backend deduplicates by email)
+    assert customer_id_1 == customer_id_2, \
+        "Same email should return same customer_id"
+
+
+@pytest.mark.asyncio
+async def test_create_customer_different_email_creates_new(client):
+    """POST /api/customers with different email should create new customer."""
+    import uuid
+    email1 = f"first_{uuid.uuid4().hex[:8]}@example.com"
+    email2 = f"second_{uuid.uuid4().hex[:8]}@example.com"
+
+    # Create first customer
+    response1 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "First",
+            "last_name": "User",
+            "email": email1,
+            "phone": "+44 7700 900020",
+            "session_id": "test_session_diff1"
+        }
+    )
+    assert response1.status_code == 200
+    customer_id_1 = response1.json()["customer_id"]
+
+    # Create second customer with DIFFERENT email
+    response2 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "First",  # Same name
+            "last_name": "User",    # Same name
+            "email": email2,        # Different email!
+            "phone": "+44 7700 900020",
+            "session_id": "test_session_diff2"
+        }
+    )
+    assert response2.status_code == 200
+    customer_id_2 = response2.json()["customer_id"]
+
+    # Should create a NEW customer (different email = different person)
+    assert customer_id_1 != customer_id_2, \
+        "Different email should create different customer_id"
+
+
+@pytest.mark.asyncio
+async def test_email_change_flow_creates_new_customer_and_vehicle(client):
+    """
+    Simulates frontend email change flow:
+    1. Create customer + vehicle
+    2. User changes email and resubmits
+    3. Should create NEW customer and NEW vehicle
+    """
+    import uuid
+    original_email = f"original_{uuid.uuid4().hex[:8]}@example.com"
+    changed_email = f"changed_{uuid.uuid4().hex[:8]}@example.com"
+
+    # Step 1: Create original customer
+    cust_resp1 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "Original",
+            "last_name": "Person",
+            "email": original_email,
+            "phone": "+44 7700 900030",
+            "session_id": "test_email_change"
+        }
+    )
+    original_customer_id = cust_resp1.json()["customer_id"]
+
+    # Step 2: Create vehicle for original customer
+    veh_resp1 = await client.post(
+        "/api/vehicles",
+        json={
+            "customer_id": original_customer_id,
+            "registration": f"OR{uuid.uuid4().hex[:5].upper()}",
+            "make": "Ford",
+            "model": "Focus",
+            "colour": "Blue",
+            "session_id": "test_email_change"
+        }
+    )
+    original_vehicle_id = veh_resp1.json()["vehicle_id"]
+
+    # Step 3: User changes email - frontend detects this and creates NEW customer
+    cust_resp2 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "Changed",  # May also change name
+            "last_name": "Person",
+            "email": changed_email,   # Different email!
+            "phone": "+44 7700 900031",
+            "session_id": "test_email_change"
+        }
+    )
+    new_customer_id = cust_resp2.json()["customer_id"]
+
+    # Step 4: Create new vehicle for new customer
+    veh_resp2 = await client.post(
+        "/api/vehicles",
+        json={
+            "customer_id": new_customer_id,  # New customer!
+            "registration": f"NW{uuid.uuid4().hex[:5].upper()}",
+            "make": "Ford",
+            "model": "Focus",
+            "colour": "Blue",
+            "session_id": "test_email_change"
+        }
+    )
+    new_vehicle_id = veh_resp2.json()["vehicle_id"]
+
+    # Verify: Different email = different customer = different vehicle
+    assert original_customer_id != new_customer_id, \
+        "Email change should create new customer"
+    assert original_vehicle_id != new_vehicle_id, \
+        "New customer should have new vehicle"
+
+
+@pytest.mark.asyncio
 async def test_update_vehicle_with_customer_id_success(client):
     """PATCH /api/vehicles/{id} should succeed when customer_id is provided."""
     import uuid
