@@ -861,21 +861,19 @@ function Bookings() {
     setSaving(true)
     try {
       // Save data based on current step
-      // Save data based on current step
-      // Step 1: Your Details (Contact + Vehicle) - save customer, then vehicle
+      // Step 1: Contact + Billing + Vehicle - save customer, billing, and vehicle
       if (currentStep === 1) {
         await saveCustomer()
-        await saveVehicle()
-      } else if (currentStep === 3) {
-        // Step 4: Payment - save billing address before payment
         await saveBillingAddress()
+        await saveVehicle()
       }
+      // Steps 2, 3, 4 don't need incremental saves (data already captured)
 
       // Track booking flow progress in GA
       const stepNames = {
-        1: 'continue_to_details',      // Your Details → Trip Details
-        2: 'continue_to_details',      // Trip Details → Package
-        3: 'continue_to_package_selection'  // Package → Payment
+        1: 'continue_to_trip',             // Details → Trip
+        2: 'continue_to_package_selection', // Trip → Package
+        3: 'continue_to_payment'           // Package → Payment
       }
       if (window.gtag && stepNames[currentStep]) {
         window.gtag('event', stepNames[currentStep], {
@@ -897,19 +895,21 @@ function Bookings() {
     window.scrollTo(0, 0)
   }
 
-  // Step 1: Your Details (Contact + Vehicle)
+  // Validation helpers
   const isPhoneValid = formData.phone && isValidPhoneNumber(formData.phone)
   const isEmailValid = formData.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)
+  const isBillingComplete = formData.billingAddress1 && formData.billingCity && formData.billingPostcode && formData.billingCountry
   const isMakeComplete = formData.make && (formData.make !== 'Other' || formData.customMake)
   const isModelComplete = formData.make === 'Other' ? formData.customModel : (formData.model && (formData.model !== 'Other' || formData.customModel))
-  const isStep1Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid && formData.registration && isMakeComplete && isModelComplete && formData.colour
-  // Step 2: Trip Details
+
+  // Step 1: Contact + Billing + Vehicle Information (all on Page 1)
+  const isStep1Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid && isBillingComplete && formData.registration && isMakeComplete && isModelComplete && formData.colour
+  // Step 2: Trip Details / Slot booking
   const isStep2Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable
-  // Step 3: Package
+  // Step 3: Package Selection
   const isStep3Complete = formData.package
-  // Step 4: Payment (Billing + Payment)
-  const isBillingComplete = formData.billingAddress1 && formData.billingCity && formData.billingPostcode && formData.billingCountry
-  const isStep4Complete = formData.terms && isBillingComplete
+  // Step 4: Payment (uses billing from Step 1)
+  const isStep4Complete = formData.terms
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -1070,7 +1070,7 @@ function Bookings() {
         </div>
 
         <form className="bookings-new-form" onSubmit={handleSubmit}>
-          {/* Step 1: Your Details (Contact + Vehicle) */}
+          {/* Step 1: Contact + Billing Information */}
           {currentStep === 1 && (
             <div className="form-section">
               <h2>Your Details</h2>
@@ -1134,6 +1134,221 @@ function Bookings() {
                 {formData.phone && !isPhoneValid && (
                   <span className="field-error">Please enter a valid phone number</span>
                 )}
+              </div>
+
+              <h3 className="section-subtitle">Billing Address</h3>
+              <p className="section-info">This address will be used for payment verification.</p>
+
+              {/* Postcode Lookup - show unless manual entry mode */}
+              {!manualAddressEntry && (
+                <>
+                  <div className="form-group">
+                    <label htmlFor="billingPostcode">Postcode <span className="required">*</span></label>
+                    <div className="postcode-lookup-row">
+                      <input
+                        type="text"
+                        id="billingPostcode"
+                        name="billingPostcode"
+                        placeholder="BH1 1AA"
+                        value={formData.billingPostcode}
+                        onChange={handleChange}
+                        style={{ textTransform: 'uppercase' }}
+                        required
+                      />
+                      <button
+                        type="button"
+                        className="find-address-btn"
+                        onClick={lookupAddress}
+                        disabled={addressLoading || !formData.billingPostcode.trim()}
+                      >
+                        {addressLoading ? 'Finding...' : 'Find Address'}
+                      </button>
+                    </div>
+                    {addressError && (
+                      <span className="error-text">
+                        {addressError}
+                        {' '}
+                        <button
+                          type="button"
+                          className="manual-entry-link"
+                          onClick={() => setManualAddressEntry(true)}
+                        >
+                          Enter address manually
+                        </button>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Address Selection Dropdown */}
+                  {showAddressSelect && addressList.length > 0 && (
+                    <div className="form-group fade-in">
+                      <label htmlFor="addressSelect">Select your address</label>
+                      <select
+                        id="addressSelect"
+                        onChange={handleAddressSelect}
+                        defaultValue=""
+                        className="address-select"
+                      >
+                        <option value="">-- Select an address ({addressList.length} found) --</option>
+                        {addressList.map((addr) => (
+                          <option key={addr.uprn} value={addr.uprn}>
+                            {addr.address}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="manual-entry-link"
+                        onClick={() => setManualAddressEntry(true)}
+                        style={{ marginTop: '0.5rem' }}
+                      >
+                        Can't find your address? Enter manually
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Manual Entry Mode Header */}
+              {manualAddressEntry && (
+                <div className="manual-entry-header">
+                  <button
+                    type="button"
+                    className="back-to-lookup-link"
+                    onClick={() => {
+                      setManualAddressEntry(false)
+                      setAddressError('')
+                    }}
+                  >
+                    &larr; Back to postcode lookup
+                  </button>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label htmlFor="billingAddress1">Address Line 1 <span className="required">*</span></label>
+                <input
+                  type="text"
+                  id="billingAddress1"
+                  name="billingAddress1"
+                  placeholder="123 High Street"
+                  value={formData.billingAddress1}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="billingAddress2">Address Line 2</label>
+                <input
+                  type="text"
+                  id="billingAddress2"
+                  name="billingAddress2"
+                  placeholder="Flat 4"
+                  value={formData.billingAddress2}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="billingCity">City <span className="required">*</span></label>
+                  <input
+                    type="text"
+                    id="billingCity"
+                    name="billingCity"
+                    placeholder="Bournemouth"
+                    value={formData.billingCity}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="billingCounty">County</label>
+                  <input
+                    type="text"
+                    id="billingCounty"
+                    name="billingCounty"
+                    placeholder="Dorset"
+                    value={formData.billingCounty}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+
+              {/* Show postcode input in manual entry mode */}
+              {manualAddressEntry && (
+                <div className="form-group">
+                  <label htmlFor="billingPostcodeManual">
+                    {formData.billingCountry === 'United Kingdom' ? 'Postcode' : 'Postcode / ZIP Code'} <span className="required">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="billingPostcodeManual"
+                    name="billingPostcode"
+                    placeholder={formData.billingCountry === 'United Kingdom' ? 'BH1 1AA' : 'Enter postcode'}
+                    value={formData.billingPostcode}
+                    onChange={handleChange}
+                    style={formData.billingCountry === 'United Kingdom' ? { textTransform: 'uppercase' } : {}}
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="form-group">
+                <label htmlFor="billingCountry">Country <span className="required">*</span></label>
+                <select
+                  id="billingCountry"
+                  name="billingCountry"
+                  value={formData.billingCountry}
+                  onChange={(e) => {
+                    handleChange(e)
+                    // Switch to manual entry for non-UK countries
+                    if (e.target.value !== 'United Kingdom') {
+                      setManualAddressEntry(true)
+                    }
+                  }}
+                  required
+                >
+                  <option value="United Kingdom">United Kingdom</option>
+                  <option value="Ireland">Ireland</option>
+                  <option disabled>──── Europe ────</option>
+                  <option value="Austria">Austria</option>
+                  <option value="Belgium">Belgium</option>
+                  <option value="Croatia">Croatia</option>
+                  <option value="Cyprus">Cyprus</option>
+                  <option value="Czech Republic">Czech Republic</option>
+                  <option value="Denmark">Denmark</option>
+                  <option value="Estonia">Estonia</option>
+                  <option value="Finland">Finland</option>
+                  <option value="France">France</option>
+                  <option value="Germany">Germany</option>
+                  <option value="Greece">Greece</option>
+                  <option value="Hungary">Hungary</option>
+                  <option value="Iceland">Iceland</option>
+                  <option value="Italy">Italy</option>
+                  <option value="Latvia">Latvia</option>
+                  <option value="Lithuania">Lithuania</option>
+                  <option value="Luxembourg">Luxembourg</option>
+                  <option value="Malta">Malta</option>
+                  <option value="Netherlands">Netherlands</option>
+                  <option value="Norway">Norway</option>
+                  <option value="Poland">Poland</option>
+                  <option value="Portugal">Portugal</option>
+                  <option value="Romania">Romania</option>
+                  <option value="Slovakia">Slovakia</option>
+                  <option value="Slovenia">Slovenia</option>
+                  <option value="Spain">Spain</option>
+                  <option value="Sweden">Sweden</option>
+                  <option value="Switzerland">Switzerland</option>
+                  <option value="Turkey">Turkey</option>
+                  <option disabled>──── Other ────</option>
+                  <option value="Australia">Australia</option>
+                  <option value="Canada">Canada</option>
+                  <option value="New Zealand">New Zealand</option>
+                  <option value="United States">United States</option>
+                  <option value="Other">Other</option>
+                </select>
               </div>
 
               <h3 className="section-subtitle">Vehicle Information</h3>
@@ -1564,7 +1779,7 @@ function Bookings() {
             </div>
           )}
 
-          {/* Step 3: Your Package & Price */}
+          {/* Step 3: Package Selection */}
           {currentStep === 3 && (
             <div className="form-section">
               <h2>Your Package</h2>
@@ -1603,225 +1818,10 @@ function Bookings() {
             </div>
           )}
 
-          {/* Step 4: Payment (Billing + Payment) */}
+          {/* Step 4: Payment */}
           {currentStep === 4 && (
             <div className="form-section">
               <h2>Payment</h2>
-
-              <h3 className="section-subtitle">Billing Address</h3>
-              <p className="section-info">This address will be used for payment verification.</p>
-
-              {/* Postcode Lookup - show unless manual entry mode */}
-              {!manualAddressEntry && (
-                <>
-                  <div className="form-group">
-                    <label htmlFor="billingPostcode">Postcode <span className="required">*</span></label>
-                    <div className="postcode-lookup-row">
-                      <input
-                        type="text"
-                        id="billingPostcode"
-                        name="billingPostcode"
-                        placeholder="BH1 1AA"
-                        value={formData.billingPostcode}
-                        onChange={handleChange}
-                        style={{ textTransform: 'uppercase' }}
-                        required
-                      />
-                      <button
-                        type="button"
-                        className="find-address-btn"
-                        onClick={lookupAddress}
-                        disabled={addressLoading || !formData.billingPostcode.trim()}
-                      >
-                        {addressLoading ? 'Finding...' : 'Find Address'}
-                      </button>
-                    </div>
-                    {addressError && (
-                      <span className="error-text">
-                        {addressError}
-                        {' '}
-                        <button
-                          type="button"
-                          className="manual-entry-link"
-                          onClick={() => setManualAddressEntry(true)}
-                        >
-                          Enter address manually
-                        </button>
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Address Selection Dropdown */}
-                  {showAddressSelect && addressList.length > 0 && (
-                    <div className="form-group fade-in">
-                      <label htmlFor="addressSelect">Select your address</label>
-                      <select
-                        id="addressSelect"
-                        onChange={handleAddressSelect}
-                        defaultValue=""
-                        className="address-select"
-                      >
-                        <option value="">-- Select an address ({addressList.length} found) --</option>
-                        {addressList.map((addr) => (
-                          <option key={addr.uprn} value={addr.uprn}>
-                            {addr.address}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="manual-entry-link"
-                        onClick={() => setManualAddressEntry(true)}
-                        style={{ marginTop: '0.5rem' }}
-                      >
-                        Can't find your address? Enter manually
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* Manual Entry Mode Header */}
-              {manualAddressEntry && (
-                <div className="manual-entry-header">
-                  <button
-                    type="button"
-                    className="back-to-lookup-link"
-                    onClick={() => {
-                      setManualAddressEntry(false)
-                      setAddressError('')
-                    }}
-                  >
-                    &larr; Back to postcode lookup
-                  </button>
-                </div>
-              )}
-
-              <div className="form-group">
-                <label htmlFor="billingAddress1">Address Line 1 <span className="required">*</span></label>
-                <input
-                  type="text"
-                  id="billingAddress1"
-                  name="billingAddress1"
-                  placeholder="123 High Street"
-                  value={formData.billingAddress1}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="billingAddress2">Address Line 2</label>
-                <input
-                  type="text"
-                  id="billingAddress2"
-                  name="billingAddress2"
-                  placeholder="Flat 4"
-                  value={formData.billingAddress2}
-                  onChange={handleChange}
-                />
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="billingCity">City <span className="required">*</span></label>
-                  <input
-                    type="text"
-                    id="billingCity"
-                    name="billingCity"
-                    placeholder="Bournemouth"
-                    value={formData.billingCity}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="billingCounty">County</label>
-                  <input
-                    type="text"
-                    id="billingCounty"
-                    name="billingCounty"
-                    placeholder="Dorset"
-                    value={formData.billingCounty}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
-
-              {/* Show postcode input in manual entry mode */}
-              {manualAddressEntry && (
-                <div className="form-group">
-                  <label htmlFor="billingPostcodeManual">
-                    {formData.billingCountry === 'United Kingdom' ? 'Postcode' : 'Postcode / ZIP Code'} <span className="required">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    id="billingPostcodeManual"
-                    name="billingPostcode"
-                    placeholder={formData.billingCountry === 'United Kingdom' ? 'BH1 1AA' : 'Enter postcode'}
-                    value={formData.billingPostcode}
-                    onChange={handleChange}
-                    style={formData.billingCountry === 'United Kingdom' ? { textTransform: 'uppercase' } : {}}
-                    required
-                  />
-                </div>
-              )}
-
-              <div className="form-group">
-                <label htmlFor="billingCountry">Country <span className="required">*</span></label>
-                <select
-                  id="billingCountry"
-                  name="billingCountry"
-                  value={formData.billingCountry}
-                  onChange={(e) => {
-                    handleChange(e)
-                    // Switch to manual entry for non-UK countries
-                    if (e.target.value !== 'United Kingdom') {
-                      setManualAddressEntry(true)
-                    }
-                  }}
-                  required
-                >
-                  <option value="United Kingdom">United Kingdom</option>
-                  <option value="Ireland">Ireland</option>
-                  <option disabled>──── Europe ────</option>
-                  <option value="Austria">Austria</option>
-                  <option value="Belgium">Belgium</option>
-                  <option value="Croatia">Croatia</option>
-                  <option value="Cyprus">Cyprus</option>
-                  <option value="Czech Republic">Czech Republic</option>
-                  <option value="Denmark">Denmark</option>
-                  <option value="Estonia">Estonia</option>
-                  <option value="Finland">Finland</option>
-                  <option value="France">France</option>
-                  <option value="Germany">Germany</option>
-                  <option value="Greece">Greece</option>
-                  <option value="Hungary">Hungary</option>
-                  <option value="Iceland">Iceland</option>
-                  <option value="Italy">Italy</option>
-                  <option value="Latvia">Latvia</option>
-                  <option value="Lithuania">Lithuania</option>
-                  <option value="Luxembourg">Luxembourg</option>
-                  <option value="Malta">Malta</option>
-                  <option value="Netherlands">Netherlands</option>
-                  <option value="Norway">Norway</option>
-                  <option value="Poland">Poland</option>
-                  <option value="Portugal">Portugal</option>
-                  <option value="Romania">Romania</option>
-                  <option value="Slovakia">Slovakia</option>
-                  <option value="Slovenia">Slovenia</option>
-                  <option value="Spain">Spain</option>
-                  <option value="Sweden">Sweden</option>
-                  <option value="Switzerland">Switzerland</option>
-                  <option value="Turkey">Turkey</option>
-                  <option disabled>──── Other ────</option>
-                  <option value="Australia">Australia</option>
-                  <option value="Canada">Canada</option>
-                  <option value="New Zealand">New Zealand</option>
-                  <option value="United States">United States</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
 
               <h3 className="section-subtitle">Booking Summary</h3>
               <div className="booking-summary">
@@ -1944,20 +1944,16 @@ function Bookings() {
               </div>
 
               <div className="form-group checkbox-group">
-                <label className={`checkbox-label ${!isBillingComplete ? 'disabled' : ''}`}>
+                <label className="checkbox-label">
                   <input
                     type="checkbox"
                     name="terms"
                     checked={formData.terms}
                     onChange={handleChange}
-                    disabled={!isBillingComplete}
                     required
                   />
                   <span>I agree to the <Link to="/terms-conditions" target="_blank">Terms & Conditions</Link> and <Link to="/privacy-policy" target="_blank">Privacy Policy</Link></span>
                 </label>
-                {!isBillingComplete && (
-                  <p className="field-hint">Please complete your billing address above first</p>
-                )}
               </div>
 
               {paymentComplete ? (
@@ -1994,9 +1990,6 @@ function Bookings() {
                 />
               ) : (
                 <div className="terms-required">
-                  {!isBillingComplete && formData.terms && (
-                    <p>Please complete your billing address to proceed with payment</p>
-                  )}
                   {!formData.terms && (
                     <p>Please accept the Terms & Conditions to proceed with payment</p>
                   )}

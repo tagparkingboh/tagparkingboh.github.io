@@ -2101,6 +2101,34 @@
   color: #e65100;
 }
 
+/* Map Type Tabs */
+.map-type-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.map-type-tab {
+  padding: 0.75rem 1.5rem;
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.map-type-tab:hover {
+  background: #e9ecef;
+}
+
+.map-type-tab.active {
+  background: #1a3d5c;
+  color: white;
+  border-color: #1a3d5c;
+}
+
 /* Skipped bookings info */
 .skipped-bookings {
   margin-top: 1rem;

@@ -499,5 +499,372 @@ class TestBookingLocationsIntegration:
                     statuses = [loc["status"] for loc in data["locations"]]
                     assert "confirmed" in statuses
                     assert "completed" in statuses
-                    assert "cancelled" in statuses
-                    assert "pending" in statuses
+                    # Note: With map_type filter, only confirmed/completed are returned
+
+
+# =============================================================================
+# Tests for map_type parameter
+# =============================================================================
+
+class TestBookingLocationsMapType:
+    """Tests for map_type parameter (bookings vs origins)."""
+
+    def _create_mock_postcodes_response(self, postcodes_data):
+        """Create a mock postcodes.io API response."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": 200,
+            "result": postcodes_data
+        }
+        return mock_response
+
+    @pytest.mark.asyncio
+    async def test_default_map_type_is_bookings(self, client):
+        """Should default to map_type='bookings' when not specified."""
+        customer = create_mock_customer(id=1, first_name="John", last_name="Doe", billing_postcode="BH7 6AW")
+        booking = create_mock_booking(id=1, reference="TAG-001", status="confirmed", customer=customer, customer_first_name="John", customer_last_name="Doe")
+
+        mock_bookings = [booking]
+
+        postcodes_response = [
+            {"query": "BH7 6AW", "result": {"latitude": 50.7192, "longitude": -1.8808, "admin_district": "BCP"}},
+        ]
+
+        admin_user = create_mock_admin_user()
+
+        with patch('main.require_admin', return_value=admin_user):
+            with patch('main.get_db') as mock_get_db:
+                mock_db = MagicMock()
+                mock_query = MagicMock()
+                mock_query.options.return_value = mock_query
+                mock_query.filter.return_value = mock_query
+                mock_query.order_by.return_value = mock_query
+                mock_query.all.return_value = mock_bookings
+                mock_db.query.return_value = mock_query
+                mock_get_db.return_value = iter([mock_db])
+
+                with patch('main.httpx.AsyncClient') as mock_client_class:
+                    mock_client = AsyncMock()
+                    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                    mock_client.__aexit__ = AsyncMock(return_value=None)
+                    mock_client.post = AsyncMock(return_value=self._create_mock_postcodes_response(postcodes_response))
+                    mock_client_class.return_value = mock_client
+
+                    response = await client.get(
+                        "/api/admin/reports/booking-locations",
+                        headers={"Authorization": "Bearer test_token"}
+                    )
+
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert data.get("map_type") == "bookings"
+
+    @pytest.mark.asyncio
+    async def test_map_type_bookings_returns_booking_fields(self, client):
+        """Should return booking-specific fields for map_type='bookings'."""
+        customer = create_mock_customer(id=1, first_name="John", last_name="Doe", billing_postcode="BH7 6AW", billing_city="Bournemouth")
+        booking = create_mock_booking(id=1, reference="TAG-001", status="confirmed", customer=customer, customer_first_name="John", customer_last_name="Doe")
+
+        mock_bookings = [booking]
+
+        postcodes_response = [
+            {"query": "BH7 6AW", "result": {"latitude": 50.7192, "longitude": -1.8808, "admin_district": "BCP"}},
+        ]
+
+        admin_user = create_mock_admin_user()
+
+        with patch('main.require_admin', return_value=admin_user):
+            with patch('main.get_db') as mock_get_db:
+                mock_db = MagicMock()
+                mock_query = MagicMock()
+                mock_query.options.return_value = mock_query
+                mock_query.filter.return_value = mock_query
+                mock_query.order_by.return_value = mock_query
+                mock_query.all.return_value = mock_bookings
+                mock_db.query.return_value = mock_query
+                mock_get_db.return_value = iter([mock_db])
+
+                with patch('main.httpx.AsyncClient') as mock_client_class:
+                    mock_client = AsyncMock()
+                    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                    mock_client.__aexit__ = AsyncMock(return_value=None)
+                    mock_client.post = AsyncMock(return_value=self._create_mock_postcodes_response(postcodes_response))
+                    mock_client_class.return_value = mock_client
+
+                    response = await client.get(
+                        "/api/admin/reports/booking-locations?map_type=bookings",
+                        headers={"Authorization": "Bearer test_token"}
+                    )
+
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert len(data["locations"]) == 1
+                    location = data["locations"][0]
+                    # Booking-specific fields
+                    assert "reference" in location
+                    assert "dropoff_date" in location
+                    assert "status" in location
+                    assert location["reference"] == "TAG-001"
+
+    @pytest.mark.asyncio
+    async def test_map_type_bookings_only_confirmed_completed(self, client):
+        """map_type='bookings' should only return confirmed and completed bookings."""
+        # This test verifies the filter is applied
+        customer = create_mock_customer(id=1, first_name="John", last_name="Doe", billing_postcode="BH7 6AW")
+        confirmed_booking = create_mock_booking(id=1, reference="TAG-001", status="confirmed", customer=customer, customer_first_name="John", customer_last_name="Doe")
+
+        # Only confirmed/completed bookings should be returned
+        mock_bookings = [confirmed_booking]
+
+        postcodes_response = [
+            {"query": "BH7 6AW", "result": {"latitude": 50.7192, "longitude": -1.8808, "admin_district": "BCP"}},
+        ]
+
+        admin_user = create_mock_admin_user()
+
+        with patch('main.require_admin', return_value=admin_user):
+            with patch('main.get_db') as mock_get_db:
+                mock_db = MagicMock()
+                mock_query = MagicMock()
+                mock_query.options.return_value = mock_query
+                mock_query.filter.return_value = mock_query
+                mock_query.order_by.return_value = mock_query
+                mock_query.all.return_value = mock_bookings
+                mock_db.query.return_value = mock_query
+                mock_get_db.return_value = iter([mock_db])
+
+                with patch('main.httpx.AsyncClient') as mock_client_class:
+                    mock_client = AsyncMock()
+                    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                    mock_client.__aexit__ = AsyncMock(return_value=None)
+                    mock_client.post = AsyncMock(return_value=self._create_mock_postcodes_response(postcodes_response))
+                    mock_client_class.return_value = mock_client
+
+                    response = await client.get(
+                        "/api/admin/reports/booking-locations?map_type=bookings",
+                        headers={"Authorization": "Bearer test_token"}
+                    )
+
+                    assert response.status_code == 200
+                    data = response.json()
+                    # All returned bookings should be confirmed or completed
+                    for loc in data["locations"]:
+                        assert loc["status"] in ["confirmed", "completed"]
+
+
+# =============================================================================
+# Tests for Journey Origins (map_type=origins)
+# =============================================================================
+
+class TestJourneyOrigins:
+    """Tests for journey origins map (all customers/leads from Page 1)."""
+
+    def _create_mock_postcodes_response(self, postcodes_data):
+        """Create a mock postcodes.io API response."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": 200,
+            "result": postcodes_data
+        }
+        return mock_response
+
+    def _create_mock_customer_with_bookings(self, id, first_name, last_name, billing_postcode, billing_city="Bournemouth", phone="07700900001", email=None, has_confirmed_booking=False):
+        """Create mock customer with optional booking relationship."""
+        customer = MagicMock()
+        customer.id = id
+        customer.first_name = first_name
+        customer.last_name = last_name
+        customer.email = email or f"{first_name.lower()}.{last_name.lower()}@example.com"
+        customer.phone = phone
+        customer.billing_address1 = "123 Test Street"
+        customer.billing_city = billing_city
+        customer.billing_postcode = billing_postcode
+        customer.created_at = MagicMock()
+        customer.created_at.isoformat.return_value = "2026-02-15T10:00:00"
+
+        if has_confirmed_booking:
+            mock_booking = MagicMock()
+            mock_booking.status = MagicMock()
+            mock_booking.status.value = "confirmed"
+            customer.bookings = [mock_booking]
+        else:
+            customer.bookings = []
+
+        return customer
+
+    @pytest.mark.asyncio
+    async def test_map_type_origins_returns_all_customers(self, client):
+        """map_type='origins' should return all customers with billing postcodes."""
+        customer1 = self._create_mock_customer_with_bookings(
+            id=1, first_name="John", last_name="Doe", billing_postcode="BH7 6AW", has_confirmed_booking=True
+        )
+        customer2 = self._create_mock_customer_with_bookings(
+            id=2, first_name="Jane", last_name="Smith", billing_postcode="BH1 1AA", has_confirmed_booking=False
+        )
+
+        mock_customers = [customer1, customer2]
+
+        postcodes_response = [
+            {"query": "BH7 6AW", "result": {"latitude": 50.7192, "longitude": -1.8808, "admin_district": "BCP"}},
+            {"query": "BH1 1AA", "result": {"latitude": 50.7201, "longitude": -1.8765, "admin_district": "BCP"}},
+        ]
+
+        admin_user = create_mock_admin_user()
+
+        with patch('main.require_admin', return_value=admin_user):
+            with patch('main.get_db') as mock_get_db:
+                mock_db = MagicMock()
+                mock_query = MagicMock()
+                mock_query.filter.return_value = mock_query
+                mock_query.order_by.return_value = mock_query
+                mock_query.all.return_value = mock_customers
+                mock_db.query.return_value = mock_query
+                mock_get_db.return_value = iter([mock_db])
+
+                with patch('main.httpx.AsyncClient') as mock_client_class:
+                    mock_client = AsyncMock()
+                    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                    mock_client.__aexit__ = AsyncMock(return_value=None)
+                    mock_client.post = AsyncMock(return_value=self._create_mock_postcodes_response(postcodes_response))
+                    mock_client_class.return_value = mock_client
+
+                    response = await client.get(
+                        "/api/admin/reports/booking-locations?map_type=origins",
+                        headers={"Authorization": "Bearer test_token"}
+                    )
+
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert data["map_type"] == "origins"
+                    assert data["count"] == 2
+                    assert "total_customers" in data
+
+    @pytest.mark.asyncio
+    async def test_map_type_origins_returns_customer_fields(self, client):
+        """map_type='origins' should return customer-specific fields (name, phone, address)."""
+        customer = self._create_mock_customer_with_bookings(
+            id=1, first_name="John", last_name="Doe", billing_postcode="BH7 6AW",
+            billing_city="Bournemouth", phone="07700900123"
+        )
+
+        mock_customers = [customer]
+
+        postcodes_response = [
+            {"query": "BH7 6AW", "result": {"latitude": 50.7192, "longitude": -1.8808, "admin_district": "BCP"}},
+        ]
+
+        admin_user = create_mock_admin_user()
+
+        with patch('main.require_admin', return_value=admin_user):
+            with patch('main.get_db') as mock_get_db:
+                mock_db = MagicMock()
+                mock_query = MagicMock()
+                mock_query.filter.return_value = mock_query
+                mock_query.order_by.return_value = mock_query
+                mock_query.all.return_value = mock_customers
+                mock_db.query.return_value = mock_query
+                mock_get_db.return_value = iter([mock_db])
+
+                with patch('main.httpx.AsyncClient') as mock_client_class:
+                    mock_client = AsyncMock()
+                    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                    mock_client.__aexit__ = AsyncMock(return_value=None)
+                    mock_client.post = AsyncMock(return_value=self._create_mock_postcodes_response(postcodes_response))
+                    mock_client_class.return_value = mock_client
+
+                    response = await client.get(
+                        "/api/admin/reports/booking-locations?map_type=origins",
+                        headers={"Authorization": "Bearer test_token"}
+                    )
+
+                    assert response.status_code == 200
+                    data = response.json()
+                    assert len(data["locations"]) == 1
+                    location = data["locations"][0]
+
+                    # Origins should have customer fields
+                    assert "customer_name" in location
+                    assert "phone" in location
+                    assert "email" in location
+                    assert "address" in location
+                    assert "has_booking" in location
+                    assert location["customer_name"] == "John Doe"
+                    assert location["phone"] == "07700900123"
+
+    @pytest.mark.asyncio
+    async def test_map_type_origins_includes_has_booking_flag(self, client):
+        """Origins should indicate whether customer has a confirmed booking."""
+        customer_with_booking = self._create_mock_customer_with_bookings(
+            id=1, first_name="John", last_name="Doe", billing_postcode="BH7 6AW", has_confirmed_booking=True
+        )
+        customer_without_booking = self._create_mock_customer_with_bookings(
+            id=2, first_name="Jane", last_name="Smith", billing_postcode="BH1 1AA", has_confirmed_booking=False
+        )
+
+        mock_customers = [customer_with_booking, customer_without_booking]
+
+        postcodes_response = [
+            {"query": "BH7 6AW", "result": {"latitude": 50.7192, "longitude": -1.8808, "admin_district": "BCP"}},
+            {"query": "BH1 1AA", "result": {"latitude": 50.7201, "longitude": -1.8765, "admin_district": "BCP"}},
+        ]
+
+        admin_user = create_mock_admin_user()
+
+        with patch('main.require_admin', return_value=admin_user):
+            with patch('main.get_db') as mock_get_db:
+                mock_db = MagicMock()
+                mock_query = MagicMock()
+                mock_query.filter.return_value = mock_query
+                mock_query.order_by.return_value = mock_query
+                mock_query.all.return_value = mock_customers
+                mock_db.query.return_value = mock_query
+                mock_get_db.return_value = iter([mock_db])
+
+                with patch('main.httpx.AsyncClient') as mock_client_class:
+                    mock_client = AsyncMock()
+                    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                    mock_client.__aexit__ = AsyncMock(return_value=None)
+                    mock_client.post = AsyncMock(return_value=self._create_mock_postcodes_response(postcodes_response))
+                    mock_client_class.return_value = mock_client
+
+                    response = await client.get(
+                        "/api/admin/reports/booking-locations?map_type=origins",
+                        headers={"Authorization": "Bearer test_token"}
+                    )
+
+                    assert response.status_code == 200
+                    data = response.json()
+
+                    # Find customer with and without booking
+                    john = next(loc for loc in data["locations"] if loc["customer_name"] == "John Doe")
+                    jane = next(loc for loc in data["locations"] if loc["customer_name"] == "Jane Smith")
+
+                    assert john["has_booking"] is True
+                    assert jane["has_booking"] is False
+
+    @pytest.mark.asyncio
+    async def test_map_type_origins_empty_when_no_customers(self, client):
+        """Should return empty for origins when no customers have postcodes."""
+        admin_user = create_mock_admin_user()
+
+        with patch('main.require_admin', return_value=admin_user):
+            with patch('main.get_db') as mock_get_db:
+                mock_db = MagicMock()
+                mock_query = MagicMock()
+                mock_query.filter.return_value = mock_query
+                mock_query.order_by.return_value = mock_query
+                mock_query.all.return_value = []
+                mock_db.query.return_value = mock_query
+                mock_get_db.return_value = iter([mock_db])
+
+                response = await client.get(
+                    "/api/admin/reports/booking-locations?map_type=origins",
+                    headers={"Authorization": "Bearer test_token"}
+                )
+
+                assert response.status_code == 200
+                data = response.json()
+                assert data["count"] == 0
+                assert data["map_type"] == "origins"

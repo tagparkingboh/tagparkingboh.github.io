@@ -2022,19 +2022,107 @@ async def get_abandoned_leads(
 
 @app.get("/api/admin/reports/booking-locations")
 async def get_booking_locations(
+    map_type: str = Query("bookings", description="Map type: 'bookings' for confirmed bookings, 'origins' for all leads"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
-    Get booking locations for map visualization.
-    Returns all bookings with geocoded coordinates from billing postcodes.
-    """
-    from db_models import Booking
+    Get locations for map visualization.
 
-    # Query all bookings with customer data
+    map_type='bookings': Returns confirmed bookings with geocoded billing postcodes.
+    map_type='origins': Returns all customers (leads) from booking flow Page 1 with geocoded billing postcodes.
+    """
+    from db_models import Booking, Customer
+
+    if map_type == "origins":
+        # Query all customers with billing postcodes (journey origins/leads)
+        customers = (
+            db.query(Customer)
+            .filter(Customer.billing_postcode.isnot(None))
+            .filter(Customer.billing_postcode != "")
+            .order_by(Customer.created_at.desc())
+            .all()
+        )
+
+        # Extract unique postcodes
+        postcode_to_customers = {}
+        for c in customers:
+            postcode = c.billing_postcode.strip().upper()
+            if postcode:
+                if postcode not in postcode_to_customers:
+                    postcode_to_customers[postcode] = []
+                postcode_to_customers[postcode].append(c)
+
+        if not postcode_to_customers:
+            return {"count": 0, "locations": [], "map_type": map_type}
+
+        # Bulk geocode postcodes via postcodes.io
+        postcodes_list = list(postcode_to_customers.keys())
+        coordinates = {}
+
+        try:
+            async with httpx.AsyncClient() as client:
+                for i in range(0, len(postcodes_list), 100):
+                    batch = postcodes_list[i:i + 100]
+                    response = await client.post(
+                        "https://api.postcodes.io/postcodes",
+                        json={"postcodes": batch},
+                        timeout=10.0,
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        for item in data.get("result", []):
+                            if item.get("result"):
+                                pc = item["query"].upper()
+                                coordinates[pc] = {
+                                    "lat": item["result"]["latitude"],
+                                    "lng": item["result"]["longitude"],
+                                    "admin_district": item["result"].get("admin_district"),
+                                }
+        except Exception as e:
+            log_error(db=db, error_type="geocoding_error", message=str(e))
+
+        # Build response with customer details
+        locations = []
+        skipped = []
+        for c in customers:
+            postcode = c.billing_postcode.strip().upper()
+            if postcode not in coordinates:
+                skipped.append({"customer_id": c.id, "reason": f"Postcode '{postcode}' not found"})
+                continue
+
+            # Check if this customer has any confirmed bookings
+            has_booking = any(b.status.value in ["confirmed", "completed"] for b in c.bookings) if c.bookings else False
+
+            coord = coordinates[postcode]
+            locations.append({
+                "id": c.id,
+                "customer_name": f"{c.first_name} {c.last_name}",
+                "phone": c.phone,
+                "email": c.email,
+                "address": f"{c.billing_address1 or ''}, {c.billing_city or ''}".strip(", "),
+                "postcode": postcode,
+                "city": c.billing_city,
+                "lat": coord["lat"],
+                "lng": coord["lng"],
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "has_booking": has_booking,
+            })
+
+        return {
+            "count": len(locations),
+            "total_customers": len(customers),
+            "skipped_count": len(skipped),
+            "skipped": skipped,
+            "locations": locations,
+            "map_type": map_type,
+        }
+
+    # Default: map_type="bookings" - Query confirmed/completed bookings
     bookings = (
         db.query(Booking)
         .options(joinedload(Booking.customer))
+        .filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
         .order_by(Booking.dropoff_date.desc())
         .all()
     )
@@ -2113,6 +2201,7 @@ async def get_booking_locations(
         "skipped_count": len(skipped),
         "skipped": skipped,
         "locations": locations,
+        "map_type": map_type,
     }
 
 
