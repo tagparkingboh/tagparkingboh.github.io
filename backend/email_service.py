@@ -394,7 +394,7 @@ def send_2_day_reminder_email(
     booking_reference: str,
     dropoff_date: str,
     dropoff_time: str,
-    departure_flight: str,
+    flight_departure_time: str,
 ) -> bool:
     """
     Send 2-day reminder email before booking.
@@ -405,8 +405,8 @@ def send_2_day_reminder_email(
         last_name: Customer last name
         booking_reference: Unique booking reference (e.g., TAG-XXXXXXXX)
         dropoff_date: Formatted drop-off date (e.g., "Friday, 13 February 2026")
-        dropoff_time: Drop-off time (e.g., "12:10")
-        departure_flight: Flight details (e.g., "1178 to Tenerife South Airport")
+        dropoff_time: Agreed meeting/slot time (e.g., "12:10")
+        flight_departure_time: Actual flight departure time (e.g., "14:10")
 
     Returns:
         True if sent successfully, False otherwise.
@@ -425,7 +425,9 @@ def send_2_day_reminder_email(
         html_content = html_content.replace("{{BOOKING_REFERENCE}}", booking_reference)
         html_content = html_content.replace("{{DROPOFF_DATE}}", dropoff_date)
         html_content = html_content.replace("{{DROPOFF_TIME}}", dropoff_time)
-        html_content = html_content.replace("{{DEPARTURE_FLIGHT}}", departure_flight)
+        html_content = html_content.replace("{{FLIGHT_DEPARTURE_TIME}}", flight_departure_time)
+        # Use the departure icon from the website (needs to be deployed)
+        html_content = html_content.replace("{{DEPARTURE_ICON_URL}}", "https://tagparking.co.uk/assets/departure-icon.webp")
 
     except FileNotFoundError:
         logger.error(f"2-day reminder email template not found at {template_path}")
