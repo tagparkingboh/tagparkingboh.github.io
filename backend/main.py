@@ -2022,19 +2022,137 @@ async def get_abandoned_leads(
 
 @app.get("/api/admin/reports/booking-locations")
 async def get_booking_locations(
+    map_type: str = Query("bookings", description="Map type: 'bookings' for confirmed bookings, 'origins' for all leads"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
-    Get booking locations for map visualization.
-    Returns all bookings with geocoded coordinates from billing postcodes.
-    """
-    from db_models import Booking
+    Get locations for map visualization.
 
-    # Query all bookings with customer data
+    map_type='bookings': Returns confirmed bookings with geocoded billing postcodes.
+    map_type='origins': Returns all customers (leads) from booking flow Page 1 with geocoded billing postcodes.
+    """
+    from db_models import Booking, Customer
+
+    if map_type == "origins":
+        # Query customers with billing postcodes who have billing_updated_at set
+        # This filters to only show leads captured since the feature was deployed
+        # Shows customers who either:
+        #   1. Have no bookings (pure leads), OR
+        #   2. Started a new booking flow AFTER their last booking (returning customer lead)
+        from datetime import datetime, timezone
+        from sqlalchemy import func, and_, or_
+        feature_launch_date = datetime(2026, 2, 16, 20, 0, 0, tzinfo=timezone.utc)
+
+        # Subquery to get the most recent booking created_at for each customer
+        latest_booking = (
+            db.query(
+                Booking.customer_id,
+                func.max(Booking.created_at).label('last_booking_date')
+            )
+            .group_by(Booking.customer_id)
+            .subquery()
+        )
+
+        # Get customers who are leads for their current booking attempt
+        customers = (
+            db.query(Customer)
+            .outerjoin(latest_booking, Customer.id == latest_booking.c.customer_id)
+            .filter(Customer.billing_postcode.isnot(None))
+            .filter(Customer.billing_postcode != "")
+            .filter(Customer.billing_updated_at.isnot(None))
+            .filter(Customer.billing_updated_at >= feature_launch_date)
+            .filter(
+                or_(
+                    # No bookings at all (pure lead)
+                    latest_booking.c.last_booking_date.is_(None),
+                    # billing_updated_at is after their last booking (new lead attempt)
+                    Customer.billing_updated_at > latest_booking.c.last_booking_date
+                )
+            )
+            .order_by(Customer.billing_updated_at.desc())
+            .all()
+        )
+
+        # Extract unique postcodes
+        postcode_to_customers = {}
+        for c in customers:
+            postcode = c.billing_postcode.strip().upper()
+            if postcode:
+                if postcode not in postcode_to_customers:
+                    postcode_to_customers[postcode] = []
+                postcode_to_customers[postcode].append(c)
+
+        if not postcode_to_customers:
+            return {"count": 0, "locations": [], "map_type": map_type}
+
+        # Bulk geocode postcodes via postcodes.io
+        postcodes_list = list(postcode_to_customers.keys())
+        coordinates = {}
+
+        try:
+            async with httpx.AsyncClient() as client:
+                for i in range(0, len(postcodes_list), 100):
+                    batch = postcodes_list[i:i + 100]
+                    response = await client.post(
+                        "https://api.postcodes.io/postcodes",
+                        json={"postcodes": batch},
+                        timeout=10.0,
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        for item in data.get("result", []):
+                            if item.get("result"):
+                                pc = item["query"].upper()
+                                coordinates[pc] = {
+                                    "lat": item["result"]["latitude"],
+                                    "lng": item["result"]["longitude"],
+                                    "admin_district": item["result"].get("admin_district"),
+                                }
+        except Exception as e:
+            log_error(db=db, error_type="geocoding_error", message=str(e))
+
+        # Build response with customer details
+        locations = []
+        skipped = []
+        for c in customers:
+            postcode = c.billing_postcode.strip().upper()
+            if postcode not in coordinates:
+                skipped.append({"customer_id": c.id, "reason": f"Postcode '{postcode}' not found"})
+                continue
+
+            # Check if this customer has any confirmed bookings
+            has_booking = any(b.status.value in ["confirmed", "completed"] for b in c.bookings) if c.bookings else False
+
+            coord = coordinates[postcode]
+            locations.append({
+                "id": c.id,
+                "customer_name": f"{c.first_name} {c.last_name}",
+                "phone": c.phone,
+                "email": c.email,
+                "address": f"{c.billing_address1 or ''}, {c.billing_city or ''}".strip(", "),
+                "postcode": postcode,
+                "city": c.billing_city,
+                "lat": coord["lat"],
+                "lng": coord["lng"],
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "has_booking": has_booking,
+            })
+
+        return {
+            "count": len(locations),
+            "total_customers": len(customers),
+            "skipped_count": len(skipped),
+            "skipped": skipped,
+            "locations": locations,
+            "map_type": map_type,
+        }
+
+    # Default: map_type="bookings" - Query confirmed/completed bookings
     bookings = (
         db.query(Booking)
         .options(joinedload(Booking.customer))
+        .filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
         .order_by(Booking.dropoff_date.desc())
         .all()
     )
@@ -2050,7 +2168,7 @@ async def get_booking_locations(
                 postcode_to_bookings[postcode].append(b)
 
     if not postcode_to_bookings:
-        return {"count": 0, "locations": []}
+        return {"count": 0, "total_bookings": 0, "skipped_count": 0, "skipped": [], "locations": [], "map_type": map_type}
 
     # Bulk geocode postcodes via postcodes.io
     postcodes_list = list(postcode_to_bookings.keys())
@@ -2113,6 +2231,7 @@ async def get_booking_locations(
         "skipped_count": len(skipped),
         "skipped": skipped,
         "locations": locations,
+        "map_type": map_type,
     }
 
 
@@ -2505,6 +2624,38 @@ async def create_or_update_customer(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.patch("/api/customers/{customer_id}")
+async def update_customer(
+    customer_id: int,
+    request: CreateCustomerRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Update existing customer contact information.
+    Used when user goes back and edits their details.
+    """
+    customer = db_service.get_customer_by_id(db, customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    try:
+        customer.first_name = request.first_name
+        customer.last_name = request.last_name
+        customer.email = request.email
+        customer.phone = request.phone
+        db.commit()
+        db.refresh(customer)
+
+        return {
+            "success": True,
+            "customer_id": customer.id,
+            "message": "Customer updated successfully",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.patch("/api/customers/{customer_id}/billing")
 async def update_customer_billing(
     customer_id: int,
@@ -2520,12 +2671,14 @@ async def update_customer_billing(
         raise HTTPException(status_code=404, detail="Customer not found")
 
     try:
+        from datetime import datetime, timezone
         customer.billing_address1 = request.billing_address1
         customer.billing_address2 = request.billing_address2
         customer.billing_city = request.billing_city
         customer.billing_county = request.billing_county
         customer.billing_postcode = request.billing_postcode
         customer.billing_country = request.billing_country
+        customer.billing_updated_at = datetime.now(timezone.utc)  # Track when billing was added/updated
         db.commit()
         db.refresh(customer)
 
@@ -2626,6 +2779,40 @@ async def create_or_update_vehicle(
             "vehicle_id": vehicle.id,
             "is_new_vehicle": is_new_vehicle,
             "message": "Vehicle saved successfully",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.patch("/api/vehicles/{vehicle_id}")
+async def update_vehicle(
+    vehicle_id: int,
+    request: CreateVehicleRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Update existing vehicle information.
+    Used when user goes back and edits their vehicle details.
+    """
+    from db_models import Vehicle
+
+    vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    try:
+        vehicle.registration = request.registration.upper()
+        vehicle.make = request.make
+        vehicle.model = request.model
+        vehicle.colour = request.colour
+        db.commit()
+        db.refresh(vehicle)
+
+        return {
+            "success": True,
+            "vehicle_id": vehicle.id,
+            "message": "Vehicle updated successfully",
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

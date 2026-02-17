@@ -107,9 +107,12 @@ function Admin() {
   const [exportingFlights, setExportingFlights] = useState(false)
 
   // Reports / Booking Locations state
+  const [mapType, setMapType] = useState('bookings') // 'bookings' or 'origins'
   const [bookingLocations, setBookingLocations] = useState([])
+  const [originLocations, setOriginLocations] = useState([])
   const [skippedBookings, setSkippedBookings] = useState([])
   const [totalBookings, setTotalBookings] = useState(0)
+  const [totalCustomers, setTotalCustomers] = useState(0)
   const [loadingLocations, setLoadingLocations] = useState(false)
 
   // Test email domains to filter out
@@ -182,32 +185,37 @@ function Admin() {
     }
   }, [flightsSubTab, flightsSortAsc, flightDestFilter, flightOriginFilter, flightAirlineFilter, flightMonthFilter, flightNumberFilter])
 
-  // Fetch booking locations when reports tab is active
+  // Fetch booking locations when reports tab is active or map type changes
   useEffect(() => {
     if (activeTab === 'reports' && token) {
-      fetchBookingLocations()
+      fetchBookingLocations(mapType)
     }
-  }, [activeTab, token])
+  }, [activeTab, token, mapType])
 
-  const fetchBookingLocations = async () => {
+  const fetchBookingLocations = async (type = 'bookings') => {
     setLoadingLocations(true)
     setError('')
     try {
-      const response = await fetch(`${API_URL}/api/admin/reports/booking-locations`, {
+      const response = await fetch(`${API_URL}/api/admin/reports/booking-locations?map_type=${type}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       })
       if (response.ok) {
         const data = await response.json()
-        setBookingLocations(data.locations || [])
+        if (type === 'origins') {
+          setOriginLocations(data.locations || [])
+          setTotalCustomers(data.total_customers || 0)
+        } else {
+          setBookingLocations(data.locations || [])
+          setTotalBookings(data.total_bookings || 0)
+        }
         setSkippedBookings(data.skipped || [])
-        setTotalBookings(data.total_bookings || 0)
       } else {
-        setError('Failed to load booking locations')
+        setError('Failed to load locations')
       }
     } catch (err) {
-      setError('Network error loading booking locations')
+      setError('Network error loading locations')
     } finally {
       setLoadingLocations(false)
     }
@@ -2567,25 +2575,60 @@ function Admin() {
         {activeTab === 'reports' && (
           <div className="admin-section">
             <h2>Reports</h2>
-            <h3>Booking Locations</h3>
-            <p className="reports-description">Map showing customer locations based on billing postcodes.</p>
+
+            {/* Map Type Tabs */}
+            <div className="map-type-tabs">
+              <button
+                className={`map-type-tab ${mapType === 'bookings' ? 'active' : ''}`}
+                onClick={() => setMapType('bookings')}
+              >
+                Bookings Map
+              </button>
+              <button
+                className={`map-type-tab ${mapType === 'origins' ? 'active' : ''}`}
+                onClick={() => setMapType('origins')}
+              >
+                Journey Origins
+              </button>
+            </div>
+
+            {mapType === 'bookings' && (
+              <>
+                <h3>Confirmed Booking Locations</h3>
+                <p className="reports-description">Map showing confirmed bookings based on billing postcodes.</p>
+              </>
+            )}
+
+            {mapType === 'origins' && (
+              <>
+                <h3>Journey Origins (All Leads)</h3>
+                <p className="reports-description">Map showing all customers who started the booking process (Page 1 data).</p>
+              </>
+            )}
+
             {loadingLocations ? (
               <div className="admin-loading-inline">
                 <div className="spinner-small"></div>
-                <span>Loading booking locations...</span>
+                <span>Loading {mapType === 'origins' ? 'customer' : 'booking'} locations...</span>
               </div>
             ) : (
               <>
-                <BookingLocationMap locations={bookingLocations} />
+                <BookingLocationMap
+                  locations={mapType === 'origins' ? originLocations : bookingLocations}
+                  mapType={mapType}
+                />
                 {skippedBookings.length > 0 && (
                   <div className="skipped-bookings">
                     <p className="skipped-summary">
-                      {bookingLocations.length} of {totalBookings} bookings mapped.
-                      {skippedBookings.length} skipped:
+                      {mapType === 'origins'
+                        ? `${originLocations.length} of ${totalCustomers} customers mapped.`
+                        : `${bookingLocations.length} of ${totalBookings} bookings mapped.`
+                      }
+                      {' '}{skippedBookings.length} skipped:
                     </p>
                     <ul className="skipped-list">
                       {skippedBookings.map((s, i) => (
-                        <li key={i}>{s.reference}: {s.reason}</li>
+                        <li key={i}>{s.reference || `Customer ${s.customer_id}`}: {s.reason}</li>
                       ))}
                     </ul>
                   </div>

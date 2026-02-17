@@ -51,6 +51,7 @@ class Customer(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    billing_updated_at = Column(DateTime(timezone=True))  # Set when billing info is saved/updated
 
     # Relationships
     vehicles = relationship("Vehicle", back_populates="customer")

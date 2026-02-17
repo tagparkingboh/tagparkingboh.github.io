@@ -36,7 +36,7 @@ const getMarkerIcon = (status) => {
   return statusIcons[status] || statusIcons.default
 }
 
-function BookingLocationMap({ locations = [] }) {
+function BookingLocationMap({ locations = [], mapType = 'bookings' }) {
   // Center higher to show south coast near bottom of map
   const center = [51.2, -1.3]
   const zoom = 8
@@ -44,9 +44,14 @@ function BookingLocationMap({ locations = [] }) {
   if (locations.length === 0) {
     return (
       <div className="map-empty">
-        <p>No booking locations to display</p>
+        <p>No {mapType === 'origins' ? 'customer' : 'booking'} locations to display</p>
       </div>
     )
+  }
+
+  // For origins map, use different marker colors based on whether customer has a booking
+  const getOriginMarkerIcon = (hasBooking) => {
+    return hasBooking ? statusIcons.confirmed : statusIcons.pending
   }
 
   return (
@@ -71,30 +76,57 @@ function BookingLocationMap({ locations = [] }) {
             <Marker
               key={location.id}
               position={[location.lat, location.lng]}
-              icon={getMarkerIcon(location.status)}
+              icon={mapType === 'origins'
+                ? getOriginMarkerIcon(location.has_booking)
+                : getMarkerIcon(location.status)
+              }
             >
               <Popup>
-                <div className="map-popup">
-                  <strong>{location.reference}</strong>
-                  <p>{location.customer_name}</p>
-                  <p className="popup-location">{location.city || location.postcode}</p>
-                  <p className="popup-date">
-                    {location.dropoff_date && new Date(location.dropoff_date).toLocaleDateString('en-GB', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric'
-                    })}
-                  </p>
-                  <span className={`popup-status status-${location.status}`}>
-                    {location.status}
-                  </span>
-                </div>
+                {mapType === 'origins' ? (
+                  <div className="map-popup">
+                    <strong>{location.customer_name}</strong>
+                    {location.phone && <p className="popup-phone">{location.phone}</p>}
+                    {location.email && <p className="popup-email">{location.email}</p>}
+                    <p className="popup-location">{location.address}</p>
+                    <p className="popup-postcode">{location.postcode}</p>
+                    {location.created_at && (
+                      <p className="popup-date">
+                        Added: {new Date(location.created_at).toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </p>
+                    )}
+                    <span className={`popup-status ${location.has_booking ? 'status-confirmed' : 'status-pending'}`}>
+                      {location.has_booking ? 'Has Booking' : 'Lead Only'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="map-popup">
+                    <strong>{location.reference}</strong>
+                    <p>{location.customer_name}</p>
+                    <p className="popup-location">{location.city || location.postcode}</p>
+                    <p className="popup-date">
+                      {location.dropoff_date && new Date(location.dropoff_date).toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric'
+                      })}
+                    </p>
+                    <span className={`popup-status status-${location.status}`}>
+                      {location.status}
+                    </span>
+                  </div>
+                )}
               </Popup>
             </Marker>
           ))}
         </MarkerClusterGroup>
       </MapContainer>
-      <p className="map-count">{locations.length} bookings displayed</p>
+      <p className="map-count">
+        {locations.length} {mapType === 'origins' ? 'customers' : 'bookings'} displayed
+      </p>
     </div>
   )
 }

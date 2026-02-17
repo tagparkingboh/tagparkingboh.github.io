@@ -6,7 +6,7 @@ Tests the full request/response cycle for the booking API.
 import pytest
 import pytest_asyncio
 from datetime import date
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 import sys
@@ -205,41 +205,43 @@ async def test_check_capacity(client):
 @pytest.mark.asyncio
 async def test_create_booking(client):
     """Should create a booking successfully."""
-    response = await client.post(
-        "/api/bookings",
-        json={
-            "first_name": "John",
-            "last_name": "Doe",
-            "email": "john@example.com",
-            "phone": "07700900000",
-            "drop_off_date": "2026-02-10",
-            "drop_off_slot_type": "165",
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR",
-            "airline_name": "Ryanair",
-            "destination_code": "KRK",
-            "destination_name": "Krakow, PL",
-            "pickup_date": "2026-02-17",
-            "return_flight_time": "14:30",
-            "return_flight_number": "5524",
-            "registration": "AB12 CDE",
-            "make": "Ford",
-            "model": "Focus",
-            "colour": "Blue",
-            "package": "quick",
-            "billing_address1": "123 Test St",
-            "billing_city": "London",
-            "billing_postcode": "SW1A 1AA",
-            "billing_country": "United Kingdom"
-        }
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    assert data["booking_id"] is not None
-    assert data["booking"]["price"] == 89.0
+    # Mock pricing to avoid dependency on database pricing config
+    with patch.object(BookingService, 'calculate_price', return_value=89.0):
+        response = await client.post(
+            "/api/bookings",
+            json={
+                "first_name": "John",
+                "last_name": "Doe",
+                "email": "john@example.com",
+                "phone": "07700900000",
+                "drop_off_date": "2026-02-10",
+                "drop_off_slot_type": "165",
+                "flight_date": "2026-02-10",
+                "flight_time": "10:00",
+                "flight_number": "5523",
+                "airline_code": "FR",
+                "airline_name": "Ryanair",
+                "destination_code": "KRK",
+                "destination_name": "Krakow, PL",
+                "pickup_date": "2026-02-17",
+                "return_flight_time": "14:30",
+                "return_flight_number": "5524",
+                "registration": "AB12 CDE",
+                "make": "Ford",
+                "model": "Focus",
+                "colour": "Blue",
+                "package": "quick",
+                "billing_address1": "123 Test St",
+                "billing_city": "London",
+                "billing_postcode": "SW1A 1AA",
+                "billing_country": "United Kingdom"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["booking_id"] is not None
+        assert data["booking"]["price"] == 89.0
 
 
 @pytest.mark.asyncio
@@ -659,6 +661,348 @@ async def test_admin_booking_with_custom_price(admin_client):
     assert response.status_code == 200
     data = response.json()
     assert data["booking"]["price"] == 75.00
+
+
+# =============================================================================
+# Customer/Vehicle Endpoint Tests - Validates Required Fields
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_create_customer_success(client):
+    """Should create a customer with valid data."""
+    import uuid
+    unique_email = f"test_{uuid.uuid4().hex[:8]}@example.com"
+
+    response = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "Test",
+            "last_name": "User",
+            "email": unique_email,
+            "phone": "+44 7700 900000",
+            "session_id": "test_session_123"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "customer_id" in data
+    assert data["customer_id"] > 0
+
+
+@pytest.mark.asyncio
+async def test_create_vehicle_requires_customer_id(client):
+    """POST /api/vehicles should return 422 when customer_id is missing."""
+    response = await client.post(
+        "/api/vehicles",
+        json={
+            "registration": "AB12 CDE",
+            "make": "Ford",
+            "model": "Focus",
+            "colour": "Blue",
+            "session_id": "test_session_123"
+            # Missing customer_id - this should fail!
+        }
+    )
+    assert response.status_code == 422
+    data = response.json()
+    # Verify the error is about missing customer_id
+    assert any(
+        err.get("loc", [])[-1] == "customer_id" and err.get("type") == "missing"
+        for err in data.get("detail", [])
+    ), f"Expected 'customer_id' missing error, got: {data}"
+
+
+@pytest.mark.asyncio
+async def test_create_vehicle_with_customer_id_success(client):
+    """POST /api/vehicles should succeed when customer_id is provided."""
+    import uuid
+    unique_email = f"vehicle_test_{uuid.uuid4().hex[:8]}@example.com"
+
+    # First create a customer
+    customer_response = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "Vehicle",
+            "last_name": "Test",
+            "email": unique_email,
+            "phone": "+44 7700 900001",
+            "session_id": "test_session_vehicle"
+        }
+    )
+    assert customer_response.status_code == 200
+    customer_id = customer_response.json()["customer_id"]
+
+    # Now create vehicle with customer_id
+    response = await client.post(
+        "/api/vehicles",
+        json={
+            "customer_id": customer_id,
+            "registration": f"VT{uuid.uuid4().hex[:5].upper()}",
+            "make": "Ford",
+            "model": "Focus",
+            "colour": "Blue",
+            "session_id": "test_session_vehicle"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert "vehicle_id" in data
+
+
+@pytest.mark.asyncio
+async def test_update_vehicle_requires_customer_id(client):
+    """PATCH /api/vehicles/{id} should return 422 when customer_id is missing."""
+    import uuid
+    unique_email = f"patch_test_{uuid.uuid4().hex[:8]}@example.com"
+
+    # First create a customer and vehicle
+    customer_response = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "Patch",
+            "last_name": "Test",
+            "email": unique_email,
+            "phone": "+44 7700 900002",
+            "session_id": "test_session_patch"
+        }
+    )
+    customer_id = customer_response.json()["customer_id"]
+
+    vehicle_response = await client.post(
+        "/api/vehicles",
+        json={
+            "customer_id": customer_id,
+            "registration": f"PT{uuid.uuid4().hex[:5].upper()}",
+            "make": "Honda",
+            "model": "Civic",
+            "colour": "Red",
+            "session_id": "test_session_patch"
+        }
+    )
+    vehicle_id = vehicle_response.json()["vehicle_id"]
+
+    # Try to update without customer_id - should fail with 422
+    response = await client.patch(
+        f"/api/vehicles/{vehicle_id}",
+        json={
+            "registration": "UPDATED1",
+            "make": "Toyota",
+            "model": "Corolla",
+            "colour": "Silver",
+            "session_id": "test_session_patch"
+            # Missing customer_id - this should fail!
+        }
+    )
+    assert response.status_code == 422
+    data = response.json()
+    # Verify the error is about missing customer_id
+    assert any(
+        err.get("loc", [])[-1] == "customer_id" and err.get("type") == "missing"
+        for err in data.get("detail", [])
+    ), f"Expected 'customer_id' missing error, got: {data}"
+
+
+@pytest.mark.asyncio
+async def test_create_customer_same_email_returns_existing(client):
+    """POST /api/customers with same email should return existing customer."""
+    import uuid
+    unique_email = f"same_email_{uuid.uuid4().hex[:8]}@example.com"
+
+    # Create first customer
+    response1 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "Original",
+            "last_name": "User",
+            "email": unique_email,
+            "phone": "+44 7700 900010",
+            "session_id": "test_session_same1"
+        }
+    )
+    assert response1.status_code == 200
+    customer_id_1 = response1.json()["customer_id"]
+
+    # Create second customer with SAME email but different name
+    response2 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "Updated",
+            "last_name": "Name",
+            "email": unique_email,  # Same email
+            "phone": "+44 7700 900011",
+            "session_id": "test_session_same2"
+        }
+    )
+    assert response2.status_code == 200
+    customer_id_2 = response2.json()["customer_id"]
+
+    # Should return the SAME customer ID (backend deduplicates by email)
+    assert customer_id_1 == customer_id_2, \
+        "Same email should return same customer_id"
+
+
+@pytest.mark.asyncio
+async def test_create_customer_different_email_creates_new(client):
+    """POST /api/customers with different email should create new customer."""
+    import uuid
+    email1 = f"first_{uuid.uuid4().hex[:8]}@example.com"
+    email2 = f"second_{uuid.uuid4().hex[:8]}@example.com"
+
+    # Create first customer
+    response1 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "First",
+            "last_name": "User",
+            "email": email1,
+            "phone": "+44 7700 900020",
+            "session_id": "test_session_diff1"
+        }
+    )
+    assert response1.status_code == 200
+    customer_id_1 = response1.json()["customer_id"]
+
+    # Create second customer with DIFFERENT email
+    response2 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "First",  # Same name
+            "last_name": "User",    # Same name
+            "email": email2,        # Different email!
+            "phone": "+44 7700 900020",
+            "session_id": "test_session_diff2"
+        }
+    )
+    assert response2.status_code == 200
+    customer_id_2 = response2.json()["customer_id"]
+
+    # Should create a NEW customer (different email = different person)
+    assert customer_id_1 != customer_id_2, \
+        "Different email should create different customer_id"
+
+
+@pytest.mark.asyncio
+async def test_email_change_flow_creates_new_customer_and_vehicle(client):
+    """
+    Simulates frontend email change flow:
+    1. Create customer + vehicle
+    2. User changes email and resubmits
+    3. Should create NEW customer and NEW vehicle
+    """
+    import uuid
+    original_email = f"original_{uuid.uuid4().hex[:8]}@example.com"
+    changed_email = f"changed_{uuid.uuid4().hex[:8]}@example.com"
+
+    # Step 1: Create original customer
+    cust_resp1 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "Original",
+            "last_name": "Person",
+            "email": original_email,
+            "phone": "+44 7700 900030",
+            "session_id": "test_email_change"
+        }
+    )
+    original_customer_id = cust_resp1.json()["customer_id"]
+
+    # Step 2: Create vehicle for original customer
+    veh_resp1 = await client.post(
+        "/api/vehicles",
+        json={
+            "customer_id": original_customer_id,
+            "registration": f"OR{uuid.uuid4().hex[:5].upper()}",
+            "make": "Ford",
+            "model": "Focus",
+            "colour": "Blue",
+            "session_id": "test_email_change"
+        }
+    )
+    original_vehicle_id = veh_resp1.json()["vehicle_id"]
+
+    # Step 3: User changes email - frontend detects this and creates NEW customer
+    cust_resp2 = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "Changed",  # May also change name
+            "last_name": "Person",
+            "email": changed_email,   # Different email!
+            "phone": "+44 7700 900031",
+            "session_id": "test_email_change"
+        }
+    )
+    new_customer_id = cust_resp2.json()["customer_id"]
+
+    # Step 4: Create new vehicle for new customer
+    veh_resp2 = await client.post(
+        "/api/vehicles",
+        json={
+            "customer_id": new_customer_id,  # New customer!
+            "registration": f"NW{uuid.uuid4().hex[:5].upper()}",
+            "make": "Ford",
+            "model": "Focus",
+            "colour": "Blue",
+            "session_id": "test_email_change"
+        }
+    )
+    new_vehicle_id = veh_resp2.json()["vehicle_id"]
+
+    # Verify: Different email = different customer = different vehicle
+    assert original_customer_id != new_customer_id, \
+        "Email change should create new customer"
+    assert original_vehicle_id != new_vehicle_id, \
+        "New customer should have new vehicle"
+
+
+@pytest.mark.asyncio
+async def test_update_vehicle_with_customer_id_success(client):
+    """PATCH /api/vehicles/{id} should succeed when customer_id is provided."""
+    import uuid
+    unique_email = f"patch_success_{uuid.uuid4().hex[:8]}@example.com"
+
+    # First create a customer and vehicle
+    customer_response = await client.post(
+        "/api/customers",
+        json={
+            "first_name": "PatchOK",
+            "last_name": "Test",
+            "email": unique_email,
+            "phone": "+44 7700 900003",
+            "session_id": "test_session_patch_ok"
+        }
+    )
+    customer_id = customer_response.json()["customer_id"]
+
+    vehicle_response = await client.post(
+        "/api/vehicles",
+        json={
+            "customer_id": customer_id,
+            "registration": f"PO{uuid.uuid4().hex[:5].upper()}",
+            "make": "Nissan",
+            "model": "Qashqai",
+            "colour": "Black",
+            "session_id": "test_session_patch_ok"
+        }
+    )
+    vehicle_id = vehicle_response.json()["vehicle_id"]
+
+    # Update with customer_id - should succeed
+    response = await client.patch(
+        f"/api/vehicles/{vehicle_id}",
+        json={
+            "customer_id": customer_id,  # Required!
+            "registration": f"UP{uuid.uuid4().hex[:5].upper()}",
+            "make": "Toyota",
+            "model": "RAV4",
+            "colour": "White",
+            "session_id": "test_session_patch_ok"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
 
 
 @pytest.mark.asyncio
