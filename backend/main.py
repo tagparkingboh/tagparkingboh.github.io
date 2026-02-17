@@ -2037,15 +2037,13 @@ async def get_booking_locations(
     if map_type == "origins":
         # Query customers with billing postcodes who have billing_updated_at set
         # This filters to only show leads captured since the feature was deployed
-        # Excludes customers who have converted to confirmed/completed bookings
+        # Excludes customers who have any booking (shown on Bookings Map instead)
         from datetime import datetime, timezone
-        from db_models import BookingStatus
         feature_launch_date = datetime(2026, 2, 16, 20, 0, 0, tzinfo=timezone.utc)
 
-        # Subquery to get customer IDs with confirmed/completed bookings
+        # Subquery to get customer IDs with any booking (they're on Bookings Map, not leads)
         customers_with_bookings = (
             db.query(Booking.customer_id)
-            .filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
             .distinct()
             .subquery()
         )
