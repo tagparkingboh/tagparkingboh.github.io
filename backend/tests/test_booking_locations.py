@@ -102,8 +102,9 @@ def create_mock_customer_with_bookings(
     customer.billing_address1 = "123 Test Street"
     customer.billing_city = billing_city
     customer.billing_postcode = billing_postcode
+    # Use date after feature launch (2026-02-16 20:00:00) for Journey Origins
     customer.created_at = MagicMock()
-    customer.created_at.isoformat.return_value = "2026-02-15T10:00:00"
+    customer.created_at.isoformat.return_value = "2026-02-17T10:00:00"
 
     if has_confirmed_booking:
         mock_booking = MagicMock()

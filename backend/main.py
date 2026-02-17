@@ -2035,11 +2035,16 @@ async def get_booking_locations(
     from db_models import Booking, Customer
 
     if map_type == "origins":
-        # Query all customers with billing postcodes (journey origins/leads)
+        # Query customers with billing postcodes created after the feature launch
+        # Only show leads from when the Journey Origins feature was deployed
+        from datetime import datetime
+        feature_launch_date = datetime(2026, 2, 16, 20, 0, 0)  # Feature deployment cutoff
+
         customers = (
             db.query(Customer)
             .filter(Customer.billing_postcode.isnot(None))
             .filter(Customer.billing_postcode != "")
+            .filter(Customer.created_at >= feature_launch_date)
             .order_by(Customer.created_at.desc())
             .all()
         )
