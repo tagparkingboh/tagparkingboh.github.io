@@ -71,6 +71,7 @@ function Bookings() {
   const [paymentComplete, setPaymentComplete] = useState(false)
   const [bookingConfirmation, setBookingConfirmation] = useState(null)
   const [customerId, setCustomerId] = useState(() => loadBookingState('customerId', null))
+  const [savedEmail, setSavedEmail] = useState(() => loadBookingState('savedEmail', null))
   const [vehicleId, setVehicleId] = useState(() => loadBookingState('vehicleId', null))
   const [saving, setSaving] = useState(false)
   // Welcome modal state - shown when user clicks Continue from Step 1
@@ -195,6 +196,10 @@ function Bookings() {
   useEffect(() => {
     sessionStorage.setItem('booking_customerId', JSON.stringify(customerId))
   }, [customerId])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_savedEmail', JSON.stringify(savedEmail))
+  }, [savedEmail])
 
   useEffect(() => {
     sessionStorage.setItem('booking_vehicleId', JSON.stringify(vehicleId))
@@ -635,8 +640,11 @@ function Bookings() {
 
   // API functions for incremental saves
   const saveCustomer = async () => {
-    // If customer already exists, update instead of create
-    if (customerId) {
+    // Check if email changed - if so, create new customer (different person)
+    const emailChanged = savedEmail && formData.email.toLowerCase() !== savedEmail.toLowerCase()
+
+    // If customer already exists and email hasn't changed, update instead of create
+    if (customerId && !emailChanged) {
       try {
         const response = await fetch(`${API_BASE_URL}/api/customers/${customerId}`, {
           method: 'PATCH',
@@ -651,11 +659,18 @@ function Bookings() {
         })
         const data = await response.json()
         console.log('Customer updated:', customerId)
-        return data.success ? customerId : null
+        setSavedEmail(formData.email)
+        return { customerId: data.success ? customerId : null, isNewCustomer: false }
       } catch (error) {
         console.error('Error updating customer:', error)
-        return null
+        return { customerId: null, isNewCustomer: false }
       }
+    }
+
+    // Email changed - reset vehicle since it's linked to old customer
+    if (emailChanged) {
+      console.log('Email changed, creating new customer and resetting vehicle')
+      setVehicleId(null)
     }
 
     // Create new customer
@@ -674,22 +689,23 @@ function Bookings() {
       const data = await response.json()
       if (data.success) {
         setCustomerId(data.customer_id)
+        setSavedEmail(formData.email)
         console.log('Customer created:', data.customer_id)
-        return data.customer_id
+        return { customerId: data.customer_id, isNewCustomer: true }
       }
-      return null
+      return { customerId: null, isNewCustomer: false }
     } catch (error) {
       console.error('Error saving customer:', error)
-      return null
+      return { customerId: null, isNewCustomer: false }
     }
   }
 
-  const saveVehicle = async (custId) => {
+  const saveVehicle = async (custId, forceCreate = false) => {
     const customerIdToUse = custId || customerId
     if (!customerIdToUse) return false
 
-    // If vehicle already exists, update instead of create
-    if (vehicleId) {
+    // If vehicle already exists and not forcing create, update instead of create
+    if (vehicleId && !forceCreate) {
       try {
         const response = await fetch(`${API_BASE_URL}/api/vehicles/${vehicleId}`, {
           method: 'PATCH',
@@ -916,10 +932,10 @@ function Bookings() {
       // Save data based on current step
       // Step 1: Contact + Billing + Vehicle - save customer, billing, and vehicle
       if (currentStep === 1) {
-        const custId = await saveCustomer()
+        const { customerId: custId, isNewCustomer } = await saveCustomer()
         if (custId) {
           await saveBillingAddress(custId)
-          await saveVehicle(custId)
+          await saveVehicle(custId, isNewCustomer)
         }
       }
       // Steps 2, 3, 4 don't need incremental saves (data already captured)
