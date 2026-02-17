@@ -2594,6 +2594,38 @@ async def create_or_update_customer(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.patch("/api/customers/{customer_id}")
+async def update_customer(
+    customer_id: int,
+    request: CreateCustomerRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Update existing customer contact information.
+    Used when user goes back and edits their details.
+    """
+    customer = db_service.get_customer_by_id(db, customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    try:
+        customer.first_name = request.first_name
+        customer.last_name = request.last_name
+        customer.email = request.email
+        customer.phone = request.phone
+        db.commit()
+        db.refresh(customer)
+
+        return {
+            "success": True,
+            "customer_id": customer.id,
+            "message": "Customer updated successfully",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.patch("/api/customers/{customer_id}/billing")
 async def update_customer_billing(
     customer_id: int,
@@ -2715,6 +2747,40 @@ async def create_or_update_vehicle(
             "vehicle_id": vehicle.id,
             "is_new_vehicle": is_new_vehicle,
             "message": "Vehicle saved successfully",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.patch("/api/vehicles/{vehicle_id}")
+async def update_vehicle(
+    vehicle_id: int,
+    request: CreateVehicleRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Update existing vehicle information.
+    Used when user goes back and edits their vehicle details.
+    """
+    from db_models import Vehicle
+
+    vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    try:
+        vehicle.registration = request.registration.upper()
+        vehicle.make = request.make
+        vehicle.model = request.model
+        vehicle.colour = request.colour
+        db.commit()
+        db.refresh(vehicle)
+
+        return {
+            "success": True,
+            "vehicle_id": vehicle.id,
+            "message": "Vehicle updated successfully",
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -635,6 +635,30 @@ function Bookings() {
 
   // API functions for incremental saves
   const saveCustomer = async () => {
+    // If customer already exists, update instead of create
+    if (customerId) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/customers/${customerId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            email: formData.email,
+            phone: formData.phone,
+            session_id: sessionIdRef.current,
+          }),
+        })
+        const data = await response.json()
+        console.log('Customer updated:', customerId)
+        return data.success
+      } catch (error) {
+        console.error('Error updating customer:', error)
+        return false
+      }
+    }
+
+    // Create new customer
     try {
       const response = await fetch(`${API_BASE_URL}/api/customers`, {
         method: 'POST',
@@ -650,7 +674,7 @@ function Bookings() {
       const data = await response.json()
       if (data.success) {
         setCustomerId(data.customer_id)
-        console.log('Customer saved:', data.customer_id)
+        console.log('Customer created:', data.customer_id)
       }
       return data.success
     } catch (error) {
@@ -661,6 +685,31 @@ function Bookings() {
 
   const saveVehicle = async () => {
     if (!customerId) return false
+
+    // If vehicle already exists, update instead of create
+    if (vehicleId) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/vehicles/${vehicleId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            registration: formData.registration.toUpperCase(),
+            make: formData.make === 'Other' ? formData.customMake : formData.make,
+            model: formData.model === 'Other' ? formData.customModel : formData.model,
+            colour: formData.colour,
+            session_id: sessionIdRef.current,
+          }),
+        })
+        const data = await response.json()
+        console.log('Vehicle updated:', vehicleId)
+        return data.success
+      } catch (error) {
+        console.error('Error updating vehicle:', error)
+        return false
+      }
+    }
+
+    // Create new vehicle
     try {
       const response = await fetch(`${API_BASE_URL}/api/vehicles`, {
         method: 'POST',
@@ -677,7 +726,7 @@ function Bookings() {
       const data = await response.json()
       if (data.success) {
         setVehicleId(data.vehicle_id)
-        console.log('Vehicle saved:', data.vehicle_id)
+        console.log('Vehicle created:', data.vehicle_id)
       }
       return data.success
     } catch (error) {
