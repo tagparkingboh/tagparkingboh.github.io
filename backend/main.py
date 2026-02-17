@@ -2138,7 +2138,7 @@ async def get_booking_locations(
                 postcode_to_bookings[postcode].append(b)
 
     if not postcode_to_bookings:
-        return {"count": 0, "locations": []}
+        return {"count": 0, "total_bookings": 0, "skipped_count": 0, "skipped": [], "locations": [], "map_type": map_type}
 
     # Bulk geocode postcodes via postcodes.io
     postcodes_list = list(postcode_to_bookings.keys())
