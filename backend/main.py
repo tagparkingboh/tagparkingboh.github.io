@@ -2035,17 +2035,18 @@ async def get_booking_locations(
     from db_models import Booking, Customer
 
     if map_type == "origins":
-        # Query customers with billing postcodes created after the feature launch
-        # Only show leads from when the Journey Origins feature was deployed
-        from datetime import datetime
-        feature_launch_date = datetime(2026, 2, 16, 20, 0, 0)  # Feature deployment cutoff
+        # Query customers with billing postcodes who have billing_updated_at set
+        # This filters to only show leads captured since the feature was deployed
+        from datetime import datetime, timezone
+        feature_launch_date = datetime(2026, 2, 16, 20, 0, 0, tzinfo=timezone.utc)
 
         customers = (
             db.query(Customer)
             .filter(Customer.billing_postcode.isnot(None))
             .filter(Customer.billing_postcode != "")
-            .filter(Customer.created_at >= feature_launch_date)
-            .order_by(Customer.created_at.desc())
+            .filter(Customer.billing_updated_at.isnot(None))
+            .filter(Customer.billing_updated_at >= feature_launch_date)
+            .order_by(Customer.billing_updated_at.desc())
             .all()
         )
 
@@ -2646,12 +2647,14 @@ async def update_customer_billing(
         raise HTTPException(status_code=404, detail="Customer not found")
 
     try:
+        from datetime import datetime, timezone
         customer.billing_address1 = request.billing_address1
         customer.billing_address2 = request.billing_address2
         customer.billing_city = request.billing_city
         customer.billing_county = request.billing_county
         customer.billing_postcode = request.billing_postcode
         customer.billing_country = request.billing_country
+        customer.billing_updated_at = datetime.now(timezone.utc)  # Track when billing was added/updated
         db.commit()
         db.refresh(customer)
 
