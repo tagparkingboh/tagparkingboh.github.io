@@ -12,8 +12,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from db_models import MarketingSubscriber
-from email_service import send_welcome_email, send_promo_code_email, is_email_enabled, generate_promo_code
+from db_models import MarketingSubscriber, Booking, BookingStatus, Customer, FlightDeparture
+from email_service import send_welcome_email, send_promo_code_email, send_2_day_reminder_email, is_email_enabled, generate_promo_code
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -135,10 +136,89 @@ def process_pending_promo_emails():
         db.close()
 
 
+def process_pending_2day_reminders():
+    """
+    Find confirmed bookings that are within 48 hours of their dropoff date
+    (UK time) and haven't received the 2-day reminder yet.
+    """
+    if not is_email_enabled():
+        return
+
+    db = get_db()
+    try:
+        # Get current time in UK timezone
+        uk_tz = pytz.timezone('Europe/London')
+        now_uk = datetime.now(uk_tz)
+
+        # Calculate the cutoff: 48 hours from now in UK time
+        cutoff_date = (now_uk + timedelta(hours=48)).date()
+
+        # Find confirmed bookings that:
+        # 1. Haven't received 2-day reminder
+        # 2. Dropoff date is within 48 hours (today or tomorrow or day after, depending on time)
+        # 3. Status is CONFIRMED
+        pending = db.query(Booking).filter(
+            Booking.reminder_2day_sent == False,
+            Booking.status == BookingStatus.CONFIRMED,
+            Booking.dropoff_date <= cutoff_date,
+            Booking.dropoff_date >= now_uk.date(),  # Don't send for past bookings
+        ).limit(10).all()
+
+        for booking in pending:
+            # Get customer details
+            customer = db.query(Customer).filter(Customer.id == booking.customer_id).first()
+            if not customer:
+                logger.error(f"Customer not found for booking {booking.reference}")
+                continue
+
+            # Get flight departure time
+            flight_departure_time = None
+            if booking.departure_id:
+                flight = db.query(FlightDeparture).filter(FlightDeparture.id == booking.departure_id).first()
+                if flight:
+                    flight_departure_time = flight.departure_time.strftime("%H:%M")
+
+            # Fallback if no flight linked
+            if not flight_departure_time:
+                # Estimate: add 2 hours to dropoff time as rough flight time
+                flight_departure_time = "TBC"
+
+            # Format dropoff date
+            dropoff_date_formatted = booking.dropoff_date.strftime("%A, %d %B %Y")
+            dropoff_time_formatted = booking.dropoff_time.strftime("%H:%M")
+
+            logger.info(f"Sending 2-day reminder to {customer.email} for booking {booking.reference}")
+
+            success = send_2_day_reminder_email(
+                email=customer.email,
+                first_name=customer.first_name,
+                last_name=customer.last_name,
+                booking_reference=booking.reference,
+                dropoff_date=dropoff_date_formatted,
+                dropoff_time=dropoff_time_formatted,
+                flight_departure_time=flight_departure_time,
+            )
+
+            if success:
+                booking.reminder_2day_sent = True
+                booking.reminder_2day_sent_at = datetime.utcnow()
+                db.commit()
+                logger.info(f"2-day reminder sent to {customer.email} for booking {booking.reference}")
+            else:
+                logger.error(f"Failed to send 2-day reminder to {customer.email}")
+
+    except Exception as e:
+        logger.error(f"Error processing 2-day reminders: {str(e)}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def process_all_pending_emails():
     """Main job that processes all pending emails."""
     logger.debug("Checking for pending emails...")
     process_pending_welcome_emails()
+    process_pending_2day_reminders()
     # PAUSED: Promo code emails - uncomment when ready to send
     # process_pending_promo_emails()
 
