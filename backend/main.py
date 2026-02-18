@@ -2148,11 +2148,11 @@ async def get_booking_locations(
             "map_type": map_type,
         }
 
-    # Default: map_type="bookings" - Query confirmed/completed bookings
+    # Default: map_type="bookings" - Query all bookings
     bookings = (
         db.query(Booking)
         .options(joinedload(Booking.customer))
-        .filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
+        .filter(Booking.status.in_([BookingStatus.PENDING, BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.CANCELLED]))
         .order_by(Booking.dropoff_date.desc())
         .all()
     )
