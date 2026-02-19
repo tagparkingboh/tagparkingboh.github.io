@@ -1478,12 +1478,14 @@ function Admin() {
                         <div className="booking-section booking-actions-section">
                           <h4>Actions</h4>
                           <div className="booking-actions">
-                            <button
-                              className="action-btn edit-btn"
-                              onClick={(e) => handleEditClick(booking, e)}
-                            >
-                              Edit Pickup Date/Time
-                            </button>
+                            {booking.status?.toLowerCase() === 'confirmed' && (
+                              <button
+                                className="action-btn edit-btn"
+                                onClick={(e) => handleEditClick(booking, e)}
+                              >
+                                Edit Pickup Date/Time
+                              </button>
+                            )}
                             {booking.status?.toLowerCase() === 'confirmed' && (
                               <button
                                 className="action-btn edit-btn"
