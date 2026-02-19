@@ -2720,11 +2720,22 @@ function Admin() {
                 />
               </div>
               <div className="modal-form-group">
-                <label>New Pickup Time (anticipated collection time)</label>
+                <label>New Pickup Time (anticipated collection time, 24hr)</label>
                 <input
-                  type="time"
+                  type="text"
+                  placeholder="HH:MM (e.g. 14:30)"
+                  pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
+                  maxLength={5}
                   value={editForm.pickup_time}
-                  onChange={(e) => setEditForm({ ...editForm, pickup_time: e.target.value })}
+                  onChange={(e) => {
+                    let val = e.target.value.replace(/[^0-9:]/g, '')
+                    if (val.length === 2 && !val.includes(':') && editForm.pickup_time.length < 3) {
+                      val = val + ':'
+                    }
+                    if (val.length <= 5) {
+                      setEditForm({ ...editForm, pickup_time: val })
+                    }
+                  }}
                 />
               </div>
             </div>
