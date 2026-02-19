@@ -37,7 +37,7 @@ function HomePage() {
     const interval = setInterval(() => {
       setBannerFading(true)
       setTimeout(() => {
-        setHeroBannerIndex(prev => (prev + 1) % 4)
+        setHeroBannerIndex(prev => (prev + 1) % 5)
         setBannerFading(false)
       }, 300) // Fade out duration
     }, 5000)
@@ -222,15 +222,18 @@ function HomePage() {
             <p className="hero-subtitle">TAG: MEET & GREET FOR BOURNEMOUTH AIRPORT</p>
             <h1 className={`hero-title ${bannerFading ? 'fading' : ''}`}>
               {heroBannerIndex === 0 && (
-                <>It's time to Tag it.<br />Book your parking now</>
+                <>Save up to 60% off<br />official airport parking</>
               )}
               {heroBannerIndex === 1 && (
-                <>Enjoy peace of mind from<br />Palma to Paphos</>
+                <>It's time to Tag it.<br />Book your parking now</>
               )}
               {heroBannerIndex === 2 && (
-                <>Secure parking<br />guaranteed, 24/7</>
+                <>Enjoy peace of mind from<br />Palma to Paphos</>
               )}
               {heroBannerIndex === 3 && (
+                <>Secure parking<br />guaranteed, 24/7</>
+              )}
+              {heroBannerIndex === 4 && (
                 <>Free cancellation up to<br />24 hours before</>
               )}
             </h1>
@@ -277,7 +280,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <p className="pricing-save">Save up to 50% off<br />official airport parking</p>
+            <p className="pricing-save">Save up to 60% off<br />official airport parking</p>
           </div>
 
           <div className="pricing-card">
@@ -297,7 +300,7 @@ function HomePage() {
               <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
             </ul>
 
-            <p className="pricing-save">Save up to 50% off<br />official airport parking</p>
+            <p className="pricing-save">Save up to 60% off<br />official airport parking</p>
           </div>
         </div>
 
@@ -308,8 +311,8 @@ function HomePage() {
       <section className="features-banner">
         <div className="features-content">
           <div className="feature">
-            <h2>50%</h2>
-            <p>Save up to 50% off<br />official airport parking</p>
+            <h2>60%</h2>
+            <p>Save up to 60% off<br />official airport parking</p>
           </div>
           <div className="feature">
             <h2>£0</h2>
