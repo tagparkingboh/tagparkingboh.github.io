@@ -1484,12 +1484,14 @@ function Admin() {
                             >
                               Edit Pickup Date/Time
                             </button>
-                            <button
-                              className="action-btn edit-btn"
-                              onClick={(e) => handleEditDropoffClick(booking, e)}
-                            >
-                              Edit Drop-off Time
-                            </button>
+                            {booking.status?.toLowerCase() === 'confirmed' && (
+                              <button
+                                className="action-btn edit-btn"
+                                onClick={(e) => handleEditDropoffClick(booking, e)}
+                              >
+                                Edit Drop-off Time
+                              </button>
+                            )}
                             <button
                               className="action-btn email-btn"
                               onClick={(e) => handleResendEmailClick(booking, e)}
