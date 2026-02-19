@@ -1043,6 +1043,13 @@
   box-shadow: 0 0 0 3px rgba(247, 179, 43, 0.15);
 }
 
+.admin-container .modal-form-hint {
+  font-size: 12px;
+  color: #666;
+  margin-top: 6px;
+  margin-bottom: 0;
+}
+
 /* Modern date and time input styling */
 .admin-container .modal-form-group input[type="date"],
 .admin-container .modal-form-group input[type="time"] {

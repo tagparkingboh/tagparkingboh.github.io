@@ -1578,7 +1578,32 @@ async def update_booking(
 
     if request.dropoff_time is not None:
         parts = request.dropoff_time.split(':')
-        booking.dropoff_time = dt_time(int(parts[0]), int(parts[1]))
+        new_dropoff_time = dt_time(int(parts[0]), int(parts[1]))
+
+        # Validate dropoff time change: max 1 hour earlier, max 15 mins later
+        if booking.dropoff_time:
+            old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+            new_minutes = new_dropoff_time.hour * 60 + new_dropoff_time.minute
+            diff_minutes = new_minutes - old_minutes
+
+            # Handle midnight crossing (e.g., 23:30 to 00:15)
+            if diff_minutes > 720:  # More than 12 hours forward likely means going back
+                diff_minutes -= 1440
+            elif diff_minutes < -720:  # More than 12 hours back likely means going forward
+                diff_minutes += 1440
+
+            if diff_minutes < -60:  # More than 1 hour earlier
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot move drop-off time more than 1 hour earlier. Current: {booking.dropoff_time.strftime('%H:%M')}, Requested: {request.dropoff_time}"
+                )
+            if diff_minutes > 15:  # More than 15 mins later
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot move drop-off time more than 15 minutes later. Current: {booking.dropoff_time.strftime('%H:%M')}, Requested: {request.dropoff_time}"
+                )
+
+        booking.dropoff_time = new_dropoff_time
         updates_made.append("dropoff_time")
 
     if request.dropoff_flight_number is not None:

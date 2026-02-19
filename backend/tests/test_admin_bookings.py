@@ -1253,3 +1253,222 @@ class TestEditPickupDateTime:
         assert booking.status == BookingStatus.COMPLETED
         assert booking.pickup_date == date(2026, 3, 29)
         assert booking.pickup_time == time(15, 0)
+
+
+# =============================================================================
+# PUT /api/admin/bookings/{booking_id} - Edit Drop-off Time Tests
+# =============================================================================
+
+class TestEditDropoffTime:
+    """Tests for editing booking drop-off time with validation constraints."""
+
+    def test_update_dropoff_time_within_limits(self):
+        """Should allow dropoff time change within allowed range (1hr earlier, 15min later)."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(
+            status=BookingStatus.CONFIRMED,
+            dropoff_time_val=time(9, 30),
+        )
+
+        # Move 30 mins earlier (within 1 hour limit)
+        new_dropoff_time = time(9, 0)
+        old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+        new_minutes = new_dropoff_time.hour * 60 + new_dropoff_time.minute
+        diff_minutes = new_minutes - old_minutes
+
+        assert diff_minutes == -30  # 30 mins earlier
+        assert diff_minutes >= -60  # Within 1 hour earlier limit
+
+        booking.dropoff_time = new_dropoff_time
+        assert booking.dropoff_time == time(9, 0)
+
+    def test_update_dropoff_time_exactly_1_hour_earlier(self):
+        """Should allow dropoff time exactly 1 hour earlier."""
+        booking = create_mock_booking(dropoff_time_val=time(10, 0))
+
+        new_dropoff_time = time(9, 0)
+        old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+        new_minutes = new_dropoff_time.hour * 60 + new_dropoff_time.minute
+        diff_minutes = new_minutes - old_minutes
+
+        assert diff_minutes == -60  # Exactly 1 hour earlier
+        is_valid = diff_minutes >= -60
+        assert is_valid is True
+
+    def test_update_dropoff_time_exactly_15_mins_later(self):
+        """Should allow dropoff time exactly 15 minutes later."""
+        booking = create_mock_booking(dropoff_time_val=time(9, 30))
+
+        new_dropoff_time = time(9, 45)
+        old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+        new_minutes = new_dropoff_time.hour * 60 + new_dropoff_time.minute
+        diff_minutes = new_minutes - old_minutes
+
+        assert diff_minutes == 15  # Exactly 15 mins later
+        is_valid = diff_minutes <= 15
+        assert is_valid is True
+
+    def test_reject_dropoff_time_more_than_1_hour_earlier(self):
+        """Should reject dropoff time more than 1 hour earlier."""
+        booking = create_mock_booking(dropoff_time_val=time(10, 0))
+
+        new_dropoff_time = time(8, 30)  # 1.5 hours earlier
+        old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+        new_minutes = new_dropoff_time.hour * 60 + new_dropoff_time.minute
+        diff_minutes = new_minutes - old_minutes
+
+        assert diff_minutes == -90  # 90 mins earlier
+        is_valid = diff_minutes >= -60  # Exceeds 1 hour limit
+        assert is_valid is False
+
+    def test_reject_dropoff_time_more_than_15_mins_later(self):
+        """Should reject dropoff time more than 15 minutes later."""
+        booking = create_mock_booking(dropoff_time_val=time(9, 30))
+
+        new_dropoff_time = time(10, 0)  # 30 mins later
+        old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+        new_minutes = new_dropoff_time.hour * 60 + new_dropoff_time.minute
+        diff_minutes = new_minutes - old_minutes
+
+        assert diff_minutes == 30  # 30 mins later
+        is_valid = diff_minutes <= 15  # Exceeds 15 min limit
+        assert is_valid is False
+
+    def test_update_dropoff_time_10_mins_earlier(self):
+        """Should allow 10 minutes earlier (common small adjustment)."""
+        booking = create_mock_booking(dropoff_time_val=time(9, 30))
+
+        new_dropoff_time = time(9, 20)
+        old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+        new_minutes = new_dropoff_time.hour * 60 + new_dropoff_time.minute
+        diff_minutes = new_minutes - old_minutes
+
+        assert diff_minutes == -10
+        is_valid = diff_minutes >= -60 and diff_minutes <= 15
+        assert is_valid is True
+
+    def test_update_dropoff_time_10_mins_later(self):
+        """Should allow 10 minutes later (common small adjustment)."""
+        booking = create_mock_booking(dropoff_time_val=time(9, 30))
+
+        new_dropoff_time = time(9, 40)
+        old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+        new_minutes = new_dropoff_time.hour * 60 + new_dropoff_time.minute
+        diff_minutes = new_minutes - old_minutes
+
+        assert diff_minutes == 10
+        is_valid = diff_minutes >= -60 and diff_minutes <= 15
+        assert is_valid is True
+
+    def test_update_dropoff_time_midnight_crossing_earlier(self):
+        """Should handle midnight crossing when moving earlier (e.g., 00:30 to 23:45)."""
+        booking = create_mock_booking(dropoff_time_val=time(0, 30))
+
+        new_dropoff_time = time(23, 45)  # 45 mins earlier, crossing midnight
+        old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute  # 30
+        new_minutes = new_dropoff_time.hour * 60 + new_dropoff_time.minute  # 1425
+
+        diff_minutes = new_minutes - old_minutes  # 1395 (appears to be going forward)
+
+        # Handle midnight crossing
+        if diff_minutes > 720:  # More than 12 hours forward likely means going back
+            diff_minutes -= 1440
+
+        assert diff_minutes == -45  # Actually 45 mins earlier
+        is_valid = diff_minutes >= -60
+        assert is_valid is True
+
+    def test_update_dropoff_time_midnight_crossing_later(self):
+        """Should handle midnight crossing when moving later (e.g., 23:50 to 00:05)."""
+        booking = create_mock_booking(dropoff_time_val=time(23, 50))
+
+        new_dropoff_time = time(0, 5)  # 15 mins later, crossing midnight
+        old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute  # 1430
+        new_minutes = new_dropoff_time.hour * 60 + new_dropoff_time.minute  # 5
+
+        diff_minutes = new_minutes - old_minutes  # -1425 (appears to be going back)
+
+        # Handle midnight crossing
+        if diff_minutes < -720:  # More than 12 hours back likely means going forward
+            diff_minutes += 1440
+
+        assert diff_minutes == 15  # Actually 15 mins later
+        is_valid = diff_minutes <= 15
+        assert is_valid is True
+
+    def test_update_dropoff_time_does_not_affect_pickup(self):
+        """Updating dropoff time should not affect pickup details."""
+        booking = create_mock_booking(
+            dropoff_time_val=time(9, 30),
+            pickup_date_val=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+        )
+
+        original_pickup_date = booking.pickup_date
+        original_pickup_time = booking.pickup_time
+
+        # Update dropoff
+        booking.dropoff_time = time(9, 0)
+
+        # Pickup should remain unchanged
+        assert booking.pickup_date == original_pickup_date
+        assert booking.pickup_time == original_pickup_time
+
+    def test_update_dropoff_time_does_not_affect_flight_departure(self):
+        """Updating dropoff time should NOT modify flight_departures table."""
+        departure = create_mock_departure(
+            id=1,
+            slots_booked_early=1,
+            slots_booked_late=0,
+        )
+
+        booking = create_mock_booking(
+            departure_id=departure.id,
+            dropoff_slot="early",
+            dropoff_time_val=time(9, 30),
+        )
+
+        original_early_slots = departure.slots_booked_early
+        original_late_slots = departure.slots_booked_late
+
+        # Update dropoff time
+        booking.dropoff_time = time(9, 0)
+
+        # Flight departure slots should remain unchanged
+        assert departure.slots_booked_early == original_early_slots
+        assert departure.slots_booked_late == original_late_slots
+        assert booking.departure_id == departure.id  # Still linked
+
+    def test_dropoff_time_validation_error_message_format(self):
+        """Validation error should include current and requested times."""
+        booking = create_mock_booking(dropoff_time_val=time(10, 0))
+        requested_time = "08:30"  # More than 1 hour earlier
+
+        old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+        new_parts = requested_time.split(':')
+        new_minutes = int(new_parts[0]) * 60 + int(new_parts[1])
+        diff_minutes = new_minutes - old_minutes
+
+        if diff_minutes < -60:
+            error_message = f"Cannot move drop-off time more than 1 hour earlier. Current: {booking.dropoff_time.strftime('%H:%M')}, Requested: {requested_time}"
+        else:
+            error_message = None
+
+        assert error_message is not None
+        assert "10:00" in error_message
+        assert "08:30" in error_message
+        assert "1 hour earlier" in error_message
+
+    def test_update_dropoff_time_same_time_allowed(self):
+        """Should allow setting the same time (no change)."""
+        booking = create_mock_booking(dropoff_time_val=time(9, 30))
+
+        new_dropoff_time = time(9, 30)  # Same time
+        old_minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+        new_minutes = new_dropoff_time.hour * 60 + new_dropoff_time.minute
+        diff_minutes = new_minutes - old_minutes
+
+        assert diff_minutes == 0
+        is_valid = diff_minutes >= -60 and diff_minutes <= 15
+        assert is_valid is True

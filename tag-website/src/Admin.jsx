@@ -31,6 +31,10 @@ function Admin() {
   const [bookingToEdit, setBookingToEdit] = useState(null)
   const [editForm, setEditForm] = useState({ pickup_date: '', pickup_time: '' })
   const [savingEdit, setSavingEdit] = useState(false)
+  const [showEditDropoffModal, setShowEditDropoffModal] = useState(false)
+  const [bookingToEditDropoff, setBookingToEditDropoff] = useState(null)
+  const [editDropoffForm, setEditDropoffForm] = useState({ dropoff_time: '' })
+  const [savingDropoffEdit, setSavingDropoffEdit] = useState(false)
   const [resendingEmailId, setResendingEmailId] = useState(null)
   const [showResendModal, setShowResendModal] = useState(false)
   const [bookingToResend, setBookingToResend] = useState(null)
@@ -892,6 +896,51 @@ function Admin() {
     }
   }
 
+  const handleEditDropoffClick = (booking, e) => {
+    e.stopPropagation()
+    setBookingToEditDropoff(booking)
+    setEditDropoffForm({
+      dropoff_time: booking.dropoff_time || '',
+    })
+    setShowEditDropoffModal(true)
+  }
+
+  const confirmEditDropoffBooking = async () => {
+    if (!bookingToEditDropoff) return
+
+    setSavingDropoffEdit(true)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingToEditDropoff.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          dropoff_time: editDropoffForm.dropoff_time || null,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccessMessage(data.message || 'Drop-off time updated successfully')
+        fetchBookings()
+        setTimeout(() => setSuccessMessage(''), 5000)
+        setShowEditDropoffModal(false)
+        setBookingToEditDropoff(null)
+      } else {
+        setError(data.detail || 'Failed to update drop-off time')
+      }
+    } catch (err) {
+      setError('Network error while updating booking')
+    } finally {
+      setSavingDropoffEdit(false)
+    }
+  }
+
   const handleRefundClick = (booking, e) => {
     e.stopPropagation()
     // Open Stripe dashboard to the payment intent
@@ -1434,6 +1483,12 @@ function Admin() {
                               onClick={(e) => handleEditClick(booking, e)}
                             >
                               Edit Pickup Date/Time
+                            </button>
+                            <button
+                              className="action-btn edit-btn"
+                              onClick={(e) => handleEditDropoffClick(booking, e)}
+                            >
+                              Edit Drop-off Time
                             </button>
                             <button
                               className="action-btn email-btn"
@@ -2758,6 +2813,59 @@ function Admin() {
                 disabled={savingEdit || (!editForm.pickup_date && !editForm.pickup_time)}
               >
                 {savingEdit ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Drop-off Time Modal */}
+      {showEditDropoffModal && bookingToEditDropoff && (
+        <div className="modal-overlay" onClick={() => setShowEditDropoffModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Edit Drop-off Time</h3>
+            <p>Adjust the drop-off time for this booking. Limited to 1 hour earlier or 15 minutes later.</p>
+            <div className="modal-booking-info">
+              <p><strong>Reference:</strong> {bookingToEditDropoff.reference}</p>
+              <p><strong>Customer:</strong> {bookingToEditDropoff.customer?.first_name} {bookingToEditDropoff.customer?.last_name}</p>
+              <p><strong>Drop-off Date:</strong> {formatDate(bookingToEditDropoff.dropoff_date)}</p>
+              <p><strong>Current Drop-off Time:</strong> {bookingToEditDropoff.dropoff_time || 'Not set'}</p>
+            </div>
+            <div className="modal-form">
+              <div className="modal-form-group">
+                <label>New Drop-off Time (24hr format)</label>
+                <input
+                  type="text"
+                  placeholder="HH:MM (e.g. 09:30)"
+                  pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
+                  maxLength={5}
+                  value={editDropoffForm.dropoff_time}
+                  onChange={(e) => {
+                    let val = e.target.value.replace(/[^0-9:]/g, '')
+                    if (val.length === 2 && !val.includes(':') && editDropoffForm.dropoff_time.length < 3) {
+                      val = val + ':'
+                    }
+                    if (val.length <= 5) {
+                      setEditDropoffForm({ ...editDropoffForm, dropoff_time: val })
+                    }
+                  }}
+                />
+                <p className="modal-form-hint">Can be up to 1 hour earlier or 15 minutes later than current time</p>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowEditDropoffModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={confirmEditDropoffBooking}
+                disabled={savingDropoffEdit || !editDropoffForm.dropoff_time}
+              >
+                {savingDropoffEdit ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>
