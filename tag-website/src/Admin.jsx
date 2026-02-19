@@ -2708,7 +2708,13 @@ function Admin() {
             <div className="modal-booking-info">
               <p><strong>Reference:</strong> {bookingToEdit.reference}</p>
               <p><strong>Customer:</strong> {bookingToEdit.customer?.first_name} {bookingToEdit.customer?.last_name}</p>
-              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {bookingToEdit.pickup_time_from ? `at ${bookingToEdit.pickup_time_from}` : (bookingToEdit.pickup_time ? `at ${bookingToEdit.pickup_time}` : '')}</p>
+              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {bookingToEdit.pickup_time ? `at ${(() => {
+                const [h, m] = bookingToEdit.pickup_time.split(':').map(Number)
+                const totalMins = h * 60 + m + 45
+                const newH = Math.floor(totalMins / 60) % 24
+                const newM = totalMins % 60
+                return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
+              })()}` : ''}</p>
             </div>
             <div className="modal-form">
               <div className="modal-form-group">
