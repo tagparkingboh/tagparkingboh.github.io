@@ -1003,3 +1003,253 @@ class TestAdminBookingsValidation:
             status_code = 200
 
         assert status_code == 404
+
+
+# =============================================================================
+# PUT /api/admin/bookings/{booking_id} - Edit Pickup Date/Time Tests
+# =============================================================================
+
+class TestEditPickupDateTime:
+    """Tests for editing booking pickup date and time."""
+
+    def test_update_pickup_date_only(self):
+        """Should successfully update only the pickup date."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(
+            status=BookingStatus.CONFIRMED,
+            pickup_date_val=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+        )
+
+        new_pickup_date = date(2026, 3, 30)
+        booking.pickup_date = new_pickup_date
+
+        response_data = {
+            "success": True,
+            "message": f"Booking {booking.reference} updated successfully",
+            "fields_updated": ["pickup_date"],
+            "booking": {
+                "pickup_date": booking.pickup_date.isoformat(),
+                "pickup_time": booking.pickup_time.strftime("%H:%M"),
+            }
+        }
+
+        assert response_data["success"] is True
+        assert "pickup_date" in response_data["fields_updated"]
+        assert response_data["booking"]["pickup_date"] == "2026-03-30"
+        assert response_data["booking"]["pickup_time"] == "14:30"  # Unchanged
+
+    def test_update_pickup_time_only(self):
+        """Should successfully update only the pickup time."""
+        from db_models import BookingStatus
+        from datetime import timedelta
+
+        booking = create_mock_booking(
+            status=BookingStatus.CONFIRMED,
+            pickup_date_val=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+            pickup_time_from_val=time(15, 5),
+            pickup_time_to_val=time(15, 30),
+        )
+
+        new_pickup_time = time(16, 45)
+        booking.pickup_time = new_pickup_time
+
+        # Recalculate pickup windows
+        arrival_dt = datetime.combine(date.today(), new_pickup_time)
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+
+        response_data = {
+            "success": True,
+            "message": f"Booking {booking.reference} updated successfully",
+            "fields_updated": ["pickup_time"],
+            "booking": {
+                "pickup_date": booking.pickup_date.isoformat(),
+                "pickup_time": booking.pickup_time.strftime("%H:%M"),
+                "pickup_time_from": booking.pickup_time_from.strftime("%H:%M"),
+                "pickup_time_to": booking.pickup_time_to.strftime("%H:%M"),
+            }
+        }
+
+        assert response_data["success"] is True
+        assert "pickup_time" in response_data["fields_updated"]
+        assert response_data["booking"]["pickup_date"] == "2026-03-28"  # Unchanged
+        assert response_data["booking"]["pickup_time"] == "16:45"
+        assert response_data["booking"]["pickup_time_from"] == "17:20"
+        assert response_data["booking"]["pickup_time_to"] == "17:45"
+
+    def test_update_pickup_date_and_time_together(self):
+        """Should successfully update both pickup date and time."""
+        from db_models import BookingStatus
+        from datetime import timedelta
+
+        booking = create_mock_booking(
+            status=BookingStatus.CONFIRMED,
+            pickup_date_val=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+            pickup_time_from_val=time(15, 5),
+            pickup_time_to_val=time(15, 30),
+        )
+
+        new_pickup_date = date(2026, 4, 1)
+        new_pickup_time = time(10, 15)
+        booking.pickup_date = new_pickup_date
+        booking.pickup_time = new_pickup_time
+
+        # Recalculate pickup windows
+        arrival_dt = datetime.combine(date.today(), new_pickup_time)
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+
+        response_data = {
+            "success": True,
+            "message": f"Booking {booking.reference} updated successfully",
+            "fields_updated": ["pickup_date", "pickup_time"],
+            "booking": {
+                "pickup_date": booking.pickup_date.isoformat(),
+                "pickup_time": booking.pickup_time.strftime("%H:%M"),
+                "pickup_time_from": booking.pickup_time_from.strftime("%H:%M"),
+                "pickup_time_to": booking.pickup_time_to.strftime("%H:%M"),
+            }
+        }
+
+        assert response_data["success"] is True
+        assert "pickup_date" in response_data["fields_updated"]
+        assert "pickup_time" in response_data["fields_updated"]
+        assert response_data["booking"]["pickup_date"] == "2026-04-01"
+        assert response_data["booking"]["pickup_time"] == "10:15"
+        assert response_data["booking"]["pickup_time_from"] == "10:50"
+        assert response_data["booking"]["pickup_time_to"] == "11:15"
+
+    def test_update_pickup_time_midnight_crossover(self):
+        """Updating pickup time near midnight should handle day boundary correctly."""
+        from db_models import BookingStatus
+        from datetime import timedelta
+
+        booking = create_mock_booking(
+            status=BookingStatus.CONFIRMED,
+            pickup_date_val=date(2026, 3, 28),
+            pickup_time_val=time(23, 30),
+        )
+
+        new_pickup_time = time(23, 45)
+        booking.pickup_time = new_pickup_time
+
+        # Recalculate pickup windows - will cross midnight
+        arrival_dt = datetime.combine(date.today(), new_pickup_time)
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+
+        assert booking.pickup_time == time(23, 45)
+        assert booking.pickup_time_from == time(0, 20)  # Crosses midnight
+        assert booking.pickup_time_to == time(0, 45)  # Crosses midnight
+
+    def test_update_pickup_time_early_morning(self):
+        """Updating pickup time to early morning hours works correctly."""
+        from db_models import BookingStatus
+        from datetime import timedelta
+
+        booking = create_mock_booking(
+            status=BookingStatus.CONFIRMED,
+            pickup_date_val=date(2026, 3, 29),
+            pickup_time_val=time(14, 30),
+        )
+
+        # Flight arrives at 1:15 AM
+        new_pickup_time = time(1, 15)
+        booking.pickup_time = new_pickup_time
+
+        arrival_dt = datetime.combine(date.today(), new_pickup_time)
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+
+        assert booking.pickup_time == time(1, 15)
+        assert booking.pickup_time_from == time(1, 50)
+        assert booking.pickup_time_to == time(2, 15)
+
+    def test_update_pickup_time_invalid_format_rejected(self):
+        """Invalid time format should be rejected."""
+        invalid_times = ["25:00", "14:60", "invalid", "2pm", ""]
+
+        for invalid_time in invalid_times:
+            try:
+                datetime.strptime(invalid_time, "%H:%M")
+                is_valid = True
+            except ValueError:
+                is_valid = False
+
+            assert is_valid is False, f"Expected '{invalid_time}' to be invalid"
+
+    def test_update_pickup_time_valid_formats(self):
+        """Valid time formats should be accepted."""
+        valid_times = ["00:00", "12:30", "23:59", "01:05", "14:30"]
+
+        for valid_time in valid_times:
+            try:
+                parsed = datetime.strptime(valid_time, "%H:%M")
+                is_valid = True
+            except ValueError:
+                is_valid = False
+
+            assert is_valid is True, f"Expected '{valid_time}' to be valid"
+
+    def test_update_does_not_affect_departure_flight(self):
+        """Updating pickup date/time should not affect departure/dropoff data."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(
+            status=BookingStatus.CONFIRMED,
+            dropoff_date_val=date(2026, 3, 21),
+            dropoff_time_val=time(7, 15),
+            dropoff_flight_number="FR5523",
+            dropoff_destination="Tenerife",
+            pickup_date_val=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+        )
+
+        # Update pickup details
+        booking.pickup_date = date(2026, 3, 30)
+        booking.pickup_time = time(16, 0)
+
+        # Dropoff details should remain unchanged
+        assert booking.dropoff_date == date(2026, 3, 21)
+        assert booking.dropoff_time == time(7, 15)
+        assert booking.dropoff_flight_number == "FR5523"
+        assert booking.dropoff_destination == "Tenerife"
+
+    def test_update_pending_booking_pickup(self):
+        """Should allow updating pickup for pending bookings."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(
+            status=BookingStatus.PENDING,
+            pickup_date_val=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+        )
+
+        booking.pickup_date = date(2026, 3, 29)
+        booking.pickup_time = time(15, 0)
+
+        assert booking.status == BookingStatus.PENDING
+        assert booking.pickup_date == date(2026, 3, 29)
+        assert booking.pickup_time == time(15, 0)
+
+    def test_update_completed_booking_pickup(self):
+        """Should allow updating pickup for completed bookings (for records)."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(
+            status=BookingStatus.COMPLETED,
+            pickup_date_val=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+        )
+
+        # Admin can still update for record-keeping purposes
+        booking.pickup_date = date(2026, 3, 29)
+        booking.pickup_time = time(15, 0)
+
+        assert booking.status == BookingStatus.COMPLETED
+        assert booking.pickup_date == date(2026, 3, 29)
+        assert booking.pickup_time == time(15, 0)

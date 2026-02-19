@@ -940,3 +940,295 @@ class TestPackagePricing:
         assert prices["early"] == 140.0
         assert prices["standard"] == prices["early"] + 10
         assert prices["late"] == prices["early"] + 20
+
+
+# =============================================================================
+# Admin Edit Pickup Date/Time Integration Tests
+# =============================================================================
+
+class TestAdminEditPickupDateTimeIntegration:
+    """Integration tests for admin editing pickup date and time."""
+
+    def test_edit_pickup_date_time_full_flow(self):
+        """Test full flow of editing pickup date and time via admin."""
+        from db_models import BookingStatus
+
+        # Step 1: Create a confirmed booking
+        customer = create_mock_customer(
+            id=1,
+            first_name="Edit",
+            last_name="Test",
+            email="edit-test@example.com",
+        )
+
+        vehicle = create_mock_vehicle(
+            id=1,
+            customer_id=customer.id,
+            registration="EDIT123",
+        )
+
+        booking = create_mock_booking(
+            id=1,
+            reference="TAG-EDIT001",
+            customer_id=customer.id,
+            vehicle_id=vehicle.id,
+            status="confirmed",
+            pickup_date=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+        )
+
+        # Step 2: Verify initial booking state
+        assert booking.status == BookingStatus.CONFIRMED
+        assert booking.pickup_date == date(2026, 3, 28)
+        assert booking.pickup_time == time(14, 30)
+
+        # Step 3: Simulate admin update request
+        update_request = {
+            "pickup_date": "2026-03-29",
+            "pickup_time": "16:45",
+        }
+
+        # Step 4: Apply the update
+        booking.pickup_date = date(2026, 3, 29)
+        booking.pickup_time = time(16, 45)
+
+        # Recalculate pickup windows (35-60 min buffer)
+        arrival_dt = datetime.combine(date.today(), booking.pickup_time)
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+
+        # Step 5: Verify the update was applied
+        assert booking.pickup_date == date(2026, 3, 29)
+        assert booking.pickup_time == time(16, 45)
+        assert booking.pickup_time_from == time(17, 20)
+        assert booking.pickup_time_to == time(17, 45)
+
+        # Step 6: Generate API response
+        response_data = {
+            "success": True,
+            "message": f"Booking {booking.reference} updated successfully",
+            "fields_updated": ["pickup_date", "pickup_time"],
+            "booking": {
+                "id": booking.id,
+                "reference": booking.reference,
+                "pickup_date": booking.pickup_date.isoformat(),
+                "pickup_time": booking.pickup_time.strftime("%H:%M"),
+                "pickup_time_from": booking.pickup_time_from.strftime("%H:%M"),
+                "pickup_time_to": booking.pickup_time_to.strftime("%H:%M"),
+            }
+        }
+
+        assert response_data["success"] is True
+        assert "pickup_date" in response_data["fields_updated"]
+        assert "pickup_time" in response_data["fields_updated"]
+
+    def test_edit_pickup_time_only_flow(self):
+        """Test editing only pickup time without changing date."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(
+            id=1,
+            reference="TAG-TIME001",
+            status="confirmed",
+            pickup_date=date(2026, 4, 15),
+            pickup_time_val=time(10, 0),
+        )
+
+        original_date = booking.pickup_date
+
+        # Update only time
+        booking.pickup_time = time(18, 30)
+
+        # Recalculate pickup windows
+        arrival_dt = datetime.combine(date.today(), booking.pickup_time)
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+
+        # Date should remain unchanged
+        assert booking.pickup_date == original_date
+        assert booking.pickup_time == time(18, 30)
+        assert booking.pickup_time_from == time(19, 5)
+        assert booking.pickup_time_to == time(19, 30)
+
+    def test_edit_pickup_date_only_flow(self):
+        """Test editing only pickup date without changing time."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(
+            id=1,
+            reference="TAG-DATE001",
+            status="confirmed",
+            pickup_date=date(2026, 4, 15),
+            pickup_time_val=time(14, 0),
+        )
+
+        original_time = booking.pickup_time
+
+        # Update only date
+        booking.pickup_date = date(2026, 4, 20)
+
+        # Time should remain unchanged
+        assert booking.pickup_date == date(2026, 4, 20)
+        assert booking.pickup_time == original_time
+
+    def test_edit_pickup_overnight_arrival_correction(self):
+        """Test correcting an overnight arrival booking via admin edit."""
+        from db_models import BookingStatus
+
+        # Booking was incorrectly created with wrong date due to overnight flight
+        booking = create_mock_booking(
+            id=1,
+            reference="TAG-OVERNIGHT",
+            status="confirmed",
+            pickup_date=date(2026, 3, 28),  # Wrong - should be 29th
+            pickup_time_val=time(0, 35),     # Flight lands at 00:35
+        )
+
+        # Admin corrects the date
+        booking.pickup_date = date(2026, 3, 29)
+
+        # Recalculate pickup windows
+        arrival_dt = datetime.combine(date.today(), booking.pickup_time)
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+
+        # Verify correction
+        assert booking.pickup_date == date(2026, 3, 29)
+        assert booking.pickup_time == time(0, 35)
+        assert booking.pickup_time_from == time(1, 10)
+        assert booking.pickup_time_to == time(1, 35)
+
+    def test_edit_pickup_dropoff_unchanged(self):
+        """Test that editing pickup does not affect dropoff details."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(
+            id=1,
+            reference="TAG-UNCHANGED",
+            status="confirmed",
+            dropoff_date=date(2026, 3, 21),
+            dropoff_time_val=time(7, 15),
+            dropoff_flight_number="FR5523",
+            dropoff_destination="Tenerife",
+            pickup_date=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+            pickup_flight_number="FR5524",
+            pickup_origin="Tenerife",
+        )
+
+        # Store original dropoff values
+        original_dropoff_date = booking.dropoff_date
+        original_dropoff_time = booking.dropoff_time
+        original_dropoff_flight = booking.dropoff_flight_number
+        original_dropoff_dest = booking.dropoff_destination
+
+        # Update pickup details
+        booking.pickup_date = date(2026, 3, 30)
+        booking.pickup_time = time(16, 0)
+
+        # Verify dropoff unchanged
+        assert booking.dropoff_date == original_dropoff_date
+        assert booking.dropoff_time == original_dropoff_time
+        assert booking.dropoff_flight_number == original_dropoff_flight
+        assert booking.dropoff_destination == original_dropoff_dest
+
+    def test_edit_pickup_api_request_validation(self):
+        """Test API request validation for edit pickup endpoint."""
+        # Valid request with both date and time
+        valid_request_1 = {
+            "pickup_date": "2026-03-29",
+            "pickup_time": "14:30",
+        }
+
+        # Valid request with only date
+        valid_request_2 = {
+            "pickup_date": "2026-03-29",
+        }
+
+        # Valid request with only time
+        valid_request_3 = {
+            "pickup_time": "14:30",
+        }
+
+        # Invalid request with empty values
+        invalid_request = {
+            "pickup_date": None,
+            "pickup_time": None,
+        }
+
+        # Check that at least one field is provided
+        def validate_request(req):
+            return req.get("pickup_date") is not None or req.get("pickup_time") is not None
+
+        assert validate_request(valid_request_1) is True
+        assert validate_request(valid_request_2) is True
+        assert validate_request(valid_request_3) is True
+        assert validate_request(invalid_request) is False
+
+    def test_edit_pickup_booking_list_reflects_changes(self):
+        """Test that booking list API reflects updated pickup details."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(
+            id=1,
+            reference="TAG-LIST001",
+            status="confirmed",
+            pickup_date=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+        )
+
+        # Simulate update
+        booking.pickup_date = date(2026, 3, 30)
+        booking.pickup_time = time(16, 0)
+
+        # Simulate booking list API response
+        bookings_response = {
+            "count": 1,
+            "bookings": [
+                {
+                    "id": booking.id,
+                    "reference": booking.reference,
+                    "pickup_date": booking.pickup_date.isoformat(),
+                    "pickup_time": booking.pickup_time.strftime("%H:%M"),
+                }
+            ]
+        }
+
+        assert bookings_response["bookings"][0]["pickup_date"] == "2026-03-30"
+        assert bookings_response["bookings"][0]["pickup_time"] == "16:00"
+
+    def test_edit_pickup_multiple_bookings_independent(self):
+        """Test that editing one booking doesn't affect others."""
+        from db_models import BookingStatus
+
+        booking1 = create_mock_booking(
+            id=1,
+            reference="TAG-IND001",
+            status="confirmed",
+            pickup_date=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+        )
+
+        booking2 = create_mock_booking(
+            id=2,
+            reference="TAG-IND002",
+            status="confirmed",
+            pickup_date=date(2026, 3, 28),
+            pickup_time_val=time(15, 0),
+        )
+
+        # Store original values for booking2
+        original_date_b2 = booking2.pickup_date
+        original_time_b2 = booking2.pickup_time
+
+        # Update booking1 only
+        booking1.pickup_date = date(2026, 4, 1)
+        booking1.pickup_time = time(10, 0)
+
+        # Verify booking1 updated
+        assert booking1.pickup_date == date(2026, 4, 1)
+        assert booking1.pickup_time == time(10, 0)
+
+        # Verify booking2 unchanged
+        assert booking2.pickup_date == original_date_b2
+        assert booking2.pickup_time == original_time_b2

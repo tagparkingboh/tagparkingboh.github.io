@@ -29,7 +29,7 @@ function Admin() {
   const [bookingToDelete, setBookingToDelete] = useState(null)
   const [showEditModal, setShowEditModal] = useState(false)
   const [bookingToEdit, setBookingToEdit] = useState(null)
-  const [editForm, setEditForm] = useState({ pickup_date: '' })
+  const [editForm, setEditForm] = useState({ pickup_date: '', pickup_time: '' })
   const [savingEdit, setSavingEdit] = useState(false)
   const [resendingEmailId, setResendingEmailId] = useState(null)
   const [showResendModal, setShowResendModal] = useState(false)
@@ -1433,7 +1433,7 @@ function Admin() {
                               className="action-btn edit-btn"
                               onClick={(e) => handleEditClick(booking, e)}
                             >
-                              Edit Pickup Date
+                              Edit Pickup Date/Time
                             </button>
                             <button
                               className="action-btn email-btn"
@@ -2704,11 +2704,11 @@ function Admin() {
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>Edit Booking</h3>
-            <p>Update the pickup date for this booking.</p>
+            <p>Update the pickup date and/or time for this booking.</p>
             <div className="modal-booking-info">
               <p><strong>Reference:</strong> {bookingToEdit.reference}</p>
               <p><strong>Customer:</strong> {bookingToEdit.customer?.first_name} {bookingToEdit.customer?.last_name}</p>
-              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)}</p>
+              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {bookingToEdit.pickup_time ? `at ${bookingToEdit.pickup_time}` : ''}</p>
             </div>
             <div className="modal-form">
               <label>
@@ -2717,6 +2717,14 @@ function Admin() {
                   type="date"
                   value={editForm.pickup_date}
                   onChange={(e) => setEditForm({ ...editForm, pickup_date: e.target.value })}
+                />
+              </label>
+              <label>
+                New Pickup Time (arrival/landing time):
+                <input
+                  type="time"
+                  value={editForm.pickup_time}
+                  onChange={(e) => setEditForm({ ...editForm, pickup_time: e.target.value })}
                 />
               </label>
             </div>
@@ -2730,7 +2738,7 @@ function Admin() {
               <button
                 className="modal-btn modal-btn-primary"
                 onClick={confirmEditBooking}
-                disabled={savingEdit || !editForm.pickup_date}
+                disabled={savingEdit || (!editForm.pickup_date && !editForm.pickup_time)}
               >
                 {savingEdit ? 'Saving...' : 'Save Changes'}
               </button>
