@@ -2708,25 +2708,25 @@ function Admin() {
             <div className="modal-booking-info">
               <p><strong>Reference:</strong> {bookingToEdit.reference}</p>
               <p><strong>Customer:</strong> {bookingToEdit.customer?.first_name} {bookingToEdit.customer?.last_name}</p>
-              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {bookingToEdit.pickup_time ? `at ${bookingToEdit.pickup_time}` : ''}</p>
+              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {bookingToEdit.pickup_time_from ? `at ${bookingToEdit.pickup_time_from}` : (bookingToEdit.pickup_time ? `at ${bookingToEdit.pickup_time}` : '')}</p>
             </div>
             <div className="modal-form">
-              <label>
-                New Pickup Date:
+              <div className="modal-form-group">
+                <label>New Pickup Date</label>
                 <input
                   type="date"
                   value={editForm.pickup_date}
                   onChange={(e) => setEditForm({ ...editForm, pickup_date: e.target.value })}
                 />
-              </label>
-              <label>
-                New Pickup Time (arrival/landing time):
+              </div>
+              <div className="modal-form-group">
+                <label>New Pickup Time (anticipated collection time)</label>
                 <input
                   type="time"
                   value={editForm.pickup_time}
                   onChange={(e) => setEditForm({ ...editForm, pickup_time: e.target.value })}
                 />
-              </label>
+              </div>
             </div>
             <div className="modal-actions">
               <button
