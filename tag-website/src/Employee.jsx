@@ -539,13 +539,27 @@ function Employee() {
                 )}
 
                 <div className="inspection-form">
+                  {/* For return inspections, show dropoff mileage as read-only */}
+                  {inspectionType === 'pickup' && dropoffInspection?.mileage && (
+                    <div className="inspection-field">
+                      <label>Mileage at Drop-off</label>
+                      <input
+                        type="text"
+                        value={dropoffInspection.mileage.toLocaleString()}
+                        className="mileage-input mileage-readonly"
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                  )}
+
                   <div className="inspection-field">
-                    <label>Mileage <span className="required">*</span></label>
+                    <label>{inspectionType === 'pickup' ? 'Mileage at Return' : 'Mileage'} <span className="required">*</span></label>
                     <input
                       type="number"
                       value={mileage}
                       onChange={e => setMileage(e.target.value)}
-                      placeholder="Enter current mileage"
+                      placeholder={inspectionType === 'pickup' ? 'Enter return mileage' : 'Enter current mileage'}
                       className="mileage-input"
                       min="0"
                     />

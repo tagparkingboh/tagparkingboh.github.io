@@ -694,6 +694,13 @@
   border-color: #D9FF00;
 }
 
+.mileage-readonly {
+  background: #1a1a2e;
+  color: #888;
+  cursor: not-allowed;
+  border-color: #333;
+}
+
 .mileage-input::placeholder {
   color: #666;
 }
