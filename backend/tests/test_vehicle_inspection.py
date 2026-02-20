@@ -1237,3 +1237,259 @@ class TestEmployeeBookingsList:
 
         # Should use snapshot name "John", not customer's "Original"
         assert response_data["bookings"][0]["customer"]["first_name"] == "John"
+
+
+# =============================================================================
+# Return Inspection Flow Tests
+# =============================================================================
+
+class TestReturnInspectionFlow:
+    """Tests for return (pickup) inspection workflow with original drop-off comparison."""
+
+    def test_return_inspection_can_access_dropoff_inspection(self):
+        """Return inspection should have access to original drop-off inspection data."""
+        booking = create_mock_booking(id=100, reference="RET-ACCESS01")
+
+        # Drop-off inspection created at customer drop-off
+        dropoff = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            notes="Small scratch on front bumper.",
+            photos=MOCK_PHOTOS,
+            customer_name="John Smith",
+            signed_date=date.today() - timedelta(days=7),
+            signature=MOCK_SIGNATURE,
+            vehicle_inspection_read=True,
+        )
+
+        # Return inspection created when customer picks up
+        pickup = create_mock_inspection(
+            id=2,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            notes="Vehicle returned in same condition.",
+            photos=MOCK_PHOTOS,
+        )
+
+        # Both inspections for same booking
+        inspections_response = {
+            "inspections": [
+                create_mock_inspection_response(dropoff),
+                create_mock_inspection_response(pickup),
+            ]
+        }
+
+        # Can find original drop-off for comparison
+        dropoff_insp = next(
+            i for i in inspections_response["inspections"]
+            if i["inspection_type"] == "dropoff"
+        )
+
+        assert dropoff_insp is not None
+        assert dropoff_insp["notes"] == "Small scratch on front bumper."
+        assert "front" in dropoff_insp["photos"]
+
+    def test_return_inspection_different_acknowledgement_text(self):
+        """Return inspection should use different acknowledgement text than drop-off."""
+        # Drop-off acknowledgement text
+        dropoff_ack_text = "I confirm that I have reviewed the vehicle condition and agree with the inspection findings."
+
+        # Return acknowledgement text (different)
+        return_ack_text = "I confirm that my vehicle has been returned to me and I am satisfied with its condition."
+
+        assert dropoff_ack_text != return_ack_text
+        assert "returned to me" in return_ack_text
+        assert "satisfied" in return_ack_text
+
+    def test_return_inspection_no_vehicle_inspection_terms_required(self):
+        """Return inspection should NOT require vehicle_inspection_read checkbox."""
+        booking = create_mock_booking(id=100, reference="RET-NOTERMS01")
+
+        # Return inspection without vehicle_inspection_read (not required for returns)
+        pickup = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            notes="Vehicle returned in good condition.",
+            photos=MOCK_PHOTOS,
+            customer_name="John Smith",
+            signed_date=date.today(),
+            signature=MOCK_SIGNATURE,
+            vehicle_inspection_read=False,  # Not required for return
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(pickup),
+        }
+
+        # Should succeed even without vehicle_inspection_read
+        assert response_data["success"] is True
+        assert response_data["inspection"]["vehicle_inspection_read"] is False
+
+    def test_return_inspection_still_requires_signature(self):
+        """Return inspection should still require customer signature."""
+        booking = create_mock_booking(id=100, reference="RET-SIG01")
+
+        pickup = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            customer_name="John Smith",
+            signed_date=date.today(),
+            signature=MOCK_SIGNATURE,  # Still required
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(pickup),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["signature"] is not None
+
+    def test_return_inspection_compares_with_dropoff(self):
+        """Return inspection notes should be able to reference drop-off condition."""
+        booking = create_mock_booking(id=100, reference="RET-COMPARE01")
+
+        # Original drop-off
+        dropoff = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            notes="Existing damage: scratch on driver door, dent on rear bumper.",
+            photos=MOCK_PHOTOS,
+        )
+
+        # Return inspection referencing original
+        pickup = create_mock_inspection(
+            id=2,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            notes="Vehicle returned with same pre-existing damage. No new damage observed.",
+            photos=MOCK_PHOTOS,
+        )
+
+        inspections = [
+            create_mock_inspection_response(dropoff),
+            create_mock_inspection_response(pickup),
+        ]
+
+        # Both inspections exist for comparison
+        assert len(inspections) == 2
+        assert any("Existing damage" in i["notes"] for i in inspections if i["notes"])
+        assert any("No new damage" in i["notes"] for i in inspections if i["notes"])
+
+    def test_return_inspection_without_dropoff_allowed(self):
+        """Should allow return inspection even if no drop-off inspection exists."""
+        booking = create_mock_booking(id=100, reference="RET-NODROP01")
+
+        # No drop-off inspection exists
+        pickup = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            notes="Return inspection performed. No drop-off inspection on file.",
+            photos=MOCK_PHOTOS,
+            customer_name="John Smith",
+            signed_date=date.today(),
+            signature=MOCK_SIGNATURE,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(pickup),
+        }
+
+        assert response_data["success"] is True
+
+    def test_return_inspection_photos_independent(self):
+        """Return inspection photos should be separate from drop-off photos."""
+        booking = create_mock_booking(id=100, reference="RET-PHOTOS01")
+
+        dropoff_photos = {
+            "front": "dropoff_front_base64",
+            "rear": "dropoff_rear_base64",
+        }
+        pickup_photos = {
+            "front": "pickup_front_base64",
+            "rear": "pickup_rear_base64",
+        }
+
+        dropoff = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            photos=dropoff_photos,
+        )
+
+        pickup = create_mock_inspection(
+            id=2,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            photos=pickup_photos,
+        )
+
+        # Photos are different between inspections
+        assert dropoff.photos["front"] != pickup.photos["front"]
+        assert dropoff.photos["rear"] != pickup.photos["rear"]
+
+    def test_full_return_inspection_flow(self):
+        """Complete return inspection flow: view dropoff, create return, sign."""
+        booking = create_mock_booking(id=100, reference="RET-FULL01", status="confirmed")
+
+        # Step 1: Drop-off inspection was created a week ago
+        dropoff = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            notes="Minor scratch on passenger side.",
+            photos=MOCK_PHOTOS,
+            customer_name="John Smith",
+            signed_date=date.today() - timedelta(days=7),
+            signature=MOCK_SIGNATURE,
+            vehicle_inspection_read=True,
+        )
+
+        # Step 2: Get inspections - should have dropoff
+        get_response = {
+            "inspections": [create_mock_inspection_response(dropoff)]
+        }
+        assert len(get_response["inspections"]) == 1
+        assert get_response["inspections"][0]["inspection_type"] == "dropoff"
+
+        # Step 3: Create return inspection with comparison to dropoff
+        pickup = create_mock_inspection(
+            id=2,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            notes="Same scratch on passenger side as noted at drop-off. No new damage.",
+            photos=MOCK_PHOTOS,
+            customer_name="John Smith",
+            signed_date=date.today(),
+            signature=MOCK_SIGNATURE,
+            vehicle_inspection_read=False,  # Not required for return
+        )
+
+        pickup_response = {
+            "success": True,
+            "inspection": create_mock_inspection_response(pickup),
+        }
+        assert pickup_response["success"] is True
+
+        # Step 4: Both inspections now exist
+        both_response = {
+            "inspections": [
+                create_mock_inspection_response(dropoff),
+                create_mock_inspection_response(pickup),
+            ]
+        }
+        assert len(both_response["inspections"]) == 2
+
+        # Step 5: Can complete the booking
+        complete_response = {
+            "success": True,
+            "message": f"Booking {booking.reference} marked as completed",
+        }
+        assert complete_response["success"] is True

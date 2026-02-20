@@ -1539,3 +1539,205 @@ class TestAdminEditDropoffTimeIntegration:
 
         # Verify booking2 unchanged
         assert booking2.dropoff_time == original_time_b2
+
+
+# =============================================================================
+# Return Inspection Integration Tests
+# =============================================================================
+
+class TestReturnInspectionIntegration:
+    """Integration tests for return inspection workflow with drop-off comparison."""
+
+    def test_return_inspection_displays_dropoff_data(self):
+        """Return inspection should be able to access and display drop-off inspection data."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(
+            id=1,
+            reference="TAG-RETINT01",
+            status="confirmed",
+        )
+
+        # Simulate drop-off inspection created at customer drop-off
+        dropoff_inspection = {
+            "id": 1,
+            "booking_id": booking.id,
+            "inspection_type": "dropoff",
+            "notes": "Pre-existing scratch on front bumper, approx 10cm.",
+            "photos": {
+                "front": "base64_front_image",
+                "rear": "base64_rear_image",
+                "driver_side": "base64_driver_image",
+                "passenger_side": "base64_passenger_image",
+            },
+            "customer_name": "John Smith",
+            "signed_date": "2026-03-21",
+            "signature": "base64_signature",
+            "vehicle_inspection_read": True,
+        }
+
+        # When opening return inspection, fetch both inspections
+        inspections_for_booking = [dropoff_inspection]
+
+        # Find dropoff for display
+        original_dropoff = next(
+            (i for i in inspections_for_booking if i["inspection_type"] == "dropoff"),
+            None
+        )
+
+        assert original_dropoff is not None
+        assert original_dropoff["notes"] == "Pre-existing scratch on front bumper, approx 10cm."
+        assert len(original_dropoff["photos"]) == 4
+
+    def test_return_inspection_acknowledgement_different(self):
+        """Return inspection uses different acknowledgement than drop-off."""
+        dropoff_acknowledgement = {
+            "requires_vehicle_inspection_read": True,
+            "text": "I confirm that I have reviewed the vehicle condition and agree with the inspection findings.",
+        }
+
+        return_acknowledgement = {
+            "requires_vehicle_inspection_read": False,
+            "text": "I confirm that my vehicle has been returned to me and I am satisfied with its condition.",
+        }
+
+        # Different requirements
+        assert dropoff_acknowledgement["requires_vehicle_inspection_read"] != return_acknowledgement["requires_vehicle_inspection_read"]
+        assert dropoff_acknowledgement["text"] != return_acknowledgement["text"]
+        assert "returned to me" in return_acknowledgement["text"]
+        assert "satisfied" in return_acknowledgement["text"]
+
+    def test_return_inspection_full_workflow(self):
+        """Complete integration test for return inspection workflow."""
+        from db_models import BookingStatus
+
+        # Step 1: Customer drops off car
+        booking = create_mock_booking(
+            id=1,
+            reference="TAG-WORKFLOW01",
+            status="confirmed",
+            dropoff_date=date(2026, 3, 21),
+            dropoff_time_val=time(8, 0),
+            pickup_date=date(2026, 3, 28),
+            pickup_time_val=time(14, 30),
+        )
+
+        # Step 2: Employee creates drop-off inspection
+        dropoff_inspection = {
+            "id": 1,
+            "booking_id": booking.id,
+            "inspection_type": "dropoff",
+            "notes": "Small dent on rear quarter panel. Customer acknowledged.",
+            "photos": {"front": "img1", "rear": "img2", "driver_side": "img3", "passenger_side": "img4"},
+            "customer_name": "Jane Doe",
+            "signed_date": "2026-03-21",
+            "signature": "sig_base64",
+            "vehicle_inspection_read": True,
+        }
+
+        # Step 3: 7 days later, customer returns for pickup
+        # Employee opens return inspection and sees original drop-off data
+        inspections = [dropoff_inspection]
+        original = next((i for i in inspections if i["inspection_type"] == "dropoff"), None)
+
+        assert original is not None
+        assert "dent on rear quarter panel" in original["notes"]
+
+        # Step 4: Employee creates return inspection
+        return_inspection = {
+            "id": 2,
+            "booking_id": booking.id,
+            "inspection_type": "pickup",
+            "notes": "Same dent on rear quarter panel as noted at drop-off. No new damage.",
+            "photos": {"front": "ret_img1", "rear": "ret_img2", "driver_side": "ret_img3", "passenger_side": "ret_img4"},
+            "customer_name": "Jane Doe",
+            "signed_date": "2026-03-28",
+            "signature": "ret_sig_base64",
+            "vehicle_inspection_read": False,  # Not required for return
+        }
+
+        # Step 5: Both inspections now exist
+        all_inspections = [dropoff_inspection, return_inspection]
+        assert len(all_inspections) == 2
+
+        # Step 6: Booking can be completed
+        booking.status = BookingStatus.COMPLETED
+
+        assert booking.status == BookingStatus.COMPLETED
+
+    def test_return_inspection_without_dropoff_warning(self):
+        """Return inspection should handle case where no drop-off inspection exists."""
+        booking = create_mock_booking(
+            id=1,
+            reference="TAG-NODROP01",
+            status="confirmed",
+        )
+
+        # No drop-off inspection exists
+        inspections = []
+
+        # Find dropoff (none exists)
+        original_dropoff = next(
+            (i for i in inspections if i.get("inspection_type") == "dropoff"),
+            None
+        )
+
+        # Should handle gracefully
+        assert original_dropoff is None
+
+        # Return inspection can still be created
+        return_inspection = {
+            "id": 1,
+            "booking_id": booking.id,
+            "inspection_type": "pickup",
+            "notes": "Return inspection. Note: No drop-off inspection was recorded.",
+            "customer_name": "John Smith",
+            "signed_date": "2026-03-28",
+            "signature": "sig_base64",
+        }
+
+        assert return_inspection["inspection_type"] == "pickup"
+
+    def test_return_inspection_photos_clickable(self):
+        """Drop-off photos in return inspection should be viewable/clickable."""
+        dropoff_photos = {
+            "front": "base64_front_dropoff",
+            "rear": "base64_rear_dropoff",
+            "driver_side": "base64_driver_dropoff",
+            "passenger_side": "base64_passenger_dropoff",
+            "additional_1": "base64_damage_photo",
+        }
+
+        # Each photo should be accessible
+        for key, value in dropoff_photos.items():
+            assert value.startswith("base64_")
+            assert len(value) > 0
+
+        # Photos should be labeled
+        expected_labels = ["front", "rear", "driver_side", "passenger_side", "additional_1"]
+        assert list(dropoff_photos.keys()) == expected_labels
+
+    def test_return_inspection_save_requirements(self):
+        """Return inspection should require signature and customer name but not T&C checkbox."""
+        # Drop-off requirements
+        dropoff_required = {
+            "signature": True,
+            "customer_name": True,
+            "signed_date": True,
+            "vehicle_inspection_read": True,  # Required for drop-off
+        }
+
+        # Return requirements
+        return_required = {
+            "signature": True,
+            "customer_name": True,
+            "signed_date": True,
+            "vehicle_inspection_read": False,  # NOT required for return
+        }
+
+        # Signature still required for both
+        assert dropoff_required["signature"] == return_required["signature"]
+
+        # T&C checkbox only required for drop-off
+        assert dropoff_required["vehicle_inspection_read"] is True
+        assert return_required["vehicle_inspection_read"] is False

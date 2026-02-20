@@ -40,6 +40,7 @@ function Employee() {
   const [inspectionPage, setInspectionPage] = useState(1) // 1 = form, 2 = view document
   const [vehicleInspectionRead, setVehicleInspectionRead] = useState(false)
   const [signature, setSignature] = useState(null) // base64 signature image
+  const [dropoffInspection, setDropoffInspection] = useState(null) // For showing original inspection during return
 
   // Complete modal state
   const [showCompleteModal, setShowCompleteModal] = useState(false)
@@ -222,6 +223,14 @@ function Employee() {
 
     setInspectionBooking(booking)
     setInspectionType(type)
+
+    // For return/pickup inspections, find the original drop-off inspection for comparison
+    if (type === 'pickup') {
+      const originalDropoff = bookingInspections.find(i => i.inspection_type === 'dropoff')
+      setDropoffInspection(originalDropoff || null)
+    } else {
+      setDropoffInspection(null)
+    }
 
     if (existing) {
       // Editing existing inspection - load from database
@@ -473,6 +482,50 @@ function Employee() {
                   <span>{inspectionBooking.vehicle?.registration || inspectionBooking.vehicle_registration}</span>
                 </div>
 
+                {/* Show original drop-off inspection for return inspections */}
+                {inspectionType === 'pickup' && dropoffInspection && (
+                  <div className="dropoff-inspection-summary">
+                    <h4>Original Drop-off Inspection</h4>
+                    <p className="dropoff-summary-date">
+                      Recorded on {dropoffInspection.signed_date || 'N/A'}
+                    </p>
+                    {dropoffInspection.notes && (
+                      <div className="dropoff-summary-notes">
+                        <strong>Notes:</strong>
+                        <p>{dropoffInspection.notes}</p>
+                      </div>
+                    )}
+                    {dropoffInspection.photos && Object.keys(dropoffInspection.photos).length > 0 && (
+                      <div className="dropoff-summary-photos">
+                        <strong>Photos from drop-off:</strong>
+                        <div className="dropoff-photos-grid">
+                          {Object.entries(dropoffInspection.photos).map(([key, src]) => (
+                            <div key={key} className="dropoff-photo-item">
+                              <img
+                                src={src}
+                                alt={key}
+                                onClick={() => setExpandedImage({ src, label: `Drop-off: ${key}` })}
+                                className="dropoff-photo-thumb"
+                              />
+                              <span className="dropoff-photo-label">{key.replace('_', ' ')}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {!dropoffInspection.notes && (!dropoffInspection.photos || Object.keys(dropoffInspection.photos).length === 0) && (
+                      <p className="dropoff-summary-empty">No damage or notes recorded at drop-off.</p>
+                    )}
+                  </div>
+                )}
+
+                {inspectionType === 'pickup' && !dropoffInspection && (
+                  <div className="dropoff-inspection-summary dropoff-inspection-missing">
+                    <h4>Original Drop-off Inspection</h4>
+                    <p>No drop-off inspection was recorded for this booking.</p>
+                  </div>
+                )}
+
                 <div className="inspection-form">
                   <div className="inspection-field">
                     <label>Notes</label>
@@ -530,27 +583,31 @@ function Employee() {
                 <div className="inspection-acknowledgement">
                   <h4>Customer Acknowledgement</h4>
 
-                  {/* Vehicle Inspection Read Checkbox */}
-                  <div className="vehicle-inspection-checkbox">
-                    <label className="checkbox-label-inline">
-                      <input
-                        type="checkbox"
-                        checked={vehicleInspectionRead}
-                        onChange={e => setVehicleInspectionRead(e.target.checked)}
-                      />
-                      <span>I have read the </span>
-                      <button
-                        type="button"
-                        className="view-document-link"
-                        onClick={() => setInspectionPage(2)}
-                      >
-                        Vehicle Inspection Terms
-                      </button>
-                    </label>
-                  </div>
+                  {/* Vehicle Inspection Read Checkbox - Only for drop-off */}
+                  {inspectionType === 'dropoff' && (
+                    <div className="vehicle-inspection-checkbox">
+                      <label className="checkbox-label-inline">
+                        <input
+                          type="checkbox"
+                          checked={vehicleInspectionRead}
+                          onChange={e => setVehicleInspectionRead(e.target.checked)}
+                        />
+                        <span>I have read the </span>
+                        <button
+                          type="button"
+                          className="view-document-link"
+                          onClick={() => setInspectionPage(2)}
+                        >
+                          Vehicle Inspection Terms
+                        </button>
+                      </label>
+                    </div>
+                  )}
 
                   <p className="acknowledgement-text">
-                    I confirm that I have reviewed the vehicle condition and agree with the inspection findings.
+                    {inspectionType === 'dropoff'
+                      ? 'I confirm that I have reviewed the vehicle condition and agree with the inspection findings.'
+                      : 'I confirm that my vehicle has been returned to me and I am satisfied with its condition.'}
                   </p>
 
                   <div className="acknowledgement-fields">
@@ -596,7 +653,7 @@ function Employee() {
                   <button
                     className="modal-btn modal-btn-primary"
                     onClick={handleSaveInspection}
-                    disabled={savingInspection || !signature || !vehicleInspectionRead || !signedDate || !customerName}
+                    disabled={savingInspection || !signature || (inspectionType === 'dropoff' && !vehicleInspectionRead) || !signedDate || !customerName}
                   >
                     {savingInspection ? 'Saving...' : 'Save Inspection'}
                   </button>
