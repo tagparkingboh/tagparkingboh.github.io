@@ -39,8 +39,10 @@ function Employee() {
   const [savingInspection, setSavingInspection] = useState(false)
   const [inspectionPage, setInspectionPage] = useState(1) // 1 = form, 2 = view document
   const [vehicleInspectionRead, setVehicleInspectionRead] = useState(false)
+  const [acknowledgementConfirmed, setAcknowledgementConfirmed] = useState(false) // For return inspections
   const [signature, setSignature] = useState(null) // base64 signature image
   const [dropoffInspection, setDropoffInspection] = useState(null) // For showing original inspection during return
+  const [mileage, setMileage] = useState('') // Mileage reading at inspection
 
   // Complete modal state
   const [showCompleteModal, setShowCompleteModal] = useState(false)
@@ -70,7 +72,9 @@ function Employee() {
       customerName,
       signedDate,
       vehicleInspectionRead,
+      acknowledgementConfirmed,
       signature,
+      mileage,
       savedAt: new Date().toISOString(),
     }
     try {
@@ -79,7 +83,7 @@ function Employee() {
       // localStorage might be full - silently fail
       console.warn('Could not save draft to localStorage:', e)
     }
-  }, [inspectionBooking, inspectionType, inspectionNotes, inspectionPhotos, customerName, signedDate, vehicleInspectionRead, signature])
+  }, [inspectionBooking, inspectionType, inspectionNotes, inspectionPhotos, customerName, signedDate, vehicleInspectionRead, acknowledgementConfirmed, signature, mileage])
 
   // Clear draft from localStorage
   const clearDraft = (bookingId, type) => {
@@ -192,7 +196,9 @@ function Employee() {
     setCustomerName(draft.customerName || '')
     setSignedDate(draft.signedDate || new Date().toISOString().split('T')[0])
     setVehicleInspectionRead(draft.vehicleInspectionRead || false)
+    setAcknowledgementConfirmed(draft.acknowledgementConfirmed || false)
     setSignature(draft.signature || null)
+    setMileage(draft.mileage || '')
     setShowDraftModal(false)
     setPendingDraft(null)
     setInspectionPage(1)
@@ -209,7 +215,9 @@ function Employee() {
     setCustomerName('')
     setSignedDate(new Date().toISOString().split('T')[0])
     setVehicleInspectionRead(false)
+    setAcknowledgementConfirmed(false)
     setSignature(null)
+    setMileage('')
     setShowDraftModal(false)
     setPendingDraft(null)
     setInspectionPage(1)
@@ -242,7 +250,9 @@ function Employee() {
       setCustomerName(existing.customer_name || '')
       setSignedDate(existing.signed_date || '')
       setVehicleInspectionRead(existing.vehicle_inspection_read || false)
+      setAcknowledgementConfirmed(existing.acknowledgement_confirmed || false)
       setSignature(existing.signature || null)
+      setMileage(existing.mileage?.toString() || '')
       setInspectionPage(1)
       setShowInspectionModal(true)
     } else {
@@ -260,7 +270,9 @@ function Employee() {
         setCustomerName('')
         setSignedDate(new Date().toISOString().split('T')[0])
         setVehicleInspectionRead(false)
+        setAcknowledgementConfirmed(false)
         setSignature(null)
+        setMileage('')
         setInspectionPage(1)
         setShowInspectionModal(true)
       }
@@ -305,8 +317,8 @@ function Employee() {
         : `${API_URL}/api/employee/inspections`
       const method = editingInspection ? 'PUT' : 'POST'
       const body = editingInspection
-        ? { notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead }
-        : { booking_id: inspectionBooking.id, inspection_type: inspectionType, notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead }
+        ? { notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, mileage: mileage ? parseInt(mileage, 10) : null }
+        : { booking_id: inspectionBooking.id, inspection_type: inspectionType, notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, mileage: mileage ? parseInt(mileage, 10) : null }
 
       const response = await fetch(url, {
         method,
@@ -528,6 +540,18 @@ function Employee() {
 
                 <div className="inspection-form">
                   <div className="inspection-field">
+                    <label>Mileage <span className="required">*</span></label>
+                    <input
+                      type="number"
+                      value={mileage}
+                      onChange={e => setMileage(e.target.value)}
+                      placeholder="Enter current mileage"
+                      className="mileage-input"
+                      min="0"
+                    />
+                  </div>
+
+                  <div className="inspection-field">
                     <label>Notes</label>
                     <textarea
                       value={inspectionNotes}
@@ -604,11 +628,26 @@ function Employee() {
                     </div>
                   )}
 
-                  <p className="acknowledgement-text">
-                    {inspectionType === 'dropoff'
-                      ? 'I confirm that I have reviewed the vehicle condition and agree with the inspection findings.'
-                      : 'I confirm that my vehicle has been returned to me and I am satisfied with its condition.'}
-                  </p>
+                  {/* Acknowledgement text for drop-off (already covered by T&C checkbox above) */}
+                  {inspectionType === 'dropoff' && (
+                    <p className="acknowledgement-text">
+                      I confirm that I have reviewed the vehicle condition and agree with the inspection findings.
+                    </p>
+                  )}
+
+                  {/* Acknowledgement checkbox for return inspections */}
+                  {inspectionType === 'pickup' && (
+                    <div className="vehicle-inspection-checkbox">
+                      <label className="checkbox-label-inline">
+                        <input
+                          type="checkbox"
+                          checked={acknowledgementConfirmed}
+                          onChange={e => setAcknowledgementConfirmed(e.target.checked)}
+                        />
+                        <span>I confirm that my vehicle has been returned to me and I am satisfied with its condition.</span>
+                      </label>
+                    </div>
+                  )}
 
                   <div className="acknowledgement-fields">
                     <div className="inspection-field">
@@ -653,7 +692,7 @@ function Employee() {
                   <button
                     className="modal-btn modal-btn-primary"
                     onClick={handleSaveInspection}
-                    disabled={savingInspection || !signature || (inspectionType === 'dropoff' && !vehicleInspectionRead) || !signedDate || !customerName}
+                    disabled={savingInspection || !signature || (inspectionType === 'dropoff' && !vehicleInspectionRead) || (inspectionType === 'pickup' && !acknowledgementConfirmed) || !signedDate || !customerName || !mileage}
                   >
                     {savingInspection ? 'Saving...' : 'Save Inspection'}
                   </button>

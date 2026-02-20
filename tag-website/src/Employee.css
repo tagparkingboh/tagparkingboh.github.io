@@ -673,6 +673,42 @@
 }
 
 /* ============================================
+   Mileage Input
+   ============================================ */
+
+.mileage-input {
+  width: 100%;
+  max-width: 200px;
+  padding: 10px 12px;
+  font-size: 16px;
+  font-family: inherit;
+  border: 1px solid #444;
+  border-radius: 8px;
+  background: #2a2a2a;
+  color: #e0e0e0;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.mileage-input:focus {
+  border-color: #D9FF00;
+}
+
+.mileage-input::placeholder {
+  color: #666;
+}
+
+/* Hide spinner buttons on number input */
+.mileage-input::-webkit-outer-spin-button,
+.mileage-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.mileage-input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* ============================================
    Vehicle Inspection Checkbox
    ============================================ */
 

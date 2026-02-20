@@ -129,6 +129,8 @@ def create_mock_inspection(
     signed_date=None,
     signature=None,
     vehicle_inspection_read=False,
+    acknowledgement_confirmed=False,
+    mileage=None,
     created_at=None,
     updated_at=None,
 ):
@@ -144,6 +146,8 @@ def create_mock_inspection(
     inspection.signed_date = signed_date
     inspection.signature = signature
     inspection.vehicle_inspection_read = vehicle_inspection_read
+    inspection.acknowledgement_confirmed = acknowledgement_confirmed
+    inspection.mileage = mileage
     inspection.created_at = created_at or datetime.utcnow()
     inspection.updated_at = updated_at
     return inspection
@@ -162,6 +166,8 @@ def create_mock_inspection_response(inspection):
         "signed_date": inspection.signed_date.isoformat() if isinstance(inspection.signed_date, date) else inspection.signed_date,
         "signature": inspection.signature,
         "vehicle_inspection_read": inspection.vehicle_inspection_read,
+        "acknowledgement_confirmed": inspection.acknowledgement_confirmed,
+        "mileage": inspection.mileage,
         "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
         "updated_at": inspection.updated_at.isoformat() if inspection.updated_at else None,
     }
@@ -1493,3 +1499,282 @@ class TestReturnInspectionFlow:
             "message": f"Booking {booking.reference} marked as completed",
         }
         assert complete_response["success"] is True
+
+
+# =============================================================================
+# Mileage Tests
+# =============================================================================
+
+class TestInspectionMileage:
+    """Tests for mileage field on vehicle inspections."""
+
+    def test_create_dropoff_inspection_with_mileage(self):
+        """Should create drop-off inspection with mileage."""
+        booking = create_mock_booking(id=100, reference="MIL-DROP01")
+
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            mileage=45000,
+            notes="Vehicle in good condition.",
+            photos=MOCK_PHOTOS,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["mileage"] == 45000
+
+    def test_create_return_inspection_with_mileage(self):
+        """Should create return inspection with mileage."""
+        booking = create_mock_booking(id=100, reference="MIL-RET01")
+
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            mileage=45050,  # 50 miles driven during parking
+            notes="Vehicle returned.",
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["mileage"] == 45050
+
+    def test_mileage_comparison_between_inspections(self):
+        """Should be able to compare mileage between drop-off and return."""
+        booking = create_mock_booking(id=100, reference="MIL-COMP01")
+
+        dropoff = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            mileage=45000,
+        )
+
+        pickup = create_mock_inspection(
+            id=2,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            mileage=45025,
+        )
+
+        inspections_response = {
+            "inspections": [
+                create_mock_inspection_response(dropoff),
+                create_mock_inspection_response(pickup),
+            ]
+        }
+
+        dropoff_mileage = next(
+            i["mileage"] for i in inspections_response["inspections"]
+            if i["inspection_type"] == "dropoff"
+        )
+        pickup_mileage = next(
+            i["mileage"] for i in inspections_response["inspections"]
+            if i["inspection_type"] == "pickup"
+        )
+
+        # Mileage should be higher at pickup (vehicle was moved)
+        assert pickup_mileage > dropoff_mileage
+        assert pickup_mileage - dropoff_mileage == 25
+
+    def test_mileage_optional_field(self):
+        """Mileage should be optional (nullable)."""
+        booking = create_mock_booking(id=100, reference="MIL-OPT01")
+
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            mileage=None,  # Not provided
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["mileage"] is None
+
+    def test_update_inspection_mileage(self):
+        """Should be able to update mileage on an existing inspection."""
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            mileage=45000,
+            updated_at=datetime.utcnow(),
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["mileage"] == 45000
+
+    def test_mileage_large_value(self):
+        """Should handle high mileage vehicles."""
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            mileage=250000,  # High mileage vehicle
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["mileage"] == 250000
+
+    def test_mileage_zero_value(self):
+        """Should allow mileage of 0 (new vehicle)."""
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            mileage=0,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["mileage"] == 0
+
+
+# =============================================================================
+# Acknowledgement Confirmed Tests
+# =============================================================================
+
+class TestAcknowledgementConfirmed:
+    """Tests for acknowledgement_confirmed field on return inspections."""
+
+    def test_return_inspection_with_acknowledgement_confirmed(self):
+        """Return inspection should have acknowledgement_confirmed field."""
+        booking = create_mock_booking(id=100, reference="ACK-RET01")
+
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            acknowledgement_confirmed=True,
+            customer_name="John Smith",
+            signed_date=date.today(),
+            signature=MOCK_SIGNATURE,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["acknowledgement_confirmed"] is True
+
+    def test_return_inspection_acknowledgement_not_confirmed(self):
+        """Return inspection with acknowledgement_confirmed=False."""
+        booking = create_mock_booking(id=100, reference="ACK-FALSE01")
+
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            acknowledgement_confirmed=False,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["acknowledgement_confirmed"] is False
+
+    def test_dropoff_inspection_ignores_acknowledgement_confirmed(self):
+        """Drop-off inspection uses vehicle_inspection_read, not acknowledgement_confirmed."""
+        booking = create_mock_booking(id=100, reference="ACK-DROP01")
+
+        # Drop-off still uses vehicle_inspection_read
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="dropoff",
+            vehicle_inspection_read=True,
+            acknowledgement_confirmed=False,  # Not used for dropoff
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["vehicle_inspection_read"] is True
+        # acknowledgement_confirmed can be present but is not required for dropoff
+        assert response_data["inspection"]["acknowledgement_confirmed"] is False
+
+    def test_update_acknowledgement_confirmed(self):
+        """Should be able to update acknowledgement_confirmed on an existing inspection."""
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=100,
+            inspection_type="pickup",
+            acknowledgement_confirmed=True,
+            updated_at=datetime.utcnow(),
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        assert response_data["success"] is True
+        assert response_data["inspection"]["acknowledgement_confirmed"] is True
+
+    def test_full_return_inspection_with_all_fields(self):
+        """Return inspection with mileage, acknowledgement, signature, and all fields."""
+        booking = create_mock_booking(id=100, reference="ACK-FULL01")
+
+        inspection = create_mock_inspection(
+            id=1,
+            booking_id=booking.id,
+            inspection_type="pickup",
+            notes="Vehicle returned in good condition. Same scratch as noted at drop-off.",
+            photos=MOCK_PHOTOS,
+            customer_name="John Smith",
+            signed_date=date.today(),
+            signature=MOCK_SIGNATURE,
+            vehicle_inspection_read=False,  # Not required for return
+            acknowledgement_confirmed=True,  # Required for return
+            mileage=45050,
+        )
+
+        response_data = {
+            "success": True,
+            "inspection": create_mock_inspection_response(inspection),
+        }
+
+        insp = response_data["inspection"]
+        assert insp["inspection_type"] == "pickup"
+        assert insp["notes"] is not None
+        assert insp["customer_name"] == "John Smith"
+        assert insp["signed_date"] == date.today().isoformat()
+        assert insp["signature"] == MOCK_SIGNATURE
+        assert insp["acknowledgement_confirmed"] is True
+        assert insp["mileage"] == 45050
+        # vehicle_inspection_read is False (not required for return)
+        assert insp["vehicle_inspection_read"] is False

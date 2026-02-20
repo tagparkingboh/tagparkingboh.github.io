@@ -1574,6 +1574,8 @@ class TestReturnInspectionIntegration:
             "signed_date": "2026-03-21",
             "signature": "base64_signature",
             "vehicle_inspection_read": True,
+            "acknowledgement_confirmed": False,
+            "mileage": 45000,
         }
 
         # When opening return inspection, fetch both inspections
@@ -1633,6 +1635,8 @@ class TestReturnInspectionIntegration:
             "signed_date": "2026-03-21",
             "signature": "sig_base64",
             "vehicle_inspection_read": True,
+            "acknowledgement_confirmed": False,
+            "mileage": 45000,
         }
 
         # Step 3: 7 days later, customer returns for pickup
@@ -1654,6 +1658,8 @@ class TestReturnInspectionIntegration:
             "signed_date": "2026-03-28",
             "signature": "ret_sig_base64",
             "vehicle_inspection_read": False,  # Not required for return
+            "acknowledgement_confirmed": True,  # Required for return
+            "mileage": 45025,  # Vehicle driven 25 miles
         }
 
         # Step 5: Both inspections now exist
@@ -1718,13 +1724,15 @@ class TestReturnInspectionIntegration:
         assert list(dropoff_photos.keys()) == expected_labels
 
     def test_return_inspection_save_requirements(self):
-        """Return inspection should require signature and customer name but not T&C checkbox."""
+        """Return inspection should require signature, customer name, acknowledgement_confirmed, and mileage."""
         # Drop-off requirements
         dropoff_required = {
             "signature": True,
             "customer_name": True,
             "signed_date": True,
             "vehicle_inspection_read": True,  # Required for drop-off
+            "acknowledgement_confirmed": False,  # Not required for drop-off
+            "mileage": True,  # Required for both
         }
 
         # Return requirements
@@ -1733,6 +1741,8 @@ class TestReturnInspectionIntegration:
             "customer_name": True,
             "signed_date": True,
             "vehicle_inspection_read": False,  # NOT required for return
+            "acknowledgement_confirmed": True,  # Required for return
+            "mileage": True,  # Required for both
         }
 
         # Signature still required for both
@@ -1741,3 +1751,80 @@ class TestReturnInspectionIntegration:
         # T&C checkbox only required for drop-off
         assert dropoff_required["vehicle_inspection_read"] is True
         assert return_required["vehicle_inspection_read"] is False
+
+        # Acknowledgement confirmed only required for return
+        assert dropoff_required["acknowledgement_confirmed"] is False
+        assert return_required["acknowledgement_confirmed"] is True
+
+        # Mileage required for both
+        assert dropoff_required["mileage"] is True
+        assert return_required["mileage"] is True
+
+    def test_mileage_comparison_integration(self):
+        """Should be able to compare mileage between drop-off and return inspections."""
+        booking = create_mock_booking(
+            id=1,
+            reference="TAG-MILEAGE01",
+            status="confirmed",
+        )
+
+        # Drop-off inspection with mileage
+        dropoff_inspection = {
+            "id": 1,
+            "booking_id": booking.id,
+            "inspection_type": "dropoff",
+            "mileage": 45000,
+            "notes": "Vehicle in good condition.",
+        }
+
+        # Return inspection with higher mileage
+        return_inspection = {
+            "id": 2,
+            "booking_id": booking.id,
+            "inspection_type": "pickup",
+            "mileage": 45050,  # 50 miles driven
+            "notes": "Vehicle returned.",
+            "acknowledgement_confirmed": True,
+        }
+
+        all_inspections = [dropoff_inspection, return_inspection]
+
+        # Calculate mileage difference
+        dropoff_mileage = next(i["mileage"] for i in all_inspections if i["inspection_type"] == "dropoff")
+        return_mileage = next(i["mileage"] for i in all_inspections if i["inspection_type"] == "pickup")
+
+        mileage_driven = return_mileage - dropoff_mileage
+
+        assert mileage_driven == 50
+        assert dropoff_mileage < return_mileage
+
+    def test_acknowledgement_confirmed_for_return_workflow(self):
+        """Return inspection should use acknowledgement_confirmed instead of vehicle_inspection_read."""
+        booking = create_mock_booking(
+            id=1,
+            reference="TAG-ACKWF01",
+            status="confirmed",
+        )
+
+        # Return inspection with acknowledgement confirmed
+        return_inspection = {
+            "id": 1,
+            "booking_id": booking.id,
+            "inspection_type": "pickup",
+            "notes": "Vehicle returned in good condition.",
+            "customer_name": "John Smith",
+            "signed_date": "2026-03-28",
+            "signature": "sig_base64",
+            "vehicle_inspection_read": False,  # Not used for return
+            "acknowledgement_confirmed": True,  # Used for return
+            "mileage": 45025,
+        }
+
+        # Validate the inspection has the correct acknowledgement field set
+        assert return_inspection["acknowledgement_confirmed"] is True
+        assert return_inspection["vehicle_inspection_read"] is False
+
+        # The acknowledgement text for return is different
+        return_ack_text = "I confirm that my vehicle has been returned to me and I am satisfied with its condition."
+        assert "returned to me" in return_ack_text
+        assert "satisfied" in return_ack_text

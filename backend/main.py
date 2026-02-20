@@ -4941,7 +4941,9 @@ class CreateInspectionRequest(BaseModel):
     customer_name: Optional[str] = None
     signed_date: Optional[str] = None  # ISO date string YYYY-MM-DD
     signature: Optional[str] = None  # Base64-encoded signature image
-    vehicle_inspection_read: Optional[bool] = False  # Confirmed they read the T&C
+    vehicle_inspection_read: Optional[bool] = False  # Confirmed they read the T&C (drop-off only)
+    acknowledgement_confirmed: Optional[bool] = False  # Confirmed acknowledgement (return only)
+    mileage: Optional[int] = None  # Vehicle mileage at inspection
 
 
 class UpdateInspectionRequest(BaseModel):
@@ -4951,6 +4953,8 @@ class UpdateInspectionRequest(BaseModel):
     signed_date: Optional[str] = None
     signature: Optional[str] = None
     vehicle_inspection_read: Optional[bool] = None
+    acknowledgement_confirmed: Optional[bool] = None
+    mileage: Optional[int] = None
 
 
 @app.get("/api/employee/bookings")
@@ -5051,6 +5055,8 @@ async def create_inspection(
         signed_date=signed_date,
         signature=request.signature,
         vehicle_inspection_read=request.vehicle_inspection_read or False,
+        acknowledgement_confirmed=request.acknowledgement_confirmed or False,
+        mileage=request.mileage,
         inspector_id=current_user.id,
     )
     db.add(inspection)
@@ -5069,6 +5075,8 @@ async def create_inspection(
             "signed_date": inspection.signed_date.isoformat() if inspection.signed_date else None,
             "signature": inspection.signature,
             "vehicle_inspection_read": inspection.vehicle_inspection_read,
+            "acknowledgement_confirmed": inspection.acknowledgement_confirmed,
+            "mileage": inspection.mileage,
             "inspector_id": inspection.inspector_id,
             "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
         }
@@ -5098,6 +5106,8 @@ async def get_inspections(
                 "signed_date": i.signed_date.isoformat() if i.signed_date else None,
                 "signature": i.signature,
                 "vehicle_inspection_read": i.vehicle_inspection_read,
+                "acknowledgement_confirmed": i.acknowledgement_confirmed,
+                "mileage": i.mileage,
                 "inspector_id": i.inspector_id,
                 "created_at": i.created_at.isoformat() if i.created_at else None,
                 "updated_at": i.updated_at.isoformat() if i.updated_at else None,
@@ -5135,6 +5145,10 @@ async def update_inspection(
         inspection.signature = request.signature
     if request.vehicle_inspection_read is not None:
         inspection.vehicle_inspection_read = request.vehicle_inspection_read
+    if request.acknowledgement_confirmed is not None:
+        inspection.acknowledgement_confirmed = request.acknowledgement_confirmed
+    if request.mileage is not None:
+        inspection.mileage = request.mileage
 
     db.commit()
     db.refresh(inspection)
@@ -5151,6 +5165,8 @@ async def update_inspection(
             "signed_date": inspection.signed_date.isoformat() if inspection.signed_date else None,
             "signature": inspection.signature,
             "vehicle_inspection_read": inspection.vehicle_inspection_read,
+            "acknowledgement_confirmed": inspection.acknowledgement_confirmed,
+            "mileage": inspection.mileage,
             "inspector_id": inspection.inspector_id,
             "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
             "updated_at": inspection.updated_at.isoformat() if inspection.updated_at else None,
