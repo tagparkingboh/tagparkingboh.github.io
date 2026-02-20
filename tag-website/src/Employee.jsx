@@ -301,12 +301,14 @@ function Employee() {
 
   // Save inspection
   const handleSaveInspection = async () => {
-    // Validate required photos
-    const missingPhotos = REQUIRED_PHOTO_KEYS.filter(key => !inspectionPhotos[key])
-    if (missingPhotos.length > 0) {
-      const labels = missingPhotos.map(key => PHOTO_SLOTS.find(s => s.key === key)?.label)
-      setError(`Required photos missing: ${labels.join(', ')}`)
-      return
+    // Validate required photos - only for drop-off inspections
+    if (inspectionType === 'dropoff') {
+      const missingPhotos = REQUIRED_PHOTO_KEYS.filter(key => !inspectionPhotos[key])
+      if (missingPhotos.length > 0) {
+        const labels = missingPhotos.map(key => PHOTO_SLOTS.find(s => s.key === key)?.label)
+        setError(`Required photos missing: ${labels.join(', ')}`)
+        return
+      }
     }
 
     setSavingInspection(true)
@@ -576,12 +578,15 @@ function Employee() {
                   </div>
 
                   <div className="inspection-field">
-                    <label>Vehicle Photos</label>
+                    <label>Vehicle Photos {inspectionType === 'pickup' && <span className="optional">(optional)</span>}</label>
                     <div className="photo-slots-grid">
-                      {PHOTO_SLOTS.map(slot => (
-                        <div key={slot.key} className={`photo-slot ${slot.required && !inspectionPhotos[slot.key] ? 'photo-slot-required' : ''}`}>
+                      {PHOTO_SLOTS.map(slot => {
+                        // For return inspections, all photos are optional
+                        const isRequired = inspectionType === 'dropoff' && slot.required
+                        return (
+                        <div key={slot.key} className={`photo-slot ${isRequired && !inspectionPhotos[slot.key] ? 'photo-slot-required' : ''}`}>
                           <span className="photo-slot-label">
-                            {slot.label} {slot.required ? <span className="required">*</span> : <span className="optional">(optional)</span>}
+                            {slot.label} {isRequired ? <span className="required">*</span> : <span className="optional">(optional)</span>}
                           </span>
                           {inspectionPhotos[slot.key] ? (
                             <div className="photo-slot-preview">
@@ -613,7 +618,7 @@ function Employee() {
                             </label>
                           )}
                         </div>
-                      ))}
+                      )})}
                     </div>
                   </div>
                 </div>
