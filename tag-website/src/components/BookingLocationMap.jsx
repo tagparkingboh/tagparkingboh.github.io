@@ -94,7 +94,8 @@ function BookingLocationMap({ locations = [], mapType = 'bookings' }) {
                         Added: {new Date(location.created_at).toLocaleDateString('en-GB', {
                           day: 'numeric',
                           month: 'short',
-                          year: 'numeric'
+                          year: 'numeric',
+                          timeZone: 'Europe/London'
                         })}
                       </p>
                     )}
@@ -108,11 +109,12 @@ function BookingLocationMap({ locations = [], mapType = 'bookings' }) {
                     <p>{location.customer_name}</p>
                     <p className="popup-location">{location.city || location.postcode}</p>
                     <p className="popup-date">
-                      {location.dropoff_date && new Date(location.dropoff_date).toLocaleDateString('en-GB', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric'
-                      })}
+                      {location.dropoff_date && (() => {
+                        // Parse date parts manually to avoid timezone issues with YYYY-MM-DD format
+                        const [year, month, day] = location.dropoff_date.split('-')
+                        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                        return `${parseInt(day)} ${months[parseInt(month) - 1]} ${year}`
+                      })()}
                     </p>
                     <span className={`popup-status status-${location.status}`}>
                       {location.status}

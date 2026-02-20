@@ -1094,18 +1094,18 @@ function Admin() {
     return timeStr.substring(0, 5)
   }
 
-  // UK date format: dd/mm/yyyy
+  // UK date format: dd/mm/yyyy (in UK timezone)
   const formatDateUK = (dateStr) => {
     if (!dateStr) return '-'
     const date = new Date(dateStr)
-    return date.toLocaleDateString('en-GB')
+    return date.toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
   }
 
-  // UK datetime format: dd/mm/yyyy, HH:mm:ss
+  // UK datetime format: dd/mm/yyyy, HH:mm:ss (in UK timezone)
   const formatDateTimeUK = (dateStr) => {
     if (!dateStr) return '-'
     const date = new Date(dateStr)
-    return date.toLocaleString('en-GB')
+    return date.toLocaleString('en-GB', { timeZone: 'Europe/London' })
   }
 
   if (loading) {
@@ -1656,7 +1656,7 @@ function Admin() {
                             {u.is_active ? 'Yes' : 'No'}
                           </button>
                         </td>
-                        <td className="small-text">{u.last_login ? new Date(u.last_login).toLocaleDateString('en-GB') : 'Never'}</td>
+                        <td className="small-text">{u.last_login ? new Date(u.last_login).toLocaleDateString('en-GB', { timeZone: 'Europe/London' }) : 'Never'}</td>
                         <td className="actions-cell">
                           <button className="action-btn email-btn" onClick={() => openEditUserModal(u)}>Edit</button>
                           <button className="action-btn cancel-btn" onClick={() => { setUserToDelete(u); setShowDeleteUserModal(true) }}>Delete</button>
@@ -2328,7 +2328,7 @@ function Admin() {
                           )}
                         </div>
                         <span className="booking-date">
-                          {lead.created_at ? new Date(lead.created_at).toLocaleDateString('en-GB') : 'Unknown'}
+                          {lead.created_at ? new Date(lead.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}
                         </span>
                       </div>
                     </div>
@@ -2375,7 +2375,7 @@ function Admin() {
                               <div className="booking-detail">
                                 <span className="detail-label">Started</span>
                                 <span className="detail-value">
-                                  {lead.created_at ? new Date(lead.created_at).toLocaleString('en-GB') : 'Unknown'}
+                                  {lead.created_at ? new Date(lead.created_at).toLocaleString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}
                                 </span>
                               </div>
                               {lead.last_booking_status && (
