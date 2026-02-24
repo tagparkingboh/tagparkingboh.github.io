@@ -6,7 +6,7 @@ Tests cover:
 - Base price retrieval for all durations
 - Price calculation with duration + advance tiers
 - All 7 duration tiers × 3 advance tiers = 21 pricing scenarios
-- Overnight pickup calculations (arrival + 45 mins crossing midnight)
+- Overnight pickup calculations (arrival + 30 mins crossing midnight)
 """
 import pytest
 from datetime import date, time, timedelta
@@ -284,36 +284,36 @@ class TestOvernightPickupCalculation:
     """Tests for pickup time calculation when landing crosses midnight."""
 
     def test_normal_pickup_time(self):
-        """Normal landing at 14:00 - pickup at 14:45."""
+        """Normal landing at 14:00 - pickup at 14:30."""
         landing_time = time(14, 0)
-        # Calculate pickup time (landing + 45 mins)
+        # Calculate pickup time (landing + 30 mins)
         landing_minutes = landing_time.hour * 60 + landing_time.minute
-        pickup_minutes = landing_minutes + 45
+        pickup_minutes = landing_minutes + 30
         pickup_hour = pickup_minutes // 60
         pickup_min = pickup_minutes % 60
         assert pickup_hour == 14
-        assert pickup_min == 45
+        assert pickup_min == 30
 
     def test_late_evening_pickup(self):
-        """Landing at 23:00 - pickup at 23:45 same day."""
+        """Landing at 23:00 - pickup at 23:30 same day."""
         landing_time = time(23, 0)
         landing_minutes = landing_time.hour * 60 + landing_time.minute
-        pickup_minutes = landing_minutes + 45
+        pickup_minutes = landing_minutes + 30
         pickup_hour = pickup_minutes // 60
         pickup_min = pickup_minutes % 60
         assert pickup_hour == 23
-        assert pickup_min == 45
+        assert pickup_min == 30
 
     def test_overnight_pickup_2330_landing(self):
         """
-        Landing at 23:30 - pickup at 00:15 next day.
+        Landing at 23:30 - pickup at 00:00 next day.
 
         This is a critical edge case where the pickup crosses midnight.
         The system should handle this correctly.
         """
         landing_time = time(23, 30)
         landing_minutes = landing_time.hour * 60 + landing_time.minute  # 23*60 + 30 = 1410
-        pickup_minutes = landing_minutes + 45  # 1410 + 45 = 1455
+        pickup_minutes = landing_minutes + 30  # 1410 + 30 = 1440
 
         # Handle overnight
         if pickup_minutes >= 24 * 60:
@@ -327,15 +327,15 @@ class TestOvernightPickupCalculation:
 
         assert crosses_midnight is True
         assert pickup_hour == 0
-        assert pickup_min == 15
+        assert pickup_min == 0
 
     def test_overnight_pickup_2345_landing(self):
         """
-        Landing at 23:45 - pickup at 00:30 next day.
+        Landing at 23:45 - pickup at 00:15 next day.
         """
         landing_time = time(23, 45)
         landing_minutes = landing_time.hour * 60 + landing_time.minute  # 1425
-        pickup_minutes = landing_minutes + 45  # 1470
+        pickup_minutes = landing_minutes + 30  # 1455
 
         if pickup_minutes >= 24 * 60:
             pickup_minutes -= 24 * 60
@@ -348,15 +348,15 @@ class TestOvernightPickupCalculation:
 
         assert crosses_midnight is True
         assert pickup_hour == 0
-        assert pickup_min == 30
+        assert pickup_min == 15
 
     def test_overnight_pickup_2350_landing(self):
         """
-        Landing at 23:50 - pickup at 00:35 next day.
+        Landing at 23:50 - pickup at 00:20 next day.
         """
         landing_time = time(23, 50)
         landing_minutes = landing_time.hour * 60 + landing_time.minute  # 1430
-        pickup_minutes = landing_minutes + 45  # 1475
+        pickup_minutes = landing_minutes + 30  # 1460
 
         if pickup_minutes >= 24 * 60:
             pickup_minutes -= 24 * 60
@@ -369,15 +369,15 @@ class TestOvernightPickupCalculation:
 
         assert crosses_midnight is True
         assert pickup_hour == 0
-        assert pickup_min == 35
+        assert pickup_min == 20
 
     def test_just_before_midnight_no_crossover(self):
         """
-        Landing at 23:10 - pickup at 23:55 same day (no crossover).
+        Landing at 23:10 - pickup at 23:40 same day (no crossover).
         """
         landing_time = time(23, 10)
         landing_minutes = landing_time.hour * 60 + landing_time.minute  # 1390
-        pickup_minutes = landing_minutes + 45  # 1435
+        pickup_minutes = landing_minutes + 30  # 1420
 
         if pickup_minutes >= 24 * 60:
             pickup_minutes -= 24 * 60
@@ -390,7 +390,7 @@ class TestOvernightPickupCalculation:
 
         assert crosses_midnight is False
         assert pickup_hour == 23
-        assert pickup_min == 55
+        assert pickup_min == 40
 
 
 # =============================================================================

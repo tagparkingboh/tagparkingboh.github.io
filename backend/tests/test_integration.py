@@ -734,21 +734,21 @@ class TestAdminBookingsAPI:
     """Tests for admin bookings API."""
 
     def test_admin_bookings_returns_pickup_collection_time(self):
-        """Admin bookings API should return pickup_collection_time (45 min after landing)."""
+        """Admin bookings API should return pickup_collection_time (30 min after landing)."""
         booking = create_mock_booking(
             id=1,
             pickup_time_val=time(14, 0),  # 14:00 landing
         )
 
-        # Calculate collection time (45 min after landing)
+        # Calculate collection time (30 min after landing)
         landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
-        collection_minutes = landing_minutes + 45
+        collection_minutes = landing_minutes + 30
         collection_hour = collection_minutes // 60
         collection_minute = collection_minutes % 60
 
         collection_time = f"{collection_hour:02d}:{collection_minute:02d}"
 
-        assert collection_time == "14:45"
+        assert collection_time == "14:30"
 
     def test_admin_bookings_pickup_collection_time_handles_hour_rollover(self):
         """Pickup collection time should correctly handle hour rollover."""
@@ -757,15 +757,15 @@ class TestAdminBookingsAPI:
             pickup_time_val=time(14, 30),  # 14:30 landing
         )
 
-        # Calculate collection time (45 min after landing)
+        # Calculate collection time (30 min after landing)
         landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
-        collection_minutes = landing_minutes + 45
+        collection_minutes = landing_minutes + 30
         collection_hour = collection_minutes // 60
         collection_minute = collection_minutes % 60
 
         collection_time = f"{collection_hour:02d}:{collection_minute:02d}"
 
-        assert collection_time == "15:15"
+        assert collection_time == "15:00"
 
 
 # =============================================================================
@@ -851,10 +851,10 @@ class TestOvernightPickupDate:
         """When a return flight lands at 23:30, pickup should be next day."""
         landing_time = time(23, 30)
 
-        # Calculate pickup window (35-60 mins after landing)
+        # Calculate pickup time (30 mins after landing)
         landing_minutes = landing_time.hour * 60 + landing_time.minute
-        pickup_from_minutes = landing_minutes + 35
-        pickup_to_minutes = landing_minutes + 60
+        pickup_from_minutes = landing_minutes + 30
+        pickup_to_minutes = landing_minutes + 30
 
         # Check if crosses midnight
         crosses_midnight = pickup_from_minutes >= 24 * 60
@@ -867,17 +867,17 @@ class TestOvernightPickupDate:
         pickup_time_to = time(pickup_to_minutes // 60, pickup_to_minutes % 60)
 
         assert crosses_midnight is True
-        assert pickup_time_from == time(0, 5)
-        assert pickup_time_to == time(0, 30)
+        assert pickup_time_from == time(0, 0)
+        assert pickup_time_to == time(0, 0)
 
     def test_normal_flight_pickup_date_unchanged(self):
         """When a return flight lands at 14:30, pickup stays same day."""
         landing_time = time(14, 30)
 
-        # Calculate pickup window
+        # Calculate pickup time (30 mins after landing)
         landing_minutes = landing_time.hour * 60 + landing_time.minute
-        pickup_from_minutes = landing_minutes + 35
-        pickup_to_minutes = landing_minutes + 60
+        pickup_from_minutes = landing_minutes + 30
+        pickup_to_minutes = landing_minutes + 30
 
         # Check if crosses midnight
         crosses_midnight = pickup_from_minutes >= 24 * 60
@@ -886,8 +886,8 @@ class TestOvernightPickupDate:
         pickup_time_to = time(pickup_to_minutes // 60, pickup_to_minutes % 60)
 
         assert crosses_midnight is False
-        assert pickup_time_from == time(15, 5)
-        assert pickup_time_to == time(15, 30)
+        assert pickup_time_from == time(15, 0)
+        assert pickup_time_to == time(15, 0)
 
 
 # =============================================================================
@@ -992,16 +992,16 @@ class TestAdminEditPickupDateTimeIntegration:
         booking.pickup_date = date(2026, 3, 29)
         booking.pickup_time = time(16, 45)
 
-        # Recalculate pickup windows (35-60 min buffer)
+        # Recalculate pickup time (30 min after landing)
         arrival_dt = datetime.combine(date.today(), booking.pickup_time)
-        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
-        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
 
         # Step 5: Verify the update was applied
         assert booking.pickup_date == date(2026, 3, 29)
         assert booking.pickup_time == time(16, 45)
-        assert booking.pickup_time_from == time(17, 20)
-        assert booking.pickup_time_to == time(17, 45)
+        assert booking.pickup_time_from == time(17, 15)
+        assert booking.pickup_time_to == time(17, 15)
 
         # Step 6: Generate API response
         response_data = {
@@ -1039,16 +1039,16 @@ class TestAdminEditPickupDateTimeIntegration:
         # Update only time
         booking.pickup_time = time(18, 30)
 
-        # Recalculate pickup windows
+        # Recalculate pickup time (30 min after landing)
         arrival_dt = datetime.combine(date.today(), booking.pickup_time)
-        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
-        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
 
         # Date should remain unchanged
         assert booking.pickup_date == original_date
         assert booking.pickup_time == time(18, 30)
-        assert booking.pickup_time_from == time(19, 5)
-        assert booking.pickup_time_to == time(19, 30)
+        assert booking.pickup_time_from == time(19, 0)
+        assert booking.pickup_time_to == time(19, 0)
 
     def test_edit_pickup_date_only_flow(self):
         """Test editing only pickup date without changing time."""
@@ -1087,16 +1087,16 @@ class TestAdminEditPickupDateTimeIntegration:
         # Admin corrects the date
         booking.pickup_date = date(2026, 3, 29)
 
-        # Recalculate pickup windows
+        # Recalculate pickup time (30 min after landing)
         arrival_dt = datetime.combine(date.today(), booking.pickup_time)
-        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
-        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
 
         # Verify correction
         assert booking.pickup_date == date(2026, 3, 29)
         assert booking.pickup_time == time(0, 35)
-        assert booking.pickup_time_from == time(1, 10)
-        assert booking.pickup_time_to == time(1, 35)
+        assert booking.pickup_time_from == time(1, 5)
+        assert booking.pickup_time_to == time(1, 5)
 
     def test_edit_pickup_dropoff_unchanged(self):
         """Test that editing pickup does not affect dropoff details."""

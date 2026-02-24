@@ -375,9 +375,9 @@ class TestSlotOffsets:
 class TestArrivalClearanceBuffer:
     """Tests to verify the arrival clearance buffer constant."""
 
-    def test_clearance_buffer_is_35_minutes(self):
-        """Passengers need at least 35 minutes to clear security/immigration."""
-        assert ARRIVAL_CLEARANCE_BUFFER == 35
+    def test_clearance_buffer_is_30_minutes(self):
+        """Passengers need at least 30 minutes to clear security/immigration."""
+        assert ARRIVAL_CLEARANCE_BUFFER == 30
 
 
 class TestCalculatePickupDatetime:
@@ -385,11 +385,11 @@ class TestCalculatePickupDatetime:
     Tests for the calculate_pickup_datetime function.
 
     Passengers arriving won't be past security/immigration for at least
-    35 minutes after landing, so pickup time = arrival time + 35 min.
+    30 minutes after landing, so pickup time = arrival time + 30 min.
     """
 
     def test_normal_afternoon_arrival(self):
-        """Flight arrives at 14:30, pickup at 15:05 (same day)."""
+        """Flight arrives at 14:30, pickup at 15:00 (same day)."""
         arrival_date = date(2026, 2, 10)  # Tuesday
         arrival_time = time(14, 30)
 
@@ -398,10 +398,10 @@ class TestCalculatePickupDatetime:
         )
 
         assert pickup_date == date(2026, 2, 10)  # Same day
-        assert pickup_time == time(15, 5)  # 14:30 + 0:35 = 15:05
+        assert pickup_time == time(15, 0)  # 14:30 + 0:30 = 15:00
 
     def test_morning_arrival(self):
-        """Flight arrives at 08:00, pickup at 08:35 (same day)."""
+        """Flight arrives at 08:00, pickup at 08:30 (same day)."""
         arrival_date = date(2026, 2, 10)
         arrival_time = time(8, 0)
 
@@ -410,12 +410,12 @@ class TestCalculatePickupDatetime:
         )
 
         assert pickup_date == date(2026, 2, 10)
-        assert pickup_time == time(8, 35)
+        assert pickup_time == time(8, 30)
 
     def test_late_night_arrival_crosses_midnight(self):
         """
         Edge case: Flight arrives at 23:55 on Tuesday.
-        23:55 + 0:35 = 00:30 on Wednesday (next day).
+        23:55 + 0:30 = 00:25 on Wednesday (next day).
         """
         arrival_date = date(2026, 2, 10)  # Tuesday
         arrival_time = time(23, 55)
@@ -425,12 +425,12 @@ class TestCalculatePickupDatetime:
         )
 
         assert pickup_date == date(2026, 2, 11)  # Wednesday (next day)
-        assert pickup_time == time(0, 30)  # 23:55 + 0:35 = 00:30
+        assert pickup_time == time(0, 25)  # 23:55 + 0:30 = 00:25
 
     def test_late_night_arrival_just_crosses_midnight(self):
         """
         Edge case: Flight arrives at 23:30 on Tuesday.
-        23:30 + 0:35 = 00:05 on Wednesday.
+        23:30 + 0:30 = 00:00 on Wednesday.
         """
         arrival_date = date(2026, 2, 10)  # Tuesday
         arrival_time = time(23, 30)
@@ -440,15 +440,15 @@ class TestCalculatePickupDatetime:
         )
 
         assert pickup_date == date(2026, 2, 11)  # Wednesday
-        assert pickup_time == time(0, 5)  # 23:30 + 0:35 = 00:05
+        assert pickup_time == time(0, 0)  # 23:30 + 0:30 = 00:00
 
-    def test_arrival_exactly_at_2325_boundary(self):
+    def test_arrival_exactly_at_2330_boundary(self):
         """
-        Boundary case: Flight arrives at 23:25.
-        23:25 + 0:35 = 00:00 exactly midnight (next day).
+        Boundary case: Flight arrives at 23:30.
+        23:30 + 0:30 = 00:00 exactly midnight (next day).
         """
         arrival_date = date(2026, 2, 10)
-        arrival_time = time(23, 25)
+        arrival_time = time(23, 30)
 
         pickup_date, pickup_time = calculate_pickup_datetime(
             arrival_date, arrival_time
@@ -457,13 +457,13 @@ class TestCalculatePickupDatetime:
         assert pickup_date == date(2026, 2, 11)  # Next day
         assert pickup_time == time(0, 0)  # Exactly midnight
 
-    def test_arrival_at_2324_stays_same_day(self):
+    def test_arrival_at_2329_stays_same_day(self):
         """
-        Boundary case: Flight arrives at 23:24.
-        23:24 + 0:35 = 23:59 (same day, just before midnight).
+        Boundary case: Flight arrives at 23:29.
+        23:29 + 0:30 = 23:59 (same day, just before midnight).
         """
         arrival_date = date(2026, 2, 10)
-        arrival_time = time(23, 24)
+        arrival_time = time(23, 29)
 
         pickup_date, pickup_time = calculate_pickup_datetime(
             arrival_date, arrival_time
@@ -475,7 +475,7 @@ class TestCalculatePickupDatetime:
     def test_year_boundary_overnight_pickup(self):
         """
         Edge case: Flight arrives at 23:45 on Dec 31st.
-        Pickup at 00:20 on Jan 1st (next year).
+        Pickup at 00:15 on Jan 1st (next year).
         """
         arrival_date = date(2026, 12, 31)
         arrival_time = time(23, 45)
@@ -485,12 +485,12 @@ class TestCalculatePickupDatetime:
         )
 
         assert pickup_date == date(2027, 1, 1)  # Next year
-        assert pickup_time == time(0, 20)
+        assert pickup_time == time(0, 15)
 
     def test_month_boundary_overnight_pickup(self):
         """
         Edge case: Flight arrives at 23:40 on Feb 28th.
-        Pickup at 00:15 on March 1st.
+        Pickup at 00:10 on March 1st.
         """
         arrival_date = date(2026, 2, 28)
         arrival_time = time(23, 40)
@@ -500,10 +500,10 @@ class TestCalculatePickupDatetime:
         )
 
         assert pickup_date == date(2026, 3, 1)  # March 1st
-        assert pickup_time == time(0, 15)
+        assert pickup_time == time(0, 10)
 
     def test_midnight_arrival(self):
-        """Flight arriving at exactly 00:00, pickup at 00:35 same day."""
+        """Flight arriving at exactly 00:00, pickup at 00:30 same day."""
         arrival_date = date(2026, 2, 10)
         arrival_time = time(0, 0)
 
@@ -512,7 +512,7 @@ class TestCalculatePickupDatetime:
         )
 
         assert pickup_date == date(2026, 2, 10)  # Same day
-        assert pickup_time == time(0, 35)
+        assert pickup_time == time(0, 30)
 
 
 class TestIsOvernightPickup:
@@ -546,11 +546,11 @@ class TestGetPickupSummary:
         assert summary["arrival_date"] == "2026-02-10"
         assert summary["arrival_time"] == "14:30"
         assert summary["pickup_date"] == "2026-02-10"
-        assert summary["pickup_time"] == "15:05"
-        assert summary["clearance_buffer_minutes"] == 35
+        assert summary["pickup_time"] == "15:00"
+        assert summary["clearance_buffer_minutes"] == 30
         assert summary["is_overnight"] is False
-        assert "15:05" in summary["display_message"]
-        assert "35 minutes" in summary["display_message"]
+        assert "15:00" in summary["display_message"]
+        assert "30 minutes" in summary["display_message"]
 
     def test_late_night_arrival_overnight_summary(self):
         """
@@ -567,7 +567,7 @@ class TestGetPickupSummary:
         assert summary["arrival_time"] == "23:55"
         assert summary["pickup_date"] == "2026-02-11"
         assert summary["pickup_day"] == "Wednesday"
-        assert summary["pickup_time"] == "00:30"
+        assert summary["pickup_time"] == "00:25"
         assert summary["is_overnight"] is True
         assert "Wednesday" in summary["display_message"]
         assert "after midnight" in summary["display_message"]
@@ -575,7 +575,7 @@ class TestGetPickupSummary:
     def test_2330_arrival_overnight_summary(self):
         """
         Summary for 23:30 arrival crossing midnight.
-        Pickup at 00:05 next day.
+        Pickup at 00:00 next day.
         """
         summary = get_pickup_summary(
             date(2026, 2, 10),  # Tuesday
@@ -583,7 +583,7 @@ class TestGetPickupSummary:
         )
 
         assert summary["pickup_date"] == "2026-02-11"
-        assert summary["pickup_time"] == "00:05"
+        assert summary["pickup_time"] == "00:00"
         assert summary["is_overnight"] is True
         assert "Wednesday" in summary["display_message"]
 
@@ -595,5 +595,5 @@ class TestGetPickupSummary:
         )
 
         assert summary["pickup_date"] == "2026-02-10"
-        assert summary["pickup_time"] == "21:35"
+        assert summary["pickup_time"] == "21:30"
         assert summary["is_overnight"] is False

@@ -862,8 +862,8 @@ async def get_all_bookings(
             "dropoff_destination": b.dropoff_destination,
             "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
             "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
-            # Calculate pickup collection time (45 min after landing)
-            "pickup_collection_time": (lambda t: f"{((t.hour * 60 + t.minute + 45) // 60) % 24:02d}:{(t.hour * 60 + t.minute + 45) % 60:02d}")(b.pickup_time) if b.pickup_time else None,
+            # Calculate pickup collection time (30 min after landing)
+            "pickup_collection_time": (lambda t: f"{((t.hour * 60 + t.minute + 30) // 60) % 24:02d}:{(t.hour * 60 + t.minute + 30) % 60:02d}")(b.pickup_time) if b.pickup_time else None,
             "pickup_time_from": b.pickup_time_from.strftime("%H:%M") if b.pickup_time_from else None,
             "pickup_time_to": b.pickup_time_to.strftime("%H:%M") if b.pickup_time_to else None,
             "pickup_flight_number": b.pickup_flight_number,
@@ -1553,10 +1553,10 @@ async def update_booking(
         new_pickup_time = dt_time(int(parts[0]), int(parts[1]))
         booking.pickup_time = new_pickup_time
 
-        # Recalculate pickup_time_from (35 min after landing) and pickup_time_to (60 min after landing)
+        # Recalculate pickup_time_from and pickup_time_to (30 min after landing)
         arrival_datetime = datetime.combine(datetime.today(), new_pickup_time)
-        booking.pickup_time_from = (arrival_datetime + timedelta(minutes=35)).time()
-        booking.pickup_time_to = (arrival_datetime + timedelta(minutes=60)).time()
+        booking.pickup_time_from = (arrival_datetime + timedelta(minutes=30)).time()
+        booking.pickup_time_to = (arrival_datetime + timedelta(minutes=30)).time()
         updates_made.append("pickup_time")
 
     if request.pickup_flight_number is not None:
@@ -3771,11 +3771,11 @@ async def create_payment(
             landing_min = int(time_parts[1])
             pickup_time = time(landing_hour, landing_min)  # Landing time
 
-            # Calculate pickup window (35-60 minutes after landing)
-            total_minutes_from = landing_hour * 60 + landing_min + 35
-            total_minutes_to = landing_hour * 60 + landing_min + 60
+            # Calculate pickup time (30 minutes after landing)
+            total_minutes_from = landing_hour * 60 + landing_min + 30
+            total_minutes_to = landing_hour * 60 + landing_min + 30
 
-            # Handle overnight (e.g., 23:30 landing + 35 min = 00:05 next day)
+            # Handle overnight (e.g., 23:30 landing + 30 min = 00:00 next day)
             # If pickup time crosses midnight, adjust pickup_date to next day
             if total_minutes_from >= 24 * 60:
                 pickup_date = pickup_date + timedelta(days=1)

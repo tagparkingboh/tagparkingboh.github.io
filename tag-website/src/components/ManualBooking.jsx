@@ -602,16 +602,16 @@ function ManualBooking({ token }) {
   }
 
   // Get pickup time based on flight selection or manual entry
-  // For flight selection, pickup time is arrival time + 45 minutes
+  // For flight selection, pickup time is arrival time + 30 minutes
   const getPickupTime = () => {
     if (formData.useManualTime) {
       return formData.pickupTime ? format(formData.pickupTime, 'HH:mm') : ''
     }
     const arrival = matchingArrivalFlights.find(f => f.flightKey === formData.pickupFlight)
     if (!arrival || !arrival.time) return ''
-    // Add 45 minutes to arrival time
+    // Add 30 minutes to arrival time
     const [h, m] = arrival.time.split(':').map(Number)
-    const totalMins = h * 60 + m + 45
+    const totalMins = h * 60 + m + 30
     const pickupHours = Math.floor(totalMins / 60) % 24
     const pickupMins = totalMins % 60
     return `${String(pickupHours).padStart(2, '0')}:${String(pickupMins).padStart(2, '0')}`

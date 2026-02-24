@@ -22,7 +22,7 @@ SLOT_LABELS = {
 }
 
 # Minimum time in minutes for passengers to clear security/immigration after landing
-ARRIVAL_CLEARANCE_BUFFER = 35
+ARRIVAL_CLEARANCE_BUFFER = 30
 
 
 def calculate_drop_off_datetime(

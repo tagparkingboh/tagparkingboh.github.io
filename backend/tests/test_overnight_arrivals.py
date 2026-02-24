@@ -167,15 +167,15 @@ class TestBookingDateCorrection:
         assert needs_fix is False
 
     def test_pickup_time_windows_after_midnight(self):
-        """Pickup time windows calculated correctly for after-midnight arrival."""
+        """Pickup time calculated correctly for after-midnight arrival."""
         arrival_time = time(0, 35)
         arrival_dt = datetime.combine(date(2026, 3, 29), arrival_time)
 
-        pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()  # 01:10
-        pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()    # 01:35
+        pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()  # 01:05
+        pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()    # 01:05
 
-        assert pickup_time_from == time(1, 10)
-        assert pickup_time_to == time(1, 35)
+        assert pickup_time_from == time(1, 5)
+        assert pickup_time_to == time(1, 5)
 
     def test_late_evening_arrival_same_day(self):
         """Late evening arrival (23:30) stays on same day."""
@@ -690,48 +690,48 @@ class TestAPIRequestPickupDateLogic:
 
 
 class TestPickupTimeCalculation:
-    """Tests for pickup time calculation (landing time + 45 minutes)."""
+    """Tests for pickup time calculation (landing time + 30 minutes)."""
 
     def calculate_pickup_time(self, arrival_time_str):
         """
-        Calculate pickup time (45 mins after landing).
+        Calculate pickup time (30 mins after landing).
 
         JavaScript:
         ```javascript
         const [h, m] = selectedArrivalFlight.time.split(':').map(Number)
-        const totalMins = h * 60 + m + 45
+        const totalMins = h * 60 + m + 30
         return `${String(Math.floor(totalMins / 60) % 24).padStart(2, '0')}:${String(totalMins % 60).padStart(2, '0')}`
         ```
         """
         h, m = map(int, arrival_time_str.split(':'))
-        total_mins = h * 60 + m + 45
+        total_mins = h * 60 + m + 30
         pickup_hour = (total_mins // 60) % 24
         pickup_min = total_mins % 60
         return f"{pickup_hour:02d}:{pickup_min:02d}"
 
     def test_midnight_arrival_pickup_time(self):
-        """Arrive 00:35, pickup from 01:20."""
+        """Arrive 00:35, pickup from 01:05."""
         result = self.calculate_pickup_time("00:35")
-        assert result == "01:20"
+        assert result == "01:05"
 
     def test_early_morning_arrival_pickup_time(self):
-        """Arrive 05:30, pickup from 06:15."""
+        """Arrive 05:30, pickup from 06:00."""
         result = self.calculate_pickup_time("05:30")
-        assert result == "06:15"
+        assert result == "06:00"
 
     def test_afternoon_arrival_pickup_time(self):
-        """Arrive 14:00, pickup from 14:45."""
+        """Arrive 14:00, pickup from 14:30."""
         result = self.calculate_pickup_time("14:00")
-        assert result == "14:45"
+        assert result == "14:30"
 
     def test_late_evening_arrival_pickup_time(self):
-        """Arrive 23:30, pickup from 00:15 (next day in real life)."""
+        """Arrive 23:30, pickup from 00:00 (next day in real life)."""
         result = self.calculate_pickup_time("23:30")
-        assert result == "00:15"
+        assert result == "00:00"
 
-    def test_arrival_at_2315_pickup_time(self):
-        """Arrive 23:15, pickup from 00:00."""
-        result = self.calculate_pickup_time("23:15")
+    def test_arrival_at_2330_pickup_time(self):
+        """Arrive 23:30, pickup from 00:00."""
+        result = self.calculate_pickup_time("23:30")
         assert result == "00:00"
 
 
@@ -746,7 +746,7 @@ class TestTUI671FullScenario:
         - User selects pickup date: 24/07/2026 (Friday)
         - Flight shows +1 indicator
         - Actual pickup should be: 25/07/2026 (Saturday)
-        - Pickup time: from 01:20 (00:35 + 45 mins)
+        - Pickup time: from 01:05 (00:35 + 30 mins)
         """
         # User selections
         user_selected_pickup_date = date(2026, 7, 24)  # Friday
@@ -776,10 +776,10 @@ class TestTUI671FullScenario:
 
         # Pickup time calculation
         h, m = map(int, flight_arrival_time.split(':'))
-        total_mins = h * 60 + m + 45
+        total_mins = h * 60 + m + 30
         pickup_time = f"{(total_mins // 60) % 24:02d}:{total_mins % 60:02d}"
-        assert pickup_time == "01:20"
+        assert pickup_time == "01:05"
 
         # Final booking summary text
         summary = f"Pick-up: {display_date} from {pickup_time}"
-        assert summary == "Pick-up: 25/07/2026 from 01:20"
+        assert summary == "Pick-up: 25/07/2026 from 01:05"

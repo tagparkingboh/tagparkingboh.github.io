@@ -2769,7 +2769,7 @@ function Admin() {
               <p><strong>Customer:</strong> {bookingToEdit.customer?.first_name} {bookingToEdit.customer?.last_name}</p>
               <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {bookingToEdit.pickup_time ? `at ${(() => {
                 const [h, m] = bookingToEdit.pickup_time.split(':').map(Number)
-                const totalMins = h * 60 + m + 45
+                const totalMins = h * 60 + m + 30
                 const newH = Math.floor(totalMins / 60) % 24
                 const newM = totalMins % 60
                 return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`

@@ -719,7 +719,7 @@ class TestWebhookEmailIntegration:
     async def test_webhook_calculates_pickup_time(
         self, mock_verify, mock_send_email, client, db
     ):
-        """Test that pickup time is calculated correctly (45 min after landing)."""
+        """Test that pickup time is calculated correctly (30 min after landing)."""
         booking = self._create_test_booking(db)
 
         mock_verify.return_value = {

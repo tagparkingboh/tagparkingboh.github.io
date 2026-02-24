@@ -782,12 +782,12 @@ class TestUpdateBooking:
         booking.pickup_time = new_arrival_time
 
         arrival_dt = datetime.combine(date.today(), new_arrival_time)
-        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
-        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
 
         assert booking.pickup_time == time(0, 35)
-        assert booking.pickup_time_from == time(1, 10)
-        assert booking.pickup_time_to == time(1, 35)
+        assert booking.pickup_time_from == time(1, 5)
+        assert booking.pickup_time_to == time(1, 5)
 
     def test_update_nonexistent_booking_returns_404(self):
         """Should return 404 for non-existent booking."""
@@ -865,11 +865,11 @@ class TestUpdateBookingOvernightFix:
         arrival_time = time(0, 35)
         arrival_dt = datetime.combine(date.today(), arrival_time)
 
-        pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
-        pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+        pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()
+        pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
 
-        assert pickup_time_from == time(1, 10)
-        assert pickup_time_to == time(1, 35)
+        assert pickup_time_from == time(1, 5)
+        assert pickup_time_to == time(1, 5)
 
     def test_late_evening_no_date_change(self):
         """Flight arriving 22:00 on 28th should stay on 28th."""
@@ -1056,10 +1056,10 @@ class TestEditPickupDateTime:
         new_pickup_time = time(16, 45)
         booking.pickup_time = new_pickup_time
 
-        # Recalculate pickup windows
+        # Recalculate pickup time (30 min after landing)
         arrival_dt = datetime.combine(date.today(), new_pickup_time)
-        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
-        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
 
         response_data = {
             "success": True,
@@ -1077,8 +1077,8 @@ class TestEditPickupDateTime:
         assert "pickup_time" in response_data["fields_updated"]
         assert response_data["booking"]["pickup_date"] == "2026-03-28"  # Unchanged
         assert response_data["booking"]["pickup_time"] == "16:45"
-        assert response_data["booking"]["pickup_time_from"] == "17:20"
-        assert response_data["booking"]["pickup_time_to"] == "17:45"
+        assert response_data["booking"]["pickup_time_from"] == "17:15"
+        assert response_data["booking"]["pickup_time_to"] == "17:15"
 
     def test_update_pickup_date_and_time_together(self):
         """Should successfully update both pickup date and time."""
@@ -1089,8 +1089,8 @@ class TestEditPickupDateTime:
             status=BookingStatus.CONFIRMED,
             pickup_date_val=date(2026, 3, 28),
             pickup_time_val=time(14, 30),
-            pickup_time_from_val=time(15, 5),
-            pickup_time_to_val=time(15, 30),
+            pickup_time_from_val=time(15, 0),
+            pickup_time_to_val=time(15, 0),
         )
 
         new_pickup_date = date(2026, 4, 1)
@@ -1098,10 +1098,10 @@ class TestEditPickupDateTime:
         booking.pickup_date = new_pickup_date
         booking.pickup_time = new_pickup_time
 
-        # Recalculate pickup windows
+        # Recalculate pickup time (30 min after landing)
         arrival_dt = datetime.combine(date.today(), new_pickup_time)
-        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
-        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
 
         response_data = {
             "success": True,
@@ -1120,8 +1120,8 @@ class TestEditPickupDateTime:
         assert "pickup_time" in response_data["fields_updated"]
         assert response_data["booking"]["pickup_date"] == "2026-04-01"
         assert response_data["booking"]["pickup_time"] == "10:15"
-        assert response_data["booking"]["pickup_time_from"] == "10:50"
-        assert response_data["booking"]["pickup_time_to"] == "11:15"
+        assert response_data["booking"]["pickup_time_from"] == "10:45"
+        assert response_data["booking"]["pickup_time_to"] == "10:45"
 
     def test_update_pickup_time_midnight_crossover(self):
         """Updating pickup time near midnight should handle day boundary correctly."""
@@ -1137,14 +1137,14 @@ class TestEditPickupDateTime:
         new_pickup_time = time(23, 45)
         booking.pickup_time = new_pickup_time
 
-        # Recalculate pickup windows - will cross midnight
+        # Recalculate pickup time (30 min after landing) - will cross midnight
         arrival_dt = datetime.combine(date.today(), new_pickup_time)
-        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
-        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
 
         assert booking.pickup_time == time(23, 45)
-        assert booking.pickup_time_from == time(0, 20)  # Crosses midnight
-        assert booking.pickup_time_to == time(0, 45)  # Crosses midnight
+        assert booking.pickup_time_from == time(0, 15)  # Crosses midnight
+        assert booking.pickup_time_to == time(0, 15)  # Crosses midnight
 
     def test_update_pickup_time_early_morning(self):
         """Updating pickup time to early morning hours works correctly."""
@@ -1162,12 +1162,12 @@ class TestEditPickupDateTime:
         booking.pickup_time = new_pickup_time
 
         arrival_dt = datetime.combine(date.today(), new_pickup_time)
-        booking.pickup_time_from = (arrival_dt + timedelta(minutes=35)).time()
-        booking.pickup_time_to = (arrival_dt + timedelta(minutes=60)).time()
+        booking.pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()
+        booking.pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
 
         assert booking.pickup_time == time(1, 15)
-        assert booking.pickup_time_from == time(1, 50)
-        assert booking.pickup_time_to == time(2, 15)
+        assert booking.pickup_time_from == time(1, 45)
+        assert booking.pickup_time_to == time(1, 45)
 
     def test_update_pickup_time_invalid_format_rejected(self):
         """Invalid time format should be rejected."""

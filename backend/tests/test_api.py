@@ -138,15 +138,15 @@ async def test_get_pickup_summary_normal(client):
     assert data["arrival_date"] == "2026-02-10"
     assert data["arrival_time"] == "14:30"
     assert data["pickup_date"] == "2026-02-10"
-    assert data["pickup_time"] == "15:05"  # 14:30 + 35 min
-    assert data["clearance_buffer_minutes"] == 35
+    assert data["pickup_time"] == "15:00"  # 14:30 + 30 min
+    assert data["clearance_buffer_minutes"] == 30
 
 
 @pytest.mark.asyncio
 async def test_get_pickup_summary_overnight(client):
     """
     Should return overnight warning for late-night arrival.
-    Flight at 23:55 + 35 min = pickup at 00:30 next day.
+    Flight at 23:55 + 30 min = pickup at 00:25 next day.
     """
     response = await client.post(
         "/api/pickup/summary",
@@ -162,7 +162,7 @@ async def test_get_pickup_summary_overnight(client):
     assert data["arrival_day"] == "Tuesday"
     assert data["pickup_date"] == "2026-02-11"
     assert data["pickup_day"] == "Wednesday"
-    assert data["pickup_time"] == "00:30"
+    assert data["pickup_time"] == "00:25"
     assert "Wednesday" in data["display_message"]
     assert "after midnight" in data["display_message"]
 
@@ -170,7 +170,7 @@ async def test_get_pickup_summary_overnight(client):
 @pytest.mark.asyncio
 async def test_get_pickup_summary_2330_overnight(client):
     """
-    Flight at 23:30 + 35 min = pickup at 00:05 next day.
+    Flight at 23:30 + 30 min = pickup at 00:00 next day.
     """
     response = await client.post(
         "/api/pickup/summary",
@@ -183,7 +183,7 @@ async def test_get_pickup_summary_2330_overnight(client):
     data = response.json()
     assert data["is_overnight"] is True
     assert data["pickup_date"] == "2026-02-11"
-    assert data["pickup_time"] == "00:05"
+    assert data["pickup_time"] == "00:00"
 
 
 @pytest.mark.asyncio
