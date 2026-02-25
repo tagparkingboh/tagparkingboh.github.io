@@ -1873,7 +1873,7 @@ function Bookings() {
 
                   <div className="form-row">
                     <div className="form-group">
-                      <label htmlFor="manualFlightNumber">Flight Number <span className="required">*</span></label>
+                      <label htmlFor="manualFlightNumber">Flight Number</label>
                       <input
                         type="text"
                         id="manualFlightNumber"
@@ -2276,7 +2276,7 @@ function Bookings() {
 
                   <div className="form-row">
                     <div className="form-group">
-                      <label htmlFor="manualArrivalFlightNumber">Flight Number <span className="required">*</span></label>
+                      <label htmlFor="manualArrivalFlightNumber">Flight Number</label>
                       <input
                         type="text"
                         id="manualArrivalFlightNumber"
