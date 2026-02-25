@@ -114,6 +114,15 @@ class Booking(Base):
     departure_id = Column(Integer, ForeignKey("flight_departures.id"), nullable=True)
     dropoff_slot = Column(String(10), nullable=True)  # "early" or "late"
 
+    # Customer-provided departure time override (when flight time has changed)
+    dropoff_time_override = Column(Boolean, default=False)  # True if customer edited time
+    dropoff_scheduled_time = Column(Time, nullable=True)  # Original scheduled time from flight table
+
+    # Manual departure entry (when flight not in system - e.g., TUI, new routes)
+    dropoff_manual_entry = Column(Boolean, default=False)  # True if fully manual entry
+    dropoff_airline_code = Column(String(10), nullable=True)  # e.g., "BY" for TUI
+    dropoff_airline_name = Column(String(100), nullable=True)  # e.g., "TUI"
+
     # Pick-up details
     pickup_date = Column(Date, nullable=False)
     pickup_time = Column(Time)  # Arrival/landing time of return flight
@@ -124,6 +133,15 @@ class Booking(Base):
 
     # Flight arrival link (for pickup time recalculation when arrival time changes)
     arrival_id = Column(Integer, ForeignKey("flight_arrivals.id"), nullable=True)
+
+    # Customer-provided arrival time override (when return flight time has changed)
+    pickup_time_override = Column(Boolean, default=False)  # True if customer edited time
+    pickup_scheduled_time = Column(Time, nullable=True)  # Original scheduled time from flight table
+
+    # Manual arrival entry (when return flight not in system)
+    pickup_manual_entry = Column(Boolean, default=False)  # True if fully manual entry
+    pickup_airline_code = Column(String(10), nullable=True)
+    pickup_airline_name = Column(String(100), nullable=True)
 
     # Admin notes
     notes = Column(Text)

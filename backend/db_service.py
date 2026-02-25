@@ -253,6 +253,17 @@ def create_booking(
     dropoff_slot: str = None,
     arrival_id: int = None,
     session_id: str = None,
+    # Customer-provided time override fields
+    dropoff_time_override: bool = False,
+    dropoff_scheduled_time: time = None,
+    dropoff_manual_entry: bool = False,
+    dropoff_airline_code: str = None,
+    dropoff_airline_name: str = None,
+    pickup_time_override: bool = False,
+    pickup_scheduled_time: time = None,
+    pickup_manual_entry: bool = False,
+    pickup_airline_code: str = None,
+    pickup_airline_name: str = None,
 ) -> Booking:
     """Create a new booking."""
     # Generate unique reference
@@ -286,6 +297,17 @@ def create_booking(
         dropoff_slot=dropoff_slot,
         arrival_id=arrival_id,
         session_id=session_id,
+        # Customer-provided time override fields
+        dropoff_time_override=dropoff_time_override,
+        dropoff_scheduled_time=dropoff_scheduled_time,
+        dropoff_manual_entry=dropoff_manual_entry,
+        dropoff_airline_code=dropoff_airline_code,
+        dropoff_airline_name=dropoff_airline_name,
+        pickup_time_override=pickup_time_override,
+        pickup_scheduled_time=pickup_scheduled_time,
+        pickup_manual_entry=pickup_manual_entry,
+        pickup_airline_code=pickup_airline_code,
+        pickup_airline_name=pickup_airline_name,
     )
     db.add(booking)
     db.commit()
@@ -596,6 +618,17 @@ def create_full_booking(
     arrival_id: int = None,
     # Session tracking
     session_id: str = None,
+    # Customer-provided time override fields
+    dropoff_time_override: bool = False,
+    dropoff_scheduled_time: time = None,
+    dropoff_manual_entry: bool = False,
+    dropoff_airline_code: str = None,
+    dropoff_airline_name: str = None,
+    pickup_time_override: bool = False,
+    pickup_scheduled_time: time = None,
+    pickup_manual_entry: bool = False,
+    pickup_airline_code: str = None,
+    pickup_airline_name: str = None,
 ) -> dict:
     """
     Create a complete booking with customer, vehicle, booking, and payment records.
@@ -646,6 +679,17 @@ def create_full_booking(
         dropoff_slot=dropoff_slot,
         arrival_id=arrival_id,
         session_id=session_id,
+        # Customer-provided time override fields
+        dropoff_time_override=dropoff_time_override,
+        dropoff_scheduled_time=dropoff_scheduled_time,
+        dropoff_manual_entry=dropoff_manual_entry,
+        dropoff_airline_code=dropoff_airline_code,
+        dropoff_airline_name=dropoff_airline_name,
+        pickup_time_override=pickup_time_override,
+        pickup_scheduled_time=pickup_scheduled_time,
+        pickup_manual_entry=pickup_manual_entry,
+        pickup_airline_code=pickup_airline_code,
+        pickup_airline_name=pickup_airline_name,
     )
 
     # 4. Create payment record if stripe details provided

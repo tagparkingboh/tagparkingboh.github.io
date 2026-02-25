@@ -116,6 +116,24 @@ class BookingRequest(BaseModel):
     billing_postcode: str
     billing_country: str = "United Kingdom"
 
+    # Customer-provided departure time override (optional)
+    # When True, customer has corrected the flight time from the schedule
+    dropoff_time_override: bool = False
+    dropoff_scheduled_time: Optional[str] = None  # Original time from flight table "HH:MM"
+
+    # Manual departure entry (optional)
+    # When True, customer entered flight details manually (flight not in system)
+    dropoff_manual_entry: bool = False
+
+    # Customer-provided arrival time override (optional)
+    pickup_time_override: bool = False
+    pickup_scheduled_time: Optional[str] = None  # Original time from flight table "HH:MM"
+
+    # Manual arrival entry (optional)
+    pickup_manual_entry: bool = False
+    pickup_origin_code: Optional[str] = None  # For manual entries
+    pickup_origin_name: Optional[str] = None  # For manual entries
+
 
 class Booking(BaseModel):
     """A confirmed booking."""

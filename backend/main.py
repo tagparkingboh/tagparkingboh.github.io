@@ -2572,6 +2572,131 @@ async def get_available_dates(db: Session = Depends(get_db)):
 
 
 # =============================================================================
+# Flight Time Validation (for manual entry / time override)
+# =============================================================================
+
+class ValidateFlightTimeRequest(BaseModel):
+    """Request to validate a customer-provided flight time."""
+    time: str  # "HH:MM" format
+    flight_type: str  # "departure" or "arrival"
+
+
+class ValidateFlightTimeResponse(BaseModel):
+    """Response for flight time validation."""
+    valid: bool
+    normalized_time: Optional[str] = None
+    error: Optional[str] = None
+
+
+def validate_flight_time(time_str: str, flight_type: str) -> tuple[bool, str, Optional[str]]:
+    """
+    Validate customer-provided flight time.
+
+    Args:
+        time_str: Time in "HH:MM" format
+        flight_type: "departure" or "arrival"
+
+    Returns:
+        Tuple of (is_valid, normalized_time_or_error, error_message_or_None)
+    """
+    # Format check
+    if not time_str or not re.match(r'^\d{1,2}:\d{2}$', time_str):
+        return False, "", "Time must be in HH:MM format"
+
+    try:
+        parts = time_str.split(':')
+        hours = int(parts[0])
+        minutes = int(parts[1])
+    except (ValueError, IndexError):
+        return False, "", "Time must be in HH:MM format"
+
+    # Range check
+    if hours > 23 or minutes > 59:
+        return False, "", "Invalid time - hours must be 0-23, minutes 0-59"
+
+    # Business hours check (BOH operating hours)
+    if flight_type == "departure":
+        # Departures typically 06:00-22:00
+        if hours < 6 or hours > 22:
+            return False, "", "Departure time must be between 06:00 and 22:00"
+    elif flight_type == "arrival":
+        # Arrivals allow overnight (00:00-05:59 for red-eye arrivals) and normal hours
+        # Only block 02:00-05:59 as unlikely
+        if 2 <= hours < 6:
+            return False, "", "Arrival time must be between 06:00 and 01:59 (overnight arrivals allowed)"
+
+    # Normalize to HH:MM
+    normalized = f"{hours:02d}:{minutes:02d}"
+    return True, normalized, None
+
+
+@app.post("/api/booking/validate-flight-time", response_model=ValidateFlightTimeResponse)
+async def validate_customer_flight_time(request: ValidateFlightTimeRequest):
+    """
+    Validate a customer-provided flight time.
+
+    Used when:
+    1. Customer overrides a scheduled flight time (their booking shows different time)
+    2. Customer enters a manual flight entry (flight not in our system)
+
+    Security:
+    - Validates time format (HH:MM)
+    - Validates reasonable operating hours for BOH airport
+    - Does NOT write to database - just validates input
+    """
+    is_valid, result, error = validate_flight_time(request.time, request.flight_type)
+
+    if is_valid:
+        return ValidateFlightTimeResponse(
+            valid=True,
+            normalized_time=result,
+            error=None
+        )
+    else:
+        return ValidateFlightTimeResponse(
+            valid=False,
+            normalized_time=None,
+            error=error
+        )
+
+
+@app.get("/api/booking/airlines")
+async def get_available_airlines():
+    """
+    Get list of airlines for manual flight entry.
+
+    Returns airlines that operate at BOH with their codes.
+    """
+    return [
+        {"code": "FR", "name": "Ryanair"},
+        {"code": "RK", "name": "Ryanair UK"},
+        {"code": "U2", "name": "easyJet"},
+        {"code": "LS", "name": "Jet2"},
+        {"code": "BY", "name": "TUI Airways"},
+        {"code": "OTHER", "name": "Other"}
+    ]
+
+
+@app.get("/api/booking/destinations")
+async def get_available_destinations(db: Session = Depends(get_db)):
+    """
+    Get list of destinations for manual flight entry.
+
+    Returns unique destinations from our flight schedule.
+    """
+    destinations = db.query(
+        FlightDeparture.destination_code,
+        FlightDeparture.destination_name
+    ).distinct().order_by(FlightDeparture.destination_name).all()
+
+    return [
+        {"code": d[0], "name": d[1]}
+        for d in destinations
+        if d[0] and d[1]
+    ]
+
+
+# =============================================================================
 # Incremental Save Endpoints (for booking flow)
 # =============================================================================
 
@@ -3560,6 +3685,26 @@ class CreatePaymentRequest(BaseModel):
     # Promo code
     promo_code: Optional[str] = None
 
+    # Customer-provided departure time override (optional)
+    # When True, customer has corrected the flight time from the schedule
+    dropoff_time_override: bool = False
+    dropoff_scheduled_time: Optional[str] = None  # Original time from flight table "HH:MM"
+
+    # Manual departure entry (optional)
+    # When True, customer entered flight details manually (flight not in system)
+    dropoff_manual_entry: bool = False
+    dropoff_airline_code: Optional[str] = None  # For manual entries (e.g., "BY" for TUI)
+    dropoff_airline_name: Optional[str] = None  # For manual entries (e.g., "TUI")
+
+    # Customer-provided arrival time override (optional)
+    pickup_time_override: bool = False
+    pickup_scheduled_time: Optional[str] = None  # Original time from flight table "HH:MM"
+
+    # Manual arrival entry (optional)
+    pickup_manual_entry: bool = False
+    pickup_airline_code: Optional[str] = None
+    pickup_airline_name: Optional[str] = None
+
 
 class CreatePaymentResponse(BaseModel):
     """Response with payment intent details for frontend."""
@@ -3899,6 +4044,23 @@ async def create_payment(
                     if pickup_origin == 'Tenerife-Reinasofia':
                         pickup_origin = 'Tenerife'
 
+            # Parse scheduled times if provided (for time override tracking)
+            dropoff_scheduled_time_parsed = None
+            if request.dropoff_scheduled_time:
+                try:
+                    parts = request.dropoff_scheduled_time.split(':')
+                    dropoff_scheduled_time_parsed = time(int(parts[0]), int(parts[1]))
+                except (ValueError, IndexError):
+                    pass
+
+            pickup_scheduled_time_parsed = None
+            if request.pickup_scheduled_time:
+                try:
+                    parts = request.pickup_scheduled_time.split(':')
+                    pickup_scheduled_time_parsed = time(int(parts[0]), int(parts[1]))
+                except (ValueError, IndexError):
+                    pass
+
             booking_data = db_service.create_full_booking(
                 db=db,
                 # Customer
@@ -3936,6 +4098,17 @@ async def create_payment(
                 arrival_id=arrival_id,
                 # Session tracking
                 session_id=request.session_id,
+                # Customer-provided time override fields
+                dropoff_time_override=request.dropoff_time_override,
+                dropoff_scheduled_time=dropoff_scheduled_time_parsed,
+                dropoff_manual_entry=request.dropoff_manual_entry,
+                dropoff_airline_code=request.dropoff_airline_code,
+                dropoff_airline_name=request.dropoff_airline_name,
+                pickup_time_override=request.pickup_time_override,
+                pickup_scheduled_time=pickup_scheduled_time_parsed,
+                pickup_manual_entry=request.pickup_manual_entry,
+                pickup_airline_code=request.pickup_airline_code,
+                pickup_airline_name=request.pickup_airline_name,
             )
             booking_reference = booking_data["booking"].reference
             booking_id = booking_data["booking"].id
