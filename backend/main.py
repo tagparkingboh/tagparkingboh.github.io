@@ -2667,14 +2667,16 @@ async def get_available_airlines():
 
     Returns airlines that operate at BOH with their codes.
     """
-    return [
-        {"code": "FR", "name": "Ryanair"},
-        {"code": "RK", "name": "Ryanair UK"},
-        {"code": "U2", "name": "easyJet"},
-        {"code": "LS", "name": "Jet2"},
-        {"code": "BY", "name": "TUI Airways"},
-        {"code": "OTHER", "name": "Other"}
-    ]
+    return {
+        "airlines": [
+            {"code": "FR", "name": "Ryanair"},
+            {"code": "RK", "name": "Ryanair UK"},
+            {"code": "U2", "name": "easyJet"},
+            {"code": "LS", "name": "Jet2"},
+            {"code": "BY", "name": "TUI Airways"},
+            {"code": "OTHER", "name": "Other"}
+        ]
+    }
 
 
 @app.get("/api/booking/destinations")
@@ -2689,11 +2691,13 @@ async def get_available_destinations(db: Session = Depends(get_db)):
         FlightDeparture.destination_name
     ).distinct().order_by(FlightDeparture.destination_name).all()
 
-    return [
-        {"code": d[0], "name": d[1]}
-        for d in destinations
-        if d[0] and d[1]
-    ]
+    return {
+        "destinations": [
+            {"code": d[0], "name": d[1]}
+            for d in destinations
+            if d[0] and d[1]
+        ]
+    }
 
 
 # =============================================================================
