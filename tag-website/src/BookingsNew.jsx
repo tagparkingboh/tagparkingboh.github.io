@@ -1092,13 +1092,11 @@ function Bookings() {
   // Manual entry validation
   const isManualDepartureComplete = showManualDeparture &&
     manualDepartureData.airlineCode &&
-    manualDepartureData.flightNumber &&
     isValidTimeFormat(manualDepartureData.flightTime) &&
     manualDepartureData.destinationCode
 
   const isManualArrivalComplete = showManualArrival &&
     manualArrivalData.airlineCode &&
-    manualArrivalData.flightNumber &&
     isValidTimeFormat(manualArrivalData.flightTime) &&
     manualArrivalData.originCode
 
