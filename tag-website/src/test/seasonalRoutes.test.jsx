@@ -388,6 +388,138 @@ describe('Seasonal Route Handling', () => {
       expect(matchingFlights[0].time).toBe('07:40')
       expect(matchingFlights[1].time).toBe('15:25')
     })
+
+    // Negative tests
+    it('should return empty array when no flights match the airline', () => {
+      const arrivals = [
+        { flightNumber: '5945', originCode: 'AGP', airlineName: 'Ryanair', time: '07:40' },
+        { flightNumber: '5954', originCode: 'AGP', airlineName: 'Ryanair', time: '15:25' },
+      ]
+
+      const selectedAirline = 'easyJet'
+      const selectedDestination = 'AGP'
+
+      const matchingFlights = arrivals.filter(f =>
+        f.airlineName === selectedAirline &&
+        f.originCode === selectedDestination
+      )
+
+      expect(matchingFlights.length).toBe(0)
+    })
+
+    it('should return empty array when no flights match the destination', () => {
+      const arrivals = [
+        { flightNumber: '5945', originCode: 'AGP', airlineName: 'Ryanair', time: '07:40' },
+        { flightNumber: '5954', originCode: 'AGP', airlineName: 'Ryanair', time: '15:25' },
+      ]
+
+      const selectedAirline = 'Ryanair'
+      const selectedDestination = 'FAO' // Different destination
+
+      const matchingFlights = arrivals.filter(f =>
+        f.airlineName === selectedAirline &&
+        f.originCode === selectedDestination
+      )
+
+      expect(matchingFlights.length).toBe(0)
+    })
+
+    it('should not return flights from different airline even if destination matches', () => {
+      const arrivals = [
+        { flightNumber: '5945', originCode: 'AGP', airlineName: 'Ryanair', time: '07:40' },
+        { flightNumber: '1234', originCode: 'AGP', airlineName: 'Jet2', time: '09:00' },
+        { flightNumber: '5678', originCode: 'AGP', airlineName: 'easyJet', time: '14:00' },
+      ]
+
+      const selectedAirline = 'Ryanair'
+      const selectedDestination = 'AGP'
+
+      const matchingFlights = arrivals.filter(f =>
+        f.airlineName === selectedAirline &&
+        f.originCode === selectedDestination
+      )
+
+      // Only Ryanair flight should match, not Jet2 or easyJet
+      expect(matchingFlights.length).toBe(1)
+      expect(matchingFlights[0].airlineName).toBe('Ryanair')
+    })
+
+    it('should return empty array when arrivals list is empty', () => {
+      const arrivals = []
+
+      const selectedAirline = 'Ryanair'
+      const selectedDestination = 'AGP'
+
+      const matchingFlights = arrivals.filter(f =>
+        f.airlineName === selectedAirline &&
+        f.originCode === selectedDestination
+      )
+
+      expect(matchingFlights.length).toBe(0)
+    })
+
+    // Boundary tests
+    it('should return single flight when only one matches', () => {
+      const arrivals = [
+        { flightNumber: '5945', originCode: 'AGP', airlineName: 'Ryanair', time: '07:40' },
+        { flightNumber: '1234', originCode: 'FAO', airlineName: 'Ryanair', time: '09:00' },
+        { flightNumber: '5678', originCode: 'AGP', airlineName: 'easyJet', time: '14:00' },
+      ]
+
+      const selectedAirline = 'Ryanair'
+      const selectedDestination = 'AGP'
+
+      const matchingFlights = arrivals.filter(f =>
+        f.airlineName === selectedAirline &&
+        f.originCode === selectedDestination
+      )
+
+      expect(matchingFlights.length).toBe(1)
+      expect(matchingFlights[0].flightNumber).toBe('5945')
+    })
+
+    it('should handle many flights for same airline/destination', () => {
+      // Edge case: multiple flights throughout the day
+      const arrivals = [
+        { flightNumber: '1001', originCode: 'AGP', airlineName: 'Ryanair', time: '06:00' },
+        { flightNumber: '1002', originCode: 'AGP', airlineName: 'Ryanair', time: '09:00' },
+        { flightNumber: '1003', originCode: 'AGP', airlineName: 'Ryanair', time: '12:00' },
+        { flightNumber: '1004', originCode: 'AGP', airlineName: 'Ryanair', time: '15:00' },
+        { flightNumber: '1005', originCode: 'AGP', airlineName: 'Ryanair', time: '18:00' },
+        { flightNumber: '1006', originCode: 'AGP', airlineName: 'Ryanair', time: '21:00' },
+      ]
+
+      const selectedAirline = 'Ryanair'
+      const selectedDestination = 'AGP'
+
+      const matchingFlights = arrivals.filter(f =>
+        f.airlineName === selectedAirline &&
+        f.originCode === selectedDestination
+      )
+
+      // All 6 flights should be returned
+      expect(matchingFlights.length).toBe(6)
+    })
+
+    it('should match flights case-sensitively for airline name', () => {
+      const arrivals = [
+        { flightNumber: '5945', originCode: 'AGP', airlineName: 'Ryanair', time: '07:40' },
+        { flightNumber: '5946', originCode: 'AGP', airlineName: 'ryanair', time: '08:40' }, // lowercase
+        { flightNumber: '5947', originCode: 'AGP', airlineName: 'RYANAIR', time: '09:40' }, // uppercase
+      ]
+
+      const selectedAirline = 'Ryanair'
+      const selectedDestination = 'AGP'
+
+      const matchingFlights = arrivals.filter(f =>
+        f.airlineName === selectedAirline &&
+        f.originCode === selectedDestination
+      )
+
+      // Only exact case match
+      expect(matchingFlights.length).toBe(1)
+      expect(matchingFlights[0].flightNumber).toBe('5945')
+    })
   })
 })
 
