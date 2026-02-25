@@ -379,7 +379,9 @@ function Bookings() {
     // If this is a "Call Us only" flight, no slots available
     if (isCallUsOnly) return []
 
-    const [hours, minutes] = selectedDropoffFlight.time.split(':').map(Number)
+    // Use overridden time if set, otherwise use scheduled flight time
+    const effectiveTime = departureTimeOverride || selectedDropoffFlight.time
+    const [hours, minutes] = effectiveTime.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
     const slots = []
@@ -411,7 +413,7 @@ function Bookings() {
     }
 
     return slots
-  }, [selectedDropoffFlight, isCallUsOnly])
+  }, [selectedDropoffFlight, isCallUsOnly, departureTimeOverride])
 
   // Check if flight is fully booked (all slots taken) or Call Us only
   const isFlightFullyBooked = useMemo(() => {
