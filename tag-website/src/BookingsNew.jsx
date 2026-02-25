@@ -129,7 +129,8 @@ function Bookings() {
     airlineCode: '',
     airlineName: '',
     destinationCode: '',
-    destinationName: ''
+    destinationName: '',
+    dropoffSlot: ''
   })
   const [showManualArrival, setShowManualArrival] = useState(false)
   const [manualArrivalData, setManualArrivalData] = useState({
@@ -420,6 +421,28 @@ function Bookings() {
 
     return slots
   }, [selectedDropoffFlight, isCallUsOnly, departureTimeOverride])
+
+  // Calculate drop-off slots for manual departure entries
+  const manualDropoffSlots = useMemo(() => {
+    if (!showManualDeparture) return []
+    if (!isValidTimeFormat(manualDepartureData.flightTime)) return []
+
+    const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
+    const departureMinutes = hours * 60 + minutes
+
+    return [
+      {
+        id: '165',
+        label: '2¾ hours before',
+        time: formatMinutesToTime(departureMinutes - 165)
+      },
+      {
+        id: '120',
+        label: '2 hours before',
+        time: formatMinutesToTime(departureMinutes - 120)
+      }
+    ]
+  }, [showManualDeparture, manualDepartureData.flightTime])
 
   // Check if flight is fully booked (all slots taken) or Call Us only
   const isFlightFullyBooked = useMemo(() => {
@@ -1101,7 +1124,8 @@ function Bookings() {
   const isManualDepartureComplete = showManualDeparture &&
     manualDepartureData.airlineCode &&
     isValidTimeFormat(manualDepartureData.flightTime) &&
-    manualDepartureData.destinationCode
+    manualDepartureData.destinationCode &&
+    manualDepartureData.dropoffSlot
 
   const isManualArrivalComplete = showManualArrival &&
     manualArrivalData.airlineCode &&
@@ -1924,6 +1948,34 @@ function Bookings() {
                   <p className="manual-entry-note">
                     Manual entries are subject to verification. We'll contact you if there are any issues with your booking.
                   </p>
+
+                  {manualDropoffSlots.length > 0 && (
+                    <div className="form-group">
+                      <label>Select Drop-off Time <span className="required">*</span></label>
+                      <div className="dropoff-slots">
+                        {manualDropoffSlots.map(slot => (
+                          <label key={slot.id} className="dropoff-slot">
+                            <input
+                              type="radio"
+                              name="manualDropoffSlot"
+                              value={slot.id}
+                              checked={manualDepartureData.dropoffSlot === slot.id}
+                              onChange={(e) => setManualDepartureData(prev => ({
+                                ...prev,
+                                dropoffSlot: e.target.value
+                              }))}
+                            />
+                            <div className="slot-card">
+                              <div className="slot-info">
+                                <span className="slot-time">{slot.time}</span>
+                                <span className="slot-label">{slot.label}</span>
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

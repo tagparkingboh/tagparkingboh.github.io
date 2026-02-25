@@ -1418,3 +1418,373 @@ describe('BookingsNew - Time Override Integration', () => {
     expect(dropdownFlights[2].displayText).toContain('14:00') // Not selected
   })
 })
+
+// =============================================================================
+// Manual Departure Slot Selection Tests
+// =============================================================================
+
+describe('BookingsNew - Manual Departure Slot Calculation', () => {
+  // Helper that mirrors formatMinutesToTime in BookingsNew.jsx
+  const formatMinutesToTime = (totalMinutes) => {
+    let mins = totalMinutes
+    while (mins < 0) mins += 1440
+    while (mins >= 1440) mins -= 1440
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
+  }
+
+  // Helper that mirrors isValidTimeFormat in BookingsNew.jsx
+  const isValidTimeFormat = (timeStr) => {
+    if (!timeStr) return false
+    return /^\d{1,2}:\d{2}$/.test(timeStr)
+  }
+
+  // Helper that mirrors manualDropoffSlots useMemo logic
+  const calculateManualDropoffSlots = (showManualDeparture, flightTime) => {
+    if (!showManualDeparture) return []
+    if (!isValidTimeFormat(flightTime)) return []
+
+    const [hours, minutes] = flightTime.split(':').map(Number)
+    const departureMinutes = hours * 60 + minutes
+
+    return [
+      {
+        id: '165',
+        label: '2¾ hours before',
+        time: formatMinutesToTime(departureMinutes - 165)
+      },
+      {
+        id: '120',
+        label: '2 hours before',
+        time: formatMinutesToTime(departureMinutes - 120)
+      }
+    ]
+  }
+
+  describe('Slot Generation', () => {
+    it('returns empty array when manual departure is not shown', () => {
+      const slots = calculateManualDropoffSlots(false, '14:30')
+      expect(slots).toEqual([])
+    })
+
+    it('returns empty array when flight time is empty', () => {
+      const slots = calculateManualDropoffSlots(true, '')
+      expect(slots).toEqual([])
+    })
+
+    it('returns empty array when flight time is invalid', () => {
+      const slots = calculateManualDropoffSlots(true, 'invalid')
+      expect(slots).toEqual([])
+    })
+
+    it('generates both slots for valid time', () => {
+      const slots = calculateManualDropoffSlots(true, '14:30')
+
+      expect(slots).toHaveLength(2)
+      expect(slots[0].id).toBe('165')
+      expect(slots[0].label).toBe('2¾ hours before')
+      expect(slots[1].id).toBe('120')
+      expect(slots[1].label).toBe('2 hours before')
+    })
+
+    it('calculates correct slot times for afternoon departure', () => {
+      const slots = calculateManualDropoffSlots(true, '14:30')
+
+      // 14:30 - 165 min = 11:45
+      expect(slots[0].time).toBe('11:45')
+      // 14:30 - 120 min = 12:30
+      expect(slots[1].time).toBe('12:30')
+    })
+
+    it('calculates correct slot times for morning departure', () => {
+      const slots = calculateManualDropoffSlots(true, '08:00')
+
+      // 08:00 - 165 min = 05:15
+      expect(slots[0].time).toBe('05:15')
+      // 08:00 - 120 min = 06:00
+      expect(slots[1].time).toBe('06:00')
+    })
+
+    it('calculates correct slot times for early morning departure', () => {
+      const slots = calculateManualDropoffSlots(true, '06:00')
+
+      // 06:00 - 165 min = 03:15
+      expect(slots[0].time).toBe('03:15')
+      // 06:00 - 120 min = 04:00
+      expect(slots[1].time).toBe('04:00')
+    })
+
+    it('calculates correct slot times for evening departure', () => {
+      const slots = calculateManualDropoffSlots(true, '20:00')
+
+      // 20:00 - 165 min = 17:15
+      expect(slots[0].time).toBe('17:15')
+      // 20:00 - 120 min = 18:00
+      expect(slots[1].time).toBe('18:00')
+    })
+
+    it('handles overnight slot calculation (very early flight)', () => {
+      const slots = calculateManualDropoffSlots(true, '02:00')
+
+      // 02:00 - 165 min = 23:15 (previous day)
+      expect(slots[0].time).toBe('23:15')
+      // 02:00 - 120 min = 00:00
+      expect(slots[1].time).toBe('00:00')
+    })
+
+    it('handles single-digit hour input', () => {
+      const slots = calculateManualDropoffSlots(true, '7:30')
+
+      // 7:30 - 165 min = 04:45
+      expect(slots[0].time).toBe('04:45')
+      // 7:30 - 120 min = 05:30
+      expect(slots[1].time).toBe('05:30')
+    })
+  })
+})
+
+// =============================================================================
+// Manual Departure Validation with Slot Tests
+// =============================================================================
+
+describe('BookingsNew - Manual Departure Validation with Slot', () => {
+  const isValidTimeFormat = (timeStr) => {
+    if (!timeStr) return false
+    return /^\d{1,2}:\d{2}$/.test(timeStr)
+  }
+
+  // Updated validation that includes dropoffSlot requirement
+  const isManualDepartureComplete = (showManualDeparture, data) => {
+    return !!(showManualDeparture &&
+      data.airlineCode &&
+      isValidTimeFormat(data.flightTime) &&
+      data.destinationCode &&
+      data.dropoffSlot)
+  }
+
+  describe('Complete Manual Departure', () => {
+    it('validates when all fields including slot are filled', () => {
+      const data = {
+        airlineCode: 'FR',
+        airlineName: 'Ryanair',
+        flightNumber: '1234',
+        flightTime: '14:30',
+        destinationCode: 'FAO',
+        destinationName: 'Faro, Portugal',
+        dropoffSlot: '165'
+      }
+      expect(isManualDepartureComplete(true, data)).toBe(true)
+    })
+
+    it('validates with late slot selected', () => {
+      const data = {
+        airlineCode: 'U2',
+        airlineName: 'easyJet',
+        flightNumber: '',
+        flightTime: '08:00',
+        destinationCode: 'AGP',
+        destinationName: 'Malaga, Spain',
+        dropoffSlot: '120'
+      }
+      expect(isManualDepartureComplete(true, data)).toBe(true)
+    })
+
+    it('validates without flight number (optional)', () => {
+      const data = {
+        airlineCode: 'BY',
+        airlineName: 'TUI',
+        flightNumber: '',
+        flightTime: '17:35',
+        destinationCode: 'EDI',
+        destinationName: 'Edinburgh Airport',
+        dropoffSlot: '165'
+      }
+      expect(isManualDepartureComplete(true, data)).toBe(true)
+    })
+  })
+
+  describe('Incomplete Manual Departure', () => {
+    it('fails when slot is not selected', () => {
+      const data = {
+        airlineCode: 'FR',
+        flightTime: '14:30',
+        destinationCode: 'FAO',
+        dropoffSlot: ''
+      }
+      expect(isManualDepartureComplete(true, data)).toBe(false)
+    })
+
+    it('fails when slot is missing from data', () => {
+      const data = {
+        airlineCode: 'FR',
+        flightTime: '14:30',
+        destinationCode: 'FAO'
+      }
+      expect(isManualDepartureComplete(true, data)).toBe(false)
+    })
+
+    it('fails when airline is missing', () => {
+      const data = {
+        airlineCode: '',
+        flightTime: '14:30',
+        destinationCode: 'FAO',
+        dropoffSlot: '165'
+      }
+      expect(isManualDepartureComplete(true, data)).toBe(false)
+    })
+
+    it('fails when time is invalid', () => {
+      const data = {
+        airlineCode: 'FR',
+        flightTime: 'invalid',
+        destinationCode: 'FAO',
+        dropoffSlot: '165'
+      }
+      expect(isManualDepartureComplete(true, data)).toBe(false)
+    })
+
+    it('fails when destination is missing', () => {
+      const data = {
+        airlineCode: 'FR',
+        flightTime: '14:30',
+        destinationCode: '',
+        dropoffSlot: '165'
+      }
+      expect(isManualDepartureComplete(true, data)).toBe(false)
+    })
+
+    it('fails when manual departure is not shown', () => {
+      const data = {
+        airlineCode: 'FR',
+        flightTime: '14:30',
+        destinationCode: 'FAO',
+        dropoffSlot: '165'
+      }
+      expect(isManualDepartureComplete(false, data)).toBe(false)
+    })
+  })
+})
+
+// =============================================================================
+// Integration Tests - Manual Departure Flow
+// =============================================================================
+
+describe('BookingsNew - Manual Departure Integration', () => {
+  const formatMinutesToTime = (totalMinutes) => {
+    let mins = totalMinutes
+    while (mins < 0) mins += 1440
+    while (mins >= 1440) mins -= 1440
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
+  }
+
+  const isValidTimeFormat = (timeStr) => {
+    if (!timeStr) return false
+    return /^\d{1,2}:\d{2}$/.test(timeStr)
+  }
+
+  const calculateManualDropoffSlots = (showManualDeparture, flightTime) => {
+    if (!showManualDeparture) return []
+    if (!isValidTimeFormat(flightTime)) return []
+
+    const [hours, minutes] = flightTime.split(':').map(Number)
+    const departureMinutes = hours * 60 + minutes
+
+    return [
+      { id: '165', label: '2¾ hours before', time: formatMinutesToTime(departureMinutes - 165) },
+      { id: '120', label: '2 hours before', time: formatMinutesToTime(departureMinutes - 120) }
+    ]
+  }
+
+  const isManualDepartureComplete = (showManualDeparture, data) => {
+    return !!(showManualDeparture &&
+      data.airlineCode &&
+      isValidTimeFormat(data.flightTime) &&
+      data.destinationCode &&
+      data.dropoffSlot)
+  }
+
+  it('simulates complete manual departure flow', () => {
+    // Step 1: User clicks "Add flight manually"
+    const showManualDeparture = true
+    let manualDepartureData = {
+      airlineCode: '',
+      airlineName: '',
+      flightNumber: '',
+      flightTime: '',
+      destinationCode: '',
+      destinationName: '',
+      dropoffSlot: ''
+    }
+
+    // No slots yet - time not entered
+    let slots = calculateManualDropoffSlots(showManualDeparture, manualDepartureData.flightTime)
+    expect(slots).toEqual([])
+    expect(isManualDepartureComplete(showManualDeparture, manualDepartureData)).toBe(false)
+
+    // Step 2: User selects airline
+    manualDepartureData = { ...manualDepartureData, airlineCode: 'RK', airlineName: 'Ryanair UK' }
+    expect(isManualDepartureComplete(showManualDeparture, manualDepartureData)).toBe(false)
+
+    // Step 3: User enters departure time
+    manualDepartureData = { ...manualDepartureData, flightTime: '17:35' }
+    slots = calculateManualDropoffSlots(showManualDeparture, manualDepartureData.flightTime)
+
+    // Now slots should appear
+    expect(slots).toHaveLength(2)
+    expect(slots[0].time).toBe('14:50') // 17:35 - 165 = 14:50
+    expect(slots[1].time).toBe('15:35') // 17:35 - 120 = 15:35
+    expect(isManualDepartureComplete(showManualDeparture, manualDepartureData)).toBe(false)
+
+    // Step 4: User selects destination
+    manualDepartureData = { ...manualDepartureData, destinationCode: 'EDI', destinationName: 'Edinburgh Airport' }
+    expect(isManualDepartureComplete(showManualDeparture, manualDepartureData)).toBe(false)
+
+    // Step 5: User selects drop-off slot
+    manualDepartureData = { ...manualDepartureData, dropoffSlot: '165' }
+    expect(isManualDepartureComplete(showManualDeparture, manualDepartureData)).toBe(true)
+  })
+
+  it('recalculates slots when time is changed', () => {
+    const showManualDeparture = true
+    let manualDepartureData = {
+      airlineCode: 'FR',
+      flightTime: '10:00',
+      destinationCode: 'FAO',
+      dropoffSlot: '165'
+    }
+
+    let slots = calculateManualDropoffSlots(showManualDeparture, manualDepartureData.flightTime)
+    expect(slots[0].time).toBe('07:15') // 10:00 - 165
+    expect(slots[1].time).toBe('08:00') // 10:00 - 120
+
+    // User changes time
+    manualDepartureData = { ...manualDepartureData, flightTime: '14:00' }
+    slots = calculateManualDropoffSlots(showManualDeparture, manualDepartureData.flightTime)
+    expect(slots[0].time).toBe('11:15') // 14:00 - 165
+    expect(slots[1].time).toBe('12:00') // 14:00 - 120
+  })
+
+  it('handles user selecting different slot options', () => {
+    const showManualDeparture = true
+    const baseData = {
+      airlineCode: 'U2',
+      flightTime: '12:00',
+      destinationCode: 'AGP'
+    }
+
+    // User selects early slot
+    let data = { ...baseData, dropoffSlot: '165' }
+    expect(isManualDepartureComplete(showManualDeparture, data)).toBe(true)
+
+    // User changes to late slot
+    data = { ...baseData, dropoffSlot: '120' }
+    expect(isManualDepartureComplete(showManualDeparture, data)).toBe(true)
+
+    // User deselects slot (clears selection)
+    data = { ...baseData, dropoffSlot: '' }
+    expect(isManualDepartureComplete(showManualDeparture, data)).toBe(false)
+  })
+})
