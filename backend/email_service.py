@@ -437,6 +437,41 @@ def send_2_day_reminder_email(
     return send_email(email, subject, html_content)
 
 
+def send_thank_you_email(
+    email: str,
+    first_name: str,
+) -> bool:
+    """
+    Send thank you email after booking completion with review invitation.
+
+    Args:
+        email: Customer email address
+        first_name: Customer first name
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    subject = "Thank You for Choosing TAG Parking"
+
+    # Load the HTML template
+    template_path = EMAIL_TEMPLATES_DIR / "thank_you_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+
+    except FileNotFoundError:
+        logger.error(f"Thank you email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading thank you email template: {e}")
+        return False
+
+    return send_email(email, subject, html_content)
+
+
 def send_manual_booking_payment_email(
     email: str,
     first_name: str,

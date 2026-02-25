@@ -5180,7 +5180,11 @@ async def mark_booking_completed(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Mark a booking as completed."""
+    """Mark a booking as completed.
+
+    Sets the completion timestamp which triggers a thank you email
+    to be sent 2 hours later via the email scheduler.
+    """
     booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -5189,6 +5193,7 @@ async def mark_booking_completed(
         raise HTTPException(status_code=400, detail=f"Booking must be confirmed to complete. Current status: {booking.status.value}")
 
     booking.status = BookingStatus.COMPLETED
+    booking.completed_at = datetime.utcnow()  # Set completion time for thank you email scheduling
     db.commit()
 
     return {"success": True, "message": f"Booking {booking.reference} marked as completed"}

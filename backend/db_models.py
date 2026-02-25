@@ -144,10 +144,13 @@ class Booking(Base):
     refund_email_sent_at = Column(DateTime(timezone=True))
     reminder_2day_sent = Column(Boolean, default=False)
     reminder_2day_sent_at = Column(DateTime(timezone=True))
+    thank_you_email_sent = Column(Boolean, default=False)
+    thank_you_email_sent_at = Column(DateTime(timezone=True))
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    completed_at = Column(DateTime(timezone=True))  # When booking was marked complete
 
     # Relationships
     customer = relationship("Customer", back_populates="bookings")

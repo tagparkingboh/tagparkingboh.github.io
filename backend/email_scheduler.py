@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from db_models import MarketingSubscriber, Booking, BookingStatus, Customer, FlightDeparture
-from email_service import send_welcome_email, send_promo_code_email, send_2_day_reminder_email, is_email_enabled, generate_promo_code
+from email_service import send_welcome_email, send_promo_code_email, send_2_day_reminder_email, send_thank_you_email, is_email_enabled, generate_promo_code
 import pytz
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ scheduler = BackgroundScheduler()
 # Configuration
 WELCOME_EMAIL_DELAY_MINUTES = 5  # Send welcome email 5 minutes after signup
 PROMO_EMAIL_DELAY_HOURS = 1      # Send promo email 1 hour after welcome email (PAUSED)
+THANK_YOU_EMAIL_DELAY_HOURS = 2  # Send thank you email 2 hours after booking completion
 CHECK_INTERVAL_MINUTES = 1       # Check for pending emails every 1 minute
 
 
@@ -214,11 +215,62 @@ def process_pending_2day_reminders():
         db.close()
 
 
+def process_pending_thankyou_emails():
+    """
+    Find completed bookings that were completed more than 2 hours ago
+    and haven't received the thank you email yet.
+    """
+    if not is_email_enabled():
+        return
+
+    db = get_db()
+    try:
+        # Calculate cutoff: 2 hours ago
+        cutoff_time = datetime.utcnow() - timedelta(hours=THANK_YOU_EMAIL_DELAY_HOURS)
+
+        # Find completed bookings that need thank you email
+        pending = db.query(Booking).filter(
+            Booking.status == BookingStatus.COMPLETED,
+            Booking.thank_you_email_sent == False,
+            Booking.completed_at != None,
+            Booking.completed_at <= cutoff_time,
+        ).limit(10).all()
+
+        for booking in pending:
+            # Get customer details
+            customer = db.query(Customer).filter(Customer.id == booking.customer_id).first()
+            if not customer:
+                logger.error(f"Customer not found for booking {booking.reference}")
+                continue
+
+            logger.info(f"Sending thank you email to {customer.email} for booking {booking.reference}")
+
+            success = send_thank_you_email(
+                email=customer.email,
+                first_name=customer.first_name,
+            )
+
+            if success:
+                booking.thank_you_email_sent = True
+                booking.thank_you_email_sent_at = datetime.utcnow()
+                db.commit()
+                logger.info(f"Thank you email sent to {customer.email} for booking {booking.reference}")
+            else:
+                logger.error(f"Failed to send thank you email to {customer.email}")
+
+    except Exception as e:
+        logger.error(f"Error processing thank you emails: {str(e)}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def process_all_pending_emails():
     """Main job that processes all pending emails."""
     logger.debug("Checking for pending emails...")
     process_pending_welcome_emails()
     process_pending_2day_reminders()
+    process_pending_thankyou_emails()
     # PAUSED: Promo code emails - uncomment when ready to send
     # process_pending_promo_emails()
 
