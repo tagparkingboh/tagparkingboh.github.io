@@ -879,3 +879,542 @@ describe('BookingsNew - Stripe Payment Data Format', () => {
     })
   })
 })
+
+// =============================================================================
+// Flight Dropdown Display with Time Override Tests
+// =============================================================================
+
+describe('BookingsNew - Flight Dropdown Display with Time Override', () => {
+  // Helper function that mirrors the flightsForDropoff useMemo logic
+  const buildFlightsForDropoff = (flightsForAirline, departureTimeOverride, selectedFlightKey) => {
+    const countryNames = {
+      'PT': 'Portugal',
+      'ES': 'Spain',
+      'IT': 'Italy',
+      'GR': 'Greece',
+      'GB': 'United Kingdom',
+      'FR': 'France'
+    }
+
+    return flightsForAirline.map(f => {
+      // Parse destinationName to extract city and country code
+      const parts = f.destinationName.split(', ')
+      let displayDestination = f.destinationName
+      if (parts.length > 1) {
+        const countryCode = parts[parts.length - 1]
+        let cityName = parts.slice(0, -1).join(', ')
+        if (cityName === 'Tenerife-Reinasofia') cityName = 'Tenerife'
+        const countryName = countryNames[countryCode] || countryCode
+        displayDestination = `${cityName}, ${countryName}`
+      }
+
+      const flightKey = `${f.time}|${f.destinationCode}`
+
+      // Use overridden time for the currently selected flight
+      const isSelected = selectedFlightKey === flightKey
+      const displayTime = (isSelected && departureTimeOverride) ? departureTimeOverride : f.time
+
+      return {
+        ...f,
+        flightKey,
+        displayText: `${displayTime} ${f.airlineCode}${f.flightNumber} → ${displayDestination}`
+      }
+    }).sort((a, b) => a.time.localeCompare(b.time))
+  }
+
+  const mockFlights = [
+    {
+      id: 1,
+      time: '06:45',
+      airlineCode: 'FR',
+      flightNumber: '3944',
+      destinationCode: 'FAO',
+      destinationName: 'Faro, PT',
+      capacity_tier: 4
+    },
+    {
+      id: 2,
+      time: '08:30',
+      airlineCode: 'FR',
+      flightNumber: '1234',
+      destinationCode: 'AGP',
+      destinationName: 'Malaga, ES',
+      capacity_tier: 6
+    },
+    {
+      id: 3,
+      time: '14:00',
+      airlineCode: 'FR',
+      flightNumber: '5678',
+      destinationCode: 'TFS',
+      destinationName: 'Tenerife-Reinasofia, ES',
+      capacity_tier: 4
+    }
+  ]
+
+  describe('Without Time Override', () => {
+    it('displays original scheduled time for all flights', () => {
+      const result = buildFlightsForDropoff(mockFlights, '', null)
+
+      expect(result[0].displayText).toBe('06:45 FR3944 → Faro, Portugal')
+      expect(result[1].displayText).toBe('08:30 FR1234 → Malaga, Spain')
+      expect(result[2].displayText).toBe('14:00 FR5678 → Tenerife, Spain')
+    })
+
+    it('displays original time when no flight is selected', () => {
+      const result = buildFlightsForDropoff(mockFlights, '07:00', null)
+
+      // No flight selected, so even with override set, all should show original times
+      expect(result[0].displayText).toBe('06:45 FR3944 → Faro, Portugal')
+      expect(result[1].displayText).toBe('08:30 FR1234 → Malaga, Spain')
+    })
+  })
+
+  describe('With Time Override', () => {
+    it('displays overridden time only for the selected flight', () => {
+      const selectedFlightKey = '06:45|FAO'
+      const result = buildFlightsForDropoff(mockFlights, '07:00', selectedFlightKey)
+
+      // Selected flight shows overridden time
+      expect(result[0].displayText).toBe('07:00 FR3944 → Faro, Portugal')
+      // Other flights show original times
+      expect(result[1].displayText).toBe('08:30 FR1234 → Malaga, Spain')
+      expect(result[2].displayText).toBe('14:00 FR5678 → Tenerife, Spain')
+    })
+
+    it('updates display when different flight is selected with override', () => {
+      const selectedFlightKey = '14:00|TFS'
+      const result = buildFlightsForDropoff(mockFlights, '15:30', selectedFlightKey)
+
+      // First two flights show original times
+      expect(result[0].displayText).toBe('06:45 FR3944 → Faro, Portugal')
+      expect(result[1].displayText).toBe('08:30 FR1234 → Malaga, Spain')
+      // Selected flight shows overridden time
+      expect(result[2].displayText).toBe('15:30 FR5678 → Tenerife, Spain')
+    })
+
+    it('shows original time when override is cleared', () => {
+      const selectedFlightKey = '06:45|FAO'
+      const result = buildFlightsForDropoff(mockFlights, '', selectedFlightKey)
+
+      // All flights show original times when override is empty
+      expect(result[0].displayText).toBe('06:45 FR3944 → Faro, Portugal')
+      expect(result[1].displayText).toBe('08:30 FR1234 → Malaga, Spain')
+    })
+  })
+
+  describe('Edge Cases', () => {
+    it('handles early morning time override (before midnight)', () => {
+      const selectedFlightKey = '06:45|FAO'
+      const result = buildFlightsForDropoff(mockFlights, '05:00', selectedFlightKey)
+
+      expect(result[0].displayText).toBe('05:00 FR3944 → Faro, Portugal')
+    })
+
+    it('handles late evening time override', () => {
+      const selectedFlightKey = '14:00|TFS'
+      const result = buildFlightsForDropoff(mockFlights, '23:30', selectedFlightKey)
+
+      expect(result[2].displayText).toBe('23:30 FR5678 → Tenerife, Spain')
+    })
+
+    it('handles single-digit hour override', () => {
+      const selectedFlightKey = '06:45|FAO'
+      const result = buildFlightsForDropoff(mockFlights, '7:00', selectedFlightKey)
+
+      expect(result[0].displayText).toBe('7:00 FR3944 → Faro, Portugal')
+    })
+
+    it('preserves original flight data properties', () => {
+      const selectedFlightKey = '06:45|FAO'
+      const result = buildFlightsForDropoff(mockFlights, '07:00', selectedFlightKey)
+
+      // displayText shows override, but original time is preserved
+      expect(result[0].time).toBe('06:45')
+      expect(result[0].id).toBe(1)
+      expect(result[0].capacity_tier).toBe(4)
+    })
+
+    it('shortens Tenerife-Reinasofia to Tenerife', () => {
+      const result = buildFlightsForDropoff(mockFlights, '', null)
+
+      const tenerifeFlight = result.find(f => f.destinationCode === 'TFS')
+      expect(tenerifeFlight.displayText).toContain('Tenerife, Spain')
+      expect(tenerifeFlight.displayText).not.toContain('Reinasofia')
+    })
+  })
+})
+
+// =============================================================================
+// Drop-off Slot Calculation with Time Override Tests
+// =============================================================================
+
+describe('BookingsNew - Dropoff Slot Calculation with Time Override', () => {
+  // Helper function that mirrors formatMinutesToTime in BookingsNew.jsx
+  const formatMinutesToTime = (totalMinutes) => {
+    let mins = totalMinutes
+    while (mins < 0) mins += 1440
+    while (mins >= 1440) mins -= 1440
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
+  }
+
+  // Helper function that mirrors dropoffSlots useMemo logic
+  const calculateDropoffSlots = (selectedFlight, departureTimeOverride, isCallUsOnly = false) => {
+    if (!selectedFlight) return []
+    if (isCallUsOnly) return []
+
+    // Use overridden time if set, otherwise use scheduled flight time
+    const effectiveTime = departureTimeOverride || selectedFlight.time
+    const [hours, minutes] = effectiveTime.split(':').map(Number)
+    const departureMinutes = hours * 60 + minutes
+
+    const slots = []
+
+    // Early slot: 2¾ hours before (165 minutes)
+    const earlyAvailable = selectedFlight.early_slots_available ?? 1
+    if (earlyAvailable > 0) {
+      slots.push({
+        id: '165',
+        label: '2¾ hours before',
+        time: formatMinutesToTime(departureMinutes - 165),
+        available: earlyAvailable
+      })
+    }
+
+    // Late slot: 2 hours before (120 minutes)
+    const lateAvailable = selectedFlight.late_slots_available ?? 1
+    if (lateAvailable > 0) {
+      slots.push({
+        id: '120',
+        label: '2 hours before',
+        time: formatMinutesToTime(departureMinutes - 120),
+        available: lateAvailable
+      })
+    }
+
+    return slots
+  }
+
+  const mockFlight = {
+    id: 1,
+    time: '14:30',
+    airlineCode: 'FR',
+    flightNumber: '1234',
+    destinationCode: 'FAO',
+    early_slots_available: 2,
+    late_slots_available: 2
+  }
+
+  describe('Without Time Override', () => {
+    it('calculates slots based on scheduled departure time', () => {
+      const slots = calculateDropoffSlots(mockFlight, '')
+
+      // 14:30 - 165 minutes = 11:45
+      expect(slots[0].time).toBe('11:45')
+      // 14:30 - 120 minutes = 12:30
+      expect(slots[1].time).toBe('12:30')
+    })
+
+    it('calculates early morning slots correctly', () => {
+      const earlyFlight = { ...mockFlight, time: '06:00' }
+      const slots = calculateDropoffSlots(earlyFlight, '')
+
+      // 06:00 - 165 minutes = 03:15
+      expect(slots[0].time).toBe('03:15')
+      // 06:00 - 120 minutes = 04:00
+      expect(slots[1].time).toBe('04:00')
+    })
+
+    it('calculates late evening slots correctly', () => {
+      const lateFlight = { ...mockFlight, time: '22:00' }
+      const slots = calculateDropoffSlots(lateFlight, '')
+
+      // 22:00 - 165 minutes = 19:15
+      expect(slots[0].time).toBe('19:15')
+      // 22:00 - 120 minutes = 20:00
+      expect(slots[1].time).toBe('20:00')
+    })
+  })
+
+  describe('With Time Override', () => {
+    it('calculates slots based on overridden time', () => {
+      const slots = calculateDropoffSlots(mockFlight, '15:00')
+
+      // 15:00 - 165 minutes = 12:15
+      expect(slots[0].time).toBe('12:15')
+      // 15:00 - 120 minutes = 13:00
+      expect(slots[1].time).toBe('13:00')
+    })
+
+    it('recalculates when time is moved earlier', () => {
+      const slots = calculateDropoffSlots(mockFlight, '12:00')
+
+      // 12:00 - 165 minutes = 09:15
+      expect(slots[0].time).toBe('09:15')
+      // 12:00 - 120 minutes = 10:00
+      expect(slots[1].time).toBe('10:00')
+    })
+
+    it('recalculates when time is moved later', () => {
+      const slots = calculateDropoffSlots(mockFlight, '18:30')
+
+      // 18:30 - 165 minutes = 15:45
+      expect(slots[0].time).toBe('15:45')
+      // 18:30 - 120 minutes = 16:30
+      expect(slots[1].time).toBe('16:30')
+    })
+
+    it('handles early morning override correctly', () => {
+      const slots = calculateDropoffSlots(mockFlight, '07:00')
+
+      // 07:00 - 165 minutes = 04:15
+      expect(slots[0].time).toBe('04:15')
+      // 07:00 - 120 minutes = 05:00
+      expect(slots[1].time).toBe('05:00')
+    })
+  })
+
+  describe('Edge Cases - Overnight Calculations', () => {
+    it('handles slots that cross midnight (early morning flight)', () => {
+      const earlyFlight = { ...mockFlight, time: '02:00' }
+      const slots = calculateDropoffSlots(earlyFlight, '')
+
+      // 02:00 - 165 minutes = 23:15 (previous day)
+      expect(slots[0].time).toBe('23:15')
+      // 02:00 - 120 minutes = 00:00
+      expect(slots[1].time).toBe('00:00')
+    })
+
+    it('handles override that creates overnight slots', () => {
+      const slots = calculateDropoffSlots(mockFlight, '01:30')
+
+      // 01:30 - 165 minutes = 22:45 (previous day)
+      expect(slots[0].time).toBe('22:45')
+      // 01:30 - 120 minutes = 23:30 (previous day)
+      expect(slots[1].time).toBe('23:30')
+    })
+  })
+
+  describe('Slot Availability', () => {
+    it('returns empty array when flight is null', () => {
+      const slots = calculateDropoffSlots(null, '')
+      expect(slots).toEqual([])
+    })
+
+    it('returns empty array for Call Us Only flights', () => {
+      const slots = calculateDropoffSlots(mockFlight, '', true)
+      expect(slots).toEqual([])
+    })
+
+    it('excludes early slot when unavailable', () => {
+      const noEarlyFlight = { ...mockFlight, early_slots_available: 0 }
+      const slots = calculateDropoffSlots(noEarlyFlight, '')
+
+      expect(slots).toHaveLength(1)
+      expect(slots[0].id).toBe('120')
+    })
+
+    it('excludes late slot when unavailable', () => {
+      const noLateFlight = { ...mockFlight, late_slots_available: 0 }
+      const slots = calculateDropoffSlots(noLateFlight, '')
+
+      expect(slots).toHaveLength(1)
+      expect(slots[0].id).toBe('165')
+    })
+
+    it('returns empty array when both slots unavailable', () => {
+      const fullyBookedFlight = {
+        ...mockFlight,
+        early_slots_available: 0,
+        late_slots_available: 0
+      }
+      const slots = calculateDropoffSlots(fullyBookedFlight, '')
+
+      expect(slots).toEqual([])
+    })
+  })
+
+  describe('Time Format Handling', () => {
+    it('handles single-digit hour in override', () => {
+      const slots = calculateDropoffSlots(mockFlight, '8:30')
+
+      // 8:30 - 165 minutes = 05:45
+      expect(slots[0].time).toBe('05:45')
+      // 8:30 - 120 minutes = 06:30
+      expect(slots[1].time).toBe('06:30')
+    })
+
+    it('outputs times with leading zeros', () => {
+      const earlyFlight = { ...mockFlight, time: '05:00' }
+      const slots = calculateDropoffSlots(earlyFlight, '')
+
+      expect(slots[0].time).toBe('02:15')
+      expect(slots[1].time).toBe('03:00')
+    })
+  })
+})
+
+// =============================================================================
+// Integration Tests - Time Override End-to-End Flow
+// =============================================================================
+
+describe('BookingsNew - Time Override Integration', () => {
+  // Simulates the full flow of selecting a flight, overriding time, and verifying outputs
+
+  const countryNames = {
+    'PT': 'Portugal',
+    'ES': 'Spain'
+  }
+
+  const formatMinutesToTime = (totalMinutes) => {
+    let mins = totalMinutes
+    while (mins < 0) mins += 1440
+    while (mins >= 1440) mins -= 1440
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`
+  }
+
+  const buildFlightsForDropdown = (flights, override, selectedKey) => {
+    return flights.map(f => {
+      const parts = f.destinationName.split(', ')
+      let displayDestination = f.destinationName
+      if (parts.length > 1) {
+        const countryCode = parts[parts.length - 1]
+        const cityName = parts.slice(0, -1).join(', ')
+        const countryName = countryNames[countryCode] || countryCode
+        displayDestination = `${cityName}, ${countryName}`
+      }
+
+      const flightKey = `${f.time}|${f.destinationCode}`
+      const isSelected = selectedKey === flightKey
+      const displayTime = (isSelected && override) ? override : f.time
+
+      return {
+        ...f,
+        flightKey,
+        displayText: `${displayTime} ${f.airlineCode}${f.flightNumber} → ${displayDestination}`
+      }
+    })
+  }
+
+  const calculateDropoffSlots = (flight, override) => {
+    if (!flight) return []
+    const effectiveTime = override || flight.time
+    const [hours, minutes] = effectiveTime.split(':').map(Number)
+    const departureMinutes = hours * 60 + minutes
+
+    return [
+      { id: '165', time: formatMinutesToTime(departureMinutes - 165) },
+      { id: '120', time: formatMinutesToTime(departureMinutes - 120) }
+    ]
+  }
+
+  it('simulates complete time override flow', () => {
+    // Step 1: Initial state - flights loaded
+    const flights = [
+      {
+        id: 101,
+        time: '06:45',
+        airlineCode: 'FR',
+        flightNumber: '3944',
+        destinationCode: 'FAO',
+        destinationName: 'Faro, PT'
+      }
+    ]
+
+    // Step 2: User selects flight
+    const selectedFlightKey = '06:45|FAO'
+    let departureTimeOverride = ''
+
+    // Verify initial state
+    let dropdownFlights = buildFlightsForDropdown(flights, departureTimeOverride, selectedFlightKey)
+    let slots = calculateDropoffSlots(flights[0], departureTimeOverride)
+
+    expect(dropdownFlights[0].displayText).toBe('06:45 FR3944 → Faro, Portugal')
+    expect(slots[0].time).toBe('04:00') // 06:45 - 165 = 04:00
+    expect(slots[1].time).toBe('04:45') // 06:45 - 120 = 04:45
+
+    // Step 3: User clicks "My flight time has changed" and enters new time
+    departureTimeOverride = '07:00'
+
+    // Verify updated state
+    dropdownFlights = buildFlightsForDropdown(flights, departureTimeOverride, selectedFlightKey)
+    slots = calculateDropoffSlots(flights[0], departureTimeOverride)
+
+    expect(dropdownFlights[0].displayText).toBe('07:00 FR3944 → Faro, Portugal')
+    expect(slots[0].time).toBe('04:15') // 07:00 - 165 = 04:15
+    expect(slots[1].time).toBe('05:00') // 07:00 - 120 = 05:00
+
+    // Step 4: User changes time again
+    departureTimeOverride = '08:30'
+
+    dropdownFlights = buildFlightsForDropdown(flights, departureTimeOverride, selectedFlightKey)
+    slots = calculateDropoffSlots(flights[0], departureTimeOverride)
+
+    expect(dropdownFlights[0].displayText).toBe('08:30 FR3944 → Faro, Portugal')
+    expect(slots[0].time).toBe('05:45') // 08:30 - 165 = 05:45
+    expect(slots[1].time).toBe('06:30') // 08:30 - 120 = 06:30
+
+    // Step 5: User clears override (reverts to scheduled time)
+    departureTimeOverride = ''
+
+    dropdownFlights = buildFlightsForDropdown(flights, departureTimeOverride, selectedFlightKey)
+    slots = calculateDropoffSlots(flights[0], departureTimeOverride)
+
+    expect(dropdownFlights[0].displayText).toBe('06:45 FR3944 → Faro, Portugal')
+    expect(slots[0].time).toBe('04:00')
+    expect(slots[1].time).toBe('04:45')
+  })
+
+  it('verifies dropdown and slots stay in sync', () => {
+    const flight = {
+      id: 200,
+      time: '14:30',
+      airlineCode: 'U2',
+      flightNumber: '8888',
+      destinationCode: 'AGP',
+      destinationName: 'Malaga, ES'
+    }
+    const flights = [flight]
+    const selectedFlightKey = '14:30|AGP'
+
+    // Test multiple time overrides to ensure consistency
+    const testCases = [
+      { override: '', expectedDisplay: '14:30', expectedEarly: '11:45', expectedLate: '12:30' },
+      { override: '15:00', expectedDisplay: '15:00', expectedEarly: '12:15', expectedLate: '13:00' },
+      { override: '12:00', expectedDisplay: '12:00', expectedEarly: '09:15', expectedLate: '10:00' },
+      { override: '06:00', expectedDisplay: '06:00', expectedEarly: '03:15', expectedLate: '04:00' },
+      { override: '23:00', expectedDisplay: '23:00', expectedEarly: '20:15', expectedLate: '21:00' }
+    ]
+
+    testCases.forEach(({ override, expectedDisplay, expectedEarly, expectedLate }) => {
+      const dropdownFlights = buildFlightsForDropdown(flights, override, selectedFlightKey)
+      const slots = calculateDropoffSlots(flight, override)
+
+      expect(dropdownFlights[0].displayText).toContain(expectedDisplay)
+      expect(slots[0].time).toBe(expectedEarly)
+      expect(slots[1].time).toBe(expectedLate)
+    })
+  })
+
+  it('handles multiple flights with only selected one showing override', () => {
+    const flights = [
+      { id: 1, time: '06:00', airlineCode: 'FR', flightNumber: '1111', destinationCode: 'FAO', destinationName: 'Faro, PT' },
+      { id: 2, time: '10:00', airlineCode: 'FR', flightNumber: '2222', destinationCode: 'AGP', destinationName: 'Malaga, ES' },
+      { id: 3, time: '14:00', airlineCode: 'FR', flightNumber: '3333', destinationCode: 'FAO', destinationName: 'Faro, PT' }
+    ]
+
+    const selectedFlightKey = '10:00|AGP'
+    const override = '11:30'
+
+    const dropdownFlights = buildFlightsForDropdown(flights, override, selectedFlightKey)
+
+    // Only the selected flight (10:00|AGP) should show the override
+    expect(dropdownFlights[0].displayText).toContain('06:00') // Not selected
+    expect(dropdownFlights[1].displayText).toContain('11:30') // Selected - shows override
+    expect(dropdownFlights[2].displayText).toContain('14:00') // Not selected
+  })
+})
