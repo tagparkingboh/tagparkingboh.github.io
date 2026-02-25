@@ -403,6 +403,7 @@ function Employee() {
     }
 
     if (type === 'pickup') {
+      const hasReturnInspection = bookingInspections.some(i => i.inspection_type === 'pickup')
       return (
         <div className="booking-actions-row">
           <button
@@ -415,8 +416,10 @@ function Employee() {
             <span className="completed-badge">Completed</span>
           ) : (
             <button
-              className="complete-btn"
+              className={`complete-btn ${!hasReturnInspection ? 'complete-btn-disabled' : ''}`}
               onClick={(e) => { e.stopPropagation(); setCompletingBooking(booking); setShowCompleteModal(true) }}
+              disabled={!hasReturnInspection}
+              title={!hasReturnInspection ? 'Complete the Return Inspection first' : ''}
             >
               Complete Booking
             </button>
