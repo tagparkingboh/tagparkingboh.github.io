@@ -3695,15 +3695,22 @@ class CreatePaymentRequest(BaseModel):
     dropoff_manual_entry: bool = False
     dropoff_airline_code: Optional[str] = None  # For manual entries (e.g., "BY" for TUI)
     dropoff_airline_name: Optional[str] = None  # For manual entries (e.g., "TUI")
+    dropoff_destination_code: Optional[str] = None  # For manual entries
+    dropoff_destination_name: Optional[str] = None  # For manual entries
+    dropoff_flight_time: Optional[str] = None  # For manual entries "HH:MM"
+    dropoff_customer_time: Optional[str] = None  # Customer-provided time override "HH:MM"
 
     # Customer-provided arrival time override (optional)
     pickup_time_override: bool = False
     pickup_scheduled_time: Optional[str] = None  # Original time from flight table "HH:MM"
+    pickup_customer_time: Optional[str] = None  # Customer-provided time override "HH:MM"
 
     # Manual arrival entry (optional)
     pickup_manual_entry: bool = False
     pickup_airline_code: Optional[str] = None
     pickup_airline_name: Optional[str] = None
+    pickup_origin_code: Optional[str] = None  # For manual entries
+    pickup_origin_name: Optional[str] = None  # For manual entries
 
 
 class CreatePaymentResponse(BaseModel):

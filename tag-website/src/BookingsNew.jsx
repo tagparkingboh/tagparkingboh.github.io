@@ -112,6 +112,36 @@ function Bookings() {
   const [promoCodeValid, setPromoCodeValid] = useState(() => loadBookingState('promoCodeValid', false))
   const [promoCodeMessage, setPromoCodeMessage] = useState(() => loadBookingState('promoCodeMessage', ''))
   const [promoCodeDiscount, setPromoCodeDiscount] = useState(() => loadBookingState('promoCodeDiscount', 0))
+
+  // Manual flight entry and time override state
+  const [showDepartureTimeOverride, setShowDepartureTimeOverride] = useState(false)
+  const [departureTimeOverride, setDepartureTimeOverride] = useState('')
+  const [departureTimeValidating, setDepartureTimeValidating] = useState(false)
+  const [departureTimeError, setDepartureTimeError] = useState('')
+  const [showArrivalTimeOverride, setShowArrivalTimeOverride] = useState(false)
+  const [arrivalTimeOverride, setArrivalTimeOverride] = useState('')
+  const [arrivalTimeValidating, setArrivalTimeValidating] = useState(false)
+  const [arrivalTimeError, setArrivalTimeError] = useState('')
+  const [showManualDeparture, setShowManualDeparture] = useState(false)
+  const [manualDepartureData, setManualDepartureData] = useState({
+    flightNumber: '',
+    flightTime: '',
+    airlineCode: '',
+    airlineName: '',
+    destinationCode: '',
+    destinationName: ''
+  })
+  const [showManualArrival, setShowManualArrival] = useState(false)
+  const [manualArrivalData, setManualArrivalData] = useState({
+    flightNumber: '',
+    flightTime: '',
+    airlineCode: '',
+    airlineName: '',
+    originCode: '',
+    originName: ''
+  })
+  const [availableAirlines, setAvailableAirlines] = useState([])
+  const [availableDestinations, setAvailableDestinations] = useState([])
   const [formData, setFormData] = useState(() => {
     const defaults = {
       dropoffDate: null,
@@ -244,6 +274,29 @@ function Bookings() {
     if (!formData.make) return []
     return getModels(formData.make) || []
   }, [formData.make])
+
+  // Fetch available airlines and destinations for manual entry
+  useEffect(() => {
+    const fetchAirlinesAndDestinations = async () => {
+      try {
+        const [airlinesRes, destinationsRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/booking/airlines`),
+          fetch(`${API_BASE_URL}/api/booking/destinations`)
+        ])
+        if (airlinesRes.ok) {
+          const data = await airlinesRes.json()
+          setAvailableAirlines(data.airlines || [])
+        }
+        if (destinationsRes.ok) {
+          const data = await destinationsRes.json()
+          setAvailableDestinations(data.destinations || [])
+        }
+      } catch (error) {
+        console.error('Error fetching airlines/destinations:', error)
+      }
+    }
+    fetchAirlinesAndDestinations()
+  }, [API_BASE_URL])
 
   // Fetch departures when drop-off date changes
   useEffect(() => {
@@ -519,6 +572,71 @@ function Bookings() {
     const hours = Math.floor(totalMinutes / 60) % 24
     const mins = totalMinutes % 60
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+  }
+
+  // Validate time format helper
+  const isValidTimeFormat = (timeStr) => {
+    if (!timeStr) return false
+    return /^\d{1,2}:\d{2}$/.test(timeStr)
+  }
+
+  // Normalize time to HH:MM format
+  const normalizeTime = (timeStr) => {
+    if (!timeStr) return ''
+    const parts = timeStr.split(':')
+    if (parts.length !== 2) return timeStr
+    const hours = parts[0].padStart(2, '0')
+    const mins = parts[1].padStart(2, '0')
+    return `${hours}:${mins}`
+  }
+
+  // Validate flight time via API
+  const validateFlightTime = async (timeStr, flightType) => {
+    if (!isValidTimeFormat(timeStr)) {
+      return { valid: false, error: 'Please enter time in HH:MM format (e.g., 14:30)' }
+    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/booking/validate-flight-time`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          time: normalizeTime(timeStr),
+          flight_type: flightType
+        })
+      })
+      const data = await response.json()
+      return { valid: data.valid, error: data.error, normalizedTime: data.normalized_time }
+    } catch (error) {
+      console.error('Time validation error:', error)
+      return { valid: false, error: 'Unable to validate time. Please try again.' }
+    }
+  }
+
+  // Handle departure time override submission
+  const handleDepartureTimeOverride = async () => {
+    setDepartureTimeValidating(true)
+    setDepartureTimeError('')
+    const result = await validateFlightTime(departureTimeOverride, 'departure')
+    setDepartureTimeValidating(false)
+    if (!result.valid) {
+      setDepartureTimeError(result.error)
+    } else {
+      // Update the selected flight time - keep original time for reference
+      setShowDepartureTimeOverride(false)
+    }
+  }
+
+  // Handle arrival time override submission
+  const handleArrivalTimeOverride = async () => {
+    setArrivalTimeValidating(true)
+    setArrivalTimeError('')
+    const result = await validateFlightTime(arrivalTimeOverride, 'arrival')
+    setArrivalTimeValidating(false)
+    if (!result.valid) {
+      setArrivalTimeError(result.error)
+    } else {
+      setShowArrivalTimeOverride(false)
+    }
   }
 
   // Convert string to Title Case
@@ -970,8 +1088,29 @@ function Bookings() {
 
   // Step 1: Contact + Billing + Vehicle Information (all on Page 1)
   const isStep1Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid && isBillingComplete && formData.registration && isMakeComplete && isModelComplete && formData.colour
+
+  // Manual entry validation
+  const isManualDepartureComplete = showManualDeparture &&
+    manualDepartureData.airlineCode &&
+    manualDepartureData.flightNumber &&
+    isValidTimeFormat(manualDepartureData.flightTime) &&
+    manualDepartureData.destinationCode
+
+  const isManualArrivalComplete = showManualArrival &&
+    manualArrivalData.airlineCode &&
+    manualArrivalData.flightNumber &&
+    isValidTimeFormat(manualArrivalData.flightTime) &&
+    manualArrivalData.originCode
+
   // Step 2: Trip Details / Slot booking
-  const isStep2Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable
+  // Allow completion via normal flow OR manual entry
+  const isNormalDepartureComplete = !showManualDeparture && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot
+  const isDepartureComplete = isNormalDepartureComplete || isManualDepartureComplete
+
+  const isNormalArrivalComplete = !showManualArrival && formData.pickupFlightTime
+  const isArrivalComplete = isNormalArrivalComplete || isManualArrivalComplete
+
+  const isStep2Complete = formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete && isCapacityAvailable
   // Step 3: Package Selection
   const isStep3Complete = formData.package
   // Step 4: Payment (uses billing from Step 1)
@@ -1614,9 +1753,16 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.dropoffDate && !loadingFlights && airlinesForDropoff.length === 0 && (
+              {formData.dropoffDate && !loadingFlights && airlinesForDropoff.length === 0 && !showManualDeparture && (
                 <div className="form-group fade-in">
                   <p className="no-flights-message">No departure flights available on this date.</p>
+                  <button
+                    type="button"
+                    className="manual-entry-link"
+                    onClick={() => setShowManualDeparture(true)}
+                  >
+                    Can't find your flight? Enter details manually
+                  </button>
                 </div>
               )}
 
@@ -1642,10 +1788,20 @@ function Bookings() {
                       <option key={airline} value={airline}>{airline}</option>
                     ))}
                   </select>
+                  {!showManualDeparture && (
+                    <button
+                      type="button"
+                      className="manual-entry-link"
+                      onClick={() => setShowManualDeparture(true)}
+                      style={{ marginTop: '0.5rem' }}
+                    >
+                      Can't find your flight? Enter details manually
+                    </button>
+                  )}
                 </div>
               )}
 
-              {formData.dropoffAirline && flightsForDropoff.length > 0 && (
+              {formData.dropoffAirline && flightsForDropoff.length > 0 && !showManualDeparture && (
                 <div className="form-group fade-in">
                   <label htmlFor="dropoffFlight">Flight</label>
                   <select
@@ -1661,6 +1817,107 @@ function Bookings() {
                       </option>
                     ))}
                   </select>
+                </div>
+              )}
+
+              {/* Manual Departure Entry Form */}
+              {showManualDeparture && formData.dropoffDate && (
+                <div className="form-group fade-in manual-entry-form">
+                  <div className="manual-entry-header">
+                    <h4>Enter Flight Details Manually</h4>
+                    <button
+                      type="button"
+                      className="back-to-lookup-link"
+                      onClick={() => {
+                        setShowManualDeparture(false)
+                        setManualDepartureData({
+                          flightNumber: '',
+                          flightTime: '',
+                          airlineCode: '',
+                          airlineName: '',
+                          destinationCode: '',
+                          destinationName: ''
+                        })
+                      }}
+                    >
+                      &larr; Back to flight search
+                    </button>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="manualAirline">Airline <span className="required">*</span></label>
+                    <select
+                      id="manualAirline"
+                      value={manualDepartureData.airlineCode}
+                      onChange={(e) => {
+                        const airline = availableAirlines.find(a => a.code === e.target.value)
+                        setManualDepartureData(prev => ({
+                          ...prev,
+                          airlineCode: e.target.value,
+                          airlineName: airline?.name || ''
+                        }))
+                      }}
+                    >
+                      <option value="">Select airline</option>
+                      {availableAirlines.map(airline => (
+                        <option key={airline.code} value={airline.code}>{airline.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="manualFlightNumber">Flight Number <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="manualFlightNumber"
+                        placeholder="e.g., 1234"
+                        value={manualDepartureData.flightNumber}
+                        onChange={(e) => setManualDepartureData(prev => ({
+                          ...prev,
+                          flightNumber: e.target.value.toUpperCase()
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="manualFlightTime">Departure Time <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="manualFlightTime"
+                        placeholder="HH:MM (e.g., 14:30)"
+                        value={manualDepartureData.flightTime}
+                        onChange={(e) => setManualDepartureData(prev => ({
+                          ...prev,
+                          flightTime: e.target.value
+                        }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="manualDestination">Destination <span className="required">*</span></label>
+                    <select
+                      id="manualDestination"
+                      value={manualDepartureData.destinationCode}
+                      onChange={(e) => {
+                        const dest = availableDestinations.find(d => d.code === e.target.value)
+                        setManualDepartureData(prev => ({
+                          ...prev,
+                          destinationCode: e.target.value,
+                          destinationName: dest?.name || ''
+                        }))
+                      }}
+                    >
+                      <option value="">Select destination</option>
+                      {availableDestinations.map(dest => (
+                        <option key={dest.code} value={dest.code}>{dest.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <p className="manual-entry-note">
+                    Manual entries are subject to verification. We'll contact you if there are any issues with your booking.
+                  </p>
                 </div>
               )}
 
@@ -1720,6 +1977,72 @@ function Bookings() {
                       </label>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Departure Time Override Option */}
+              {formData.dropoffFlight && selectedDropoffFlight && !showDepartureTimeOverride && (
+                <div className="form-group fade-in">
+                  <button
+                    type="button"
+                    className="time-override-link"
+                    onClick={() => {
+                      setShowDepartureTimeOverride(true)
+                      setDepartureTimeOverride(selectedDropoffFlight.time)
+                    }}
+                  >
+                    My flight time has changed
+                  </button>
+                </div>
+              )}
+
+              {/* Departure Time Override Form */}
+              {showDepartureTimeOverride && selectedDropoffFlight && (
+                <div className="form-group fade-in time-override-form">
+                  <label htmlFor="departureTimeOverride">Updated Departure Time</label>
+                  <p className="time-override-hint">
+                    Scheduled: {selectedDropoffFlight.time}. Enter the new departure time if your airline has rescheduled.
+                  </p>
+                  <div className="time-override-input-row">
+                    <input
+                      type="text"
+                      id="departureTimeOverride"
+                      placeholder="HH:MM (e.g., 14:30)"
+                      value={departureTimeOverride}
+                      onChange={(e) => {
+                        setDepartureTimeOverride(e.target.value)
+                        setDepartureTimeError('')
+                      }}
+                      className={departureTimeError ? 'input-error' : ''}
+                    />
+                    <button
+                      type="button"
+                      className="time-override-btn"
+                      onClick={handleDepartureTimeOverride}
+                      disabled={departureTimeValidating || !departureTimeOverride}
+                    >
+                      {departureTimeValidating ? 'Checking...' : 'Confirm'}
+                    </button>
+                    <button
+                      type="button"
+                      className="time-override-cancel"
+                      onClick={() => {
+                        setShowDepartureTimeOverride(false)
+                        setDepartureTimeOverride('')
+                        setDepartureTimeError('')
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {departureTimeError && (
+                    <span className="field-error">{departureTimeError}</span>
+                  )}
+                  {!departureTimeError && departureTimeOverride && departureTimeOverride !== selectedDropoffFlight.time && !showDepartureTimeOverride && (
+                    <span className="time-override-success">
+                      Time updated to {normalizeTime(departureTimeOverride)}
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -1789,7 +2112,7 @@ function Bookings() {
                 </>
               )}
 
-              {formData.pickupDate && arrivalFlightsForPickup.length > 0 && (
+              {formData.pickupDate && arrivalFlightsForPickup.length > 0 && !showManualArrival && (
                 <div className="form-group fade-in">
                   <label htmlFor="pickupFlightTime">Return Flight</label>
                   <select
@@ -1803,10 +2126,79 @@ function Bookings() {
                       <option key={flight.flightKey} value={flight.flightKey}>{flight.displayText}</option>
                     ))}
                   </select>
+                  <button
+                    type="button"
+                    className="manual-entry-link"
+                    onClick={() => setShowManualArrival(true)}
+                    style={{ marginTop: '0.5rem' }}
+                  >
+                    Can't find your return flight? Enter details manually
+                  </button>
                 </div>
               )}
 
-              {formData.pickupDate && arrivalFlightsForPickup.length === 0 && (
+              {/* Arrival Time Override Option */}
+              {formData.pickupFlightTime && selectedArrivalFlight && !showArrivalTimeOverride && !showManualArrival && (
+                <div className="form-group fade-in">
+                  <button
+                    type="button"
+                    className="time-override-link"
+                    onClick={() => {
+                      setShowArrivalTimeOverride(true)
+                      setArrivalTimeOverride(selectedArrivalFlight.time)
+                    }}
+                  >
+                    My return flight time has changed
+                  </button>
+                </div>
+              )}
+
+              {/* Arrival Time Override Form */}
+              {showArrivalTimeOverride && selectedArrivalFlight && (
+                <div className="form-group fade-in time-override-form">
+                  <label htmlFor="arrivalTimeOverride">Updated Arrival Time</label>
+                  <p className="time-override-hint">
+                    Scheduled: {selectedArrivalFlight.time}. Enter the new arrival time if your airline has rescheduled.
+                  </p>
+                  <div className="time-override-input-row">
+                    <input
+                      type="text"
+                      id="arrivalTimeOverride"
+                      placeholder="HH:MM (e.g., 14:30)"
+                      value={arrivalTimeOverride}
+                      onChange={(e) => {
+                        setArrivalTimeOverride(e.target.value)
+                        setArrivalTimeError('')
+                      }}
+                      className={arrivalTimeError ? 'input-error' : ''}
+                    />
+                    <button
+                      type="button"
+                      className="time-override-btn"
+                      onClick={handleArrivalTimeOverride}
+                      disabled={arrivalTimeValidating || !arrivalTimeOverride}
+                    >
+                      {arrivalTimeValidating ? 'Checking...' : 'Confirm'}
+                    </button>
+                    <button
+                      type="button"
+                      className="time-override-cancel"
+                      onClick={() => {
+                        setShowArrivalTimeOverride(false)
+                        setArrivalTimeOverride('')
+                        setArrivalTimeError('')
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {arrivalTimeError && (
+                    <span className="field-error">{arrivalTimeError}</span>
+                  )}
+                </div>
+              )}
+
+              {formData.pickupDate && arrivalFlightsForPickup.length === 0 && !showManualArrival && (
                 <div className="form-group fade-in">
                   <div className="fully-booked-banner">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -1820,6 +2212,115 @@ function Bookings() {
                       </div>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    className="manual-entry-link"
+                    onClick={() => setShowManualArrival(true)}
+                    style={{ marginTop: '1rem' }}
+                  >
+                    Enter return flight details manually
+                  </button>
+                </div>
+              )}
+
+              {/* Manual Arrival Entry Form */}
+              {showManualArrival && formData.pickupDate && (
+                <div className="form-group fade-in manual-entry-form">
+                  <div className="manual-entry-header">
+                    <h4>Enter Return Flight Details</h4>
+                    <button
+                      type="button"
+                      className="back-to-lookup-link"
+                      onClick={() => {
+                        setShowManualArrival(false)
+                        setManualArrivalData({
+                          flightNumber: '',
+                          flightTime: '',
+                          airlineCode: '',
+                          airlineName: '',
+                          originCode: '',
+                          originName: ''
+                        })
+                      }}
+                    >
+                      &larr; Back to flight search
+                    </button>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="manualArrivalAirline">Airline <span className="required">*</span></label>
+                    <select
+                      id="manualArrivalAirline"
+                      value={manualArrivalData.airlineCode}
+                      onChange={(e) => {
+                        const airline = availableAirlines.find(a => a.code === e.target.value)
+                        setManualArrivalData(prev => ({
+                          ...prev,
+                          airlineCode: e.target.value,
+                          airlineName: airline?.name || ''
+                        }))
+                      }}
+                    >
+                      <option value="">Select airline</option>
+                      {availableAirlines.map(airline => (
+                        <option key={airline.code} value={airline.code}>{airline.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="manualArrivalFlightNumber">Flight Number <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="manualArrivalFlightNumber"
+                        placeholder="e.g., 1234"
+                        value={manualArrivalData.flightNumber}
+                        onChange={(e) => setManualArrivalData(prev => ({
+                          ...prev,
+                          flightNumber: e.target.value.toUpperCase()
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="manualArrivalFlightTime">Arrival Time <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="manualArrivalFlightTime"
+                        placeholder="HH:MM (e.g., 14:30)"
+                        value={manualArrivalData.flightTime}
+                        onChange={(e) => setManualArrivalData(prev => ({
+                          ...prev,
+                          flightTime: e.target.value
+                        }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="manualArrivalOrigin">Origin <span className="required">*</span></label>
+                    <select
+                      id="manualArrivalOrigin"
+                      value={manualArrivalData.originCode}
+                      onChange={(e) => {
+                        const origin = availableDestinations.find(d => d.code === e.target.value)
+                        setManualArrivalData(prev => ({
+                          ...prev,
+                          originCode: e.target.value,
+                          originName: origin?.name || ''
+                        }))
+                      }}
+                    >
+                      <option value="">Select origin</option>
+                      {availableDestinations.map(dest => (
+                        <option key={dest.code} value={dest.code}>{dest.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <p className="manual-entry-note">
+                    Manual entries are subject to verification. We'll contact you if there are any issues with your booking.
+                  </p>
                 </div>
               )}
 
@@ -2053,6 +2554,10 @@ function Bookings() {
                   pricingInfo={pricingInfo}
                   onPaymentSuccess={handlePaymentSuccess}
                   onPaymentError={handlePaymentError}
+                  departureTimeOverride={departureTimeOverride}
+                  arrivalTimeOverride={arrivalTimeOverride}
+                  manualDepartureData={showManualDeparture ? manualDepartureData : null}
+                  manualArrivalData={showManualArrival ? manualArrivalData : null}
                 />
               ) : (
                 <div className="terms-required">

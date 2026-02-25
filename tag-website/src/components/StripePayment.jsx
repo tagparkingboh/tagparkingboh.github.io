@@ -227,6 +227,11 @@ function StripePayment({
   pricingInfo,
   onPaymentSuccess,
   onPaymentError,
+  // Manual entry and time override props
+  departureTimeOverride = '',
+  arrivalTimeOverride = '',
+  manualDepartureData = null,
+  manualArrivalData = null,
 }) {
   const [clientSecret, setClientSecret] = useState('')
   const [bookingReference, setBookingReference] = useState('')
@@ -280,8 +285,8 @@ function StripePayment({
         colour: formData.colour,
         // Package
         package: formData.package,
-        // Flight details
-        flight_number: selectedFlight?.flightNumber || formData.dropoffFlight?.split('|')[1] || 'Unknown',
+        // Flight details - use manual entry data if available
+        flight_number: manualDepartureData?.flightNumber || selectedFlight?.flightNumber || formData.dropoffFlight?.split('|')[1] || 'Unknown',
         flight_date: formatDateLocal(formData.dropoffDate),
         drop_off_date: formatDateLocal(formData.dropoffDate),
         pickup_date: (() => {
@@ -293,15 +298,34 @@ function StripePayment({
           }
           return formatDateLocal(formData.pickupDate)
         })(),
-        drop_off_slot: formData.dropoffSlot || null,
-        departure_id: selectedFlight?.id || null,
+        drop_off_slot: manualDepartureData ? null : (formData.dropoffSlot || null),
+        departure_id: manualDepartureData ? null : (selectedFlight?.id || null),
         // Return flight details
-        arrival_id: selectedArrivalFlight?.id || null,
-        pickup_flight_time: selectedArrivalFlight?.time || null,
-        pickup_flight_number: selectedArrivalFlight?.flightNumber || null,
-        pickup_origin: selectedArrivalFlight?.originName || null,
+        arrival_id: manualArrivalData ? null : (selectedArrivalFlight?.id || null),
+        pickup_flight_time: manualArrivalData?.flightTime || selectedArrivalFlight?.time || null,
+        pickup_flight_number: manualArrivalData?.flightNumber || selectedArrivalFlight?.flightNumber || null,
+        pickup_origin: manualArrivalData?.originName || selectedArrivalFlight?.originName || null,
         // Promo code (if applied)
         promo_code: promoCode || null,
+        // Manual entry and time override fields
+        // Only flag as override if time actually differs from scheduled
+        dropoff_time_override: !!departureTimeOverride && departureTimeOverride !== (selectedFlight?.time || ''),
+        dropoff_scheduled_time: (!!departureTimeOverride && departureTimeOverride !== (selectedFlight?.time || '')) ? (selectedFlight?.time || null) : null,
+        dropoff_customer_time: (!!departureTimeOverride && departureTimeOverride !== (selectedFlight?.time || '')) ? departureTimeOverride : null,
+        dropoff_manual_entry: !!manualDepartureData,
+        dropoff_airline_code: manualDepartureData?.airlineCode || null,
+        dropoff_airline_name: manualDepartureData?.airlineName || null,
+        dropoff_destination_code: manualDepartureData?.destinationCode || null,
+        dropoff_destination_name: manualDepartureData?.destinationName || null,
+        dropoff_flight_time: manualDepartureData?.flightTime || null,
+        pickup_time_override: !!arrivalTimeOverride && arrivalTimeOverride !== (selectedArrivalFlight?.time || ''),
+        pickup_scheduled_time: (!!arrivalTimeOverride && arrivalTimeOverride !== (selectedArrivalFlight?.time || '')) ? (selectedArrivalFlight?.time || null) : null,
+        pickup_customer_time: (!!arrivalTimeOverride && arrivalTimeOverride !== (selectedArrivalFlight?.time || '')) ? arrivalTimeOverride : null,
+        pickup_manual_entry: !!manualArrivalData,
+        pickup_airline_code: manualArrivalData?.airlineCode || null,
+        pickup_airline_name: manualArrivalData?.airlineName || null,
+        pickup_origin_code: manualArrivalData?.originCode || null,
+        pickup_origin_name: manualArrivalData?.originName || null,
       }),
     })
 
