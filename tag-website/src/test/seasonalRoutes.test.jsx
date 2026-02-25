@@ -344,26 +344,49 @@ describe('Seasonal Route Handling', () => {
     })
   })
 
-  describe('Return Flight Best Match Logic', () => {
-    it('should select best matching return flight by flight number proximity', () => {
+  describe('Return Flight Matching Logic', () => {
+    it('should return all matching flights for same airline and destination', () => {
       const arrivals = [
-        { flightNumber: '8880', originCode: 'EDI' },
-        { flightNumber: '8889', originCode: 'EDI' }, // Should be selected (closest to 8888)
-        { flightNumber: '8900', originCode: 'EDI' },
+        { flightNumber: '8880', originCode: 'EDI', airlineName: 'Ryanair' },
+        { flightNumber: '8889', originCode: 'EDI', airlineName: 'Ryanair' },
+        { flightNumber: '8900', originCode: 'EDI', airlineName: 'Ryanair' },
+        { flightNumber: '1234', originCode: 'AGP', airlineName: 'Ryanair' }, // Different origin
+        { flightNumber: '5678', originCode: 'EDI', airlineName: 'easyJet' }, // Different airline
       ]
 
-      const departureFlightNumber = '8888'
-      const departureNumeric = parseInt(departureFlightNumber)
+      const selectedAirline = 'Ryanair'
+      const selectedDestination = 'EDI'
 
-      // Score by flight number proximity
-      const scored = arrivals.map(f => ({
-        ...f,
-        score: Math.abs(parseInt(f.flightNumber) - departureNumeric),
-      }))
+      // Filter by same airline and origin matching departure destination
+      const matchingFlights = arrivals.filter(f =>
+        f.airlineName === selectedAirline &&
+        f.originCode === selectedDestination
+      )
 
-      scored.sort((a, b) => a.score - b.score)
+      // All 3 EDI Ryanair flights should be returned
+      expect(matchingFlights.length).toBe(3)
+      expect(matchingFlights.map(f => f.flightNumber)).toEqual(['8880', '8889', '8900'])
+    })
 
-      expect(scored[0].flightNumber).toBe('8889') // Closest match (1 away vs 8 away)
+    it('should show multiple return flights when 2 departures exist for same airline/destination', () => {
+      // Scenario: 2 Ryanair flights from AGP on the same return date
+      const arrivals = [
+        { flightNumber: '5945', originCode: 'AGP', airlineName: 'Ryanair', time: '07:40' },
+        { flightNumber: '5954', originCode: 'AGP', airlineName: 'Ryanair', time: '15:25' },
+      ]
+
+      const selectedAirline = 'Ryanair'
+      const selectedDestination = 'AGP'
+
+      const matchingFlights = arrivals.filter(f =>
+        f.airlineName === selectedAirline &&
+        f.originCode === selectedDestination
+      )
+
+      // Both flights should be available for user to choose
+      expect(matchingFlights.length).toBe(2)
+      expect(matchingFlights[0].time).toBe('07:40')
+      expect(matchingFlights[1].time).toBe('15:25')
     })
   })
 })
