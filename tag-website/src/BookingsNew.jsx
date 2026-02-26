@@ -2317,7 +2317,7 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.pickupDate && arrivalFlightsForPickup.length === 0 && !showManualArrival && (
+              {formData.pickupDate && (formData.dropoffSlot || manualDepartureData.dropoffSlot) && arrivalFlightsForPickup.length === 0 && !showManualArrival && (
                 <div className="form-group fade-in">
                   <div className="fully-booked-banner">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
