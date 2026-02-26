@@ -524,17 +524,22 @@ function Bookings() {
 
   // Filter arrivals by airline and destination, then find the best matching return flight
   const filteredArrivalsForDate = useMemo(() => {
-    if (!formData.dropoffAirline || !selectedDropoffFlight) return []
+    // For normal departures, use selectedDropoffFlight
+    // For manual departures, use manualDepartureData
+    const airlineName = showManualDeparture ? manualDepartureData.airlineName : formData.dropoffAirline
+    const destinationCode = showManualDeparture ? manualDepartureData.destinationCode : selectedDropoffFlight?.destinationCode
+
+    if (!airlineName || !destinationCode) return []
 
     // Filter by same airline (normalized) and origin matching the departure destination
     const matchingFlights = arrivalsForDate.filter(f =>
-      normalizeAirlineName(f.airlineName) === formData.dropoffAirline &&
-      f.originCode === selectedDropoffFlight.destinationCode
+      normalizeAirlineName(f.airlineName) === normalizeAirlineName(airlineName) &&
+      f.originCode === destinationCode
     )
 
     // Return all matching flights (same airline, same origin)
     return matchingFlights
-  }, [arrivalsForDate, formData.dropoffAirline, selectedDropoffFlight])
+  }, [arrivalsForDate, formData.dropoffAirline, selectedDropoffFlight, showManualDeparture, manualDepartureData.airlineName, manualDepartureData.destinationCode])
 
   // Get arrival flights for pickup with display details (filtered by airline and destination)
   const arrivalFlightsForPickup = useMemo(() => {
