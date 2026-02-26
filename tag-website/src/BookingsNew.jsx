@@ -362,13 +362,19 @@ function Bookings() {
         displayDestination = `${cityName}, ${countryName}`
       }
 
+      const flightKey = `${f.time}|${f.destinationCode}`
+
+      // Use overridden time for the currently selected flight
+      const isSelected = formData.dropoffFlight === flightKey
+      const displayTime = (isSelected && departureTimeOverride) ? departureTimeOverride : f.time
+
       return {
         ...f,
-        flightKey: `${f.time}|${f.destinationCode}`,
-        displayText: `${f.time} ${f.airlineCode}${f.flightNumber} → ${displayDestination}`
+        flightKey,
+        displayText: `${displayTime} ${f.airlineCode}${f.flightNumber} → ${displayDestination}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
-  }, [flightsForAirline])
+  }, [flightsForAirline, departureTimeOverride, formData.dropoffFlight])
 
   // Get selected flight details
   const selectedDropoffFlight = useMemo(() => {
