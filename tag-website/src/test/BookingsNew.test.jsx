@@ -1788,3 +1788,442 @@ describe('BookingsNew - Manual Departure Integration', () => {
     expect(isManualDepartureComplete(showManualDeparture, data)).toBe(false)
   })
 })
+
+// =============================================================================
+// Mixed Departure/Return Scenario Tests
+// =============================================================================
+
+describe('BookingsNew - Mixed Departure and Return Scenarios', () => {
+  // Helper to normalize airline names (mirrors BookingsNew.jsx logic)
+  const normalizeAirlineName = (name) => {
+    if (!name) return ''
+    // Normalize Ryanair variants
+    if (name.toLowerCase().includes('ryanair')) return 'Ryanair'
+    return name
+  }
+
+  // Helper to filter arrivals based on departure info (mirrors filteredArrivalsForDate)
+  const filterArrivalsForReturn = (arrivalsForDate, showManualDeparture, manualDepartureData, formData, selectedDropoffFlight) => {
+    const airlineName = showManualDeparture ? manualDepartureData.airlineName : formData.dropoffAirline
+    const destinationCode = showManualDeparture ? manualDepartureData.destinationCode : selectedDropoffFlight?.destinationCode
+
+    if (!airlineName || !destinationCode) return []
+
+    return arrivalsForDate.filter(f =>
+      normalizeAirlineName(f.airlineName) === normalizeAirlineName(airlineName) &&
+      f.originCode === destinationCode
+    )
+  }
+
+  // Helper to check if return flight section should show
+  const shouldShowReturnSection = (formData, manualDepartureData) => {
+    return !!(formData.dropoffSlot || manualDepartureData.dropoffSlot)
+  }
+
+  // Mock arrival flights from database
+  const mockArrivals = [
+    { id: 101, airlineName: 'Ryanair', originCode: 'FAO', originName: 'Faro, PT', time: '18:00', flightNumber: '1235' },
+    { id: 102, airlineName: 'Ryanair', originCode: 'FAO', originName: 'Faro, PT', time: '22:30', flightNumber: '1237' },
+    { id: 103, airlineName: 'Ryanair', originCode: 'AGP', originName: 'Malaga, ES', time: '19:00', flightNumber: '2235' },
+    { id: 104, airlineName: 'Ryanair UK', originCode: 'EDI', originName: 'Edinburgh, GB', time: '20:00', flightNumber: '3001' },
+    { id: 105, airlineName: 'easyJet', originCode: 'FAO', originName: 'Faro, PT', time: '17:00', flightNumber: '8001' },
+    { id: 106, airlineName: 'TUI Airways', originCode: 'PMI', originName: 'Palma de Mallorca, ES', time: '21:00', flightNumber: '6001' }
+  ]
+
+  describe('Normal Departure + Normal Return', () => {
+    it('filters return flights by airline and destination', () => {
+      const formData = { dropoffAirline: 'Ryanair', dropoffSlot: '165' }
+      const selectedDropoffFlight = { destinationCode: 'FAO' }
+      const manualDepartureData = { dropoffSlot: '' }
+
+      const filtered = filterArrivalsForReturn(mockArrivals, false, manualDepartureData, formData, selectedDropoffFlight)
+
+      expect(filtered).toHaveLength(2)
+      expect(filtered[0].flightNumber).toBe('1235')
+      expect(filtered[1].flightNumber).toBe('1237')
+    })
+
+    it('shows return section when dropoff slot is selected', () => {
+      const formData = { dropoffSlot: '165' }
+      const manualDepartureData = { dropoffSlot: '' }
+
+      expect(shouldShowReturnSection(formData, manualDepartureData)).toBe(true)
+    })
+
+    it('does not show return section without dropoff slot', () => {
+      const formData = { dropoffSlot: '' }
+      const manualDepartureData = { dropoffSlot: '' }
+
+      expect(shouldShowReturnSection(formData, manualDepartureData)).toBe(false)
+    })
+  })
+
+  describe('Manual Departure + Normal Return', () => {
+    it('filters return flights based on manual departure airline and destination', () => {
+      const formData = { dropoffAirline: '', dropoffSlot: '' }
+      const selectedDropoffFlight = null
+      const manualDepartureData = {
+        airlineCode: 'RK',
+        airlineName: 'Ryanair UK',
+        destinationCode: 'EDI',
+        dropoffSlot: '165'
+      }
+
+      const filtered = filterArrivalsForReturn(mockArrivals, true, manualDepartureData, formData, selectedDropoffFlight)
+
+      expect(filtered).toHaveLength(1)
+      expect(filtered[0].flightNumber).toBe('3001')
+      expect(filtered[0].originCode).toBe('EDI')
+    })
+
+    it('shows return section when manual departure slot is selected', () => {
+      const formData = { dropoffSlot: '' }
+      const manualDepartureData = { dropoffSlot: '165' }
+
+      expect(shouldShowReturnSection(formData, manualDepartureData)).toBe(true)
+    })
+
+    it('normalizes Ryanair UK to match Ryanair arrivals', () => {
+      const formData = { dropoffAirline: '', dropoffSlot: '' }
+      const selectedDropoffFlight = null
+      const manualDepartureData = {
+        airlineName: 'Ryanair UK',
+        destinationCode: 'FAO',
+        dropoffSlot: '165'
+      }
+
+      const filtered = filterArrivalsForReturn(mockArrivals, true, manualDepartureData, formData, selectedDropoffFlight)
+
+      // Should match both Ryanair flights from FAO
+      expect(filtered).toHaveLength(2)
+    })
+
+    it('returns empty when manual departure destination has no matching arrivals', () => {
+      const formData = { dropoffAirline: '', dropoffSlot: '' }
+      const selectedDropoffFlight = null
+      const manualDepartureData = {
+        airlineName: 'Ryanair',
+        destinationCode: 'TFS', // Tenerife - no arrivals in mock data
+        dropoffSlot: '165'
+      }
+
+      const filtered = filterArrivalsForReturn(mockArrivals, true, manualDepartureData, formData, selectedDropoffFlight)
+
+      expect(filtered).toHaveLength(0)
+    })
+  })
+
+  describe('Normal Departure + Manual Return', () => {
+    it('allows manual return when normal departure is complete', () => {
+      // This scenario: user selects flight from DB, but return flight not in DB
+      const formData = { dropoffAirline: 'TUI Airways', dropoffSlot: '165' }
+      const selectedDropoffFlight = { destinationCode: 'PMI' }
+      const manualDepartureData = { dropoffSlot: '' }
+
+      // Filter returns only TUI from PMI
+      const filtered = filterArrivalsForReturn(mockArrivals, false, manualDepartureData, formData, selectedDropoffFlight)
+      expect(filtered).toHaveLength(1)
+
+      // If user's return flight isn't in list, they can enter manually
+      // (validated by isManualArrivalComplete in actual component)
+    })
+  })
+
+  describe('Return Flight Filtering Edge Cases', () => {
+    it('returns empty when airline is missing', () => {
+      const formData = { dropoffAirline: '', dropoffSlot: '165' }
+      const selectedDropoffFlight = { destinationCode: 'FAO' }
+      const manualDepartureData = { airlineName: '', destinationCode: '', dropoffSlot: '' }
+
+      const filtered = filterArrivalsForReturn(mockArrivals, false, manualDepartureData, formData, selectedDropoffFlight)
+
+      expect(filtered).toHaveLength(0)
+    })
+
+    it('returns empty when destination is missing', () => {
+      const formData = { dropoffAirline: 'Ryanair', dropoffSlot: '165' }
+      const selectedDropoffFlight = null // No destination
+      const manualDepartureData = { dropoffSlot: '' }
+
+      const filtered = filterArrivalsForReturn(mockArrivals, false, manualDepartureData, formData, selectedDropoffFlight)
+
+      expect(filtered).toHaveLength(0)
+    })
+
+    it('returns empty when manual departure airline is missing', () => {
+      const formData = { dropoffAirline: '', dropoffSlot: '' }
+      const selectedDropoffFlight = null
+      const manualDepartureData = {
+        airlineName: '',
+        destinationCode: 'FAO',
+        dropoffSlot: '165'
+      }
+
+      const filtered = filterArrivalsForReturn(mockArrivals, true, manualDepartureData, formData, selectedDropoffFlight)
+
+      expect(filtered).toHaveLength(0)
+    })
+
+    it('returns empty when manual departure destination is missing', () => {
+      const formData = { dropoffAirline: '', dropoffSlot: '' }
+      const selectedDropoffFlight = null
+      const manualDepartureData = {
+        airlineName: 'Ryanair',
+        destinationCode: '',
+        dropoffSlot: '165'
+      }
+
+      const filtered = filterArrivalsForReturn(mockArrivals, true, manualDepartureData, formData, selectedDropoffFlight)
+
+      expect(filtered).toHaveLength(0)
+    })
+  })
+})
+
+// =============================================================================
+// Return Flight with Time Override Tests
+// =============================================================================
+
+describe('BookingsNew - Return Flight Time Override', () => {
+  const isValidTimeFormat = (timeStr) => {
+    if (!timeStr) return false
+    return /^\d{1,2}:\d{2}$/.test(timeStr)
+  }
+
+  // Helper to check if arrival time override should be available
+  const canOverrideArrivalTime = (formData, selectedArrivalFlight, showArrivalTimeOverride, showManualArrival) => {
+    return !!(formData.pickupFlightTime && selectedArrivalFlight && !showArrivalTimeOverride && !showManualArrival)
+  }
+
+  // Helper to validate arrival time override
+  const isArrivalTimeOverrideValid = (arrivalTimeOverride, selectedArrivalFlight) => {
+    if (!isValidTimeFormat(arrivalTimeOverride)) return false
+    // Additional validation could include checking time is different from scheduled
+    return true
+  }
+
+  describe('Normal Departure + Normal Return with Time Override', () => {
+    it('allows time override when return flight is selected from DB', () => {
+      const formData = { dropoffSlot: '165', pickupFlightTime: '18:00|1235' }
+      const selectedArrivalFlight = { time: '18:00', flightNumber: '1235' }
+
+      expect(canOverrideArrivalTime(formData, selectedArrivalFlight, false, false)).toBe(true)
+    })
+
+    it('does not show override option when override form is already open', () => {
+      const formData = { dropoffSlot: '165', pickupFlightTime: '18:00|1235' }
+      const selectedArrivalFlight = { time: '18:00', flightNumber: '1235' }
+
+      expect(canOverrideArrivalTime(formData, selectedArrivalFlight, true, false)).toBe(false)
+    })
+
+    it('does not show override option when manual arrival is active', () => {
+      const formData = { dropoffSlot: '165', pickupFlightTime: '18:00|1235' }
+      const selectedArrivalFlight = { time: '18:00', flightNumber: '1235' }
+
+      expect(canOverrideArrivalTime(formData, selectedArrivalFlight, false, true)).toBe(false)
+    })
+
+    it('validates arrival time override format', () => {
+      const selectedArrivalFlight = { time: '18:00' }
+
+      expect(isArrivalTimeOverrideValid('19:30', selectedArrivalFlight)).toBe(true)
+      expect(isArrivalTimeOverrideValid('7:00', selectedArrivalFlight)).toBe(true)
+      expect(isArrivalTimeOverrideValid('invalid', selectedArrivalFlight)).toBe(false)
+      expect(isArrivalTimeOverrideValid('', selectedArrivalFlight)).toBe(false)
+    })
+  })
+
+  describe('Manual Departure + Normal Return with Time Override', () => {
+    it('allows time override for return flight after manual departure', () => {
+      // Manual departure complete, return flight selected from DB
+      const formData = { dropoffSlot: '', pickupFlightTime: '20:00|3001' }
+      const manualDepartureData = { dropoffSlot: '165' }
+      const selectedArrivalFlight = { time: '20:00', flightNumber: '3001' }
+
+      // Return section shows because manual departure slot is set
+      expect(!!(formData.dropoffSlot || manualDepartureData.dropoffSlot)).toBe(true)
+
+      // Time override available because return flight selected
+      expect(canOverrideArrivalTime(formData, selectedArrivalFlight, false, false)).toBe(true)
+    })
+  })
+})
+
+// =============================================================================
+// Step 2 Completion - All Scenarios
+// =============================================================================
+
+describe('BookingsNew - Step 2 Completion All Scenarios', () => {
+  const isValidTimeFormat = (timeStr) => {
+    if (!timeStr) return false
+    return /^\d{1,2}:\d{2}$/.test(timeStr)
+  }
+
+  // Mirrors isStep2Complete logic from BookingsNew.jsx
+  const isStep2Complete = (formData, showManualDeparture, manualDepartureData, showManualArrival, manualArrivalData) => {
+    const isManualDepartureComplete = !!(showManualDeparture &&
+      manualDepartureData.airlineCode &&
+      isValidTimeFormat(manualDepartureData.flightTime) &&
+      manualDepartureData.destinationCode &&
+      manualDepartureData.dropoffSlot)
+
+    const isManualArrivalComplete = !!(showManualArrival &&
+      manualArrivalData.airlineCode &&
+      isValidTimeFormat(manualArrivalData.flightTime) &&
+      manualArrivalData.originCode)
+
+    const isNormalDepartureComplete = !!(!showManualDeparture && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot)
+    const isDepartureComplete = isNormalDepartureComplete || isManualDepartureComplete
+
+    const isNormalArrivalComplete = !!(!showManualArrival && formData.pickupFlightTime)
+    const isArrivalComplete = isNormalArrivalComplete || isManualArrivalComplete
+
+    return !!(formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete)
+  }
+
+  describe('All Valid Combinations', () => {
+    const baseFormData = {
+      dropoffDate: new Date('2026-03-15'),
+      pickupDate: new Date('2026-03-22')
+    }
+
+    it('Normal Departure + Normal Return', () => {
+      const formData = {
+        ...baseFormData,
+        dropoffAirline: 'Ryanair',
+        dropoffFlight: '14:30|FAO',
+        dropoffSlot: '165',
+        pickupFlightTime: '18:00|1235'
+      }
+
+      expect(isStep2Complete(formData, false, {}, false, {})).toBe(true)
+    })
+
+    it('Normal Departure + Manual Return', () => {
+      const formData = {
+        ...baseFormData,
+        dropoffAirline: 'Ryanair',
+        dropoffFlight: '14:30|FAO',
+        dropoffSlot: '165',
+        pickupFlightTime: ''
+      }
+      const manualArrivalData = {
+        airlineCode: 'FR',
+        flightTime: '18:00',
+        originCode: 'FAO'
+      }
+
+      expect(isStep2Complete(formData, false, {}, true, manualArrivalData)).toBe(true)
+    })
+
+    it('Manual Departure + Normal Return', () => {
+      const formData = {
+        ...baseFormData,
+        dropoffAirline: '',
+        dropoffFlight: '',
+        dropoffSlot: '',
+        pickupFlightTime: '18:00|1235'
+      }
+      const manualDepartureData = {
+        airlineCode: 'FR',
+        flightTime: '14:30',
+        destinationCode: 'FAO',
+        dropoffSlot: '165'
+      }
+
+      expect(isStep2Complete(formData, true, manualDepartureData, false, {})).toBe(true)
+    })
+
+    it('Manual Departure + Manual Return', () => {
+      const formData = {
+        ...baseFormData,
+        dropoffAirline: '',
+        dropoffFlight: '',
+        dropoffSlot: '',
+        pickupFlightTime: ''
+      }
+      const manualDepartureData = {
+        airlineCode: 'FR',
+        flightTime: '14:30',
+        destinationCode: 'FAO',
+        dropoffSlot: '165'
+      }
+      const manualArrivalData = {
+        airlineCode: 'FR',
+        flightTime: '18:00',
+        originCode: 'FAO'
+      }
+
+      expect(isStep2Complete(formData, true, manualDepartureData, true, manualArrivalData)).toBe(true)
+    })
+  })
+
+  describe('Incomplete Scenarios', () => {
+    const baseFormData = {
+      dropoffDate: new Date('2026-03-15'),
+      pickupDate: new Date('2026-03-22')
+    }
+
+    it('fails: Manual Departure without slot + Normal Return', () => {
+      const formData = {
+        ...baseFormData,
+        dropoffAirline: '',
+        dropoffFlight: '',
+        dropoffSlot: '',
+        pickupFlightTime: '18:00|1235'
+      }
+      const manualDepartureData = {
+        airlineCode: 'FR',
+        flightTime: '14:30',
+        destinationCode: 'FAO',
+        dropoffSlot: '' // Missing slot
+      }
+
+      expect(isStep2Complete(formData, true, manualDepartureData, false, {})).toBe(false)
+    })
+
+    it('fails: Normal Departure + Manual Return without origin', () => {
+      const formData = {
+        ...baseFormData,
+        dropoffAirline: 'Ryanair',
+        dropoffFlight: '14:30|FAO',
+        dropoffSlot: '165',
+        pickupFlightTime: ''
+      }
+      const manualArrivalData = {
+        airlineCode: 'FR',
+        flightTime: '18:00',
+        originCode: '' // Missing origin
+      }
+
+      expect(isStep2Complete(formData, false, {}, true, manualArrivalData)).toBe(false)
+    })
+
+    it('fails: Missing dropoff date', () => {
+      const formData = {
+        dropoffDate: null,
+        pickupDate: new Date('2026-03-22'),
+        dropoffAirline: 'Ryanair',
+        dropoffFlight: '14:30|FAO',
+        dropoffSlot: '165',
+        pickupFlightTime: '18:00|1235'
+      }
+
+      expect(isStep2Complete(formData, false, {}, false, {})).toBe(false)
+    })
+
+    it('fails: Missing pickup date', () => {
+      const formData = {
+        dropoffDate: new Date('2026-03-15'),
+        pickupDate: null,
+        dropoffAirline: 'Ryanair',
+        dropoffFlight: '14:30|FAO',
+        dropoffSlot: '165',
+        pickupFlightTime: '18:00|1235'
+      }
+
+      expect(isStep2Complete(formData, false, {}, false, {})).toBe(false)
+    })
+  })
+})
