@@ -114,12 +114,12 @@ function Bookings() {
   const [promoCodeDiscount, setPromoCodeDiscount] = useState(() => loadBookingState('promoCodeDiscount', 0))
 
   // Manual flight entry and time override state
-  const [showDepartureTimeOverride, setShowDepartureTimeOverride] = useState(loadBookingState('showDepartureTimeOverride', false))
-  const [departureTimeOverride, setDepartureTimeOverride] = useState(loadBookingState('departureTimeOverride', ''))
+  const [showDepartureTimeOverride, setShowDepartureTimeOverride] = useState(() => loadBookingState('showDepartureTimeOverride', false))
+  const [departureTimeOverride, setDepartureTimeOverride] = useState(() => loadBookingState('departureTimeOverride', ''))
   const [departureTimeValidating, setDepartureTimeValidating] = useState(false)
   const [departureTimeError, setDepartureTimeError] = useState('')
-  const [showArrivalTimeOverride, setShowArrivalTimeOverride] = useState(loadBookingState('showArrivalTimeOverride', false))
-  const [arrivalTimeOverride, setArrivalTimeOverride] = useState(loadBookingState('arrivalTimeOverride', ''))
+  const [showArrivalTimeOverride, setShowArrivalTimeOverride] = useState(() => loadBookingState('showArrivalTimeOverride', false))
+  const [arrivalTimeOverride, setArrivalTimeOverride] = useState(() => loadBookingState('arrivalTimeOverride', ''))
   const [arrivalTimeValidating, setArrivalTimeValidating] = useState(false)
   const [arrivalTimeError, setArrivalTimeError] = useState('')
   const [showManualDeparture, setShowManualDeparture] = useState(false)
@@ -1893,7 +1893,8 @@ function Bookings() {
                           airlineCode: '',
                           airlineName: '',
                           destinationCode: '',
-                          destinationName: ''
+                          destinationName: '',
+                          dropoffSlot: ''
                         })
                       }}
                     >
