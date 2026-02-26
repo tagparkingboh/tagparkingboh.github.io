@@ -414,28 +414,6 @@ function Bookings() {
     return slots
   }, [selectedDropoffFlight, isCallUsOnly])
 
-  // Calculate drop-off slots for manual departure entries
-  const manualDropoffSlots = useMemo(() => {
-    if (!showManualDeparture) return []
-    if (!isValidTimeFormat(manualDepartureData.flightTime)) return []
-
-    const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
-    const departureMinutes = hours * 60 + minutes
-
-    return [
-      {
-        id: '165',
-        label: '2¾ hours before',
-        time: formatMinutesToTime(departureMinutes - 165)
-      },
-      {
-        id: '120',
-        label: '2 hours before',
-        time: formatMinutesToTime(departureMinutes - 120)
-      }
-    ]
-  }, [showManualDeparture, manualDepartureData.flightTime])
-
   // Check if flight is fully booked (all slots taken) or Call Us only
   const isFlightFullyBooked = useMemo(() => {
     if (!selectedDropoffFlight) return false
