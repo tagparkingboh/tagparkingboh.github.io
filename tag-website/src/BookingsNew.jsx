@@ -559,14 +559,20 @@ function Bookings() {
         parseInt(f.departureTime.split(':')[0]) >= 18 &&
         parseInt(f.time.split(':')[0]) < 6
 
+      const flightKey = `${f.time}|${f.flightNumber}`
+
+      // Use overridden time for the currently selected flight
+      const isSelected = formData.pickupFlightTime === flightKey
+      const displayTime = (isSelected && arrivalTimeOverride) ? arrivalTimeOverride : f.time
+
       return {
         ...f,
-        flightKey: `${f.time}|${f.flightNumber}`,
+        flightKey,
         isOvernight,
-        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${f.time}${isOvernight ? ' +1' : ''}`
+        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${displayTime}${isOvernight ? ' +1' : ''}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
-  }, [filteredArrivalsForDate])
+  }, [filteredArrivalsForDate, arrivalTimeOverride, formData.pickupFlightTime])
 
   // Clear pickupFlightTime when arrival flights change and current selection is invalid
   // Guard: wait until both departures and arrivals have loaded to avoid race condition
@@ -2483,11 +2489,12 @@ function Bookings() {
                   <span>
                     {formatDisplayDate(actualPickupDate || formData.pickupDate)}
                     {formData.pickupFlightTime && (() => {
-                      // pickupFlightTime is a flightKey in format "time|destinationCode"
-                      const flightTime = formData.pickupFlightTime.split('|')[0]
+                      // pickupFlightTime is a flightKey in format "time|flightNumber"
+                      // Use overridden time if set, otherwise use original flight time
+                      const flightTime = arrivalTimeOverride || formData.pickupFlightTime.split('|')[0]
                       const [hours, minutes] = flightTime.split(':').map(Number)
                       const landingMinutes = hours * 60 + minutes
-                      const pickupTime = formatMinutesToTime(landingMinutes + 45)
+                      const pickupTime = formatMinutesToTime(landingMinutes + 30)
                       return <> from {pickupTime}</>
                     })()}
                   </span>
