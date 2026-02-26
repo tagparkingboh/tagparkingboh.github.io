@@ -1792,7 +1792,6 @@ function Bookings() {
                   calendarClassName="fixed-height-calendar"
                   onFocus={(e) => e.target.readOnly = true}
                 />
-                <p className="date-info">Online bookings available from 16th February 2026</p>
               </div>
 
               {formData.dropoffDate && loadingFlights && (
