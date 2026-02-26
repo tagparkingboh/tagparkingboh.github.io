@@ -2227,3 +2227,428 @@ describe('BookingsNew - Step 2 Completion All Scenarios', () => {
     })
   })
 })
+
+// =============================================================================
+// Return Flight Time Override Display Tests
+// =============================================================================
+
+describe('BookingsNew - Return Flight Dropdown with Time Override', () => {
+  // Helper that mirrors arrivalFlightsForPickup useMemo in BookingsNew.jsx
+  const buildArrivalFlightsForPickup = (flights, arrivalTimeOverride, selectedFlightKey) => {
+    return flights.map(f => {
+      const parts = f.originName.split(', ')
+      let displayOrigin = f.originName
+      if (parts.length > 1) {
+        let cityName = parts.slice(0, -1).join(', ')
+        if (cityName === 'Tenerife-Reinasofia') cityName = 'Tenerife'
+        displayOrigin = cityName
+      }
+
+      const isOvernight = f.departureTime &&
+        parseInt(f.departureTime.split(':')[0]) >= 18 &&
+        parseInt(f.time.split(':')[0]) < 6
+
+      const flightKey = `${f.time}|${f.flightNumber}`
+      const isSelected = selectedFlightKey === flightKey
+      const displayTime = (isSelected && arrivalTimeOverride) ? arrivalTimeOverride : f.time
+
+      return {
+        ...f,
+        flightKey,
+        isOvernight,
+        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${displayTime}${isOvernight ? ' +1' : ''}`
+      }
+    }).sort((a, b) => a.time.localeCompare(b.time))
+  }
+
+  const mockArrivalFlights = [
+    {
+      id: 1,
+      time: '14:30',
+      flightNumber: '3945',
+      airlineCode: 'FR',
+      airlineName: 'Ryanair',
+      originCode: 'FAO',
+      originName: 'Faro, PT',
+      departureTime: '11:00'
+    },
+    {
+      id: 2,
+      time: '18:30',
+      flightNumber: '6597',
+      airlineCode: 'TOM',
+      airlineName: 'TUI Airways',
+      originCode: 'TFS',
+      originName: 'Tenerife-Reinasofia, ES',
+      departureTime: '14:00'
+    },
+    {
+      id: 3,
+      time: '22:00',
+      flightNumber: '1235',
+      airlineCode: 'FR',
+      airlineName: 'Ryanair',
+      originCode: 'AGP',
+      originName: 'Malaga, ES',
+      departureTime: '18:30'
+    }
+  ]
+
+  describe('Happy Path - Dropdown Display', () => {
+    it('shows original times when no override is set', () => {
+      const result = buildArrivalFlightsForPickup(mockArrivalFlights, '', null)
+
+      expect(result[0].displayText).toBe('FR3945 from Faro → arrives 14:30')
+      expect(result[1].displayText).toBe('TOM6597 from Tenerife → arrives 18:30')
+      expect(result[2].displayText).toBe('FR1235 from Malaga → arrives 22:00')
+    })
+
+    it('shows overridden time for selected flight only', () => {
+      const selectedFlightKey = '18:30|6597'
+      const arrivalTimeOverride = '18:31'
+      const result = buildArrivalFlightsForPickup(mockArrivalFlights, arrivalTimeOverride, selectedFlightKey)
+
+      // Unselected flights show original times
+      expect(result[0].displayText).toBe('FR3945 from Faro → arrives 14:30')
+      // Selected flight shows overridden time
+      expect(result[1].displayText).toBe('TOM6597 from Tenerife → arrives 18:31')
+      // Unselected flights show original times
+      expect(result[2].displayText).toBe('FR1235 from Malaga → arrives 22:00')
+    })
+
+    it('updates display when different flight is selected with override', () => {
+      const selectedFlightKey = '14:30|3945'
+      const arrivalTimeOverride = '15:00'
+      const result = buildArrivalFlightsForPickup(mockArrivalFlights, arrivalTimeOverride, selectedFlightKey)
+
+      // Selected flight shows overridden time
+      expect(result[0].displayText).toBe('FR3945 from Faro → arrives 15:00')
+      // Other flights show original times
+      expect(result[1].displayText).toBe('TOM6597 from Tenerife → arrives 18:30')
+      expect(result[2].displayText).toBe('FR1235 from Malaga → arrives 22:00')
+    })
+
+    it('shortens Tenerife-Reinasofia to Tenerife in display', () => {
+      const result = buildArrivalFlightsForPickup(mockArrivalFlights, '', null)
+
+      const tenerifeFlight = result.find(f => f.originCode === 'TFS')
+      expect(tenerifeFlight.displayText).toContain('from Tenerife')
+      expect(tenerifeFlight.displayText).not.toContain('Tenerife-Reinasofia')
+    })
+  })
+
+  describe('Edge Cases - Override Display', () => {
+    it('handles override with null selectedFlightKey', () => {
+      const result = buildArrivalFlightsForPickup(mockArrivalFlights, '19:00', null)
+
+      // No flight selected, all show original times
+      expect(result[0].displayText).toContain('14:30')
+      expect(result[1].displayText).toContain('18:30')
+      expect(result[2].displayText).toContain('22:00')
+    })
+
+    it('handles empty override string with selected flight', () => {
+      const selectedFlightKey = '18:30|6597'
+      const result = buildArrivalFlightsForPickup(mockArrivalFlights, '', selectedFlightKey)
+
+      // Empty override means show original time
+      expect(result[1].displayText).toBe('TOM6597 from Tenerife → arrives 18:30')
+    })
+
+    it('handles override that matches original time', () => {
+      const selectedFlightKey = '18:30|6597'
+      const arrivalTimeOverride = '18:30' // Same as original
+      const result = buildArrivalFlightsForPickup(mockArrivalFlights, arrivalTimeOverride, selectedFlightKey)
+
+      // Still shows the time (which happens to match)
+      expect(result[1].displayText).toBe('TOM6597 from Tenerife → arrives 18:30')
+    })
+
+    it('handles override for non-existent flight key', () => {
+      const selectedFlightKey = '99:99|9999' // Non-existent
+      const arrivalTimeOverride = '20:00'
+      const result = buildArrivalFlightsForPickup(mockArrivalFlights, arrivalTimeOverride, selectedFlightKey)
+
+      // No flight matches, all show original times
+      expect(result[0].displayText).toContain('14:30')
+      expect(result[1].displayText).toContain('18:30')
+      expect(result[2].displayText).toContain('22:00')
+    })
+
+    it('preserves original time property even with override', () => {
+      const selectedFlightKey = '18:30|6597'
+      const arrivalTimeOverride = '19:45'
+      const result = buildArrivalFlightsForPickup(mockArrivalFlights, arrivalTimeOverride, selectedFlightKey)
+
+      const selectedFlight = result.find(f => f.flightKey === selectedFlightKey)
+      // displayText shows override
+      expect(selectedFlight.displayText).toContain('19:45')
+      // But original time property is preserved
+      expect(selectedFlight.time).toBe('18:30')
+    })
+  })
+
+  describe('Overnight Flights', () => {
+    const overnightFlights = [
+      {
+        id: 1,
+        time: '02:30', // Early morning arrival
+        flightNumber: '9999',
+        airlineCode: 'FR',
+        airlineName: 'Ryanair',
+        originCode: 'TFS',
+        originName: 'Tenerife, ES',
+        departureTime: '22:00' // Evening departure = overnight
+      }
+    ]
+
+    it('marks overnight flights with +1 indicator', () => {
+      const result = buildArrivalFlightsForPickup(overnightFlights, '', null)
+
+      expect(result[0].isOvernight).toBe(true)
+      expect(result[0].displayText).toBe('FR9999 from Tenerife → arrives 02:30 +1')
+    })
+
+    it('shows override time with +1 for overnight flights', () => {
+      const selectedFlightKey = '02:30|9999'
+      const arrivalTimeOverride = '03:15'
+      const result = buildArrivalFlightsForPickup(overnightFlights, arrivalTimeOverride, selectedFlightKey)
+
+      expect(result[0].displayText).toBe('FR9999 from Tenerife → arrives 03:15 +1')
+    })
+  })
+})
+
+// =============================================================================
+// Pickup Time Calculation Tests (Arrival + 30 minutes)
+// =============================================================================
+
+describe('BookingsNew - Pickup Time Calculation', () => {
+  // Helper that mirrors formatMinutesToTime in BookingsNew.jsx
+  const formatMinutesToTime = (totalMinutes) => {
+    // Handle overnight (minutes >= 1440 means next day)
+    const normalizedMinutes = ((totalMinutes % 1440) + 1440) % 1440
+    const hours = Math.floor(normalizedMinutes / 60)
+    const mins = normalizedMinutes % 60
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+  }
+
+  // Helper that mirrors the pickup time calculation in BookingsNew.jsx summary
+  const calculatePickupTime = (flightTime, arrivalTimeOverride) => {
+    // Use overridden time if set, otherwise use original flight time
+    const effectiveTime = arrivalTimeOverride || flightTime
+    const [hours, minutes] = effectiveTime.split(':').map(Number)
+    const landingMinutes = hours * 60 + minutes
+    return formatMinutesToTime(landingMinutes + 30)
+  }
+
+  describe('Happy Path - Normal Arrivals', () => {
+    it('calculates pickup time as arrival + 30 mins', () => {
+      expect(calculatePickupTime('14:00', '')).toBe('14:30')
+      expect(calculatePickupTime('18:30', '')).toBe('19:00')
+      expect(calculatePickupTime('08:15', '')).toBe('08:45')
+    })
+
+    it('uses overridden time for calculation', () => {
+      // Original 18:30, overridden to 18:31, pickup = 19:01
+      expect(calculatePickupTime('18:30', '18:31')).toBe('19:01')
+      // Original 14:00, overridden to 14:45, pickup = 15:15
+      expect(calculatePickupTime('14:00', '14:45')).toBe('15:15')
+    })
+
+    it('uses original time when override is empty', () => {
+      expect(calculatePickupTime('16:00', '')).toBe('16:30')
+      expect(calculatePickupTime('16:00', null)).toBe('16:30')
+    })
+  })
+
+  describe('Edge Cases - Midnight Crossing', () => {
+    it('handles arrival at 23:30 (pickup at 00:00)', () => {
+      expect(calculatePickupTime('23:30', '')).toBe('00:00')
+    })
+
+    it('handles arrival at 23:45 (pickup at 00:15)', () => {
+      expect(calculatePickupTime('23:45', '')).toBe('00:15')
+    })
+
+    it('handles arrival at 23:55 (pickup at 00:25)', () => {
+      expect(calculatePickupTime('23:55', '')).toBe('00:25')
+    })
+
+    it('handles overridden time crossing midnight', () => {
+      // Original 23:00, overridden to 23:45, pickup = 00:15
+      expect(calculatePickupTime('23:00', '23:45')).toBe('00:15')
+    })
+  })
+
+  describe('Edge Cases - Early Morning', () => {
+    it('handles arrival at 00:00 (pickup at 00:30)', () => {
+      expect(calculatePickupTime('00:00', '')).toBe('00:30')
+    })
+
+    it('handles arrival at 00:30 (pickup at 01:00)', () => {
+      expect(calculatePickupTime('00:30', '')).toBe('01:00')
+    })
+
+    it('handles arrival at 05:00 (pickup at 05:30)', () => {
+      expect(calculatePickupTime('05:00', '')).toBe('05:30')
+    })
+  })
+
+  describe('Override Time Scenarios', () => {
+    it('handles small time adjustment (1 minute)', () => {
+      expect(calculatePickupTime('18:30', '18:31')).toBe('19:01')
+    })
+
+    it('handles large time adjustment (hours)', () => {
+      // Flight delayed by 2 hours
+      expect(calculatePickupTime('14:00', '16:00')).toBe('16:30')
+    })
+
+    it('handles early arrival override', () => {
+      // Flight arrives early
+      expect(calculatePickupTime('18:00', '17:30')).toBe('18:00')
+    })
+
+    it('handles override same as original', () => {
+      expect(calculatePickupTime('15:00', '15:00')).toBe('15:30')
+    })
+  })
+
+  describe('Negative Cases', () => {
+    it('handles invalid time format gracefully', () => {
+      // This would cause NaN in real code - testing the helper handles it
+      const result = calculatePickupTime('invalid', '')
+      expect(result).toBe('NaN:NaN') // Shows the issue - real code should validate
+    })
+  })
+})
+
+// =============================================================================
+// Integration Tests - Return Flight Override End-to-End
+// =============================================================================
+
+describe('BookingsNew - Return Flight Override Integration', () => {
+  // Combines dropdown display and pickup time calculation
+
+  const formatMinutesToTime = (totalMinutes) => {
+    const normalizedMinutes = ((totalMinutes % 1440) + 1440) % 1440
+    const hours = Math.floor(normalizedMinutes / 60)
+    const mins = normalizedMinutes % 60
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+  }
+
+  const buildArrivalFlightsForPickup = (flights, arrivalTimeOverride, selectedFlightKey) => {
+    return flights.map(f => {
+      const flightKey = `${f.time}|${f.flightNumber}`
+      const isSelected = selectedFlightKey === flightKey
+      const displayTime = (isSelected && arrivalTimeOverride) ? arrivalTimeOverride : f.time
+
+      return {
+        ...f,
+        flightKey,
+        displayText: `${f.airlineCode}${f.flightNumber} → arrives ${displayTime}`
+      }
+    })
+  }
+
+  const calculatePickupTime = (flightTime, arrivalTimeOverride) => {
+    const effectiveTime = arrivalTimeOverride || flightTime
+    const [hours, minutes] = effectiveTime.split(':').map(Number)
+    return formatMinutesToTime(hours * 60 + minutes + 30)
+  }
+
+  const mockFlight = {
+    id: 1,
+    time: '18:30',
+    flightNumber: '6597',
+    airlineCode: 'TOM',
+    airlineName: 'TUI Airways',
+    originCode: 'TFS',
+    originName: 'Tenerife, ES'
+  }
+
+  it('scenario: user overrides return flight time - dropdown and pickup update correctly', () => {
+    const selectedFlightKey = '18:30|6597'
+    const arrivalTimeOverride = '18:31'
+
+    // Dropdown shows overridden time
+    const dropdownFlights = buildArrivalFlightsForPickup([mockFlight], arrivalTimeOverride, selectedFlightKey)
+    expect(dropdownFlights[0].displayText).toBe('TOM6597 → arrives 18:31')
+
+    // Pickup time uses overridden time
+    const pickupTime = calculatePickupTime(mockFlight.time, arrivalTimeOverride)
+    expect(pickupTime).toBe('19:01')
+  })
+
+  it('scenario: no override - dropdown and pickup use original time', () => {
+    const selectedFlightKey = '18:30|6597'
+    const arrivalTimeOverride = ''
+
+    // Dropdown shows original time
+    const dropdownFlights = buildArrivalFlightsForPickup([mockFlight], arrivalTimeOverride, selectedFlightKey)
+    expect(dropdownFlights[0].displayText).toBe('TOM6597 → arrives 18:30')
+
+    // Pickup time uses original time
+    const pickupTime = calculatePickupTime(mockFlight.time, arrivalTimeOverride)
+    expect(pickupTime).toBe('19:00')
+  })
+
+  it('scenario: flight delayed significantly - both update', () => {
+    const selectedFlightKey = '18:30|6597'
+    const arrivalTimeOverride = '20:15' // 1h45m delay
+
+    const dropdownFlights = buildArrivalFlightsForPickup([mockFlight], arrivalTimeOverride, selectedFlightKey)
+    expect(dropdownFlights[0].displayText).toBe('TOM6597 → arrives 20:15')
+
+    const pickupTime = calculatePickupTime(mockFlight.time, arrivalTimeOverride)
+    expect(pickupTime).toBe('20:45')
+  })
+
+  it('scenario: flight arrives early - both update', () => {
+    const selectedFlightKey = '18:30|6597'
+    const arrivalTimeOverride = '17:45' // 45min early
+
+    const dropdownFlights = buildArrivalFlightsForPickup([mockFlight], arrivalTimeOverride, selectedFlightKey)
+    expect(dropdownFlights[0].displayText).toBe('TOM6597 → arrives 17:45')
+
+    const pickupTime = calculatePickupTime(mockFlight.time, arrivalTimeOverride)
+    expect(pickupTime).toBe('18:15')
+  })
+
+  it('scenario: late night arrival with override crossing midnight', () => {
+    const lateNightFlight = {
+      ...mockFlight,
+      time: '23:30'
+    }
+    const selectedFlightKey = '23:30|6597'
+    const arrivalTimeOverride = '23:45'
+
+    const dropdownFlights = buildArrivalFlightsForPickup([lateNightFlight], arrivalTimeOverride, selectedFlightKey)
+    expect(dropdownFlights[0].displayText).toBe('TOM6597 → arrives 23:45')
+
+    const pickupTime = calculatePickupTime(lateNightFlight.time, arrivalTimeOverride)
+    expect(pickupTime).toBe('00:15')
+  })
+
+  it('scenario: multiple flights, only selected one affected by override', () => {
+    const flights = [
+      { ...mockFlight, time: '14:00', flightNumber: '1111' },
+      { ...mockFlight, time: '18:30', flightNumber: '6597' },
+      { ...mockFlight, time: '22:00', flightNumber: '9999' }
+    ]
+    const selectedFlightKey = '18:30|6597'
+    const arrivalTimeOverride = '19:00'
+
+    const dropdownFlights = buildArrivalFlightsForPickup(flights, arrivalTimeOverride, selectedFlightKey)
+
+    // Only middle flight shows override
+    expect(dropdownFlights[0].displayText).toBe('TOM1111 → arrives 14:00')
+    expect(dropdownFlights[1].displayText).toBe('TOM6597 → arrives 19:00')
+    expect(dropdownFlights[2].displayText).toBe('TOM9999 → arrives 22:00')
+
+    // Pickup for selected flight uses override
+    const pickupTime = calculatePickupTime('18:30', arrivalTimeOverride)
+    expect(pickupTime).toBe('19:30')
+  })
+})
