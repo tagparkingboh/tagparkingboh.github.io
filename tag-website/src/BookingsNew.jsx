@@ -2104,11 +2104,14 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.dropoffSlot && (
+              {(formData.dropoffSlot || manualDepartureData.dropoffSlot) && (
                 <>
                   <h3 className="section-subtitle">Return Flight</h3>
                   <p className="return-flight-info">
-                    {selectedDropoffFlight && (() => {
+                    {showManualDeparture ? (
+                      // Manual departure - show entered details
+                      `${manualDepartureData.airlineName} from ${manualDepartureData.destinationName}`
+                    ) : selectedDropoffFlight && (() => {
                       const parts = selectedDropoffFlight.destinationName.split(', ')
                       if (parts.length > 1) {
                         const countryCode = parts[parts.length - 1]
