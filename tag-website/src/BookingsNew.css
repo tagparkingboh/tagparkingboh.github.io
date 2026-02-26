@@ -2011,6 +2011,7 @@
   color: #b0b0b0;
   line-height: 1.6;
   margin: 0 0 1rem 0;
+  text-align: left;
 }
 
 .welcome-modal p:last-of-type {
@@ -2027,6 +2028,7 @@
   color: #b0b0b0;
   font-size: 1rem;
   line-height: 1.8;
+  text-align: left;
 }
 
 .welcome-modal-options li {
