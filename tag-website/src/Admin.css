@@ -2190,3 +2190,130 @@
 .skipped-list li {
   margin: 0.25rem 0;
 }
+
+/* Recent Bookings Container */
+.recent-bookings-container {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.recent-bookings-title {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.recent-bookings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.recent-booking-card {
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-left: 4px solid #6b7280;
+}
+
+.recent-booking-card:hover {
+  background: #f0f0f0;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.recent-booking-card.booking-status-confirmed {
+  border-left-color: #22c55e;
+}
+
+.recent-booking-card.booking-status-pending {
+  border-left-color: #f59e0b;
+}
+
+.recent-booking-card.booking-status-completed {
+  border-left-color: #3b82f6;
+}
+
+.recent-booking-card.booking-status-cancelled {
+  border-left-color: #ef4444;
+}
+
+.recent-booking-card.booking-status-refunded {
+  border-left-color: #8b5cf6;
+}
+
+.recent-booking-ref {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 4px;
+}
+
+.recent-booking-name {
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-booking-date {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.recent-booking-status {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.recent-booking-status.status-confirmed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.recent-booking-status.status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.recent-booking-status.status-completed {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.recent-booking-status.status-cancelled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.recent-booking-status.status-refunded {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+@media (max-width: 768px) {
+  .recent-bookings-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .recent-bookings-grid {
+    grid-template-columns: 1fr;
+  }
+}

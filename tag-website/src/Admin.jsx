@@ -704,6 +704,29 @@ function Admin() {
     return filtered
   }, [bookings, searchTerm, statusFilter, hideTestEmails, sortAsc])
 
+  // Recent 10 bookings (most recently created, displayed oldest first)
+  const recentBookings = useMemo(() => {
+    let recent = [...bookings]
+
+    // Hide test emails
+    if (hideTestEmails) {
+      recent = recent.filter(b => !isTestEmail(b.customer?.email))
+    }
+
+    // Sort by created_at descending to get the most recent 10
+    recent.sort((a, b) => {
+      const dateA = new Date(a.created_at || a.dropoff_date)
+      const dateB = new Date(b.created_at || b.dropoff_date)
+      return dateB - dateA
+    })
+
+    // Take top 10 most recent
+    recent = recent.slice(0, 10)
+
+    // Reverse to show in ascending order (oldest of the 10 first)
+    return recent.reverse()
+  }, [bookings, hideTestEmails])
+
   // Filter subscribers
   const filteredSubscribers = useMemo(() => {
     let filtered = [...subscribers]
@@ -1210,6 +1233,42 @@ function Admin() {
               </button>
             </div>
 
+            {/* Recent 10 Bookings */}
+            {recentBookings.length > 0 && (
+              <div className="recent-bookings-container">
+                <h3 className="recent-bookings-title">Recent Bookings</h3>
+                <div className="recent-bookings-grid">
+                  {recentBookings.map((booking) => (
+                    <div
+                      key={booking.id || booking.reference}
+                      className={`recent-booking-card booking-status-${booking.status?.toLowerCase() || 'pending'}`}
+                      onClick={() => {
+                        setExpandedBookingId(booking.id)
+                        // Scroll to the booking in the main list
+                        setTimeout(() => {
+                          const element = document.querySelector(`.booking-card[data-booking-id="${booking.id}"]`)
+                          if (element) {
+                            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                          }
+                        }, 100)
+                      }}
+                    >
+                      <div className="recent-booking-ref">{booking.reference}</div>
+                      <div className="recent-booking-name">
+                        {booking.customer?.first_name} {booking.customer?.last_name}
+                      </div>
+                      <div className="recent-booking-date">
+                        {new Date(booking.dropoff_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                      </div>
+                      <div className={`recent-booking-status status-${booking.status?.toLowerCase() || 'pending'}`}>
+                        {booking.status || 'Pending'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Search and Filter Controls */}
             <div className="admin-filters">
               <div className="admin-search">
@@ -1278,6 +1337,7 @@ function Admin() {
                 {filteredBookings.map((booking) => (
                   <div
                     key={booking.id || booking.reference}
+                    data-booking-id={booking.id}
                     className={`booking-card ${expandedBookingId === booking.id ? 'expanded' : ''} booking-status-${booking.status?.toLowerCase() || 'pending'}`}
                   >
                     {/* Collapsed Header Row */}
