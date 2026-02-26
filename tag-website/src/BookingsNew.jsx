@@ -114,12 +114,12 @@ function Bookings() {
   const [promoCodeDiscount, setPromoCodeDiscount] = useState(() => loadBookingState('promoCodeDiscount', 0))
 
   // Manual flight entry and time override state
-  const [showDepartureTimeOverride, setShowDepartureTimeOverride] = useState(() => loadBookingState('showDepartureTimeOverride', false))
-  const [departureTimeOverride, setDepartureTimeOverride] = useState(() => loadBookingState('departureTimeOverride', ''))
+  const [showDepartureTimeOverride, setShowDepartureTimeOverride] = useState(false)
+  const [departureTimeOverride, setDepartureTimeOverride] = useState('')
   const [departureTimeValidating, setDepartureTimeValidating] = useState(false)
   const [departureTimeError, setDepartureTimeError] = useState('')
-  const [showArrivalTimeOverride, setShowArrivalTimeOverride] = useState(() => loadBookingState('showArrivalTimeOverride', false))
-  const [arrivalTimeOverride, setArrivalTimeOverride] = useState(() => loadBookingState('arrivalTimeOverride', ''))
+  const [showArrivalTimeOverride, setShowArrivalTimeOverride] = useState(false)
+  const [arrivalTimeOverride, setArrivalTimeOverride] = useState('')
   const [arrivalTimeValidating, setArrivalTimeValidating] = useState(false)
   const [arrivalTimeError, setArrivalTimeError] = useState('')
   const [showManualDeparture, setShowManualDeparture] = useState(false)
@@ -246,16 +246,6 @@ function Bookings() {
   useEffect(() => {
     sessionStorage.setItem('booking_dvlaVerified', JSON.stringify(dvlaVerified))
   }, [dvlaVerified])
-
-  useEffect(() => {
-    sessionStorage.setItem('booking_departureTimeOverride', JSON.stringify(departureTimeOverride))
-    sessionStorage.setItem('booking_showDepartureTimeOverride', JSON.stringify(showDepartureTimeOverride))
-  }, [departureTimeOverride, showDepartureTimeOverride])
-
-  useEffect(() => {
-    sessionStorage.setItem('booking_arrivalTimeOverride', JSON.stringify(arrivalTimeOverride))
-    sessionStorage.setItem('booking_showArrivalTimeOverride', JSON.stringify(showArrivalTimeOverride))
-  }, [arrivalTimeOverride, showArrivalTimeOverride])
 
   // Check availability for a date range
   const checkAvailability = (dropoffDate, pickupDate) => {
@@ -569,20 +559,14 @@ function Bookings() {
         parseInt(f.departureTime.split(':')[0]) >= 18 &&
         parseInt(f.time.split(':')[0]) < 6
 
-      const flightKey = `${f.time}|${f.flightNumber}`
-
-      // Use overridden time for the currently selected flight
-      const isSelected = formData.pickupFlightTime === flightKey
-      const displayTime = (isSelected && arrivalTimeOverride) ? arrivalTimeOverride : f.time
-
       return {
         ...f,
-        flightKey,
+        flightKey: `${f.time}|${f.flightNumber}`,
         isOvernight,
-        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${displayTime}${isOvernight ? ' +1' : ''}`
+        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${f.time}${isOvernight ? ' +1' : ''}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
-  }, [filteredArrivalsForDate, arrivalTimeOverride, formData.pickupFlightTime])
+  }, [filteredArrivalsForDate])
 
   // Clear pickupFlightTime when arrival flights change and current selection is invalid
   // Guard: wait until both departures and arrivals have loaded to avoid race condition
@@ -1253,17 +1237,10 @@ function Bookings() {
             </div>
             <h2>Flight schedules can change.</h2>
             <p>
-              Airlines regularly adjust flight times due to demand and seasonal changes. While we do our best to keep flight information accurate and up to date, occasional changes can be missed.
+              Airlines regularly adjust flight times due to demand and seasonal changes. While we do our best to keep the flight information for your trip accurate and up to date, occasional changes can be missed.
             </p>
-            <p className="welcome-modal-options-intro">We offer flexible booking options:</p>
-            <ul className="welcome-modal-options">
-              <li>Found your flight? Select it from the dropdown</li>
-              <li>Flight not listed? Add it manually</li>
-              <li>Time changed? Override it with the correct time</li>
-            </ul>
-            <p>Mix any combination for departure and return flights.</p>
             <p>
-              If you're unsure about anything, please get in touch — we're happy to help.
+              If any of your flight details change or you're unsure about anything, please get in touch — we're happy to help and make sure everything is aligned for your trip.
             </p>
             <div className="welcome-modal-contact">
               <a href="mailto:sales@tagparking.co.uk" className="contact-link">
@@ -1802,6 +1779,7 @@ function Bookings() {
                   calendarClassName="fixed-height-calendar"
                   onFocus={(e) => e.target.readOnly = true}
                 />
+                <p className="date-info">Online bookings available from 16th February 2026</p>
               </div>
 
               {formData.dropoffDate && loadingFlights && (
@@ -1893,8 +1871,7 @@ function Bookings() {
                           airlineCode: '',
                           airlineName: '',
                           destinationCode: '',
-                          destinationName: '',
-                          dropoffSlot: ''
+                          destinationName: ''
                         })
                       }}
                     >
@@ -2499,12 +2476,11 @@ function Bookings() {
                   <span>
                     {formatDisplayDate(actualPickupDate || formData.pickupDate)}
                     {formData.pickupFlightTime && (() => {
-                      // pickupFlightTime is a flightKey in format "time|flightNumber"
-                      // Use overridden time if set, otherwise use original flight time
-                      const flightTime = arrivalTimeOverride || formData.pickupFlightTime.split('|')[0]
+                      // pickupFlightTime is a flightKey in format "time|destinationCode"
+                      const flightTime = formData.pickupFlightTime.split('|')[0]
                       const [hours, minutes] = flightTime.split(':').map(Number)
                       const landingMinutes = hours * 60 + minutes
-                      const pickupTime = formatMinutesToTime(landingMinutes + 30)
+                      const pickupTime = formatMinutesToTime(landingMinutes + 45)
                       return <> from {pickupTime}</>
                     })()}
                   </span>
