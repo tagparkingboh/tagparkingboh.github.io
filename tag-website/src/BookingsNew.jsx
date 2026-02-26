@@ -114,12 +114,12 @@ function Bookings() {
   const [promoCodeDiscount, setPromoCodeDiscount] = useState(() => loadBookingState('promoCodeDiscount', 0))
 
   // Manual flight entry and time override state
-  const [showDepartureTimeOverride, setShowDepartureTimeOverride] = useState(false)
-  const [departureTimeOverride, setDepartureTimeOverride] = useState('')
+  const [showDepartureTimeOverride, setShowDepartureTimeOverride] = useState(() => loadBookingState('showDepartureTimeOverride', false))
+  const [departureTimeOverride, setDepartureTimeOverride] = useState(() => loadBookingState('departureTimeOverride', ''))
   const [departureTimeValidating, setDepartureTimeValidating] = useState(false)
   const [departureTimeError, setDepartureTimeError] = useState('')
-  const [showArrivalTimeOverride, setShowArrivalTimeOverride] = useState(false)
-  const [arrivalTimeOverride, setArrivalTimeOverride] = useState('')
+  const [showArrivalTimeOverride, setShowArrivalTimeOverride] = useState(() => loadBookingState('showArrivalTimeOverride', false))
+  const [arrivalTimeOverride, setArrivalTimeOverride] = useState(() => loadBookingState('arrivalTimeOverride', ''))
   const [arrivalTimeValidating, setArrivalTimeValidating] = useState(false)
   const [arrivalTimeError, setArrivalTimeError] = useState('')
   const [showManualDeparture, setShowManualDeparture] = useState(false)
@@ -246,6 +246,16 @@ function Bookings() {
   useEffect(() => {
     sessionStorage.setItem('booking_dvlaVerified', JSON.stringify(dvlaVerified))
   }, [dvlaVerified])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_departureTimeOverride', JSON.stringify(departureTimeOverride))
+    sessionStorage.setItem('booking_showDepartureTimeOverride', JSON.stringify(showDepartureTimeOverride))
+  }, [departureTimeOverride, showDepartureTimeOverride])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_arrivalTimeOverride', JSON.stringify(arrivalTimeOverride))
+    sessionStorage.setItem('booking_showArrivalTimeOverride', JSON.stringify(showArrivalTimeOverride))
+  }, [arrivalTimeOverride, showArrivalTimeOverride])
 
   // Check availability for a date range
   const checkAvailability = (dropoffDate, pickupDate) => {
@@ -529,14 +539,20 @@ function Bookings() {
         parseInt(f.departureTime.split(':')[0]) >= 18 &&
         parseInt(f.time.split(':')[0]) < 6
 
+      const flightKey = `${f.time}|${f.flightNumber}`
+
+      // Use overridden time for the currently selected flight
+      const isSelected = formData.pickupFlightTime === flightKey
+      const displayTime = (isSelected && arrivalTimeOverride) ? arrivalTimeOverride : f.time
+
       return {
         ...f,
-        flightKey: `${f.time}|${f.flightNumber}`,
+        flightKey,
         isOvernight,
-        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${f.time}${isOvernight ? ' +1' : ''}`
+        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${displayTime}${isOvernight ? ' +1' : ''}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
-  }, [filteredArrivalsForDate])
+  }, [filteredArrivalsForDate, arrivalTimeOverride, formData.pickupFlightTime])
 
   // Clear pickupFlightTime when arrival flights change and current selection is invalid
   // Guard: wait until both departures and arrivals have loaded to avoid race condition
@@ -2473,11 +2489,13 @@ function Bookings() {
                   <span>
                     {formatDisplayDate(actualPickupDate || formData.pickupDate)}
                     {formData.pickupFlightTime && (() => {
-                      // pickupFlightTime is a flightKey in format "time|destinationCode"
-                      const flightTime = formData.pickupFlightTime.split('|')[0]
+                      // pickupFlightTime is a flightKey in format "time|flightNumber"
+                      // Use overridden arrival time if set, otherwise use scheduled time
+                      const scheduledTime = formData.pickupFlightTime.split('|')[0]
+                      const flightTime = arrivalTimeOverride || scheduledTime
                       const [hours, minutes] = flightTime.split(':').map(Number)
                       const landingMinutes = hours * 60 + minutes
-                      const pickupTime = formatMinutesToTime(landingMinutes + 45)
+                      const pickupTime = formatMinutesToTime(landingMinutes + 30)
                       return <> from {pickupTime}</>
                     })()}
                   </span>
