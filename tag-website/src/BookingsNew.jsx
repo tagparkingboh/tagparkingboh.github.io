@@ -1237,10 +1237,17 @@ function Bookings() {
             </div>
             <h2>Flight schedules can change.</h2>
             <p>
-              Airlines regularly adjust flight times due to demand and seasonal changes. While we do our best to keep the flight information for your trip accurate and up to date, occasional changes can be missed.
+              Airlines regularly adjust flight times due to demand and seasonal changes. While we do our best to keep flight information accurate and up to date, occasional changes can be missed.
             </p>
+            <p className="welcome-modal-options-intro">We offer flexible booking options:</p>
+            <ul className="welcome-modal-options">
+              <li>Found your flight? Select it from the dropdown</li>
+              <li>Flight not listed? Add it manually</li>
+              <li>Time changed? Override it with the correct time</li>
+            </ul>
+            <p>Mix any combination for departure and return flights.</p>
             <p>
-              If any of your flight details change or you're unsure about anything, please get in touch — we're happy to help and make sure everything is aligned for your trip.
+              If you're unsure about anything, please get in touch — we're happy to help.
             </p>
             <div className="welcome-modal-contact">
               <a href="mailto:sales@tagparking.co.uk" className="contact-link">

@@ -2017,6 +2017,22 @@
   margin-bottom: 1.5rem;
 }
 
+.welcome-modal-options-intro {
+  margin-bottom: 0.5rem !important;
+}
+
+.welcome-modal-options {
+  margin: 0 0 1rem 0;
+  padding-left: 1.5rem;
+  color: #b0b0b0;
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.welcome-modal-options li {
+  margin-bottom: 0.25rem;
+}
+
 .welcome-modal-contact {
   display: flex;
   flex-direction: column;
