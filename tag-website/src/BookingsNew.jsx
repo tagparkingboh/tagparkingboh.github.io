@@ -129,8 +129,7 @@ function Bookings() {
     airlineCode: '',
     airlineName: '',
     destinationCode: '',
-    destinationName: '',
-    dropoffSlot: ''
+    destinationName: ''
   })
   const [showManualArrival, setShowManualArrival] = useState(false)
   const [manualArrivalData, setManualArrivalData] = useState({
@@ -352,19 +351,13 @@ function Bookings() {
         displayDestination = `${cityName}, ${countryName}`
       }
 
-      const flightKey = `${f.time}|${f.destinationCode}`
-
-      // Use overridden time for the currently selected flight
-      const isSelected = formData.dropoffFlight === flightKey
-      const displayTime = (isSelected && departureTimeOverride) ? departureTimeOverride : f.time
-
       return {
         ...f,
-        flightKey,
-        displayText: `${displayTime} ${f.airlineCode}${f.flightNumber} → ${displayDestination}`
+        flightKey: `${f.time}|${f.destinationCode}`,
+        displayText: `${f.time} ${f.airlineCode}${f.flightNumber} → ${displayDestination}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
-  }, [flightsForAirline, departureTimeOverride, formData.dropoffFlight])
+  }, [flightsForAirline])
 
   // Get selected flight details
   const selectedDropoffFlight = useMemo(() => {
@@ -386,9 +379,7 @@ function Bookings() {
     // If this is a "Call Us only" flight, no slots available
     if (isCallUsOnly) return []
 
-    // Use overridden time if set, otherwise use scheduled flight time
-    const effectiveTime = departureTimeOverride || selectedDropoffFlight.time
-    const [hours, minutes] = effectiveTime.split(':').map(Number)
+    const [hours, minutes] = selectedDropoffFlight.time.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
     const slots = []
@@ -420,29 +411,7 @@ function Bookings() {
     }
 
     return slots
-  }, [selectedDropoffFlight, isCallUsOnly, departureTimeOverride])
-
-  // Calculate drop-off slots for manual departure entries
-  const manualDropoffSlots = useMemo(() => {
-    if (!showManualDeparture) return []
-    if (!isValidTimeFormat(manualDepartureData.flightTime)) return []
-
-    const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
-    const departureMinutes = hours * 60 + minutes
-
-    return [
-      {
-        id: '165',
-        label: '2¾ hours before',
-        time: formatMinutesToTime(departureMinutes - 165)
-      },
-      {
-        id: '120',
-        label: '2 hours before',
-        time: formatMinutesToTime(departureMinutes - 120)
-      }
-    ]
-  }, [showManualDeparture, manualDepartureData.flightTime])
+  }, [selectedDropoffFlight, isCallUsOnly])
 
   // Check if flight is fully booked (all slots taken) or Call Us only
   const isFlightFullyBooked = useMemo(() => {
@@ -524,22 +493,17 @@ function Bookings() {
 
   // Filter arrivals by airline and destination, then find the best matching return flight
   const filteredArrivalsForDate = useMemo(() => {
-    // For normal departures, use selectedDropoffFlight
-    // For manual departures, use manualDepartureData
-    const airlineName = showManualDeparture ? manualDepartureData.airlineName : formData.dropoffAirline
-    const destinationCode = showManualDeparture ? manualDepartureData.destinationCode : selectedDropoffFlight?.destinationCode
-
-    if (!airlineName || !destinationCode) return []
+    if (!formData.dropoffAirline || !selectedDropoffFlight) return []
 
     // Filter by same airline (normalized) and origin matching the departure destination
     const matchingFlights = arrivalsForDate.filter(f =>
-      normalizeAirlineName(f.airlineName) === normalizeAirlineName(airlineName) &&
-      f.originCode === destinationCode
+      normalizeAirlineName(f.airlineName) === formData.dropoffAirline &&
+      f.originCode === selectedDropoffFlight.destinationCode
     )
 
     // Return all matching flights (same airline, same origin)
     return matchingFlights
-  }, [arrivalsForDate, formData.dropoffAirline, selectedDropoffFlight, showManualDeparture, manualDepartureData.airlineName, manualDepartureData.destinationCode])
+  }, [arrivalsForDate, formData.dropoffAirline, selectedDropoffFlight])
 
   // Get arrival flights for pickup with display details (filtered by airline and destination)
   const arrivalFlightsForPickup = useMemo(() => {
@@ -1128,12 +1092,13 @@ function Bookings() {
   // Manual entry validation
   const isManualDepartureComplete = showManualDeparture &&
     manualDepartureData.airlineCode &&
+    manualDepartureData.flightNumber &&
     isValidTimeFormat(manualDepartureData.flightTime) &&
-    manualDepartureData.destinationCode &&
-    manualDepartureData.dropoffSlot
+    manualDepartureData.destinationCode
 
   const isManualArrivalComplete = showManualArrival &&
     manualArrivalData.airlineCode &&
+    manualArrivalData.flightNumber &&
     isValidTimeFormat(manualArrivalData.flightTime) &&
     manualArrivalData.originCode
 
@@ -1902,7 +1867,7 @@ function Bookings() {
 
                   <div className="form-row">
                     <div className="form-group">
-                      <label htmlFor="manualFlightNumber">Flight Number</label>
+                      <label htmlFor="manualFlightNumber">Flight Number <span className="required">*</span></label>
                       <input
                         type="text"
                         id="manualFlightNumber"
@@ -1953,34 +1918,6 @@ function Bookings() {
                   <p className="manual-entry-note">
                     Manual entries are subject to verification. We'll contact you if there are any issues with your booking.
                   </p>
-
-                  {manualDropoffSlots.length > 0 && (
-                    <div className="form-group">
-                      <label>Select Drop-off Time <span className="required">*</span></label>
-                      <div className="dropoff-slots">
-                        {manualDropoffSlots.map(slot => (
-                          <label key={slot.id} className="dropoff-slot">
-                            <input
-                              type="radio"
-                              name="manualDropoffSlot"
-                              value={slot.id}
-                              checked={manualDepartureData.dropoffSlot === slot.id}
-                              onChange={(e) => setManualDepartureData(prev => ({
-                                ...prev,
-                                dropoffSlot: e.target.value
-                              }))}
-                            />
-                            <div className="slot-card">
-                              <div className="slot-info">
-                                <span className="slot-time">{slot.time}</span>
-                                <span className="slot-label">{slot.label}</span>
-                              </div>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -2109,14 +2046,11 @@ function Bookings() {
                 </div>
               )}
 
-              {(formData.dropoffSlot || manualDepartureData.dropoffSlot) && (
+              {formData.dropoffSlot && (
                 <>
                   <h3 className="section-subtitle">Return Flight</h3>
                   <p className="return-flight-info">
-                    {showManualDeparture ? (
-                      // Manual departure - show entered details
-                      `${manualDepartureData.airlineName} from ${manualDepartureData.destinationName}`
-                    ) : selectedDropoffFlight && (() => {
+                    {selectedDropoffFlight && (() => {
                       const parts = selectedDropoffFlight.destinationName.split(', ')
                       if (parts.length > 1) {
                         const countryCode = parts[parts.length - 1]
@@ -2336,7 +2270,7 @@ function Bookings() {
 
                   <div className="form-row">
                     <div className="form-group">
-                      <label htmlFor="manualArrivalFlightNumber">Flight Number</label>
+                      <label htmlFor="manualArrivalFlightNumber">Flight Number <span className="required">*</span></label>
                       <input
                         type="text"
                         id="manualArrivalFlightNumber"
