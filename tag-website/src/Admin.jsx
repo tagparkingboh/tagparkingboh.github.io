@@ -704,7 +704,7 @@ function Admin() {
     return filtered
   }, [bookings, searchTerm, statusFilter, hideTestEmails, sortAsc])
 
-  // Recent 10 bookings (most recently created, displayed oldest first)
+  // Recent 10 bookings (sorted by ID descending - newest first)
   const recentBookings = useMemo(() => {
     let recent = [...bookings]
 
@@ -713,18 +713,11 @@ function Admin() {
       recent = recent.filter(b => !isTestEmail(b.customer?.email))
     }
 
-    // Sort by created_at descending to get the most recent 10
-    recent.sort((a, b) => {
-      const dateA = new Date(a.created_at || a.dropoff_date)
-      const dateB = new Date(b.created_at || b.dropoff_date)
-      return dateB - dateA
-    })
+    // Sort by ID descending (newest first)
+    recent.sort((a, b) => b.id - a.id)
 
     // Take top 10 most recent
-    recent = recent.slice(0, 10)
-
-    // Reverse to show in ascending order (oldest of the 10 first)
-    return recent.reverse()
+    return recent.slice(0, 10)
   }, [bookings, hideTestEmails])
 
   // Filter subscribers
