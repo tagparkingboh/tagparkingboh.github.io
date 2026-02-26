@@ -494,17 +494,22 @@ function Bookings() {
 
   // Filter arrivals by airline and destination, then find the best matching return flight
   const filteredArrivalsForDate = useMemo(() => {
-    if (!formData.dropoffAirline || !selectedDropoffFlight) return []
+    // For normal departures, use selectedDropoffFlight
+    // For manual departures, use manualDepartureData
+    const airlineName = showManualDeparture ? manualDepartureData.airlineName : formData.dropoffAirline
+    const destinationCode = showManualDeparture ? manualDepartureData.destinationCode : selectedDropoffFlight?.destinationCode
+
+    if (!airlineName || !destinationCode) return []
 
     // Filter by same airline (normalized) and origin matching the departure destination
     const matchingFlights = arrivalsForDate.filter(f =>
-      normalizeAirlineName(f.airlineName) === formData.dropoffAirline &&
-      f.originCode === selectedDropoffFlight.destinationCode
+      normalizeAirlineName(f.airlineName) === normalizeAirlineName(airlineName) &&
+      f.originCode === destinationCode
     )
 
     // Return all matching flights (same airline, same origin)
     return matchingFlights
-  }, [arrivalsForDate, formData.dropoffAirline, selectedDropoffFlight])
+  }, [arrivalsForDate, formData.dropoffAirline, selectedDropoffFlight, showManualDeparture, manualDepartureData.airlineName, manualDepartureData.destinationCode])
 
   // Get arrival flights for pickup with display details (filtered by airline and destination)
   const arrivalFlightsForPickup = useMemo(() => {
@@ -1115,13 +1120,12 @@ function Bookings() {
   // Manual entry validation
   const isManualDepartureComplete = showManualDeparture &&
     manualDepartureData.airlineCode &&
-    manualDepartureData.flightNumber &&
     isValidTimeFormat(manualDepartureData.flightTime) &&
-    manualDepartureData.destinationCode
+    manualDepartureData.destinationCode &&
+    manualDepartureData.dropoffSlot
 
   const isManualArrivalComplete = showManualArrival &&
     manualArrivalData.airlineCode &&
-    manualArrivalData.flightNumber &&
     isValidTimeFormat(manualArrivalData.flightTime) &&
     manualArrivalData.originCode
 
@@ -1890,7 +1894,7 @@ function Bookings() {
 
                   <div className="form-row">
                     <div className="form-group">
-                      <label htmlFor="manualFlightNumber">Flight Number <span className="required">*</span></label>
+                      <label htmlFor="manualFlightNumber">Flight Number</label>
                       <input
                         type="text"
                         id="manualFlightNumber"
@@ -1941,6 +1945,34 @@ function Bookings() {
                   <p className="manual-entry-note">
                     Manual entries are subject to verification. We'll contact you if there are any issues with your booking.
                   </p>
+
+                  {manualDropoffSlots.length > 0 && (
+                    <div className="form-group">
+                      <label>Select Drop-off Time <span className="required">*</span></label>
+                      <div className="dropoff-slots">
+                        {manualDropoffSlots.map(slot => (
+                          <label key={slot.id} className="dropoff-slot">
+                            <input
+                              type="radio"
+                              name="manualDropoffSlot"
+                              value={slot.id}
+                              checked={manualDepartureData.dropoffSlot === slot.id}
+                              onChange={(e) => setManualDepartureData(prev => ({
+                                ...prev,
+                                dropoffSlot: e.target.value
+                              }))}
+                            />
+                            <div className="slot-card">
+                              <div className="slot-info">
+                                <span className="slot-time">{slot.time}</span>
+                                <span className="slot-label">{slot.label}</span>
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2069,11 +2101,13 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.dropoffSlot && (
+              {(formData.dropoffSlot || manualDepartureData.dropoffSlot) && (
                 <>
                   <h3 className="section-subtitle">Return Flight</h3>
                   <p className="return-flight-info">
-                    {selectedDropoffFlight && (() => {
+                    {showManualDeparture ? (
+                      `${manualDepartureData.airlineName} from ${manualDepartureData.destinationName}`
+                    ) : selectedDropoffFlight && (() => {
                       const parts = selectedDropoffFlight.destinationName.split(', ')
                       if (parts.length > 1) {
                         const countryCode = parts[parts.length - 1]
@@ -2293,7 +2327,7 @@ function Bookings() {
 
                   <div className="form-row">
                     <div className="form-group">
-                      <label htmlFor="manualArrivalFlightNumber">Flight Number <span className="required">*</span></label>
+                      <label htmlFor="manualArrivalFlightNumber">Flight Number</label>
                       <input
                         type="text"
                         id="manualArrivalFlightNumber"
