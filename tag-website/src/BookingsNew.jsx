@@ -1816,7 +1816,18 @@ function Bookings() {
                   <button
                     type="button"
                     className="manual-entry-link"
-                    onClick={() => setShowManualDeparture(true)}
+                    onClick={() => {
+                      setShowManualDeparture(true)
+                      // Clear normal selection state (keep date)
+                      setFormData(prev => ({
+                        ...prev,
+                        dropoffAirline: '',
+                        dropoffFlight: '',
+                        dropoffSlot: ''
+                      }))
+                      setDepartureTimeOverride('')
+                      setShowDepartureTimeOverride(false)
+                    }}
                   >
                     Can't find your flight? Enter details manually
                   </button>
@@ -1849,7 +1860,18 @@ function Bookings() {
                     <button
                       type="button"
                       className="manual-entry-link"
-                      onClick={() => setShowManualDeparture(true)}
+                      onClick={() => {
+                        setShowManualDeparture(true)
+                        // Clear normal selection state (keep date)
+                        setFormData(prev => ({
+                          ...prev,
+                          dropoffAirline: '',
+                          dropoffFlight: '',
+                          dropoffSlot: ''
+                        }))
+                        setDepartureTimeOverride('')
+                        setShowDepartureTimeOverride(false)
+                      }}
                       style={{ marginTop: '0.5rem' }}
                     >
                       Can't find your flight? Enter details manually
@@ -1893,7 +1915,8 @@ function Bookings() {
                           airlineCode: '',
                           airlineName: '',
                           destinationCode: '',
-                          destinationName: ''
+                          destinationName: '',
+                          dropoffSlot: ''
                         })
                       }}
                     >
@@ -2216,7 +2239,16 @@ function Bookings() {
                   <button
                     type="button"
                     className="manual-entry-link"
-                    onClick={() => setShowManualArrival(true)}
+                    onClick={() => {
+                      setShowManualArrival(true)
+                      // Clear normal selection state (keep date)
+                      setFormData(prev => ({
+                        ...prev,
+                        pickupFlightTime: ''
+                      }))
+                      setArrivalTimeOverride('')
+                      setShowArrivalTimeOverride(false)
+                    }}
                     style={{ marginTop: '0.5rem' }}
                   >
                     Can't find your return flight? Enter details manually
@@ -2302,7 +2334,16 @@ function Bookings() {
                   <button
                     type="button"
                     className="manual-entry-link"
-                    onClick={() => setShowManualArrival(true)}
+                    onClick={() => {
+                      setShowManualArrival(true)
+                      // Clear normal selection state (keep date)
+                      setFormData(prev => ({
+                        ...prev,
+                        pickupFlightTime: ''
+                      }))
+                      setArrivalTimeOverride('')
+                      setShowArrivalTimeOverride(false)
+                    }}
                     style={{ marginTop: '1rem' }}
                   >
                     Enter return flight details manually
