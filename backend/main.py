@@ -833,6 +833,7 @@ async def get_all_bookings(
         joinedload(Booking.vehicle),
         joinedload(Booking.payment),
         joinedload(Booking.departure),
+        joinedload(Booking.arrival),
     )
 
     if date_filter:
@@ -5213,6 +5214,7 @@ async def get_employee_bookings(
         joinedload(Booking.vehicle),
         joinedload(Booking.payment),
         joinedload(Booking.departure),
+        joinedload(Booking.arrival),
     )
 
     if not include_cancelled:
