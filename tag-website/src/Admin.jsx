@@ -1416,11 +1416,17 @@ function Admin() {
                                 </span>
                               </div>
                               <div className="booking-detail">
-                                <span className="detail-label">Package</span>
+                                <span className="detail-label">Duration</span>
                                 <span className="detail-value">
-                                  {booking.package === 'quick' ? '1 Week' :
-                                   booking.package === 'longer' ? '2 Weeks' :
-                                   booking.package || 'N/A'}
+                                  {(() => {
+                                    if (booking.dropoff_date && booking.pickup_date) {
+                                      const days = Math.round((new Date(booking.pickup_date) - new Date(booking.dropoff_date)) / (1000 * 60 * 60 * 24));
+                                      return `${days} Day${days !== 1 ? 's' : ''}`;
+                                    }
+                                    return booking.package === 'quick' ? '1-7 Days' :
+                                           booking.package === 'longer' ? '8-14 Days' :
+                                           booking.package || 'N/A';
+                                  })()}
                                 </span>
                               </div>
                               <div className="booking-detail">
