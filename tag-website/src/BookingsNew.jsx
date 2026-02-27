@@ -1913,10 +1913,25 @@ function Bookings() {
                           airlineName: airline?.name || '',
                           customAirline: e.target.value === 'Other' ? prev.customAirline : ''
                         }))
+                        // Auto-sync to arrival airline
+                        if (e.target.value === 'Other') {
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            airlineCode: 'Other',
+                            airlineName: ''
+                          }))
+                        } else if (airline) {
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            airlineCode: e.target.value,
+                            airlineName: airline.name,
+                            customAirline: ''
+                          }))
+                        }
                       }}
                     >
                       <option value="">Select airline</option>
-                      {availableAirlines.map(airline => (
+                      {availableAirlines.filter(a => a.code !== 'Other').map(airline => (
                         <option key={airline.code} value={airline.code}>{airline.name}</option>
                       ))}
                       <option value="Other">Other</option>
@@ -1935,6 +1950,13 @@ function Bookings() {
                           const value = e.target.value
                           setManualDepartureData(prev => ({
                             ...prev,
+                            customAirline: value,
+                            airlineName: value
+                          }))
+                          // Auto-sync to arrival airline
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            airlineCode: 'Other',
                             customAirline: value,
                             airlineName: value
                           }))
@@ -1978,7 +2000,7 @@ function Bookings() {
                       }}
                     >
                       <option value="">Select destination</option>
-                      {availableDestinations.map(dest => (
+                      {availableDestinations.filter(d => d.code !== 'Other').map(dest => (
                         <option key={dest.code} value={dest.code}>{dest.name}</option>
                       ))}
                       <option value="Other">Other</option>
@@ -2145,7 +2167,7 @@ function Bookings() {
                       }}
                     >
                       <option value="">Select airline</option>
-                      {availableAirlines.map(airline => (
+                      {availableAirlines.filter(a => a.code !== 'Other').map(airline => (
                         <option key={airline.code} value={airline.code}>{airline.name}</option>
                       ))}
                       <option value="Other">Other</option>
@@ -2192,7 +2214,7 @@ function Bookings() {
                       }}
                     >
                       <option value="">Select origin</option>
-                      {availableDestinations.map(dest => (
+                      {availableDestinations.filter(d => d.code !== 'Other').map(dest => (
                         <option key={dest.code} value={dest.code}>{dest.name}</option>
                       ))}
                       <option value="Other">Other</option>
