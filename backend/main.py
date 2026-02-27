@@ -1347,7 +1347,7 @@ async def mark_booking_paid(
             parts = []
             if booking.dropoff_airline_name:
                 parts.append(booking.dropoff_airline_name)
-            if booking.dropoff_flight_number:
+            if booking.dropoff_flight_number and booking.dropoff_flight_number != 'Unknown':
                 parts.append(booking.dropoff_flight_number)
             departure_flight = " ".join(parts)
             if booking.dropoff_destination:
@@ -1358,7 +1358,7 @@ async def mark_booking_paid(
             parts = []
             if booking.pickup_airline_name:
                 parts.append(booking.pickup_airline_name)
-            if booking.pickup_flight_number:
+            if booking.pickup_flight_number and booking.pickup_flight_number != 'Unknown':
                 parts.append(booking.pickup_flight_number)
             return_flight = " ".join(parts)
             if booking.pickup_origin:
@@ -1796,7 +1796,7 @@ async def resend_booking_confirmation_email(
         parts = []
         if booking.dropoff_airline_name:
             parts.append(booking.dropoff_airline_name)
-        if booking.dropoff_flight_number:
+        if booking.dropoff_flight_number and booking.dropoff_flight_number != 'Unknown':
             parts.append(booking.dropoff_flight_number)
         departure_flight = " ".join(parts)
         if booking.dropoff_destination:
@@ -1807,7 +1807,7 @@ async def resend_booking_confirmation_email(
         parts = []
         if booking.pickup_airline_name:
             parts.append(booking.pickup_airline_name)
-        if booking.pickup_flight_number:
+        if booking.pickup_flight_number and booking.pickup_flight_number != 'Unknown':
             parts.append(booking.pickup_flight_number)
         return_flight = " ".join(parts)
         if booking.pickup_origin:
@@ -4745,7 +4745,7 @@ async def stripe_webhook(
                     parts = []
                     if booking.dropoff_airline_name:
                         parts.append(booking.dropoff_airline_name)
-                    if booking.dropoff_flight_number:
+                    if booking.dropoff_flight_number and booking.dropoff_flight_number != 'Unknown':
                         parts.append(booking.dropoff_flight_number)
                     departure_flight = " ".join(parts)
                     if booking.dropoff_destination:
@@ -4756,7 +4756,7 @@ async def stripe_webhook(
                     parts = []
                     if booking.pickup_airline_name:
                         parts.append(booking.pickup_airline_name)
-                    if booking.pickup_flight_number:
+                    if booking.pickup_flight_number and booking.pickup_flight_number != 'Unknown':
                         parts.append(booking.pickup_flight_number)
                     return_flight = " ".join(parts)
                     if booking.pickup_origin:
