@@ -2001,12 +2001,6 @@ function Bookings() {
                               return `(${days} day${days !== 1 ? 's' : ''} trip)`
                             })()}
                           </span>
-                          {pricingLoading && (
-                            <span className="return-date-price loading">Calculating price...</span>
-                          )}
-                          {!pricingLoading && pricingInfo && (
-                            <span className="return-date-price">From £{pricingInfo.price.toFixed(0)}</span>
-                          )}
                         </div>
                       )}
                     </div>
