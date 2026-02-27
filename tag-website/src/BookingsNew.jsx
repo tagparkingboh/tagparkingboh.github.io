@@ -51,6 +51,15 @@ const generateSessionId = () => {
   return `sess_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
 }
 
+// Get today's date in UK time (prevents selecting past dates)
+const getTodayUK = () => {
+  const now = new Date()
+  // Convert to UK time string and parse back
+  const ukDateStr = now.toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
+  const [day, month, year] = ukDateStr.split('/')
+  return new Date(year, month - 1, day)
+}
+
 // Normalize airline names (merge Ryanair UK into Ryanair)
 const normalizeAirlineName = (name) => {
   if (name === 'Ryanair UK') return 'Ryanair'
@@ -196,13 +205,13 @@ function Bookings() {
     const saved = loadBookingState('formData', null)
     if (!saved) return defaults
     // Restore dates from ISO strings
-    // Bookings only available from 16th Feb 2026 (UK time)
-    const MIN_BOOKING_DATE = new Date(2026, 1, 16) // month is 0-indexed
+    // Clear saved dates if they're in the past (UK time)
+    const todayUK = getTodayUK()
     let dropoffDate = saved.dropoffDate ? new Date(saved.dropoffDate) : null
     let pickupDate = saved.pickupDate ? new Date(saved.pickupDate) : null
 
-    // Clear saved dates if they're before the minimum allowed date
-    if (dropoffDate && dropoffDate < MIN_BOOKING_DATE) {
+    // Clear saved dates if they're before today (UK time)
+    if (dropoffDate && dropoffDate < todayUK) {
       dropoffDate = null
       pickupDate = null // Also clear pickup since it depends on dropoff
     }
@@ -1885,7 +1894,7 @@ function Bookings() {
                   selected={formData.dropoffDate}
                   onChange={(date) => handleDateChange(date, 'dropoffDate')}
                   dateFormat="dd/MM/yyyy"
-                  minDate={new Date(2026, 1, 16)}
+                  minDate={getTodayUK()}
                   placeholderText="Select date"
                   className="date-picker-input"
                   id="dropoffDate"
