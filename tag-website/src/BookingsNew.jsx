@@ -1824,6 +1824,27 @@ function Bookings() {
                     </select>
                   </div>
 
+                  <div className="form-group">
+                    <label htmlFor="manualDestination">Destination <span className="required">*</span></label>
+                    <select
+                      id="manualDestination"
+                      value={manualDepartureData.destinationCode}
+                      onChange={(e) => {
+                        const dest = availableDestinations.find(d => d.code === e.target.value)
+                        setManualDepartureData(prev => ({
+                          ...prev,
+                          destinationCode: e.target.value,
+                          destinationName: dest?.name || ''
+                        }))
+                      }}
+                    >
+                      <option value="">Select destination</option>
+                      {availableDestinations.map(dest => (
+                        <option key={dest.code} value={dest.code}>{dest.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="form-row">
                     <div className="form-group">
                       <label htmlFor="manualFlightNumber">Flight Number</label>
@@ -1851,27 +1872,6 @@ function Bookings() {
                         }))}
                       />
                     </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="manualDestination">Destination <span className="required">*</span></label>
-                    <select
-                      id="manualDestination"
-                      value={manualDepartureData.destinationCode}
-                      onChange={(e) => {
-                        const dest = availableDestinations.find(d => d.code === e.target.value)
-                        setManualDepartureData(prev => ({
-                          ...prev,
-                          destinationCode: e.target.value,
-                          destinationName: dest?.name || ''
-                        }))
-                      }}
-                    >
-                      <option value="">Select destination</option>
-                      {availableDestinations.map(dest => (
-                        <option key={dest.code} value={dest.code}>{dest.name}</option>
-                      ))}
-                    </select>
                   </div>
 
                   {manualDropoffSlots.length > 0 && (
@@ -1989,6 +1989,27 @@ function Bookings() {
                     </select>
                   </div>
 
+                  <div className="form-group">
+                    <label htmlFor="manualArrivalOrigin">Origin <span className="required">*</span></label>
+                    <select
+                      id="manualArrivalOrigin"
+                      value={manualArrivalData.originCode}
+                      onChange={(e) => {
+                        const origin = availableDestinations.find(d => d.code === e.target.value)
+                        setManualArrivalData(prev => ({
+                          ...prev,
+                          originCode: e.target.value,
+                          originName: origin?.name || ''
+                        }))
+                      }}
+                    >
+                      <option value="">Select origin</option>
+                      {availableDestinations.map(dest => (
+                        <option key={dest.code} value={dest.code}>{dest.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="form-row">
                     <div className="form-group">
                       <label htmlFor="manualArrivalFlightNumber">Flight Number</label>
@@ -2016,27 +2037,6 @@ function Bookings() {
                         }))}
                       />
                     </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="manualArrivalOrigin">Origin <span className="required">*</span></label>
-                    <select
-                      id="manualArrivalOrigin"
-                      value={manualArrivalData.originCode}
-                      onChange={(e) => {
-                        const origin = availableDestinations.find(d => d.code === e.target.value)
-                        setManualArrivalData(prev => ({
-                          ...prev,
-                          originCode: e.target.value,
-                          originName: origin?.name || ''
-                        }))
-                      }}
-                    >
-                      <option value="">Select origin</option>
-                      {availableDestinations.map(dest => (
-                        <option key={dest.code} value={dest.code}>{dest.name}</option>
-                      ))}
-                    </select>
                   </div>
 
                 </div>
