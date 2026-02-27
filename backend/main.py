@@ -471,18 +471,18 @@ async def calculate_price(request: PriceCalculationRequest):
 
     duration = (request.pickup_date - request.drop_off_date).days
 
-    # Validate duration (1-14 days supported)
-    if duration < 1 or duration > 14:
+    # Validate duration (1-60 days supported)
+    if duration < 1 or duration > 60:
         raise HTTPException(
             status_code=400,
-            detail=f"Duration must be between 1 and 14 days. Got {duration} days."
+            detail=f"Duration must be between 1 and 60 days. Got {duration} days."
         )
 
     # Determine package (for legacy compatibility)
     package = BookingService.get_package_for_duration(request.drop_off_date, request.pickup_date)
 
     # Get duration tier name for display
-    duration_tier = get_duration_tier(duration)
+    duration_tier = get_duration_tier(min(duration, 14))  # Cap at 14 for tier lookup
     duration_labels = {
         "1_4": "1-4 Days",
         "5_6": "5-6 Days",
@@ -492,7 +492,11 @@ async def calculate_price(request: PriceCalculationRequest):
         "12_13": "12-13 Days",
         "14": "2 Week Trip",
     }
-    package_name = duration_labels.get(duration_tier, f"{duration} Days")
+    # For stays beyond 14 days, show the actual duration
+    if duration > 14:
+        package_name = f"{duration} Days"
+    else:
+        package_name = duration_labels.get(duration_tier, f"{duration} Days")
 
     # Calculate advance booking tier
     today = date.today()

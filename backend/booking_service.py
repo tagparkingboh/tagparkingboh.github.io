@@ -267,15 +267,23 @@ class BookingService:
         Calculate the price based on trip duration and advance booking tier.
 
         Args:
-            duration_days: Number of days for the trip (1-14)
+            duration_days: Number of days for the trip (1+)
             drop_off_date: The date of drop-off
 
         Returns:
             The price in pounds
         """
         advance_tier = cls.get_advance_tier(drop_off_date)
-        duration_tier = get_duration_tier(duration_days)
         all_prices = cls.get_all_duration_prices()
+
+        # For stays beyond 14 days, use 14-day price + £9 per extra day
+        if duration_days > 14:
+            base_14_day_price = all_prices["14"][advance_tier]
+            extra_days = duration_days - 14
+            extra_day_rate = 9.0  # £9 per day beyond 14 days
+            return base_14_day_price + (extra_days * extra_day_rate)
+
+        duration_tier = get_duration_tier(duration_days)
         return all_prices[duration_tier][advance_tier]
 
     @classmethod

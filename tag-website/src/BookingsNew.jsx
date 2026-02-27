@@ -512,6 +512,20 @@ function Bookings() {
     fetchPricing()
   }, [formData.dropoffDate, formData.pickupDate, API_BASE_URL])
 
+  // Auto-select return origin based on departure destination
+  useEffect(() => {
+    if (manualDepartureData.destinationCode && !manualArrivalData.originCode) {
+      const dest = availableDestinations.find(d => d.code === manualDepartureData.destinationCode)
+      if (dest) {
+        setManualArrivalData(prev => ({
+          ...prev,
+          originCode: manualDepartureData.destinationCode,
+          originName: dest.name
+        }))
+      }
+    }
+  }, [manualDepartureData.destinationCode, availableDestinations])
+
   // Filter arrivals by airline and destination, then find the best matching return flight
   const filteredArrivalsForDate = useMemo(() => {
     // For normal departures, use selectedDropoffFlight
@@ -1949,13 +1963,10 @@ function Bookings() {
               {manualDepartureData.dropoffSlot && (
                 <>
                   <h3 className="section-subtitle">Return Flight</h3>
-                  <p className="return-flight-info">
-                    {manualDepartureData.airlineName} from {manualDepartureData.destinationName}
-                  </p>
 
                   <div className="form-group fade-in">
                     <label>Select Return Date</label>
-                    <p className="return-date-hint">Choose your return flight date (1-14 days from departure)</p>
+                    <p className="return-date-hint">When does your return flight land at Bournemouth?</p>
                     <div className="return-date-picker">
                       <DatePicker
                         selected={formData.pickupDate}
@@ -1968,7 +1979,7 @@ function Bookings() {
                         })()}
                         maxDate={(() => {
                           const maxDate = new Date(formData.dropoffDate)
-                          maxDate.setDate(maxDate.getDate() + 14)
+                          maxDate.setDate(maxDate.getDate() + 60)
                           return maxDate
                         })()}
                         placeholderText="Select return date"
