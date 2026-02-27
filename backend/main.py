@@ -833,7 +833,6 @@ async def get_all_bookings(
         joinedload(Booking.vehicle),
         joinedload(Booking.payment),
         joinedload(Booking.departure),
-        joinedload(Booking.arrival),
     )
 
     if date_filter:
@@ -863,7 +862,7 @@ async def get_all_bookings(
             "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
             "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
             "dropoff_flight_number": b.dropoff_flight_number,
-            "dropoff_airline_name": b.dropoff_airline_name or (b.departure.airline_name if b.departure else None),
+            "dropoff_airline_name": b.dropoff_airline_name,
             "dropoff_airline_code": b.dropoff_airline_code,
             "dropoff_destination": b.dropoff_destination,
             "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
@@ -873,7 +872,7 @@ async def get_all_bookings(
             "pickup_time_from": b.pickup_time_from.strftime("%H:%M") if b.pickup_time_from else None,
             "pickup_time_to": b.pickup_time_to.strftime("%H:%M") if b.pickup_time_to else None,
             "pickup_flight_number": b.pickup_flight_number,
-            "pickup_airline_name": b.pickup_airline_name or (b.arrival.airline_name if b.arrival else None),
+            "pickup_airline_name": b.pickup_airline_name,
             "pickup_airline_code": b.pickup_airline_code,
             "pickup_origin": b.pickup_origin,
             "notes": b.notes,
@@ -5214,7 +5213,6 @@ async def get_employee_bookings(
         joinedload(Booking.vehicle),
         joinedload(Booking.payment),
         joinedload(Booking.departure),
-        joinedload(Booking.arrival),
     )
 
     if not include_cancelled:
