@@ -292,7 +292,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                           </div>
                           <div className="booking-flight">
                             {booking.dropoff_airline_name && <span className="airline-name">{booking.dropoff_airline_name}</span>}
-                            {booking.dropoff_flight_number && <span className="flight-number">{booking.dropoff_flight_number}</span>}
+                            {booking.dropoff_flight_number && booking.dropoff_flight_number !== 'Unknown' && <span className="flight-number">{booking.dropoff_flight_number}</span>}
                           </div>
                           <div className="booking-destination">
                             → {booking.dropoff_destination || 'Unknown'}
@@ -336,7 +336,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                           </div>
                           <div className="booking-flight">
                             {booking.pickup_airline_name && <span className="airline-name">{booking.pickup_airline_name}</span>}
-                            {booking.pickup_flight_number && <span className="flight-number">{booking.pickup_flight_number}</span>}
+                            {booking.pickup_flight_number && booking.pickup_flight_number !== 'Unknown' && <span className="flight-number">{booking.pickup_flight_number}</span>}
                           </div>
                           <div className="booking-destination">
                             ← {booking.pickup_origin || 'Unknown'}
