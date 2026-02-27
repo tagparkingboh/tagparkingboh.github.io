@@ -1557,6 +1557,13 @@
   cursor: not-allowed;
 }
 
+.field-hint {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}
+
 .checkbox-group .field-hint {
   font-size: 0.85rem;
   color: #ff9800;
@@ -2011,10 +2018,28 @@
   color: #b0b0b0;
   line-height: 1.6;
   margin: 0 0 1rem 0;
+  text-align: left;
 }
 
 .welcome-modal p:last-of-type {
   margin-bottom: 1.5rem;
+}
+
+.welcome-modal-options-intro {
+  margin-bottom: 0.5rem !important;
+}
+
+.welcome-modal-options {
+  margin: 0 0 1rem 0;
+  padding-left: 1.5rem;
+  color: #b0b0b0;
+  font-size: 1rem;
+  line-height: 1.8;
+  text-align: left;
+}
+
+.welcome-modal-options li {
+  margin-bottom: 0.25rem;
 }
 
 .welcome-modal-contact {
@@ -2100,5 +2125,149 @@
   .welcome-modal-btn {
     width: 100%;
     padding: 1rem;
+  }
+}
+
+/* Time Override Styles */
+.time-override-link {
+  background: none;
+  border: none;
+  color: #D9FF00;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.time-override-link:hover {
+  color: #ffffff;
+}
+
+.time-override-form {
+  background: #343434;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #555555;
+}
+
+.time-override-hint {
+  font-size: 0.85rem;
+  color: #999999;
+  margin-bottom: 0.75rem;
+}
+
+.time-override-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.time-override-input-row input {
+  flex: 1;
+  max-width: 120px;
+}
+
+.time-override-btn {
+  background: #D9FF00;
+  color: #343434;
+  border: none;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.time-override-btn:hover:not(:disabled) {
+  background: #ffffff;
+}
+
+.time-override-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.time-override-cancel {
+  background: transparent;
+  color: #999999;
+  border: 1px solid #555555;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.time-override-cancel:hover {
+  color: #ffffff;
+  border-color: #ffffff;
+}
+
+.time-override-success {
+  display: block;
+  margin-top: 0.5rem;
+  color: #4CAF50;
+  font-size: 0.85rem;
+}
+
+/* Manual Entry Form Styles */
+.manual-entry-form {
+  background: #343434;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid #555555;
+}
+
+.manual-entry-form .manual-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.manual-entry-form h4 {
+  margin: 0;
+  color: #D9FF00;
+  font-weight: 600;
+}
+
+.manual-entry-form .back-to-lookup-link {
+  background: none;
+  border: none;
+  color: #999999;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: none;
+}
+
+.manual-entry-form .back-to-lookup-link:hover {
+  color: #D9FF00;
+}
+
+.manual-entry-note {
+  font-size: 0.85rem;
+  color: #999999;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: rgba(217, 255, 0, 0.1);
+  border-radius: 6px;
+  border-left: 3px solid #D9FF00;
+}
+
+@media (max-width: 480px) {
+  .time-override-input-row {
+    flex-direction: column;
+  }
+
+  .time-override-input-row input {
+    max-width: none;
+    width: 100%;
+  }
+
+  .manual-entry-form .manual-entry-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
   }
 }

@@ -290,6 +290,10 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                           <div className="booking-time">
                             {formatTime(booking.dropoff_time)}
                           </div>
+                          <div className="booking-flight">
+                            {booking.dropoff_airline_name && <span className="airline-name">{booking.dropoff_airline_name}</span>}
+                            {booking.dropoff_flight_number && booking.dropoff_flight_number !== 'Unknown' && <span className="flight-number">{booking.dropoff_flight_number}</span>}
+                          </div>
                           <div className="booking-destination">
                             → {booking.dropoff_destination || 'Unknown'}
                           </div>
@@ -328,10 +332,11 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                       <div key={booking.id} className="detail-booking-card">
                         <div className="booking-header-row">
                           <div className="booking-time">
-                            {booking.pickup_time_from && booking.pickup_time_to
-                              ? `${formatTime(booking.pickup_time_from)}-${formatTime(booking.pickup_time_to)}`
-                              : formatTime(booking.pickup_time)
-                            }
+                            {formatTime(booking.pickup_time_from || booking.pickup_time)}
+                          </div>
+                          <div className="booking-flight">
+                            {booking.pickup_airline_name && <span className="airline-name">{booking.pickup_airline_name}</span>}
+                            {booking.pickup_flight_number && booking.pickup_flight_number !== 'Unknown' && <span className="flight-number">{booking.pickup_flight_number}</span>}
                           </div>
                           <div className="booking-destination">
                             ← {booking.pickup_origin || 'Unknown'}

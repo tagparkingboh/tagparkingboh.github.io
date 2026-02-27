@@ -267,15 +267,23 @@ class BookingService:
         Calculate the price based on trip duration and advance booking tier.
 
         Args:
-            duration_days: Number of days for the trip (1-14)
+            duration_days: Number of days for the trip (1+)
             drop_off_date: The date of drop-off
 
         Returns:
             The price in pounds
         """
         advance_tier = cls.get_advance_tier(drop_off_date)
-        duration_tier = get_duration_tier(duration_days)
         all_prices = cls.get_all_duration_prices()
+
+        # For stays beyond 14 days, use 14-day price + £9 per extra day
+        if duration_days > 14:
+            base_14_day_price = all_prices["14"][advance_tier]
+            extra_days = duration_days - 14
+            extra_day_rate = 9.0  # £9 per day beyond 14 days
+            return base_14_day_price + (extra_days * extra_day_rate)
+
+        duration_tier = get_duration_tier(duration_days)
         return all_prices[duration_tier][advance_tier]
 
     @classmethod
@@ -313,24 +321,24 @@ class BookingService:
     def get_package_for_duration(cls, drop_off_date: date, pickup_date: date) -> str:
         """
         Determine the package based on the duration between drop-off and pickup.
-        Maps to "quick" (1-7 days) or "longer" (8-14 days) for backwards compatibility.
+        Maps to "quick" (1-7 days) or "longer" (8-60 days) for backwards compatibility.
 
         Args:
             drop_off_date: The date of drop-off
             pickup_date: The date of pickup
 
         Returns:
-            "quick" for 1-7 days, "longer" for 8-14 days
+            "quick" for 1-7 days, "longer" for 8-60 days
 
         Raises:
-            ValueError: If duration is less than 1 or more than 14 days
+            ValueError: If duration is less than 1 or more than 60 days
         """
         duration = (pickup_date - drop_off_date).days
 
         if duration < 1:
             raise ValueError(f"Invalid duration: {duration} days. Must be at least 1 day.")
-        elif duration > 14:
-            raise ValueError(f"Invalid duration: {duration} days. Maximum is 14 days.")
+        elif duration > 60:
+            raise ValueError(f"Invalid duration: {duration} days. Maximum is 60 days.")
         elif duration <= 7:
             return "quick"
         else:

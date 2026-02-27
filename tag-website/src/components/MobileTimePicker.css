@@ -1,0 +1,235 @@
+.mobile-time-picker-container {
+  position: relative;
+  width: 100%;
+}
+
+.mobile-time-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background-color: #fff;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.mobile-time-input:focus {
+  outline: none;
+  border-color: #c8ff00;
+  box-shadow: 0 0 0 2px rgba(200, 255, 0, 0.2);
+}
+
+/* Overlay */
+.time-picker-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 10000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Modal */
+.time-picker-modal {
+  background-color: #fff;
+  border-radius: 16px 16px 0 0;
+  width: 100%;
+  max-width: 500px;
+  max-height: 80vh;
+  animation: slideUp 0.3s ease-out;
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+/* Header */
+.time-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.time-picker-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #333;
+}
+
+.time-picker-cancel,
+.time-picker-confirm {
+  background: none;
+  border: none;
+  font-size: 16px;
+  padding: 8px 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.time-picker-cancel {
+  color: #666;
+}
+
+.time-picker-confirm {
+  color: #4CAF50;
+  font-weight: 600;
+}
+
+/* Wheels container */
+.time-picker-wheels {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  gap: 10px;
+}
+
+/* Individual wheel column */
+.wheel-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  max-width: 100px;
+}
+
+.wheel-label {
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+/* Scrollable wheel */
+.wheel-scroll {
+  height: 220px;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  width: 100%;
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,1) 0%,
+    rgba(255,255,255,0) 30%,
+    rgba(255,255,255,0) 70%,
+    rgba(255,255,255,1) 100%
+  );
+}
+
+/* Hide scrollbar */
+.wheel-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.wheel-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Padding for scroll boundaries */
+.wheel-padding {
+  height: 88px; /* 2 * item height for centering */
+  flex-shrink: 0;
+}
+
+/* Individual time item */
+.wheel-item {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 400;
+  color: #999;
+  scroll-snap-align: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.wheel-item.selected {
+  font-size: 28px;
+  font-weight: 600;
+  color: #333;
+}
+
+.wheel-item:active {
+  background-color: rgba(200, 255, 0, 0.1);
+}
+
+/* Selection highlight */
+.wheel-scroll::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 44px;
+  transform: translateY(-50%);
+  background-color: rgba(200, 255, 0, 0.15);
+  border-top: 2px solid #c8ff00;
+  border-bottom: 2px solid #c8ff00;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Colon separator */
+.wheel-separator {
+  font-size: 32px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 5px;
+  padding-top: 20px;
+}
+
+/* Preview */
+.time-picker-preview {
+  text-align: center;
+  padding: 16px 20px;
+  font-size: 16px;
+  color: #666;
+  border-top: 1px solid #eee;
+}
+
+.time-picker-preview strong {
+  color: #333;
+  font-size: 20px;
+}
+
+/* Tablet/landscape adjustments */
+@media (min-width: 481px) and (max-width: 768px) {
+  .time-picker-modal {
+    border-radius: 16px;
+    margin: 20px;
+    max-height: 70vh;
+  }
+
+  .time-picker-overlay {
+    align-items: center;
+  }
+}
+
+/* Handle notch/safe areas */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .time-picker-modal {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 10px);
+  }
+}

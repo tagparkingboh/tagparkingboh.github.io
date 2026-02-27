@@ -319,3 +319,547 @@ describe('StripePayment - Multiple Component Instances', () => {
     expect(createPaymentIntentCalls).toBe(2)
   })
 })
+
+// =============================================================================
+// Manual Flight Entry and Time Override Tests
+// =============================================================================
+
+describe('StripePayment - Manual Flight Entry', () => {
+  beforeEach(() => {
+    setupFetchMocks()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should include manual departure data in payment request', async () => {
+    let capturedRequest = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        capturedRequest = JSON.parse(options.body)
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: 'pi_test_secret_manual',
+            booking_reference: 'TAG-MANUAL',
+            amount_display: '£89.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    const manualDepartureData = {
+      airlineCode: 'BY',
+      airlineName: 'TUI',
+      flightNumber: '1234',
+      flightTime: '10:30',
+      destinationCode: 'FAO',
+      destinationName: 'Faro, Portugal'
+    }
+
+    render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={null}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-manual"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+        manualDepartureData={manualDepartureData}
+        manualArrivalData={null}
+        departureTimeOverride=""
+        arrivalTimeOverride=""
+      />
+    )
+
+    await waitFor(() => {
+      expect(capturedRequest).not.toBeNull()
+    }, { timeout: 3000 })
+
+    expect(capturedRequest.dropoff_manual_entry).toBe(true)
+    expect(capturedRequest.dropoff_airline_code).toBe('BY')
+    expect(capturedRequest.dropoff_airline_name).toBe('TUI')
+    expect(capturedRequest.flight_number).toBe('1234')
+    expect(capturedRequest.departure_id).toBe(null)
+    expect(capturedRequest.drop_off_slot).toBe(null)
+  })
+
+  it('should include manual arrival data in payment request', async () => {
+    let capturedRequest = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        capturedRequest = JSON.parse(options.body)
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: 'pi_test_secret_manual',
+            booking_reference: 'TAG-MANUAL-ARR',
+            amount_display: '£89.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    const manualArrivalData = {
+      airlineCode: 'FR',
+      airlineName: 'Ryanair',
+      flightNumber: '9876',
+      flightTime: '23:35',
+      originCode: 'FAO',
+      originName: 'Faro, Portugal'
+    }
+
+    render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={null}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-manual-arr"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+        manualDepartureData={null}
+        manualArrivalData={manualArrivalData}
+        departureTimeOverride=""
+        arrivalTimeOverride=""
+      />
+    )
+
+    await waitFor(() => {
+      expect(capturedRequest).not.toBeNull()
+    }, { timeout: 3000 })
+
+    expect(capturedRequest.pickup_manual_entry).toBe(true)
+    expect(capturedRequest.pickup_airline_code).toBe('FR')
+    expect(capturedRequest.pickup_airline_name).toBe('Ryanair')
+    expect(capturedRequest.pickup_flight_number).toBe('9876')
+    expect(capturedRequest.pickup_flight_time).toBe('23:35')
+    expect(capturedRequest.arrival_id).toBe(null)
+  })
+})
+
+describe('StripePayment - Time Override', () => {
+  beforeEach(() => {
+    setupFetchMocks()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should include departure time override in payment request', async () => {
+    let capturedRequest = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        capturedRequest = JSON.parse(options.body)
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: 'pi_test_secret_override',
+            booking_reference: 'TAG-OVERRIDE',
+            amount_display: '£89.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-override"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+        manualDepartureData={null}
+        manualArrivalData={null}
+        departureTimeOverride="11:00"
+        arrivalTimeOverride=""
+      />
+    )
+
+    await waitFor(() => {
+      expect(capturedRequest).not.toBeNull()
+    }, { timeout: 3000 })
+
+    expect(capturedRequest.dropoff_time_override).toBe(true)
+    expect(capturedRequest.dropoff_scheduled_time).toBe('10:30')
+    expect(capturedRequest.dropoff_customer_time).toBe('11:00')
+  })
+
+  it('should include arrival time override in payment request', async () => {
+    let capturedRequest = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        capturedRequest = JSON.parse(options.body)
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: 'pi_test_secret_override_arr',
+            booking_reference: 'TAG-OVERRIDE-ARR',
+            amount_display: '£89.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-override-arr"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+        manualDepartureData={null}
+        manualArrivalData={null}
+        departureTimeOverride=""
+        arrivalTimeOverride="18:00"
+      />
+    )
+
+    await waitFor(() => {
+      expect(capturedRequest).not.toBeNull()
+    }, { timeout: 3000 })
+
+    expect(capturedRequest.pickup_time_override).toBe(true)
+    expect(capturedRequest.pickup_scheduled_time).toBe('17:30')
+    expect(capturedRequest.pickup_customer_time).toBe('18:00')
+  })
+
+  it('should NOT flag time override when time matches scheduled', async () => {
+    let capturedRequest = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        capturedRequest = JSON.parse(options.body)
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: 'pi_test_secret_same',
+            booking_reference: 'TAG-SAME',
+            amount_display: '£89.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-same"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+        manualDepartureData={null}
+        manualArrivalData={null}
+        departureTimeOverride="10:30"
+        arrivalTimeOverride="17:30"
+      />
+    )
+
+    await waitFor(() => {
+      expect(capturedRequest).not.toBeNull()
+    }, { timeout: 3000 })
+
+    // Times match scheduled, so override should be false
+    expect(capturedRequest.dropoff_time_override).toBe(false)
+    expect(capturedRequest.dropoff_scheduled_time).toBe(null)
+    expect(capturedRequest.pickup_time_override).toBe(false)
+    expect(capturedRequest.pickup_scheduled_time).toBe(null)
+  })
+})
+
+describe('StripePayment - Edge Cases for Manual Entry', () => {
+  beforeEach(() => {
+    setupFetchMocks()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should handle both manual departure and arrival simultaneously', async () => {
+    let capturedRequest = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        capturedRequest = JSON.parse(options.body)
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: 'pi_test_secret_both',
+            booking_reference: 'TAG-BOTH',
+            amount_display: '£89.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    const manualDepartureData = {
+      airlineCode: 'BY',
+      airlineName: 'TUI',
+      flightNumber: '1234',
+      flightTime: '14:30',
+      destinationCode: 'FAO',
+      destinationName: 'Faro, Portugal'
+    }
+
+    const manualArrivalData = {
+      airlineCode: 'BY',
+      airlineName: 'TUI',
+      flightNumber: '1235',
+      flightTime: '22:00',
+      originCode: 'FAO',
+      originName: 'Faro, Portugal'
+    }
+
+    render(
+      <StripePayment
+        formData={{ ...mockFormData, dropoffSlot: '' }}
+        selectedFlight={null}
+        selectedArrivalFlight={null}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-both"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+        manualDepartureData={manualDepartureData}
+        manualArrivalData={manualArrivalData}
+        departureTimeOverride=""
+        arrivalTimeOverride=""
+      />
+    )
+
+    await waitFor(() => {
+      expect(capturedRequest).not.toBeNull()
+    }, { timeout: 3000 })
+
+    // Verify both manual entries are included
+    expect(capturedRequest.dropoff_manual_entry).toBe(true)
+    expect(capturedRequest.dropoff_airline_code).toBe('BY')
+    expect(capturedRequest.flight_number).toBe('1234')
+    expect(capturedRequest.departure_id).toBe(null)
+    expect(capturedRequest.drop_off_slot).toBe(null)
+
+    expect(capturedRequest.pickup_manual_entry).toBe(true)
+    expect(capturedRequest.pickup_airline_code).toBe('BY')
+    expect(capturedRequest.pickup_flight_number).toBe('1235')
+    expect(capturedRequest.arrival_id).toBe(null)
+  })
+
+  it('should handle overnight arrival time for manual entry', async () => {
+    let capturedRequest = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        capturedRequest = JSON.parse(options.body)
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: 'pi_test_secret_overnight',
+            booking_reference: 'TAG-OVERNIGHT',
+            amount_display: '£89.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    // Scenario: Flight arrives at 00:50 (overnight from previous day)
+    const manualArrivalData = {
+      airlineCode: 'FR',
+      airlineName: 'Ryanair',
+      flightNumber: '5679',
+      flightTime: '00:50',
+      originCode: 'TFS',
+      originName: 'Tenerife, Spain'
+    }
+
+    render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={null}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-overnight"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+        manualDepartureData={null}
+        manualArrivalData={manualArrivalData}
+        departureTimeOverride=""
+        arrivalTimeOverride=""
+      />
+    )
+
+    await waitFor(() => {
+      expect(capturedRequest).not.toBeNull()
+    }, { timeout: 3000 })
+
+    expect(capturedRequest.pickup_manual_entry).toBe(true)
+    expect(capturedRequest.pickup_flight_time).toBe('00:50')
+  })
+
+  it('should handle late evening departure for manual entry', async () => {
+    let capturedRequest = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        capturedRequest = JSON.parse(options.body)
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: 'pi_test_secret_late',
+            booking_reference: 'TAG-LATE',
+            amount_display: '£89.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    // Scenario: Flight departs at 22:50
+    const manualDepartureData = {
+      airlineCode: 'FR',
+      airlineName: 'Ryanair',
+      flightNumber: '5678',
+      flightTime: '22:50',
+      destinationCode: 'TFS',
+      destinationName: 'Tenerife, Spain'
+    }
+
+    render(
+      <StripePayment
+        formData={{ ...mockFormData, dropoffSlot: '' }}
+        selectedFlight={null}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-late"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+        manualDepartureData={manualDepartureData}
+        manualArrivalData={null}
+        departureTimeOverride=""
+        arrivalTimeOverride=""
+      />
+    )
+
+    await waitFor(() => {
+      expect(capturedRequest).not.toBeNull()
+    }, { timeout: 3000 })
+
+    expect(capturedRequest.dropoff_manual_entry).toBe(true)
+    expect(capturedRequest.dropoff_flight_time).toBe('22:50')
+  })
+})

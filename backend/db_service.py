@@ -10,6 +10,7 @@ import string
 
 from db_models import (
     Customer, Vehicle, Booking, Payment, FlightDeparture, FlightArrival,
+    FlightDepartureHistory, FlightArrivalHistory,
     BookingStatus, PaymentStatus
 )
 
@@ -513,6 +514,9 @@ def book_departure_slot(db: Session, flight_id: int, slot_type: str) -> dict:
     else:
         return {"success": False, "message": "Invalid slot type. Use 'early' or 'late'"}
 
+    # Record history snapshot after slot booking
+    record_departure_history(db, flight, 'updated', 'system')
+
     db.commit()
     return {
         "success": True,
@@ -550,6 +554,9 @@ def release_departure_slot(db: Session, flight_id: int, slot_type: str) -> dict:
     else:
         return {"success": False, "message": "Invalid slot type. Use 'early' or 'late'"}
 
+    # Record history snapshot after slot release
+    record_departure_history(db, flight, 'updated', 'system')
+
     db.commit()
     return {"success": True, "message": "Slot released successfully"}
 
@@ -573,6 +580,74 @@ def get_arrival_by_number_and_date(
             FlightArrival.date == flight_date
         )
     ).first()
+
+
+# ============== FLIGHT HISTORY ==============
+
+def record_departure_history(
+    db: Session,
+    flight: FlightDeparture,
+    change_type: str,
+    changed_by: str = None
+) -> FlightDepartureHistory:
+    """Record a snapshot of a flight departure for audit history."""
+    history = FlightDepartureHistory(
+        flight_id=flight.id,
+        date=flight.date,
+        flight_number=flight.flight_number,
+        airline_code=flight.airline_code,
+        airline_name=flight.airline_name,
+        departure_time=flight.departure_time,
+        destination_code=flight.destination_code,
+        destination_name=flight.destination_name,
+        capacity_tier=flight.capacity_tier,
+        slots_booked_early=flight.slots_booked_early,
+        slots_booked_late=flight.slots_booked_late,
+        change_type=change_type,
+        changed_by=changed_by
+    )
+    db.add(history)
+    db.flush()
+    return history
+
+
+def record_arrival_history(
+    db: Session,
+    flight: FlightArrival,
+    change_type: str,
+    changed_by: str = None
+) -> FlightArrivalHistory:
+    """Record a snapshot of a flight arrival for audit history."""
+    history = FlightArrivalHistory(
+        flight_id=flight.id,
+        date=flight.date,
+        flight_number=flight.flight_number,
+        airline_code=flight.airline_code,
+        airline_name=flight.airline_name,
+        departure_time=flight.departure_time,
+        arrival_time=flight.arrival_time,
+        origin_code=flight.origin_code,
+        origin_name=flight.origin_name,
+        change_type=change_type,
+        changed_by=changed_by
+    )
+    db.add(history)
+    db.flush()
+    return history
+
+
+def get_departure_history(db: Session, flight_id: int) -> List[FlightDepartureHistory]:
+    """Get all history records for a departure flight."""
+    return db.query(FlightDepartureHistory).filter(
+        FlightDepartureHistory.flight_id == flight_id
+    ).order_by(FlightDepartureHistory.changed_at.desc()).all()
+
+
+def get_arrival_history(db: Session, flight_id: int) -> List[FlightArrivalHistory]:
+    """Get all history records for an arrival flight."""
+    return db.query(FlightArrivalHistory).filter(
+        FlightArrivalHistory.flight_id == flight_id
+    ).order_by(FlightArrivalHistory.changed_at.desc()).all()
 
 
 # ============== COMBINED BOOKING FLOW ==============

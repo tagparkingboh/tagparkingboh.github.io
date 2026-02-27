@@ -6,6 +6,7 @@ import { getMakes, getModels } from 'car-info'
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import StripePayment from './components/StripePayment'
+import MobileTimePicker from './components/MobileTimePicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import './BookingsNew.css'
 
@@ -50,10 +51,33 @@ const generateSessionId = () => {
   return `sess_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
 }
 
+// Get today's date in UK time (prevents selecting past dates)
+const getTodayUK = () => {
+  const now = new Date()
+  // Convert to UK time string and parse back
+  const ukDateStr = now.toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
+  const [day, month, year] = ukDateStr.split('/')
+  return new Date(year, month - 1, day)
+}
+
 // Normalize airline names (merge Ryanair UK into Ryanair)
 const normalizeAirlineName = (name) => {
   if (name === 'Ryanair UK') return 'Ryanair'
   return name
+}
+
+// Profanity filter for custom airline/destination entries
+const profanityWords = [
+  'fuck', 'shit', 'ass', 'bitch', 'damn', 'crap', 'piss', 'dick', 'cock',
+  'pussy', 'asshole', 'bastard', 'slut', 'whore', 'cunt', 'wanker', 'bollocks',
+  'twat', 'arse', 'bugger', 'bloody', 'sodding', 'shite', 'tosser', 'bellend',
+  'minger', 'knob', 'prick', 'git', 'pillock', 'plonker', 'sod', 'slag'
+]
+
+const containsProfanity = (text) => {
+  if (!text) return false
+  const lowerText = text.toLowerCase().replace(/[^a-z]/g, '')
+  return profanityWords.some(word => lowerText.includes(word))
 }
 
 // Helper to load booking state from sessionStorage
@@ -112,6 +136,43 @@ function Bookings() {
   const [promoCodeValid, setPromoCodeValid] = useState(() => loadBookingState('promoCodeValid', false))
   const [promoCodeMessage, setPromoCodeMessage] = useState(() => loadBookingState('promoCodeMessage', ''))
   const [promoCodeDiscount, setPromoCodeDiscount] = useState(() => loadBookingState('promoCodeDiscount', 0))
+
+  // Manual flight entry and time override state
+  const [showDepartureTimeOverride, setShowDepartureTimeOverride] = useState(() => loadBookingState('showDepartureTimeOverride', false))
+  const [departureTimeOverride, setDepartureTimeOverride] = useState(() => loadBookingState('departureTimeOverride', ''))
+  const [departureTimeValidating, setDepartureTimeValidating] = useState(false)
+  const [departureTimeError, setDepartureTimeError] = useState('')
+  const [showArrivalTimeOverride, setShowArrivalTimeOverride] = useState(() => loadBookingState('showArrivalTimeOverride', false))
+  const [arrivalTimeOverride, setArrivalTimeOverride] = useState(() => loadBookingState('arrivalTimeOverride', ''))
+  const [arrivalTimeValidating, setArrivalTimeValidating] = useState(false)
+  const [arrivalTimeError, setArrivalTimeError] = useState('')
+  // Manual entry is now the default (simplified booking flow)
+  const [showManualDeparture, setShowManualDeparture] = useState(true)
+  const [manualDepartureData, setManualDepartureData] = useState({
+    flightNumber: '',
+    flightTime: '',
+    airlineCode: '',
+    airlineName: '',
+    customAirline: '',
+    destinationCode: '',
+    destinationName: '',
+    customDestination: '',
+    dropoffSlot: ''
+  })
+  // Manual entry is now the default (simplified booking flow)
+  const [showManualArrival, setShowManualArrival] = useState(true)
+  const [manualArrivalData, setManualArrivalData] = useState({
+    flightNumber: '',
+    flightTime: '',
+    airlineCode: '',
+    airlineName: '',
+    customAirline: '',
+    originCode: '',
+    originName: '',
+    customOrigin: ''
+  })
+  const [availableAirlines, setAvailableAirlines] = useState([])
+  const [availableDestinations, setAvailableDestinations] = useState([])
   const [formData, setFormData] = useState(() => {
     const defaults = {
       dropoffDate: null,
@@ -144,13 +205,13 @@ function Bookings() {
     const saved = loadBookingState('formData', null)
     if (!saved) return defaults
     // Restore dates from ISO strings
-    // Bookings only available from 16th Feb 2026 (UK time)
-    const MIN_BOOKING_DATE = new Date(2026, 1, 16) // month is 0-indexed
+    // Clear saved dates if they're in the past (UK time)
+    const todayUK = getTodayUK()
     let dropoffDate = saved.dropoffDate ? new Date(saved.dropoffDate) : null
     let pickupDate = saved.pickupDate ? new Date(saved.pickupDate) : null
 
-    // Clear saved dates if they're before the minimum allowed date
-    if (dropoffDate && dropoffDate < MIN_BOOKING_DATE) {
+    // Clear saved dates if they're before today (UK time)
+    if (dropoffDate && dropoffDate < todayUK) {
       dropoffDate = null
       pickupDate = null // Also clear pickup since it depends on dropoff
     }
@@ -216,6 +277,16 @@ function Bookings() {
     sessionStorage.setItem('booking_dvlaVerified', JSON.stringify(dvlaVerified))
   }, [dvlaVerified])
 
+  useEffect(() => {
+    sessionStorage.setItem('booking_departureTimeOverride', JSON.stringify(departureTimeOverride))
+    sessionStorage.setItem('booking_showDepartureTimeOverride', JSON.stringify(showDepartureTimeOverride))
+  }, [departureTimeOverride, showDepartureTimeOverride])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_arrivalTimeOverride', JSON.stringify(arrivalTimeOverride))
+    sessionStorage.setItem('booking_showArrivalTimeOverride', JSON.stringify(showArrivalTimeOverride))
+  }, [arrivalTimeOverride, showArrivalTimeOverride])
+
   // Check availability for a date range
   const checkAvailability = (dropoffDate, pickupDate) => {
     // In production, this would fetch from your database
@@ -244,6 +315,29 @@ function Bookings() {
     if (!formData.make) return []
     return getModels(formData.make) || []
   }, [formData.make])
+
+  // Fetch available airlines and destinations for manual entry
+  useEffect(() => {
+    const fetchAirlinesAndDestinations = async () => {
+      try {
+        const [airlinesRes, destinationsRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/booking/airlines`),
+          fetch(`${API_BASE_URL}/api/booking/destinations`)
+        ])
+        if (airlinesRes.ok) {
+          const data = await airlinesRes.json()
+          setAvailableAirlines(data.airlines || [])
+        }
+        if (destinationsRes.ok) {
+          const data = await destinationsRes.json()
+          setAvailableDestinations(data.destinations || [])
+        }
+      } catch (error) {
+        console.error('Error fetching airlines/destinations:', error)
+      }
+    }
+    fetchAirlinesAndDestinations()
+  }, [API_BASE_URL])
 
   // Fetch departures when drop-off date changes
   useEffect(() => {
@@ -298,13 +392,19 @@ function Bookings() {
         displayDestination = `${cityName}, ${countryName}`
       }
 
+      const flightKey = `${f.time}|${f.destinationCode}`
+
+      // Use overridden time for the currently selected flight
+      const isSelected = formData.dropoffFlight === flightKey
+      const displayTime = (isSelected && departureTimeOverride) ? departureTimeOverride : f.time
+
       return {
         ...f,
-        flightKey: `${f.time}|${f.destinationCode}`,
-        displayText: `${f.time} ${f.airlineCode}${f.flightNumber} → ${displayDestination}`
+        flightKey,
+        displayText: `${displayTime} ${f.airlineCode}${f.flightNumber} → ${displayDestination}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
-  }, [flightsForAirline])
+  }, [flightsForAirline, departureTimeOverride, formData.dropoffFlight])
 
   // Get selected flight details
   const selectedDropoffFlight = useMemo(() => {
@@ -326,7 +426,9 @@ function Bookings() {
     // If this is a "Call Us only" flight, no slots available
     if (isCallUsOnly) return []
 
-    const [hours, minutes] = selectedDropoffFlight.time.split(':').map(Number)
+    // Use overridden departure time if set, otherwise use scheduled time
+    const flightTime = departureTimeOverride || selectedDropoffFlight.time
+    const [hours, minutes] = flightTime.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
     const slots = []
@@ -358,7 +460,7 @@ function Bookings() {
     }
 
     return slots
-  }, [selectedDropoffFlight, isCallUsOnly])
+  }, [selectedDropoffFlight, isCallUsOnly, departureTimeOverride])
 
   // Check if flight is fully booked (all slots taken) or Call Us only
   const isFlightFullyBooked = useMemo(() => {
@@ -438,19 +540,49 @@ function Bookings() {
     fetchPricing()
   }, [formData.dropoffDate, formData.pickupDate, API_BASE_URL])
 
+  // Auto-select return origin based on departure destination
+  useEffect(() => {
+    if (manualDepartureData.destinationCode && !manualArrivalData.originCode) {
+      if (manualDepartureData.destinationCode === 'Other') {
+        // Custom destination - sync origin as "Other" too
+        setManualArrivalData(prev => ({
+          ...prev,
+          originCode: 'Other',
+          originName: manualDepartureData.customDestination || '',
+          customOrigin: manualDepartureData.customDestination || ''
+        }))
+      } else {
+        const dest = availableDestinations.find(d => d.code === manualDepartureData.destinationCode)
+        if (dest) {
+          setManualArrivalData(prev => ({
+            ...prev,
+            originCode: manualDepartureData.destinationCode,
+            originName: dest.name,
+            customOrigin: ''
+          }))
+        }
+      }
+    }
+  }, [manualDepartureData.destinationCode, manualDepartureData.customDestination, availableDestinations])
+
   // Filter arrivals by airline and destination, then find the best matching return flight
   const filteredArrivalsForDate = useMemo(() => {
-    if (!formData.dropoffAirline || !selectedDropoffFlight) return []
+    // For normal departures, use selectedDropoffFlight
+    // For manual departures, use manualDepartureData
+    const airlineName = showManualDeparture ? manualDepartureData.airlineName : formData.dropoffAirline
+    const destinationCode = showManualDeparture ? manualDepartureData.destinationCode : selectedDropoffFlight?.destinationCode
+
+    if (!airlineName || !destinationCode) return []
 
     // Filter by same airline (normalized) and origin matching the departure destination
     const matchingFlights = arrivalsForDate.filter(f =>
-      normalizeAirlineName(f.airlineName) === formData.dropoffAirline &&
-      f.originCode === selectedDropoffFlight.destinationCode
+      normalizeAirlineName(f.airlineName) === normalizeAirlineName(airlineName) &&
+      f.originCode === destinationCode
     )
 
     // Return all matching flights (same airline, same origin)
     return matchingFlights
-  }, [arrivalsForDate, formData.dropoffAirline, selectedDropoffFlight])
+  }, [arrivalsForDate, formData.dropoffAirline, selectedDropoffFlight, showManualDeparture, manualDepartureData.airlineName, manualDepartureData.destinationCode])
 
   // Get arrival flights for pickup with display details (filtered by airline and destination)
   const arrivalFlightsForPickup = useMemo(() => {
@@ -470,14 +602,20 @@ function Bookings() {
         parseInt(f.departureTime.split(':')[0]) >= 18 &&
         parseInt(f.time.split(':')[0]) < 6
 
+      const flightKey = `${f.time}|${f.flightNumber}`
+
+      // Use overridden time for the currently selected flight
+      const isSelected = formData.pickupFlightTime === flightKey
+      const displayTime = (isSelected && arrivalTimeOverride) ? arrivalTimeOverride : f.time
+
       return {
         ...f,
-        flightKey: `${f.time}|${f.flightNumber}`,
+        flightKey,
         isOvernight,
-        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${f.time}${isOvernight ? ' +1' : ''}`
+        displayText: `${f.airlineCode}${f.flightNumber} from ${displayOrigin} → arrives ${displayTime}${isOvernight ? ' +1' : ''}`
       }
     }).sort((a, b) => a.time.localeCompare(b.time))
-  }, [filteredArrivalsForDate])
+  }, [filteredArrivalsForDate, arrivalTimeOverride, formData.pickupFlightTime])
 
   // Clear pickupFlightTime when arrival flights change and current selection is invalid
   // Guard: wait until both departures and arrivals have loaded to avoid race condition
@@ -519,6 +657,131 @@ function Bookings() {
     const hours = Math.floor(totalMinutes / 60) % 24
     const mins = totalMinutes % 60
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+  }
+
+  // Validate time format helper (24-hour clock with valid hours 00-23 and minutes 00-59)
+  const isValidTimeFormat = (timeStr) => {
+    if (!timeStr) return false
+    const match = timeStr.match(/^(\d{1,2}):(\d{2})$/)
+    if (!match) return false
+    const hours = parseInt(match[1], 10)
+    const minutes = parseInt(match[2], 10)
+    return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59
+  }
+
+  // Format time input - auto-insert colon, validate 24-hour format
+  const formatTimeInput = (value) => {
+    // Remove any non-digits
+    const digits = value.replace(/\D/g, '')
+
+    // Limit to 4 digits
+    const limited = digits.slice(0, 4)
+
+    if (limited.length <= 2) {
+      // Just hours or partial hours
+      return limited
+    } else {
+      // Insert colon after first 2 digits
+      const hours = limited.slice(0, 2)
+      const minutes = limited.slice(2)
+
+      // Validate hours (00-23)
+      const hoursNum = parseInt(hours, 10)
+      if (hoursNum > 23) {
+        return '23:' + minutes
+      }
+
+      // Validate minutes (00-59)
+      if (minutes.length === 2) {
+        const minsNum = parseInt(minutes, 10)
+        if (minsNum > 59) {
+          return hours + ':59'
+        }
+      }
+
+      return hours + ':' + minutes
+    }
+  }
+
+  // Calculate drop-off slots for manual departure entries
+  const manualDropoffSlots = useMemo(() => {
+    if (!showManualDeparture) return []
+    if (!isValidTimeFormat(manualDepartureData.flightTime)) return []
+
+    const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
+    const departureMinutes = hours * 60 + minutes
+
+    return [
+      {
+        id: '165',
+        label: '2¾ hours before',
+        time: formatMinutesToTime(departureMinutes - 165)
+      },
+      {
+        id: '120',
+        label: '2 hours before',
+        time: formatMinutesToTime(departureMinutes - 120)
+      }
+    ]
+  }, [showManualDeparture, manualDepartureData.flightTime])
+
+  // Normalize time to HH:MM format
+  const normalizeTime = (timeStr) => {
+    if (!timeStr) return ''
+    const parts = timeStr.split(':')
+    if (parts.length !== 2) return timeStr
+    const hours = parts[0].padStart(2, '0')
+    const mins = parts[1].padStart(2, '0')
+    return `${hours}:${mins}`
+  }
+
+  // Validate flight time via API
+  const validateFlightTime = async (timeStr, flightType) => {
+    if (!isValidTimeFormat(timeStr)) {
+      return { valid: false, error: 'Please enter time in HH:MM format (e.g., 14:30)' }
+    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/booking/validate-flight-time`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          time: normalizeTime(timeStr),
+          flight_type: flightType
+        })
+      })
+      const data = await response.json()
+      return { valid: data.valid, error: data.error, normalizedTime: data.normalized_time }
+    } catch (error) {
+      console.error('Time validation error:', error)
+      return { valid: false, error: 'Unable to validate time. Please try again.' }
+    }
+  }
+
+  // Handle departure time override submission
+  const handleDepartureTimeOverride = async () => {
+    setDepartureTimeValidating(true)
+    setDepartureTimeError('')
+    const result = await validateFlightTime(departureTimeOverride, 'departure')
+    setDepartureTimeValidating(false)
+    if (!result.valid) {
+      setDepartureTimeError(result.error)
+    } else {
+      // Update the selected flight time - keep original time for reference
+      setShowDepartureTimeOverride(false)
+    }
+  }
+
+  // Handle arrival time override submission
+  const handleArrivalTimeOverride = async () => {
+    setArrivalTimeValidating(true)
+    setArrivalTimeError('')
+    const result = await validateFlightTime(arrivalTimeOverride, 'arrival')
+    setArrivalTimeValidating(false)
+    if (!result.valid) {
+      setArrivalTimeError(result.error)
+    } else {
+      setShowArrivalTimeOverride(false)
+    }
   }
 
   // Convert string to Title Case
@@ -970,8 +1233,36 @@ function Bookings() {
 
   // Step 1: Contact + Billing + Vehicle Information (all on Page 1)
   const isStep1Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid && isBillingComplete && formData.registration && isMakeComplete && isModelComplete && formData.colour
-  // Step 2: Trip Details / Slot booking
-  const isStep2Complete = formData.dropoffDate && formData.dropoffAirline && formData.dropoffFlight && formData.dropoffSlot && formData.pickupDate && formData.pickupFlightTime && isCapacityAvailable
+
+  // Step 2: Trip Details - Direct entry validation
+  const isDepartureAirlineComplete = manualDepartureData.airlineCode &&
+    (manualDepartureData.airlineCode !== 'Other' ||
+      (manualDepartureData.customAirline && !containsProfanity(manualDepartureData.customAirline)))
+
+  const isDestinationComplete = manualDepartureData.destinationCode &&
+    (manualDepartureData.destinationCode !== 'Other' ||
+      (manualDepartureData.customDestination && !containsProfanity(manualDepartureData.customDestination)))
+
+  const isArrivalAirlineComplete = manualArrivalData.airlineCode &&
+    (manualArrivalData.airlineCode !== 'Other' ||
+      (manualArrivalData.customAirline && !containsProfanity(manualArrivalData.customAirline)))
+
+  const isOriginComplete = manualArrivalData.originCode &&
+    (manualArrivalData.originCode !== 'Other' ||
+      (manualArrivalData.customOrigin && !containsProfanity(manualArrivalData.customOrigin)))
+
+  const isDepartureComplete =
+    isDepartureAirlineComplete &&
+    isValidTimeFormat(manualDepartureData.flightTime) &&
+    isDestinationComplete &&
+    manualDepartureData.dropoffSlot
+
+  const isArrivalComplete =
+    isArrivalAirlineComplete &&
+    isValidTimeFormat(manualArrivalData.flightTime) &&
+    isOriginComplete
+
+  const isStep2Complete = formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete && isCapacityAvailable
   // Step 3: Package Selection
   const isStep3Complete = formData.package
   // Step 4: Payment (uses billing from Step 1)
@@ -1061,12 +1352,18 @@ function Bookings() {
             <div className="welcome-modal-icon">
               <img src="/assets/departure-icon.webp" alt="Departure" />
             </div>
-            <h2>Flight schedules can change.</h2>
+            <h2>Booking's a breeze</h2>
             <p>
-              Airlines regularly adjust flight times due to demand and seasonal changes. While we do our best to keep the flight information for your trip accurate and up to date, occasional changes can be missed.
+              We've made things simpler: tell us your flight details and we'll do the rest.
             </p>
+            <p className="welcome-modal-options-intro">Here's how it works:</p>
+            <ul className="welcome-modal-options">
+              <li>Pick your airline and destination</li>
+              <li>Enter your departure time and choose a drop-off slot</li>
+              <li>Enter your return flight time so we're ready when you land</li>
+            </ul>
             <p>
-              If any of your flight details change or you're unsure about anything, please get in touch — we're happy to help and make sure everything is aligned for your trip.
+              And that's it! If you're unsure about anything, please get in touch.
             </p>
             <div className="welcome-modal-contact">
               <a href="mailto:sales@tagparking.co.uk" className="contact-link">
@@ -1597,7 +1894,7 @@ function Bookings() {
                   selected={formData.dropoffDate}
                   onChange={(date) => handleDateChange(date, 'dropoffDate')}
                   dateFormat="dd/MM/yyyy"
-                  minDate={new Date(2026, 1, 16)}
+                  minDate={getTodayUK()}
                   placeholderText="Select date"
                   className="date-picker-input"
                   id="dropoffDate"
@@ -1605,143 +1902,218 @@ function Bookings() {
                   calendarClassName="fixed-height-calendar"
                   onFocus={(e) => e.target.readOnly = true}
                 />
-                <p className="date-info">Online bookings available from 16th February 2026</p>
               </div>
 
-              {formData.dropoffDate && loadingFlights && (
-                <div className="form-group fade-in">
-                  <p className="loading-message">Loading available flights...</p>
-                </div>
-              )}
+              {/* Flight lookup removed - using direct entry flow */}
 
-              {formData.dropoffDate && !loadingFlights && airlinesForDropoff.length === 0 && (
+              {/* Departure Flight Entry Form */}
+              {showManualDeparture && formData.dropoffDate && (
                 <div className="form-group fade-in">
-                  <p className="no-flights-message">No departure flights available on this date.</p>
-                </div>
-              )}
+                  <div className="form-group">
+                    <label htmlFor="manualAirline">Airline <span className="required">*</span></label>
+                    <select
+                      id="manualAirline"
+                      value={manualDepartureData.airlineCode}
+                      onChange={(e) => {
+                        const airline = availableAirlines.find(a => a.code === e.target.value)
+                        setManualDepartureData(prev => ({
+                          ...prev,
+                          airlineCode: e.target.value,
+                          airlineName: airline?.name || '',
+                          customAirline: e.target.value === 'Other' ? prev.customAirline : ''
+                        }))
+                        // Auto-sync to arrival airline
+                        if (e.target.value === 'Other') {
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            airlineCode: 'Other',
+                            airlineName: ''
+                          }))
+                        } else if (airline) {
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            airlineCode: e.target.value,
+                            airlineName: airline.name,
+                            customAirline: ''
+                          }))
+                        }
+                      }}
+                    >
+                      <option value="">Select airline</option>
+                      {availableAirlines.filter(a => a.code !== 'Other' && a.name !== 'Other').map(airline => (
+                        <option key={airline.code} value={airline.code}>{airline.name}</option>
+                      ))}
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
 
-              {formData.dropoffDate && !loadingFlights && airlinesForDropoff.length > 0 && (
-                <div className="form-group fade-in">
-                  <div className="label-with-help">
-                    <label htmlFor="dropoffAirline">Select Airline</label>
-                    <div className="help-icon-wrapper">
-                      <span className="help-icon">?</span>
-                      <div className="help-tooltip">
-                        Can't find your flight? We're adding more regularly. Email <a href="mailto:sales@tagparking.co.uk">sales@tagparking.co.uk</a> and we'll do our best to help.
+                  {manualDepartureData.airlineCode === 'Other' && (
+                    <div className="form-group">
+                      <label htmlFor="customDepartureAirline">Enter Airline <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="customDepartureAirline"
+                        placeholder="e.g., British Airways"
+                        value={manualDepartureData.customAirline}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setManualDepartureData(prev => ({
+                            ...prev,
+                            customAirline: value,
+                            airlineName: value
+                          }))
+                          // Auto-sync to arrival airline
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            airlineCode: 'Other',
+                            customAirline: value,
+                            airlineName: value
+                          }))
+                        }}
+                        className={containsProfanity(manualDepartureData.customAirline) ? 'input-error' : ''}
+                      />
+                      {containsProfanity(manualDepartureData.customAirline) && (
+                        <span className="error-message">Please enter a valid airline name</span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="form-group">
+                    <label htmlFor="manualDestination">Destination <span className="required">*</span></label>
+                    <select
+                      id="manualDestination"
+                      value={manualDepartureData.destinationCode}
+                      onChange={(e) => {
+                        const dest = availableDestinations.find(d => d.code === e.target.value)
+                        setManualDepartureData(prev => ({
+                          ...prev,
+                          destinationCode: e.target.value,
+                          destinationName: dest?.name || '',
+                          customDestination: e.target.value === 'Other' ? prev.customDestination : ''
+                        }))
+                        // Auto-populate arrival origin with same destination
+                        if (e.target.value === 'Other') {
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            originCode: 'Other',
+                            originName: ''
+                          }))
+                        } else if (dest) {
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            originCode: e.target.value,
+                            originName: dest.name,
+                            customOrigin: ''
+                          }))
+                        }
+                      }}
+                    >
+                      <option value="">Select destination</option>
+                      {availableDestinations.filter(d => d.code !== 'Other' && d.name !== 'Other').map(dest => (
+                        <option key={dest.code} value={dest.code}>{dest.name}</option>
+                      ))}
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  {manualDepartureData.destinationCode === 'Other' && (
+                    <div className="form-group">
+                      <label htmlFor="customDestination">Enter Destination <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="customDestination"
+                        placeholder="e.g., Barcelona"
+                        value={manualDepartureData.customDestination}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setManualDepartureData(prev => ({
+                            ...prev,
+                            customDestination: value,
+                            destinationName: value
+                          }))
+                          // Auto-sync to arrival origin
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            customOrigin: value,
+                            originName: value
+                          }))
+                        }}
+                        className={containsProfanity(manualDepartureData.customDestination) ? 'input-error' : ''}
+                      />
+                      {containsProfanity(manualDepartureData.customDestination) && (
+                        <span className="error-message">Please enter a valid destination name</span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="manualFlightNumber">Flight Number</label>
+                      <input
+                        type="text"
+                        id="manualFlightNumber"
+                        placeholder="e.g., 1234"
+                        value={manualDepartureData.flightNumber}
+                        onChange={(e) => setManualDepartureData(prev => ({
+                          ...prev,
+                          flightNumber: e.target.value.toUpperCase()
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="manualFlightTime">Departure Time <span className="required">*</span></label>
+                      <MobileTimePicker
+                        id="manualFlightTime"
+                        placeholder="e.g., 14:30"
+                        value={manualDepartureData.flightTime}
+                        label="Departure Time"
+                        onChange={(value) => setManualDepartureData(prev => ({
+                          ...prev,
+                          flightTime: value
+                        }))}
+                      />
+                    </div>
+                  </div>
+
+                  {manualDropoffSlots.length > 0 && (
+                    <div className="form-group">
+                      <label>Select Drop-off Time <span className="required">*</span></label>
+                      <div className="dropoff-slots">
+                        {manualDropoffSlots.map(slot => (
+                          <label key={slot.id} className="dropoff-slot">
+                            <input
+                              type="radio"
+                              name="manualDropoffSlot"
+                              value={slot.id}
+                              checked={manualDepartureData.dropoffSlot === slot.id}
+                              onChange={(e) => setManualDepartureData(prev => ({
+                                ...prev,
+                                dropoffSlot: e.target.value
+                              }))}
+                            />
+                            <div className="slot-card">
+                              <div className="slot-info">
+                                <span className="slot-time">{slot.time}</span>
+                                <span className="slot-label">{slot.label}</span>
+                              </div>
+                            </div>
+                          </label>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                  <select
-                    id="dropoffAirline"
-                    name="dropoffAirline"
-                    value={formData.dropoffAirline}
-                    onChange={handleChange}
-                  >
-                    <option value="">Select airline</option>
-                    {airlinesForDropoff.map(airline => (
-                      <option key={airline} value={airline}>{airline}</option>
-                    ))}
-                  </select>
+                  )}
                 </div>
               )}
 
-              {formData.dropoffAirline && flightsForDropoff.length > 0 && (
-                <div className="form-group fade-in">
-                  <label htmlFor="dropoffFlight">Flight</label>
-                  <select
-                    id="dropoffFlight"
-                    name="dropoffFlight"
-                    value={formData.dropoffFlight}
-                    onChange={handleChange}
-                  >
-                    <option value="">Select flight</option>
-                    {flightsForDropoff.map(flight => (
-                      <option key={flight.flightKey} value={flight.flightKey}>
-                        {flight.displayText}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              {/* Flight-based slot selection removed - using direct entry */}
 
-              {formData.dropoffFlight && isFlightFullyBooked && !isCallUsOnly && (
-                <div className="form-group fade-in">
-                  <div className="fully-booked-banner">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-                    </svg>
-                    <div className="fully-booked-content">
-                      <strong>Sold out</strong>
-                      <p>All online slots for this flight have been booked. Email <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a> and we may still be able to help.</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {formData.dropoffFlight && isCallUsOnly && (
-                <div className="form-group fade-in">
-                  <div className="fully-booked-banner">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-                    </svg>
-                    <div className="fully-booked-content">
-                      <strong>Online booking not available</strong>
-                      <p>We don't offer online booking for this flight yet and we may still be able to accommodate you. Get in touch and we'll do our best to help.</p>
-                      <div className="contact-details">
-                        <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {formData.dropoffFlight && !isCallUsOnly && !isFlightFullyBooked && dropoffSlots.length > 0 && (
-                <div className="form-group fade-in">
-                  <label>Select Drop-off Time</label>
-                  <div className="dropoff-slots">
-                    {dropoffSlots.map(slot => (
-                      <label key={slot.id} className="dropoff-slot">
-                        <input
-                          type="radio"
-                          name="dropoffSlot"
-                          value={slot.id}
-                          checked={formData.dropoffSlot === slot.id}
-                          onChange={handleChange}
-                        />
-                        <div className={`slot-card ${slot.isLastSlot ? 'last-slot' : ''}`}>
-                          <div className="slot-info">
-                            <span className="slot-time">{slot.time}</span>
-                            <span className="slot-label">{slot.label}</span>
-                          </div>
-                          {slot.isLastSlot && (
-                            <span className="last-slot-badge">Last slot available</span>
-                          )}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {formData.dropoffSlot && (
+              {manualDepartureData.dropoffSlot && (
                 <>
                   <h3 className="section-subtitle">Return Flight</h3>
-                  <p className="return-flight-info">
-                    {selectedDropoffFlight && (() => {
-                      const parts = selectedDropoffFlight.destinationName.split(', ')
-                      if (parts.length > 1) {
-                        const countryCode = parts[parts.length - 1]
-                        const cityName = parts.slice(0, -1).join(', ')
-                        const country = countryNames[countryCode] || countryCode
-                        return `${formData.dropoffAirline} from ${cityName}, ${country}`
-                      }
-                      return `${formData.dropoffAirline} from ${selectedDropoffFlight.destinationName}`
-                    })()}
-                  </p>
 
                   <div className="form-group fade-in">
                     <label>Select Return Date</label>
-                    <p className="return-date-hint">Choose your return flight date (1-14 days from departure)</p>
+                    <p className="return-date-hint">When does your return flight land at Bournemouth?</p>
                     <div className="return-date-picker">
                       <DatePicker
                         selected={formData.pickupDate}
@@ -1754,7 +2126,7 @@ function Bookings() {
                         })()}
                         maxDate={(() => {
                           const maxDate = new Date(formData.dropoffDate)
-                          maxDate.setDate(maxDate.getDate() + 14)
+                          maxDate.setDate(maxDate.getDate() + 60)
                           return maxDate
                         })()}
                         placeholderText="Select return date"
@@ -1776,12 +2148,6 @@ function Bookings() {
                               return `(${days} day${days !== 1 ? 's' : ''} trip)`
                             })()}
                           </span>
-                          {arrivalFlightsForPickup.length > 0 && pricingLoading && (
-                            <span className="return-date-price loading">Calculating price...</span>
-                          )}
-                          {arrivalFlightsForPickup.length > 0 && !pricingLoading && pricingInfo && (
-                            <span className="return-date-price">From £{pricingInfo.price.toFixed(0)}</span>
-                          )}
                         </div>
                       )}
                     </div>
@@ -1789,37 +2155,135 @@ function Bookings() {
                 </>
               )}
 
-              {formData.pickupDate && arrivalFlightsForPickup.length > 0 && (
-                <div className="form-group fade-in">
-                  <label htmlFor="pickupFlightTime">Return Flight</label>
-                  <select
-                    id="pickupFlightTime"
-                    name="pickupFlightTime"
-                    value={formData.pickupFlightTime}
-                    onChange={handleChange}
-                  >
-                    <option value="">Select flight</option>
-                    {arrivalFlightsForPickup.map(flight => (
-                      <option key={flight.flightKey} value={flight.flightKey}>{flight.displayText}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              {/* Flight-based arrival lookup removed - using direct entry */}
 
-              {formData.pickupDate && arrivalFlightsForPickup.length === 0 && (
+              {/* Return Flight Entry Form */}
+              {showManualArrival && formData.pickupDate && (
                 <div className="form-group fade-in">
-                  <div className="fully-booked-banner">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-                    </svg>
-                    <div className="fully-booked-content">
-                      <strong>No return flights available</strong>
-                      <p>This route may be seasonal or doesn't operate on your selected return date. Please try a different date or get in touch.</p>
-                      <div className="contact-details">
-                        <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a>
-                      </div>
+                  <div className="form-group">
+                    <label htmlFor="manualArrivalAirline">Airline <span className="required">*</span></label>
+                    <select
+                      id="manualArrivalAirline"
+                      value={manualArrivalData.airlineCode}
+                      onChange={(e) => {
+                        const airline = availableAirlines.find(a => a.code === e.target.value)
+                        setManualArrivalData(prev => ({
+                          ...prev,
+                          airlineCode: e.target.value,
+                          airlineName: airline?.name || '',
+                          customAirline: e.target.value === 'Other' ? prev.customAirline : ''
+                        }))
+                      }}
+                    >
+                      <option value="">Select airline</option>
+                      {availableAirlines.filter(a => a.code !== 'Other' && a.name !== 'Other').map(airline => (
+                        <option key={airline.code} value={airline.code}>{airline.name}</option>
+                      ))}
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  {manualArrivalData.airlineCode === 'Other' && (
+                    <div className="form-group">
+                      <label htmlFor="customArrivalAirline">Enter Airline <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="customArrivalAirline"
+                        placeholder="e.g., British Airways"
+                        value={manualArrivalData.customAirline}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            customAirline: value,
+                            airlineName: value
+                          }))
+                        }}
+                        className={containsProfanity(manualArrivalData.customAirline) ? 'input-error' : ''}
+                      />
+                      {containsProfanity(manualArrivalData.customAirline) && (
+                        <span className="error-message">Please enter a valid airline name</span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="form-group">
+                    <label htmlFor="manualArrivalOrigin">Origin <span className="required">*</span></label>
+                    <select
+                      id="manualArrivalOrigin"
+                      value={manualArrivalData.originCode}
+                      onChange={(e) => {
+                        const origin = availableDestinations.find(d => d.code === e.target.value)
+                        setManualArrivalData(prev => ({
+                          ...prev,
+                          originCode: e.target.value,
+                          originName: origin?.name || '',
+                          customOrigin: e.target.value === 'Other' ? prev.customOrigin : ''
+                        }))
+                      }}
+                    >
+                      <option value="">Select origin</option>
+                      {availableDestinations.filter(d => d.code !== 'Other' && d.name !== 'Other').map(dest => (
+                        <option key={dest.code} value={dest.code}>{dest.name}</option>
+                      ))}
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  {manualArrivalData.originCode === 'Other' && (
+                    <div className="form-group">
+                      <label htmlFor="customOrigin">Enter Origin <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="customOrigin"
+                        placeholder="e.g., Barcelona"
+                        value={manualArrivalData.customOrigin}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            customOrigin: value,
+                            originName: value
+                          }))
+                        }}
+                        className={containsProfanity(manualArrivalData.customOrigin) ? 'input-error' : ''}
+                      />
+                      {containsProfanity(manualArrivalData.customOrigin) && (
+                        <span className="error-message">Please enter a valid origin name</span>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="manualArrivalFlightNumber">Flight Number</label>
+                      <input
+                        type="text"
+                        id="manualArrivalFlightNumber"
+                        placeholder="e.g., 1234"
+                        value={manualArrivalData.flightNumber}
+                        onChange={(e) => setManualArrivalData(prev => ({
+                          ...prev,
+                          flightNumber: e.target.value.toUpperCase()
+                        }))}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="manualArrivalFlightTime">Arrival Time <span className="required">*</span></label>
+                      <MobileTimePicker
+                        id="manualArrivalFlightTime"
+                        placeholder="e.g., 14:30"
+                        value={manualArrivalData.flightTime}
+                        label="Arrival Time"
+                        onChange={(value) => setManualArrivalData(prev => ({
+                          ...prev,
+                          flightTime: value
+                        }))}
+                      />
+                      <p className="field-hint">Time your flight lands at Bournemouth. For overnight flights, select the landing date above.</p>
                     </div>
                   </div>
+
                 </div>
               )}
 
@@ -1909,11 +2373,13 @@ function Bookings() {
                   <span>
                     {formatDisplayDate(actualPickupDate || formData.pickupDate)}
                     {formData.pickupFlightTime && (() => {
-                      // pickupFlightTime is a flightKey in format "time|destinationCode"
-                      const flightTime = formData.pickupFlightTime.split('|')[0]
+                      // pickupFlightTime is a flightKey in format "time|flightNumber"
+                      // Use overridden arrival time if set, otherwise use scheduled time
+                      const scheduledTime = formData.pickupFlightTime.split('|')[0]
+                      const flightTime = arrivalTimeOverride || scheduledTime
                       const [hours, minutes] = flightTime.split(':').map(Number)
                       const landingMinutes = hours * 60 + minutes
-                      const pickupTime = formatMinutesToTime(landingMinutes + 45)
+                      const pickupTime = formatMinutesToTime(landingMinutes + 30)
                       return <> from {pickupTime}</>
                     })()}
                   </span>
@@ -2043,8 +2509,8 @@ function Bookings() {
               ) : isStep4Complete ? (
                 <StripePayment
                   formData={formData}
-                  selectedFlight={selectedDropoffFlight}
-                  selectedArrivalFlight={selectedArrivalFlight}
+                  selectedFlight={null}
+                  selectedArrivalFlight={null}
                   customerId={customerId}
                   vehicleId={vehicleId}
                   sessionId={sessionIdRef.current}
@@ -2053,6 +2519,10 @@ function Bookings() {
                   pricingInfo={pricingInfo}
                   onPaymentSuccess={handlePaymentSuccess}
                   onPaymentError={handlePaymentError}
+                  departureTimeOverride={null}
+                  arrivalTimeOverride={null}
+                  manualDepartureData={manualDepartureData}
+                  manualArrivalData={manualArrivalData}
                 />
               ) : (
                 <div className="terms-required">

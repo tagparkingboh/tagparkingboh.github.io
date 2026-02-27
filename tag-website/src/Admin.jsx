@@ -1251,7 +1251,7 @@ function Admin() {
                         {booking.customer?.first_name} {booking.customer?.last_name}
                       </div>
                       <div className="recent-booking-date">
-                        {new Date(booking.dropoff_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        {new Date(booking.dropoff_date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Europe/London' })}
                       </div>
                       <div className={`recent-booking-status status-${booking.status?.toLowerCase() || 'pending'}`}>
                         {booking.status || 'Pending'}
@@ -1416,11 +1416,17 @@ function Admin() {
                                 </span>
                               </div>
                               <div className="booking-detail">
-                                <span className="detail-label">Package</span>
+                                <span className="detail-label">Duration</span>
                                 <span className="detail-value">
-                                  {booking.package === 'quick' ? '1 Week' :
-                                   booking.package === 'longer' ? '2 Weeks' :
-                                   booking.package || 'N/A'}
+                                  {(() => {
+                                    if (booking.dropoff_date && booking.pickup_date) {
+                                      const days = Math.round((new Date(booking.pickup_date) - new Date(booking.dropoff_date)) / (1000 * 60 * 60 * 24));
+                                      return `${days} Day${days !== 1 ? 's' : ''}`;
+                                    }
+                                    return booking.package === 'quick' ? '1-7 Days' :
+                                           booking.package === 'longer' ? '8-14 Days' :
+                                           booking.package || 'N/A';
+                                  })()}
                                 </span>
                               </div>
                               <div className="booking-detail">
@@ -1454,7 +1460,10 @@ function Admin() {
                                   {booking.dropoff_airline_name && (
                                     <span className="airline-name">{booking.dropoff_airline_name}</span>
                                   )}
-                                  <span className="flight-number">{booking.dropoff_flight_number || '-'}</span>
+                                  {booking.dropoff_flight_number && booking.dropoff_flight_number !== 'Unknown' && (
+                                    <span className="flight-number">{booking.dropoff_flight_number}</span>
+                                  )}
+                                  {!booking.dropoff_airline_name && (!booking.dropoff_flight_number || booking.dropoff_flight_number === 'Unknown') && '-'}
                                 </span>
                               </div>
                               <div className="booking-detail">
@@ -1487,7 +1496,13 @@ function Admin() {
                               <div className="booking-detail">
                                 <span className="detail-label">Flight</span>
                                 <span className="detail-value">
-                                  <span className="flight-number">{booking.pickup_flight_number || '-'}</span>
+                                  {booking.pickup_airline_name && (
+                                    <span className="airline-name">{booking.pickup_airline_name}</span>
+                                  )}
+                                  {booking.pickup_flight_number && booking.pickup_flight_number !== 'Unknown' && (
+                                    <span className="flight-number">{booking.pickup_flight_number}</span>
+                                  )}
+                                  {!booking.pickup_airline_name && (!booking.pickup_flight_number || booking.pickup_flight_number === 'Unknown') && '-'}
                                 </span>
                               </div>
                               <div className="booking-detail">

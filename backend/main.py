@@ -471,18 +471,18 @@ async def calculate_price(request: PriceCalculationRequest):
 
     duration = (request.pickup_date - request.drop_off_date).days
 
-    # Validate duration (1-14 days supported)
-    if duration < 1 or duration > 14:
+    # Validate duration (1-60 days supported)
+    if duration < 1 or duration > 60:
         raise HTTPException(
             status_code=400,
-            detail=f"Duration must be between 1 and 14 days. Got {duration} days."
+            detail=f"Duration must be between 1 and 60 days. Got {duration} days."
         )
 
     # Determine package (for legacy compatibility)
     package = BookingService.get_package_for_duration(request.drop_off_date, request.pickup_date)
 
     # Get duration tier name for display
-    duration_tier = get_duration_tier(duration)
+    duration_tier = get_duration_tier(min(duration, 14))  # Cap at 14 for tier lookup
     duration_labels = {
         "1_4": "1-4 Days",
         "5_6": "5-6 Days",
@@ -492,7 +492,11 @@ async def calculate_price(request: PriceCalculationRequest):
         "12_13": "12-13 Days",
         "14": "2 Week Trip",
     }
-    package_name = duration_labels.get(duration_tier, f"{duration} Days")
+    # For stays beyond 14 days, show the actual duration
+    if duration > 14:
+        package_name = f"{duration} Days"
+    else:
+        package_name = duration_labels.get(duration_tier, f"{duration} Days")
 
     # Calculate advance booking tier
     today = date.today()
@@ -858,7 +862,8 @@ async def get_all_bookings(
             "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
             "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
             "dropoff_flight_number": b.dropoff_flight_number,
-            "dropoff_airline_name": b.departure.airline_name if b.departure else None,
+            "dropoff_airline_name": b.dropoff_airline_name,
+            "dropoff_airline_code": b.dropoff_airline_code,
             "dropoff_destination": b.dropoff_destination,
             "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
             "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
@@ -867,6 +872,8 @@ async def get_all_bookings(
             "pickup_time_from": b.pickup_time_from.strftime("%H:%M") if b.pickup_time_from else None,
             "pickup_time_to": b.pickup_time_to.strftime("%H:%M") if b.pickup_time_to else None,
             "pickup_flight_number": b.pickup_flight_number,
+            "pickup_airline_name": b.pickup_airline_name,
+            "pickup_airline_code": b.pickup_airline_code,
             "pickup_origin": b.pickup_origin,
             "notes": b.notes,
             "created_at": b.created_at.isoformat() if b.created_at else None,
@@ -1159,14 +1166,28 @@ async def create_manual_booking(
         amount_formatted = f"£{request.amount_pence / 100:.2f}"
 
         if is_free:
-            # Build flight info for email
-            departure_flight_str = request.departure_flight_number or "N/A"
-            if departure_flight and departure_flight.destination_name:
-                departure_flight_str = f"{departure_flight.flight_number} to {dropoff_destination or departure_flight.destination_name}"
+            # Build flight info for email: airline + flight number (if provided) + destination
+            departure_flight_str = ""
+            if request.dropoff_airline_name or dropoff_destination:
+                parts = []
+                if request.dropoff_airline_name:
+                    parts.append(request.dropoff_airline_name)
+                if request.departure_flight_number:
+                    parts.append(request.departure_flight_number)
+                departure_flight_str = " ".join(parts)
+                if dropoff_destination:
+                    departure_flight_str += f" to {dropoff_destination}"
 
-            return_flight_str = request.return_flight_number or "N/A"
-            if pickup_origin:
-                return_flight_str = f"{request.return_flight_number} from {pickup_origin}"
+            return_flight_str = ""
+            if request.pickup_airline_name or pickup_origin:
+                parts = []
+                if request.pickup_airline_name:
+                    parts.append(request.pickup_airline_name)
+                if request.return_flight_number:
+                    parts.append(request.return_flight_number)
+                return_flight_str = " ".join(parts)
+                if pickup_origin:
+                    return_flight_str += f" from {pickup_origin}"
 
             # Calculate duration for package name
             duration_days = (request.pickup_date - request.dropoff_date).days
@@ -1320,9 +1341,28 @@ async def mark_booking_paid(
         payment_pence = payment.amount_pence if payment else 0
         amount_paid = f"£{payment_pence / 100:.2f}" if payment else "N/A"
 
-        # Use flight numbers if available, otherwise show as not applicable
-        departure_flight = booking.dropoff_flight_number or "-"
-        return_flight = booking.pickup_flight_number or "-"
+        # Format flight info: airline + flight number (if provided) + destination
+        departure_flight = ""
+        if booking.dropoff_airline_name or booking.dropoff_destination:
+            parts = []
+            if booking.dropoff_airline_name:
+                parts.append(booking.dropoff_airline_name)
+            if booking.dropoff_flight_number and booking.dropoff_flight_number != 'Unknown':
+                parts.append(booking.dropoff_flight_number)
+            departure_flight = " ".join(parts)
+            if booking.dropoff_destination:
+                departure_flight += f" to {booking.dropoff_destination}"
+
+        return_flight = ""
+        if booking.pickup_airline_name or booking.pickup_origin:
+            parts = []
+            if booking.pickup_airline_name:
+                parts.append(booking.pickup_airline_name)
+            if booking.pickup_flight_number and booking.pickup_flight_number != 'Unknown':
+                parts.append(booking.pickup_flight_number)
+            return_flight = " ".join(parts)
+            if booking.pickup_origin:
+                return_flight += f" from {booking.pickup_origin}"
 
         # Look up promo code used for this booking
         promo_code_display = None
@@ -1740,7 +1780,7 @@ async def resend_booking_confirmation_email(
     pickup_time_str = ""
     if booking.pickup_time:
         landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
-        pickup_mins = landing_minutes + 45
+        pickup_mins = landing_minutes + 30
         if pickup_mins >= 24 * 60:
             pickup_mins -= 24 * 60
         pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
@@ -1750,12 +1790,32 @@ async def resend_booking_confirmation_email(
     pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
     dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else ""
 
-    # Format flight info
-    departure_flight = f"{booking.dropoff_flight_number} to {booking.dropoff_destination or 'destination'}"
-    return_flight = f"{booking.pickup_flight_number or 'N/A'} from {booking.pickup_origin or 'origin'}"
+    # Format flight info: airline + flight number (if provided) + destination
+    departure_flight = ""
+    if booking.dropoff_airline_name or booking.dropoff_destination:
+        parts = []
+        if booking.dropoff_airline_name:
+            parts.append(booking.dropoff_airline_name)
+        if booking.dropoff_flight_number and booking.dropoff_flight_number != 'Unknown':
+            parts.append(booking.dropoff_flight_number)
+        departure_flight = " ".join(parts)
+        if booking.dropoff_destination:
+            departure_flight += f" to {booking.dropoff_destination}"
 
-    # Package name
-    package_name = "1 Week" if booking.package == "quick" else "2 Weeks"
+    return_flight = ""
+    if booking.pickup_airline_name or booking.pickup_origin:
+        parts = []
+        if booking.pickup_airline_name:
+            parts.append(booking.pickup_airline_name)
+        if booking.pickup_flight_number and booking.pickup_flight_number != 'Unknown':
+            parts.append(booking.pickup_flight_number)
+        return_flight = " ".join(parts)
+        if booking.pickup_origin:
+            return_flight += f" from {booking.pickup_origin}"
+
+    # Package name - use flexible duration format
+    duration_days = (booking.pickup_date - booking.dropoff_date).days
+    package_name = f"{duration_days} day{'s' if duration_days != 1 else ''}"
 
     # Get payment amount
     amount_paid = "£0.00"
@@ -2667,14 +2727,16 @@ async def get_available_airlines():
 
     Returns airlines that operate at BOH with their codes.
     """
-    return [
-        {"code": "FR", "name": "Ryanair"},
-        {"code": "RK", "name": "Ryanair UK"},
-        {"code": "U2", "name": "easyJet"},
-        {"code": "LS", "name": "Jet2"},
-        {"code": "BY", "name": "TUI Airways"},
-        {"code": "OTHER", "name": "Other"}
-    ]
+    return {
+        "airlines": [
+            {"code": "FR", "name": "Ryanair"},
+            {"code": "RK", "name": "Ryanair UK"},
+            {"code": "U2", "name": "easyJet"},
+            {"code": "LS", "name": "Jet2"},
+            {"code": "BY", "name": "TUI Airways"},
+            {"code": "OTHER", "name": "Other"}
+        ]
+    }
 
 
 @app.get("/api/booking/destinations")
@@ -2689,11 +2751,13 @@ async def get_available_destinations(db: Session = Depends(get_db)):
         FlightDeparture.destination_name
     ).distinct().order_by(FlightDeparture.destination_name).all()
 
-    return [
-        {"code": d[0], "name": d[1]}
-        for d in destinations
-        if d[0] and d[1]
-    ]
+    return {
+        "destinations": [
+            {"code": d[0], "name": d[1]}
+            for d in destinations
+            if d[0] and d[1]
+        ]
+    }
 
 
 # =============================================================================
@@ -3695,15 +3759,22 @@ class CreatePaymentRequest(BaseModel):
     dropoff_manual_entry: bool = False
     dropoff_airline_code: Optional[str] = None  # For manual entries (e.g., "BY" for TUI)
     dropoff_airline_name: Optional[str] = None  # For manual entries (e.g., "TUI")
+    dropoff_destination_code: Optional[str] = None  # For manual entries
+    dropoff_destination_name: Optional[str] = None  # For manual entries
+    dropoff_flight_time: Optional[str] = None  # For manual entries "HH:MM"
+    dropoff_customer_time: Optional[str] = None  # Customer-provided time override "HH:MM"
 
     # Customer-provided arrival time override (optional)
     pickup_time_override: bool = False
     pickup_scheduled_time: Optional[str] = None  # Original time from flight table "HH:MM"
+    pickup_customer_time: Optional[str] = None  # Customer-provided time override "HH:MM"
 
     # Manual arrival entry (optional)
     pickup_manual_entry: bool = False
     pickup_airline_code: Optional[str] = None
     pickup_airline_name: Optional[str] = None
+    pickup_origin_code: Optional[str] = None  # For manual entries
+    pickup_origin_name: Optional[str] = None  # For manual entries
 
 
 class CreatePaymentResponse(BaseModel):
@@ -3892,6 +3963,17 @@ async def create_payment(
             # Explicit time provided (e.g., from admin)
             time_parts = request.drop_off_time.split(":")
             dropoff_time = time(int(time_parts[0]), int(time_parts[1]))
+        elif request.dropoff_manual_entry and request.dropoff_flight_time and request.drop_off_slot:
+            # Manual entry: calculate from customer-provided flight time minus slot minutes
+            time_parts = request.dropoff_flight_time.split(":")
+            dep_hour = int(time_parts[0])
+            dep_min = int(time_parts[1])
+            slot_minutes = int(request.drop_off_slot)
+            total_minutes = dep_hour * 60 + dep_min - slot_minutes
+            # Handle overnight (negative minutes)
+            if total_minutes < 0:
+                total_minutes += 24 * 60
+            dropoff_time = time(total_minutes // 60, total_minutes % 60)
         elif request.departure_id and request.drop_off_slot:
             # Calculate from flight departure time minus slot minutes
             departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
@@ -3959,6 +4041,9 @@ async def create_payment(
                     # Shorten Tenerife-Reinasofia to Tenerife
                     if dropoff_destination == 'Tenerife-Reinasofia':
                         dropoff_destination = 'Tenerife'
+            elif request.dropoff_destination_name:
+                # Fallback for manual entries: use destination name from request
+                dropoff_destination = request.dropoff_destination_name
 
             # Use arrival_id and pickup_origin from request if provided
             arrival_id = request.arrival_id
@@ -4000,6 +4085,14 @@ async def create_payment(
                 dropoff_slot=slot_type,
                 arrival_id=arrival_id,
                 session_id=request.session_id,
+                # Manual entry fields for departure
+                dropoff_manual_entry=request.dropoff_manual_entry,
+                dropoff_airline_code=request.dropoff_airline_code,
+                dropoff_airline_name=request.dropoff_airline_name,
+                # Manual entry fields for arrival
+                pickup_manual_entry=request.pickup_manual_entry,
+                pickup_airline_code=request.pickup_airline_code,
+                pickup_airline_name=request.pickup_airline_name,
             )
             booking_reference = booking.reference
             booking_id = booking.id
@@ -4023,6 +4116,9 @@ async def create_payment(
                     # Shorten Tenerife-Reinasofia to Tenerife
                     if dropoff_destination == 'Tenerife-Reinasofia':
                         dropoff_destination = 'Tenerife'
+            elif request.dropoff_destination_name:
+                # Fallback for manual entries: use destination name from request
+                dropoff_destination = request.dropoff_destination_name
 
             # Use arrival_id and pickup_origin from request if provided
             arrival_id = request.arrival_id
@@ -4247,13 +4343,14 @@ async def create_payment(
                 if pickup_time:
                     # pickup_time is the landing time, add 45 mins
                     landing_mins = pickup_time.hour * 60 + pickup_time.minute
-                    pickup_mins = landing_mins + 45
+                    pickup_mins = landing_mins + 30
                     if pickup_mins >= 24 * 60:
                         pickup_mins -= 24 * 60
                     pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
 
-                # Package name
-                package_name = "1 Week" if request.package == "quick" else "2 Weeks"
+                # Package name - use flexible duration format
+                duration_days = (pickup_date - dropoff_date).days
+                package_name = f"{duration_days} day{'s' if duration_days != 1 else ''}"
 
                 # Get vehicle info (use request data or booking data)
                 vehicle_make = request.make if request.make and request.make != "Other" else (request.customMake if hasattr(request, 'customMake') else "TBC")
@@ -4270,6 +4367,34 @@ async def create_payment(
                         vehicle_colour = vehicle.colour
                         vehicle_registration = vehicle.registration
 
+                # Format flight info: airline + flight number (if provided) + destination
+                departure_flight = ""
+                if departure and departure.airline_name:
+                    parts = [departure.airline_name]
+                    if request.flight_number:
+                        parts.append(request.flight_number)
+                    departure_flight = " ".join(parts)
+                    if departure.destination_name:
+                        dest = departure.destination_name.split(', ')[0]
+                        if dest == 'Tenerife-Reinasofia':
+                            dest = 'Tenerife'
+                        departure_flight += f" to {dest}"
+                elif request.flight_number:
+                    departure_flight = request.flight_number
+
+                return_flight = ""
+                if arrival_flight and arrival_flight.airline_name:
+                    parts = [arrival_flight.airline_name]
+                    if request.pickup_flight_number:
+                        parts.append(request.pickup_flight_number)
+                    return_flight = " ".join(parts)
+                    if pickup_origin:
+                        return_flight += f" from {pickup_origin}"
+                elif request.pickup_flight_number:
+                    return_flight = request.pickup_flight_number
+                    if pickup_origin:
+                        return_flight += f" from {pickup_origin}"
+
                 email_sent = send_booking_confirmation_email(
                     email=request.email,
                     first_name=request.first_name,
@@ -4278,8 +4403,8 @@ async def create_payment(
                     dropoff_time=dropoff_time_str,
                     pickup_date=pickup_date_str,
                     pickup_time=pickup_time_str,
-                    departure_flight=f"{request.flight_number}",
-                    return_flight=f"{request.pickup_flight_number or 'TBC'} from {pickup_origin or 'TBC'}",
+                    departure_flight=departure_flight,
+                    return_flight=return_flight,
                     vehicle_make=vehicle_make,
                     vehicle_model=vehicle_model,
                     vehicle_colour=vehicle_colour,
@@ -4603,7 +4728,7 @@ async def stripe_webhook(
                 pickup_time_str = ""
                 if booking.pickup_time:
                     landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
-                    pickup_mins = landing_minutes + 45
+                    pickup_mins = landing_minutes + 30
                     # Handle overnight
                     if pickup_mins >= 24 * 60:
                         pickup_mins -= 24 * 60
@@ -4614,12 +4739,32 @@ async def stripe_webhook(
                 pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
                 dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else ""
 
-                # Format flight info
-                departure_flight = f"{booking.dropoff_flight_number} to {booking.dropoff_destination or 'destination'}"
-                return_flight = f"{booking.pickup_flight_number or 'N/A'} from {booking.pickup_origin or 'origin'}"
+                # Format flight info: airline + flight number (if provided) + destination
+                departure_flight = ""
+                if booking.dropoff_airline_name or booking.dropoff_destination:
+                    parts = []
+                    if booking.dropoff_airline_name:
+                        parts.append(booking.dropoff_airline_name)
+                    if booking.dropoff_flight_number and booking.dropoff_flight_number != 'Unknown':
+                        parts.append(booking.dropoff_flight_number)
+                    departure_flight = " ".join(parts)
+                    if booking.dropoff_destination:
+                        departure_flight += f" to {booking.dropoff_destination}"
 
-                # Package name
-                package_name = "1 Week" if booking.package == "quick" else "2 Weeks"
+                return_flight = ""
+                if booking.pickup_airline_name or booking.pickup_origin:
+                    parts = []
+                    if booking.pickup_airline_name:
+                        parts.append(booking.pickup_airline_name)
+                    if booking.pickup_flight_number and booking.pickup_flight_number != 'Unknown':
+                        parts.append(booking.pickup_flight_number)
+                    return_flight = " ".join(parts)
+                    if booking.pickup_origin:
+                        return_flight += f" from {booking.pickup_origin}"
+
+                # Package name - use flexible duration format
+                duration_days = (booking.pickup_date - booking.dropoff_date).days
+                package_name = f"{duration_days} day{'s' if duration_days != 1 else ''}"
 
                 # Amount paid
                 amount_pence = data.get("amount", 0)
@@ -5159,11 +5304,15 @@ async def get_employee_bookings(
             "status": b.status.value if b.status else None,
             "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
             "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
+            "dropoff_flight_number": b.dropoff_flight_number,
+            "dropoff_airline_name": b.dropoff_airline_name,
             "dropoff_destination": b.dropoff_destination,
             "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
             "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
             "pickup_time_from": b.pickup_time_from.strftime("%H:%M") if b.pickup_time_from else None,
             "pickup_time_to": b.pickup_time_to.strftime("%H:%M") if b.pickup_time_to else None,
+            "pickup_flight_number": b.pickup_flight_number,
+            "pickup_airline_name": b.pickup_airline_name,
             "pickup_origin": b.pickup_origin,
             "notes": b.notes,
             "customer": {

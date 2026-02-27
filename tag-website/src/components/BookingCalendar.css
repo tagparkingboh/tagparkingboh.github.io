@@ -314,6 +314,24 @@
   min-width: 110px;
 }
 
+.booking-flight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ccc;
+  font-size: 0.9rem;
+}
+
+.booking-flight .airline-name {
+  color: #D9FF00;
+  font-weight: 500;
+}
+
+.booking-flight .flight-number {
+  color: #fff;
+  font-family: monospace;
+}
+
 .booking-destination {
   color: #fff;
   font-size: 0.95rem;

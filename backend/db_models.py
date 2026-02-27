@@ -327,6 +327,60 @@ class FlightArrival(Base):
         return f"<FlightArrival {self.flight_number} on {self.date} at {self.arrival_time}>"
 
 
+class FlightDepartureHistory(Base):
+    """History/audit table for flight departure changes."""
+    __tablename__ = "flight_departure_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    flight_id = Column(Integer, ForeignKey("flight_departures.id"), nullable=False, index=True)
+
+    # Snapshot of flight data at time of change
+    date = Column(Date, nullable=False)
+    flight_number = Column(String(20), nullable=False)
+    airline_code = Column(String(10), nullable=False)
+    airline_name = Column(String(100), nullable=False)
+    departure_time = Column(Time, nullable=False)
+    destination_code = Column(String(10), nullable=False)
+    destination_name = Column(String(100))
+    capacity_tier = Column(Integer, nullable=False)
+    slots_booked_early = Column(Integer, nullable=False)
+    slots_booked_late = Column(Integer, nullable=False)
+
+    # Change metadata
+    change_type = Column(String(20), nullable=False)  # 'created', 'updated', 'deleted'
+    changed_at = Column(DateTime(timezone=True), server_default=func.now())
+    changed_by = Column(String(100), nullable=True)  # Admin email or 'system'
+
+    def __repr__(self):
+        return f"<FlightDepartureHistory {self.flight_id} {self.change_type} at {self.changed_at}>"
+
+
+class FlightArrivalHistory(Base):
+    """History/audit table for flight arrival changes."""
+    __tablename__ = "flight_arrival_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    flight_id = Column(Integer, ForeignKey("flight_arrivals.id"), nullable=False, index=True)
+
+    # Snapshot of flight data at time of change
+    date = Column(Date, nullable=False)
+    flight_number = Column(String(20), nullable=False)
+    airline_code = Column(String(10), nullable=False)
+    airline_name = Column(String(100), nullable=False)
+    departure_time = Column(Time, nullable=True)
+    arrival_time = Column(Time, nullable=False)
+    origin_code = Column(String(10), nullable=False)
+    origin_name = Column(String(100))
+
+    # Change metadata
+    change_type = Column(String(20), nullable=False)  # 'created', 'updated', 'deleted'
+    changed_at = Column(DateTime(timezone=True), server_default=func.now())
+    changed_by = Column(String(100), nullable=True)  # Admin email or 'system'
+
+    def __repr__(self):
+        return f"<FlightArrivalHistory {self.flight_id} {self.change_type} at {self.changed_at}>"
+
+
 class AuditLogEvent(enum.Enum):
     """Types of booking audit events."""
     # Booking flow events
