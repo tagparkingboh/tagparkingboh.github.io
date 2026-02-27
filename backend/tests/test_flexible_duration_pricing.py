@@ -1,11 +1,12 @@
 """
-Unit tests for flexible duration pricing (1-14 days).
+Unit tests for flexible duration pricing (1-60 days).
 
 Tests cover:
 - Duration tier determination (get_duration_tier)
 - Base price retrieval for all durations
 - Price calculation with duration + advance tiers
 - All 7 duration tiers × 3 advance tiers = 21 pricing scenarios
+- Extended stay pricing (>14 days at £9/day extra)
 - Overnight pickup calculations (arrival + 30 mins crossing midnight)
 """
 import pytest
@@ -205,6 +206,102 @@ class TestCalculatePriceForDuration:
 
 
 # =============================================================================
+# Unit Tests: Extended Stay Pricing (>14 days)
+# =============================================================================
+
+class TestExtendedStayPricing:
+    """Tests for extended stay pricing (15-60 days at £9/day extra)."""
+
+    def test_15_day_stay_uses_14_day_plus_9(self):
+        """15-day stay should be 14-day price + £9."""
+        early_drop_off = date.today() + timedelta(days=20)
+
+        price_14 = BookingService.calculate_price_for_duration(14, early_drop_off)
+        price_15 = BookingService.calculate_price_for_duration(15, early_drop_off)
+
+        expected_price = price_14 + 9.0
+        assert price_15 == expected_price, (
+            f"15-day price should be 14-day (£{price_14}) + £9 = £{expected_price}, got £{price_15}"
+        )
+
+    def test_20_day_stay_uses_14_day_plus_54(self):
+        """20-day stay should be 14-day price + (6 × £9) = +£54."""
+        early_drop_off = date.today() + timedelta(days=20)
+
+        price_14 = BookingService.calculate_price_for_duration(14, early_drop_off)
+        price_20 = BookingService.calculate_price_for_duration(20, early_drop_off)
+
+        extra_days = 20 - 14  # 6 extra days
+        expected_price = price_14 + (extra_days * 9.0)
+        assert price_20 == expected_price, (
+            f"20-day price should be 14-day (£{price_14}) + 6×£9 = £{expected_price}, got £{price_20}"
+        )
+
+    def test_30_day_stay_uses_14_day_plus_144(self):
+        """30-day stay should be 14-day price + (16 × £9) = +£144."""
+        early_drop_off = date.today() + timedelta(days=20)
+
+        price_14 = BookingService.calculate_price_for_duration(14, early_drop_off)
+        price_30 = BookingService.calculate_price_for_duration(30, early_drop_off)
+
+        extra_days = 30 - 14  # 16 extra days
+        expected_price = price_14 + (extra_days * 9.0)
+        assert price_30 == expected_price, (
+            f"30-day price should be 14-day (£{price_14}) + 16×£9 = £{expected_price}, got £{price_30}"
+        )
+
+    def test_60_day_stay_uses_14_day_plus_414(self):
+        """60-day stay should be 14-day price + (46 × £9) = +£414."""
+        early_drop_off = date.today() + timedelta(days=20)
+
+        price_14 = BookingService.calculate_price_for_duration(14, early_drop_off)
+        price_60 = BookingService.calculate_price_for_duration(60, early_drop_off)
+
+        extra_days = 60 - 14  # 46 extra days
+        expected_price = price_14 + (extra_days * 9.0)
+        assert price_60 == expected_price, (
+            f"60-day price should be 14-day (£{price_14}) + 46×£9 = £{expected_price}, got £{price_60}"
+        )
+
+    @pytest.mark.parametrize("duration", [15, 21, 28, 35, 45, 60])
+    def test_extended_stay_advance_tier_pricing_consistency(self, duration):
+        """Test that advance tiers apply correctly for extended stays."""
+        early_drop_off = date.today() + timedelta(days=20)  # 20+ days = early
+        standard_drop_off = date.today() + timedelta(days=10)  # 7-13 days = standard
+        late_drop_off = date.today() + timedelta(days=3)  # <7 days = late
+
+        early_price = BookingService.calculate_price_for_duration(duration, early_drop_off)
+        standard_price = BookingService.calculate_price_for_duration(duration, standard_drop_off)
+        late_price = BookingService.calculate_price_for_duration(duration, late_drop_off)
+
+        # Verify tier ordering: early < standard < late
+        assert early_price < standard_price, f"Duration {duration}: standard should be more than early"
+        assert standard_price < late_price, f"Duration {duration}: late should be more than standard"
+
+    @pytest.mark.parametrize("duration", [15, 20, 30, 45, 60])
+    def test_extended_stay_returns_positive_price(self, duration):
+        """Test that all extended stay durations return a positive price."""
+        drop_off = date.today() + timedelta(days=20)
+        price = BookingService.calculate_price_for_duration(duration, drop_off)
+        assert price > 0, f"Duration {duration} days should have a positive price"
+
+    def test_extended_stay_formula_is_linear(self):
+        """Test that extended stay pricing increases linearly at £9/day."""
+        early_drop_off = date.today() + timedelta(days=20)
+
+        price_14 = BookingService.calculate_price_for_duration(14, early_drop_off)
+
+        # Check a few points to ensure linear progression
+        for duration in [15, 16, 17, 18, 19, 20]:
+            price = BookingService.calculate_price_for_duration(duration, early_drop_off)
+            extra_days = duration - 14
+            expected = price_14 + (extra_days * 9.0)
+            assert price == expected, (
+                f"Duration {duration} should be £{expected}, got £{price}"
+            )
+
+
+# =============================================================================
 # Unit Tests: BookingService.get_package_for_duration() - Updated for flexible
 # =============================================================================
 
@@ -233,13 +330,20 @@ class TestGetPackageForDurationFlexible:
             BookingService.get_package_for_duration(drop_off, pickup)
         assert "at least 1 day" in str(exc_info.value)
 
-    def test_15_days_raises_error(self):
-        """15 day duration should raise ValueError (max 14 days)."""
+    @pytest.mark.parametrize("duration", [15, 20, 30, 45, 60])
+    def test_15_to_60_days_returns_longer(self, duration):
+        """15-60 day durations should return 'longer' package (extended stays)."""
         drop_off = date.today()
-        pickup = date.today() + timedelta(days=15)
+        pickup = date.today() + timedelta(days=duration)
+        assert BookingService.get_package_for_duration(drop_off, pickup) == "longer"
+
+    def test_61_days_raises_error(self):
+        """61 day duration should raise ValueError (max 60 days)."""
+        drop_off = date.today()
+        pickup = date.today() + timedelta(days=61)
         with pytest.raises(ValueError) as exc_info:
             BookingService.get_package_for_duration(drop_off, pickup)
-        assert "Maximum is 14 days" in str(exc_info.value)
+        assert "Maximum is 60 days" in str(exc_info.value)
 
     def test_negative_duration_raises_error(self):
         """Negative duration should raise ValueError."""

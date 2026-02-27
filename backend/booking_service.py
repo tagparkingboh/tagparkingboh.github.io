@@ -321,24 +321,24 @@ class BookingService:
     def get_package_for_duration(cls, drop_off_date: date, pickup_date: date) -> str:
         """
         Determine the package based on the duration between drop-off and pickup.
-        Maps to "quick" (1-7 days) or "longer" (8-14 days) for backwards compatibility.
+        Maps to "quick" (1-7 days) or "longer" (8-60 days) for backwards compatibility.
 
         Args:
             drop_off_date: The date of drop-off
             pickup_date: The date of pickup
 
         Returns:
-            "quick" for 1-7 days, "longer" for 8-14 days
+            "quick" for 1-7 days, "longer" for 8-60 days
 
         Raises:
-            ValueError: If duration is less than 1 or more than 14 days
+            ValueError: If duration is less than 1 or more than 60 days
         """
         duration = (pickup_date - drop_off_date).days
 
         if duration < 1:
             raise ValueError(f"Invalid duration: {duration} days. Must be at least 1 day.")
-        elif duration > 14:
-            raise ValueError(f"Invalid duration: {duration} days. Maximum is 14 days.")
+        elif duration > 60:
+            raise ValueError(f"Invalid duration: {duration} days. Maximum is 60 days.")
         elif duration <= 7:
             return "quick"
         else:

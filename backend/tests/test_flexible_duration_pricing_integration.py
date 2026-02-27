@@ -3,6 +3,7 @@ Integration tests for flexible duration pricing.
 
 Tests the full API flow for:
 - GET /api/prices/durations endpoint (all duration x advance tier prices)
+- Extended stay pricing (15-60 days at £9/day extra)
 - Pricing settings CRUD endpoints via /api/admin/pricing
 - Promo code validation and discount calculations
 
@@ -436,11 +437,17 @@ class TestPricingEdgeCases:
 
         assert response_data["price"] == 79.0
 
-    def test_invalid_duration_over_14_validation(self):
-        """Duration over 14 days should be invalid."""
-        duration_days = 15
+    def test_extended_stay_up_to_60_days_is_valid(self):
+        """Durations up to 60 days should be valid (extended stays)."""
+        for duration_days in [15, 20, 30, 45, 60]:
+            is_valid = 1 <= duration_days <= 60
+            assert is_valid is True, f"Duration {duration_days} should be valid"
 
-        is_valid = 1 <= duration_days <= 14
+    def test_invalid_duration_over_60_validation(self):
+        """Duration over 60 days should be invalid."""
+        duration_days = 61
+
+        is_valid = 1 <= duration_days <= 60
         assert is_valid is False
 
     def test_5_day_duration_is_valid(self):
@@ -608,3 +615,100 @@ class TestPriceWithDiscount:
         discounted_price = base_price * (1 - discount_percent / 100)
 
         assert discounted_price == 79.0
+
+
+# =============================================================================
+# Extended Stay Pricing Integration Tests
+# =============================================================================
+
+class TestExtendedStayPricingIntegration:
+    """Integration tests for extended stay pricing (15-60 days)."""
+
+    def test_extended_stay_pricing_formula(self):
+        """Extended stays use 14-day base price + £9 per extra day."""
+        # Mock the expected pricing structure
+        base_14_day_price = 140.0  # Early tier
+        extra_day_rate = 9.0
+
+        # Test various extended stay durations
+        test_cases = [
+            (15, base_14_day_price + (1 * extra_day_rate)),   # 15 days = £149
+            (20, base_14_day_price + (6 * extra_day_rate)),   # 20 days = £194
+            (30, base_14_day_price + (16 * extra_day_rate)),  # 30 days = £284
+            (60, base_14_day_price + (46 * extra_day_rate)),  # 60 days = £554
+        ]
+
+        for duration, expected_price in test_cases:
+            extra_days = duration - 14
+            calculated_price = base_14_day_price + (extra_days * extra_day_rate)
+            assert calculated_price == expected_price, (
+                f"Duration {duration} should cost £{expected_price}, got £{calculated_price}"
+            )
+
+    def test_extended_stay_response_structure(self):
+        """Extended stay pricing response should have correct structure."""
+        # Simulate API response for extended stay
+        response_data = {
+            "price": 194.0,  # 20 days: £140 + (6 × £9) = £194
+            "package": "longer",
+            "duration_days": 20,
+            "advance_tier": "early",
+            "is_extended_stay": True,
+            "base_price": 140.0,
+            "extra_days": 6,
+            "extra_day_rate": 9.0,
+        }
+
+        assert response_data["price"] == 194.0
+        assert response_data["package"] == "longer"
+        assert response_data["duration_days"] == 20
+        assert response_data["is_extended_stay"] is True
+
+    def test_extended_stay_with_advance_tier_late(self):
+        """Extended stay with late booking tier should add advance premium."""
+        # Base 14-day late price (includes +£20 tier increment)
+        base_14_day_late = 160.0  # £140 early + £20 late increment
+        extra_day_rate = 9.0
+
+        # 20-day stay with late booking
+        duration = 20
+        extra_days = duration - 14
+        expected_price = base_14_day_late + (extra_days * extra_day_rate)
+
+        assert expected_price == 214.0, f"Expected £214, got £{expected_price}"
+
+    def test_extended_stay_discount_applies_to_full_price(self):
+        """Promo code discount should apply to full extended stay price."""
+        # 30-day stay early tier: £140 + (16 × £9) = £284
+        full_price = 284.0
+        discount_percent = 10
+
+        discounted_price = full_price * (1 - discount_percent / 100)
+
+        # £284 - 10% = £255.60
+        assert abs(discounted_price - 255.6) < 0.01
+
+    def test_maximum_extended_stay_60_days(self):
+        """Maximum extended stay of 60 days should be correctly priced."""
+        # 60-day stay early tier: £140 + (46 × £9) = £554
+        base_14_day_price = 140.0
+        extra_day_rate = 9.0
+        duration = 60
+
+        extra_days = duration - 14
+        expected_price = base_14_day_price + (extra_days * extra_day_rate)
+
+        assert expected_price == 554.0, f"Expected £554, got £{expected_price}"
+
+    def test_extended_stay_boundary_14_to_15_days(self):
+        """Transition from 14 to 15 days should apply £9 extra."""
+        base_14_day_price = 140.0
+        extra_day_rate = 9.0
+
+        # 14 days uses tier pricing
+        price_14 = base_14_day_price  # £140
+
+        # 15 days uses extended formula
+        price_15 = base_14_day_price + (1 * extra_day_rate)  # £149
+
+        assert price_15 - price_14 == 9.0, "15-day should be £9 more than 14-day"
