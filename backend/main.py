@@ -1758,8 +1758,9 @@ async def resend_booking_confirmation_email(
     departure_flight = f"{booking.dropoff_flight_number} to {booking.dropoff_destination or 'destination'}"
     return_flight = f"{booking.pickup_flight_number or 'N/A'} from {booking.pickup_origin or 'origin'}"
 
-    # Package name
-    package_name = "1 Week" if booking.package == "quick" else "2 Weeks"
+    # Package name - use flexible duration format
+    duration_days = (booking.pickup_date - booking.dropoff_date).days
+    package_name = f"{duration_days} day{'s' if duration_days != 1 else ''}"
 
     # Get payment amount
     amount_paid = "£0.00"
@@ -4292,8 +4293,9 @@ async def create_payment(
                         pickup_mins -= 24 * 60
                     pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
 
-                # Package name
-                package_name = "1 Week" if request.package == "quick" else "2 Weeks"
+                # Package name - use flexible duration format
+                duration_days = (pickup_date - dropoff_date).days
+                package_name = f"{duration_days} day{'s' if duration_days != 1 else ''}"
 
                 # Get vehicle info (use request data or booking data)
                 vehicle_make = request.make if request.make and request.make != "Other" else (request.customMake if hasattr(request, 'customMake') else "TBC")
@@ -4658,8 +4660,9 @@ async def stripe_webhook(
                 departure_flight = f"{booking.dropoff_flight_number} to {booking.dropoff_destination or 'destination'}"
                 return_flight = f"{booking.pickup_flight_number or 'N/A'} from {booking.pickup_origin or 'origin'}"
 
-                # Package name
-                package_name = "1 Week" if booking.package == "quick" else "2 Weeks"
+                # Package name - use flexible duration format
+                duration_days = (booking.pickup_date - booking.dropoff_date).days
+                package_name = f"{duration_days} day{'s' if duration_days != 1 else ''}"
 
                 # Amount paid
                 amount_pence = data.get("amount", 0)
