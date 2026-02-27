@@ -6,6 +6,7 @@ import { getMakes, getModels } from 'car-info'
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import StripePayment from './components/StripePayment'
+import MobileTimePicker from './components/MobileTimePicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import './BookingsNew.css'
 
@@ -1913,16 +1914,14 @@ function Bookings() {
                     </div>
                     <div className="form-group">
                       <label htmlFor="manualFlightTime">Departure Time <span className="required">*</span></label>
-                      <input
-                        type="text"
+                      <MobileTimePicker
                         id="manualFlightTime"
-                        placeholder="e.g., 1430"
-                        maxLength={5}
-                        inputMode="numeric"
+                        placeholder="e.g., 14:30"
                         value={manualDepartureData.flightTime}
-                        onChange={(e) => setManualDepartureData(prev => ({
+                        label="Departure Time"
+                        onChange={(value) => setManualDepartureData(prev => ({
                           ...prev,
-                          flightTime: formatTimeInput(e.target.value)
+                          flightTime: value
                         }))}
                       />
                     </div>
@@ -2071,16 +2070,14 @@ function Bookings() {
                     </div>
                     <div className="form-group">
                       <label htmlFor="manualArrivalFlightTime">Arrival Time <span className="required">*</span></label>
-                      <input
-                        type="text"
+                      <MobileTimePicker
                         id="manualArrivalFlightTime"
-                        placeholder="e.g., 1430"
-                        maxLength={5}
-                        inputMode="numeric"
+                        placeholder="e.g., 14:30"
                         value={manualArrivalData.flightTime}
-                        onChange={(e) => setManualArrivalData(prev => ({
+                        label="Arrival Time"
+                        onChange={(value) => setManualArrivalData(prev => ({
                           ...prev,
-                          flightTime: formatTimeInput(e.target.value)
+                          flightTime: value
                         }))}
                       />
                       <p className="field-hint">Time your flight lands at Bournemouth. For overnight flights, select the landing date above.</p>
