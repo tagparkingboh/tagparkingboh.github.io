@@ -1166,24 +1166,26 @@ async def create_manual_booking(
         amount_formatted = f"£{request.amount_pence / 100:.2f}"
 
         if is_free:
-            # Build flight info for email (only if flight number provided)
+            # Build flight info for email: airline + flight number (if provided) + destination
             departure_flight_str = ""
-            if request.departure_flight_number:
-                if departure_flight and departure_flight.destination_name:
-                    airline_prefix = f"{departure_flight.airline_name} " if departure_flight.airline_name else ""
-                    departure_flight_str = f"{airline_prefix}{departure_flight.flight_number}"
-                    if dropoff_destination or departure_flight.destination_name:
-                        departure_flight_str += f" to {dropoff_destination or departure_flight.destination_name}"
-                else:
-                    departure_flight_str = request.departure_flight_number
+            if request.dropoff_airline_name or dropoff_destination:
+                parts = []
+                if request.dropoff_airline_name:
+                    parts.append(request.dropoff_airline_name)
+                if request.departure_flight_number:
+                    parts.append(request.departure_flight_number)
+                departure_flight_str = " ".join(parts)
+                if dropoff_destination:
+                    departure_flight_str += f" to {dropoff_destination}"
 
             return_flight_str = ""
-            if request.return_flight_number:
-                # Get airline name from arrival flight if available
-                return_airline = ""
-                if arrival_flight and arrival_flight.airline_name:
-                    return_airline = f"{arrival_flight.airline_name} "
-                return_flight_str = f"{return_airline}{request.return_flight_number}"
+            if request.pickup_airline_name or pickup_origin:
+                parts = []
+                if request.pickup_airline_name:
+                    parts.append(request.pickup_airline_name)
+                if request.return_flight_number:
+                    parts.append(request.return_flight_number)
+                return_flight_str = " ".join(parts)
                 if pickup_origin:
                     return_flight_str += f" from {pickup_origin}"
 
@@ -1339,18 +1341,26 @@ async def mark_booking_paid(
         payment_pence = payment.amount_pence if payment else 0
         amount_paid = f"£{payment_pence / 100:.2f}" if payment else "N/A"
 
-        # Format flight info with airline name (only if flight number provided)
+        # Format flight info: airline + flight number (if provided) + destination
         departure_flight = ""
-        if booking.dropoff_flight_number:
-            dropoff_airline = f"{booking.dropoff_airline_name} " if booking.dropoff_airline_name else ""
-            departure_flight = f"{dropoff_airline}{booking.dropoff_flight_number}"
+        if booking.dropoff_airline_name or booking.dropoff_destination:
+            parts = []
+            if booking.dropoff_airline_name:
+                parts.append(booking.dropoff_airline_name)
+            if booking.dropoff_flight_number:
+                parts.append(booking.dropoff_flight_number)
+            departure_flight = " ".join(parts)
             if booking.dropoff_destination:
                 departure_flight += f" to {booking.dropoff_destination}"
 
         return_flight = ""
-        if booking.pickup_flight_number:
-            pickup_airline = f"{booking.pickup_airline_name} " if booking.pickup_airline_name else ""
-            return_flight = f"{pickup_airline}{booking.pickup_flight_number}"
+        if booking.pickup_airline_name or booking.pickup_origin:
+            parts = []
+            if booking.pickup_airline_name:
+                parts.append(booking.pickup_airline_name)
+            if booking.pickup_flight_number:
+                parts.append(booking.pickup_flight_number)
+            return_flight = " ".join(parts)
             if booking.pickup_origin:
                 return_flight += f" from {booking.pickup_origin}"
 
@@ -1780,18 +1790,26 @@ async def resend_booking_confirmation_email(
     pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
     dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else ""
 
-    # Format flight info with airline name (only if flight number provided)
+    # Format flight info: airline + flight number (if provided) + destination
     departure_flight = ""
-    if booking.dropoff_flight_number:
-        dropoff_airline = f"{booking.dropoff_airline_name} " if booking.dropoff_airline_name else ""
-        departure_flight = f"{dropoff_airline}{booking.dropoff_flight_number}"
+    if booking.dropoff_airline_name or booking.dropoff_destination:
+        parts = []
+        if booking.dropoff_airline_name:
+            parts.append(booking.dropoff_airline_name)
+        if booking.dropoff_flight_number:
+            parts.append(booking.dropoff_flight_number)
+        departure_flight = " ".join(parts)
         if booking.dropoff_destination:
             departure_flight += f" to {booking.dropoff_destination}"
 
     return_flight = ""
-    if booking.pickup_flight_number:
-        pickup_airline = f"{booking.pickup_airline_name} " if booking.pickup_airline_name else ""
-        return_flight = f"{pickup_airline}{booking.pickup_flight_number}"
+    if booking.pickup_airline_name or booking.pickup_origin:
+        parts = []
+        if booking.pickup_airline_name:
+            parts.append(booking.pickup_airline_name)
+        if booking.pickup_flight_number:
+            parts.append(booking.pickup_flight_number)
+        return_flight = " ".join(parts)
         if booking.pickup_origin:
             return_flight += f" from {booking.pickup_origin}"
 
@@ -4349,20 +4367,31 @@ async def create_payment(
                         vehicle_colour = vehicle.colour
                         vehicle_registration = vehicle.registration
 
-                # Format flight info (only if flight number provided)
+                # Format flight info: airline + flight number (if provided) + destination
                 departure_flight = ""
-                if request.flight_number:
-                    departure_airline = ""
-                    if departure and departure.airline_name:
-                        departure_airline = f"{departure.airline_name} "
-                    departure_flight = f"{departure_airline}{request.flight_number}"
+                if departure and departure.airline_name:
+                    parts = [departure.airline_name]
+                    if request.flight_number:
+                        parts.append(request.flight_number)
+                    departure_flight = " ".join(parts)
+                    if departure.destination_name:
+                        dest = departure.destination_name.split(', ')[0]
+                        if dest == 'Tenerife-Reinasofia':
+                            dest = 'Tenerife'
+                        departure_flight += f" to {dest}"
+                elif request.flight_number:
+                    departure_flight = request.flight_number
 
                 return_flight = ""
-                if request.pickup_flight_number:
-                    return_airline = ""
-                    if arrival_flight and arrival_flight.airline_name:
-                        return_airline = f"{arrival_flight.airline_name} "
-                    return_flight = f"{return_airline}{request.pickup_flight_number}"
+                if arrival_flight and arrival_flight.airline_name:
+                    parts = [arrival_flight.airline_name]
+                    if request.pickup_flight_number:
+                        parts.append(request.pickup_flight_number)
+                    return_flight = " ".join(parts)
+                    if pickup_origin:
+                        return_flight += f" from {pickup_origin}"
+                elif request.pickup_flight_number:
+                    return_flight = request.pickup_flight_number
                     if pickup_origin:
                         return_flight += f" from {pickup_origin}"
 
@@ -4710,18 +4739,26 @@ async def stripe_webhook(
                 pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
                 dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else ""
 
-                # Format flight info with airline name (only if flight number provided)
+                # Format flight info: airline + flight number (if provided) + destination
                 departure_flight = ""
-                if booking.dropoff_flight_number:
-                    dropoff_airline = f"{booking.dropoff_airline_name} " if booking.dropoff_airline_name else ""
-                    departure_flight = f"{dropoff_airline}{booking.dropoff_flight_number}"
+                if booking.dropoff_airline_name or booking.dropoff_destination:
+                    parts = []
+                    if booking.dropoff_airline_name:
+                        parts.append(booking.dropoff_airline_name)
+                    if booking.dropoff_flight_number:
+                        parts.append(booking.dropoff_flight_number)
+                    departure_flight = " ".join(parts)
                     if booking.dropoff_destination:
                         departure_flight += f" to {booking.dropoff_destination}"
 
                 return_flight = ""
-                if booking.pickup_flight_number:
-                    pickup_airline = f"{booking.pickup_airline_name} " if booking.pickup_airline_name else ""
-                    return_flight = f"{pickup_airline}{booking.pickup_flight_number}"
+                if booking.pickup_airline_name or booking.pickup_origin:
+                    parts = []
+                    if booking.pickup_airline_name:
+                        parts.append(booking.pickup_airline_name)
+                    if booking.pickup_flight_number:
+                        parts.append(booking.pickup_flight_number)
+                    return_flight = " ".join(parts)
                     if booking.pickup_origin:
                         return_flight += f" from {booking.pickup_origin}"
 

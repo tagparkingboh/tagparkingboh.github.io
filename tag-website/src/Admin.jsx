@@ -1460,7 +1460,10 @@ function Admin() {
                                   {booking.dropoff_airline_name && (
                                     <span className="airline-name">{booking.dropoff_airline_name}</span>
                                   )}
-                                  <span className="flight-number">{booking.dropoff_flight_number || '-'}</span>
+                                  {booking.dropoff_flight_number && (
+                                    <span className="flight-number">{booking.dropoff_flight_number}</span>
+                                  )}
+                                  {!booking.dropoff_airline_name && !booking.dropoff_flight_number && '-'}
                                 </span>
                               </div>
                               <div className="booking-detail">
@@ -1496,7 +1499,10 @@ function Admin() {
                                   {booking.pickup_airline_name && (
                                     <span className="airline-name">{booking.pickup_airline_name}</span>
                                   )}
-                                  <span className="flight-number">{booking.pickup_flight_number || '-'}</span>
+                                  {booking.pickup_flight_number && (
+                                    <span className="flight-number">{booking.pickup_flight_number}</span>
+                                  )}
+                                  {!booking.pickup_airline_name && !booking.pickup_flight_number && '-'}
                                 </span>
                               </div>
                               <div className="booking-detail">
