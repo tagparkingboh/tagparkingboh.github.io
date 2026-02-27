@@ -3985,6 +3985,9 @@ async def create_payment(
                     # Shorten Tenerife-Reinasofia to Tenerife
                     if dropoff_destination == 'Tenerife-Reinasofia':
                         dropoff_destination = 'Tenerife'
+            elif request.dropoff_destination_name:
+                # Fallback for manual entries: use destination name from request
+                dropoff_destination = request.dropoff_destination_name
 
             # Use arrival_id and pickup_origin from request if provided
             arrival_id = request.arrival_id
@@ -4049,6 +4052,9 @@ async def create_payment(
                     # Shorten Tenerife-Reinasofia to Tenerife
                     if dropoff_destination == 'Tenerife-Reinasofia':
                         dropoff_destination = 'Tenerife'
+            elif request.dropoff_destination_name:
+                # Fallback for manual entries: use destination name from request
+                dropoff_destination = request.dropoff_destination_name
 
             # Use arrival_id and pickup_origin from request if provided
             arrival_id = request.arrival_id
