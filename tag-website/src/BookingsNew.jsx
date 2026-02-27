@@ -1931,7 +1931,7 @@ function Bookings() {
                       }}
                     >
                       <option value="">Select airline</option>
-                      {availableAirlines.filter(a => a.code !== 'Other').map(airline => (
+                      {availableAirlines.filter(a => a.code !== 'Other' && a.name !== 'Other').map(airline => (
                         <option key={airline.code} value={airline.code}>{airline.name}</option>
                       ))}
                       <option value="Other">Other</option>
@@ -2000,7 +2000,7 @@ function Bookings() {
                       }}
                     >
                       <option value="">Select destination</option>
-                      {availableDestinations.filter(d => d.code !== 'Other').map(dest => (
+                      {availableDestinations.filter(d => d.code !== 'Other' && d.name !== 'Other').map(dest => (
                         <option key={dest.code} value={dest.code}>{dest.name}</option>
                       ))}
                       <option value="Other">Other</option>
@@ -2167,7 +2167,7 @@ function Bookings() {
                       }}
                     >
                       <option value="">Select airline</option>
-                      {availableAirlines.filter(a => a.code !== 'Other').map(airline => (
+                      {availableAirlines.filter(a => a.code !== 'Other' && a.name !== 'Other').map(airline => (
                         <option key={airline.code} value={airline.code}>{airline.name}</option>
                       ))}
                       <option value="Other">Other</option>
@@ -2214,7 +2214,7 @@ function Bookings() {
                       }}
                     >
                       <option value="">Select origin</option>
-                      {availableDestinations.filter(d => d.code !== 'Other').map(dest => (
+                      {availableDestinations.filter(d => d.code !== 'Other' && d.name !== 'Other').map(dest => (
                         <option key={dest.code} value={dest.code}>{dest.name}</option>
                       ))}
                       <option value="Other">Other</option>
