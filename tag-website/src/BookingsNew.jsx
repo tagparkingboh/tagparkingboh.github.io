@@ -2078,6 +2078,7 @@ function Bookings() {
                           flightTime: formatTimeInput(e.target.value)
                         }))}
                       />
+                      <p className="field-hint">Time your flight lands at Bournemouth. For overnight flights, select the landing date above.</p>
                     </div>
                   </div>
 
