@@ -1298,9 +1298,9 @@ function Bookings() {
             <div className="welcome-modal-icon">
               <img src="/assets/departure-icon.webp" alt="Departure" />
             </div>
-            <h2>Booking is a breeze!</h2>
+            <h2>Booking's a breeze</h2>
             <p>
-              We've made things simpler. Just tell us your flight details — we'll handle the rest.
+              We've made things simpler: tell us your flight details and we'll do the rest.
             </p>
             <p className="welcome-modal-options-intro">Here's how it works:</p>
             <ul className="welcome-modal-options">
@@ -1308,9 +1308,8 @@ function Bookings() {
               <li>Enter your departure time and choose a drop-off slot</li>
               <li>Enter your return flight time so we're ready when you land</li>
             </ul>
-            <p>That's it — quick, easy, done!</p>
             <p>
-              If you're unsure about anything, please get in touch — we're happy to help.
+              And that's it! If you're unsure about anything, please get in touch.
             </p>
             <div className="welcome-modal-contact">
               <a href="mailto:sales@tagparking.co.uk" className="contact-link">
