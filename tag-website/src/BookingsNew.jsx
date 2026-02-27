@@ -57,6 +57,20 @@ const normalizeAirlineName = (name) => {
   return name
 }
 
+// Profanity filter for custom airline/destination entries
+const profanityWords = [
+  'fuck', 'shit', 'ass', 'bitch', 'damn', 'crap', 'piss', 'dick', 'cock',
+  'pussy', 'asshole', 'bastard', 'slut', 'whore', 'cunt', 'wanker', 'bollocks',
+  'twat', 'arse', 'bugger', 'bloody', 'sodding', 'shite', 'tosser', 'bellend',
+  'minger', 'knob', 'prick', 'git', 'pillock', 'plonker', 'sod', 'slag'
+]
+
+const containsProfanity = (text) => {
+  if (!text) return false
+  const lowerText = text.toLowerCase().replace(/[^a-z]/g, '')
+  return profanityWords.some(word => lowerText.includes(word))
+}
+
 // Helper to load booking state from sessionStorage
 function loadBookingState(key, fallback) {
   try {
@@ -130,8 +144,10 @@ function Bookings() {
     flightTime: '',
     airlineCode: '',
     airlineName: '',
+    customAirline: '',
     destinationCode: '',
     destinationName: '',
+    customDestination: '',
     dropoffSlot: ''
   })
   // Manual entry is now the default (simplified booking flow)
@@ -141,8 +157,10 @@ function Bookings() {
     flightTime: '',
     airlineCode: '',
     airlineName: '',
+    customAirline: '',
     originCode: '',
-    originName: ''
+    originName: '',
+    customOrigin: ''
   })
   const [availableAirlines, setAvailableAirlines] = useState([])
   const [availableDestinations, setAvailableDestinations] = useState([])
@@ -516,16 +534,27 @@ function Bookings() {
   // Auto-select return origin based on departure destination
   useEffect(() => {
     if (manualDepartureData.destinationCode && !manualArrivalData.originCode) {
-      const dest = availableDestinations.find(d => d.code === manualDepartureData.destinationCode)
-      if (dest) {
+      if (manualDepartureData.destinationCode === 'Other') {
+        // Custom destination - sync origin as "Other" too
         setManualArrivalData(prev => ({
           ...prev,
-          originCode: manualDepartureData.destinationCode,
-          originName: dest.name
+          originCode: 'Other',
+          originName: manualDepartureData.customDestination || '',
+          customOrigin: manualDepartureData.customDestination || ''
         }))
+      } else {
+        const dest = availableDestinations.find(d => d.code === manualDepartureData.destinationCode)
+        if (dest) {
+          setManualArrivalData(prev => ({
+            ...prev,
+            originCode: manualDepartureData.destinationCode,
+            originName: dest.name,
+            customOrigin: ''
+          }))
+        }
       }
     }
-  }, [manualDepartureData.destinationCode, availableDestinations])
+  }, [manualDepartureData.destinationCode, manualDepartureData.customDestination, availableDestinations])
 
   // Filter arrivals by airline and destination, then find the best matching return flight
   const filteredArrivalsForDate = useMemo(() => {
@@ -1197,16 +1226,32 @@ function Bookings() {
   const isStep1Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid && isBillingComplete && formData.registration && isMakeComplete && isModelComplete && formData.colour
 
   // Step 2: Trip Details - Direct entry validation
+  const isDepartureAirlineComplete = manualDepartureData.airlineCode &&
+    (manualDepartureData.airlineCode !== 'Other' ||
+      (manualDepartureData.customAirline && !containsProfanity(manualDepartureData.customAirline)))
+
+  const isDestinationComplete = manualDepartureData.destinationCode &&
+    (manualDepartureData.destinationCode !== 'Other' ||
+      (manualDepartureData.customDestination && !containsProfanity(manualDepartureData.customDestination)))
+
+  const isArrivalAirlineComplete = manualArrivalData.airlineCode &&
+    (manualArrivalData.airlineCode !== 'Other' ||
+      (manualArrivalData.customAirline && !containsProfanity(manualArrivalData.customAirline)))
+
+  const isOriginComplete = manualArrivalData.originCode &&
+    (manualArrivalData.originCode !== 'Other' ||
+      (manualArrivalData.customOrigin && !containsProfanity(manualArrivalData.customOrigin)))
+
   const isDepartureComplete =
-    manualDepartureData.airlineCode &&
+    isDepartureAirlineComplete &&
     isValidTimeFormat(manualDepartureData.flightTime) &&
-    manualDepartureData.destinationCode &&
+    isDestinationComplete &&
     manualDepartureData.dropoffSlot
 
   const isArrivalComplete =
-    manualArrivalData.airlineCode &&
+    isArrivalAirlineComplete &&
     isValidTimeFormat(manualArrivalData.flightTime) &&
-    manualArrivalData.originCode
+    isOriginComplete
 
   const isStep2Complete = formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete && isCapacityAvailable
   // Step 3: Package Selection
@@ -1865,7 +1910,8 @@ function Bookings() {
                         setManualDepartureData(prev => ({
                           ...prev,
                           airlineCode: e.target.value,
-                          airlineName: airline?.name || ''
+                          airlineName: airline?.name || '',
+                          customAirline: e.target.value === 'Other' ? prev.customAirline : ''
                         }))
                       }}
                     >
@@ -1873,8 +1919,33 @@ function Bookings() {
                       {availableAirlines.map(airline => (
                         <option key={airline.code} value={airline.code}>{airline.name}</option>
                       ))}
+                      <option value="Other">Other</option>
                     </select>
                   </div>
+
+                  {manualDepartureData.airlineCode === 'Other' && (
+                    <div className="form-group">
+                      <label htmlFor="customDepartureAirline">Enter Airline <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="customDepartureAirline"
+                        placeholder="e.g., British Airways"
+                        value={manualDepartureData.customAirline}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setManualDepartureData(prev => ({
+                            ...prev,
+                            customAirline: value,
+                            airlineName: value
+                          }))
+                        }}
+                        className={containsProfanity(manualDepartureData.customAirline) ? 'input-error' : ''}
+                      />
+                      {containsProfanity(manualDepartureData.customAirline) && (
+                        <span className="error-message">Please enter a valid airline name</span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="form-group">
                     <label htmlFor="manualDestination">Destination <span className="required">*</span></label>
@@ -1886,16 +1957,63 @@ function Bookings() {
                         setManualDepartureData(prev => ({
                           ...prev,
                           destinationCode: e.target.value,
-                          destinationName: dest?.name || ''
+                          destinationName: dest?.name || '',
+                          customDestination: e.target.value === 'Other' ? prev.customDestination : ''
                         }))
+                        // Auto-populate arrival origin with same destination
+                        if (e.target.value === 'Other') {
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            originCode: 'Other',
+                            originName: ''
+                          }))
+                        } else if (dest) {
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            originCode: e.target.value,
+                            originName: dest.name,
+                            customOrigin: ''
+                          }))
+                        }
                       }}
                     >
                       <option value="">Select destination</option>
                       {availableDestinations.map(dest => (
                         <option key={dest.code} value={dest.code}>{dest.name}</option>
                       ))}
+                      <option value="Other">Other</option>
                     </select>
                   </div>
+
+                  {manualDepartureData.destinationCode === 'Other' && (
+                    <div className="form-group">
+                      <label htmlFor="customDestination">Enter Destination <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="customDestination"
+                        placeholder="e.g., Barcelona"
+                        value={manualDepartureData.customDestination}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setManualDepartureData(prev => ({
+                            ...prev,
+                            customDestination: value,
+                            destinationName: value
+                          }))
+                          // Auto-sync to arrival origin
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            customOrigin: value,
+                            originName: value
+                          }))
+                        }}
+                        className={containsProfanity(manualDepartureData.customDestination) ? 'input-error' : ''}
+                      />
+                      {containsProfanity(manualDepartureData.customDestination) && (
+                        <span className="error-message">Please enter a valid destination name</span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="form-row">
                     <div className="form-group">
@@ -2021,7 +2139,8 @@ function Bookings() {
                         setManualArrivalData(prev => ({
                           ...prev,
                           airlineCode: e.target.value,
-                          airlineName: airline?.name || ''
+                          airlineName: airline?.name || '',
+                          customAirline: e.target.value === 'Other' ? prev.customAirline : ''
                         }))
                       }}
                     >
@@ -2029,8 +2148,33 @@ function Bookings() {
                       {availableAirlines.map(airline => (
                         <option key={airline.code} value={airline.code}>{airline.name}</option>
                       ))}
+                      <option value="Other">Other</option>
                     </select>
                   </div>
+
+                  {manualArrivalData.airlineCode === 'Other' && (
+                    <div className="form-group">
+                      <label htmlFor="customArrivalAirline">Enter Airline <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="customArrivalAirline"
+                        placeholder="e.g., British Airways"
+                        value={manualArrivalData.customAirline}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            customAirline: value,
+                            airlineName: value
+                          }))
+                        }}
+                        className={containsProfanity(manualArrivalData.customAirline) ? 'input-error' : ''}
+                      />
+                      {containsProfanity(manualArrivalData.customAirline) && (
+                        <span className="error-message">Please enter a valid airline name</span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="form-group">
                     <label htmlFor="manualArrivalOrigin">Origin <span className="required">*</span></label>
@@ -2042,7 +2186,8 @@ function Bookings() {
                         setManualArrivalData(prev => ({
                           ...prev,
                           originCode: e.target.value,
-                          originName: origin?.name || ''
+                          originName: origin?.name || '',
+                          customOrigin: e.target.value === 'Other' ? prev.customOrigin : ''
                         }))
                       }}
                     >
@@ -2050,8 +2195,33 @@ function Bookings() {
                       {availableDestinations.map(dest => (
                         <option key={dest.code} value={dest.code}>{dest.name}</option>
                       ))}
+                      <option value="Other">Other</option>
                     </select>
                   </div>
+
+                  {manualArrivalData.originCode === 'Other' && (
+                    <div className="form-group">
+                      <label htmlFor="customOrigin">Enter Origin <span className="required">*</span></label>
+                      <input
+                        type="text"
+                        id="customOrigin"
+                        placeholder="e.g., Barcelona"
+                        value={manualArrivalData.customOrigin}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setManualArrivalData(prev => ({
+                            ...prev,
+                            customOrigin: value,
+                            originName: value
+                          }))
+                        }}
+                        className={containsProfanity(manualArrivalData.customOrigin) ? 'input-error' : ''}
+                      />
+                      {containsProfanity(manualArrivalData.customOrigin) && (
+                        <span className="error-message">Please enter a valid origin name</span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="form-row">
                     <div className="form-group">
