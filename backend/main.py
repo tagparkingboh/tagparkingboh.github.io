@@ -4029,6 +4029,14 @@ async def create_payment(
                 dropoff_slot=slot_type,
                 arrival_id=arrival_id,
                 session_id=request.session_id,
+                # Manual entry fields for departure
+                dropoff_manual_entry=request.dropoff_manual_entry,
+                dropoff_airline_code=request.dropoff_airline_code,
+                dropoff_airline_name=request.dropoff_airline_name,
+                # Manual entry fields for arrival
+                pickup_manual_entry=request.pickup_manual_entry,
+                pickup_airline_code=request.pickup_airline_code,
+                pickup_airline_name=request.pickup_airline_name,
             )
             booking_reference = booking.reference
             booking_id = booking.id
