@@ -1251,7 +1251,7 @@ function Admin() {
                         {booking.customer?.first_name} {booking.customer?.last_name}
                       </div>
                       <div className="recent-booking-date">
-                        {new Date(booking.dropoff_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        {new Date(booking.dropoff_date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Europe/London' })}
                       </div>
                       <div className={`recent-booking-status status-${booking.status?.toLowerCase() || 'pending'}`}>
                         {booking.status || 'Pending'}
