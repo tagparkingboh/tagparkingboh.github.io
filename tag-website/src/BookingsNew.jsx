@@ -606,10 +606,48 @@ function Bookings() {
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
   }
 
-  // Validate time format helper
+  // Validate time format helper (24-hour clock with valid hours 00-23 and minutes 00-59)
   const isValidTimeFormat = (timeStr) => {
     if (!timeStr) return false
-    return /^\d{1,2}:\d{2}$/.test(timeStr)
+    const match = timeStr.match(/^(\d{1,2}):(\d{2})$/)
+    if (!match) return false
+    const hours = parseInt(match[1], 10)
+    const minutes = parseInt(match[2], 10)
+    return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59
+  }
+
+  // Format time input - auto-insert colon, validate 24-hour format
+  const formatTimeInput = (value) => {
+    // Remove any non-digits
+    const digits = value.replace(/\D/g, '')
+
+    // Limit to 4 digits
+    const limited = digits.slice(0, 4)
+
+    if (limited.length <= 2) {
+      // Just hours or partial hours
+      return limited
+    } else {
+      // Insert colon after first 2 digits
+      const hours = limited.slice(0, 2)
+      const minutes = limited.slice(2)
+
+      // Validate hours (00-23)
+      const hoursNum = parseInt(hours, 10)
+      if (hoursNum > 23) {
+        return '23:' + minutes
+      }
+
+      // Validate minutes (00-59)
+      if (minutes.length === 2) {
+        const minsNum = parseInt(minutes, 10)
+        if (minsNum > 59) {
+          return hours + ':59'
+        }
+      }
+
+      return hours + ':' + minutes
+    }
   }
 
   // Calculate drop-off slots for manual departure entries
@@ -1864,11 +1902,13 @@ function Bookings() {
                       <input
                         type="text"
                         id="manualFlightTime"
-                        placeholder="HH:MM (e.g., 14:30)"
+                        placeholder="e.g., 1430"
+                        maxLength={5}
+                        inputMode="numeric"
                         value={manualDepartureData.flightTime}
                         onChange={(e) => setManualDepartureData(prev => ({
                           ...prev,
-                          flightTime: e.target.value
+                          flightTime: formatTimeInput(e.target.value)
                         }))}
                       />
                     </div>
@@ -2029,11 +2069,13 @@ function Bookings() {
                       <input
                         type="text"
                         id="manualArrivalFlightTime"
-                        placeholder="HH:MM (e.g., 14:30)"
+                        placeholder="e.g., 1430"
+                        maxLength={5}
+                        inputMode="numeric"
                         value={manualArrivalData.flightTime}
                         onChange={(e) => setManualArrivalData(prev => ({
                           ...prev,
-                          flightTime: e.target.value
+                          flightTime: formatTimeInput(e.target.value)
                         }))}
                       />
                     </div>
