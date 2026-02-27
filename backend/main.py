@@ -3903,6 +3903,17 @@ async def create_payment(
             # Explicit time provided (e.g., from admin)
             time_parts = request.drop_off_time.split(":")
             dropoff_time = time(int(time_parts[0]), int(time_parts[1]))
+        elif request.dropoff_manual_entry and request.dropoff_flight_time and request.drop_off_slot:
+            # Manual entry: calculate from customer-provided flight time minus slot minutes
+            time_parts = request.dropoff_flight_time.split(":")
+            dep_hour = int(time_parts[0])
+            dep_min = int(time_parts[1])
+            slot_minutes = int(request.drop_off_slot)
+            total_minutes = dep_hour * 60 + dep_min - slot_minutes
+            # Handle overnight (negative minutes)
+            if total_minutes < 0:
+                total_minutes += 24 * 60
+            dropoff_time = time(total_minutes // 60, total_minutes % 60)
         elif request.departure_id and request.drop_off_slot:
             # Calculate from flight departure time minus slot minutes
             departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()

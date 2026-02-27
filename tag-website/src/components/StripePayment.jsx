@@ -298,7 +298,7 @@ function StripePayment({
           }
           return formatDateLocal(formData.pickupDate)
         })(),
-        drop_off_slot: manualDepartureData ? null : (formData.dropoffSlot || null),
+        drop_off_slot: manualDepartureData?.dropoffSlot || formData.dropoffSlot || null,
         departure_id: manualDepartureData ? null : (selectedFlight?.id || null),
         // Return flight details
         arrival_id: manualArrivalData ? null : (selectedArrivalFlight?.id || null),
