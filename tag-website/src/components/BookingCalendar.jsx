@@ -328,10 +328,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                       <div key={booking.id} className="detail-booking-card">
                         <div className="booking-header-row">
                           <div className="booking-time">
-                            {booking.pickup_time_from && booking.pickup_time_to
-                              ? `${formatTime(booking.pickup_time_from)}-${formatTime(booking.pickup_time_to)}`
-                              : formatTime(booking.pickup_time)
-                            }
+                            {formatTime(booking.pickup_time_from || booking.pickup_time)}
                           </div>
                           <div className="booking-destination">
                             ← {booking.pickup_origin || 'Unknown'}
