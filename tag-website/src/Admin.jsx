@@ -1493,6 +1493,9 @@ function Admin() {
                               <div className="booking-detail">
                                 <span className="detail-label">Flight</span>
                                 <span className="detail-value">
+                                  {booking.pickup_airline_name && (
+                                    <span className="airline-name">{booking.pickup_airline_name}</span>
+                                  )}
                                   <span className="flight-number">{booking.pickup_flight_number || '-'}</span>
                                 </span>
                               </div>
