@@ -1245,17 +1245,17 @@ function Bookings() {
             <div className="welcome-modal-icon">
               <img src="/assets/departure-icon.webp" alt="Departure" />
             </div>
-            <h2>Flight schedules can change.</h2>
+            <h2>Booking is a breeze!</h2>
             <p>
-              Airlines regularly adjust flight times due to demand and seasonal changes. While we do our best to keep flight information accurate and up to date, occasional changes can be missed.
+              We've made things simpler. Just tell us your flight details — we'll handle the rest.
             </p>
-            <p className="welcome-modal-options-intro">We offer flexible booking options:</p>
+            <p className="welcome-modal-options-intro">Here's how it works:</p>
             <ul className="welcome-modal-options">
-              <li>Found your flight? Select it from the dropdown</li>
-              <li>Flight not listed? Add it manually</li>
-              <li>Time changed? Override it with the correct time</li>
+              <li>Pick your airline and destination</li>
+              <li>Enter your departure time and choose a drop-off slot</li>
+              <li>Enter your return flight time so we're ready when you land</li>
             </ul>
-            <p>Mix any combination for departure and return flights.</p>
+            <p>That's it — quick, easy, done!</p>
             <p>
               If you're unsure about anything, please get in touch — we're happy to help.
             </p>
