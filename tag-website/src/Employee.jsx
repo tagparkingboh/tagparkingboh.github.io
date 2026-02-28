@@ -18,6 +18,51 @@ const PHOTO_SLOTS = [
 
 const REQUIRED_PHOTO_KEYS = PHOTO_SLOTS.filter(s => s.required).map(s => s.key)
 
+// Helper to format date as dd/mm/yyyy for display
+const formatDateUK = (isoDate) => {
+  if (!isoDate) return ''
+  const parts = isoDate.split('-')
+  if (parts.length !== 3) return isoDate
+  return `${parts[2]}/${parts[1]}/${parts[0]}`
+}
+
+// Helper to parse UK date (dd/mm/yyyy) to ISO (yyyy-mm-dd)
+const parseUKDate = (ukDate) => {
+  if (!ukDate) return ''
+  const parts = ukDate.split('/')
+  if (parts.length !== 3) return ukDate
+  return `${parts[2]}-${parts[1]}-${parts[0]}`
+}
+
+// Rotate image by 90 degrees
+const rotateImage = (base64, degrees) => {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+
+      // Swap width/height for 90 or 270 degree rotation
+      if (degrees === 90 || degrees === 270) {
+        canvas.width = img.height
+        canvas.height = img.width
+      } else {
+        canvas.width = img.width
+        canvas.height = img.height
+      }
+
+      ctx.translate(canvas.width / 2, canvas.height / 2)
+      ctx.rotate((degrees * Math.PI) / 180)
+      ctx.drawImage(img, -img.width / 2, -img.height / 2)
+
+      // Get the format from the base64 string
+      const format = base64.includes('image/png') ? 'image/png' : 'image/jpeg'
+      resolve(canvas.toDataURL(format, 0.9))
+    }
+    img.src = base64
+  })
+}
+
 function Employee() {
   const { user, token, loading, isAuthenticated, logout } = useAuth()
   const navigate = useNavigate()
@@ -299,6 +344,14 @@ function Employee() {
     })
   }
 
+  // Handle photo rotation
+  const handleRotatePhoto = async (slotKey, degrees) => {
+    const currentPhoto = inspectionPhotos[slotKey]
+    if (!currentPhoto) return
+    const rotatedPhoto = await rotateImage(currentPhoto, degrees)
+    setInspectionPhotos(prev => ({ ...prev, [slotKey]: rotatedPhoto }))
+  }
+
   // Save inspection
   const handleSaveInspection = async () => {
     // Validate required photos - only for drop-off inspections
@@ -504,7 +557,7 @@ function Employee() {
                   <div className="dropoff-inspection-summary">
                     <h4>Original Drop-off Inspection</h4>
                     <p className="dropoff-summary-date">
-                      Recorded on {dropoffInspection.signed_date || 'N/A'}
+                      Recorded on {formatDateUK(dropoffInspection.signed_date) || 'N/A'}
                     </p>
                     {dropoffInspection.notes && (
                       <div className="dropoff-summary-notes">
@@ -599,12 +652,28 @@ function Employee() {
                                 onClick={() => setExpandedImage({ src: inspectionPhotos[slot.key], label: slot.label })}
                                 className="photo-slot-img-clickable"
                               />
-                              <button
-                                className="photo-slot-retake"
-                                onClick={() => removePhoto(slot.key)}
-                              >
-                                Retake
-                              </button>
+                              <div className="photo-slot-actions">
+                                <button
+                                  className="photo-slot-rotate"
+                                  onClick={() => handleRotatePhoto(slot.key, 270)}
+                                  title="Rotate left"
+                                >
+                                  ↺
+                                </button>
+                                <button
+                                  className="photo-slot-rotate"
+                                  onClick={() => handleRotatePhoto(slot.key, 90)}
+                                  title="Rotate right"
+                                >
+                                  ↻
+                                </button>
+                                <button
+                                  className="photo-slot-retake"
+                                  onClick={() => removePhoto(slot.key)}
+                                >
+                                  Retake
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <label className="photo-slot-capture" htmlFor={`photo-${slot.key}`}>
@@ -683,11 +752,28 @@ function Employee() {
                       />
                     </div>
                     <div className="inspection-field">
-                      <label>Date</label>
+                      <label>Date (dd/mm/yyyy)</label>
                       <input
-                        type="date"
-                        value={signedDate}
-                        onChange={e => setSignedDate(e.target.value)}
+                        type="text"
+                        value={formatDateUK(signedDate)}
+                        onChange={e => {
+                          const ukDate = e.target.value
+                          // Allow typing with auto-formatting
+                          const digits = ukDate.replace(/\D/g, '')
+                          let formatted = ''
+                          if (digits.length <= 2) formatted = digits
+                          else if (digits.length <= 4) formatted = digits.slice(0, 2) + '/' + digits.slice(2)
+                          else formatted = digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4, 8)
+                          // Convert to ISO format for storage
+                          if (formatted.length === 10) {
+                            setSignedDate(parseUKDate(formatted))
+                          } else {
+                            // Store partial input in UK format temporarily
+                            setSignedDate(parseUKDate(formatted))
+                          }
+                        }}
+                        placeholder="dd/mm/yyyy"
+                        maxLength={10}
                         className="acknowledgement-input"
                       />
                     </div>
