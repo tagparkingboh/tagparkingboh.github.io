@@ -572,6 +572,55 @@
   font-weight: 600;
 }
 
+/* Mobile Time Picker - Admin theme overrides */
+.manual-booking .mobile-time-picker-container input {
+  padding: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  color: #333;
+  background: white;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  width: 100%;
+}
+
+.manual-booking .mobile-time-picker-container input:focus {
+  outline: none;
+  border-color: #f7b32b;
+  box-shadow: 0 0 0 3px rgba(247, 179, 43, 0.15);
+}
+
+/* Admin theme for time picker modal */
+.manual-booking .time-picker-modal {
+  border-radius: 16px 16px 0 0;
+}
+
+.manual-booking .time-picker-header {
+  background: #1a1a2e;
+  border-radius: 16px 16px 0 0;
+}
+
+.manual-booking .time-picker-title {
+  color: #f7b32b;
+}
+
+.manual-booking .time-picker-cancel {
+  color: #ccc;
+}
+
+.manual-booking .time-picker-confirm {
+  color: #f7b32b;
+}
+
+.manual-booking .wheel-scroll::before {
+  background-color: rgba(247, 179, 43, 0.15);
+  border-color: #f7b32b;
+}
+
+.manual-booking .wheel-item.selected {
+  color: #1a1a2e;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .form-row {

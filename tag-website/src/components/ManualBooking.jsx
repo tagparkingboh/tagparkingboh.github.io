@@ -3,6 +3,7 @@ import { getMakes, getModels } from 'car-info'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
 import 'react-datepicker/dist/react-datepicker.css'
+import MobileTimePicker from './MobileTimePicker'
 import './ManualBooking.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -34,7 +35,7 @@ function ManualBooking({ token }) {
     dropoffDestination: '',
     customDropoffDestination: '',
     dropoffFlightNumber: '',
-    departureTime: null,  // Flight departure time
+    departureTime: '',  // Flight departure time (HH:MM string)
     dropoffSlot: '',      // 'early' (2.75h) or 'late' (2h)
     // Return flight details
     pickupDate: null,
@@ -43,7 +44,7 @@ function ManualBooking({ token }) {
     pickupOrigin: '',
     customPickupOrigin: '',
     pickupFlightNumber: '',
-    arrivalTime: null,    // Flight arrival time
+    arrivalTime: '',    // Flight arrival time (HH:MM string)
     // Payment
     promoCode: '',
     stripePaymentLink: '',
@@ -187,13 +188,19 @@ function ManualBooking({ token }) {
     calculatePrice()
   }, [formData.dropoffDate, formData.pickupDate])
 
+  // Parse time string (HH:MM) to hours and minutes
+  const parseTimeString = (timeStr) => {
+    if (!timeStr || !timeStr.includes(':')) return null
+    const [hours, minutes] = timeStr.split(':').map(Number)
+    if (isNaN(hours) || isNaN(minutes)) return null
+    return { hours, minutes }
+  }
+
   // Calculate drop-off slots based on departure time
   const dropoffSlots = useMemo(() => {
-    if (!formData.departureTime) return []
-    const depTime = formData.departureTime
-    const depHours = depTime.getHours()
-    const depMinutes = depTime.getMinutes()
-    const depTotalMinutes = depHours * 60 + depMinutes
+    const parsed = parseTimeString(formData.departureTime)
+    if (!parsed) return []
+    const depTotalMinutes = parsed.hours * 60 + parsed.minutes
 
     const slots = []
 
@@ -226,11 +233,9 @@ function ManualBooking({ token }) {
 
   // Calculate pickup time (arrival + 30 minutes)
   const calculatedPickupTime = useMemo(() => {
-    if (!formData.arrivalTime) return null
-    const arrTime = formData.arrivalTime
-    const arrHours = arrTime.getHours()
-    const arrMinutes = arrTime.getMinutes()
-    const totalMinutes = arrHours * 60 + arrMinutes + 30
+    const parsed = parseTimeString(formData.arrivalTime)
+    if (!parsed) return null
+    const totalMinutes = parsed.hours * 60 + parsed.minutes + 30
     const pickupHours = Math.floor(totalMinutes / 60) % 24
     const pickupMins = totalMinutes % 60
     return `${String(pickupHours).padStart(2, '0')}:${String(pickupMins).padStart(2, '0')}`
@@ -1099,18 +1104,12 @@ function ManualBooking({ token }) {
             </div>
             <div className="form-group">
               <label htmlFor="departureTime">Departure Time <span className="required">*</span></label>
-              <DatePicker
-                selected={formData.departureTime}
-                onChange={(time) => handleDateChange(time, 'departureTime')}
-                showTimeSelect
-                showTimeSelectOnly
-                timeIntervals={15}
-                timeCaption="Time"
-                dateFormat="HH:mm"
-                timeFormat="HH:mm"
-                placeholderText="e.g., 14:30"
-                className="date-picker-input"
+              <MobileTimePicker
                 id="departureTime"
+                value={formData.departureTime}
+                onChange={(time) => setFormData(prev => ({ ...prev, departureTime: time }))}
+                placeholder="e.g., 14:30"
+                label="Departure Time"
               />
             </div>
           </div>
@@ -1244,18 +1243,12 @@ function ManualBooking({ token }) {
             </div>
             <div className="form-group">
               <label htmlFor="arrivalTime">Arrival Time <span className="required">*</span></label>
-              <DatePicker
-                selected={formData.arrivalTime}
-                onChange={(time) => handleDateChange(time, 'arrivalTime')}
-                showTimeSelect
-                showTimeSelectOnly
-                timeIntervals={15}
-                timeCaption="Time"
-                dateFormat="HH:mm"
-                timeFormat="HH:mm"
-                placeholderText="e.g., 14:30"
-                className="date-picker-input"
+              <MobileTimePicker
                 id="arrivalTime"
+                value={formData.arrivalTime}
+                onChange={(time) => setFormData(prev => ({ ...prev, arrivalTime: time }))}
+                placeholder="e.g., 14:30"
+                label="Arrival Time"
               />
             </div>
           </div>
