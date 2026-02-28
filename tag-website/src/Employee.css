@@ -510,16 +510,42 @@
   object-fit: cover;
 }
 
-.photo-slot-retake {
+.photo-slot-actions {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
+  display: flex;
+  background: rgba(0, 0, 0, 0.75);
+}
+
+.photo-slot-rotate {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  font-size: 16px;
+  font-weight: 600;
+  background: transparent;
+  color: #D9FF00;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.photo-slot-rotate:hover {
+  background: rgba(217, 255, 0, 0.2);
+}
+
+.photo-slot-rotate:active {
+  background: rgba(217, 255, 0, 0.3);
+}
+
+.photo-slot-retake {
+  flex: 1;
   padding: 6px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  background: rgba(0, 0, 0, 0.75);
+  background: transparent;
   color: #fc8181;
   border: none;
   cursor: pointer;
