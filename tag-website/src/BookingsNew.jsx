@@ -100,6 +100,9 @@ function Bookings() {
   const [saving, setSaving] = useState(false)
   // Welcome modal state - shown when user clicks Continue from Step 1
   const [showWelcomeModal, setShowWelcomeModal] = useState(false)
+  // Track when user has attempted to submit each step (to show validation errors)
+  const [step1Attempted, setStep1Attempted] = useState(false)
+  const [step2Attempted, setStep2Attempted] = useState(false)
 
   // Google Analytics page view tracking for SPA
   useEffect(() => {
@@ -1320,6 +1323,7 @@ function Bookings() {
 
   // Handle Continue button click - scroll to first error if validation fails
   const handleContinueStep1 = () => {
+    setStep1Attempted(true)
     if (!isStep1Complete) {
       scrollToFirstError(1)
       return
@@ -1328,6 +1332,7 @@ function Bookings() {
   }
 
   const handleContinueStep2 = () => {
+    setStep2Attempted(true)
     if (!isStep2Complete) {
       scrollToFirstError(2)
       return
@@ -1517,8 +1522,12 @@ function Bookings() {
                     placeholder="John"
                     value={formData.firstName}
                     onChange={handleChange}
+                    className={step1Attempted && !formData.firstName ? 'input-error' : ''}
                     required
                   />
+                  {step1Attempted && !formData.firstName && (
+                    <span className="field-error">First name is required</span>
+                  )}
                 </div>
                 <div className="form-group">
                   <label htmlFor="lastName">Last Name <span className="required">*</span></label>
@@ -1529,8 +1538,12 @@ function Bookings() {
                     placeholder="Smith"
                     value={formData.lastName}
                     onChange={handleChange}
+                    className={step1Attempted && !formData.lastName ? 'input-error' : ''}
                     required
                   />
+                  {step1Attempted && !formData.lastName && (
+                    <span className="field-error">Last name is required</span>
+                  )}
                 </div>
               </div>
 
@@ -1543,11 +1556,14 @@ function Bookings() {
                   placeholder="john@example.com"
                   value={formData.email}
                   onChange={handleChange}
-                  className={formData.email && !isEmailValid ? 'input-error' : ''}
+                  className={(formData.email && !isEmailValid) || (step1Attempted && !formData.email) ? 'input-error' : ''}
                   required
                 />
                 {formData.email && !isEmailValid && (
                   <span className="field-error">Please enter a valid email address</span>
+                )}
+                {step1Attempted && !formData.email && (
+                  <span className="field-error">Email is required</span>
                 )}
               </div>
 
@@ -1559,10 +1575,13 @@ function Bookings() {
                   id="phone"
                   value={formData.phone}
                   onChange={(value) => setFormData(prev => ({ ...prev, phone: value || '' }))}
-                  className={`phone-input ${formData.phone && !isPhoneValid ? 'invalid' : ''}`}
+                  className={`phone-input ${(formData.phone && !isPhoneValid) || (step1Attempted && !formData.phone) ? 'invalid' : ''}`}
                 />
                 {formData.phone && !isPhoneValid && (
                   <span className="field-error">Please enter a valid phone number</span>
+                )}
+                {step1Attempted && !formData.phone && (
+                  <span className="field-error">Phone number is required</span>
                 )}
               </div>
 
@@ -1664,8 +1683,12 @@ function Bookings() {
                   placeholder="123 High Street"
                   value={formData.billingAddress1}
                   onChange={handleChange}
+                  className={step1Attempted && !formData.billingAddress1 ? 'input-error' : ''}
                   required
                 />
+                {step1Attempted && !formData.billingAddress1 && (
+                  <span className="field-error">Address is required</span>
+                )}
               </div>
 
               <div className="form-group">
@@ -1690,8 +1713,12 @@ function Bookings() {
                     placeholder="Bournemouth"
                     value={formData.billingCity}
                     onChange={handleChange}
+                    className={step1Attempted && !formData.billingCity ? 'input-error' : ''}
                     required
                   />
+                  {step1Attempted && !formData.billingCity && (
+                    <span className="field-error">City is required</span>
+                  )}
                 </div>
                 <div className="form-group">
                   <label htmlFor="billingCounty">County</label>
@@ -1798,6 +1825,7 @@ function Bookings() {
                       setDvlaError('')
                     }}
                     style={{ textTransform: 'uppercase' }}
+                    className={step1Attempted && !formData.registration ? 'input-error' : ''}
                     required
                   />
                   <button
@@ -1814,6 +1842,9 @@ function Bookings() {
                 )}
                 {dvlaError && (
                   <span className="dvla-error">{dvlaError}</span>
+                )}
+                {step1Attempted && !formData.registration && (
+                  <span className="field-error">Registration is required</span>
                 )}
               </div>
 
@@ -1834,6 +1865,7 @@ function Bookings() {
                       name="make"
                       value={formData.make}
                       onChange={handleChange}
+                      className={step1Attempted && !formData.make ? 'input-error' : ''}
                       required
                     >
                       <option value="">Select make</option>
@@ -1842,6 +1874,9 @@ function Bookings() {
                       ))}
                       <option value="Other">Other</option>
                     </select>
+                  )}
+                  {step1Attempted && !isMakeComplete && (
+                    <span className="field-error">Vehicle make is required</span>
                   )}
                 </div>
               )}
@@ -1880,8 +1915,12 @@ function Bookings() {
                       placeholder="e.g. Black"
                       value={formData.colour}
                       onChange={handleChange}
+                      className={step1Attempted && !formData.colour ? 'input-error' : ''}
                       required
                     />
+                  )}
+                  {step1Attempted && !formData.colour && (
+                    <span className="field-error">Vehicle colour is required</span>
                   )}
                 </div>
               )}
@@ -1894,6 +1933,7 @@ function Bookings() {
                     name="model"
                     value={formData.model}
                     onChange={handleChange}
+                    className={step1Attempted && !isModelComplete ? 'input-error' : ''}
                     required
                   >
                     <option value="">Select model</option>
@@ -1902,6 +1942,9 @@ function Bookings() {
                     ))}
                     <option value="Other">Other</option>
                   </select>
+                  {step1Attempted && !isModelComplete && (
+                    <span className="field-error">Vehicle model is required</span>
+                  )}
                 </div>
               )}
 
