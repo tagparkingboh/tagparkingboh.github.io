@@ -1845,6 +1845,74 @@
   box-shadow: 0 0 0 2px rgba(217, 255, 0, 0.2);
 }
 
+/* Date input styling for Leads filters */
+.flight-date-input {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #fff;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  color-scheme: dark;
+}
+
+.flight-date-input:hover {
+  border-color: #666;
+}
+
+.flight-date-input:focus {
+  outline: none;
+  border-color: #D9FF00;
+  box-shadow: 0 0 0 2px rgba(217, 255, 0, 0.2);
+}
+
+/* Lead search input */
+.lead-search-group {
+  position: relative;
+  flex: 1;
+  max-width: 300px;
+}
+
+.lead-search-input {
+  width: 100% !important;
+  padding-right: 2.5rem !important;
+}
+
+.lead-search-clear {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+.lead-search-clear:hover {
+  color: #D9FF00;
+}
+
+/* Clear dates button */
+.clear-dates-btn {
+  padding: 0.6rem 1rem !important;
+  font-size: 0.875rem !important;
+}
+
+/* Leads filter count */
+.leads-filter-count {
+  margin-left: auto;
+  color: #888;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .sort-toggle-btn {
   padding: 0.6rem 1rem;
   background: #2a2a2a;
