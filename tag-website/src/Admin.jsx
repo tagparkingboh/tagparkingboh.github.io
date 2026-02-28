@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
+import DatePicker from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
 import ManualBooking from './components/ManualBooking'
 import BookingCalendar from './components/BookingCalendar'
 import BookingLocationMap from './components/BookingLocationMap'
@@ -63,8 +65,8 @@ function Admin() {
   const [loadingLeads, setLoadingLeads] = useState(false)
   const [leadSearchTerm, setLeadSearchTerm] = useState('')
   const [expandedLeadId, setExpandedLeadId] = useState(null)
-  const [leadDateFrom, setLeadDateFrom] = useState('')
-  const [leadDateTo, setLeadDateTo] = useState('')
+  const [leadDateFrom, setLeadDateFrom] = useState(null)
+  const [leadDateTo, setLeadDateTo] = useState(null)
 
   // Pricing settings state - all duration tiers
   const [pricing, setPricing] = useState({
@@ -2339,11 +2341,13 @@ function Admin() {
                         const leadDate = lead.created_at ? new Date(lead.created_at) : null
                         if (!leadDate) return false
                         if (leadDateFrom) {
-                          const fromDate = new Date(leadDateFrom + 'T00:00:00')
+                          const fromDate = new Date(leadDateFrom)
+                          fromDate.setHours(0, 0, 0, 0)
                           if (leadDate < fromDate) return false
                         }
                         if (leadDateTo) {
-                          const toDate = new Date(leadDateTo + 'T23:59:59')
+                          const toDate = new Date(leadDateTo)
+                          toDate.setHours(23, 59, 59, 999)
                           if (leadDate > toDate) return false
                         }
                       }
@@ -2373,20 +2377,22 @@ function Admin() {
                     const url = URL.createObjectURL(blob)
                     const link = document.createElement('a')
                     link.setAttribute('href', url)
-                    // Build descriptive filename based on filters
-                    const formatDate = (dateStr) => {
-                      const [year, month, day] = dateStr.split('-')
+                    // Build descriptive filename based on filters (DD-MM-YYYY format)
+                    const formatDateForFilename = (date) => {
+                      const day = String(date.getDate()).padStart(2, '0')
+                      const month = String(date.getMonth() + 1).padStart(2, '0')
+                      const year = date.getFullYear()
                       return `${day}-${month}-${year}`
                     }
                     let filename = 'leads'
                     if (leadDateFrom && leadDateTo) {
-                      filename = `leads_${formatDate(leadDateFrom)}_to_${formatDate(leadDateTo)}`
+                      filename = `leads_${formatDateForFilename(leadDateFrom)}_to_${formatDateForFilename(leadDateTo)}`
                     } else if (leadDateFrom) {
-                      filename = `leads_from_${formatDate(leadDateFrom)}`
+                      filename = `leads_from_${formatDateForFilename(leadDateFrom)}`
                     } else if (leadDateTo) {
-                      filename = `leads_to_${formatDate(leadDateTo)}`
+                      filename = `leads_to_${formatDateForFilename(leadDateTo)}`
                     } else {
-                      filename = `leads_all_${new Date().toISOString().split('T')[0]}`
+                      filename = `leads_all_${formatDateForFilename(new Date())}`
                     }
                     link.setAttribute('download', `${filename}.csv`)
                     link.click()
@@ -2418,28 +2424,32 @@ function Admin() {
                   </button>
                 )}
               </div>
-              <div className="flight-filter-group">
+              <div className="flight-filter-group leads-date-picker">
                 <label>From:</label>
-                <input
-                  type="date"
-                  value={leadDateFrom}
-                  onChange={(e) => setLeadDateFrom(e.target.value)}
+                <DatePicker
+                  selected={leadDateFrom}
+                  onChange={(date) => setLeadDateFrom(date)}
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="DD/MM/YYYY"
                   className="flight-date-input"
+                  isClearable
                 />
               </div>
-              <div className="flight-filter-group">
+              <div className="flight-filter-group leads-date-picker">
                 <label>To:</label>
-                <input
-                  type="date"
-                  value={leadDateTo}
-                  onChange={(e) => setLeadDateTo(e.target.value)}
+                <DatePicker
+                  selected={leadDateTo}
+                  onChange={(date) => setLeadDateTo(date)}
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="DD/MM/YYYY"
                   className="flight-date-input"
+                  isClearable
                 />
               </div>
               {(leadDateFrom || leadDateTo) && (
                 <button
                   className="btn-secondary clear-dates-btn"
-                  onClick={() => { setLeadDateFrom(''); setLeadDateTo(''); }}
+                  onClick={() => { setLeadDateFrom(null); setLeadDateTo(null); }}
                 >
                   × Clear
                 </button>
@@ -2451,11 +2461,13 @@ function Admin() {
                     const leadDate = lead.created_at ? new Date(lead.created_at) : null
                     if (!leadDate) return false
                     if (leadDateFrom) {
-                      const fromDate = new Date(leadDateFrom + 'T00:00:00')
+                      const fromDate = new Date(leadDateFrom)
+                      fromDate.setHours(0, 0, 0, 0)
                       if (leadDate < fromDate) return false
                     }
                     if (leadDateTo) {
-                      const toDate = new Date(leadDateTo + 'T23:59:59')
+                      const toDate = new Date(leadDateTo)
+                      toDate.setHours(23, 59, 59, 999)
                       if (leadDate > toDate) return false
                     }
                   }
@@ -2486,11 +2498,13 @@ function Admin() {
                       const leadDate = lead.created_at ? new Date(lead.created_at) : null
                       if (!leadDate) return false
                       if (leadDateFrom) {
-                        const fromDate = new Date(leadDateFrom + 'T00:00:00')
+                        const fromDate = new Date(leadDateFrom)
+                        fromDate.setHours(0, 0, 0, 0)
                         if (leadDate < fromDate) return false
                       }
                       if (leadDateTo) {
-                        const toDate = new Date(leadDateTo + 'T23:59:59')
+                        const toDate = new Date(leadDateTo)
+                        toDate.setHours(23, 59, 59, 999)
                         if (leadDate > toDate) return false
                       }
                     }
