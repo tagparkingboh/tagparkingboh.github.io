@@ -1,4 +1,4 @@
-"""Add return_inspection_declined to bookings
+"""Add declined column to vehicle_inspections
 
 Revision ID: r3t1nspd3c
 Revises: fl1ghth1st
@@ -19,13 +19,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Add return_inspection_declined column to bookings."""
+    """Add declined column to vehicle_inspections.
+
+    This allows marking return inspections as declined by customer,
+    enabling booking completion without a full inspection.
+    """
     op.add_column(
-        'bookings',
-        sa.Column('return_inspection_declined', sa.Boolean(), nullable=True, server_default='false')
+        'vehicle_inspections',
+        sa.Column('declined', sa.Boolean(), nullable=True, server_default='false')
     )
 
 
 def downgrade() -> None:
-    """Remove return_inspection_declined column from bookings."""
-    op.drop_column('bookings', 'return_inspection_declined')
+    """Remove declined column from vehicle_inspections."""
+    op.drop_column('vehicle_inspections', 'declined')

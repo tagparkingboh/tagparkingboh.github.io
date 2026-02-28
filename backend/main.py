@@ -5321,7 +5321,6 @@ async def get_employee_bookings(
             "pickup_airline_name": b.pickup_airline_name,
             "pickup_origin": b.pickup_origin,
             "notes": b.notes,
-            "return_inspection_declined": b.return_inspection_declined or False,
             "customer": {
                 "first_name": b.customer_first_name or b.customer.first_name,
                 "last_name": b.customer_last_name or b.customer.last_name,
@@ -5437,6 +5436,7 @@ async def get_inspections(
                 "vehicle_inspection_read": i.vehicle_inspection_read,
                 "acknowledgement_confirmed": i.acknowledgement_confirmed,
                 "mileage": i.mileage,
+                "declined": i.declined or False,
                 "inspector_id": i.inspector_id,
                 "created_at": i.created_at.isoformat() if i.created_at else None,
                 "updated_at": i.updated_at.isoformat() if i.updated_at else None,
@@ -5536,13 +5536,33 @@ async def decline_return_inspection(
 ):
     """Mark that the customer declined the return inspection.
 
+    Creates a pickup inspection record with declined=True.
     This allows completing the booking without a full return inspection.
     """
+    from db_models import VehicleInspection, InspectionType
+
     booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    booking.return_inspection_declined = True
+    # Check if pickup inspection already exists
+    existing = db.query(VehicleInspection).filter(
+        VehicleInspection.booking_id == booking_id,
+        VehicleInspection.inspection_type == InspectionType.PICKUP
+    ).first()
+
+    if existing:
+        existing.declined = True
+    else:
+        # Create a new declined inspection record
+        inspection = VehicleInspection(
+            booking_id=booking_id,
+            inspection_type=InspectionType.PICKUP,
+            declined=True,
+            inspector_id=current_user.id
+        )
+        db.add(inspection)
+
     db.commit()
 
     return {"success": True, "message": f"Return inspection declined for booking {booking.reference}"}
@@ -5555,11 +5575,25 @@ async def undecline_return_inspection(
     current_user: User = Depends(get_current_user),
 ):
     """Undo the decline of return inspection."""
+    from db_models import VehicleInspection, InspectionType
+
     booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    booking.return_inspection_declined = False
+    # Find the pickup inspection
+    inspection = db.query(VehicleInspection).filter(
+        VehicleInspection.booking_id == booking_id,
+        VehicleInspection.inspection_type == InspectionType.PICKUP
+    ).first()
+
+    if inspection:
+        # If only declined (no other data), delete it; otherwise just clear the declined flag
+        if inspection.declined and not inspection.notes and not inspection.photos and not inspection.signature:
+            db.delete(inspection)
+        else:
+            inspection.declined = False
+
     db.commit()
 
     return {"success": True, "message": f"Return inspection decline removed for booking {booking.reference}"}

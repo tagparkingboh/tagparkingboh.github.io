@@ -456,8 +456,9 @@ function Employee() {
     }
 
     if (type === 'pickup') {
-      const hasReturnInspection = bookingInspections.some(i => i.inspection_type === 'pickup')
-      const isDeclined = booking.return_inspection_declined
+      const pickupInspection = bookingInspections.find(i => i.inspection_type === 'pickup')
+      const hasReturnInspection = pickupInspection && !pickupInspection.declined
+      const isDeclined = pickupInspection?.declined || false
       const canComplete = hasReturnInspection || isDeclined
 
       const handleDeclineToggle = async (e) => {
@@ -469,7 +470,8 @@ function Employee() {
             headers: { 'Authorization': `Bearer ${token}` },
           })
           if (response.ok) {
-            setRefreshTrigger(prev => prev + 1)
+            // Refresh inspections for this booking
+            fetchInspections(booking.id)
           }
         } catch (err) {
           console.error('Failed to toggle decline status:', err)
@@ -484,7 +486,7 @@ function Employee() {
           >
             {hasInspection ? 'View/Edit Inspection' : 'Return Inspection'}
           </button>
-          {!hasInspection && !isCompleted && (
+          {!hasReturnInspection && !isCompleted && (
             <label className="decline-checkbox" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
