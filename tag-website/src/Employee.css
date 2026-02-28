@@ -178,6 +178,35 @@
   background: rgba(136, 136, 136, 0.15);
 }
 
+.decline-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #f5a623;
+  cursor: pointer;
+  padding: 4px 8px;
+  border: 1px solid #f5a623;
+  border-radius: 6px;
+  background: rgba(245, 166, 35, 0.1);
+  transition: all 0.2s ease;
+}
+
+.decline-checkbox:hover {
+  background: rgba(245, 166, 35, 0.2);
+}
+
+.decline-checkbox input[type="checkbox"] {
+  accent-color: #f5a623;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.decline-checkbox span {
+  white-space: nowrap;
+}
+
 .completed-badge {
   display: inline-block;
   padding: 6px 14px;

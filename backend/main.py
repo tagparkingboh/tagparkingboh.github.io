@@ -5321,6 +5321,7 @@ async def get_employee_bookings(
             "pickup_airline_name": b.pickup_airline_name,
             "pickup_origin": b.pickup_origin,
             "notes": b.notes,
+            "return_inspection_declined": b.return_inspection_declined or False,
             "customer": {
                 "first_name": b.customer_first_name or b.customer.first_name,
                 "last_name": b.customer_last_name or b.customer.last_name,
@@ -5526,6 +5527,42 @@ async def mark_booking_completed(
 
     return {"success": True, "message": f"Booking {booking.reference} marked as completed"}
 
+
+@app.post("/api/employee/bookings/{booking_id}/decline-inspection")
+async def decline_return_inspection(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark that the customer declined the return inspection.
+
+    This allows completing the booking without a full return inspection.
+    """
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    booking.return_inspection_declined = True
+    db.commit()
+
+    return {"success": True, "message": f"Return inspection declined for booking {booking.reference}"}
+
+
+@app.post("/api/employee/bookings/{booking_id}/undecline-inspection")
+async def undecline_return_inspection(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Undo the decline of return inspection."""
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    booking.return_inspection_declined = False
+    db.commit()
+
+    return {"success": True, "message": f"Return inspection decline removed for booking {booking.reference}"}
 
 
 # ============================================================================

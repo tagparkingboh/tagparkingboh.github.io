@@ -457,6 +457,25 @@ function Employee() {
 
     if (type === 'pickup') {
       const hasReturnInspection = bookingInspections.some(i => i.inspection_type === 'pickup')
+      const isDeclined = booking.return_inspection_declined
+      const canComplete = hasReturnInspection || isDeclined
+
+      const handleDeclineToggle = async (e) => {
+        e.stopPropagation()
+        const endpoint = isDeclined ? 'undecline-inspection' : 'decline-inspection'
+        try {
+          const response = await fetch(`${import.meta.env.VITE_API_URL}/api/employee/bookings/${booking.id}/${endpoint}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+          })
+          if (response.ok) {
+            setRefreshTrigger(prev => prev + 1)
+          }
+        } catch (err) {
+          console.error('Failed to toggle decline status:', err)
+        }
+      }
+
       return (
         <div className="booking-actions-row">
           <button
@@ -465,14 +484,24 @@ function Employee() {
           >
             {hasInspection ? 'View/Edit Inspection' : 'Return Inspection'}
           </button>
+          {!hasInspection && !isCompleted && (
+            <label className="decline-checkbox" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={isDeclined}
+                onChange={handleDeclineToggle}
+              />
+              <span>Customer Declined Inspection</span>
+            </label>
+          )}
           {isCompleted ? (
             <span className="completed-badge">Completed</span>
           ) : (
             <button
-              className={`complete-btn ${!hasReturnInspection ? 'complete-btn-disabled' : ''}`}
+              className={`complete-btn ${!canComplete ? 'complete-btn-disabled' : ''}`}
               onClick={(e) => { e.stopPropagation(); setCompletingBooking(booking); setShowCompleteModal(true) }}
-              disabled={!hasReturnInspection}
-              title={!hasReturnInspection ? 'Complete the Return Inspection first' : ''}
+              disabled={!canComplete}
+              title={!canComplete ? 'Complete the Return Inspection first or mark as declined' : ''}
             >
               Complete Booking
             </button>

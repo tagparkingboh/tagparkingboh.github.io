@@ -165,6 +165,9 @@ class Booking(Base):
     thank_you_email_sent = Column(Boolean, default=False)
     thank_you_email_sent_at = Column(DateTime(timezone=True))
 
+    # Return inspection declined by customer (allows completing booking without full inspection)
+    return_inspection_declined = Column(Boolean, default=False)
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
