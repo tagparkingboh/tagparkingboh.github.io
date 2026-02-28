@@ -1072,34 +1072,38 @@ async def create_manual_booking(
         import string
         reference = "TAG-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
-        # Look up destination name from departure flight
-        dropoff_destination = None
-        if departure_flight and departure_flight.destination_name:
+        # Get destination name - prefer request value, fallback to flight table
+        dropoff_destination = request.dropoff_destination
+        if not dropoff_destination and departure_flight and departure_flight.destination_name:
             # Extract city name from "City, CountryCode" format
             parts = departure_flight.destination_name.split(', ')
             dropoff_destination = parts[0] if parts else departure_flight.destination_name
-            # Shorten Tenerife-Reinasofia to Tenerife
-            if dropoff_destination == 'Tenerife-Reinasofia':
-                dropoff_destination = 'Tenerife'
+        # Shorten Tenerife-Reinasofia to Tenerife
+        if dropoff_destination == 'Tenerife-Reinasofia':
+            dropoff_destination = 'Tenerife'
 
-        # Look up origin name and arrival_id from arrival flight
+        # Get flight number - prefer new field name, fallback to legacy
+        dropoff_flight_num = request.dropoff_flight_number or request.departure_flight_number
+        pickup_flight_num = request.pickup_flight_number or request.return_flight_number
+
+        # Get origin name - prefer request value, fallback to flight table lookup
         from db_models import FlightArrival
-        pickup_origin = None
+        pickup_origin = request.pickup_origin
         arrival_id = None
-        if request.return_flight_number and request.pickup_date:
+        if pickup_flight_num and request.pickup_date:
             arrival = db.query(FlightArrival).filter(
-                FlightArrival.flight_number == request.return_flight_number,
+                FlightArrival.flight_number == pickup_flight_num,
                 FlightArrival.date == request.pickup_date
             ).first()
             if arrival:
                 arrival_id = arrival.id
-                if arrival.origin_name:
+                if not pickup_origin and arrival.origin_name:
                     # Extract city name from "City, CountryCode" format
                     parts = arrival.origin_name.split(', ')
                     pickup_origin = parts[0] if parts else arrival.origin_name
-                    # Shorten Tenerife-Reinasofia to Tenerife
-                    if pickup_origin == 'Tenerife-Reinasofia':
-                        pickup_origin = 'Tenerife'
+        # Shorten Tenerife-Reinasofia to Tenerife
+        if pickup_origin == 'Tenerife-Reinasofia':
+            pickup_origin = 'Tenerife'
 
         # Determine booking status based on whether it's a free booking
         booking_status = BookingStatus.CONFIRMED if is_free else BookingStatus.PENDING
@@ -1121,10 +1125,12 @@ async def create_manual_booking(
             # Flight integration fields
             departure_id=request.departure_id,
             dropoff_slot=request.dropoff_slot,
-            dropoff_flight_number=request.departure_flight_number,
+            dropoff_flight_number=dropoff_flight_num,
             dropoff_destination=dropoff_destination,
-            pickup_flight_number=request.return_flight_number,
+            dropoff_airline_name=request.dropoff_airline_name,
+            pickup_flight_number=pickup_flight_num,
             pickup_origin=pickup_origin,
+            pickup_airline_name=request.pickup_airline_name,
             arrival_id=arrival_id,
         )
         db.add(booking)
@@ -1172,8 +1178,8 @@ async def create_manual_booking(
                 parts = []
                 if request.dropoff_airline_name:
                     parts.append(request.dropoff_airline_name)
-                if request.departure_flight_number:
-                    parts.append(request.departure_flight_number)
+                if dropoff_flight_num and dropoff_flight_num != 'Unknown':
+                    parts.append(dropoff_flight_num)
                 departure_flight_str = " ".join(parts)
                 if dropoff_destination:
                     departure_flight_str += f" to {dropoff_destination}"
@@ -1183,8 +1189,8 @@ async def create_manual_booking(
                 parts = []
                 if request.pickup_airline_name:
                     parts.append(request.pickup_airline_name)
-                if request.return_flight_number:
-                    parts.append(request.return_flight_number)
+                if pickup_flight_num and pickup_flight_num != 'Unknown':
+                    parts.append(pickup_flight_num)
                 return_flight_str = " ".join(parts)
                 if pickup_origin:
                     return_flight_str += f" from {pickup_origin}"

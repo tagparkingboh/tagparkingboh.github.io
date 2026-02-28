@@ -270,8 +270,20 @@ class ManualBookingRequest(BaseModel):
 
     # Flight/slot details (optional - for slot availability tracking)
     departure_id: Optional[int] = None
-    dropoff_slot: Optional[str] = None  # "165" (early) or "120" (late)
+    dropoff_slot: Optional[str] = None  # "early" or "late"
+
+    # Departure flight details
+    dropoff_airline_name: Optional[str] = None
+    dropoff_destination: Optional[str] = None
+    dropoff_flight_number: Optional[str] = None
+    # Legacy field name (kept for backwards compatibility)
     departure_flight_number: Optional[str] = None
+
+    # Return flight details
+    pickup_airline_name: Optional[str] = None
+    pickup_origin: Optional[str] = None
+    pickup_flight_number: Optional[str] = None
+    # Legacy field name (kept for backwards compatibility)
     return_flight_number: Optional[str] = None
 
     # Payment
