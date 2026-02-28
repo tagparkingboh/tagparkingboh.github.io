@@ -1913,6 +1913,96 @@
   white-space: nowrap;
 }
 
+/* Leads DatePicker styling - dark theme */
+.leads-date-picker .react-datepicker-wrapper {
+  width: auto;
+}
+
+.leads-date-picker .react-datepicker__input-container input {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #fff;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  width: 130px;
+  transition: all 0.2s ease;
+}
+
+.leads-date-picker .react-datepicker__input-container input::placeholder {
+  color: #666;
+}
+
+.leads-date-picker .react-datepicker__input-container input:hover {
+  border-color: #666;
+}
+
+.leads-date-picker .react-datepicker__input-container input:focus {
+  outline: none;
+  border-color: #D9FF00;
+  box-shadow: 0 0 0 2px rgba(217, 255, 0, 0.2);
+}
+
+.leads-date-picker .react-datepicker {
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 8px;
+  font-family: inherit;
+}
+
+.leads-date-picker .react-datepicker__header {
+  background: #2a2a2a;
+  border-bottom: 1px solid #444;
+}
+
+.leads-date-picker .react-datepicker__current-month {
+  color: #D9FF00;
+  font-weight: 600;
+}
+
+.leads-date-picker .react-datepicker__day-name {
+  color: #888;
+}
+
+.leads-date-picker .react-datepicker__day {
+  color: #fff;
+  border-radius: 4px;
+}
+
+.leads-date-picker .react-datepicker__day:hover {
+  background: #3a3a3a;
+}
+
+.leads-date-picker .react-datepicker__day--selected {
+  background: #D9FF00 !important;
+  color: #000 !important;
+}
+
+.leads-date-picker .react-datepicker__day--keyboard-selected {
+  background: rgba(217, 255, 0, 0.3);
+}
+
+.leads-date-picker .react-datepicker__day--outside-month {
+  color: #555;
+}
+
+.leads-date-picker .react-datepicker__navigation-icon::before {
+  border-color: #888;
+}
+
+.leads-date-picker .react-datepicker__navigation:hover *::before {
+  border-color: #D9FF00;
+}
+
+.leads-date-picker .react-datepicker__close-icon::after {
+  background-color: #666;
+  font-size: 14px;
+}
+
+.leads-date-picker .react-datepicker__close-icon:hover::after {
+  background-color: #D9FF00;
+}
+
 .sort-toggle-btn {
   padding: 0.6rem 1rem;
   background: #2a2a2a;
