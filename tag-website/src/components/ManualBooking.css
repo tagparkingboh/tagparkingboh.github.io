@@ -526,6 +526,23 @@
   margin-top: 0.25rem;
 }
 
+/* Slot info display */
+.slot-info {
+  font-size: 0.9rem;
+  color: #155724;
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+  padding: 0.5rem 0.75rem;
+  background: rgba(40, 167, 69, 0.1);
+  border-radius: 4px;
+  border-left: 3px solid #28a745;
+}
+
+.slot-info strong {
+  color: #28a745;
+  font-weight: 700;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .form-row {
