@@ -5267,6 +5267,7 @@ class CreateInspectionRequest(BaseModel):
     signature: Optional[str] = None  # Base64-encoded signature image
     vehicle_inspection_read: Optional[bool] = False  # Confirmed they read the T&C (drop-off only)
     acknowledgement_confirmed: Optional[bool] = False  # Confirmed acknowledgement (return only)
+    declined: Optional[bool] = False  # Customer declined inspection (pickup only)
     mileage: Optional[int] = None  # Vehicle mileage at inspection
 
 
@@ -5278,6 +5279,7 @@ class UpdateInspectionRequest(BaseModel):
     signature: Optional[str] = None
     vehicle_inspection_read: Optional[bool] = None
     acknowledgement_confirmed: Optional[bool] = None
+    declined: Optional[bool] = None  # Customer declined inspection (pickup only)
     mileage: Optional[int] = None
 
 
@@ -5384,6 +5386,7 @@ async def create_inspection(
         signature=request.signature,
         vehicle_inspection_read=request.vehicle_inspection_read or False,
         acknowledgement_confirmed=request.acknowledgement_confirmed or False,
+        declined=request.declined or False,
         mileage=request.mileage,
         inspector_id=current_user.id,
     )
@@ -5476,6 +5479,8 @@ async def update_inspection(
         inspection.vehicle_inspection_read = request.vehicle_inspection_read
     if request.acknowledgement_confirmed is not None:
         inspection.acknowledgement_confirmed = request.acknowledgement_confirmed
+    if request.declined is not None:
+        inspection.declined = request.declined
     if request.mileage is not None:
         inspection.mileage = request.mileage
 
