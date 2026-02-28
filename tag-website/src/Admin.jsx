@@ -63,6 +63,8 @@ function Admin() {
   const [loadingLeads, setLoadingLeads] = useState(false)
   const [leadSearchTerm, setLeadSearchTerm] = useState('')
   const [expandedLeadId, setExpandedLeadId] = useState(null)
+  const [leadDateFrom, setLeadDateFrom] = useState('')
+  const [leadDateTo, setLeadDateTo] = useState('')
 
   // Pricing settings state - all duration tiers
   const [pricing, setPricing] = useState({
@@ -2319,9 +2321,63 @@ function Admin() {
           <div className="admin-section">
             <div className="admin-section-header">
               <h2>Abandoned Leads</h2>
-              <button onClick={fetchLeads} className="admin-refresh" disabled={loadingLeads}>
-                {loadingLeads ? 'Loading...' : 'Refresh'}
-              </button>
+              <div className="admin-header-actions">
+                <button
+                  onClick={() => {
+                    // Filter leads based on current filters
+                    const filteredLeads = leads.filter(lead => {
+                      // Date filter (UK time)
+                      if (leadDateFrom || leadDateTo) {
+                        const leadDate = lead.created_at ? new Date(lead.created_at) : null
+                        if (!leadDate) return false
+                        if (leadDateFrom) {
+                          const fromDate = new Date(leadDateFrom + 'T00:00:00')
+                          if (leadDate < fromDate) return false
+                        }
+                        if (leadDateTo) {
+                          const toDate = new Date(leadDateTo + 'T23:59:59')
+                          if (leadDate > toDate) return false
+                        }
+                      }
+                      // Search filter
+                      if (leadSearchTerm) {
+                        const search = leadSearchTerm.toLowerCase()
+                        return (
+                          lead.first_name?.toLowerCase().includes(search) ||
+                          lead.last_name?.toLowerCase().includes(search) ||
+                          lead.email?.toLowerCase().includes(search) ||
+                          lead.phone?.includes(search)
+                        )
+                      }
+                      return true
+                    })
+                    // Generate CSV
+                    const csvRows = [['Name', 'Phone', 'Email', 'Date Added']]
+                    filteredLeads.forEach(lead => {
+                      const name = `${lead.first_name || ''} ${lead.last_name || ''}`.trim()
+                      const dateAdded = lead.created_at
+                        ? new Date(lead.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
+                        : ''
+                      csvRows.push([name, lead.phone || '', lead.email || '', dateAdded])
+                    })
+                    const csvContent = csvRows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')).join('\n')
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+                    const url = URL.createObjectURL(blob)
+                    const link = document.createElement('a')
+                    link.setAttribute('href', url)
+                    link.setAttribute('download', `leads_${new Date().toISOString().split('T')[0]}.csv`)
+                    link.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                  className="admin-action-btn"
+                  disabled={loadingLeads}
+                >
+                  Download CSV
+                </button>
+                <button onClick={fetchLeads} className="admin-refresh" disabled={loadingLeads}>
+                  {loadingLeads ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
             </div>
             <p className="admin-subtitle">Customers who started booking but didn't complete payment</p>
 
@@ -2343,8 +2399,48 @@ function Admin() {
                   </button>
                 )}
               </div>
+              <div className="admin-filter-group">
+                <label>From:</label>
+                <input
+                  type="date"
+                  value={leadDateFrom}
+                  onChange={(e) => setLeadDateFrom(e.target.value)}
+                  className="admin-filter-date"
+                />
+              </div>
+              <div className="admin-filter-group">
+                <label>To:</label>
+                <input
+                  type="date"
+                  value={leadDateTo}
+                  onChange={(e) => setLeadDateTo(e.target.value)}
+                  className="admin-filter-date"
+                />
+              </div>
+              {(leadDateFrom || leadDateTo) && (
+                <button
+                  className="admin-filter-clear"
+                  onClick={() => { setLeadDateFrom(''); setLeadDateTo(''); }}
+                >
+                  Clear Dates
+                </button>
+              )}
               <div className="admin-filter-count">
                 Showing {leads.filter(lead => {
+                  // Date filter (UK time)
+                  if (leadDateFrom || leadDateTo) {
+                    const leadDate = lead.created_at ? new Date(lead.created_at) : null
+                    if (!leadDate) return false
+                    if (leadDateFrom) {
+                      const fromDate = new Date(leadDateFrom + 'T00:00:00')
+                      if (leadDate < fromDate) return false
+                    }
+                    if (leadDateTo) {
+                      const toDate = new Date(leadDateTo + 'T23:59:59')
+                      if (leadDate > toDate) return false
+                    }
+                  }
+                  // Search filter
                   if (!leadSearchTerm) return true
                   const search = leadSearchTerm.toLowerCase()
                   return (
@@ -2366,6 +2462,20 @@ function Admin() {
               <div className="booking-accordion">
                 {leads
                   .filter(lead => {
+                    // Date filter (UK time)
+                    if (leadDateFrom || leadDateTo) {
+                      const leadDate = lead.created_at ? new Date(lead.created_at) : null
+                      if (!leadDate) return false
+                      if (leadDateFrom) {
+                        const fromDate = new Date(leadDateFrom + 'T00:00:00')
+                        if (leadDate < fromDate) return false
+                      }
+                      if (leadDateTo) {
+                        const toDate = new Date(leadDateTo + 'T23:59:59')
+                        if (leadDate > toDate) return false
+                      }
+                    }
+                    // Search filter
                     if (!leadSearchTerm) return true
                     const search = leadSearchTerm.toLowerCase()
                     return (
