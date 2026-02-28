@@ -2321,8 +2321,16 @@ function Admin() {
           <div className="admin-section">
             <div className="admin-section-header">
               <h2>Abandoned Leads</h2>
-              <div className="admin-header-actions">
+              <div className="flights-header-actions">
                 <button
+                  className="btn-secondary"
+                  onClick={fetchLeads}
+                  disabled={loadingLeads}
+                >
+                  {loadingLeads ? 'Loading...' : '↻ Refresh'}
+                </button>
+                <button
+                  className="btn-primary"
                   onClick={() => {
                     // Filter leads based on current filters
                     const filteredLeads = leads.filter(lead => {
@@ -2369,13 +2377,9 @@ function Admin() {
                     link.click()
                     URL.revokeObjectURL(url)
                   }}
-                  className="admin-action-btn"
                   disabled={loadingLeads}
                 >
-                  Download CSV
-                </button>
-                <button onClick={fetchLeads} className="admin-refresh" disabled={loadingLeads}>
-                  {loadingLeads ? 'Loading...' : 'Refresh'}
+                  ↓ Download CSV
                 </button>
               </div>
             </div>
