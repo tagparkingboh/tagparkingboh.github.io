@@ -2385,51 +2385,51 @@ function Admin() {
             </div>
             <p className="admin-subtitle">Customers who started booking but didn't complete payment</p>
 
-            <div className="admin-filters">
-              <div className="admin-search">
+            <div className="flights-filters">
+              <div className="flight-filter-group lead-search-group">
                 <input
                   type="text"
                   placeholder="Search by name, email, or phone..."
                   value={leadSearchTerm}
                   onChange={(e) => setLeadSearchTerm(e.target.value)}
-                  className="admin-search-input"
+                  className="flight-number-input lead-search-input"
                 />
                 {leadSearchTerm && (
                   <button
-                    className="admin-search-clear"
+                    className="lead-search-clear"
                     onClick={() => setLeadSearchTerm('')}
                   >
-                    &times;
+                    ×
                   </button>
                 )}
               </div>
-              <div className="admin-filter-group">
+              <div className="flight-filter-group">
                 <label>From:</label>
                 <input
                   type="date"
                   value={leadDateFrom}
                   onChange={(e) => setLeadDateFrom(e.target.value)}
-                  className="admin-filter-date"
+                  className="flight-date-input"
                 />
               </div>
-              <div className="admin-filter-group">
+              <div className="flight-filter-group">
                 <label>To:</label>
                 <input
                   type="date"
                   value={leadDateTo}
                   onChange={(e) => setLeadDateTo(e.target.value)}
-                  className="admin-filter-date"
+                  className="flight-date-input"
                 />
               </div>
               {(leadDateFrom || leadDateTo) && (
                 <button
-                  className="admin-filter-clear"
+                  className="btn-secondary clear-dates-btn"
                   onClick={() => { setLeadDateFrom(''); setLeadDateTo(''); }}
                 >
-                  Clear Dates
+                  × Clear
                 </button>
               )}
-              <div className="admin-filter-count">
+              <div className="leads-filter-count">
                 Showing {leads.filter(lead => {
                   // Date filter (UK time)
                   if (leadDateFrom || leadDateTo) {
