@@ -1268,6 +1268,73 @@ function Bookings() {
   // Step 4: Payment (uses billing from Step 1)
   const isStep4Complete = formData.terms
 
+  // Scroll to first incomplete/invalid field for the current step
+  const scrollToFirstError = (step) => {
+    let fieldId = null
+    let useNameSelector = false // For radio buttons that use name instead of id
+
+    if (step === 1) {
+      // Step 1 validation order: firstName, lastName, email, phone, billingAddress1, billingCity, billingPostcode, registration, make, model, colour
+      if (!formData.firstName) fieldId = 'firstName'
+      else if (!formData.lastName) fieldId = 'lastName'
+      else if (!isEmailValid) fieldId = 'email'
+      else if (!isPhoneValid) fieldId = 'phone'
+      else if (!formData.billingAddress1) fieldId = 'billingAddress1'
+      else if (!formData.billingCity) fieldId = 'billingCity'
+      else if (!formData.billingPostcode) fieldId = manualAddressEntry ? 'billingPostcodeManual' : 'billingPostcode'
+      else if (!formData.registration) fieldId = 'registration'
+      else if (!isMakeComplete) fieldId = formData.make === 'Other' ? 'customMake' : 'make'
+      else if (!isModelComplete) fieldId = formData.model === 'Other' || formData.make === 'Other' ? 'customModel' : 'model'
+      else if (!formData.colour) fieldId = 'colour'
+    } else if (step === 2) {
+      // Step 2 validation order: dropoffDate, airline, customAirline, flightTime, destination, customDestination, dropoffSlot, pickupDate, arrivalAirline, arrivalFlightTime, origin
+      if (!formData.dropoffDate) fieldId = 'dropoffDate'
+      else if (!manualDepartureData.airlineCode) fieldId = 'manualAirline'
+      else if (manualDepartureData.airlineCode === 'Other' && (!manualDepartureData.customAirline || containsProfanity(manualDepartureData.customAirline))) fieldId = 'customDepartureAirline'
+      else if (!isValidTimeFormat(manualDepartureData.flightTime)) fieldId = 'manualFlightTime'
+      else if (!manualDepartureData.destinationCode) fieldId = 'manualDestination'
+      else if (manualDepartureData.destinationCode === 'Other' && (!manualDepartureData.customDestination || containsProfanity(manualDepartureData.customDestination))) fieldId = 'customDestination'
+      else if (!manualDepartureData.dropoffSlot) { fieldId = 'manualDropoffSlot'; useNameSelector = true }
+      else if (!formData.pickupDate) fieldId = 'pickupDate'
+      else if (!manualArrivalData.airlineCode) fieldId = 'manualArrivalAirline'
+      else if (manualArrivalData.airlineCode === 'Other' && (!manualArrivalData.customAirline || containsProfanity(manualArrivalData.customAirline))) fieldId = 'customArrivalAirline'
+      else if (!isValidTimeFormat(manualArrivalData.flightTime)) fieldId = 'manualArrivalFlightTime'
+      else if (!manualArrivalData.originCode) fieldId = 'manualArrivalOrigin'
+      else if (manualArrivalData.originCode === 'Other' && (!manualArrivalData.customOrigin || containsProfanity(manualArrivalData.customOrigin))) fieldId = 'customOrigin'
+    }
+
+    if (fieldId) {
+      // For radio buttons, use name selector; otherwise use id
+      const element = useNameSelector
+        ? document.querySelector(`[name="${fieldId}"]`)
+        : document.getElementById(fieldId)
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        // Focus the element after scroll animation
+        setTimeout(() => element.focus(), 300)
+        return true // Error found
+      }
+    }
+    return false // No errors
+  }
+
+  // Handle Continue button click - scroll to first error if validation fails
+  const handleContinueStep1 = () => {
+    if (!isStep1Complete) {
+      scrollToFirstError(1)
+      return
+    }
+    saveStep1AndShowModal()
+  }
+
+  const handleContinueStep2 = () => {
+    if (!isStep2Complete) {
+      scrollToFirstError(2)
+      return
+    }
+    nextStep()
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     // Form submission is now handled by the StripePayment component
@@ -1872,8 +1939,8 @@ function Bookings() {
                 <button
                   type="button"
                   className="next-btn"
-                  onClick={saveStep1AndShowModal}
-                  disabled={!isStep1Complete || saving}
+                  onClick={handleContinueStep1}
+                  disabled={saving}
                 >
                   {saving ? 'Saving...' : 'Continue to Trip Details'}
                 </button>
@@ -2300,8 +2367,7 @@ function Bookings() {
                 <button
                   type="button"
                   className="next-btn"
-                  onClick={nextStep}
-                  disabled={!isStep2Complete}
+                  onClick={handleContinueStep2}
                 >
                   Continue to Package Selection
                 </button>
