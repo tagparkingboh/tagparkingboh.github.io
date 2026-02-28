@@ -991,12 +991,16 @@ function ManualBooking({ token }) {
           )}
         </div>
 
-        {/* Departure Flight Section */}
-        <div className="manual-booking-section">
-          <h3>Departure Flight</h3>
+        {/* Trip Details Section */}
+        <div className="manual-booking-section trip-details-section">
+          <h3>Trip Details</h3>
 
-          <div className="form-group">
-            <label htmlFor="dropoffDate">Drop-off Date <span className="required">*</span></label>
+          {/* Departure Flight Sub-section */}
+          <div className="flight-subsection">
+            <h4 className="flight-subsection-title">Departure Flight</h4>
+
+            <div className="form-group">
+              <label htmlFor="dropoffDate">Drop-off Date</label>
             <DatePicker
               selected={formData.dropoffDate}
               onChange={(date) => handleDateChange(date, 'dropoffDate')}
@@ -1080,34 +1084,35 @@ function ManualBooking({ token }) {
             )}
           </div>
 
-          <div className="form-group">
-            <label htmlFor="dropoffFlightNumber">Flight Number (optional)</label>
-            <input
-              type="text"
-              id="dropoffFlightNumber"
-              name="dropoffFlightNumber"
-              value={formData.dropoffFlightNumber}
-              onChange={handleChange}
-              placeholder="e.g., BA1234"
-              style={{ textTransform: 'uppercase' }}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="departureTime">Departure Time <span className="required">*</span></label>
-            <DatePicker
-              selected={formData.departureTime}
-              onChange={(time) => handleDateChange(time, 'departureTime')}
-              showTimeSelect
-              showTimeSelectOnly
-              timeIntervals={15}
-              timeCaption="Time"
-              dateFormat="HH:mm"
-              timeFormat="HH:mm"
-              placeholderText="Select departure time"
-              className="date-picker-input"
-              id="departureTime"
-            />
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="dropoffFlightNumber">Flight Number</label>
+              <input
+                type="text"
+                id="dropoffFlightNumber"
+                name="dropoffFlightNumber"
+                value={formData.dropoffFlightNumber}
+                onChange={handleChange}
+                placeholder="e.g., 1234"
+                style={{ textTransform: 'uppercase' }}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="departureTime">Departure Time <span className="required">*</span></label>
+              <DatePicker
+                selected={formData.departureTime}
+                onChange={(time) => handleDateChange(time, 'departureTime')}
+                showTimeSelect
+                showTimeSelectOnly
+                timeIntervals={15}
+                timeCaption="Time"
+                dateFormat="HH:mm"
+                timeFormat="HH:mm"
+                placeholderText="e.g., 14:30"
+                className="date-picker-input"
+                id="departureTime"
+              />
+            </div>
           </div>
 
           {formData.departureTime && dropoffSlots.length > 0 && (
@@ -1133,14 +1138,14 @@ function ManualBooking({ token }) {
               )}
             </div>
           )}
-        </div>
+          </div>
 
-        {/* Return Flight Section */}
-        <div className="manual-booking-section">
-          <h3>Return Flight</h3>
+          {/* Return Flight Sub-section */}
+          <div className="flight-subsection">
+            <h4 className="flight-subsection-title">Return Flight</h4>
 
-          <div className="form-group">
-            <label htmlFor="pickupDate">Pick-up Date <span className="required">*</span></label>
+            <div className="form-group">
+              <label htmlFor="pickupDate">Pick-up Date</label>
             <DatePicker
               selected={formData.pickupDate}
               onChange={(date) => handleDateChange(date, 'pickupDate')}
@@ -1224,39 +1229,41 @@ function ManualBooking({ token }) {
             )}
           </div>
 
-          <div className="form-group">
-            <label htmlFor="pickupFlightNumber">Flight Number (optional)</label>
-            <input
-              type="text"
-              id="pickupFlightNumber"
-              name="pickupFlightNumber"
-              value={formData.pickupFlightNumber}
-              onChange={handleChange}
-              placeholder="e.g., BA1235"
-              style={{ textTransform: 'uppercase' }}
-            />
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="pickupFlightNumber">Flight Number</label>
+              <input
+                type="text"
+                id="pickupFlightNumber"
+                name="pickupFlightNumber"
+                value={formData.pickupFlightNumber}
+                onChange={handleChange}
+                placeholder="e.g., 1235"
+                style={{ textTransform: 'uppercase' }}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="arrivalTime">Arrival Time <span className="required">*</span></label>
+              <DatePicker
+                selected={formData.arrivalTime}
+                onChange={(time) => handleDateChange(time, 'arrivalTime')}
+                showTimeSelect
+                showTimeSelectOnly
+                timeIntervals={15}
+                timeCaption="Time"
+                dateFormat="HH:mm"
+                timeFormat="HH:mm"
+                placeholderText="e.g., 14:30"
+                className="date-picker-input"
+                id="arrivalTime"
+              />
+            </div>
           </div>
-
-          <div className="form-group">
-            <label htmlFor="arrivalTime">Arrival Time <span className="required">*</span></label>
-            <DatePicker
-              selected={formData.arrivalTime}
-              onChange={(time) => handleDateChange(time, 'arrivalTime')}
-              showTimeSelect
-              showTimeSelectOnly
-              timeIntervals={15}
-              timeCaption="Time"
-              dateFormat="HH:mm"
-              timeFormat="HH:mm"
-              placeholderText="Select arrival time"
-              className="date-picker-input"
-              id="arrivalTime"
-            />
-            {calculatedPickupTime && (
-              <p className="slot-info">
-                Pick-up time: <strong>{calculatedPickupTime}</strong> (arrival + 30 mins)
-              </p>
-            )}
+          {calculatedPickupTime && (
+            <p className="slot-info">
+              Pick-up time: <strong>{calculatedPickupTime}</strong> (arrival + 30 mins)
+            </p>
+          )}
           </div>
         </div>
 
