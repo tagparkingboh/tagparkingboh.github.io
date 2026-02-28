@@ -2373,7 +2373,22 @@ function Admin() {
                     const url = URL.createObjectURL(blob)
                     const link = document.createElement('a')
                     link.setAttribute('href', url)
-                    link.setAttribute('download', `leads_${new Date().toISOString().split('T')[0]}.csv`)
+                    // Build descriptive filename based on filters
+                    const formatDate = (dateStr) => {
+                      const [year, month, day] = dateStr.split('-')
+                      return `${day}-${month}-${year}`
+                    }
+                    let filename = 'leads'
+                    if (leadDateFrom && leadDateTo) {
+                      filename = `leads_${formatDate(leadDateFrom)}_to_${formatDate(leadDateTo)}`
+                    } else if (leadDateFrom) {
+                      filename = `leads_from_${formatDate(leadDateFrom)}`
+                    } else if (leadDateTo) {
+                      filename = `leads_to_${formatDate(leadDateTo)}`
+                    } else {
+                      filename = `leads_all_${new Date().toISOString().split('T')[0]}`
+                    }
+                    link.setAttribute('download', `${filename}.csv`)
                     link.click()
                     URL.revokeObjectURL(url)
                   }}
