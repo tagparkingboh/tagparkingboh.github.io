@@ -615,6 +615,9 @@ class VehicleInspection(Base):
     # Vehicle mileage at inspection
     mileage = Column(Integer, nullable=True)
 
+    # Customer declined inspection (for pickup/return only - allows completing booking)
+    declined = Column(Boolean, default=False)
+
     inspector_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

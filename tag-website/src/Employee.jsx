@@ -85,6 +85,7 @@ function Employee() {
   const [inspectionPage, setInspectionPage] = useState(1) // 1 = form, 2 = view document
   const [vehicleInspectionRead, setVehicleInspectionRead] = useState(false)
   const [acknowledgementConfirmed, setAcknowledgementConfirmed] = useState(false) // For return inspections
+  const [inspectionDeclined, setInspectionDeclined] = useState(false) // Customer declined return inspection
   const [signature, setSignature] = useState(null) // base64 signature image
   const [dropoffInspection, setDropoffInspection] = useState(null) // For showing original inspection during return
   const [mileage, setMileage] = useState('') // Mileage reading at inspection
@@ -296,6 +297,7 @@ function Employee() {
       setSignedDate(existing.signed_date || '')
       setVehicleInspectionRead(existing.vehicle_inspection_read || false)
       setAcknowledgementConfirmed(existing.acknowledgement_confirmed || false)
+      setInspectionDeclined(existing.declined || false)
       setSignature(existing.signature || null)
       setMileage(existing.mileage?.toString() || '')
       setInspectionPage(1)
@@ -316,6 +318,7 @@ function Employee() {
         setSignedDate(new Date().toISOString().split('T')[0])
         setVehicleInspectionRead(false)
         setAcknowledgementConfirmed(false)
+        setInspectionDeclined(false)
         setSignature(null)
         setMileage('')
         setInspectionPage(1)
@@ -372,8 +375,8 @@ function Employee() {
         : `${API_URL}/api/employee/inspections`
       const method = editingInspection ? 'PUT' : 'POST'
       const body = editingInspection
-        ? { notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, mileage: mileage ? parseInt(mileage, 10) : null }
-        : { booking_id: inspectionBooking.id, inspection_type: inspectionType, notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, mileage: mileage ? parseInt(mileage, 10) : null }
+        ? { notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, declined: inspectionDeclined, mileage: mileage ? parseInt(mileage, 10) : null }
+        : { booking_id: inspectionBooking.id, inspection_type: inspectionType, notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, declined: inspectionDeclined, mileage: mileage ? parseInt(mileage, 10) : null }
 
       const response = await fetch(url, {
         method,
@@ -456,23 +459,26 @@ function Employee() {
     }
 
     if (type === 'pickup') {
-      const hasReturnInspection = bookingInspections.some(i => i.inspection_type === 'pickup')
+      const pickupInspection = bookingInspections.find(i => i.inspection_type === 'pickup')
+      // Can complete if we have a pickup inspection (either full inspection or declined)
+      const canComplete = !!pickupInspection
+
       return (
         <div className="booking-actions-row">
           <button
             className={`inspection-btn ${hasInspection ? 'inspection-done' : ''}`}
             onClick={(e) => { e.stopPropagation(); openInspection(booking, 'pickup') }}
           >
-            {hasInspection ? 'View/Edit Inspection' : 'Return Inspection'}
+            {hasInspection ? (pickupInspection?.declined ? 'View Declined' : 'View/Edit Inspection') : 'Return Inspection'}
           </button>
           {isCompleted ? (
             <span className="completed-badge">Completed</span>
           ) : (
             <button
-              className={`complete-btn ${!hasReturnInspection ? 'complete-btn-disabled' : ''}`}
+              className={`complete-btn ${!canComplete ? 'complete-btn-disabled' : ''}`}
               onClick={(e) => { e.stopPropagation(); setCompletingBooking(booking); setShowCompleteModal(true) }}
-              disabled={!hasReturnInspection}
-              title={!hasReturnInspection ? 'Complete the Return Inspection first' : ''}
+              disabled={!canComplete}
+              title={!canComplete ? 'Complete the Return Inspection first' : ''}
             >
               Complete Booking
             </button>
@@ -622,6 +628,23 @@ function Employee() {
                       min="0"
                     />
                   </div>
+
+                  {/* Customer Declined Inspection - only for return/pickup inspections */}
+                  {inspectionType === 'pickup' && (
+                    <div className="inspection-declined-checkbox">
+                      <label className="checkbox-label-inline declined-label">
+                        <input
+                          type="checkbox"
+                          checked={inspectionDeclined}
+                          onChange={e => setInspectionDeclined(e.target.checked)}
+                        />
+                        <span>Customer Declined Inspection</span>
+                      </label>
+                      {inspectionDeclined && (
+                        <p className="declined-note">When checked, signature and acknowledgement are not required. Only mileage will be recorded.</p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="inspection-field">
                     <label>Notes</label>
@@ -800,7 +823,7 @@ function Employee() {
                   <button
                     className="modal-btn modal-btn-primary"
                     onClick={handleSaveInspection}
-                    disabled={savingInspection || !signature || (inspectionType === 'dropoff' && !vehicleInspectionRead) || (inspectionType === 'pickup' && !acknowledgementConfirmed) || !signedDate || !customerName || !mileage}
+                    disabled={savingInspection || !mileage || (inspectionType === 'dropoff' && (!signature || !vehicleInspectionRead || !signedDate || !customerName)) || (inspectionType === 'pickup' && !inspectionDeclined && (!signature || !acknowledgementConfirmed || !signedDate || !customerName))}
                   >
                     {savingInspection ? 'Saving...' : 'Save Inspection'}
                   </button>
