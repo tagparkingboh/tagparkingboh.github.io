@@ -939,6 +939,106 @@ async def get_daily_occupancy(
     }
 
 
+@app.get("/api/admin/bookings/stats")
+async def get_booking_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get booking statistics for growth visualization.
+
+    Returns:
+    - Daily/weekly/monthly booking counts by status
+    - Running totals
+    - Status breakdown
+    """
+    from collections import defaultdict
+
+    # Get ALL bookings ordered by creation date
+    all_bookings = db.query(DbBooking).order_by(DbBooking.created_at.asc()).all()
+
+    # Status colors mapping
+    status_order = ['confirmed', 'completed', 'pending', 'cancelled']
+
+    # Aggregate by month with status breakdown
+    monthly_by_status = defaultdict(lambda: defaultdict(int))
+    weekly_by_status = defaultdict(lambda: defaultdict(int))
+    daily_by_status = defaultdict(lambda: defaultdict(int))
+
+    for booking in all_bookings:
+        if booking.created_at:
+            status = booking.status.value if booking.status else 'unknown'
+
+            # Daily: YYYY-MM-DD
+            day_key = booking.created_at.strftime("%Y-%m-%d")
+            daily_by_status[day_key][status] += 1
+
+            # Weekly: YYYY-WW (ISO week)
+            week_key = booking.created_at.strftime("%Y-W%W")
+            weekly_by_status[week_key][status] += 1
+
+            # Monthly: YYYY-MM
+            month_key = booking.created_at.strftime("%Y-%m")
+            monthly_by_status[month_key][status] += 1
+
+    # Convert to sorted lists for charts (with status breakdown)
+    def format_data(data_dict, key_name):
+        result = []
+        for key in sorted(data_dict.keys()):
+            entry = {key_name: key}
+            for status in status_order:
+                entry[status] = data_dict[key].get(status, 0)
+            entry['total'] = sum(data_dict[key].values())
+            result.append(entry)
+        return result
+
+    daily_data = format_data(daily_by_status, 'date')
+    weekly_data = format_data(weekly_by_status, 'week')
+    monthly_data = format_data(monthly_by_status, 'month')
+
+    # Calculate cumulative totals (confirmed + completed only for growth)
+    cumulative = []
+    running_total = 0
+    for day in daily_data:
+        running_total += day.get('confirmed', 0) + day.get('completed', 0)
+        cumulative.append({"date": day["date"], "total": running_total})
+
+    # Summary stats
+    status_totals = defaultdict(int)
+    for booking in all_bookings:
+        status = booking.status.value if booking.status else 'unknown'
+        status_totals[status] += 1
+
+    total_successful = status_totals.get('confirmed', 0) + status_totals.get('completed', 0)
+
+    # Recent period comparisons (confirmed + completed only)
+    today = date.today()
+    this_week_start = today - timedelta(days=today.weekday())
+    last_week_start = this_week_start - timedelta(days=7)
+    this_month_start = today.replace(day=1)
+    last_month_start = (this_month_start - timedelta(days=1)).replace(day=1)
+
+    successful_bookings = [b for b in all_bookings if b.status in [BookingStatus.CONFIRMED, BookingStatus.COMPLETED]]
+    this_week_count = sum(1 for b in successful_bookings if b.created_at and b.created_at.date() >= this_week_start)
+    last_week_count = sum(1 for b in successful_bookings if b.created_at and last_week_start <= b.created_at.date() < this_week_start)
+    this_month_count = sum(1 for b in successful_bookings if b.created_at and b.created_at.date() >= this_month_start)
+    last_month_count = sum(1 for b in successful_bookings if b.created_at and last_month_start <= b.created_at.date() < this_month_start)
+
+    return {
+        "total_bookings": len(all_bookings),
+        "total_successful": total_successful,
+        "status_totals": dict(status_totals),
+        "this_week": this_week_count,
+        "last_week": last_week_count,
+        "this_month": this_month_count,
+        "last_month": last_month_count,
+        "daily": daily_data,
+        "weekly": weekly_data,
+        "monthly": monthly_data,
+        "cumulative": cumulative,
+    }
+
+
 @app.post("/api/admin/bookings", response_model=BookingResponse)
 async def create_admin_booking(
     request: AdminBookingRequest,

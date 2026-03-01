@@ -123,6 +123,12 @@ function Admin() {
   const [totalCustomers, setTotalCustomers] = useState(0)
   const [loadingLocations, setLoadingLocations] = useState(false)
 
+  // Booking stats state (for growth charts)
+  const [reportsSubTab, setReportsSubTab] = useState('growth') // 'growth' or 'map'
+  const [bookingStats, setBookingStats] = useState(null)
+  const [loadingStats, setLoadingStats] = useState(false)
+  const [statsChartType, setStatsChartType] = useState('monthly') // 'daily', 'weekly', 'monthly', 'cumulative'
+
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
 
@@ -196,9 +202,32 @@ function Admin() {
   // Fetch booking locations when reports tab is active or map type changes
   useEffect(() => {
     if (activeTab === 'reports' && token) {
-      fetchBookingLocations(mapType)
+      if (reportsSubTab === 'map') {
+        fetchBookingLocations(mapType)
+      } else if (reportsSubTab === 'growth') {
+        fetchBookingStats()
+      }
     }
-  }, [activeTab, token, mapType])
+  }, [activeTab, token, mapType, reportsSubTab])
+
+  const fetchBookingStats = async () => {
+    setLoadingStats(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/stats`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setBookingStats(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch booking stats:', err)
+    } finally {
+      setLoadingStats(false)
+    }
+  }
 
   const fetchBookingLocations = async (type = 'bookings') => {
     setLoadingLocations(true)
@@ -2846,62 +2875,309 @@ function Admin() {
           <div className="admin-section">
             <h2>Reports</h2>
 
-            {/* Map Type Tabs */}
-            <div className="map-type-tabs">
+            {/* Reports Sub-Tabs */}
+            <div className="reports-subtabs">
               <button
-                className={`map-type-tab ${mapType === 'bookings' ? 'active' : ''}`}
-                onClick={() => setMapType('bookings')}
+                className={`reports-subtab ${reportsSubTab === 'growth' ? 'active' : ''}`}
+                onClick={() => setReportsSubTab('growth')}
               >
-                Bookings Map
+                Booking Growth
               </button>
               <button
-                className={`map-type-tab ${mapType === 'origins' ? 'active' : ''}`}
-                onClick={() => setMapType('origins')}
+                className={`reports-subtab ${reportsSubTab === 'map' ? 'active' : ''}`}
+                onClick={() => setReportsSubTab('map')}
               >
-                Journey Origins
+                Location Maps
               </button>
             </div>
 
-            {mapType === 'bookings' && (
-              <>
-                <h3>Confirmed Booking Locations</h3>
-                <p className="reports-description">Map showing confirmed bookings based on billing postcodes.</p>
-              </>
-            )}
-
-            {mapType === 'origins' && (
-              <>
-                <h3>Journey Origins (All Leads)</h3>
-                <p className="reports-description">Map showing all customers who started the booking process (Page 1 data).</p>
-              </>
-            )}
-
-            {loadingLocations ? (
-              <div className="admin-loading-inline">
-                <div className="spinner-small"></div>
-                <span>Loading {mapType === 'origins' ? 'customer' : 'booking'} locations...</span>
-              </div>
-            ) : (
-              <>
-                <BookingLocationMap
-                  locations={mapType === 'origins' ? originLocations : bookingLocations}
-                  mapType={mapType}
-                />
-                {skippedBookings.length > 0 && (
-                  <div className="skipped-bookings">
-                    <p className="skipped-summary">
-                      {mapType === 'origins'
-                        ? `${originLocations.length} of ${totalCustomers} customers mapped.`
-                        : `${bookingLocations.length} of ${totalBookings} bookings mapped.`
-                      }
-                      {' '}{skippedBookings.length} skipped:
-                    </p>
-                    <ul className="skipped-list">
-                      {skippedBookings.map((s, i) => (
-                        <li key={i}>{s.reference || `Customer ${s.customer_id}`}: {s.reason}</li>
-                      ))}
-                    </ul>
+            {/* Booking Growth Charts */}
+            {reportsSubTab === 'growth' && (
+              <div className="booking-stats-section">
+                {loadingStats ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading booking statistics...</span>
                   </div>
+                ) : bookingStats ? (
+                  <>
+                    {/* Summary Cards */}
+                    <div className="stats-summary-cards">
+                      <div className="stats-card">
+                        <div className="stats-card-value">{bookingStats.total_successful}</div>
+                        <div className="stats-card-label">Total Successful Bookings</div>
+                      </div>
+                      <div className="stats-card">
+                        <div className="stats-card-value">{bookingStats.this_month}</div>
+                        <div className="stats-card-label">This Month</div>
+                        {bookingStats.last_month > 0 && (
+                          <div className={`stats-card-change ${bookingStats.this_month >= bookingStats.last_month ? 'positive' : 'negative'}`}>
+                            {bookingStats.this_month >= bookingStats.last_month ? '+' : ''}{bookingStats.this_month - bookingStats.last_month} vs last month
+                          </div>
+                        )}
+                      </div>
+                      <div className="stats-card">
+                        <div className="stats-card-value">{bookingStats.this_week}</div>
+                        <div className="stats-card-label">This Week</div>
+                        {bookingStats.last_week > 0 && (
+                          <div className={`stats-card-change ${bookingStats.this_week >= bookingStats.last_week ? 'positive' : 'negative'}`}>
+                            {bookingStats.this_week >= bookingStats.last_week ? '+' : ''}{bookingStats.this_week - bookingStats.last_week} vs last week
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Status Breakdown */}
+                    {bookingStats.status_totals && (
+                      <div className="status-breakdown">
+                        <h3>Status Breakdown</h3>
+                        <div className="status-breakdown-grid">
+                          <div className="status-item status-confirmed">
+                            <span className="status-dot"></span>
+                            <span className="status-label">Confirmed</span>
+                            <span className="status-count">{bookingStats.status_totals.confirmed || 0}</span>
+                          </div>
+                          <div className="status-item status-completed">
+                            <span className="status-dot"></span>
+                            <span className="status-label">Completed</span>
+                            <span className="status-count">{bookingStats.status_totals.completed || 0}</span>
+                          </div>
+                          <div className="status-item status-pending">
+                            <span className="status-dot"></span>
+                            <span className="status-label">Pending</span>
+                            <span className="status-count">{bookingStats.status_totals.pending || 0}</span>
+                          </div>
+                          <div className="status-item status-cancelled">
+                            <span className="status-dot"></span>
+                            <span className="status-label">Cancelled</span>
+                            <span className="status-count">{bookingStats.status_totals.cancelled || 0}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Chart Type Selector */}
+                    <div className="chart-controls">
+                      <label>View:</label>
+                      <select value={statsChartType} onChange={e => setStatsChartType(e.target.value)}>
+                        <option value="monthly">Monthly</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="daily">Daily</option>
+                        <option value="cumulative">Cumulative Growth</option>
+                      </select>
+                    </div>
+
+                    {/* Stacked Bar Chart */}
+                    <div className="booking-chart">
+                      <h3>
+                        {statsChartType === 'monthly' && 'Bookings by Month'}
+                        {statsChartType === 'weekly' && 'Bookings by Week'}
+                        {statsChartType === 'daily' && 'Bookings by Day'}
+                        {statsChartType === 'cumulative' && 'Cumulative Growth'}
+                      </h3>
+                      <div className="chart-container">
+                        {statsChartType === 'cumulative' ? (
+                          <div className="line-chart">
+                            {bookingStats.cumulative.length > 0 && (
+                              <>
+                                <div className="chart-y-axis">
+                                  <span>{Math.max(...bookingStats.cumulative.map(d => d.total))}</span>
+                                  <span>{Math.round(Math.max(...bookingStats.cumulative.map(d => d.total)) / 2)}</span>
+                                  <span>0</span>
+                                </div>
+                                <div className="chart-area">
+                                  <svg viewBox={`0 0 ${Math.min(bookingStats.cumulative.length * 30, 1200)} 200`} preserveAspectRatio="none">
+                                    <defs>
+                                      <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                        <stop offset="0%" stopColor="#22c55e" stopOpacity="0.3"/>
+                                        <stop offset="100%" stopColor="#22c55e" stopOpacity="0.05"/>
+                                      </linearGradient>
+                                    </defs>
+                                    {(() => {
+                                      const maxVal = Math.max(...bookingStats.cumulative.map(d => d.total))
+                                      const width = Math.min(bookingStats.cumulative.length * 30, 1200)
+                                      const points = bookingStats.cumulative.map((d, i) => {
+                                        const x = (i / (bookingStats.cumulative.length - 1)) * width
+                                        const y = 200 - (d.total / maxVal) * 180
+                                        return `${x},${y}`
+                                      }).join(' ')
+                                      const areaPoints = `0,200 ${points} ${width},200`
+                                      return (
+                                        <>
+                                          <polygon points={areaPoints} fill="url(#lineGradient)" />
+                                          <polyline points={points} fill="none" stroke="#22c55e" strokeWidth="2" />
+                                        </>
+                                      )
+                                    })()}
+                                  </svg>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="stacked-bar-chart">
+                            {(() => {
+                              const data = statsChartType === 'monthly' ? bookingStats.monthly :
+                                           statsChartType === 'weekly' ? bookingStats.weekly :
+                                           bookingStats.daily
+                              const maxTotal = Math.max(...data.map(d => d.total), 1)
+                              const displayData = data.slice(-12) // Show last 12 periods
+                              return displayData.map((item, idx) => (
+                                <div key={idx} className="bar-column">
+                                  <div className="bar-stack" style={{ height: '150px' }}>
+                                    {['cancelled', 'pending', 'completed', 'confirmed'].map(status => {
+                                      const value = item[status] || 0
+                                      const height = (value / maxTotal) * 100
+                                      return value > 0 ? (
+                                        <div
+                                          key={status}
+                                          className={`bar-segment bar-${status}`}
+                                          style={{ height: `${height}%` }}
+                                          title={`${status}: ${value}`}
+                                        />
+                                      ) : null
+                                    })}
+                                  </div>
+                                  <div className="bar-label">
+                                    {statsChartType === 'monthly' ? item.month?.slice(5) || item.month :
+                                     statsChartType === 'weekly' ? item.week?.split('-W')[1] || item.week :
+                                     item.date?.slice(5) || item.date}
+                                  </div>
+                                  <div className="bar-total">{item.total}</div>
+                                </div>
+                              ))
+                            })()}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Chart Legend */}
+                      {statsChartType !== 'cumulative' && (
+                        <div className="chart-legend">
+                          <div className="legend-item"><span className="legend-color legend-confirmed"></span> Confirmed</div>
+                          <div className="legend-item"><span className="legend-color legend-completed"></span> Completed</div>
+                          <div className="legend-item"><span className="legend-color legend-pending"></span> Pending</div>
+                          <div className="legend-item"><span className="legend-color legend-cancelled"></span> Cancelled</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Data Table */}
+                    <div className="stats-table-section">
+                      <h3>
+                        {statsChartType === 'monthly' && 'Monthly Breakdown'}
+                        {statsChartType === 'weekly' && 'Weekly Breakdown'}
+                        {statsChartType === 'daily' && 'Daily Breakdown'}
+                        {statsChartType === 'cumulative' && 'Cumulative Totals'}
+                      </h3>
+                      <div className="stats-table-wrapper">
+                        <table className="stats-table">
+                          <thead>
+                            <tr>
+                              <th>{statsChartType === 'monthly' ? 'Month' : statsChartType === 'weekly' ? 'Week' : 'Date'}</th>
+                              {statsChartType !== 'cumulative' && (
+                                <>
+                                  <th className="status-col confirmed">Confirmed</th>
+                                  <th className="status-col completed">Completed</th>
+                                  <th className="status-col pending">Pending</th>
+                                  <th className="status-col cancelled">Cancelled</th>
+                                </>
+                              )}
+                              <th>Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(() => {
+                              const data = statsChartType === 'cumulative' ? bookingStats.cumulative :
+                                           statsChartType === 'monthly' ? bookingStats.monthly :
+                                           statsChartType === 'weekly' ? bookingStats.weekly :
+                                           bookingStats.daily
+                              return data.slice(-20).reverse().map((item, idx) => (
+                                <tr key={idx}>
+                                  <td>{item.date || item.month || item.week}</td>
+                                  {statsChartType !== 'cumulative' && (
+                                    <>
+                                      <td className="status-col confirmed">{item.confirmed || 0}</td>
+                                      <td className="status-col completed">{item.completed || 0}</td>
+                                      <td className="status-col pending">{item.pending || 0}</td>
+                                      <td className="status-col cancelled">{item.cancelled || 0}</td>
+                                    </>
+                                  )}
+                                  <td><strong>{item.total}</strong></td>
+                                </tr>
+                              ))
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p>No booking data available.</p>
+                )}
+              </div>
+            )}
+
+            {/* Location Maps */}
+            {reportsSubTab === 'map' && (
+              <>
+                <div className="map-type-tabs">
+                  <button
+                    className={`map-type-tab ${mapType === 'bookings' ? 'active' : ''}`}
+                    onClick={() => setMapType('bookings')}
+                  >
+                    Bookings Map
+                  </button>
+                  <button
+                    className={`map-type-tab ${mapType === 'origins' ? 'active' : ''}`}
+                    onClick={() => setMapType('origins')}
+                  >
+                    Journey Origins
+                  </button>
+                </div>
+
+                {mapType === 'bookings' && (
+                  <>
+                    <h3>Confirmed Booking Locations</h3>
+                    <p className="reports-description">Map showing confirmed bookings based on billing postcodes.</p>
+                  </>
+                )}
+
+                {mapType === 'origins' && (
+                  <>
+                    <h3>Journey Origins (All Leads)</h3>
+                    <p className="reports-description">Map showing all customers who started the booking process (Page 1 data).</p>
+                  </>
+                )}
+
+                {loadingLocations ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading {mapType === 'origins' ? 'customer' : 'booking'} locations...</span>
+                  </div>
+                ) : (
+                  <>
+                    <BookingLocationMap
+                      locations={mapType === 'origins' ? originLocations : bookingLocations}
+                      mapType={mapType}
+                    />
+                    {skippedBookings.length > 0 && (
+                      <div className="skipped-bookings">
+                        <p className="skipped-summary">
+                          {mapType === 'origins'
+                            ? `${originLocations.length} of ${totalCustomers} customers mapped.`
+                            : `${bookingLocations.length} of ${totalBookings} bookings mapped.`
+                          }
+                          {' '}{skippedBookings.length} skipped:
+                        </p>
+                        <ul className="skipped-list">
+                          {skippedBookings.map((s, i) => (
+                            <li key={i}>{s.reference || `Customer ${s.customer_id}`}: {s.reason}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
