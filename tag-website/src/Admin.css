@@ -2561,6 +2561,20 @@
   color: #dc2626;
 }
 
+.stats-card.revenue-card {
+  border-left: 4px solid #22c55e;
+}
+
+.stats-card.revenue-card .stats-card-value {
+  color: #16a34a;
+}
+
+.stats-card-subtext {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 8px;
+}
+
 /* Status Breakdown */
 .status-breakdown {
   background: white;

@@ -1025,6 +1025,36 @@ async def get_booking_stats(
     this_month_count = sum(1 for b in successful_bookings if b.created_at and b.created_at.date() >= this_month_start)
     last_month_count = sum(1 for b in successful_bookings if b.created_at and last_month_start <= b.created_at.date() < this_month_start)
 
+    # Revenue calculations - exclude free bookings and free promo code bookings
+    from db_models import Payment
+
+    # Get all booking IDs that used a free promo code
+    free_promo_booking_ids = set()
+    free_promo_subscribers = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.promo_free_used_booking_id.isnot(None)
+    ).all()
+    for sub in free_promo_subscribers:
+        if sub.promo_free_used_booking_id:
+            free_promo_booking_ids.add(sub.promo_free_used_booking_id)
+
+    # Calculate revenue from successful bookings with non-zero payments, excluding free promo
+    total_revenue_pence = 0
+    paid_customer_count = 0
+
+    for booking in successful_bookings:
+        # Skip free promo bookings
+        if booking.id in free_promo_booking_ids:
+            continue
+
+        # Get payment for this booking
+        if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+            total_revenue_pence += booking.payment.amount_pence
+            paid_customer_count += 1
+
+    # Calculate average revenue per paying customer
+    avg_revenue_per_customer = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
+    total_revenue_pounds = round(total_revenue_pence / 100, 2)
+
     return {
         "total_bookings": len(all_bookings),
         "total_successful": total_successful,
@@ -1037,6 +1067,9 @@ async def get_booking_stats(
         "weekly": weekly_data,
         "monthly": monthly_data,
         "cumulative": cumulative,
+        "total_revenue": total_revenue_pounds,
+        "paid_customer_count": paid_customer_count,
+        "avg_revenue_per_customer": avg_revenue_per_customer,
     }
 
 

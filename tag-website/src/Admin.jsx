@@ -2927,6 +2927,13 @@ function Admin() {
                           </div>
                         )}
                       </div>
+                      <div className="stats-card revenue-card">
+                        <div className="stats-card-value">&pound;{bookingStats.avg_revenue_per_customer?.toFixed(2) || '0.00'}</div>
+                        <div className="stats-card-label">Avg Revenue per Customer</div>
+                        <div className="stats-card-subtext">
+                          &pound;{bookingStats.total_revenue?.toFixed(2) || '0.00'} total from {bookingStats.paid_customer_count || 0} paid bookings
+                        </div>
+                      </div>
                     </div>
 
                     {/* Status Breakdown */}
