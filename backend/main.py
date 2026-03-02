@@ -974,7 +974,8 @@ async def get_booking_stats(
             daily_by_status[day_key][status] += 1
 
             # Weekly: YYYY-WW (ISO week)
-            week_key = booking.created_at.strftime("%Y-W%W")
+            iso_year, iso_week, _ = booking.created_at.isocalendar()
+            week_key = f"{iso_year}-W{iso_week:02d}"
             weekly_by_status[week_key][status] += 1
 
             # Monthly: YYYY-MM
