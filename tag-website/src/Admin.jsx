@@ -128,6 +128,8 @@ function Admin() {
   const [bookingStats, setBookingStats] = useState(null)
   const [loadingStats, setLoadingStats] = useState(false)
   const [statsChartType, setStatsChartType] = useState('monthly') // 'daily', 'weekly', 'monthly', 'cumulative'
+  const [weeklyPageIndex, setWeeklyPageIndex] = useState(0) // For weekly navigation (0 = most recent)
+  const [expandedDailyMonths, setExpandedDailyMonths] = useState({}) // For daily collapsible months
 
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
@@ -3014,14 +3016,157 @@ function Admin() {
                               </>
                             )}
                           </div>
+                        ) : statsChartType === 'weekly' ? (
+                          /* Weekly view with navigation */
+                          <div className="weekly-chart-container">
+                            {(() => {
+                              const data = bookingStats.weekly
+                              const weeksPerPage = 8
+                              const totalPages = Math.ceil(data.length / weeksPerPage)
+                              const startIdx = Math.max(0, data.length - weeksPerPage - (weeklyPageIndex * weeksPerPage))
+                              const endIdx = Math.min(data.length, startIdx + weeksPerPage)
+                              const displayData = data.slice(startIdx, endIdx)
+                              const maxTotal = Math.max(...data.map(d => d.total), 1)
+
+                              return (
+                                <>
+                                  <div className="chart-navigation">
+                                    <button
+                                      className="nav-btn"
+                                      onClick={() => setWeeklyPageIndex(prev => Math.min(prev + 1, totalPages - 1))}
+                                      disabled={weeklyPageIndex >= totalPages - 1}
+                                    >
+                                      &larr; Older
+                                    </button>
+                                    <span className="nav-info">
+                                      Showing weeks {startIdx + 1}-{endIdx} of {data.length}
+                                    </span>
+                                    <button
+                                      className="nav-btn"
+                                      onClick={() => setWeeklyPageIndex(prev => Math.max(prev - 1, 0))}
+                                      disabled={weeklyPageIndex <= 0}
+                                    >
+                                      Newer &rarr;
+                                    </button>
+                                  </div>
+                                  <div className="stacked-bar-chart">
+                                    {displayData.map((item, idx) => (
+                                      <div key={idx} className="bar-column">
+                                        <div className="bar-stack" style={{ height: '150px' }}>
+                                          {['cancelled', 'pending', 'completed', 'confirmed'].map(status => {
+                                            const value = item[status] || 0
+                                            const height = (value / maxTotal) * 100
+                                            return value > 0 ? (
+                                              <div
+                                                key={status}
+                                                className={`bar-segment bar-${status}`}
+                                                style={{ height: `${height}%` }}
+                                                title={`${status}: ${value}`}
+                                              />
+                                            ) : null
+                                          })}
+                                        </div>
+                                        <div className="bar-label">
+                                          {(() => {
+                                            const match = (item.week || '').match(/(\d{4})-W(\d{2})/)
+                                            if (!match) return item.week
+                                            const [, year, week] = match
+                                            const startDate = new Date(year, 0, 1 + (parseInt(week, 10) - 1) * 7)
+                                            const dayOfWeek = startDate.getDay()
+                                            const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+                                            startDate.setDate(startDate.getDate() + diff)
+                                            const endDate = new Date(startDate)
+                                            endDate.setDate(startDate.getDate() + 6)
+                                            return `${startDate.getDate()}/${startDate.getMonth() + 1}-${endDate.getDate()}/${endDate.getMonth() + 1}`
+                                          })()}
+                                        </div>
+                                        <div className="bar-total">{item.total}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </>
+                              )
+                            })()}
+                          </div>
+                        ) : statsChartType === 'daily' ? (
+                          /* Daily view with monthly containers */
+                          <div className="daily-chart-container">
+                            {(() => {
+                              const data = bookingStats.daily
+                              // Group daily data by month
+                              const monthlyGroups = {}
+                              data.forEach(item => {
+                                const monthKey = item.date?.slice(0, 7) // "2026-01"
+                                if (monthKey) {
+                                  if (!monthlyGroups[monthKey]) monthlyGroups[monthKey] = []
+                                  monthlyGroups[monthKey].push(item)
+                                }
+                              })
+                              const sortedMonths = Object.keys(monthlyGroups).sort().reverse()
+                              const maxTotal = Math.max(...data.map(d => d.total), 1)
+                              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+                              return sortedMonths.map(monthKey => {
+                                const [year, month] = monthKey.split('-')
+                                const monthName = `${monthNames[parseInt(month, 10) - 1]} ${year}`
+                                const monthData = monthlyGroups[monthKey]
+                                const monthTotal = monthData.reduce((sum, d) => sum + d.total, 0)
+                                const isExpanded = expandedDailyMonths[monthKey]
+
+                                return (
+                                  <div key={monthKey} className="daily-month-container">
+                                    <div
+                                      className="daily-month-header"
+                                      onClick={() => setExpandedDailyMonths(prev => ({
+                                        ...prev,
+                                        [monthKey]: !prev[monthKey]
+                                      }))}
+                                    >
+                                      <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                                      <span className="month-name">{monthName}</span>
+                                      <span className="month-total">{monthTotal} bookings</span>
+                                    </div>
+                                    {isExpanded && (
+                                      <div className="stacked-bar-chart daily-bars">
+                                        {monthData.map((item, idx) => (
+                                          <div key={idx} className="bar-column">
+                                            <div className="bar-stack" style={{ height: '120px' }}>
+                                              {['cancelled', 'pending', 'completed', 'confirmed'].map(status => {
+                                                const value = item[status] || 0
+                                                const height = (value / maxTotal) * 100
+                                                return value > 0 ? (
+                                                  <div
+                                                    key={status}
+                                                    className={`bar-segment bar-${status}`}
+                                                    style={{ height: `${height}%` }}
+                                                    title={`${status}: ${value}`}
+                                                  />
+                                                ) : null
+                                              })}
+                                            </div>
+                                            <div className="bar-label">
+                                              {(() => {
+                                                const [, , day] = (item.date || '').split('-')
+                                                return day || item.date
+                                              })()}
+                                            </div>
+                                            <div className="bar-total">{item.total}</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })
+                            })()}
+                          </div>
                         ) : (
+                          /* Monthly view (default) */
                           <div className="stacked-bar-chart">
                             {(() => {
-                              const data = statsChartType === 'monthly' ? bookingStats.monthly :
-                                           statsChartType === 'weekly' ? bookingStats.weekly :
-                                           bookingStats.daily
+                              const data = bookingStats.monthly
                               const maxTotal = Math.max(...data.map(d => d.total), 1)
-                              const displayData = data.slice(-12) // Show last 12 periods
+                              const displayData = data.slice(-12) // Show last 12 months
                               return displayData.map((item, idx) => (
                                 <div key={idx} className="bar-column">
                                   <div className="bar-stack" style={{ height: '150px' }}>
@@ -3039,30 +3184,10 @@ function Admin() {
                                     })}
                                   </div>
                                   <div className="bar-label">
-                                    {statsChartType === 'monthly' ? (() => {
-                                      // Format "2026-01" to "Jan 26"
+                                    {(() => {
                                       const [year, month] = (item.month || '').split('-')
                                       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
                                       return month ? `${monthNames[parseInt(month, 10) - 1]} ${year?.slice(2)}` : item.month
-                                    })() :
-                                     statsChartType === 'weekly' ? (() => {
-                                      // Format "2026-W01" to "1/1-1/7" date range
-                                      const match = (item.week || '').match(/(\d{4})-W(\d{2})/)
-                                      if (!match) return item.week
-                                      const [, year, week] = match
-                                      const startDate = new Date(year, 0, 1 + (parseInt(week, 10) - 1) * 7)
-                                      // Adjust to Monday
-                                      const dayOfWeek = startDate.getDay()
-                                      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-                                      startDate.setDate(startDate.getDate() + diff)
-                                      const endDate = new Date(startDate)
-                                      endDate.setDate(startDate.getDate() + 6)
-                                      return `${startDate.getDate()}/${startDate.getMonth() + 1}-${endDate.getDate()}/${endDate.getMonth() + 1}`
-                                    })() :
-                                     (() => {
-                                      // Format "2026-01-15" to "15/01" (UK format dd/mm)
-                                      const [, month, day] = (item.date || '').split('-')
-                                      return day && month ? `${day}/${month}` : item.date
                                     })()}
                                   </div>
                                   <div className="bar-total">{item.total}</div>
@@ -3092,76 +3217,143 @@ function Admin() {
                         {statsChartType === 'daily' && 'Daily Breakdown'}
                         {statsChartType === 'cumulative' && 'Cumulative Totals'}
                       </h3>
-                      <div className="stats-table-wrapper">
-                        <table className="stats-table">
-                          <thead>
-                            <tr>
-                              <th>{statsChartType === 'monthly' ? 'Month' : statsChartType === 'weekly' ? 'Week' : 'Date'}</th>
-                              {statsChartType !== 'cumulative' && (
-                                <>
-                                  <th className="status-col confirmed">Confirmed</th>
-                                  <th className="status-col completed">Completed</th>
-                                  <th className="status-col pending">Pending</th>
-                                  <th className="status-col cancelled">Cancelled</th>
-                                </>
-                              )}
-                              <th>Total</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(() => {
-                              const data = statsChartType === 'cumulative' ? bookingStats.cumulative :
-                                           statsChartType === 'monthly' ? bookingStats.monthly :
-                                           statsChartType === 'weekly' ? bookingStats.weekly :
-                                           bookingStats.daily
-                              return data.slice(-20).reverse().map((item, idx) => (
-                                <tr key={idx}>
-                                  <td>{(() => {
-                                    if (statsChartType === 'cumulative' && item.date) {
-                                      // Format "2026-01-15" to "15/01/2026" (UK format dd/mm/yyyy)
-                                      const [year, month, day] = item.date.split('-')
-                                      return `${day}/${month}/${year}`
-                                    }
-                                    if (item.date) {
-                                      // Daily: Format "2026-01-15" to "15/01" (UK format dd/mm)
-                                      const [, month, day] = item.date.split('-')
-                                      return `${day}/${month}`
-                                    }
-                                    if (item.month) {
-                                      // Monthly: Format "2026-01" to "01/2026"
-                                      const [year, month] = item.month.split('-')
-                                      return `${month}/${year}`
-                                    }
-                                    if (item.week) {
-                                      // Weekly: Format "2026-W01" to "1/1 to 7/1" date range
-                                      const match = item.week.match(/(\d{4})-W(\d{2})/)
-                                      if (!match) return item.week
-                                      const [, year, week] = match
-                                      const startDate = new Date(year, 0, 1 + (parseInt(week, 10) - 1) * 7)
-                                      const dayOfWeek = startDate.getDay()
-                                      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-                                      startDate.setDate(startDate.getDate() + diff)
-                                      const endDate = new Date(startDate)
-                                      endDate.setDate(startDate.getDate() + 6)
-                                      return `${startDate.getDate()}/${startDate.getMonth() + 1} to ${endDate.getDate()}/${endDate.getMonth() + 1}`
-                                    }
-                                    return ''
-                                  })()}</td>
-                                  {statsChartType !== 'cumulative' && (
-                                    <>
-                                      <td className="status-col confirmed">{item.confirmed || 0}</td>
-                                      <td className="status-col completed">{item.completed || 0}</td>
-                                      <td className="status-col pending">{item.pending || 0}</td>
-                                      <td className="status-col cancelled">{item.cancelled || 0}</td>
-                                    </>
+
+                      {statsChartType === 'daily' ? (
+                        /* Daily breakdown with collapsible monthly containers */
+                        <div className="daily-table-containers">
+                          {(() => {
+                            const data = bookingStats.daily
+                            const monthlyGroups = {}
+                            data.forEach(item => {
+                              const monthKey = item.date?.slice(0, 7)
+                              if (monthKey) {
+                                if (!monthlyGroups[monthKey]) monthlyGroups[monthKey] = []
+                                monthlyGroups[monthKey].push(item)
+                              }
+                            })
+                            const sortedMonths = Object.keys(monthlyGroups).sort().reverse()
+                            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+                            return sortedMonths.map(monthKey => {
+                              const [year, month] = monthKey.split('-')
+                              const monthName = `${monthNames[parseInt(month, 10) - 1]} ${year}`
+                              const monthData = monthlyGroups[monthKey]
+                              const monthTotal = monthData.reduce((sum, d) => sum + d.total, 0)
+                              const isExpanded = expandedDailyMonths[monthKey]
+
+                              return (
+                                <div key={monthKey} className="daily-table-month">
+                                  <div
+                                    className="daily-table-month-header"
+                                    onClick={() => setExpandedDailyMonths(prev => ({
+                                      ...prev,
+                                      [monthKey]: !prev[monthKey]
+                                    }))}
+                                  >
+                                    <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                                    <span className="month-name">{monthName}</span>
+                                    <span className="month-total">{monthTotal} bookings</span>
+                                  </div>
+                                  {isExpanded && (
+                                    <div className="stats-table-wrapper">
+                                      <table className="stats-table">
+                                        <thead>
+                                          <tr>
+                                            <th>Date</th>
+                                            <th className="status-col confirmed">Confirmed</th>
+                                            <th className="status-col completed">Completed</th>
+                                            <th className="status-col pending">Pending</th>
+                                            <th className="status-col cancelled">Cancelled</th>
+                                            <th>Total</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {monthData.slice().reverse().map((item, idx) => (
+                                            <tr key={idx}>
+                                              <td>{(() => {
+                                                const [, , day] = (item.date || '').split('-')
+                                                return day ? `${day}/${month}` : item.date
+                                              })()}</td>
+                                              <td className="status-col confirmed">{item.confirmed || 0}</td>
+                                              <td className="status-col completed">{item.completed || 0}</td>
+                                              <td className="status-col pending">{item.pending || 0}</td>
+                                              <td className="status-col cancelled">{item.cancelled || 0}</td>
+                                              <td><strong>{item.total}</strong></td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
                                   )}
-                                  <td><strong>{item.total}</strong></td>
-                                </tr>
-                              ))
-                            })()}
-                          </tbody>
-                        </table>
-                      </div>
+                                </div>
+                              )
+                            })
+                          })()}
+                        </div>
+                      ) : (
+                        /* Regular table for monthly, weekly, cumulative */
+                        <div className="stats-table-wrapper">
+                          <table className="stats-table">
+                            <thead>
+                              <tr>
+                                <th>{statsChartType === 'monthly' ? 'Month' : statsChartType === 'weekly' ? 'Week' : 'Date'}</th>
+                                {statsChartType !== 'cumulative' && (
+                                  <>
+                                    <th className="status-col confirmed">Confirmed</th>
+                                    <th className="status-col completed">Completed</th>
+                                    <th className="status-col pending">Pending</th>
+                                    <th className="status-col cancelled">Cancelled</th>
+                                  </>
+                                )}
+                                <th>Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(() => {
+                                const data = statsChartType === 'cumulative' ? bookingStats.cumulative :
+                                             statsChartType === 'monthly' ? bookingStats.monthly :
+                                             bookingStats.weekly
+                                return data.slice(-20).reverse().map((item, idx) => (
+                                  <tr key={idx}>
+                                    <td>{(() => {
+                                      if (statsChartType === 'cumulative' && item.date) {
+                                        const [year, month, day] = item.date.split('-')
+                                        return `${day}/${month}/${year}`
+                                      }
+                                      if (item.month) {
+                                        const [year, month] = item.month.split('-')
+                                        return `${month}/${year}`
+                                      }
+                                      if (item.week) {
+                                        const match = item.week.match(/(\d{4})-W(\d{2})/)
+                                        if (!match) return item.week
+                                        const [, year, week] = match
+                                        const startDate = new Date(year, 0, 1 + (parseInt(week, 10) - 1) * 7)
+                                        const dayOfWeek = startDate.getDay()
+                                        const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+                                        startDate.setDate(startDate.getDate() + diff)
+                                        const endDate = new Date(startDate)
+                                        endDate.setDate(startDate.getDate() + 6)
+                                        return `${startDate.getDate()}/${startDate.getMonth() + 1} to ${endDate.getDate()}/${endDate.getMonth() + 1}`
+                                      }
+                                      return ''
+                                    })()}</td>
+                                    {statsChartType !== 'cumulative' && (
+                                      <>
+                                        <td className="status-col confirmed">{item.confirmed || 0}</td>
+                                        <td className="status-col completed">{item.completed || 0}</td>
+                                        <td className="status-col pending">{item.pending || 0}</td>
+                                        <td className="status-col cancelled">{item.cancelled || 0}</td>
+                                      </>
+                                    )}
+                                    <td><strong>{item.total}</strong></td>
+                                  </tr>
+                                ))
+                              })()}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : (
