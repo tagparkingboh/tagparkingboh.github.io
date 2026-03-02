@@ -3039,9 +3039,31 @@ function Admin() {
                                     })}
                                   </div>
                                   <div className="bar-label">
-                                    {statsChartType === 'monthly' ? item.month?.slice(5) || item.month :
-                                     statsChartType === 'weekly' ? item.week?.split('-W')[1] || item.week :
-                                     item.date?.slice(5) || item.date}
+                                    {statsChartType === 'monthly' ? (() => {
+                                      // Format "2026-01" to "Jan 26"
+                                      const [year, month] = (item.month || '').split('-')
+                                      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                                      return month ? `${monthNames[parseInt(month, 10) - 1]} ${year?.slice(2)}` : item.month
+                                    })() :
+                                     statsChartType === 'weekly' ? (() => {
+                                      // Format "2026-W01" to "1/1-1/7" date range
+                                      const match = (item.week || '').match(/(\d{4})-W(\d{2})/)
+                                      if (!match) return item.week
+                                      const [, year, week] = match
+                                      const startDate = new Date(year, 0, 1 + (parseInt(week, 10) - 1) * 7)
+                                      // Adjust to Monday
+                                      const dayOfWeek = startDate.getDay()
+                                      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+                                      startDate.setDate(startDate.getDate() + diff)
+                                      const endDate = new Date(startDate)
+                                      endDate.setDate(startDate.getDate() + 6)
+                                      return `${startDate.getDate()}/${startDate.getMonth() + 1}-${endDate.getDate()}/${endDate.getMonth() + 1}`
+                                    })() :
+                                     (() => {
+                                      // Format "2026-01-15" to "15/01" (UK format dd/mm)
+                                      const [, month, day] = (item.date || '').split('-')
+                                      return day && month ? `${day}/${month}` : item.date
+                                    })()}
                                   </div>
                                   <div className="bar-total">{item.total}</div>
                                 </div>
@@ -3094,7 +3116,37 @@ function Admin() {
                                            bookingStats.daily
                               return data.slice(-20).reverse().map((item, idx) => (
                                 <tr key={idx}>
-                                  <td>{item.date || item.month || item.week}</td>
+                                  <td>{(() => {
+                                    if (statsChartType === 'cumulative' && item.date) {
+                                      // Format "2026-01-15" to "15/01/2026" (UK format dd/mm/yyyy)
+                                      const [year, month, day] = item.date.split('-')
+                                      return `${day}/${month}/${year}`
+                                    }
+                                    if (item.date) {
+                                      // Daily: Format "2026-01-15" to "15/01" (UK format dd/mm)
+                                      const [, month, day] = item.date.split('-')
+                                      return `${day}/${month}`
+                                    }
+                                    if (item.month) {
+                                      // Monthly: Format "2026-01" to "01/2026"
+                                      const [year, month] = item.month.split('-')
+                                      return `${month}/${year}`
+                                    }
+                                    if (item.week) {
+                                      // Weekly: Format "2026-W01" to "1/1 to 7/1" date range
+                                      const match = item.week.match(/(\d{4})-W(\d{2})/)
+                                      if (!match) return item.week
+                                      const [, year, week] = match
+                                      const startDate = new Date(year, 0, 1 + (parseInt(week, 10) - 1) * 7)
+                                      const dayOfWeek = startDate.getDay()
+                                      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+                                      startDate.setDate(startDate.getDate() + diff)
+                                      const endDate = new Date(startDate)
+                                      endDate.setDate(startDate.getDate() + 6)
+                                      return `${startDate.getDate()}/${startDate.getMonth() + 1} to ${endDate.getDate()}/${endDate.getMonth() + 1}`
+                                    }
+                                    return ''
+                                  })()}</td>
                                   {statsChartType !== 'cumulative' && (
                                     <>
                                       <td className="status-col confirmed">{item.confirmed || 0}</td>
