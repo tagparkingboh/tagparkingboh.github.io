@@ -2967,6 +2967,13 @@ function Admin() {
                         <option value="daily">Daily</option>
                         <option value="cumulative">Cumulative Growth</option>
                       </select>
+                      <button
+                        className="refresh-stats-btn"
+                        onClick={() => fetchBookingStats()}
+                        disabled={loadingStats}
+                      >
+                        {loadingStats ? 'Refreshing...' : 'Refresh Data'}
+                      </button>
                     </div>
 
                     {/* Stacked Bar Chart */}

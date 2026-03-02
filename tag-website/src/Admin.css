@@ -2641,6 +2641,29 @@
   cursor: pointer;
 }
 
+.refresh-stats-btn {
+  margin-left: auto;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-stats-btn:hover:not(:disabled) {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+.refresh-stats-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Booking Chart Container */
 .booking-chart {
   background: white;
