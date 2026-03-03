@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import BookingCalendar from './components/BookingCalendar'
@@ -104,6 +104,13 @@ function Employee() {
 
   // Close confirmation modal
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+
+  // Camera modal state
+  const [showCameraModal, setShowCameraModal] = useState(false)
+  const [cameraSlotKey, setCameraSlotKey] = useState(null)
+  const [cameraStream, setCameraStream] = useState(null)
+  const videoRef = useRef(null)
+  const canvasRef = useRef(null)
 
   // Helper to get localStorage key for inspection draft
   const getDraftKey = (bookingId, type) => `inspection_draft_${bookingId}_${type}`
@@ -353,6 +360,74 @@ function Employee() {
     if (!currentPhoto) return
     const rotatedPhoto = await rotateImage(currentPhoto, degrees)
     setInspectionPhotos(prev => ({ ...prev, [slotKey]: rotatedPhoto }))
+  }
+
+  // Open camera modal with back camera
+  const openCamera = async (slotKey) => {
+    setCameraSlotKey(slotKey)
+    setShowCameraModal(true)
+
+    try {
+      // Try to get back camera first with exact constraint
+      let stream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: 'environment' } },
+          audio: false
+        })
+      } catch (exactError) {
+        // Fallback: try with ideal constraint (less strict)
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' } },
+            audio: false
+          })
+        } catch (idealError) {
+          // Last fallback: just get any camera
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          })
+        }
+      }
+
+      setCameraStream(stream)
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.play()
+      }
+    } catch (err) {
+      console.error('Failed to access camera:', err)
+      setError('Failed to access camera. Please check permissions.')
+      closeCamera()
+    }
+  }
+
+  // Capture photo from camera stream
+  const captureFromCamera = () => {
+    if (!videoRef.current || !canvasRef.current) return
+
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(video, 0, 0)
+
+    const photoData = canvas.toDataURL('image/jpeg', 0.8)
+    setInspectionPhotos(prev => ({ ...prev, [cameraSlotKey]: photoData }))
+    closeCamera()
+  }
+
+  // Close camera modal and stop stream
+  const closeCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop())
+      setCameraStream(null)
+    }
+    setShowCameraModal(false)
+    setCameraSlotKey(null)
   }
 
   // Save inspection
@@ -699,18 +774,10 @@ function Employee() {
                               </div>
                             </div>
                           ) : (
-                            <label className="photo-slot-capture" htmlFor={`photo-${slot.key}`}>
+                            <button className="photo-slot-capture" onClick={() => openCamera(slot.key)}>
                               <span className="photo-slot-icon">&#128247;</span>
                               <span>Tap to capture</span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                onChange={(e) => handlePhotoCapture(slot.key, e)}
-                                id={`photo-${slot.key}`}
-                                className="photo-input-hidden"
-                              />
-                            </label>
+                            </button>
                           )}
                         </div>
                       )})}
@@ -964,6 +1031,27 @@ function Employee() {
               </button>
               <button className="modal-btn modal-btn-primary" onClick={() => restoreDraft(pendingDraft)}>
                 Restore
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Camera Modal */}
+      {showCameraModal && (
+        <div className="camera-modal-overlay">
+          <div className="camera-modal">
+            <div className="camera-header">
+              <span>Take Photo: {PHOTO_SLOTS.find(s => s.key === cameraSlotKey)?.label}</span>
+              <button className="camera-close" onClick={closeCamera}>&times;</button>
+            </div>
+            <div className="camera-viewfinder">
+              <video ref={videoRef} autoPlay playsInline muted className="camera-video" />
+              <canvas ref={canvasRef} style={{ display: 'none' }} />
+            </div>
+            <div className="camera-controls">
+              <button className="camera-capture-btn" onClick={captureFromCamera}>
+                <span className="camera-capture-icon"></span>
               </button>
             </div>
           </div>
