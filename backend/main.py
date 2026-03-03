@@ -1707,12 +1707,13 @@ async def update_booking(
     Admin endpoint: Update booking details.
 
     Use this to fix booking information such as:
-    - Pickup date/time (e.g., for overnight arrival corrections)
+    - Pickup date/time (collection time, not arrival time)
     - Dropoff date/time
     - Flight numbers and destinations/origins
 
-    The pickup_time_from and pickup_time_to fields are automatically
-    recalculated when pickup_time is updated (35 and 60 min buffers).
+    When pickup_time is updated, the pickup_time_from and pickup_time_to
+    fields are set to the exact time specified (direct collection time edit).
+    Use the Edit Flight Details feature to modify arrival flight times.
     """
     from db_models import Booking as DbBookingModel
     from datetime import time as dt_time, timedelta
@@ -1733,12 +1734,13 @@ async def update_booking(
         # Parse time string HH:MM
         parts = request.pickup_time.split(':')
         new_pickup_time = dt_time(int(parts[0]), int(parts[1]))
-        booking.pickup_time = new_pickup_time
 
-        # Recalculate pickup_time_from and pickup_time_to (30 min after landing)
-        arrival_datetime = datetime.combine(datetime.today(), new_pickup_time)
-        booking.pickup_time_from = (arrival_datetime + timedelta(minutes=30)).time()
-        booking.pickup_time_to = (arrival_datetime + timedelta(minutes=30)).time()
+        # When admin manually edits pickup time, they're setting the collection time directly
+        # (not changing arrival time). Set pickup_time_from/to to the exact time specified.
+        # Note: pickup_time stores the arrival/landing time, but for manual edits we update
+        # the collection window directly to what the admin entered.
+        booking.pickup_time_from = new_pickup_time
+        booking.pickup_time_to = new_pickup_time
         updates_made.append("pickup_time")
 
     if request.pickup_airline_name is not None:
