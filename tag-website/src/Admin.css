@@ -587,6 +587,104 @@
   background: #e9d8fd;
 }
 
+/* Status Section Containers */
+.bookings-by-status {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.status-section {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.status-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #f8f9fa;
+  cursor: pointer;
+  border-left: 4px solid #ccc;
+  transition: background 0.2s ease;
+}
+
+.status-section-header:hover {
+  background: #f0f2f5;
+}
+
+.status-section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-section-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.status-section-title h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.status-section-count {
+  background: #e0e0e0;
+  color: #555;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.status-section-confirmed .status-section-count {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-section-completed .status-section-count {
+  background: #e2e3e5;
+  color: #383d41;
+}
+
+.status-section-pending .status-section-count {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-section-cancelled .status-section-count {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.status-section-toggle {
+  font-size: 20px;
+  font-weight: 600;
+  color: #888;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.status-section-toggle.collapsed {
+  color: #666;
+}
+
+.status-section .booking-accordion {
+  padding: 16px;
+  border-top: 1px solid #e0e0e0;
+}
+
 /* Accordion Booking Cards */
 .booking-accordion {
   display: flex;
