@@ -135,12 +135,17 @@ function Admin() {
   const [loadingLocations, setLoadingLocations] = useState(false)
 
   // Booking stats state (for growth charts)
-  const [reportsSubTab, setReportsSubTab] = useState('growth') // 'growth' or 'map'
+  const [reportsSubTab, setReportsSubTab] = useState('growth') // 'growth', 'map', or 'occupancy'
   const [bookingStats, setBookingStats] = useState(null)
   const [loadingStats, setLoadingStats] = useState(false)
   const [statsChartType, setStatsChartType] = useState('monthly') // 'daily', 'weekly', 'monthly', 'cumulative'
   const [weeklyPageIndex, setWeeklyPageIndex] = useState(0) // For weekly navigation (0 = most recent)
   const [expandedDailyMonths, setExpandedDailyMonths] = useState({}) // For daily collapsible months
+
+  // Occupancy report state
+  const [occupancyData, setOccupancyData] = useState(null)
+  const [loadingOccupancy, setLoadingOccupancy] = useState(false)
+  const [occupancyView, setOccupancyView] = useState('daily') // 'daily', 'weekly', 'monthly'
 
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
@@ -219,9 +224,11 @@ function Admin() {
         fetchBookingLocations(mapType)
       } else if (reportsSubTab === 'growth') {
         fetchBookingStats()
+      } else if (reportsSubTab === 'occupancy') {
+        fetchOccupancyReport(occupancyView)
       }
     }
-  }, [activeTab, token, mapType, reportsSubTab])
+  }, [activeTab, token, mapType, reportsSubTab, occupancyView])
 
   const fetchBookingStats = async () => {
     setLoadingStats(true)
@@ -239,6 +246,25 @@ function Admin() {
       console.error('Failed to fetch booking stats:', err)
     } finally {
       setLoadingStats(false)
+    }
+  }
+
+  const fetchOccupancyReport = async (view = 'daily') => {
+    setLoadingOccupancy(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/reports/occupancy?view=${view}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setOccupancyData(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch occupancy report:', err)
+    } finally {
+      setLoadingOccupancy(false)
     }
   }
 
@@ -2958,6 +2984,12 @@ function Admin() {
                 Booking Growth
               </button>
               <button
+                className={`reports-subtab ${reportsSubTab === 'occupancy' ? 'active' : ''}`}
+                onClick={() => setReportsSubTab('occupancy')}
+              >
+                Occupancy
+              </button>
+              <button
                 className={`reports-subtab ${reportsSubTab === 'map' ? 'active' : ''}`}
                 onClick={() => setReportsSubTab('map')}
               >
@@ -3444,6 +3476,162 @@ function Admin() {
                   </>
                 ) : (
                   <p>No booking data available.</p>
+                )}
+              </div>
+            )}
+
+            {/* Occupancy Report */}
+            {reportsSubTab === 'occupancy' && (
+              <div className="occupancy-report-section">
+                <h3>Parking Occupancy</h3>
+                <p className="reports-description">
+                  View parking space utilization across your 60 spaces. Shows historical and future occupancy based on confirmed and completed bookings.
+                </p>
+
+                {/* View Type Selector */}
+                <div className="chart-controls">
+                  <label>View:</label>
+                  <select value={occupancyView} onChange={e => setOccupancyView(e.target.value)}>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                  <button
+                    className="refresh-stats-btn"
+                    onClick={() => fetchOccupancyReport(occupancyView)}
+                    disabled={loadingOccupancy}
+                  >
+                    {loadingOccupancy ? 'Refreshing...' : 'Refresh Data'}
+                  </button>
+                </div>
+
+                {loadingOccupancy ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading occupancy data...</span>
+                  </div>
+                ) : occupancyData ? (
+                  <>
+                    {/* Summary Stats */}
+                    <div className="occupancy-summary">
+                      <div className="occupancy-stat">
+                        <span className="occupancy-stat-value">{occupancyData.max_capacity}</span>
+                        <span className="occupancy-stat-label">Total Spaces</span>
+                      </div>
+                      {occupancyData.data && occupancyData.data.length > 0 && (() => {
+                        const todayEntry = occupancyData.data.find(d => d.is_today);
+                        const currentEntry = occupancyData.data.find(d => d.is_current_week || d.is_current_month);
+                        const displayEntry = todayEntry || currentEntry;
+                        if (displayEntry) {
+                          return (
+                            <>
+                              <div className="occupancy-stat">
+                                <span className="occupancy-stat-value">{displayEntry.occupied || displayEntry.avg_occupied}</span>
+                                <span className="occupancy-stat-label">{todayEntry ? 'Occupied Today' : 'Current Avg Occupied'}</span>
+                              </div>
+                              <div className="occupancy-stat">
+                                <span className="occupancy-stat-value">{displayEntry.available || displayEntry.avg_available}</span>
+                                <span className="occupancy-stat-label">{todayEntry ? 'Available Today' : 'Current Avg Available'}</span>
+                              </div>
+                              <div className="occupancy-stat">
+                                <span className="occupancy-stat-value">{displayEntry.occupancy_percent || displayEntry.avg_occupancy_percent}%</span>
+                                <span className="occupancy-stat-label">{todayEntry ? 'Utilization Today' : 'Current Utilization'}</span>
+                              </div>
+                            </>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+
+                    {/* Occupancy Chart - Visual Bar Chart */}
+                    <div className="occupancy-chart-container">
+                      <h4>
+                        {occupancyView === 'daily' && 'Daily Occupancy'}
+                        {occupancyView === 'weekly' && 'Weekly Average Occupancy'}
+                        {occupancyView === 'monthly' && 'Monthly Average Occupancy'}
+                      </h4>
+                      <div className="occupancy-chart">
+                        {occupancyData.data && occupancyData.data.slice(-30).map((item, index) => {
+                          const percent = item.occupancy_percent || item.avg_occupancy_percent || 0;
+                          const isHighlight = item.is_today || item.is_current_week || item.is_current_month;
+                          const isPast = item.is_past;
+                          let barClass = 'occupancy-bar';
+                          if (percent >= 90) barClass += ' high';
+                          else if (percent >= 70) barClass += ' medium';
+                          else barClass += ' low';
+                          if (isHighlight) barClass += ' current';
+                          if (isPast) barClass += ' past';
+
+                          return (
+                            <div key={index} className="occupancy-bar-wrapper" title={`${item.display_date || item.display_week || item.display_month}: ${percent}% (${item.occupied || item.avg_occupied}/${occupancyData.max_capacity})`}>
+                              <div className={barClass} style={{ height: `${Math.max(percent, 2)}%` }}>
+                                <span className="occupancy-bar-value">{Math.round(percent)}%</span>
+                              </div>
+                              <span className="occupancy-bar-label">
+                                {occupancyView === 'daily' && item.display_date?.slice(0, 5)}
+                                {occupancyView === 'weekly' && item.display_week?.split(' - ')[0]}
+                                {occupancyView === 'monthly' && item.display_month?.slice(0, 3)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="occupancy-legend">
+                        <span className="legend-item"><span className="legend-color low"></span> &lt;70%</span>
+                        <span className="legend-item"><span className="legend-color medium"></span> 70-89%</span>
+                        <span className="legend-item"><span className="legend-color high"></span> 90%+</span>
+                        <span className="legend-item"><span className="legend-color current"></span> Current</span>
+                      </div>
+                    </div>
+
+                    {/* Occupancy Table */}
+                    <div className="occupancy-table-container">
+                      <h4>Detailed Breakdown</h4>
+                      <div className="data-table-wrapper">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>{occupancyView === 'daily' ? 'Date' : occupancyView === 'weekly' ? 'Week' : 'Month'}</th>
+                              <th>Occupied</th>
+                              <th>Available</th>
+                              <th>Utilization</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {occupancyData.data && occupancyData.data.map((item, index) => {
+                              const occupied = item.occupied ?? item.avg_occupied;
+                              const available = item.available ?? item.avg_available;
+                              const percent = item.occupancy_percent ?? item.avg_occupancy_percent;
+                              const isHighlight = item.is_today || item.is_current_week || item.is_current_month;
+                              const isPast = item.is_past;
+
+                              return (
+                                <tr key={index} className={`${isHighlight ? 'highlight-row' : ''} ${isPast ? 'past-row' : ''}`}>
+                                  <td>{item.display_date || item.display_week || item.display_month}</td>
+                                  <td>{typeof occupied === 'number' ? occupied.toFixed(occupancyView === 'daily' ? 0 : 1) : '-'}</td>
+                                  <td>{typeof available === 'number' ? available.toFixed(occupancyView === 'daily' ? 0 : 1) : '-'}</td>
+                                  <td>
+                                    <span className={`occupancy-percent ${percent >= 90 ? 'high' : percent >= 70 ? 'medium' : 'low'}`}>
+                                      {typeof percent === 'number' ? `${percent.toFixed(1)}%` : '-'}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    {isHighlight && <span className="status-badge current">Current</span>}
+                                    {isPast && !isHighlight && <span className="status-badge past">Past</span>}
+                                    {!isPast && !isHighlight && <span className="status-badge future">Future</span>}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p>No occupancy data available.</p>
                 )}
               </div>
             )}

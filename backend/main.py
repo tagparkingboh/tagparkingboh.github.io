@@ -2473,6 +2473,210 @@ async def get_booking_locations(
     }
 
 
+@app.get("/api/admin/reports/occupancy")
+async def get_occupancy_report(
+    view: str = Query("daily", description="View type: 'daily', 'weekly', or 'monthly'"),
+    start_date: Optional[date] = Query(None, description="Start date for the report (defaults to 30 days ago for daily, 12 weeks for weekly, 6 months for monthly)"),
+    end_date: Optional[date] = Query(None, description="End date for the report (defaults to 60 days from now)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get occupancy report showing parking space utilization by date, week, or month.
+
+    For each time period, calculates:
+    - occupied: Number of vehicles parked (active bookings for that date/period)
+    - available: Number of free spaces (60 - occupied)
+    - occupancy_percent: Percentage utilization
+
+    A vehicle is counted as "occupied" on any date between dropoff_date and pickup_date (inclusive).
+    Only confirmed and completed bookings are counted.
+    """
+    from db_models import Booking, BookingStatus
+    from datetime import timedelta
+    from collections import defaultdict
+    import calendar
+
+    MAX_CAPACITY = 60
+
+    # Set default date ranges based on view type
+    today = date.today()
+    if view == "daily":
+        default_start = today - timedelta(days=30)
+        default_end = today + timedelta(days=60)
+    elif view == "weekly":
+        default_start = today - timedelta(weeks=12)
+        default_end = today + timedelta(weeks=12)
+    elif view == "monthly":
+        default_start = today - timedelta(days=180)  # ~6 months
+        default_end = today + timedelta(days=180)
+    else:
+        default_start = today - timedelta(days=30)
+        default_end = today + timedelta(days=60)
+
+    report_start = start_date or default_start
+    report_end = end_date or default_end
+
+    # Get all active bookings (confirmed or completed) that overlap with our date range
+    bookings = (
+        db.query(Booking)
+        .filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
+        .filter(Booking.dropoff_date <= report_end)
+        .filter(Booking.pickup_date >= report_start)
+        .all()
+    )
+
+    if view == "daily":
+        # Calculate daily occupancy
+        daily_occupancy = defaultdict(int)
+
+        # For each booking, increment the count for each day the vehicle is parked
+        for booking in bookings:
+            current_date = max(booking.dropoff_date, report_start)
+            end_date_for_booking = min(booking.pickup_date, report_end)
+            while current_date <= end_date_for_booking:
+                daily_occupancy[current_date.isoformat()] += 1
+                current_date += timedelta(days=1)
+
+        # Build response - include all dates in range
+        data = []
+        current_date = report_start
+        while current_date <= report_end:
+            date_str = current_date.isoformat()
+            occupied = daily_occupancy.get(date_str, 0)
+            # Format as dd/mm/yyyy for UK display
+            display_date = current_date.strftime("%d/%m/%Y")
+            data.append({
+                "date": date_str,
+                "display_date": display_date,
+                "occupied": occupied,
+                "available": MAX_CAPACITY - occupied,
+                "occupancy_percent": round((occupied / MAX_CAPACITY) * 100, 1),
+                "is_past": current_date < today,
+                "is_today": current_date == today,
+            })
+            current_date += timedelta(days=1)
+
+        return {
+            "view": "daily",
+            "max_capacity": MAX_CAPACITY,
+            "start_date": report_start.isoformat(),
+            "end_date": report_end.isoformat(),
+            "data": data,
+        }
+
+    elif view == "weekly":
+        # Calculate weekly occupancy (ISO week format)
+        weekly_occupancy = defaultdict(lambda: {"total_days": 0, "total_occupied": 0})
+
+        for booking in bookings:
+            current_date = max(booking.dropoff_date, report_start)
+            end_date_for_booking = min(booking.pickup_date, report_end)
+            while current_date <= end_date_for_booking:
+                # ISO week key: YYYY-Www
+                week_key = current_date.strftime("%G-W%V")
+                weekly_occupancy[week_key]["total_occupied"] += 1
+                current_date += timedelta(days=1)
+
+        # Count days per week in our range
+        current_date = report_start
+        while current_date <= report_end:
+            week_key = current_date.strftime("%G-W%V")
+            weekly_occupancy[week_key]["total_days"] += 1
+            current_date += timedelta(days=1)
+
+        # Build response
+        data = []
+        week_keys = sorted(weekly_occupancy.keys())
+        for week_key in week_keys:
+            week_data = weekly_occupancy[week_key]
+            days_in_week = week_data["total_days"]
+            avg_occupied = week_data["total_occupied"] / days_in_week if days_in_week > 0 else 0
+
+            # Parse week to get start date for display
+            year, week_num = week_key.split("-W")
+            week_start = date.fromisocalendar(int(year), int(week_num), 1)
+            week_end = week_start + timedelta(days=6)
+            display_week = f"{week_start.strftime('%d/%m')} - {week_end.strftime('%d/%m/%Y')}"
+
+            data.append({
+                "week": week_key,
+                "display_week": display_week,
+                "week_start": week_start.isoformat(),
+                "week_end": week_end.isoformat(),
+                "avg_occupied": round(avg_occupied, 1),
+                "avg_available": round(MAX_CAPACITY - avg_occupied, 1),
+                "avg_occupancy_percent": round((avg_occupied / MAX_CAPACITY) * 100, 1),
+                "is_current_week": week_start <= today <= week_end,
+                "is_past": week_end < today,
+            })
+
+        return {
+            "view": "weekly",
+            "max_capacity": MAX_CAPACITY,
+            "start_date": report_start.isoformat(),
+            "end_date": report_end.isoformat(),
+            "data": data,
+        }
+
+    elif view == "monthly":
+        # Calculate monthly occupancy
+        monthly_occupancy = defaultdict(lambda: {"total_days": 0, "total_occupied": 0})
+
+        for booking in bookings:
+            current_date = max(booking.dropoff_date, report_start)
+            end_date_for_booking = min(booking.pickup_date, report_end)
+            while current_date <= end_date_for_booking:
+                month_key = current_date.strftime("%Y-%m")
+                monthly_occupancy[month_key]["total_occupied"] += 1
+                current_date += timedelta(days=1)
+
+        # Count days per month in our range
+        current_date = report_start
+        while current_date <= report_end:
+            month_key = current_date.strftime("%Y-%m")
+            monthly_occupancy[month_key]["total_days"] += 1
+            current_date += timedelta(days=1)
+
+        # Build response
+        data = []
+        month_keys = sorted(monthly_occupancy.keys())
+        for month_key in month_keys:
+            month_data = monthly_occupancy[month_key]
+            days_in_month = month_data["total_days"]
+            avg_occupied = month_data["total_occupied"] / days_in_month if days_in_month > 0 else 0
+
+            # Parse month for display
+            year, month = month_key.split("-")
+            month_name = calendar.month_name[int(month)]
+            display_month = f"{month_name} {year}"
+
+            # Check if current month
+            is_current = (int(year) == today.year and int(month) == today.month)
+            is_past = date(int(year), int(month), 1) < today.replace(day=1)
+
+            data.append({
+                "month": month_key,
+                "display_month": display_month,
+                "avg_occupied": round(avg_occupied, 1),
+                "avg_available": round(MAX_CAPACITY - avg_occupied, 1),
+                "avg_occupancy_percent": round((avg_occupied / MAX_CAPACITY) * 100, 1),
+                "is_current_month": is_current,
+                "is_past": is_past and not is_current,
+            })
+
+        return {
+            "view": "monthly",
+            "max_capacity": MAX_CAPACITY,
+            "start_date": report_start.isoformat(),
+            "end_date": report_end.isoformat(),
+            "data": data,
+        }
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid view type. Use 'daily', 'weekly', or 'monthly'.")
+
+
 @app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
 async def send_promo_email_to_subscriber(
     subscriber_id: int,
