@@ -37,7 +37,7 @@ function HomePage() {
     const interval = setInterval(() => {
       setBannerFading(true)
       setTimeout(() => {
-        setHeroBannerIndex(prev => (prev + 1) % 5)
+        setHeroBannerIndex(prev => (prev + 1) % 6)
         setBannerFading(false)
       }, 300) // Fade out duration
     }, 5000)
@@ -225,15 +225,18 @@ function HomePage() {
                 <>Save up to 60% off<br />official airport parking</>
               )}
               {heroBannerIndex === 1 && (
-                <>It's time to Tag it.<br />Book your parking now</>
+                <>Secure payments<br />powered by Stripe</>
               )}
               {heroBannerIndex === 2 && (
-                <>Enjoy peace of mind from<br />Palma to Paphos</>
+                <>It's time to Tag it.<br />Book your parking now</>
               )}
               {heroBannerIndex === 3 && (
-                <>Secure parking<br />guaranteed, 24/7</>
+                <>Enjoy peace of mind from<br />Palma to Paphos</>
               )}
               {heroBannerIndex === 4 && (
+                <>Secure parking<br />guaranteed, 24/7</>
+              )}
+              {heroBannerIndex === 5 && (
                 <>Free cancellation up to<br />24 hours before</>
               )}
             </h1>

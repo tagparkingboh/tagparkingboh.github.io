@@ -19,6 +19,10 @@ SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
 FROM_EMAIL = os.getenv("FROM_EMAIL", "no-reply@tagparking.co.uk")
 FROM_NAME = os.getenv("FROM_NAME", "TAG Parking")
 
+# Founder email configuration (for personal follow-up emails)
+FOUNDER_EMAIL = os.getenv("FOUNDER_EMAIL", "jamie@tagparking.co.uk")
+FOUNDER_NAME = os.getenv("FOUNDER_NAME", "Jamie")
+
 
 def is_email_enabled() -> bool:
     """Check if email sending is enabled (API key is configured)."""

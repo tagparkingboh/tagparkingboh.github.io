@@ -53,6 +53,10 @@ class Customer(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     billing_updated_at = Column(DateTime(timezone=True))  # Set when billing info is saved/updated
 
+    # Founder follow-up email tracking (for abandoned leads)
+    founder_followup_sent = Column(Boolean, default=False)
+    founder_followup_sent_at = Column(DateTime(timezone=True))
+
     # Relationships
     vehicles = relationship("Vehicle", back_populates="customer")
     bookings = relationship("Booking", back_populates="customer")

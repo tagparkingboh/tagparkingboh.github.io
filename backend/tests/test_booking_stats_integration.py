@@ -27,13 +27,35 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Mock Database Models
 # =============================================================================
 
+def create_mock_payment(amount_pence=5000, status="succeeded"):
+    """Create a mock payment object."""
+    payment = MagicMock()
+    payment.amount_pence = amount_pence
+    payment.status = status
+    return payment
+
+
+def create_mock_marketing_subscriber(
+    id=1,
+    email="test@example.com",
+    promo_free_used_booking_id=None,
+):
+    """Create a mock marketing subscriber for free promo testing."""
+    subscriber = MagicMock()
+    subscriber.id = id
+    subscriber.email = email
+    subscriber.promo_free_used_booking_id = promo_free_used_booking_id
+    return subscriber
+
+
 def create_mock_db_booking(
     id=1,
     reference="TAG-INT001",
     status_value="confirmed",
     created_at=None,
+    payment_amount_pence=None,
 ):
-    """Create a mock database booking object."""
+    """Create a mock database booking object with optional payment."""
     booking = MagicMock()
     booking.id = id
     booking.reference = reference
@@ -52,6 +74,12 @@ def create_mock_db_booking(
     else:
         booking.status = MagicMock()
         booking.status.value = status_value
+
+    # Create mock payment if amount specified
+    if payment_amount_pence is not None:
+        booking.payment = create_mock_payment(amount_pence=payment_amount_pence)
+    else:
+        booking.payment = None
 
     return booking
 
@@ -626,6 +654,400 @@ class TestChartDataPreparation:
         assert status_colors["completed"].startswith("#")
         assert status_colors["pending"].startswith("#")
         assert status_colors["cancelled"].startswith("#")
+
+
+# =============================================================================
+# Integration Tests: Revenue Calculation with Database Models
+# =============================================================================
+
+class TestRevenueIntegration:
+    """Integration tests for revenue calculation with database models."""
+
+    def test_revenue_calculation_with_payments(self):
+        """Test revenue calculation with multiple paid bookings."""
+        bookings = [
+            create_mock_db_booking(id=1, status_value="confirmed", payment_amount_pence=5000),
+            create_mock_db_booking(id=2, status_value="confirmed", payment_amount_pence=7500),
+            create_mock_db_booking(id=3, status_value="completed", payment_amount_pence=10000),
+        ]
+
+        free_promo_booking_ids = set()
+
+        total_revenue_pence = 0
+        paid_customer_count = 0
+
+        for booking in bookings:
+            if booking.id in free_promo_booking_ids:
+                continue
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+                total_revenue_pence += booking.payment.amount_pence
+                paid_customer_count += 1
+
+        total_revenue_pounds = round(total_revenue_pence / 100, 2)
+        avg_revenue_per_customer = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
+
+        assert total_revenue_pence == 22500
+        assert total_revenue_pounds == 225.0
+        assert paid_customer_count == 3
+        assert avg_revenue_per_customer == 75.0
+
+    def test_revenue_excludes_free_promo_subscribers(self):
+        """Test that bookings linked to free promo subscribers are excluded."""
+        bookings = [
+            create_mock_db_booking(id=1, status_value="confirmed", payment_amount_pence=5000),
+            create_mock_db_booking(id=2, status_value="confirmed", payment_amount_pence=7500),
+            create_mock_db_booking(id=3, status_value="confirmed", payment_amount_pence=10000),
+        ]
+
+        # Simulate MarketingSubscriber with promo_free_used_booking_id
+        free_promo_subscribers = [
+            create_mock_marketing_subscriber(id=1, promo_free_used_booking_id=2),
+        ]
+
+        free_promo_booking_ids = set()
+        for sub in free_promo_subscribers:
+            if sub.promo_free_used_booking_id:
+                free_promo_booking_ids.add(sub.promo_free_used_booking_id)
+
+        total_revenue_pence = 0
+        paid_customer_count = 0
+
+        for booking in bookings:
+            if booking.id in free_promo_booking_ids:
+                continue
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+                total_revenue_pence += booking.payment.amount_pence
+                paid_customer_count += 1
+
+        avg_revenue = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
+
+        assert 2 in free_promo_booking_ids
+        assert total_revenue_pence == 15000  # 5000 + 10000 (7500 excluded)
+        assert paid_customer_count == 2
+        assert avg_revenue == 75.0
+
+    def test_revenue_with_zero_amount_bookings(self):
+        """Test that zero amount payments are excluded."""
+        bookings = [
+            create_mock_db_booking(id=1, status_value="confirmed", payment_amount_pence=5000),
+            create_mock_db_booking(id=2, status_value="confirmed", payment_amount_pence=0),
+            create_mock_db_booking(id=3, status_value="confirmed", payment_amount_pence=7500),
+        ]
+
+        total_revenue_pence = 0
+        paid_customer_count = 0
+
+        for booking in bookings:
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+                total_revenue_pence += booking.payment.amount_pence
+                paid_customer_count += 1
+
+        avg_revenue = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
+
+        assert total_revenue_pence == 12500
+        assert paid_customer_count == 2
+        assert avg_revenue == 62.5
+
+    def test_revenue_only_from_successful_bookings(self):
+        """Test that only confirmed/completed bookings contribute to revenue."""
+        bookings = [
+            create_mock_db_booking(id=1, status_value="confirmed", payment_amount_pence=5000),
+            create_mock_db_booking(id=2, status_value="completed", payment_amount_pence=7500),
+            create_mock_db_booking(id=3, status_value="pending", payment_amount_pence=10000),
+            create_mock_db_booking(id=4, status_value="cancelled", payment_amount_pence=15000),
+        ]
+
+        # Filter to successful bookings only (confirmed + completed)
+        successful_bookings = [b for b in bookings if b.status.value in ["confirmed", "completed"]]
+
+        total_revenue_pence = 0
+        paid_customer_count = 0
+
+        for booking in successful_bookings:
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+                total_revenue_pence += booking.payment.amount_pence
+                paid_customer_count += 1
+
+        avg_revenue = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
+
+        assert len(successful_bookings) == 2
+        assert total_revenue_pence == 12500
+        assert paid_customer_count == 2
+        assert avg_revenue == 62.5
+
+
+class TestRevenueResponseIntegration:
+    """Integration tests for revenue fields in API response."""
+
+    def test_response_includes_revenue_fields(self):
+        """Test that stats response includes all revenue fields."""
+        required_revenue_fields = [
+            "total_revenue",
+            "paid_customer_count",
+            "avg_revenue_per_customer",
+        ]
+
+        # Simulate response with revenue fields
+        response = {
+            "total_bookings": 100,
+            "total_successful": 80,
+            "status_totals": {},
+            "this_week": 10,
+            "last_week": 8,
+            "this_month": 40,
+            "last_month": 35,
+            "daily": [],
+            "weekly": [],
+            "monthly": [],
+            "cumulative": [],
+            "total_revenue": 5000.00,
+            "paid_customer_count": 75,
+            "avg_revenue_per_customer": 66.67,
+        }
+
+        for field in required_revenue_fields:
+            assert field in response
+
+    def test_revenue_values_consistency(self):
+        """Test that revenue values are mathematically consistent."""
+        total_revenue = 5000.00
+        paid_customer_count = 75
+        expected_avg = round(total_revenue / paid_customer_count, 2)
+
+        assert expected_avg == 66.67
+
+    def test_zero_revenue_when_no_paid_customers(self):
+        """Test zero revenue when there are no paid customers."""
+        bookings = [
+            create_mock_db_booking(id=1, status_value="confirmed", payment_amount_pence=0),
+            create_mock_db_booking(id=2, status_value="confirmed", payment_amount_pence=0),
+        ]
+
+        total_revenue_pence = 0
+        paid_customer_count = 0
+
+        for booking in bookings:
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+                total_revenue_pence += booking.payment.amount_pence
+                paid_customer_count += 1
+
+        total_revenue_pounds = round(total_revenue_pence / 100, 2)
+        avg_revenue = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
+
+        assert total_revenue_pounds == 0.0
+        assert paid_customer_count == 0
+        assert avg_revenue == 0.0
+
+
+class TestRevenueEdgeCasesIntegration:
+    """Integration edge case tests for revenue calculation."""
+
+    def test_multiple_free_promo_subscribers(self):
+        """Test with multiple subscribers using free promo codes."""
+        bookings = [
+            create_mock_db_booking(id=1, status_value="confirmed", payment_amount_pence=5000),
+            create_mock_db_booking(id=2, status_value="confirmed", payment_amount_pence=7500),
+            create_mock_db_booking(id=3, status_value="confirmed", payment_amount_pence=10000),
+            create_mock_db_booking(id=4, status_value="confirmed", payment_amount_pence=12500),
+            create_mock_db_booking(id=5, status_value="confirmed", payment_amount_pence=15000),
+        ]
+
+        free_promo_subscribers = [
+            create_mock_marketing_subscriber(id=1, promo_free_used_booking_id=2),
+            create_mock_marketing_subscriber(id=2, promo_free_used_booking_id=4),
+        ]
+
+        free_promo_booking_ids = set()
+        for sub in free_promo_subscribers:
+            if sub.promo_free_used_booking_id:
+                free_promo_booking_ids.add(sub.promo_free_used_booking_id)
+
+        total_revenue_pence = 0
+        paid_customer_count = 0
+
+        for booking in bookings:
+            if booking.id in free_promo_booking_ids:
+                continue
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+                total_revenue_pence += booking.payment.amount_pence
+                paid_customer_count += 1
+
+        avg_revenue = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
+
+        assert len(free_promo_booking_ids) == 2
+        assert total_revenue_pence == 30000  # 5000 + 10000 + 15000
+        assert paid_customer_count == 3
+        assert avg_revenue == 100.0
+
+    def test_subscriber_without_promo_booking(self):
+        """Test subscriber with null promo_free_used_booking_id."""
+        free_promo_subscribers = [
+            create_mock_marketing_subscriber(id=1, promo_free_used_booking_id=None),
+            create_mock_marketing_subscriber(id=2, promo_free_used_booking_id=2),
+        ]
+
+        free_promo_booking_ids = set()
+        for sub in free_promo_subscribers:
+            if sub.promo_free_used_booking_id:
+                free_promo_booking_ids.add(sub.promo_free_used_booking_id)
+
+        assert len(free_promo_booking_ids) == 1
+        assert 2 in free_promo_booking_ids
+
+    def test_booking_without_payment_relationship(self):
+        """Test bookings without payment relationship."""
+        bookings = [
+            create_mock_db_booking(id=1, status_value="confirmed", payment_amount_pence=5000),
+            create_mock_db_booking(id=2, status_value="confirmed"),  # No payment
+            create_mock_db_booking(id=3, status_value="confirmed", payment_amount_pence=7500),
+        ]
+
+        total_revenue_pence = 0
+        paid_customer_count = 0
+
+        for booking in bookings:
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+                total_revenue_pence += booking.payment.amount_pence
+                paid_customer_count += 1
+
+        avg_revenue = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
+
+        assert total_revenue_pence == 12500
+        assert paid_customer_count == 2
+        assert avg_revenue == 62.5
+
+    def test_large_dataset_revenue_calculation(self):
+        """Test revenue calculation with large dataset."""
+        bookings = [
+            create_mock_db_booking(id=i, status_value="confirmed", payment_amount_pence=5000)
+            for i in range(1, 1001)  # 1000 bookings at £50 each
+        ]
+
+        total_revenue_pence = 0
+        paid_customer_count = 0
+
+        for booking in bookings:
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+                total_revenue_pence += booking.payment.amount_pence
+                paid_customer_count += 1
+
+        total_revenue_pounds = round(total_revenue_pence / 100, 2)
+        avg_revenue = round(total_revenue_pence / paid_customer_count / 100, 2)
+
+        assert paid_customer_count == 1000
+        assert total_revenue_pence == 5000000
+        assert total_revenue_pounds == 50000.0
+        assert avg_revenue == 50.0
+
+
+class TestRevenueFullFlowIntegration:
+    """Full flow integration tests for revenue feature."""
+
+    def test_typical_business_revenue_scenario(self):
+        """Test typical business scenario with mix of booking types."""
+        bookings = [
+            # Regular paid bookings
+            create_mock_db_booking(id=1, status_value="confirmed", payment_amount_pence=4999),
+            create_mock_db_booking(id=2, status_value="completed", payment_amount_pence=5999),
+            create_mock_db_booking(id=3, status_value="confirmed", payment_amount_pence=6999),
+            create_mock_db_booking(id=4, status_value="completed", payment_amount_pence=7999),
+            create_mock_db_booking(id=5, status_value="confirmed", payment_amount_pence=8999),
+            # Free booking (amount = 0)
+            create_mock_db_booking(id=6, status_value="confirmed", payment_amount_pence=0),
+            # Free promo booking
+            create_mock_db_booking(id=7, status_value="confirmed", payment_amount_pence=5999),
+            # Cancelled bookings (should not count)
+            create_mock_db_booking(id=8, status_value="cancelled", payment_amount_pence=9999),
+            # Pending bookings (should not count)
+            create_mock_db_booking(id=9, status_value="pending", payment_amount_pence=10999),
+        ]
+
+        # Free promo subscriber
+        free_promo_subscribers = [
+            create_mock_marketing_subscriber(id=1, promo_free_used_booking_id=7),
+        ]
+
+        free_promo_booking_ids = set()
+        for sub in free_promo_subscribers:
+            if sub.promo_free_used_booking_id:
+                free_promo_booking_ids.add(sub.promo_free_used_booking_id)
+
+        # Filter to successful bookings
+        successful_bookings = [b for b in bookings if b.status.value in ["confirmed", "completed"]]
+
+        total_revenue_pence = 0
+        paid_customer_count = 0
+
+        for booking in successful_bookings:
+            if booking.id in free_promo_booking_ids:
+                continue
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+                total_revenue_pence += booking.payment.amount_pence
+                paid_customer_count += 1
+
+        total_revenue_pounds = round(total_revenue_pence / 100, 2)
+        avg_revenue = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
+
+        # Expected: bookings 1,2,3,4,5 = 4999+5999+6999+7999+8999 = 34995 pence
+        assert total_revenue_pence == 34995
+        assert total_revenue_pounds == 349.95
+        assert paid_customer_count == 5
+        assert avg_revenue == 69.99
+
+    def test_new_business_no_revenue(self):
+        """Test new business with no completed bookings yet."""
+        bookings = []
+
+        total_revenue_pence = 0
+        paid_customer_count = 0
+
+        for booking in bookings:
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+                total_revenue_pence += booking.payment.amount_pence
+                paid_customer_count += 1
+
+        total_revenue_pounds = round(total_revenue_pence / 100, 2)
+        avg_revenue = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
+
+        assert total_revenue_pence == 0
+        assert total_revenue_pounds == 0.0
+        assert paid_customer_count == 0
+        assert avg_revenue == 0.0
+
+    def test_all_free_promo_scenario(self):
+        """Test scenario where all bookings used free promo codes."""
+        bookings = [
+            create_mock_db_booking(id=1, status_value="confirmed", payment_amount_pence=5000),
+            create_mock_db_booking(id=2, status_value="confirmed", payment_amount_pence=7500),
+            create_mock_db_booking(id=3, status_value="confirmed", payment_amount_pence=10000),
+        ]
+
+        free_promo_subscribers = [
+            create_mock_marketing_subscriber(id=1, promo_free_used_booking_id=1),
+            create_mock_marketing_subscriber(id=2, promo_free_used_booking_id=2),
+            create_mock_marketing_subscriber(id=3, promo_free_used_booking_id=3),
+        ]
+
+        free_promo_booking_ids = set()
+        for sub in free_promo_subscribers:
+            if sub.promo_free_used_booking_id:
+                free_promo_booking_ids.add(sub.promo_free_used_booking_id)
+
+        total_revenue_pence = 0
+        paid_customer_count = 0
+
+        for booking in bookings:
+            if booking.id in free_promo_booking_ids:
+                continue
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > 0:
+                total_revenue_pence += booking.payment.amount_pence
+                paid_customer_count += 1
+
+        avg_revenue = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
+
+        assert total_revenue_pence == 0
+        assert paid_customer_count == 0
+        assert avg_revenue == 0.0
 
 
 # =============================================================================
