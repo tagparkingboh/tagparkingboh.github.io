@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from db_models import MarketingSubscriber, Booking, BookingStatus, Customer, FlightDeparture
-from email_service import send_welcome_email, send_promo_code_email, send_2_day_reminder_email, send_thank_you_email, is_email_enabled, generate_promo_code
+from email_service import send_welcome_email, send_promo_code_email, send_2_day_reminder_email, send_thank_you_email, send_founder_followup_email, is_email_enabled, generate_promo_code
+from datetime import date as date_type
 import pytz
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,8 @@ scheduler = BackgroundScheduler()
 WELCOME_EMAIL_DELAY_MINUTES = 5  # Send welcome email 5 minutes after signup
 PROMO_EMAIL_DELAY_HOURS = 1      # Send promo email 1 hour after welcome email (PAUSED)
 THANK_YOU_EMAIL_DELAY_HOURS = 2  # Send thank you email 2 hours after booking completion
+FOUNDER_FOLLOWUP_DELAY_HOURS = 1 # Send founder followup email 1 hour after pending booking
+FOUNDER_FOLLOWUP_START_DATE = date_type(2026, 3, 1)  # Only process bookings from March 1st 2026
 CHECK_INTERVAL_MINUTES = 1       # Check for pending emails every 1 minute
 
 
@@ -265,12 +268,104 @@ def process_pending_thankyou_emails():
         db.close()
 
 
+def process_pending_founder_followups():
+    """
+    Find customers who started the booking flow but didn't complete it.
+    Sends a personal follow-up email from the founder.
+
+    Eligibility criteria:
+    1. Customer hasn't received founder followup email yet
+    2. Customer's last activity was more than 1 hour ago
+    3. Customer has no confirmed/completed bookings
+    4. Activity must be on or after March 1st 2026:
+       - New customers: created_at >= March 1st 2026
+       - Existing customers: updated_at >= March 1st 2026
+    """
+    if not is_email_enabled():
+        return
+
+    db = get_db()
+    try:
+        # Calculate cutoff: 1 hour ago
+        cutoff_time = datetime.utcnow() - timedelta(hours=FOUNDER_FOLLOWUP_DELAY_HOURS)
+        start_datetime = datetime(
+            FOUNDER_FOLLOWUP_START_DATE.year,
+            FOUNDER_FOLLOWUP_START_DATE.month,
+            FOUNDER_FOLLOWUP_START_DATE.day
+        )
+
+        from sqlalchemy import or_, and_, not_, exists
+        from sqlalchemy.orm import aliased
+
+        # Subquery to check if customer has any confirmed/completed booking
+        has_confirmed_booking = db.query(Booking).filter(
+            Booking.customer_id == Customer.id,
+            Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED])
+        ).exists()
+
+        # Find customers who:
+        # 1. Haven't received founder followup
+        # 2. Have no confirmed/completed bookings
+        # 3. Either:
+        #    a) Created after March 1st AND created more than 1 hour ago, OR
+        #    b) Created before March 1st AND updated after March 1st AND updated more than 1 hour ago
+        eligible_customers = db.query(Customer).filter(
+            Customer.founder_followup_sent == False,
+            Customer.email != None,
+            Customer.email != "",
+            ~has_confirmed_booking,
+            or_(
+                # New customer created after start date
+                and_(
+                    Customer.created_at >= start_datetime,
+                    Customer.created_at <= cutoff_time
+                ),
+                # Existing customer updated after start date
+                and_(
+                    Customer.created_at < start_datetime,
+                    Customer.updated_at != None,
+                    Customer.updated_at >= start_datetime,
+                    Customer.updated_at <= cutoff_time
+                )
+            )
+        ).limit(10).all()
+
+        for customer in eligible_customers:
+            # Determine last activity time for logging
+            if customer.updated_at and customer.updated_at >= start_datetime:
+                last_activity = customer.updated_at
+            else:
+                last_activity = customer.created_at
+
+            logger.info(f"Sending founder followup to {customer.email} (last activity: {last_activity})")
+
+            success = send_founder_followup_email(
+                email=customer.email,
+                first_name=customer.first_name,
+            )
+
+            if success:
+                customer.founder_followup_sent = True
+                customer.founder_followup_sent_at = datetime.utcnow()
+                db.commit()
+                logger.info(f"Founder followup sent to {customer.email}")
+            else:
+                logger.error(f"Failed to send founder followup to {customer.email}")
+
+    except Exception as e:
+        logger.error(f"Error processing founder followups: {str(e)}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def process_all_pending_emails():
     """Main job that processes all pending emails."""
     logger.debug("Checking for pending emails...")
     process_pending_welcome_emails()
     process_pending_2day_reminders()
     process_pending_thankyou_emails()
+    process_pending_founder_followups()
     # PAUSED: Promo code emails - uncomment when ready to send
     # process_pending_promo_emails()
 

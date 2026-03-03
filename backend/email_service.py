@@ -539,3 +539,91 @@ def send_manual_booking_payment_email(
         return False
 
     return send_email(email, subject, html_content)
+
+
+def send_founder_followup_email(
+    email: str,
+    first_name: str,
+) -> bool:
+    """
+    Send personal follow-up email from founder to abandoned cart customers.
+
+    This email is styled as a personal message, not a marketing template.
+    CC'd to founder's email for legitimacy and tracking.
+
+    Args:
+        email: Customer email address
+        first_name: Customer first name
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    from sendgrid.helpers.mail import Cc
+
+    subject = os.getenv("FOUNDER_EMAIL_SUBJECT", "Quick question about your booking")
+    founder_name = os.getenv("FOUNDER_NAME", "Kristian")
+    founder_email = os.getenv("FOUNDER_EMAIL", "kristian@tagparking.co.uk")
+
+    # Plain text style email - looks personal, not automated
+    html_content = f"""<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.6;">
+<p>Hi {first_name},</p>
+
+<p>My name is {founder_name} and I am the owner of Tag parking. Thank you so much for visiting our website and supporting our business.</p>
+
+<p>I noticed you started a booking but didn't complete it, so I just wanted to check if there was anything that stopped you, or if you were just browsing.</p>
+
+<p>If there is anything I can help with or if you have any questions, please do let me know.</p>
+
+<p>We'd love to help you save up to 60% on your parking.</p>
+
+<p>Kindest regards,</p>
+
+<p>{founder_name}</p>
+
+<p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ccc;">
+<strong>{founder_name} Andrews-Brown</strong><br>
+Founder | Tag Parking<br>
+07739106145<br>
+<a href="https://tagparking.co.uk" style="color: #0066cc;">tagparking.co.uk</a>
+</p>
+
+<p style="margin-top: 20px;">
+<img src="https://hs-442431654.f.hubspotstarter-ap1.net/hub/442431654/hubfs/Tag%20logo%20strapline%20MASTER%20BLACK.png?width=252&amp;upscale=true&amp;name=Tag%20logo%20strapline%20MASTER%20BLACK.png" alt="TAG - Book it. Bag it. Tag it." width="126" style="max-width: 126px;">
+</p>
+</div>"""
+
+    print(f"[EMAIL] send_founder_followup_email called for: {email}, subject: {subject}")
+    if not SENDGRID_API_KEY:
+        print("[EMAIL] ERROR: SendGrid API key not configured!")
+        logger.warning("SendGrid API key not configured - email not sent")
+        return False
+
+    try:
+        message = Mail(
+            from_email=Email(FROM_EMAIL, founder_name),  # From system email but with founder's name
+            to_emails=To(email),
+            subject=subject,
+            html_content=Content("text/html", html_content),
+        )
+
+        # CC the founder so they can see and respond to replies
+        message.add_cc(Cc(founder_email, founder_name))
+
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        print(f"[EMAIL] Sending founder followup via SendGrid (CC: {founder_email})...")
+        response = sg.send(message)
+        print(f"[EMAIL] SendGrid response status: {response.status_code}")
+
+        if response.status_code in (200, 201, 202):
+            print(f"[EMAIL] Founder followup email sent successfully to {email}")
+            logger.info(f"Founder followup email sent to {email} (CC: {founder_email})")
+            return True
+        else:
+            print(f"[EMAIL] SendGrid returned non-success status: {response.status_code}")
+            logger.error(f"Failed to send founder followup to {email}: {response.status_code}")
+            return False
+
+    except Exception as e:
+        print(f"[EMAIL] Exception sending founder followup: {str(e)}")
+        logger.error(f"Error sending founder followup to {email}: {str(e)}")
+        return False
