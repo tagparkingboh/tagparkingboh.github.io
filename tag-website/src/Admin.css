@@ -2177,6 +2177,10 @@
   letter-spacing: 0.05em;
 }
 
+.flights-table td {
+  color: #fff;
+}
+
 .flights-table tbody tr:hover {
   background: rgba(217, 255, 0, 0.05);
 }
