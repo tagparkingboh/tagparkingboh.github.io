@@ -1081,34 +1081,6 @@
   color: #856404;
 }
 
-/* Booking section header with edit button */
-.booking-section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.booking-section-header h4 {
-  margin: 0;
-}
-
-.section-edit-btn {
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 500;
-  background: #4a90e2;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.section-edit-btn:hover {
-  background: #357abd;
-}
-
 /* Wide modal for multi-column forms */
 .admin-container .modal-content-wide {
   max-width: 700px;

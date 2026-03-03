@@ -1544,16 +1544,7 @@ function Admin() {
 
                         {/* Drop-off / Departure Section */}
                         <div className="booking-section">
-                          <div className="booking-section-header">
-                            <h4>Drop-off / Departure</h4>
-                            <button
-                              className="section-edit-btn"
-                              onClick={(e) => handleEditFlightDetailsClick(booking, e)}
-                              title="Edit flight details"
-                            >
-                              Edit Flights
-                            </button>
-                          </div>
+                          <h4>Drop-off / Departure</h4>
                           <div className="booking-section-content">
                             <div className="booking-detail-row">
                               <div className="booking-detail">
@@ -1672,6 +1663,12 @@ function Admin() {
                                 Edit Drop-off Time
                               </button>
                             )}
+                            <button
+                              className="action-btn edit-btn"
+                              onClick={(e) => handleEditFlightDetailsClick(booking, e)}
+                            >
+                              Edit Flight Details
+                            </button>
                             <button
                               className="action-btn email-btn"
                               onClick={(e) => handleResendEmailClick(booking, e)}
