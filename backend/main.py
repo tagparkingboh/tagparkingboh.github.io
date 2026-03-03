@@ -1736,9 +1736,8 @@ async def update_booking(
         new_pickup_time = dt_time(int(parts[0]), int(parts[1]))
 
         # When admin manually edits pickup time, they're setting the collection time directly
-        # (not changing arrival time). Set pickup_time_from/to to the exact time specified.
-        # Note: pickup_time stores the arrival/landing time, but for manual edits we update
-        # the collection window directly to what the admin entered.
+        # (not changing arrival time). Set all pickup time fields to the exact time specified.
+        booking.pickup_time = new_pickup_time
         booking.pickup_time_from = new_pickup_time
         booking.pickup_time_to = new_pickup_time
         updates_made.append("pickup_time")
