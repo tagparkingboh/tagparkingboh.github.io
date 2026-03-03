@@ -6340,22 +6340,52 @@ class UpdateArrivalRequest(BaseModel):
     origin_name: Optional[str] = None
 
 
+class CreateDepartureRequest(BaseModel):
+    """Request model for creating a flight departure."""
+    date: str  # ISO format: YYYY-MM-DD
+    flight_number: str
+    airline_code: str
+    airline_name: str
+    departure_time: str  # HH:MM format
+    destination_code: str
+    destination_name: Optional[str] = None
+    capacity_tier: int = 0  # Default: Call Us only
+
+
+class CreateArrivalRequest(BaseModel):
+    """Request model for creating a flight arrival."""
+    date: str  # ISO format: YYYY-MM-DD
+    flight_number: str
+    airline_code: str
+    airline_name: str
+    arrival_time: str  # HH:MM format
+    origin_code: str
+    origin_name: Optional[str] = None
+    departure_time: Optional[str] = None  # HH:MM format (when it left origin)
+
+
 @app.get("/api/admin/flights/departures")
 async def get_admin_departures(
-    sort_order: str = Query("asc", regex="^(asc|desc)$"),
+    sort_order: str = Query("asc", pattern="^(asc|desc)$"),
     destination: Optional[str] = None,
     airline: Optional[str] = None,
     flight_number: Optional[str] = None,
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = None,
+    start_date: Optional[date] = Query(None, description="Filter flights from this date onwards (default: 2026-01-01)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Get all departure flights with optional filters.
     Sorted by date (ASC by default, DESC optional).
+    Default start_date is 2026-01-01 if not specified.
     """
     query = db.query(FlightDeparture)
+
+    # Apply start_date filter (default to 2026-01-01)
+    filter_start_date = start_date if start_date else date(2026, 1, 1)
+    query = query.filter(FlightDeparture.date >= filter_start_date)
 
     # Apply filters
     if flight_number:
@@ -6417,20 +6447,26 @@ async def get_admin_departures(
 
 @app.get("/api/admin/flights/arrivals")
 async def get_admin_arrivals(
-    sort_order: str = Query("asc", regex="^(asc|desc)$"),
+    sort_order: str = Query("asc", pattern="^(asc|desc)$"),
     origin: Optional[str] = None,
     airline: Optional[str] = None,
     flight_number: Optional[str] = None,
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = None,
+    start_date: Optional[date] = Query(None, description="Filter flights from this date onwards (default: 2026-01-01)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Get all arrival flights with optional filters.
     Sorted by date (ASC by default, DESC optional).
+    Default start_date is 2026-01-01 if not specified.
     """
     query = db.query(FlightArrival)
+
+    # Apply start_date filter (default to 2026-01-01)
+    filter_start_date = start_date if start_date else date(2026, 1, 1)
+    query = query.filter(FlightArrival.date >= filter_start_date)
 
     # Apply filters
     if flight_number:
@@ -6797,6 +6833,223 @@ async def update_admin_arrival(
             "updated_at": arrival.updated_at.isoformat() if arrival.updated_at else None,
             "updated_by": arrival.updated_by,
         }
+    }
+
+
+@app.post("/api/admin/flights/departures", status_code=201)
+async def create_admin_departure(
+    request: CreateDepartureRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Create a new departure flight.
+    """
+    # Check for duplicate (same date, flight_number, departure_time)
+    existing = db.query(FlightDeparture).filter(
+        FlightDeparture.date == date.fromisoformat(request.date),
+        FlightDeparture.flight_number == request.flight_number,
+        FlightDeparture.departure_time == time.fromisoformat(request.departure_time)
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Flight {request.flight_number} already exists on {request.date} at {request.departure_time}"
+        )
+
+    # Validate capacity tier
+    if request.capacity_tier not in [0, 2, 4, 6, 8]:
+        raise HTTPException(status_code=400, detail="Capacity tier must be 0, 2, 4, 6, or 8")
+
+    departure = FlightDeparture(
+        date=date.fromisoformat(request.date),
+        flight_number=request.flight_number.upper(),
+        airline_code=request.airline_code.upper(),
+        airline_name=request.airline_name,
+        departure_time=time.fromisoformat(request.departure_time),
+        destination_code=request.destination_code.upper(),
+        destination_name=request.destination_name,
+        capacity_tier=request.capacity_tier,
+        slots_booked_early=0,
+        slots_booked_late=0,
+        updated_by=current_user.email,
+    )
+
+    db.add(departure)
+    db.commit()
+    db.refresh(departure)
+
+    return {
+        "success": True,
+        "departure": {
+            "id": departure.id,
+            "date": departure.date.isoformat(),
+            "flight_number": departure.flight_number,
+            "airline_code": departure.airline_code,
+            "airline_name": departure.airline_name,
+            "departure_time": departure.departure_time.strftime("%H:%M") if departure.departure_time else None,
+            "destination_code": departure.destination_code,
+            "destination_name": departure.destination_name,
+            "capacity_tier": departure.capacity_tier,
+            "slots_booked_early": departure.slots_booked_early,
+            "slots_booked_late": departure.slots_booked_late,
+            "max_slots_per_time": departure.max_slots_per_time,
+            "early_slots_available": departure.early_slots_available,
+            "late_slots_available": departure.late_slots_available,
+        }
+    }
+
+
+@app.post("/api/admin/flights/arrivals", status_code=201)
+async def create_admin_arrival(
+    request: CreateArrivalRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Create a new arrival flight.
+    """
+    # Check for duplicate (same date, flight_number, arrival_time)
+    existing = db.query(FlightArrival).filter(
+        FlightArrival.date == date.fromisoformat(request.date),
+        FlightArrival.flight_number == request.flight_number,
+        FlightArrival.arrival_time == time.fromisoformat(request.arrival_time)
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Flight {request.flight_number} already exists on {request.date} at {request.arrival_time}"
+        )
+
+    arrival = FlightArrival(
+        date=date.fromisoformat(request.date),
+        flight_number=request.flight_number.upper(),
+        airline_code=request.airline_code.upper(),
+        airline_name=request.airline_name,
+        arrival_time=time.fromisoformat(request.arrival_time),
+        departure_time=time.fromisoformat(request.departure_time) if request.departure_time else None,
+        origin_code=request.origin_code.upper(),
+        origin_name=request.origin_name,
+        updated_by=current_user.email,
+    )
+
+    db.add(arrival)
+    db.commit()
+    db.refresh(arrival)
+
+    return {
+        "success": True,
+        "arrival": {
+            "id": arrival.id,
+            "date": arrival.date.isoformat(),
+            "flight_number": arrival.flight_number,
+            "airline_code": arrival.airline_code,
+            "airline_name": arrival.airline_name,
+            "departure_time": arrival.departure_time.strftime("%H:%M") if arrival.departure_time else None,
+            "arrival_time": arrival.arrival_time.strftime("%H:%M") if arrival.arrival_time else None,
+            "origin_code": arrival.origin_code,
+            "origin_name": arrival.origin_name,
+        }
+    }
+
+
+@app.delete("/api/admin/flights/departures/{departure_id}", status_code=200)
+async def delete_admin_departure(
+    departure_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Delete a departure flight.
+    Returns error if flight has associated bookings.
+    """
+    departure = db.query(FlightDeparture).filter(FlightDeparture.id == departure_id).first()
+
+    if not departure:
+        raise HTTPException(status_code=404, detail="Departure not found")
+
+    # Check for linked bookings
+    linked_bookings = db.query(DbBooking).filter(DbBooking.departure_id == departure_id).count()
+    if linked_bookings > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete flight: {linked_bookings} booking(s) are linked to this departure"
+        )
+
+    # Store flight info for history
+    history = FlightDepartureHistory(
+        flight_id=departure.id,
+        date=departure.date,
+        flight_number=departure.flight_number,
+        airline_code=departure.airline_code,
+        airline_name=departure.airline_name,
+        departure_time=departure.departure_time,
+        destination_code=departure.destination_code,
+        destination_name=departure.destination_name,
+        capacity_tier=departure.capacity_tier,
+        slots_booked_early=departure.slots_booked_early,
+        slots_booked_late=departure.slots_booked_late,
+        change_type="deleted",
+        changed_by=current_user.email,
+    )
+    db.add(history)
+
+    db.delete(departure)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Departure {departure.flight_number} on {departure.date} deleted successfully"
+    }
+
+
+@app.delete("/api/admin/flights/arrivals/{arrival_id}", status_code=200)
+async def delete_admin_arrival(
+    arrival_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Delete an arrival flight.
+    Returns error if flight has associated bookings.
+    """
+    arrival = db.query(FlightArrival).filter(FlightArrival.id == arrival_id).first()
+
+    if not arrival:
+        raise HTTPException(status_code=404, detail="Arrival not found")
+
+    # Check for linked bookings
+    linked_bookings = db.query(DbBooking).filter(DbBooking.arrival_id == arrival_id).count()
+    if linked_bookings > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete flight: {linked_bookings} booking(s) are linked to this arrival"
+        )
+
+    # Store flight info for history
+    history = FlightArrivalHistory(
+        flight_id=arrival.id,
+        date=arrival.date,
+        flight_number=arrival.flight_number,
+        airline_code=arrival.airline_code,
+        airline_name=arrival.airline_name,
+        departure_time=arrival.departure_time,
+        arrival_time=arrival.arrival_time,
+        origin_code=arrival.origin_code,
+        origin_name=arrival.origin_name,
+        change_type="deleted",
+        changed_by=current_user.email,
+    )
+    db.add(history)
+
+    db.delete(arrival)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Arrival {arrival.flight_number} on {arrival.date} deleted successfully"
     }
 
 

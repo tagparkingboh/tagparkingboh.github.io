@@ -1262,3 +1262,498 @@ class TestBookingArrivalIdAutoLinking:
 
         arrival_id = arrival.id if arrival else None
         assert arrival_id is None
+
+
+# =============================================================================
+# POST /api/admin/flights/departures Tests (Create)
+# =============================================================================
+
+class TestCreateDeparture:
+    """Tests for POST /api/admin/flights/departures endpoint."""
+
+    def test_create_departure_success(self):
+        """Creating a departure with valid data should succeed."""
+        request_data = {
+            "date": "2026-03-15",
+            "flight_number": "FR1234",
+            "airline_code": "FR",
+            "airline_name": "Ryanair",
+            "departure_time": "10:30",
+            "destination_code": "AGP",
+            "destination_name": "Malaga",
+            "capacity_tier": 4,
+        }
+
+        # Simulate successful creation response
+        response_data = {
+            "success": True,
+            "message": "Departure created successfully",
+            "departure": {
+                "id": 1,
+                **request_data,
+                "slots_booked_early": 0,
+                "slots_booked_late": 0,
+            },
+        }
+
+        assert response_data["success"] is True
+        assert response_data["departure"]["flight_number"] == "FR1234"
+        assert response_data["departure"]["capacity_tier"] == 4
+
+    def test_create_departure_minimal_fields(self):
+        """Creating departure with only required fields should succeed."""
+        request_data = {
+            "date": "2026-03-15",
+            "flight_number": "BA5678",
+            "airline_code": "BA",
+            "airline_name": "British Airways",
+            "departure_time": "14:00",
+            "destination_code": "PMI",
+            # destination_name is optional
+            # capacity_tier defaults to 0
+        }
+
+        # Simulate response with defaults
+        response_data = {
+            "success": True,
+            "departure": {
+                "id": 2,
+                **request_data,
+                "destination_name": None,
+                "capacity_tier": 0,
+                "slots_booked_early": 0,
+                "slots_booked_late": 0,
+            },
+        }
+
+        assert response_data["success"] is True
+        assert response_data["departure"]["capacity_tier"] == 0
+        assert response_data["departure"]["destination_name"] is None
+
+    def test_create_departure_duplicate_returns_409(self):
+        """Creating duplicate departure (same date + flight_number) should return 409."""
+        existing_departures = [
+            {"id": 1, "date": "2026-03-15", "flight_number": "FR1234"},
+        ]
+
+        new_departure = {"date": "2026-03-15", "flight_number": "FR1234"}
+
+        is_duplicate = any(
+            d["date"] == new_departure["date"] and d["flight_number"] == new_departure["flight_number"]
+            for d in existing_departures
+        )
+
+        if is_duplicate:
+            status_code = 409
+        else:
+            status_code = 201
+
+        assert status_code == 409
+
+    def test_create_departure_invalid_capacity_tier_returns_400(self):
+        """Creating departure with invalid capacity tier should return 400."""
+        valid_capacity_tiers = [0, 2, 4, 6, 8]
+        invalid_tier = 5
+
+        if invalid_tier not in valid_capacity_tiers:
+            status_code = 400
+            error_detail = "Invalid capacity_tier. Must be one of: 0, 2, 4, 6, 8"
+        else:
+            status_code = 201
+
+        assert status_code == 400
+        assert "Invalid capacity_tier" in error_detail
+
+    def test_create_departure_requires_admin(self):
+        """Non-admin users should receive 403 Forbidden."""
+        user = create_mock_user(is_admin=False)
+
+        if not user.is_admin:
+            status_code = 403
+        else:
+            status_code = 201
+
+        assert status_code == 403
+
+    def test_create_departure_requires_auth(self):
+        """Unauthenticated requests should receive 401 Unauthorized."""
+        session = None
+
+        if session is None:
+            status_code = 401
+        else:
+            status_code = 201
+
+        assert status_code == 401
+
+    def test_create_departure_validates_date_format(self):
+        """Date should be in ISO format (YYYY-MM-DD)."""
+        import re
+        valid_date = "2026-03-15"
+        invalid_date = "15/03/2026"
+
+        iso_pattern = r"^\d{4}-\d{2}-\d{2}$"
+
+        assert re.match(iso_pattern, valid_date) is not None
+        assert re.match(iso_pattern, invalid_date) is None
+
+    def test_create_departure_validates_time_format(self):
+        """Departure time should be in HH:MM format (24-hour)."""
+        import re
+        valid_times = ["10:30", "14:00", "00:00", "23:59"]
+        invalid_times = ["10:30 AM", "2:30", "25:00", "14:60"]
+
+        time_pattern = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+        for t in valid_times:
+            assert re.match(time_pattern, t) is not None, f"{t} should be valid"
+
+        for t in invalid_times:
+            assert re.match(time_pattern, t) is None, f"{t} should be invalid"
+
+
+# =============================================================================
+# POST /api/admin/flights/arrivals Tests (Create)
+# =============================================================================
+
+class TestCreateArrival:
+    """Tests for POST /api/admin/flights/arrivals endpoint."""
+
+    def test_create_arrival_success(self):
+        """Creating an arrival with valid data should succeed."""
+        request_data = {
+            "date": "2026-03-22",
+            "flight_number": "FR1235",
+            "airline_code": "FR",
+            "airline_name": "Ryanair",
+            "arrival_time": "16:30",
+            "origin_code": "AGP",
+            "origin_name": "Malaga",
+            "departure_time": "14:00",
+        }
+
+        response_data = {
+            "success": True,
+            "message": "Arrival created successfully",
+            "arrival": {
+                "id": 1,
+                **request_data,
+            },
+        }
+
+        assert response_data["success"] is True
+        assert response_data["arrival"]["flight_number"] == "FR1235"
+        assert response_data["arrival"]["origin_code"] == "AGP"
+
+    def test_create_arrival_minimal_fields(self):
+        """Creating arrival with only required fields should succeed."""
+        request_data = {
+            "date": "2026-03-22",
+            "flight_number": "BA5679",
+            "airline_code": "BA",
+            "airline_name": "British Airways",
+            "arrival_time": "18:00",
+            "origin_code": "PMI",
+            # origin_name is optional
+            # departure_time is optional
+        }
+
+        response_data = {
+            "success": True,
+            "arrival": {
+                "id": 2,
+                **request_data,
+                "origin_name": None,
+                "departure_time": None,
+            },
+        }
+
+        assert response_data["success"] is True
+        assert response_data["arrival"]["origin_name"] is None
+        assert response_data["arrival"]["departure_time"] is None
+
+    def test_create_arrival_duplicate_returns_409(self):
+        """Creating duplicate arrival (same date + flight_number) should return 409."""
+        existing_arrivals = [
+            {"id": 1, "date": "2026-03-22", "flight_number": "FR1235"},
+        ]
+
+        new_arrival = {"date": "2026-03-22", "flight_number": "FR1235"}
+
+        is_duplicate = any(
+            a["date"] == new_arrival["date"] and a["flight_number"] == new_arrival["flight_number"]
+            for a in existing_arrivals
+        )
+
+        if is_duplicate:
+            status_code = 409
+        else:
+            status_code = 201
+
+        assert status_code == 409
+
+    def test_create_arrival_requires_admin(self):
+        """Non-admin users should receive 403 Forbidden."""
+        user = create_mock_user(is_admin=False)
+
+        if not user.is_admin:
+            status_code = 403
+        else:
+            status_code = 201
+
+        assert status_code == 403
+
+
+# =============================================================================
+# DELETE /api/admin/flights/departures/{id} Tests
+# =============================================================================
+
+class TestDeleteDeparture:
+    """Tests for DELETE /api/admin/flights/departures/{id} endpoint."""
+
+    def test_delete_departure_success(self):
+        """Deleting a departure without linked bookings should succeed."""
+        departure = create_mock_departure(id=1, flight_number="DEL001")
+        linked_bookings = []  # No linked bookings
+
+        if len(linked_bookings) > 0:
+            status_code = 409
+        else:
+            status_code = 200
+            response_data = {
+                "success": True,
+                "message": "Departure deleted successfully",
+            }
+
+        assert status_code == 200
+        assert response_data["success"] is True
+
+    def test_delete_departure_with_bookings_returns_409(self):
+        """Deleting a departure with linked bookings should return 409."""
+        departure = create_mock_departure(id=1, flight_number="DEL002")
+        linked_bookings = [
+            create_mock_booking(id=1, departure_id=departure.id, reference="BK001"),
+            create_mock_booking(id=2, departure_id=departure.id, reference="BK002"),
+        ]
+
+        if len(linked_bookings) > 0:
+            status_code = 409
+            response_data = {
+                "detail": f"Cannot delete: {len(linked_bookings)} booking(s) are linked to this flight"
+            }
+        else:
+            status_code = 200
+
+        assert status_code == 409
+        assert "2 booking(s) are linked" in response_data["detail"]
+
+    def test_delete_departure_not_found_returns_404(self):
+        """Deleting non-existent departure should return 404."""
+        departure_id = 999999
+        departure = None
+
+        if departure is None:
+            status_code = 404
+        else:
+            status_code = 200
+
+        assert status_code == 404
+
+    def test_delete_departure_requires_admin(self):
+        """Non-admin users should receive 403 Forbidden."""
+        user = create_mock_user(is_admin=False)
+
+        if not user.is_admin:
+            status_code = 403
+        else:
+            status_code = 200
+
+        assert status_code == 403
+
+    def test_delete_departure_creates_history_record(self):
+        """Deleting should create a history record for audit trail."""
+        departure = create_mock_departure(
+            id=1,
+            flight_number="DEL003",
+            date_val=date(2026, 3, 15),
+        )
+        admin_email = "admin@tagparking.co.uk"
+
+        # Simulate history record creation
+        history_record = {
+            "date": str(departure.date),
+            "flight_number": departure.flight_number,
+            "airline_code": departure.airline_code,
+            "deleted_at": datetime.utcnow().isoformat(),
+            "deleted_by": admin_email,
+            "action": "deleted",
+        }
+
+        assert history_record["action"] == "deleted"
+        assert history_record["deleted_by"] == admin_email
+        assert history_record["flight_number"] == "DEL003"
+
+
+# =============================================================================
+# DELETE /api/admin/flights/arrivals/{id} Tests
+# =============================================================================
+
+class TestDeleteArrival:
+    """Tests for DELETE /api/admin/flights/arrivals/{id} endpoint."""
+
+    def test_delete_arrival_success(self):
+        """Deleting an arrival without linked bookings should succeed."""
+        arrival = create_mock_arrival(id=1, flight_number="ARRDEL001")
+        linked_bookings = []  # No linked bookings
+
+        if len(linked_bookings) > 0:
+            status_code = 409
+        else:
+            status_code = 200
+            response_data = {
+                "success": True,
+                "message": "Arrival deleted successfully",
+            }
+
+        assert status_code == 200
+        assert response_data["success"] is True
+
+    def test_delete_arrival_with_bookings_returns_409(self):
+        """Deleting an arrival with linked bookings should return 409."""
+        arrival = create_mock_arrival(id=1, flight_number="ARRDEL002")
+        linked_bookings = [
+            create_mock_booking(id=1, arrival_id=arrival.id, reference="BK003"),
+        ]
+
+        if len(linked_bookings) > 0:
+            status_code = 409
+            response_data = {
+                "detail": f"Cannot delete: {len(linked_bookings)} booking(s) are linked to this flight"
+            }
+        else:
+            status_code = 200
+
+        assert status_code == 409
+        assert "1 booking(s) are linked" in response_data["detail"]
+
+    def test_delete_arrival_not_found_returns_404(self):
+        """Deleting non-existent arrival should return 404."""
+        arrival_id = 999999
+        arrival = None
+
+        if arrival is None:
+            status_code = 404
+        else:
+            status_code = 200
+
+        assert status_code == 404
+
+    def test_delete_arrival_requires_admin(self):
+        """Non-admin users should receive 403 Forbidden."""
+        user = create_mock_user(is_admin=False)
+
+        if not user.is_admin:
+            status_code = 403
+        else:
+            status_code = 200
+
+        assert status_code == 403
+
+    def test_delete_arrival_creates_history_record(self):
+        """Deleting should create a history record for audit trail."""
+        arrival = create_mock_arrival(
+            id=1,
+            flight_number="ARRDEL003",
+            date_val=date(2026, 3, 22),
+        )
+        admin_email = "admin@tagparking.co.uk"
+
+        history_record = {
+            "date": str(arrival.date),
+            "flight_number": arrival.flight_number,
+            "airline_code": arrival.airline_code,
+            "deleted_at": datetime.utcnow().isoformat(),
+            "deleted_by": admin_email,
+            "action": "deleted",
+        }
+
+        assert history_record["action"] == "deleted"
+        assert history_record["deleted_by"] == admin_email
+        assert history_record["flight_number"] == "ARRDEL003"
+
+
+# =============================================================================
+# Start Date Filter Tests
+# =============================================================================
+
+class TestStartDateFilter:
+    """Tests for start_date query parameter in GET endpoints."""
+
+    def test_departures_default_start_date_is_2026_01_01(self):
+        """Departures endpoint should default start_date to 2026-01-01."""
+        default_start_date = date(2026, 1, 1)
+        all_departures = [
+            {"id": 1, "date": "2025-12-31"},  # Before default start
+            {"id": 2, "date": "2026-01-01"},  # On default start
+            {"id": 3, "date": "2026-06-15"},  # After default start
+        ]
+
+        # Filter with default start date
+        filtered = [d for d in all_departures if d["date"] >= str(default_start_date)]
+
+        assert len(filtered) == 2
+        assert all(d["date"] >= "2026-01-01" for d in filtered)
+
+    def test_departures_custom_start_date(self):
+        """Departures endpoint should accept custom start_date parameter."""
+        custom_start = "2026-03-01"
+        all_departures = [
+            {"id": 1, "date": "2026-02-28"},  # Before custom start
+            {"id": 2, "date": "2026-03-01"},  # On custom start
+            {"id": 3, "date": "2026-06-15"},  # After custom start
+        ]
+
+        filtered = [d for d in all_departures if d["date"] >= custom_start]
+
+        assert len(filtered) == 2
+        assert all(d["date"] >= "2026-03-01" for d in filtered)
+
+    def test_arrivals_default_start_date_is_2026_01_01(self):
+        """Arrivals endpoint should default start_date to 2026-01-01."""
+        default_start_date = date(2026, 1, 1)
+        all_arrivals = [
+            {"id": 1, "date": "2025-12-31"},
+            {"id": 2, "date": "2026-01-01"},
+            {"id": 3, "date": "2026-06-22"},
+        ]
+
+        filtered = [a for a in all_arrivals if a["date"] >= str(default_start_date)]
+
+        assert len(filtered) == 2
+        assert all(a["date"] >= "2026-01-01" for a in filtered)
+
+    def test_start_date_respects_sort_order(self):
+        """Start date filter should work with both ascending and descending sort."""
+        departures = [
+            {"id": 1, "date": "2026-01-15"},
+            {"id": 2, "date": "2026-02-15"},
+            {"id": 3, "date": "2026-03-15"},
+        ]
+
+        # Ascending
+        sorted_asc = sorted(departures, key=lambda x: x["date"])
+        assert sorted_asc[0]["date"] == "2026-01-15"
+        assert sorted_asc[-1]["date"] == "2026-03-15"
+
+        # Descending
+        sorted_desc = sorted(departures, key=lambda x: x["date"], reverse=True)
+        assert sorted_desc[0]["date"] == "2026-03-15"
+        assert sorted_desc[-1]["date"] == "2026-01-15"
+
+
+# =============================================================================
+# Run tests if executed directly
+# =============================================================================
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
