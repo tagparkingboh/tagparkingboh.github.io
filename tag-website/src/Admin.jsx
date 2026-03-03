@@ -37,6 +37,17 @@ function Admin() {
   const [bookingToEditDropoff, setBookingToEditDropoff] = useState(null)
   const [editDropoffForm, setEditDropoffForm] = useState({ dropoff_time: '' })
   const [savingDropoffEdit, setSavingDropoffEdit] = useState(false)
+  const [showEditFlightModal, setShowEditFlightModal] = useState(false)
+  const [bookingToEditFlight, setBookingToEditFlight] = useState(null)
+  const [editFlightDetailsForm, setEditFlightDetailsForm] = useState({
+    dropoff_airline_name: '',
+    dropoff_flight_number: '',
+    dropoff_destination: '',
+    pickup_airline_name: '',
+    pickup_flight_number: '',
+    pickup_origin: ''
+  })
+  const [savingFlightDetails, setSavingFlightDetails] = useState(false)
   const [resendingEmailId, setResendingEmailId] = useState(null)
   const [showResendModal, setShowResendModal] = useState(false)
   const [bookingToResend, setBookingToResend] = useState(null)
@@ -956,6 +967,61 @@ function Admin() {
     setShowEditDropoffModal(true)
   }
 
+  const handleEditFlightDetailsClick = (booking, e) => {
+    e.stopPropagation()
+    setBookingToEditFlight(booking)
+    setEditFlightDetailsForm({
+      dropoff_airline_name: booking.dropoff_airline_name || '',
+      dropoff_flight_number: booking.dropoff_flight_number || '',
+      dropoff_destination: booking.dropoff_destination || '',
+      pickup_airline_name: booking.pickup_airline_name || '',
+      pickup_flight_number: booking.pickup_flight_number || '',
+      pickup_origin: booking.pickup_origin || '',
+    })
+    setShowEditFlightModal(true)
+  }
+
+  const confirmEditFlightDetails = async () => {
+    if (!bookingToEditFlight) return
+
+    setSavingFlightDetails(true)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingToEditFlight.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          dropoff_airline_name: editFlightDetailsForm.dropoff_airline_name || null,
+          dropoff_flight_number: editFlightDetailsForm.dropoff_flight_number || null,
+          dropoff_destination: editFlightDetailsForm.dropoff_destination || null,
+          pickup_airline_name: editFlightDetailsForm.pickup_airline_name || null,
+          pickup_flight_number: editFlightDetailsForm.pickup_flight_number || null,
+          pickup_origin: editFlightDetailsForm.pickup_origin || null,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccessMessage(data.message || 'Flight details updated successfully')
+        fetchBookings()
+        setTimeout(() => setSuccessMessage(''), 5000)
+        setShowEditFlightModal(false)
+        setBookingToEditFlight(null)
+      } else {
+        setError(data.detail || 'Failed to update flight details')
+      }
+    } catch (err) {
+      setError('Network error while updating booking')
+    } finally {
+      setSavingFlightDetails(false)
+    }
+  }
+
   const confirmEditDropoffBooking = async () => {
     if (!bookingToEditDropoff) return
 
@@ -1478,7 +1544,16 @@ function Admin() {
 
                         {/* Drop-off / Departure Section */}
                         <div className="booking-section">
-                          <h4>Drop-off / Departure</h4>
+                          <div className="booking-section-header">
+                            <h4>Drop-off / Departure</h4>
+                            <button
+                              className="section-edit-btn"
+                              onClick={(e) => handleEditFlightDetailsClick(booking, e)}
+                              title="Edit flight details"
+                            >
+                              Edit Flights
+                            </button>
+                          </div>
                           <div className="booking-section-content">
                             <div className="booking-detail-row">
                               <div className="booking-detail">
@@ -3615,6 +3690,98 @@ function Admin() {
                 disabled={savingDropoffEdit || !editDropoffForm.dropoff_time}
               >
                 {savingDropoffEdit ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Flight Details Modal */}
+      {showEditFlightModal && bookingToEditFlight && (
+        <div className="modal-overlay" onClick={() => setShowEditFlightModal(false)}>
+          <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
+            <h3>Edit Flight Details</h3>
+            <p>Update flight and destination information for this booking.</p>
+            <div className="modal-booking-info">
+              <p><strong>Reference:</strong> {bookingToEditFlight.reference}</p>
+              <p><strong>Customer:</strong> {bookingToEditFlight.customer?.first_name} {bookingToEditFlight.customer?.last_name}</p>
+            </div>
+            <div className="modal-form">
+              <h4 className="modal-section-title">Drop-off / Departure</h4>
+              <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Airline</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. TUI Airways"
+                    value={editFlightDetailsForm.dropoff_airline_name}
+                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, dropoff_airline_name: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>Flight Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. BY1234"
+                    value={editFlightDetailsForm.dropoff_flight_number}
+                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, dropoff_flight_number: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>Destination</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Dalaman Airport"
+                    value={editFlightDetailsForm.dropoff_destination}
+                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, dropoff_destination: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <h4 className="modal-section-title">Pick-up / Return</h4>
+              <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Airline</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. TUI Airways"
+                    value={editFlightDetailsForm.pickup_airline_name}
+                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, pickup_airline_name: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>Flight Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. BY1235"
+                    value={editFlightDetailsForm.pickup_flight_number}
+                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, pickup_flight_number: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>Origin</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Dalaman Airport"
+                    value={editFlightDetailsForm.pickup_origin}
+                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, pickup_origin: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowEditFlightModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={confirmEditFlightDetails}
+                disabled={savingFlightDetails}
+              >
+                {savingFlightDetails ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>

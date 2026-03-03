@@ -332,6 +332,7 @@ class UpdateBookingRequest(BaseModel):
     # Pickup/collection details - for fixing overnight arrival issues
     pickup_date: Optional[date] = None
     pickup_time: Optional[str] = None  # HH:MM format (arrival/landing time)
+    pickup_airline_name: Optional[str] = None
     pickup_flight_number: Optional[str] = None
     pickup_origin: Optional[str] = None
     arrival_id: Optional[int] = None
@@ -339,6 +340,7 @@ class UpdateBookingRequest(BaseModel):
     # Dropoff details
     dropoff_date: Optional[date] = None
     dropoff_time: Optional[str] = None  # HH:MM format
+    dropoff_airline_name: Optional[str] = None
     dropoff_flight_number: Optional[str] = None
     dropoff_destination: Optional[str] = None
 
@@ -1739,6 +1741,10 @@ async def update_booking(
         booking.pickup_time_to = (arrival_datetime + timedelta(minutes=30)).time()
         updates_made.append("pickup_time")
 
+    if request.pickup_airline_name is not None:
+        booking.pickup_airline_name = request.pickup_airline_name
+        updates_made.append("pickup_airline_name")
+
     if request.pickup_flight_number is not None:
         booking.pickup_flight_number = request.pickup_flight_number
         updates_made.append("pickup_flight_number")
@@ -1786,6 +1792,10 @@ async def update_booking(
         booking.dropoff_time = new_dropoff_time
         updates_made.append("dropoff_time")
 
+    if request.dropoff_airline_name is not None:
+        booking.dropoff_airline_name = request.dropoff_airline_name
+        updates_made.append("dropoff_airline_name")
+
     if request.dropoff_flight_number is not None:
         booking.dropoff_flight_number = request.dropoff_flight_number
         updates_made.append("dropoff_flight_number")
@@ -1811,10 +1821,12 @@ async def update_booking(
             "pickup_time": booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None,
             "pickup_time_from": booking.pickup_time_from.strftime("%H:%M") if booking.pickup_time_from else None,
             "pickup_time_to": booking.pickup_time_to.strftime("%H:%M") if booking.pickup_time_to else None,
+            "pickup_airline_name": booking.pickup_airline_name,
             "pickup_flight_number": booking.pickup_flight_number,
             "pickup_origin": booking.pickup_origin,
             "dropoff_date": booking.dropoff_date.isoformat() if booking.dropoff_date else None,
             "dropoff_time": booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None,
+            "dropoff_airline_name": booking.dropoff_airline_name,
             "dropoff_flight_number": booking.dropoff_flight_number,
             "dropoff_destination": booking.dropoff_destination,
         }

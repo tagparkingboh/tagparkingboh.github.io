@@ -1081,6 +1081,65 @@
   color: #856404;
 }
 
+/* Booking section header with edit button */
+.booking-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.booking-section-header h4 {
+  margin: 0;
+}
+
+.section-edit-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.section-edit-btn:hover {
+  background: #357abd;
+}
+
+/* Wide modal for multi-column forms */
+.admin-container .modal-content-wide {
+  max-width: 700px;
+}
+
+.admin-container .modal-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 16px 0 8px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.admin-container .modal-section-title:first-of-type {
+  margin-top: 0;
+}
+
+.admin-container .modal-form-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 600px) {
+  .admin-container .modal-form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 768px) {
   .admin-header {
     flex-direction: column;
