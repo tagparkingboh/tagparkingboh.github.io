@@ -95,6 +95,7 @@ function Admin() {
   const [expandedLeadId, setExpandedLeadId] = useState(null)
   const [leadDateFrom, setLeadDateFrom] = useState(null)
   const [leadDateTo, setLeadDateTo] = useState(null)
+  const [expandedLeadMonths, setExpandedLeadMonths] = useState({})
 
   // Pricing settings state - all duration tiers
   const [pricing, setPricing] = useState({
@@ -3197,8 +3198,9 @@ function Admin() {
               </div>
             ) : (
               <div className="booking-accordion">
-                {leads
-                  .filter(lead => {
+                {(() => {
+                  // Filter leads first
+                  const filteredLeads = leads.filter(lead => {
                     // Date filter (UK time)
                     if (leadDateFrom || leadDateTo) {
                       const leadDate = lead.created_at ? new Date(lead.created_at) : null
@@ -3224,107 +3226,150 @@ function Admin() {
                       lead.phone?.includes(search)
                     )
                   })
-                  .map(lead => (
-                  <div
-                    key={lead.id}
-                    className={`booking-card ${expandedLeadId === lead.id ? 'expanded' : ''}`}
-                  >
-                    <div
-                      className="booking-card-header booking-header-stacked"
-                      onClick={() => setExpandedLeadId(expandedLeadId === lead.id ? null : lead.id)}
-                    >
-                      <div className="booking-header-info">
-                        <div className="booking-header-top">
-                          <span className="booking-customer-name">
-                            {lead.first_name} {lead.last_name}
-                          </span>
-                          {lead.booking_attempts > 0 && (
-                            <span className="booking-source-badge manual">
-                              {lead.booking_attempts} attempt{lead.booking_attempts > 1 ? 's' : ''}
-                            </span>
-                          )}
-                        </div>
-                        <span className="booking-date">
-                          {lead.created_at ? new Date(lead.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}
-                        </span>
-                      </div>
-                    </div>
 
-                    {expandedLeadId === lead.id && (
-                      <div className="booking-card-body">
-                        <div className="booking-section">
-                          <h4>Contact Details</h4>
-                          <div className="booking-section-content">
-                            <div className="booking-detail-row">
-                              <div className="booking-detail">
-                                <span className="detail-label">Email</span>
-                                <span className="detail-value">
-                                  <a href={`mailto:${lead.email}`}>{lead.email}</a>
-                                </span>
-                              </div>
-                              <div className="booking-detail">
-                                <span className="detail-label">Phone</span>
-                                <span className="detail-value">
-                                  <a href={`tel:${lead.phone}`}>{lead.phone}</a>
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                  // Group by month
+                  const monthlyGroups = {}
+                  filteredLeads.forEach(lead => {
+                    const date = lead.created_at ? new Date(lead.created_at) : null
+                    if (date) {
+                      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+                      if (!monthlyGroups[monthKey]) monthlyGroups[monthKey] = []
+                      monthlyGroups[monthKey].push(lead)
+                    }
+                  })
 
-                        {(lead.billing_address1 || lead.billing_city || lead.billing_postcode) && (
-                          <div className="booking-section">
-                            <h4>Billing Address</h4>
-                            <div className="booking-section-content">
-                              <div className="booking-detail">
-                                <span className="detail-value">
-                                  {[lead.billing_address1, lead.billing_city, lead.billing_postcode].filter(Boolean).join(', ')}
-                                </span>
+                  const sortedMonths = Object.keys(monthlyGroups).sort().reverse()
+                  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+                  if (sortedMonths.length === 0) {
+                    return <p className="admin-no-data">No abandoned leads found</p>
+                  }
+
+                  return sortedMonths.map(monthKey => {
+                    const [year, month] = monthKey.split('-')
+                    const monthName = `${monthNames[parseInt(month, 10) - 1]} ${year}`
+                    const monthLeads = monthlyGroups[monthKey]
+                    const isExpanded = expandedLeadMonths[monthKey]
+
+                    return (
+                      <div key={monthKey} className="leads-month-container">
+                        <div
+                          className="leads-month-header"
+                          onClick={() => setExpandedLeadMonths(prev => ({
+                            ...prev,
+                            [monthKey]: !prev[monthKey]
+                          }))}
+                        >
+                          <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                          <span className="month-name">{monthName}</span>
+                          <span className="month-total">{monthLeads.length} lead{monthLeads.length !== 1 ? 's' : ''}</span>
+                        </div>
+                        {isExpanded && (
+                          <div className="leads-month-content">
+                            {monthLeads.map(lead => (
+                              <div
+                                key={lead.id}
+                                className={`booking-card ${expandedLeadId === lead.id ? 'expanded' : ''}`}
+                              >
+                                <div
+                                  className="booking-card-header booking-header-stacked"
+                                  onClick={() => setExpandedLeadId(expandedLeadId === lead.id ? null : lead.id)}
+                                >
+                                  <div className="booking-header-info">
+                                    <div className="booking-header-top">
+                                      <span className="booking-customer-name">
+                                        {lead.first_name} {lead.last_name}
+                                      </span>
+                                      {lead.booking_attempts > 0 && (
+                                        <span className="booking-source-badge manual">
+                                          {lead.booking_attempts} attempt{lead.booking_attempts > 1 ? 's' : ''}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="booking-date">
+                                      {lead.created_at ? new Date(lead.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {expandedLeadId === lead.id && (
+                                  <div className="booking-card-body">
+                                    <div className="booking-section">
+                                      <h4>Contact Details</h4>
+                                      <div className="booking-section-content">
+                                        <div className="booking-detail-row">
+                                          <div className="booking-detail">
+                                            <span className="detail-label">Email</span>
+                                            <span className="detail-value">
+                                              <a href={`mailto:${lead.email}`}>{lead.email}</a>
+                                            </span>
+                                          </div>
+                                          <div className="booking-detail">
+                                            <span className="detail-label">Phone</span>
+                                            <span className="detail-value">
+                                              <a href={`tel:${lead.phone}`}>{lead.phone}</a>
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {(lead.billing_address1 || lead.billing_city || lead.billing_postcode) && (
+                                      <div className="booking-section">
+                                        <h4>Billing Address</h4>
+                                        <div className="booking-section-content">
+                                          <div className="booking-detail">
+                                            <span className="detail-value">
+                                              {[lead.billing_address1, lead.billing_city, lead.billing_postcode].filter(Boolean).join(', ')}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div className="booking-section">
+                                      <h4>Status</h4>
+                                      <div className="booking-section-content">
+                                        <div className="booking-detail-row">
+                                          <div className="booking-detail">
+                                            <span className="detail-label">Started</span>
+                                            <span className="detail-value">
+                                              {lead.created_at ? new Date(lead.created_at).toLocaleString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}
+                                            </span>
+                                          </div>
+                                          {lead.last_booking_status && (
+                                            <div className="booking-detail">
+                                              <span className="detail-label">Last Booking Status</span>
+                                              <span className="detail-value">{lead.last_booking_status}</span>
+                                            </div>
+                                          )}
+                                          <div className="booking-detail">
+                                            <span className="detail-label">Founder Email</span>
+                                            <span className="detail-value">
+                                              <button
+                                                className={`action-btn email-btn ${lead.founder_followup_sent ? 'sent-status' : ''}`}
+                                                disabled={true}
+                                                title={lead.founder_followup_sent
+                                                  ? `Sent on ${lead.founder_followup_sent_at ? new Date(lead.founder_followup_sent_at).toLocaleString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}`
+                                                  : 'Not sent yet'}
+                                              >
+                                                {lead.founder_followup_sent ? 'Sent ✓' : 'Not Sent'}
+                                              </button>
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            </div>
+                            ))}
                           </div>
                         )}
-
-                        <div className="booking-section">
-                          <h4>Status</h4>
-                          <div className="booking-section-content">
-                            <div className="booking-detail-row">
-                              <div className="booking-detail">
-                                <span className="detail-label">Started</span>
-                                <span className="detail-value">
-                                  {lead.created_at ? new Date(lead.created_at).toLocaleString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}
-                                </span>
-                              </div>
-                              {lead.last_booking_status && (
-                                <div className="booking-detail">
-                                  <span className="detail-label">Last Booking Status</span>
-                                  <span className="detail-value">{lead.last_booking_status}</span>
-                                </div>
-                              )}
-                              <div className="booking-detail">
-                                <span className="detail-label">Founder Email</span>
-                                <span className="detail-value">
-                                  <button
-                                    className={`action-btn email-btn ${lead.founder_followup_sent ? 'sent-status' : ''}`}
-                                    disabled={true}
-                                    title={lead.founder_followup_sent
-                                      ? `Sent on ${lead.founder_followup_sent_at ? new Date(lead.founder_followup_sent_at).toLocaleString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}`
-                                      : 'Not sent yet'}
-                                  >
-                                    {lead.founder_followup_sent ? 'Sent ✓' : 'Not Sent'}
-                                  </button>
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
-                {leads.length === 0 && !loadingLeads && (
-                  <p className="admin-no-data">No abandoned leads found</p>
-                )}
+                    )
+                  })
+                })()}
               </div>
             )}
           </div>
