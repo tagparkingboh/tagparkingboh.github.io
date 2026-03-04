@@ -84,6 +84,7 @@ function Admin() {
   const [subscriberStatusFilter, setSubscriberStatusFilter] = useState('all')
   const [hideTestEmails, setHideTestEmails] = useState(true)
   const [expandedSubscriberId, setExpandedSubscriberId] = useState(null)
+  const [expandedSubscriberMonths, setExpandedSubscriberMonths] = useState({})
   const [showPromoModal, setShowPromoModal] = useState(false)
   const [promoToSend, setPromoToSend] = useState(null) // { subscriber, discountPercent }
   const [promoSuccessMessage, setPromoSuccessMessage] = useState('')
@@ -2876,153 +2877,195 @@ function Admin() {
               <p className="admin-empty">
                 {subscribers.length === 0 ? 'No subscribers found' : 'No subscribers match your search'}
               </p>
-            ) : (
-              <div className="booking-accordion">
-                {filteredSubscribers.map((subscriber) => (
-                  <div
-                    key={subscriber.id}
-                    className={`booking-card ${expandedSubscriberId === subscriber.id ? 'expanded' : ''} ${subscriber.unsubscribed ? 'unsubscribed' : ''}`}
-                  >
-                    {/* Collapsed Header Row */}
-                    <div
-                      className="booking-card-header subscriber-header"
-                      onClick={() => setExpandedSubscriberId(expandedSubscriberId === subscriber.id ? null : subscriber.id)}
-                    >
-                      <div className="subscriber-info">
-                        <span className="subscriber-name">{subscriber.first_name} {subscriber.last_name}</span>
-                        <span className="subscriber-email">{subscriber.email}</span>
-                      </div>
-                    </div>
+            ) : (() => {
+              // Group by month
+              const monthlyGroups = {}
+              filteredSubscribers.forEach(subscriber => {
+                const date = subscriber.subscribed_at ? new Date(subscriber.subscribed_at) : null
+                if (date) {
+                  const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+                  if (!monthlyGroups[monthKey]) monthlyGroups[monthKey] = []
+                  monthlyGroups[monthKey].push(subscriber)
+                }
+              })
 
-                    {/* Expanded Content */}
-                    {expandedSubscriberId === subscriber.id && (
-                      <div className="booking-card-body">
-                        {/* Welcome Email Section */}
-                        <div className="booking-section">
-                          <h4>Welcome Email</h4>
-                          <div className="booking-section-content">
-                            <div className="booking-detail-row">
-                              <div className="booking-detail">
-                                <span className="detail-label">Subscribed</span>
-                                <span className="detail-value">
-                                  {formatDateUK(subscriber.subscribed_at)}
-                                </span>
-                              </div>
-                              <div className="booking-detail">
-                                <span className="detail-label">Status</span>
-                                <span className="detail-value">
-                                  <span className={`status-badge ${subscriber.welcome_email_sent ? 'sent' : 'pending'}`}>
-                                    {subscriber.welcome_email_sent ? 'Sent' : 'Pending'}
-                                  </span>
-                                </span>
-                              </div>
-                              <div className="booking-detail">
-                                <span className="detail-label">Sent At</span>
-                                <span className="detail-value">
-                                  {formatDateTimeUK(subscriber.welcome_email_sent_at)}
-                                </span>
+              const sortedMonths = Object.keys(monthlyGroups).sort().reverse()
+              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+              if (sortedMonths.length === 0) {
+                return <p className="admin-no-data">No subscribers found</p>
+              }
+
+              return sortedMonths.map(monthKey => {
+                const [year, month] = monthKey.split('-')
+                const monthName = `${monthNames[parseInt(month, 10) - 1]} ${year}`
+                const monthSubscribers = monthlyGroups[monthKey]
+                const isExpanded = expandedSubscriberMonths[monthKey]
+
+                return (
+                  <div key={monthKey} className="subscribers-month-container">
+                    <div
+                      className="subscribers-month-header"
+                      onClick={() => setExpandedSubscriberMonths(prev => ({
+                        ...prev,
+                        [monthKey]: !prev[monthKey]
+                      }))}
+                    >
+                      <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                      <span className="month-name">{monthName}</span>
+                      <span className="month-total">{monthSubscribers.length} subscriber{monthSubscribers.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    {isExpanded && (
+                      <div className="subscribers-month-content">
+                        {monthSubscribers.map((subscriber) => (
+                          <div
+                            key={subscriber.id}
+                            className={`booking-card ${expandedSubscriberId === subscriber.id ? 'expanded' : ''} ${subscriber.unsubscribed ? 'unsubscribed' : ''}`}
+                          >
+                            {/* Collapsed Header Row */}
+                            <div
+                              className="booking-card-header subscriber-header"
+                              onClick={() => setExpandedSubscriberId(expandedSubscriberId === subscriber.id ? null : subscriber.id)}
+                            >
+                              <div className="subscriber-info">
+                                <span className="subscriber-name">{subscriber.first_name} {subscriber.last_name}</span>
+                                <span className="subscriber-email">{subscriber.email}</span>
                               </div>
                             </div>
-                          </div>
-                        </div>
 
-                        {/* 10% OFF Promo Section */}
-                        <div className="booking-section">
-                          <div className="section-header-with-action">
-                            <h4>10% Off Promo</h4>
-                            {!subscriber.unsubscribed && !subscriber.promo_10_used && !subscriber.promo_10_sent && (
-                              <button
-                                className="action-btn promo-btn"
-                                onClick={(e) => { e.stopPropagation(); openPromoModal(subscriber, 10); }}
-                              >
-                                Send 10% Off
-                              </button>
-                            )}
-                          </div>
-                          <div className="booking-section-content">
-                            {subscriber.promo_10_code ? (
-                              <div className="booking-detail-row">
-                                <div className="booking-detail">
-                                  <span className="detail-label">Code</span>
-                                  <span className="detail-value">
-                                    <span className="promo-code-display">{subscriber.promo_10_code}</span>
-                                  </span>
+                            {/* Expanded Content */}
+                            {expandedSubscriberId === subscriber.id && (
+                              <div className="booking-card-body">
+                                {/* Welcome Email Section */}
+                                <div className="booking-section">
+                                  <h4>Welcome Email</h4>
+                                  <div className="booking-section-content">
+                                    <div className="booking-detail-row">
+                                      <div className="booking-detail">
+                                        <span className="detail-label">Subscribed</span>
+                                        <span className="detail-value">
+                                          {formatDateUK(subscriber.subscribed_at)}
+                                        </span>
+                                      </div>
+                                      <div className="booking-detail">
+                                        <span className="detail-label">Status</span>
+                                        <span className="detail-value">
+                                          <span className={`status-badge ${subscriber.welcome_email_sent ? 'sent' : 'pending'}`}>
+                                            {subscriber.welcome_email_sent ? 'Sent' : 'Pending'}
+                                          </span>
+                                        </span>
+                                      </div>
+                                      <div className="booking-detail">
+                                        <span className="detail-label">Sent At</span>
+                                        <span className="detail-value">
+                                          {formatDateTimeUK(subscriber.welcome_email_sent_at)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="booking-detail">
-                                  <span className="detail-label">Status</span>
-                                  <span className="detail-value">
-                                    <span className={`status-badge ${subscriber.promo_10_used ? 'used' : 'sent'}`}>
-                                      {subscriber.promo_10_used ? 'Used' : 'Sent'}
-                                    </span>
-                                  </span>
+
+                                {/* 10% OFF Promo Section */}
+                                <div className="booking-section">
+                                  <div className="section-header-with-action">
+                                    <h4>10% Off Promo</h4>
+                                    {!subscriber.unsubscribed && !subscriber.promo_10_used && !subscriber.promo_10_sent && (
+                                      <button
+                                        className="action-btn promo-btn"
+                                        onClick={(e) => { e.stopPropagation(); openPromoModal(subscriber, 10); }}
+                                      >
+                                        Send 10% Off
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="booking-section-content">
+                                    {subscriber.promo_10_code ? (
+                                      <div className="booking-detail-row">
+                                        <div className="booking-detail">
+                                          <span className="detail-label">Code</span>
+                                          <span className="detail-value">
+                                            <span className="promo-code-display">{subscriber.promo_10_code}</span>
+                                          </span>
+                                        </div>
+                                        <div className="booking-detail">
+                                          <span className="detail-label">Status</span>
+                                          <span className="detail-value">
+                                            <span className={`status-badge ${subscriber.promo_10_used ? 'used' : 'sent'}`}>
+                                              {subscriber.promo_10_used ? 'Used' : 'Sent'}
+                                            </span>
+                                          </span>
+                                        </div>
+                                        <div className="booking-detail">
+                                          <span className="detail-label">Sent At</span>
+                                          <span className="detail-value">
+                                            {formatDateTimeUK(subscriber.promo_10_sent_at)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="section-empty">Not sent yet</p>
+                                    )}
+                                  </div>
                                 </div>
-                                <div className="booking-detail">
-                                  <span className="detail-label">Sent At</span>
-                                  <span className="detail-value">
-                                    {formatDateTimeUK(subscriber.promo_10_sent_at)}
-                                  </span>
+
+                                {/* FREE Parking Promo Section */}
+                                <div className="booking-section">
+                                  <div className="section-header-with-action">
+                                    <h4>FREE Parking Promo</h4>
+                                    {!subscriber.unsubscribed && !subscriber.promo_free_used && !subscriber.promo_free_sent && (
+                                      <button
+                                        className="action-btn promo-btn free"
+                                        onClick={(e) => { e.stopPropagation(); openPromoModal(subscriber, 100); }}
+                                      >
+                                        Send FREE
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="booking-section-content">
+                                    {subscriber.promo_free_code ? (
+                                      <div className="booking-detail-row">
+                                        <div className="booking-detail">
+                                          <span className="detail-label">Code</span>
+                                          <span className="detail-value">
+                                            <span className="promo-code-display">{subscriber.promo_free_code}</span>
+                                          </span>
+                                        </div>
+                                        <div className="booking-detail">
+                                          <span className="detail-label">Status</span>
+                                          <span className="detail-value">
+                                            <span className={`status-badge ${subscriber.promo_free_used ? 'used' : 'sent'}`}>
+                                              {subscriber.promo_free_used ? 'Used' : 'Sent'}
+                                            </span>
+                                          </span>
+                                        </div>
+                                        <div className="booking-detail">
+                                          <span className="detail-label">Sent At</span>
+                                          <span className="detail-value">
+                                            {formatDateTimeUK(subscriber.promo_free_sent_at)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="section-empty">Not sent yet</p>
+                                    )}
+                                  </div>
                                 </div>
+
+                                {subscriber.unsubscribed && (
+                                  <div className="subscriber-unsubscribed-notice">
+                                    Unsubscribed on {formatDateUK(subscriber.unsubscribed_at)}
+                                  </div>
+                                )}
                               </div>
-                            ) : (
-                              <p className="section-empty">Not sent yet</p>
                             )}
                           </div>
-                        </div>
-
-                        {/* FREE Parking Promo Section */}
-                        <div className="booking-section">
-                          <div className="section-header-with-action">
-                            <h4>FREE Parking Promo</h4>
-                            {!subscriber.unsubscribed && !subscriber.promo_free_used && !subscriber.promo_free_sent && (
-                              <button
-                                className="action-btn promo-btn free"
-                                onClick={(e) => { e.stopPropagation(); openPromoModal(subscriber, 100); }}
-                              >
-                                Send FREE
-                              </button>
-                            )}
-                          </div>
-                          <div className="booking-section-content">
-                            {subscriber.promo_free_code ? (
-                              <div className="booking-detail-row">
-                                <div className="booking-detail">
-                                  <span className="detail-label">Code</span>
-                                  <span className="detail-value">
-                                    <span className="promo-code-display">{subscriber.promo_free_code}</span>
-                                  </span>
-                                </div>
-                                <div className="booking-detail">
-                                  <span className="detail-label">Status</span>
-                                  <span className="detail-value">
-                                    <span className={`status-badge ${subscriber.promo_free_used ? 'used' : 'sent'}`}>
-                                      {subscriber.promo_free_used ? 'Used' : 'Sent'}
-                                    </span>
-                                  </span>
-                                </div>
-                                <div className="booking-detail">
-                                  <span className="detail-label">Sent At</span>
-                                  <span className="detail-value">
-                                    {formatDateTimeUK(subscriber.promo_free_sent_at)}
-                                  </span>
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="section-empty">Not sent yet</p>
-                            )}
-                          </div>
-                        </div>
-
-                        {subscriber.unsubscribed && (
-                          <div className="subscriber-unsubscribed-notice">
-                            Unsubscribed on {formatDateUK(subscriber.unsubscribed_at)}
-                          </div>
-                        )}
+                        ))}
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
-            )}
+                )
+              })
+            })()}
           </div>
         )}
 
