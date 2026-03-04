@@ -20,8 +20,8 @@ FROM_EMAIL = os.getenv("FROM_EMAIL", "no-reply@tagparking.co.uk")
 FROM_NAME = os.getenv("FROM_NAME", "TAG Parking")
 
 # Founder email configuration (for personal follow-up emails)
-FOUNDER_EMAIL = os.getenv("FOUNDER_EMAIL", "jamie@tagparking.co.uk")
-FOUNDER_NAME = os.getenv("FOUNDER_NAME", "Jamie")
+FOUNDER_EMAIL = os.getenv("FOUNDER_EMAIL", "kristian@tagparking.co.uk")
+FOUNDER_NAME = os.getenv("FOUNDER_NAME", "Kristian")
 
 
 def is_email_enabled() -> bool:

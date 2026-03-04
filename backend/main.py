@@ -893,6 +893,9 @@ async def get_all_bookings(
                 "billing_county": b.customer.billing_county,
                 "billing_postcode": b.customer.billing_postcode,
                 "billing_country": b.customer.billing_country,
+                # Founder followup tracking
+                "founder_followup_sent": b.customer.founder_followup_sent,
+                "founder_followup_sent_at": b.customer.founder_followup_sent_at.isoformat() if b.customer.founder_followup_sent_at else None,
             } if b.customer else None,
             "vehicle": {
                 "id": b.vehicle.id,
@@ -2147,6 +2150,63 @@ async def send_refund_email_endpoint(
         raise HTTPException(
             status_code=500,
             detail="Failed to send refund email. Check SendGrid configuration."
+        )
+
+
+@app.post("/api/admin/bookings/{booking_id}/send-founder-email")
+async def send_founder_email_endpoint(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Send founder followup email to customer.
+
+    Sends a personal follow-up email from the founder to customers
+    who haven't completed their booking (abandoned cart).
+    """
+    from db_models import BookingStatus, Customer
+    from email_service import send_founder_followup_email
+
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if booking.status != BookingStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Founder email can only be sent for pending bookings")
+
+    customer = booking.customer
+    if not customer:
+        raise HTTPException(status_code=400, detail="No customer associated with this booking")
+
+    if customer.founder_followup_sent:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Founder followup email already sent to {customer.email} on {customer.founder_followup_sent_at.strftime('%d %b %Y at %H:%M') if customer.founder_followup_sent_at else 'unknown date'}"
+        )
+
+    # Send the email
+    email_sent = send_founder_followup_email(
+        email=customer.email,
+        first_name=booking.customer_first_name or customer.first_name,
+    )
+
+    if email_sent:
+        # Update customer tracking
+        customer.founder_followup_sent = True
+        customer.founder_followup_sent_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Founder followup email sent to {customer.email}",
+            "reference": booking.reference,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send founder followup email. Check SendGrid configuration."
         )
 
 

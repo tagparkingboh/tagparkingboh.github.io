@@ -63,6 +63,9 @@ function Admin() {
   const [sendingRefundEmailId, setSendingRefundEmailId] = useState(null)
   const [showRefundEmailModal, setShowRefundEmailModal] = useState(false)
   const [bookingForRefundEmail, setBookingForRefundEmail] = useState(null)
+  const [sendingFounderEmailId, setSendingFounderEmailId] = useState(null)
+  const [showFounderEmailModal, setShowFounderEmailModal] = useState(false)
+  const [bookingForFounderEmail, setBookingForFounderEmail] = useState(null)
   const [successMessage, setSuccessMessage] = useState('')
 
   // Marketing subscribers state
@@ -1432,6 +1435,46 @@ function Admin() {
     }
   }
 
+  const handleSendFounderEmailClick = (booking, e) => {
+    e.stopPropagation()
+    setBookingForFounderEmail(booking)
+    setShowFounderEmailModal(true)
+  }
+
+  const handleConfirmSendFounderEmail = async () => {
+    if (!bookingForFounderEmail) return
+
+    setSendingFounderEmailId(bookingForFounderEmail.id)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingForFounderEmail.id}/send-founder-email`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (response.ok) {
+        setShowFounderEmailModal(false)
+        setSuccessMessage(`Founder email sent to ${bookingForFounderEmail.customer?.email}`)
+        setBookingForFounderEmail(null)
+        // Refresh bookings to update email sent status
+        await fetchBookings()
+        // Clear success message after 5 seconds
+        setTimeout(() => setSuccessMessage(''), 5000)
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to send founder email')
+      }
+    } catch (err) {
+      setError('Network error while sending founder email')
+    } finally {
+      setSendingFounderEmailId(null)
+    }
+  }
+
   const handleLogout = async () => {
     await logout()
     navigate('/login', { replace: true })
@@ -1998,6 +2041,18 @@ function Admin() {
                                           disabled={markingPaidId === booking.id}
                                         >
                                           {markingPaidId === booking.id ? 'Updating...' : 'Mark as Paid'}
+                                        </button>
+                                      )}
+                                      {/* Send Founder Email button for pending bookings */}
+                                      {booking.status?.toLowerCase() === 'pending' && (
+                                        <button
+                                          className="action-btn email-btn"
+                                          onClick={(e) => handleSendFounderEmailClick(booking, e)}
+                                          disabled={sendingFounderEmailId === booking.id || booking.customer?.founder_followup_sent}
+                                          title={booking.customer?.founder_followup_sent ? 'Founder email already sent' : 'Send personal follow-up email from founder'}
+                                        >
+                                          {sendingFounderEmailId === booking.id ? 'Sending...' :
+                                           booking.customer?.founder_followup_sent ? 'Founder Email Sent ✓' : 'Send Founder Email'}
                                         </button>
                                       )}
                                       {/* Delete button for pending and cancelled bookings */}
@@ -4511,6 +4566,39 @@ function Admin() {
                 disabled={sendingRefundEmailId}
               >
                 {sendingRefundEmailId ? 'Sending...' : 'Yes, Send Email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Founder Email Confirmation Modal */}
+      {showFounderEmailModal && bookingForFounderEmail && (
+        <div className="modal-overlay" onClick={() => setShowFounderEmailModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Send Founder Email</h3>
+            <p>This will send a personal follow-up email from Kristian to the customer about their incomplete booking.</p>
+            <div className="modal-booking-info">
+              <p><strong>Reference:</strong> {bookingForFounderEmail.reference}</p>
+              <p><strong>Customer:</strong> {bookingForFounderEmail.customer?.first_name} {bookingForFounderEmail.customer?.last_name}</p>
+              <p><strong>Email:</strong> {bookingForFounderEmail.customer?.email}</p>
+            </div>
+            <p className="modal-warning">
+              The email will be CC'd to Kristian so he can see and respond to any replies.
+            </p>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowFounderEmailModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={handleConfirmSendFounderEmail}
+                disabled={sendingFounderEmailId}
+              >
+                {sendingFounderEmailId ? 'Sending...' : 'Yes, Send Email'}
               </button>
             </div>
           </div>

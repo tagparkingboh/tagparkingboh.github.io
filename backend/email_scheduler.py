@@ -270,13 +270,16 @@ def process_pending_thankyou_emails():
 
 def process_pending_founder_followups():
     """
-    Find customers who started the booking flow but didn't complete it.
+    Find customers who abandoned at the contact details stage (no bookings).
     Sends a personal follow-up email from the founder.
+
+    Note: Customers with pending bookings (abandoned at payment stage) are
+    handled manually via the "Send Founder Email" button in Admin > Bookings.
 
     Eligibility criteria:
     1. Customer hasn't received founder followup email yet
     2. Customer's last activity was more than 1 hour ago
-    3. Customer has no confirmed/completed bookings
+    3. Customer has ZERO bookings (abandoned at contact details, not payment)
     4. Activity must be on or after March 1st 2026:
        - New customers: created_at >= March 1st 2026
        - Existing customers: updated_at >= March 1st 2026
@@ -297,15 +300,15 @@ def process_pending_founder_followups():
         from sqlalchemy import or_, and_, not_, exists
         from sqlalchemy.orm import aliased
 
-        # Subquery to check if customer has any confirmed/completed booking
-        has_confirmed_booking = db.query(Booking).filter(
-            Booking.customer_id == Customer.id,
-            Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED])
+        # Subquery to check if customer has ANY booking (regardless of status)
+        # Customers with pending bookings are handled manually via Admin CTA
+        has_any_booking = db.query(Booking).filter(
+            Booking.customer_id == Customer.id
         ).exists()
 
         # Find customers who:
         # 1. Haven't received founder followup
-        # 2. Have no confirmed/completed bookings
+        # 2. Have ZERO bookings (abandoned at contact details stage)
         # 3. Either:
         #    a) Created after March 1st AND created more than 1 hour ago, OR
         #    b) Created before March 1st AND updated after March 1st AND updated more than 1 hour ago
@@ -313,7 +316,7 @@ def process_pending_founder_followups():
             Customer.founder_followup_sent == False,
             Customer.email != None,
             Customer.email != "",
-            ~has_confirmed_booking,
+            ~has_any_booking,
             or_(
                 # New customer created after start date
                 and_(
