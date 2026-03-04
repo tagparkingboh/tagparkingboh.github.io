@@ -24,7 +24,6 @@ global.fetch = vi.fn()
 // =============================================================================
 
 const createMockAirline = (overrides = {}) => ({
-  airlineCode: 'BA',
   airlineName: 'British Airways',
   count: 20,
   percent: 40.0,
@@ -60,10 +59,10 @@ const createMockPopularResponse = (overrides = {}) => ({
     ...overrides.meta,
   },
   popularAirlines: overrides.popularAirlines ?? [
-    createMockAirline({ airlineCode: 'BA', airlineName: 'British Airways', count: 20, percent: 40.0 }),
-    createMockAirline({ airlineCode: 'FR', airlineName: 'Ryanair', count: 15, percent: 30.0 }),
-    createMockAirline({ airlineCode: 'U2', airlineName: 'easyJet', count: 10, percent: 20.0 }),
-    createMockAirline({ airlineCode: 'BY', airlineName: 'TUI Airways', count: 5, percent: 10.0 }),
+    createMockAirline({ airlineName: 'British Airways', count: 20, percent: 40.0 }),
+    createMockAirline({ airlineName: 'Ryanair', count: 15, percent: 30.0 }),
+    createMockAirline({ airlineName: 'easyJet', count: 10, percent: 20.0 }),
+    createMockAirline({ airlineName: 'TUI Airways', count: 5, percent: 10.0 }),
   ],
   popularDestinations: overrides.popularDestinations ?? [
     createMockDestination({ destination: 'Faro Airport', count: 25, percent: 50.0 }),
@@ -123,10 +122,6 @@ describe('Admin Popular Routes Response Structure', () => {
   })
 
   describe('Unit Tests - Airline data structure', () => {
-    it('should include airlineCode', () => {
-      const airline = createMockAirline()
-      expect(airline).toHaveProperty('airlineCode')
-    })
 
     it('should include airlineName', () => {
       const airline = createMockAirline()

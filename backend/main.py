@@ -2779,20 +2779,19 @@ async def get_popular_airlines_destinations(
 
     bookings = query.all()
 
-    # Count airlines (merge departure and return - each booking counts once per unique airline)
+    # Count airlines (merge departure and return - each booking counts once per unique airline NAME)
+    # Use only airline name as key to avoid duplicates like "Jet2 (UNK)" and "Jet2 (LS)"
     airline_counter = Counter()
     for booking in bookings:
-        # Collect unique airlines for this booking
+        # Collect unique airline names for this booking
         airlines_in_booking = set()
         if booking.dropoff_airline_name:
-            airline_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name)
-            airlines_in_booking.add(airline_key)
+            airlines_in_booking.add(booking.dropoff_airline_name)
         if booking.pickup_airline_name:
-            airline_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name)
-            airlines_in_booking.add(airline_key)
+            airlines_in_booking.add(booking.pickup_airline_name)
         # Count each unique airline once per booking
-        for airline_key in airlines_in_booking:
-            airline_counter[airline_key] += 1
+        for airline_name in airlines_in_booking:
+            airline_counter[airline_name] += 1
 
     # Count destinations (merge departure destination and return origin - each booking counts once per unique destination)
     destination_counter = Counter()
@@ -2810,11 +2809,10 @@ async def get_popular_airlines_destinations(
     # Get top airlines
     top_airlines = []
     total_airline_bookings = sum(airline_counter.values())
-    for (code, name), count in airline_counter.most_common(top):
+    for airline_name, count in airline_counter.most_common(top):
         percent = round((count / total_airline_bookings) * 100, 1) if total_airline_bookings > 0 else 0
         top_airlines.append({
-            "airlineCode": code,
-            "airlineName": name,
+            "airlineName": airline_name,
             "count": count,
             "percent": percent,
         })

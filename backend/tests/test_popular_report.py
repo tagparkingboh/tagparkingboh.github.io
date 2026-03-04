@@ -76,9 +76,9 @@ def create_mock_popular_response(
     """Create a mock popular report response."""
     if popular_airlines is None:
         popular_airlines = [
-            {"airlineCode": "BA", "airlineName": "British Airways", "count": 8, "percent": 40.0},
-            {"airlineCode": "FR", "airlineName": "Ryanair", "count": 6, "percent": 30.0},
-            {"airlineCode": "U2", "airlineName": "easyJet", "count": 4, "percent": 20.0},
+            {"airlineName": "British Airways", "count": 8, "percent": 40.0},
+            {"airlineName": "Ryanair", "count": 6, "percent": 30.0},
+            {"airlineName": "easyJet", "count": 4, "percent": 20.0},
         ]
 
     if popular_destinations is None:
@@ -159,11 +159,10 @@ class TestPopularReportResponseStructure:
         assert isinstance(response["popularRoutes"], list)
 
     def test_airline_entry_structure(self):
-        """Airline entry should include code, name, count, percent."""
+        """Airline entry should include name, count, percent (no code - merged by name)."""
         response = create_mock_popular_response()
 
         airline = response["popularAirlines"][0]
-        assert "airlineCode" in airline
         assert "airlineName" in airline
         assert "count" in airline
         assert "percent" in airline
@@ -209,15 +208,13 @@ class TestAirlineCountingLogic:
         airline_counter = Counter()
         airlines_in_booking = set()
         if booking.dropoff_airline_name:
-            airline_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name)
-            airlines_in_booking.add(airline_key)
+            airlines_in_booking.add(booking.dropoff_airline_name)
         if booking.pickup_airline_name:
-            airline_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name)
-            airlines_in_booking.add(airline_key)
-        for airline_key in airlines_in_booking:
-            airline_counter[airline_key] += 1
+            airlines_in_booking.add(booking.pickup_airline_name)
+        for airline_name in airlines_in_booking:
+            airline_counter[airline_name] += 1
 
-        assert airline_counter[("BA", "British Airways")] == 1
+        assert airline_counter["British Airways"] == 1
 
     def test_count_return_airline(self):
         """Should count return airline."""
@@ -231,15 +228,13 @@ class TestAirlineCountingLogic:
         airline_counter = Counter()
         airlines_in_booking = set()
         if booking.dropoff_airline_name:
-            airline_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name)
-            airlines_in_booking.add(airline_key)
+            airlines_in_booking.add(booking.dropoff_airline_name)
         if booking.pickup_airline_name:
-            airline_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name)
-            airlines_in_booking.add(airline_key)
-        for airline_key in airlines_in_booking:
-            airline_counter[airline_key] += 1
+            airlines_in_booking.add(booking.pickup_airline_name)
+        for airline_name in airlines_in_booking:
+            airline_counter[airline_name] += 1
 
-        assert airline_counter[("FR", "Ryanair")] == 1
+        assert airline_counter["Ryanair"] == 1
 
     def test_count_different_departure_and_return_airlines(self):
         """Should count both different airlines once each."""
@@ -253,16 +248,14 @@ class TestAirlineCountingLogic:
         airline_counter = Counter()
         airlines_in_booking = set()
         if booking.dropoff_airline_name:
-            airline_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name)
-            airlines_in_booking.add(airline_key)
+            airlines_in_booking.add(booking.dropoff_airline_name)
         if booking.pickup_airline_name:
-            airline_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name)
-            airlines_in_booking.add(airline_key)
-        for airline_key in airlines_in_booking:
-            airline_counter[airline_key] += 1
+            airlines_in_booking.add(booking.pickup_airline_name)
+        for airline_name in airlines_in_booking:
+            airline_counter[airline_name] += 1
 
-        assert airline_counter[("BA", "British Airways")] == 1
-        assert airline_counter[("FR", "Ryanair")] == 1
+        assert airline_counter["British Airways"] == 1
+        assert airline_counter["Ryanair"] == 1
 
     def test_same_airline_both_ways_counts_once(self):
         """Same airline for departure and return should count ONCE per booking (merged)."""
@@ -276,16 +269,36 @@ class TestAirlineCountingLogic:
         airline_counter = Counter()
         airlines_in_booking = set()
         if booking.dropoff_airline_name:
-            airline_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name)
-            airlines_in_booking.add(airline_key)
+            airlines_in_booking.add(booking.dropoff_airline_name)
         if booking.pickup_airline_name:
-            airline_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name)
-            airlines_in_booking.add(airline_key)
-        for airline_key in airlines_in_booking:
-            airline_counter[airline_key] += 1
+            airlines_in_booking.add(booking.pickup_airline_name)
+        for airline_name in airlines_in_booking:
+            airline_counter[airline_name] += 1
 
         # Key change: same airline both ways = 1 count (not 2)
-        assert airline_counter[("BA", "British Airways")] == 1
+        assert airline_counter["British Airways"] == 1
+
+    def test_same_airline_different_codes_counts_once(self):
+        """Same airline name with different codes should count ONCE (merged by name)."""
+        booking = create_mock_booking(
+            dropoff_airline_code="LS",
+            dropoff_airline_name="Jet2",
+            pickup_airline_code="UNK",
+            pickup_airline_name="Jet2",
+        )
+
+        airline_counter = Counter()
+        airlines_in_booking = set()
+        if booking.dropoff_airline_name:
+            airlines_in_booking.add(booking.dropoff_airline_name)
+        if booking.pickup_airline_name:
+            airlines_in_booking.add(booking.pickup_airline_name)
+        for airline_name in airlines_in_booking:
+            airline_counter[airline_name] += 1
+
+        # Jet2 with code LS and Jet2 with code UNK = same airline = 1 count
+        assert airline_counter["Jet2"] == 1
+        assert len(airline_counter) == 1
 
     def test_skip_null_airline_name(self):
         """Should skip airlines with null name."""
@@ -299,37 +312,13 @@ class TestAirlineCountingLogic:
         airline_counter = Counter()
         airlines_in_booking = set()
         if booking.dropoff_airline_name:
-            airline_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name)
-            airlines_in_booking.add(airline_key)
+            airlines_in_booking.add(booking.dropoff_airline_name)
         if booking.pickup_airline_name:
-            airline_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name)
-            airlines_in_booking.add(airline_key)
-        for airline_key in airlines_in_booking:
-            airline_counter[airline_key] += 1
+            airlines_in_booking.add(booking.pickup_airline_name)
+        for airline_name in airlines_in_booking:
+            airline_counter[airline_name] += 1
 
         assert len(airline_counter) == 0
-
-    def test_use_unk_for_missing_airline_code(self):
-        """Should use 'UNK' for missing airline code."""
-        booking = create_mock_booking(
-            dropoff_airline_code=None,
-            dropoff_airline_name="Unknown Airline",
-            pickup_airline_code=None,
-            pickup_airline_name=None,
-        )
-
-        airline_counter = Counter()
-        airlines_in_booking = set()
-        if booking.dropoff_airline_name:
-            airline_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name)
-            airlines_in_booking.add(airline_key)
-        if booking.pickup_airline_name:
-            airline_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name)
-            airlines_in_booking.add(airline_key)
-        for airline_key in airlines_in_booking:
-            airline_counter[airline_key] += 1
-
-        assert airline_counter[("UNK", "Unknown Airline")] == 1
 
     def test_multiple_bookings_same_airline(self):
         """Multiple bookings with same airline should accumulate counts."""
@@ -343,16 +332,14 @@ class TestAirlineCountingLogic:
         for booking in bookings:
             airlines_in_booking = set()
             if booking.dropoff_airline_name:
-                airline_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name)
-                airlines_in_booking.add(airline_key)
+                airlines_in_booking.add(booking.dropoff_airline_name)
             if booking.pickup_airline_name:
-                airline_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name)
-                airlines_in_booking.add(airline_key)
-            for airline_key in airlines_in_booking:
-                airline_counter[airline_key] += 1
+                airlines_in_booking.add(booking.pickup_airline_name)
+            for airline_name in airlines_in_booking:
+                airline_counter[airline_name] += 1
 
         # 3 bookings, each counts BA once = 3
-        assert airline_counter[("BA", "British Airways")] == 3
+        assert airline_counter["British Airways"] == 3
 
 
 # =============================================================================

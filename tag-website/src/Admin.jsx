@@ -4257,6 +4257,7 @@ function Admin() {
                     <span>Loading popular routes...</span>
                   </div>
                 ) : popularData ? (
+                  <>
                   <div className="popular-charts-grid">
                     {/* Popular Airlines */}
                     <div className="popular-chart-container">
@@ -4272,7 +4273,6 @@ function Admin() {
                                 <div className="popular-bar-label">
                                   <span className="popular-rank">{idx + 1}</span>
                                   <span className="popular-name">{airline.airlineName}</span>
-                                  <span className="popular-code">({airline.airlineCode})</span>
                                 </div>
                                 <div className="popular-bar-container">
                                   <div
@@ -4352,6 +4352,7 @@ function Admin() {
                       )}
                     </div>
                   </div>
+                  </>
                 ) : (
                   <p>No data available. Try refreshing the page.</p>
                 )}
