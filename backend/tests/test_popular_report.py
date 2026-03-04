@@ -70,6 +70,7 @@ def create_mock_popular_response(
     total_bookings=10,
     popular_airlines=None,
     popular_destinations=None,
+    popular_routes=None,
     top=10,
 ):
     """Create a mock popular report response."""
@@ -87,6 +88,13 @@ def create_mock_popular_response(
             {"destination": "Malaga Airport", "count": 3, "percent": 20.0},
         ]
 
+    if popular_routes is None:
+        popular_routes = [
+            {"airlineCode": "BA", "airlineName": "British Airways", "destination": "Faro Airport", "route": "British Airways to Faro Airport", "count": 5, "percent": 35.0},
+            {"airlineCode": "FR", "airlineName": "Ryanair", "destination": "Malaga Airport", "route": "Ryanair to Malaga Airport", "count": 4, "percent": 28.0},
+            {"airlineCode": "U2", "airlineName": "easyJet", "destination": "Alicante Airport", "route": "easyJet to Alicante Airport", "count": 3, "percent": 21.0},
+        ]
+
     return {
         "meta": {
             "startDate": None,
@@ -95,9 +103,11 @@ def create_mock_popular_response(
             "totalBookings": total_bookings,
             "totalAirlineBookings": sum(a["count"] for a in popular_airlines),
             "totalDestinationBookings": sum(d["count"] for d in popular_destinations),
+            "totalRouteBookings": sum(r["count"] for r in popular_routes),
         },
         "popularAirlines": popular_airlines,
         "popularDestinations": popular_destinations,
+        "popularRoutes": popular_routes,
     }
 
 
@@ -119,6 +129,7 @@ class TestPopularReportResponseStructure:
         assert "totalBookings" in response["meta"]
         assert "totalAirlineBookings" in response["meta"]
         assert "totalDestinationBookings" in response["meta"]
+        assert "totalRouteBookings" in response["meta"]
 
     def test_response_does_not_include_status_filter(self):
         """Response meta should not include status filter (always confirmed+completed)."""
@@ -140,6 +151,13 @@ class TestPopularReportResponseStructure:
         assert "popularDestinations" in response
         assert isinstance(response["popularDestinations"], list)
 
+    def test_response_includes_popular_routes(self):
+        """Response should include popularRoutes array."""
+        response = create_mock_popular_response()
+
+        assert "popularRoutes" in response
+        assert isinstance(response["popularRoutes"], list)
+
     def test_airline_entry_structure(self):
         """Airline entry should include code, name, count, percent."""
         response = create_mock_popular_response()
@@ -158,6 +176,18 @@ class TestPopularReportResponseStructure:
         assert "destination" in destination
         assert "count" in destination
         assert "percent" in destination
+
+    def test_route_entry_structure(self):
+        """Route entry should include airline, destination, route, count, percent."""
+        response = create_mock_popular_response()
+
+        route = response["popularRoutes"][0]
+        assert "airlineCode" in route
+        assert "airlineName" in route
+        assert "destination" in route
+        assert "route" in route
+        assert "count" in route
+        assert "percent" in route
 
 
 # =============================================================================
@@ -444,6 +474,166 @@ class TestDestinationCountingLogic:
 
         # 3 bookings, each counts Faro once = 3
         assert destination_counter["Faro Airport"] == 3
+
+
+# =============================================================================
+# Unit Tests - Route Counting Logic (Airline + Destination combinations)
+# =============================================================================
+
+class TestRouteCountingLogic:
+    """Unit tests for route counting logic (airline + destination combinations)."""
+
+    def test_count_outbound_route(self):
+        """Should count outbound route (dropoff airline + dropoff destination)."""
+        booking = create_mock_booking(
+            dropoff_airline_code="BA",
+            dropoff_airline_name="British Airways",
+            dropoff_destination="Faro Airport",
+            pickup_airline_name=None,
+            pickup_origin=None,
+        )
+
+        route_counter = Counter()
+        routes_in_booking = set()
+        if booking.dropoff_airline_name and booking.dropoff_destination:
+            route_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name, booking.dropoff_destination)
+            routes_in_booking.add(route_key)
+        for route_key in routes_in_booking:
+            route_counter[route_key] += 1
+
+        assert route_counter[("BA", "British Airways", "Faro Airport")] == 1
+
+    def test_count_return_route(self):
+        """Should count return route (pickup airline + pickup origin)."""
+        booking = create_mock_booking(
+            dropoff_airline_name=None,
+            dropoff_destination=None,
+            pickup_airline_code="FR",
+            pickup_airline_name="Ryanair",
+            pickup_origin="Malaga Airport",
+        )
+
+        route_counter = Counter()
+        routes_in_booking = set()
+        if booking.pickup_airline_name and booking.pickup_origin:
+            route_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name, booking.pickup_origin)
+            routes_in_booking.add(route_key)
+        for route_key in routes_in_booking:
+            route_counter[route_key] += 1
+
+        assert route_counter[("FR", "Ryanair", "Malaga Airport")] == 1
+
+    def test_same_route_both_ways_counts_once(self):
+        """Same route for outbound and return should count ONCE per booking."""
+        booking = create_mock_booking(
+            dropoff_airline_code="BA",
+            dropoff_airline_name="British Airways",
+            dropoff_destination="Faro Airport",
+            pickup_airline_code="BA",
+            pickup_airline_name="British Airways",
+            pickup_origin="Faro Airport",
+        )
+
+        route_counter = Counter()
+        routes_in_booking = set()
+        if booking.dropoff_airline_name and booking.dropoff_destination:
+            route_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name, booking.dropoff_destination)
+            routes_in_booking.add(route_key)
+        if booking.pickup_airline_name and booking.pickup_origin:
+            route_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name, booking.pickup_origin)
+            routes_in_booking.add(route_key)
+        for route_key in routes_in_booking:
+            route_counter[route_key] += 1
+
+        # Same route both ways = 1 count (not 2)
+        assert route_counter[("BA", "British Airways", "Faro Airport")] == 1
+
+    def test_different_routes_both_count(self):
+        """Different routes for outbound and return should both count."""
+        booking = create_mock_booking(
+            dropoff_airline_code="BA",
+            dropoff_airline_name="British Airways",
+            dropoff_destination="Faro Airport",
+            pickup_airline_code="FR",
+            pickup_airline_name="Ryanair",
+            pickup_origin="Malaga Airport",
+        )
+
+        route_counter = Counter()
+        routes_in_booking = set()
+        if booking.dropoff_airline_name and booking.dropoff_destination:
+            route_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name, booking.dropoff_destination)
+            routes_in_booking.add(route_key)
+        if booking.pickup_airline_name and booking.pickup_origin:
+            route_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name, booking.pickup_origin)
+            routes_in_booking.add(route_key)
+        for route_key in routes_in_booking:
+            route_counter[route_key] += 1
+
+        assert route_counter[("BA", "British Airways", "Faro Airport")] == 1
+        assert route_counter[("FR", "Ryanair", "Malaga Airport")] == 1
+
+    def test_skip_route_without_airline(self):
+        """Should skip routes with missing airline."""
+        booking = create_mock_booking(
+            dropoff_airline_name=None,
+            dropoff_destination="Faro Airport",
+            pickup_airline_name=None,
+            pickup_origin=None,
+        )
+
+        route_counter = Counter()
+        routes_in_booking = set()
+        if booking.dropoff_airline_name and booking.dropoff_destination:
+            route_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name, booking.dropoff_destination)
+            routes_in_booking.add(route_key)
+        for route_key in routes_in_booking:
+            route_counter[route_key] += 1
+
+        assert len(route_counter) == 0
+
+    def test_skip_route_without_destination(self):
+        """Should skip routes with missing destination."""
+        booking = create_mock_booking(
+            dropoff_airline_code="BA",
+            dropoff_airline_name="British Airways",
+            dropoff_destination=None,
+            pickup_airline_name=None,
+            pickup_origin=None,
+        )
+
+        route_counter = Counter()
+        routes_in_booking = set()
+        if booking.dropoff_airline_name and booking.dropoff_destination:
+            route_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name, booking.dropoff_destination)
+            routes_in_booking.add(route_key)
+        for route_key in routes_in_booking:
+            route_counter[route_key] += 1
+
+        assert len(route_counter) == 0
+
+    def test_multiple_bookings_same_route(self):
+        """Multiple bookings with same route should accumulate counts."""
+        bookings = [
+            create_mock_booking(id=1, dropoff_airline_name="Jet2", dropoff_airline_code="LS", dropoff_destination="Faro Airport", pickup_airline_name="Jet2", pickup_airline_code="LS", pickup_origin="Faro Airport"),
+            create_mock_booking(id=2, dropoff_airline_name="Jet2", dropoff_airline_code="LS", dropoff_destination="Faro Airport", pickup_airline_name="Jet2", pickup_airline_code="LS", pickup_origin="Faro Airport"),
+            create_mock_booking(id=3, dropoff_airline_name="Jet2", dropoff_airline_code="LS", dropoff_destination="Faro Airport", pickup_airline_name="Jet2", pickup_airline_code="LS", pickup_origin="Faro Airport"),
+        ]
+
+        route_counter = Counter()
+        for booking in bookings:
+            routes_in_booking = set()
+            if booking.dropoff_airline_name and booking.dropoff_destination:
+                route_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name, booking.dropoff_destination)
+                routes_in_booking.add(route_key)
+            if booking.pickup_airline_name and booking.pickup_origin:
+                route_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name, booking.pickup_origin)
+                routes_in_booking.add(route_key)
+            for route_key in routes_in_booking:
+                route_counter[route_key] += 1
+
+        # 3 bookings, each counts Jet2 to Faro once = 3
+        assert route_counter[("LS", "Jet2", "Faro Airport")] == 3
 
 
 # =============================================================================

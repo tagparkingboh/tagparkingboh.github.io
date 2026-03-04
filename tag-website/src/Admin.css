@@ -3677,6 +3677,23 @@
   background: linear-gradient(90deg, #3b82f6, #1d4ed8);
 }
 
+.popular-bar-route {
+  background: linear-gradient(90deg, #10b981, #059669);
+}
+
+.popular-chart-full-width {
+  grid-column: 1 / -1;
+  margin-top: 24px;
+}
+
+.popular-bar-label-wide {
+  min-width: 280px;
+}
+
+.popular-bar-label-wide .popular-name {
+  max-width: 220px;
+}
+
 .popular-bar-value {
   font-size: 12px;
   font-weight: 600;

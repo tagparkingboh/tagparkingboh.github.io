@@ -4321,6 +4321,37 @@ function Admin() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Popular Routes - Full Width */}
+                  <div className="popular-chart-container popular-chart-full-width">
+                    <h4>Top Routes (Airline + Destination)</h4>
+                    <p className="chart-subtitle">Based on {popularData.meta.totalBookings} bookings</p>
+                    <div className="popular-bar-chart">
+                      {popularData.popularRoutes && popularData.popularRoutes.length > 0 ? (
+                        popularData.popularRoutes.map((route, idx) => {
+                          const maxCount = popularData.popularRoutes[0]?.count || 1
+                          const barWidth = (route.count / maxCount) * 100
+                          return (
+                            <div key={idx} className="popular-bar-row">
+                              <div className="popular-bar-label popular-bar-label-wide">
+                                <span className="popular-rank">{idx + 1}</span>
+                                <span className="popular-name">{route.route}</span>
+                              </div>
+                              <div className="popular-bar-container">
+                                <div
+                                  className="popular-bar popular-bar-route"
+                                  style={{ width: `${barWidth}%` }}
+                                />
+                                <span className="popular-bar-value">{route.count} ({route.percent}%)</span>
+                              </div>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <p className="no-data">No route data available</p>
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <p>No data available. Try refreshing the page.</p>
                 )}

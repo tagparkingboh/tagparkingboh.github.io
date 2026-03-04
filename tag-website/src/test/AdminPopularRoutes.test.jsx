@@ -38,6 +38,16 @@ const createMockDestination = (overrides = {}) => ({
   ...overrides,
 })
 
+const createMockRoute = (overrides = {}) => ({
+  airlineCode: 'BA',
+  airlineName: 'British Airways',
+  destination: 'Faro Airport',
+  route: 'British Airways to Faro Airport',
+  count: 15,
+  percent: 30.0,
+  ...overrides,
+})
+
 const createMockPopularResponse = (overrides = {}) => ({
   meta: {
     startDate: null,
@@ -46,6 +56,7 @@ const createMockPopularResponse = (overrides = {}) => ({
     totalBookings: 50,
     totalAirlineBookings: 50,
     totalDestinationBookings: 50,
+    totalRouteBookings: 50,
     ...overrides.meta,
   },
   popularAirlines: overrides.popularAirlines ?? [
@@ -58,6 +69,11 @@ const createMockPopularResponse = (overrides = {}) => ({
     createMockDestination({ destination: 'Faro Airport', count: 25, percent: 50.0 }),
     createMockDestination({ destination: 'Malaga Airport', count: 15, percent: 30.0 }),
     createMockDestination({ destination: 'Alicante Airport', count: 10, percent: 20.0 }),
+  ],
+  popularRoutes: overrides.popularRoutes ?? [
+    createMockRoute({ route: 'British Airways to Faro Airport', count: 15, percent: 30.0 }),
+    createMockRoute({ airlineName: 'Ryanair', destination: 'Malaga Airport', route: 'Ryanair to Malaga Airport', count: 12, percent: 24.0 }),
+    createMockRoute({ airlineName: 'easyJet', destination: 'Alicante Airport', route: 'easyJet to Alicante Airport', count: 10, percent: 20.0 }),
   ],
 })
 
@@ -97,6 +113,12 @@ describe('Admin Popular Routes Response Structure', () => {
       const response = createMockPopularResponse()
 
       expect(response.meta).toHaveProperty('totalDestinationBookings')
+    })
+
+    it('should include totalRouteBookings in meta', () => {
+      const response = createMockPopularResponse()
+
+      expect(response.meta).toHaveProperty('totalRouteBookings')
     })
   })
 
@@ -140,6 +162,45 @@ describe('Admin Popular Routes Response Structure', () => {
       const destination = createMockDestination()
       expect(destination).toHaveProperty('percent')
       expect(typeof destination.percent).toBe('number')
+    })
+  })
+
+  describe('Unit Tests - Route data structure', () => {
+    it('should include route display string', () => {
+      const route = createMockRoute()
+      expect(route).toHaveProperty('route')
+      expect(route.route).toContain('to')
+    })
+
+    it('should include airlineName', () => {
+      const route = createMockRoute()
+      expect(route).toHaveProperty('airlineName')
+    })
+
+    it('should include destination', () => {
+      const route = createMockRoute()
+      expect(route).toHaveProperty('destination')
+    })
+
+    it('should include count', () => {
+      const route = createMockRoute()
+      expect(route).toHaveProperty('count')
+      expect(typeof route.count).toBe('number')
+    })
+
+    it('should include percent', () => {
+      const route = createMockRoute()
+      expect(route).toHaveProperty('percent')
+      expect(typeof route.percent).toBe('number')
+    })
+
+    it('should format route as "Airline to Destination"', () => {
+      const route = createMockRoute({
+        airlineName: 'Jet2',
+        destination: 'Faro Airport',
+        route: 'Jet2 to Faro Airport',
+      })
+      expect(route.route).toBe('Jet2 to Faro Airport')
     })
   })
 })

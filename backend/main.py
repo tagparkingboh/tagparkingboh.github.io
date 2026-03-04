@@ -2830,6 +2830,45 @@ async def get_popular_airlines_destinations(
             "percent": percent,
         })
 
+    # Count route combinations (airline + destination)
+    route_counter = Counter()
+    for booking in bookings:
+        # Collect unique routes for this booking (airline + destination pairs)
+        routes_in_booking = set()
+        # Outbound: dropoff airline to dropoff destination
+        if booking.dropoff_airline_name and booking.dropoff_destination:
+            route_key = (
+                booking.dropoff_airline_code or "UNK",
+                booking.dropoff_airline_name,
+                booking.dropoff_destination
+            )
+            routes_in_booking.add(route_key)
+        # Return: pickup airline from pickup origin
+        if booking.pickup_airline_name and booking.pickup_origin:
+            route_key = (
+                booking.pickup_airline_code or "UNK",
+                booking.pickup_airline_name,
+                booking.pickup_origin
+            )
+            routes_in_booking.add(route_key)
+        # Count each unique route once per booking
+        for route_key in routes_in_booking:
+            route_counter[route_key] += 1
+
+    # Get top routes
+    top_routes = []
+    total_route_bookings = sum(route_counter.values())
+    for (code, airline, destination), count in route_counter.most_common(top):
+        percent = round((count / total_route_bookings) * 100, 1) if total_route_bookings > 0 else 0
+        top_routes.append({
+            "airlineCode": code,
+            "airlineName": airline,
+            "destination": destination,
+            "route": f"{airline} to {destination}",
+            "count": count,
+            "percent": percent,
+        })
+
     return {
         "meta": {
             "startDate": start_date.isoformat() if start_date else None,
@@ -2838,9 +2877,11 @@ async def get_popular_airlines_destinations(
             "totalBookings": len(bookings),
             "totalAirlineBookings": total_airline_bookings,
             "totalDestinationBookings": total_destination_bookings,
+            "totalRouteBookings": total_route_bookings,
         },
         "popularAirlines": top_airlines,
         "popularDestinations": top_destinations,
+        "popularRoutes": top_routes,
     }
 
 
