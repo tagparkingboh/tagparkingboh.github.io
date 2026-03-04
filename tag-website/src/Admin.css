@@ -577,6 +577,20 @@
   background: #c6f6d5;
 }
 
+.email-btn.sent-status {
+  background: #e2e8f0;
+  color: #4a5568;
+  border: 1px solid #cbd5e0;
+  opacity: 0.8;
+  cursor: default;
+}
+
+.email-btn.sent-status:not(.sent-status) {
+  background: #fff5f5;
+  color: #c53030;
+  border: 1px solid #feb2b2;
+}
+
 .edit-btn {
   background: #faf5ff;
   color: #6b46c1;

@@ -3272,6 +3272,20 @@ function Admin() {
                                   <span className="detail-value">{lead.last_booking_status}</span>
                                 </div>
                               )}
+                              <div className="booking-detail">
+                                <span className="detail-label">Founder Email</span>
+                                <span className="detail-value">
+                                  <button
+                                    className={`action-btn email-btn ${lead.founder_followup_sent ? 'sent-status' : ''}`}
+                                    disabled={true}
+                                    title={lead.founder_followup_sent
+                                      ? `Sent on ${lead.founder_followup_sent_at ? new Date(lead.founder_followup_sent_at).toLocaleString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}`
+                                      : 'Not sent yet'}
+                                  >
+                                    {lead.founder_followup_sent ? 'Sent ✓' : 'Not Sent'}
+                                  </button>
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
