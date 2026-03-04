@@ -186,7 +186,6 @@ function Admin() {
   // Popular airlines/destinations report state
   const [popularData, setPopularData] = useState(null)
   const [loadingPopular, setLoadingPopular] = useState(false)
-  const [popularStatus, setPopularStatus] = useState('all') // 'confirmed', 'completed', 'all'
   const [popularTop, setPopularTop] = useState(10) // 5, 10, 20
 
   // Test email domains to filter out
@@ -295,7 +294,7 @@ function Admin() {
         fetchPopularReport()
       }
     }
-  }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularStatus, popularTop])
+  }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularTop])
 
   const fetchBookingStats = async () => {
     setLoadingStats(true)
@@ -339,7 +338,6 @@ function Admin() {
     setLoadingPopular(true)
     try {
       const params = new URLSearchParams({
-        status: popularStatus,
         top: popularTop.toString(),
       })
       const response = await fetch(`${API_URL}/api/admin/reports/popular?${params}`, {
@@ -4245,13 +4243,7 @@ function Admin() {
 
                 {/* Controls */}
                 <div className="chart-controls">
-                  <label>Status:</label>
-                  <select value={popularStatus} onChange={e => setPopularStatus(e.target.value)}>
-                    <option value="all">All (Confirmed + Completed)</option>
-                    <option value="confirmed">Confirmed Only</option>
-                    <option value="completed">Completed Only</option>
-                  </select>
-                  <label style={{ marginLeft: '16px' }}>Top:</label>
+                  <label>Show:</label>
                   <select value={popularTop} onChange={e => setPopularTop(Number(e.target.value))}>
                     <option value={5}>Top 5</option>
                     <option value={10}>Top 10</option>
@@ -4269,7 +4261,7 @@ function Admin() {
                     {/* Popular Airlines */}
                     <div className="popular-chart-container">
                       <h4>Top Airlines</h4>
-                      <p className="chart-subtitle">Based on {popularData.meta.totalAirlineFlights} flight legs from {popularData.meta.totalBookings} bookings</p>
+                      <p className="chart-subtitle">Based on {popularData.meta.totalBookings} bookings</p>
                       <div className="popular-bar-chart">
                         {popularData.popularAirlines.length > 0 ? (
                           popularData.popularAirlines.map((airline, idx) => {
@@ -4301,7 +4293,7 @@ function Admin() {
                     {/* Popular Destinations */}
                     <div className="popular-chart-container">
                       <h4>Top Destinations</h4>
-                      <p className="chart-subtitle">Based on {popularData.meta.totalDestinationTrips} trips from {popularData.meta.totalBookings} bookings</p>
+                      <p className="chart-subtitle">Based on {popularData.meta.totalBookings} bookings</p>
                       <div className="popular-bar-chart">
                         {popularData.popularDestinations.length > 0 ? (
                           popularData.popularDestinations.map((dest, idx) => {

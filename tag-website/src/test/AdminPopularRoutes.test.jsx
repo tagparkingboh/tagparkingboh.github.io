@@ -2,9 +2,9 @@
  * Tests for Admin Popular Routes Report functionality
  *
  * Tests the core logic:
- * - Popular Airlines chart display and data
- * - Popular Destinations chart display and data
- * - Filter controls (status, top N)
+ * - Popular Airlines chart display and data (merged - each booking counts once per unique airline)
+ * - Popular Destinations chart display and data (merged - each booking counts once per unique destination)
+ * - Filter controls (top N only - status is always confirmed+completed)
  * - API response handling
  * - Loading states
  *
@@ -42,23 +42,22 @@ const createMockPopularResponse = (overrides = {}) => ({
   meta: {
     startDate: null,
     endDate: null,
-    status: 'all',
     top: 10,
     totalBookings: 50,
-    totalAirlineFlights: 100,
-    totalDestinationTrips: 100,
+    totalAirlineBookings: 50,
+    totalDestinationBookings: 50,
     ...overrides.meta,
   },
   popularAirlines: overrides.popularAirlines ?? [
-    createMockAirline({ airlineCode: 'BA', airlineName: 'British Airways', count: 40, percent: 40.0 }),
-    createMockAirline({ airlineCode: 'FR', airlineName: 'Ryanair', count: 30, percent: 30.0 }),
-    createMockAirline({ airlineCode: 'U2', airlineName: 'easyJet', count: 20, percent: 20.0 }),
-    createMockAirline({ airlineCode: 'BY', airlineName: 'TUI Airways', count: 10, percent: 10.0 }),
+    createMockAirline({ airlineCode: 'BA', airlineName: 'British Airways', count: 20, percent: 40.0 }),
+    createMockAirline({ airlineCode: 'FR', airlineName: 'Ryanair', count: 15, percent: 30.0 }),
+    createMockAirline({ airlineCode: 'U2', airlineName: 'easyJet', count: 10, percent: 20.0 }),
+    createMockAirline({ airlineCode: 'BY', airlineName: 'TUI Airways', count: 5, percent: 10.0 }),
   ],
   popularDestinations: overrides.popularDestinations ?? [
-    createMockDestination({ destination: 'Faro Airport', count: 50, percent: 50.0 }),
-    createMockDestination({ destination: 'Malaga Airport', count: 30, percent: 30.0 }),
-    createMockDestination({ destination: 'Alicante Airport', count: 20, percent: 20.0 }),
+    createMockDestination({ destination: 'Faro Airport', count: 25, percent: 50.0 }),
+    createMockDestination({ destination: 'Malaga Airport', count: 15, percent: 30.0 }),
+    createMockDestination({ destination: 'Alicante Airport', count: 10, percent: 20.0 }),
   ],
 })
 
@@ -68,11 +67,10 @@ const createMockPopularResponse = (overrides = {}) => ({
 
 describe('Admin Popular Routes Response Structure', () => {
   describe('Unit Tests - Meta data structure', () => {
-    it('should include status filter in meta', () => {
+    it('should not include status filter in meta (always confirmed+completed)', () => {
       const response = createMockPopularResponse()
 
-      expect(response.meta).toHaveProperty('status')
-      expect(response.meta.status).toBe('all')
+      expect(response.meta).not.toHaveProperty('status')
     })
 
     it('should include top limit in meta', () => {
@@ -89,16 +87,16 @@ describe('Admin Popular Routes Response Structure', () => {
       expect(response.meta.totalBookings).toBe(50)
     })
 
-    it('should include totalAirlineFlights in meta', () => {
+    it('should include totalAirlineBookings in meta', () => {
       const response = createMockPopularResponse()
 
-      expect(response.meta).toHaveProperty('totalAirlineFlights')
+      expect(response.meta).toHaveProperty('totalAirlineBookings')
     })
 
-    it('should include totalDestinationTrips in meta', () => {
+    it('should include totalDestinationBookings in meta', () => {
       const response = createMockPopularResponse()
 
-      expect(response.meta).toHaveProperty('totalDestinationTrips')
+      expect(response.meta).toHaveProperty('totalDestinationBookings')
     })
   })
 
@@ -135,67 +133,72 @@ describe('Admin Popular Routes Response Structure', () => {
     it('should include count', () => {
       const destination = createMockDestination()
       expect(destination).toHaveProperty('count')
+      expect(typeof destination.count).toBe('number')
     })
 
     it('should include percent', () => {
       const destination = createMockDestination()
       expect(destination).toHaveProperty('percent')
+      expect(typeof destination.percent).toBe('number')
     })
   })
 })
 
 // =============================================================================
-// Unit Tests - Bar Chart Display Logic
+// Unit Tests - Bar Chart Display
 // =============================================================================
 
-describe('Admin Popular Routes Bar Chart Logic', () => {
+describe('Admin Popular Routes Bar Chart Display', () => {
   describe('Unit Tests - Bar width calculation', () => {
     it('should calculate bar width as percentage of max', () => {
       const airlines = [
-        createMockAirline({ count: 40 }),
-        createMockAirline({ count: 20 }),
-        createMockAirline({ count: 10 }),
+        createMockAirline({ count: 100 }),
+        createMockAirline({ count: 50 }),
+        createMockAirline({ count: 25 }),
       ]
 
       const maxCount = airlines[0].count
-      const barWidths = airlines.map(a => (a.count / maxCount) * 100)
+      const widths = airlines.map(a => (a.count / maxCount) * 100)
 
-      expect(barWidths[0]).toBe(100)
-      expect(barWidths[1]).toBe(50)
-      expect(barWidths[2]).toBe(25)
+      expect(widths[0]).toBe(100)
+      expect(widths[1]).toBe(50)
+      expect(widths[2]).toBe(25)
     })
 
     it('should handle single item with 100% width', () => {
-      const airlines = [createMockAirline({ count: 50 })]
+      const airlines = [createMockAirline({ count: 42 })]
 
       const maxCount = airlines[0].count
-      const barWidth = (airlines[0].count / maxCount) * 100
+      const width = (airlines[0].count / maxCount) * 100
 
-      expect(barWidth).toBe(100)
+      expect(width).toBe(100)
     })
 
     it('should handle equal counts with equal widths', () => {
       const airlines = [
-        createMockAirline({ count: 30 }),
-        createMockAirline({ count: 30 }),
-        createMockAirline({ count: 30 }),
+        createMockAirline({ count: 50 }),
+        createMockAirline({ count: 50 }),
+        createMockAirline({ count: 50 }),
       ]
 
       const maxCount = airlines[0].count
-      const barWidths = airlines.map(a => (a.count / maxCount) * 100)
+      const widths = airlines.map(a => (a.count / maxCount) * 100)
 
-      expect(barWidths.every(w => w === 100)).toBe(true)
+      expect(widths.every(w => w === 100)).toBe(true)
     })
   })
 
   describe('Unit Tests - Ranking display', () => {
     it('should display rank numbers starting from 1', () => {
-      const airlines = createMockPopularResponse().popularAirlines
+      const airlines = [
+        createMockAirline({ airlineName: 'First' }),
+        createMockAirline({ airlineName: 'Second' }),
+      ]
 
-      airlines.forEach((_, idx) => {
-        const rank = idx + 1
-        expect(rank).toBeGreaterThanOrEqual(1)
-      })
+      const ranks = airlines.map((_, idx) => idx + 1)
+
+      expect(ranks[0]).toBe(1)
+      expect(ranks[1]).toBe(2)
     })
 
     it('should show correct rank for each position', () => {
@@ -217,23 +220,6 @@ describe('Admin Popular Routes Bar Chart Logic', () => {
 // =============================================================================
 
 describe('Admin Popular Routes Filter Controls', () => {
-  describe('Unit Tests - Status filter options', () => {
-    it('should have "all" option', () => {
-      const statusOptions = ['all', 'confirmed', 'completed']
-      expect(statusOptions).toContain('all')
-    })
-
-    it('should have "confirmed" option', () => {
-      const statusOptions = ['all', 'confirmed', 'completed']
-      expect(statusOptions).toContain('confirmed')
-    })
-
-    it('should have "completed" option', () => {
-      const statusOptions = ['all', 'confirmed', 'completed']
-      expect(statusOptions).toContain('completed')
-    })
-  })
-
   describe('Unit Tests - Top N filter options', () => {
     it('should have "5" option', () => {
       const topOptions = [5, 10, 20]
@@ -257,17 +243,6 @@ describe('Admin Popular Routes Filter Controls', () => {
   })
 
   describe('Unit Tests - Filter state management', () => {
-    it('should update status filter value', () => {
-      let popularStatus = 'all'
-
-      // Simulate changing status
-      popularStatus = 'confirmed'
-      expect(popularStatus).toBe('confirmed')
-
-      popularStatus = 'completed'
-      expect(popularStatus).toBe('completed')
-    })
-
     it('should update top filter value', () => {
       let popularTop = 10
 
@@ -294,7 +269,6 @@ describe('Admin Popular Routes API Integration', () => {
     it('should call correct API endpoint', async () => {
       const API_URL = 'https://api.example.com'
       const token = 'test-token'
-      const status = 'all'
       const top = 10
 
       global.fetch.mockResolvedValueOnce({
@@ -302,7 +276,7 @@ describe('Admin Popular Routes API Integration', () => {
         json: async () => createMockPopularResponse(),
       })
 
-      const params = new URLSearchParams({ status, top: top.toString() })
+      const params = new URLSearchParams({ top: top.toString() })
       await fetch(`${API_URL}/api/admin/reports/popular?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       })
@@ -317,31 +291,30 @@ describe('Admin Popular Routes API Integration', () => {
       )
     })
 
-    it('should include status parameter in URL', async () => {
-      global.fetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => createMockPopularResponse(),
-      })
-
-      const status = 'confirmed'
-      const params = new URLSearchParams({ status, top: '10' })
-      await fetch(`/api/admin/reports/popular?${params}`)
-
-      const callUrl = global.fetch.mock.calls[0][0]
-      expect(callUrl).toContain('status=confirmed')
-    })
-
     it('should include top parameter in URL', async () => {
       global.fetch.mockResolvedValueOnce({
         ok: true,
         json: async () => createMockPopularResponse(),
       })
 
-      const params = new URLSearchParams({ status: 'all', top: '20' })
+      const params = new URLSearchParams({ top: '20' })
       await fetch(`/api/admin/reports/popular?${params}`)
 
       const callUrl = global.fetch.mock.calls[0][0]
       expect(callUrl).toContain('top=20')
+    })
+
+    it('should not include status parameter in URL', async () => {
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => createMockPopularResponse(),
+      })
+
+      const params = new URLSearchParams({ top: '10' })
+      await fetch(`/api/admin/reports/popular?${params}`)
+
+      const callUrl = global.fetch.mock.calls[0][0]
+      expect(callUrl).not.toContain('status=')
     })
 
     it('should handle successful response', async () => {
@@ -359,12 +332,10 @@ describe('Admin Popular Routes API Integration', () => {
       expect(data).toHaveProperty('popularAirlines')
       expect(data).toHaveProperty('popularDestinations')
     })
-  })
 
-  describe('API Integration - State updates', () => {
     it('should update popularData state on success', async () => {
-      let popularData = null
       const mockData = createMockPopularResponse()
+      let popularData = null
 
       global.fetch.mockResolvedValueOnce({
         ok: true,
@@ -377,19 +348,25 @@ describe('Admin Popular Routes API Integration', () => {
       }
 
       expect(popularData).not.toBeNull()
-      expect(popularData.popularAirlines.length).toBeGreaterThan(0)
+      expect(popularData.popularAirlines).toHaveLength(4)
     })
 
-    it('should set loading state while fetching', () => {
-      let loadingPopular = false
+    it('should set loading state while fetching', async () => {
+      let loading = false
 
-      // Start loading
-      loadingPopular = true
-      expect(loadingPopular).toBe(true)
+      // Simulate loading flow
+      loading = true
+      expect(loading).toBe(true)
 
-      // End loading
-      loadingPopular = false
-      expect(loadingPopular).toBe(false)
+      global.fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => createMockPopularResponse(),
+      })
+
+      await fetch('/api/admin/reports/popular')
+      loading = false
+
+      expect(loading).toBe(false)
     })
   })
 })
@@ -398,12 +375,12 @@ describe('Admin Popular Routes API Integration', () => {
 // Negative Tests - Error Handling
 // =============================================================================
 
-describe('Admin Popular Routes Negative Tests', () => {
+describe('Admin Popular Routes Error Handling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  describe('API Error Handling', () => {
+  describe('Negative Tests - API error responses', () => {
     it('should handle 401 unauthorized', async () => {
       global.fetch.mockResolvedValueOnce({
         ok: false,
@@ -412,6 +389,7 @@ describe('Admin Popular Routes Negative Tests', () => {
       })
 
       const response = await fetch('/api/admin/reports/popular')
+
       expect(response.ok).toBe(false)
       expect(response.status).toBe(401)
     })
@@ -424,6 +402,7 @@ describe('Admin Popular Routes Negative Tests', () => {
       })
 
       const response = await fetch('/api/admin/reports/popular')
+
       expect(response.ok).toBe(false)
       expect(response.status).toBe(500)
     })
@@ -431,18 +410,11 @@ describe('Admin Popular Routes Negative Tests', () => {
     it('should handle network error', async () => {
       global.fetch.mockRejectedValueOnce(new Error('Network error'))
 
-      let errorOccurred = false
-      try {
-        await fetch('/api/admin/reports/popular')
-      } catch (err) {
-        errorOccurred = true
-      }
-
-      expect(errorOccurred).toBe(true)
+      await expect(fetch('/api/admin/reports/popular')).rejects.toThrow('Network error')
     })
   })
 
-  describe('Empty Data Handling', () => {
+  describe('Negative Tests - Empty data', () => {
     it('should handle empty airlines array', () => {
       const response = createMockPopularResponse({ popularAirlines: [] })
 
@@ -456,19 +428,17 @@ describe('Admin Popular Routes Negative Tests', () => {
     })
 
     it('should display no data message for empty airlines', () => {
-      const airlines = []
-      const hasData = airlines.length > 0
+      const response = createMockPopularResponse({ popularAirlines: [] })
+      const hasNoData = response.popularAirlines.length === 0
 
-      expect(hasData).toBe(false)
-      // Should show "No airline data available"
+      expect(hasNoData).toBe(true)
     })
 
     it('should display no data message for empty destinations', () => {
-      const destinations = []
-      const hasData = destinations.length > 0
+      const response = createMockPopularResponse({ popularDestinations: [] })
+      const hasNoData = response.popularDestinations.length === 0
 
-      expect(hasData).toBe(false)
-      // Should show "No destination data available"
+      expect(hasNoData).toBe(true)
     })
   })
 })
@@ -478,36 +448,38 @@ describe('Admin Popular Routes Negative Tests', () => {
 // =============================================================================
 
 describe('Admin Popular Routes Edge Cases', () => {
-  describe('Data Edge Cases', () => {
+  describe('Edge Cases - Data boundaries', () => {
     it('should handle single airline', () => {
       const response = createMockPopularResponse({
-        popularAirlines: [createMockAirline()],
+        popularAirlines: [createMockAirline({ count: 100, percent: 100.0 })],
       })
 
       expect(response.popularAirlines).toHaveLength(1)
+      expect(response.popularAirlines[0].percent).toBe(100.0)
     })
 
     it('should handle single destination', () => {
       const response = createMockPopularResponse({
-        popularDestinations: [createMockDestination()],
+        popularDestinations: [createMockDestination({ count: 100, percent: 100.0 })],
       })
 
       expect(response.popularDestinations).toHaveLength(1)
+      expect(response.popularDestinations[0].percent).toBe(100.0)
     })
 
     it('should handle very long airline name', () => {
-      const longName = 'A'.repeat(100)
+      const longName = 'A'.repeat(200)
       const airline = createMockAirline({ airlineName: longName })
 
-      expect(airline.airlineName.length).toBe(100)
+      expect(airline.airlineName.length).toBe(200)
     })
 
     it('should handle special characters in destination', () => {
       const destination = createMockDestination({
-        destination: 'São Paulo–Guarulhos Airport',
+        destination: 'São Paulo–Guarulhos Airport (GRU)',
       })
 
-      expect(destination.destination).toContain('São')
+      expect(destination.destination).toContain('ã')
       expect(destination.destination).toContain('–')
     })
 
@@ -525,23 +497,11 @@ describe('Admin Popular Routes Edge Cases', () => {
     })
   })
 
-  describe('UI Edge Cases', () => {
-    it('should handle switching between status filters rapidly', () => {
-      let popularStatus = 'all'
-
-      // Rapid switches
-      popularStatus = 'confirmed'
-      popularStatus = 'completed'
-      popularStatus = 'all'
-      popularStatus = 'confirmed'
-
-      expect(popularStatus).toBe('confirmed')
-    })
-
+  describe('Edge Cases - Rapid filter changes', () => {
     it('should handle switching between top filters rapidly', () => {
       let popularTop = 10
 
-      // Rapid switches
+      // Rapid changes
       popularTop = 5
       popularTop = 20
       popularTop = 10
@@ -551,14 +511,10 @@ describe('Admin Popular Routes Edge Cases', () => {
     })
   })
 
-  describe('Large Data Edge Cases', () => {
+  describe('Edge Cases - Maximum items', () => {
     it('should handle maximum 20 airlines', () => {
       const airlines = Array.from({ length: 20 }, (_, i) =>
-        createMockAirline({
-          airlineCode: `A${i}`,
-          airlineName: `Airline ${i}`,
-          count: 100 - i,
-        })
+        createMockAirline({ airlineName: `Airline ${i + 1}`, count: 20 - i })
       )
 
       expect(airlines).toHaveLength(20)
@@ -566,10 +522,7 @@ describe('Admin Popular Routes Edge Cases', () => {
 
     it('should handle maximum 20 destinations', () => {
       const destinations = Array.from({ length: 20 }, (_, i) =>
-        createMockDestination({
-          destination: `Airport ${i}`,
-          count: 100 - i,
-        })
+        createMockDestination({ destination: `Airport ${i + 1}`, count: 20 - i })
       )
 
       expect(destinations).toHaveLength(20)
@@ -582,59 +535,49 @@ describe('Admin Popular Routes Edge Cases', () => {
 // =============================================================================
 
 describe('Admin Popular Routes Display Logic', () => {
-  describe('Chart subtitle display', () => {
+  describe('Display Logic - Subtitle text', () => {
     it('should display correct booking count in subtitle', () => {
-      const response = createMockPopularResponse()
-      const subtitle = `Based on ${response.meta.totalAirlineFlights} flight legs from ${response.meta.totalBookings} bookings`
+      const response = createMockPopularResponse({ meta: { totalBookings: 42 } })
 
-      expect(subtitle).toContain('100')
-      expect(subtitle).toContain('50')
-    })
-
-    it('should display correct trip count in subtitle', () => {
-      const response = createMockPopularResponse()
-      const subtitle = `Based on ${response.meta.totalDestinationTrips} trips from ${response.meta.totalBookings} bookings`
-
-      expect(subtitle).toContain('100')
+      expect(response.meta.totalBookings).toBe(42)
     })
   })
 
-  describe('Value display format', () => {
+  describe('Display Logic - Count and percent', () => {
     it('should display count and percent together', () => {
-      const airline = createMockAirline({ count: 40, percent: 40.0 })
-      const displayValue = `${airline.count} (${airline.percent}%)`
+      const airline = createMockAirline({ count: 25, percent: 50.0 })
 
-      expect(displayValue).toBe('40 (40%)')
+      const displayText = `${airline.count} (${airline.percent}%)`
+
+      expect(displayText).toBe('25 (50%)')
     })
 
     it('should handle decimal percent display', () => {
       const airline = createMockAirline({ count: 33, percent: 33.3 })
-      const displayValue = `${airline.count} (${airline.percent}%)`
 
-      expect(displayValue).toBe('33 (33.3%)')
+      const displayText = `${airline.count} (${airline.percent}%)`
+
+      expect(displayText).toBe('33 (33.3%)')
     })
   })
-})
 
-// =============================================================================
-// Responsive/Mobile Tests
-// =============================================================================
-
-describe('Admin Popular Routes Responsive Behavior', () => {
-  describe('Grid layout', () => {
+  describe('Display Logic - Layout', () => {
     it('should use two-column grid on desktop', () => {
-      // CSS class check
+      // Grid layout test - checking CSS class would apply
       const gridClass = 'popular-charts-grid'
+
       expect(gridClass).toBe('popular-charts-grid')
     })
 
     it('should handle label truncation for long names', () => {
-      const longName = 'Very Long Airline Name That Exceeds Normal Width'
-      const maxWidth = 120
+      const longName = 'Very Long Airline Name That Should Be Truncated'
+      const maxLength = 30
 
-      // Text should be truncated
-      const truncated = longName.length > maxWidth
-      expect(longName.length).toBeGreaterThan(20)
+      const truncated = longName.length > maxLength
+        ? longName.substring(0, maxLength) + '...'
+        : longName
+
+      expect(truncated.length).toBeLessThanOrEqual(maxLength + 3)
     })
   })
 })
@@ -644,45 +587,120 @@ describe('Admin Popular Routes Responsive Behavior', () => {
 // =============================================================================
 
 describe('Admin Popular Routes Subtab Integration', () => {
-  describe('Subtab visibility', () => {
+  describe('Subtab Integration - Tab activation', () => {
     it('should show Popular Routes content when subtab is active', () => {
       const reportsSubTab = 'popular'
-      const shouldShow = reportsSubTab === 'popular'
+      const isPopularActive = reportsSubTab === 'popular'
 
-      expect(shouldShow).toBe(true)
+      expect(isPopularActive).toBe(true)
     })
 
     it('should hide Popular Routes content when other subtab is active', () => {
       const reportsSubTab = 'growth'
-      const shouldShow = reportsSubTab === 'popular'
+      const isPopularActive = reportsSubTab === 'popular'
 
-      expect(shouldShow).toBe(false)
-    })
-  })
-
-  describe('Data fetching trigger', () => {
-    it('should fetch data when subtab becomes active', () => {
-      const reportsSubTab = 'popular'
-      const activeTab = 'reports'
-      const shouldFetch = activeTab === 'reports' && reportsSubTab === 'popular'
-
-      expect(shouldFetch).toBe(true)
+      expect(isPopularActive).toBe(false)
     })
 
-    it('should not fetch data when reports tab is not active', () => {
+    it('should fetch data when subtab becomes active', async () => {
+      let fetchCalled = false
+
+      global.fetch.mockImplementation(() => {
+        fetchCalled = true
+        return Promise.resolve({
+          ok: true,
+          json: async () => createMockPopularResponse(),
+        })
+      })
+
       const reportsSubTab = 'popular'
+      if (reportsSubTab === 'popular') {
+        await fetch('/api/admin/reports/popular')
+      }
+
+      expect(fetchCalled).toBe(true)
+    })
+
+    it('should not fetch data when reports tab is not active', async () => {
+      let fetchCalled = false
+
+      global.fetch.mockImplementation(() => {
+        fetchCalled = true
+        return Promise.resolve({
+          ok: true,
+          json: async () => createMockPopularResponse(),
+        })
+      })
+
       const activeTab = 'bookings'
-      const shouldFetch = activeTab === 'reports' && reportsSubTab === 'popular'
+      if (activeTab === 'reports') {
+        await fetch('/api/admin/reports/popular')
+      }
 
-      expect(shouldFetch).toBe(false)
+      expect(fetchCalled).toBe(false)
     })
   })
 })
 
 // =============================================================================
-// Run tests if executed directly
+// Merged Counting Logic Tests
 // =============================================================================
 
-if (import.meta.vitest) {
-  const { describe, it, expect, vi, beforeEach } = import.meta.vitest
-}
+describe('Admin Popular Routes Merged Counting Logic', () => {
+  describe('Merged Counting - Same airline both ways counts once', () => {
+    it('should count same airline once per booking', () => {
+      // Simulate counting logic
+      const booking = {
+        dropoff_airline: 'Jet2',
+        pickup_airline: 'Jet2',
+      }
+
+      const airlines = new Set()
+      if (booking.dropoff_airline) airlines.add(booking.dropoff_airline)
+      if (booking.pickup_airline) airlines.add(booking.pickup_airline)
+
+      expect(airlines.size).toBe(1)
+    })
+
+    it('should count different airlines both once', () => {
+      const booking = {
+        dropoff_airline: 'British Airways',
+        pickup_airline: 'Ryanair',
+      }
+
+      const airlines = new Set()
+      if (booking.dropoff_airline) airlines.add(booking.dropoff_airline)
+      if (booking.pickup_airline) airlines.add(booking.pickup_airline)
+
+      expect(airlines.size).toBe(2)
+    })
+  })
+
+  describe('Merged Counting - Same destination both ways counts once', () => {
+    it('should count same destination once per booking', () => {
+      const booking = {
+        dropoff_destination: 'Faro Airport',
+        pickup_origin: 'Faro Airport',
+      }
+
+      const destinations = new Set()
+      if (booking.dropoff_destination) destinations.add(booking.dropoff_destination)
+      if (booking.pickup_origin) destinations.add(booking.pickup_origin)
+
+      expect(destinations.size).toBe(1)
+    })
+
+    it('should count different destinations both once', () => {
+      const booking = {
+        dropoff_destination: 'Faro Airport',
+        pickup_origin: 'Malaga Airport',
+      }
+
+      const destinations = new Set()
+      if (booking.dropoff_destination) destinations.add(booking.dropoff_destination)
+      if (booking.pickup_origin) destinations.add(booking.pickup_origin)
+
+      expect(destinations.size).toBe(2)
+    })
+  })
+})
