@@ -2739,6 +2739,119 @@ async def get_occupancy_report(
         raise HTTPException(status_code=400, detail="Invalid view type. Use 'daily', 'weekly', or 'monthly'.")
 
 
+@app.get("/api/admin/reports/popular")
+async def get_popular_airlines_destinations(
+    start_date: Optional[date] = Query(None, description="Start date filter (defaults to all time)"),
+    end_date: Optional[date] = Query(None, description="End date filter (defaults to today)"),
+    status: str = Query("confirmed", description="Booking status filter: 'confirmed', 'completed', 'all'"),
+    top: int = Query(10, description="Number of top results to return (5, 10, or 20)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get most popular airlines and destinations based on bookings.
+
+    Returns ranked lists of:
+    - Top airlines by booking count
+    - Top destinations by booking count
+
+    Filters:
+    - start_date/end_date: Date range for bookings (based on created_at)
+    - status: 'confirmed' (default), 'completed', or 'all' (confirmed + completed)
+    - top: Number of results (5, 10, or 20)
+    """
+    from db_models import Booking, BookingStatus
+    from collections import Counter
+
+    # Validate top parameter
+    if top not in [5, 10, 20]:
+        top = 10
+
+    # Build base query
+    query = db.query(Booking)
+
+    # Apply status filter
+    if status == "confirmed":
+        query = query.filter(Booking.status == BookingStatus.CONFIRMED)
+    elif status == "completed":
+        query = query.filter(Booking.status == BookingStatus.COMPLETED)
+    elif status == "all":
+        query = query.filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
+    else:
+        # Default to confirmed
+        query = query.filter(Booking.status == BookingStatus.CONFIRMED)
+
+    # Apply date filters
+    if start_date:
+        query = query.filter(Booking.created_at >= start_date)
+    if end_date:
+        # Include the entire end date
+        from datetime import datetime, timedelta
+        end_datetime = datetime.combine(end_date, datetime.max.time())
+        query = query.filter(Booking.created_at <= end_datetime)
+
+    bookings = query.all()
+
+    # Count airlines (combine departure and return airlines)
+    airline_counter = Counter()
+    for booking in bookings:
+        # Count departure airline
+        if booking.dropoff_airline_name:
+            airline_key = (booking.dropoff_airline_code or "UNK", booking.dropoff_airline_name)
+            airline_counter[airline_key] += 1
+        # Count return airline (if different or same, it's another flight)
+        if booking.pickup_airline_name:
+            airline_key = (booking.pickup_airline_code or "UNK", booking.pickup_airline_name)
+            airline_counter[airline_key] += 1
+
+    # Count destinations (departure destinations and return origins are the same location)
+    destination_counter = Counter()
+    for booking in bookings:
+        # Count departure destination
+        if booking.dropoff_destination:
+            destination_counter[booking.dropoff_destination] += 1
+        # Count return origin (same location, counts as another trip)
+        if booking.pickup_origin:
+            destination_counter[booking.pickup_origin] += 1
+
+    # Get top airlines
+    top_airlines = []
+    total_airline_flights = sum(airline_counter.values())
+    for (code, name), count in airline_counter.most_common(top):
+        percent = round((count / total_airline_flights) * 100, 1) if total_airline_flights > 0 else 0
+        top_airlines.append({
+            "airlineCode": code,
+            "airlineName": name,
+            "count": count,
+            "percent": percent,
+        })
+
+    # Get top destinations
+    top_destinations = []
+    total_destination_trips = sum(destination_counter.values())
+    for destination, count in destination_counter.most_common(top):
+        percent = round((count / total_destination_trips) * 100, 1) if total_destination_trips > 0 else 0
+        top_destinations.append({
+            "destination": destination,
+            "count": count,
+            "percent": percent,
+        })
+
+    return {
+        "meta": {
+            "startDate": start_date.isoformat() if start_date else None,
+            "endDate": end_date.isoformat() if end_date else None,
+            "status": status,
+            "top": top,
+            "totalBookings": len(bookings),
+            "totalAirlineFlights": total_airline_flights,
+            "totalDestinationTrips": total_destination_trips,
+        },
+        "popularAirlines": top_airlines,
+        "popularDestinations": top_destinations,
+    }
+
+
 @app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
 async def send_promo_email_to_subscriber(
     subscriber_id: int,

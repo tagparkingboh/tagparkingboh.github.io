@@ -3566,3 +3566,145 @@
     min-width: 22px;
   }
 }
+
+/* ============================================================================
+   POPULAR AIRLINES & DESTINATIONS REPORT
+   ============================================================================ */
+
+.popular-report-section {
+  padding: 0;
+}
+
+.popular-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 20px;
+}
+
+.popular-chart-container {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.popular-chart-container h4 {
+  margin: 0 0 4px 0;
+  color: #1a1a2e;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.chart-subtitle {
+  color: #6b7280;
+  font-size: 12px;
+  margin: 0 0 16px 0;
+}
+
+.popular-bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.popular-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.popular-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+  flex-shrink: 0;
+}
+
+.popular-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: #f3f4f6;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.popular-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a2e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.popular-code {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.popular-bar-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.popular-bar {
+  height: 100%;
+  min-width: 4px;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.popular-bar-airline {
+  background: linear-gradient(90deg, #f7b32b, #f59e0b);
+}
+
+.popular-bar-destination {
+  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+}
+
+.popular-bar-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  padding-right: 8px;
+  white-space: nowrap;
+}
+
+.popular-report-section .no-data {
+  color: #6b7280;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .popular-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .popular-bar-label {
+    min-width: 140px;
+  }
+
+  .popular-name {
+    max-width: 90px;
+  }
+}

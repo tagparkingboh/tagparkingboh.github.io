@@ -183,6 +183,12 @@ function Admin() {
   const [loadingOccupancy, setLoadingOccupancy] = useState(false)
   const [occupancyView, setOccupancyView] = useState('daily') // 'daily', 'weekly', 'monthly'
 
+  // Popular airlines/destinations report state
+  const [popularData, setPopularData] = useState(null)
+  const [loadingPopular, setLoadingPopular] = useState(false)
+  const [popularStatus, setPopularStatus] = useState('all') // 'confirmed', 'completed', 'all'
+  const [popularTop, setPopularTop] = useState(10) // 5, 10, 20
+
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
 
@@ -285,9 +291,11 @@ function Admin() {
         fetchBookingStats()
       } else if (reportsSubTab === 'occupancy') {
         fetchOccupancyReport(occupancyView)
+      } else if (reportsSubTab === 'popular') {
+        fetchPopularReport()
       }
     }
-  }, [activeTab, token, mapType, reportsSubTab, occupancyView])
+  }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularStatus, popularTop])
 
   const fetchBookingStats = async () => {
     setLoadingStats(true)
@@ -324,6 +332,29 @@ function Admin() {
       console.error('Failed to fetch occupancy report:', err)
     } finally {
       setLoadingOccupancy(false)
+    }
+  }
+
+  const fetchPopularReport = async () => {
+    setLoadingPopular(true)
+    try {
+      const params = new URLSearchParams({
+        status: popularStatus,
+        top: popularTop.toString(),
+      })
+      const response = await fetch(`${API_URL}/api/admin/reports/popular?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPopularData(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch popular report:', err)
+    } finally {
+      setLoadingPopular(false)
     }
   }
 
@@ -3552,6 +3583,12 @@ function Admin() {
                 Occupancy
               </button>
               <button
+                className={`reports-subtab ${reportsSubTab === 'popular' ? 'active' : ''}`}
+                onClick={() => setReportsSubTab('popular')}
+              >
+                Popular Routes
+              </button>
+              <button
                 className={`reports-subtab ${reportsSubTab === 'map' ? 'active' : ''}`}
                 onClick={() => setReportsSubTab('map')}
               >
@@ -4194,6 +4231,106 @@ function Admin() {
                   </>
                 ) : (
                   <p>No occupancy data available.</p>
+                )}
+              </div>
+            )}
+
+            {/* Popular Airlines & Destinations */}
+            {reportsSubTab === 'popular' && (
+              <div className="popular-report-section">
+                <h3>Popular Airlines & Destinations</h3>
+                <p className="reports-description">
+                  View the most popular airlines and destinations based on confirmed and completed bookings.
+                </p>
+
+                {/* Controls */}
+                <div className="chart-controls">
+                  <label>Status:</label>
+                  <select value={popularStatus} onChange={e => setPopularStatus(e.target.value)}>
+                    <option value="all">All (Confirmed + Completed)</option>
+                    <option value="confirmed">Confirmed Only</option>
+                    <option value="completed">Completed Only</option>
+                  </select>
+                  <label style={{ marginLeft: '16px' }}>Top:</label>
+                  <select value={popularTop} onChange={e => setPopularTop(Number(e.target.value))}>
+                    <option value={5}>Top 5</option>
+                    <option value={10}>Top 10</option>
+                    <option value={20}>Top 20</option>
+                  </select>
+                </div>
+
+                {loadingPopular ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading popular routes...</span>
+                  </div>
+                ) : popularData ? (
+                  <div className="popular-charts-grid">
+                    {/* Popular Airlines */}
+                    <div className="popular-chart-container">
+                      <h4>Top Airlines</h4>
+                      <p className="chart-subtitle">Based on {popularData.meta.totalAirlineFlights} flight legs from {popularData.meta.totalBookings} bookings</p>
+                      <div className="popular-bar-chart">
+                        {popularData.popularAirlines.length > 0 ? (
+                          popularData.popularAirlines.map((airline, idx) => {
+                            const maxCount = popularData.popularAirlines[0]?.count || 1
+                            const barWidth = (airline.count / maxCount) * 100
+                            return (
+                              <div key={idx} className="popular-bar-row">
+                                <div className="popular-bar-label">
+                                  <span className="popular-rank">{idx + 1}</span>
+                                  <span className="popular-name">{airline.airlineName}</span>
+                                  <span className="popular-code">({airline.airlineCode})</span>
+                                </div>
+                                <div className="popular-bar-container">
+                                  <div
+                                    className="popular-bar popular-bar-airline"
+                                    style={{ width: `${barWidth}%` }}
+                                  />
+                                  <span className="popular-bar-value">{airline.count} ({airline.percent}%)</span>
+                                </div>
+                              </div>
+                            )
+                          })
+                        ) : (
+                          <p className="no-data">No airline data available</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Popular Destinations */}
+                    <div className="popular-chart-container">
+                      <h4>Top Destinations</h4>
+                      <p className="chart-subtitle">Based on {popularData.meta.totalDestinationTrips} trips from {popularData.meta.totalBookings} bookings</p>
+                      <div className="popular-bar-chart">
+                        {popularData.popularDestinations.length > 0 ? (
+                          popularData.popularDestinations.map((dest, idx) => {
+                            const maxCount = popularData.popularDestinations[0]?.count || 1
+                            const barWidth = (dest.count / maxCount) * 100
+                            return (
+                              <div key={idx} className="popular-bar-row">
+                                <div className="popular-bar-label">
+                                  <span className="popular-rank">{idx + 1}</span>
+                                  <span className="popular-name">{dest.destination}</span>
+                                </div>
+                                <div className="popular-bar-container">
+                                  <div
+                                    className="popular-bar popular-bar-destination"
+                                    style={{ width: `${barWidth}%` }}
+                                  />
+                                  <span className="popular-bar-value">{dest.count} ({dest.percent}%)</span>
+                                </div>
+                              </div>
+                            )
+                          })
+                        ) : (
+                          <p className="no-data">No destination data available</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p>No data available. Try refreshing the page.</p>
                 )}
               </div>
             )}
