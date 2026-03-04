@@ -289,13 +289,15 @@ def process_pending_founder_followups():
 
     db = get_db()
     try:
-        # Calculate cutoff: 1 hour ago
-        cutoff_time = datetime.utcnow() - timedelta(hours=FOUNDER_FOLLOWUP_DELAY_HOURS)
-        start_datetime = datetime(
+        # Calculate cutoff: 1 hour ago (UK time, timezone-aware)
+        uk_tz = pytz.timezone('Europe/London')
+        now_uk = datetime.now(uk_tz)
+        cutoff_time = now_uk - timedelta(hours=FOUNDER_FOLLOWUP_DELAY_HOURS)
+        start_datetime = uk_tz.localize(datetime(
             FOUNDER_FOLLOWUP_START_DATE.year,
             FOUNDER_FOLLOWUP_START_DATE.month,
             FOUNDER_FOLLOWUP_START_DATE.day
-        )
+        ))
 
         from sqlalchemy import or_, and_, not_, exists
         from sqlalchemy.orm import aliased
