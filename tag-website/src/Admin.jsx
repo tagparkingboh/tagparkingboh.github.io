@@ -46,11 +46,15 @@ function Admin() {
     cancelled: true
   })
   const [editFlightDetailsForm, setEditFlightDetailsForm] = useState({
+    dropoff_airline_code: '',
     dropoff_airline_name: '',
     dropoff_flight_number: '',
+    dropoff_destination_code: '',
     dropoff_destination: '',
+    pickup_airline_code: '',
     pickup_airline_name: '',
     pickup_flight_number: '',
+    pickup_origin_code: '',
     pickup_origin: ''
   })
   const [savingFlightDetails, setSavingFlightDetails] = useState(false)
@@ -67,6 +71,10 @@ function Admin() {
   const [showFounderEmailModal, setShowFounderEmailModal] = useState(false)
   const [bookingForFounderEmail, setBookingForFounderEmail] = useState(null)
   const [successMessage, setSuccessMessage] = useState('')
+
+  // Airlines and destinations for dropdowns
+  const [availableAirlines, setAvailableAirlines] = useState([])
+  const [availableDestinations, setAvailableDestinations] = useState([])
 
   // Marketing subscribers state
   const [subscribers, setSubscribers] = useState([])
@@ -201,6 +209,29 @@ function Admin() {
       fetchBookings()
     }
   }, [activeTab, token])
+
+  // Fetch airlines and destinations for Edit Flight Details dropdowns
+  useEffect(() => {
+    const fetchAirlinesAndDestinations = async () => {
+      try {
+        const [airlinesRes, destinationsRes] = await Promise.all([
+          fetch(`${API_URL}/api/booking/airlines`),
+          fetch(`${API_URL}/api/booking/destinations`)
+        ])
+        if (airlinesRes.ok) {
+          const data = await airlinesRes.json()
+          setAvailableAirlines(data.airlines || [])
+        }
+        if (destinationsRes.ok) {
+          const data = await destinationsRes.json()
+          setAvailableDestinations(data.destinations || [])
+        }
+      } catch (error) {
+        console.error('Error fetching airlines/destinations:', error)
+      }
+    }
+    fetchAirlinesAndDestinations()
+  }, [])
 
   // Fetch subscribers when marketing tab is active
   useEffect(() => {
@@ -1217,12 +1248,23 @@ function Admin() {
   const handleEditFlightDetailsClick = (booking, e) => {
     e.stopPropagation()
     setBookingToEditFlight(booking)
+
+    // Try to match existing values to dropdown options, otherwise use 'Other'
+    const matchedDropoffAirline = availableAirlines.find(a => a.name === booking.dropoff_airline_name)
+    const matchedPickupAirline = availableAirlines.find(a => a.name === booking.pickup_airline_name)
+    const matchedDropoffDest = availableDestinations.find(d => d.name === booking.dropoff_destination)
+    const matchedPickupOrigin = availableDestinations.find(d => d.name === booking.pickup_origin)
+
     setEditFlightDetailsForm({
+      dropoff_airline_code: matchedDropoffAirline?.code || (booking.dropoff_airline_name ? 'Other' : ''),
       dropoff_airline_name: booking.dropoff_airline_name || '',
       dropoff_flight_number: booking.dropoff_flight_number || '',
+      dropoff_destination_code: matchedDropoffDest?.code || (booking.dropoff_destination ? 'Other' : ''),
       dropoff_destination: booking.dropoff_destination || '',
+      pickup_airline_code: matchedPickupAirline?.code || (booking.pickup_airline_name ? 'Other' : ''),
       pickup_airline_name: booking.pickup_airline_name || '',
       pickup_flight_number: booking.pickup_flight_number || '',
+      pickup_origin_code: matchedPickupOrigin?.code || (booking.pickup_origin ? 'Other' : ''),
       pickup_origin: booking.pickup_origin || '',
     })
     setShowEditFlightModal(true)
@@ -4402,12 +4444,32 @@ function Admin() {
               <div className="modal-form-row">
                 <div className="modal-form-group">
                   <label>Airline</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. TUI Airways"
-                    value={editFlightDetailsForm.dropoff_airline_name}
-                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, dropoff_airline_name: e.target.value })}
-                  />
+                  <select
+                    value={editFlightDetailsForm.dropoff_airline_code}
+                    onChange={(e) => {
+                      const airline = availableAirlines.find(a => a.code === e.target.value)
+                      setEditFlightDetailsForm({
+                        ...editFlightDetailsForm,
+                        dropoff_airline_code: e.target.value,
+                        dropoff_airline_name: airline?.name || ''
+                      })
+                    }}
+                  >
+                    <option value="">Select airline</option>
+                    {availableAirlines.filter(a => a.code !== 'Other').map(airline => (
+                      <option key={airline.code} value={airline.code}>{airline.name}</option>
+                    ))}
+                    <option value="Other">Other</option>
+                  </select>
+                  {editFlightDetailsForm.dropoff_airline_code === 'Other' && (
+                    <input
+                      type="text"
+                      placeholder="Enter airline name"
+                      value={editFlightDetailsForm.dropoff_airline_name}
+                      onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, dropoff_airline_name: e.target.value })}
+                      style={{ marginTop: '8px' }}
+                    />
+                  )}
                 </div>
                 <div className="modal-form-group">
                   <label>Flight Number</label>
@@ -4420,12 +4482,32 @@ function Admin() {
                 </div>
                 <div className="modal-form-group">
                   <label>Destination</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Dalaman Airport"
-                    value={editFlightDetailsForm.dropoff_destination}
-                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, dropoff_destination: e.target.value })}
-                  />
+                  <select
+                    value={editFlightDetailsForm.dropoff_destination_code}
+                    onChange={(e) => {
+                      const dest = availableDestinations.find(d => d.code === e.target.value)
+                      setEditFlightDetailsForm({
+                        ...editFlightDetailsForm,
+                        dropoff_destination_code: e.target.value,
+                        dropoff_destination: dest?.name || ''
+                      })
+                    }}
+                  >
+                    <option value="">Select destination</option>
+                    {availableDestinations.filter(d => d.code !== 'Other').map(dest => (
+                      <option key={dest.code} value={dest.code}>{dest.name}</option>
+                    ))}
+                    <option value="Other">Other</option>
+                  </select>
+                  {editFlightDetailsForm.dropoff_destination_code === 'Other' && (
+                    <input
+                      type="text"
+                      placeholder="Enter destination"
+                      value={editFlightDetailsForm.dropoff_destination}
+                      onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, dropoff_destination: e.target.value })}
+                      style={{ marginTop: '8px' }}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -4433,12 +4515,32 @@ function Admin() {
               <div className="modal-form-row">
                 <div className="modal-form-group">
                   <label>Airline</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. TUI Airways"
-                    value={editFlightDetailsForm.pickup_airline_name}
-                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, pickup_airline_name: e.target.value })}
-                  />
+                  <select
+                    value={editFlightDetailsForm.pickup_airline_code}
+                    onChange={(e) => {
+                      const airline = availableAirlines.find(a => a.code === e.target.value)
+                      setEditFlightDetailsForm({
+                        ...editFlightDetailsForm,
+                        pickup_airline_code: e.target.value,
+                        pickup_airline_name: airline?.name || ''
+                      })
+                    }}
+                  >
+                    <option value="">Select airline</option>
+                    {availableAirlines.filter(a => a.code !== 'Other').map(airline => (
+                      <option key={airline.code} value={airline.code}>{airline.name}</option>
+                    ))}
+                    <option value="Other">Other</option>
+                  </select>
+                  {editFlightDetailsForm.pickup_airline_code === 'Other' && (
+                    <input
+                      type="text"
+                      placeholder="Enter airline name"
+                      value={editFlightDetailsForm.pickup_airline_name}
+                      onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, pickup_airline_name: e.target.value })}
+                      style={{ marginTop: '8px' }}
+                    />
+                  )}
                 </div>
                 <div className="modal-form-group">
                   <label>Flight Number</label>
@@ -4451,12 +4553,32 @@ function Admin() {
                 </div>
                 <div className="modal-form-group">
                   <label>Origin</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Dalaman Airport"
-                    value={editFlightDetailsForm.pickup_origin}
-                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, pickup_origin: e.target.value })}
-                  />
+                  <select
+                    value={editFlightDetailsForm.pickup_origin_code}
+                    onChange={(e) => {
+                      const origin = availableDestinations.find(d => d.code === e.target.value)
+                      setEditFlightDetailsForm({
+                        ...editFlightDetailsForm,
+                        pickup_origin_code: e.target.value,
+                        pickup_origin: origin?.name || ''
+                      })
+                    }}
+                  >
+                    <option value="">Select origin</option>
+                    {availableDestinations.filter(d => d.code !== 'Other').map(dest => (
+                      <option key={dest.code} value={dest.code}>{dest.name}</option>
+                    ))}
+                    <option value="Other">Other</option>
+                  </select>
+                  {editFlightDetailsForm.pickup_origin_code === 'Other' && (
+                    <input
+                      type="text"
+                      placeholder="Enter origin"
+                      value={editFlightDetailsForm.pickup_origin}
+                      onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, pickup_origin: e.target.value })}
+                      style={{ marginTop: '8px' }}
+                    />
+                  )}
                 </div>
               </div>
             </div>
