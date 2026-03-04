@@ -2310,6 +2310,8 @@ async def get_abandoned_leads(
             "created_at": customer.created_at.isoformat() if customer.created_at else None,
             "booking_attempts": len(bookings),
             "last_booking_status": bookings[0].status.value if bookings else None,
+            "founder_followup_sent": customer.founder_followup_sent,
+            "founder_followup_sent_at": customer.founder_followup_sent_at.isoformat() if customer.founder_followup_sent_at else None,
         })
 
     return {
