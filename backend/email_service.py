@@ -564,33 +564,14 @@ def send_founder_followup_email(
     founder_name = os.getenv("FOUNDER_NAME", "Kristian")
     founder_email = os.getenv("FOUNDER_EMAIL", "kristian@tagparking.co.uk")
 
-    # Plain text style email - looks personal, not automated
-    html_content = f"""<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.6;">
-<p>Hi {first_name},</p>
+    # Load template from file
+    template_path = os.path.join(os.path.dirname(__file__), "email_templates", "founder_followup_email.html")
+    with open(template_path, "r") as f:
+        html_content = f.read()
 
-<p>My name is {founder_name} and I am the owner of Tag parking. Thank you so much for visiting our website and supporting our business.</p>
-
-<p>I noticed you started a booking but didn't complete it, so I just wanted to check if there was anything that stopped you, or if you were just browsing.</p>
-
-<p>If there is anything I can help with or if you have any questions, please do let me know.</p>
-
-<p>We'd love to help you save up to 60% on your parking.</p>
-
-<p>Kindest regards,</p>
-
-<p>{founder_name}</p>
-
-<p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ccc;">
-<strong>{founder_name} Andrews-Brown</strong><br>
-Founder | Tag Parking<br>
-07739106145<br>
-<a href="https://tagparking.co.uk" style="color: #0066cc;">tagparking.co.uk</a>
-</p>
-
-<p style="margin-top: 20px;">
-<img src="https://hs-442431654.f.hubspotstarter-ap1.net/hub/442431654/hubfs/Tag%20logo%20strapline%20MASTER%20BLACK.png?width=252&amp;upscale=true&amp;name=Tag%20logo%20strapline%20MASTER%20BLACK.png" alt="TAG - Book it. Bag it. Tag it." width="126" style="max-width: 126px;">
-</p>
-</div>"""
+    # Replace placeholders
+    html_content = html_content.replace("{{first_name}}", first_name)
+    html_content = html_content.replace("{{founder_name}}", founder_name)
 
     print(f"[EMAIL] send_founder_followup_email called for: {email}, subject: {subject}")
     if not SENDGRID_API_KEY:
