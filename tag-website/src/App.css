@@ -736,6 +736,10 @@
   width: 100%;
 }
 
+.pricing-btn-outside {
+  margin-top: 2rem;
+}
+
 .pricing-card-unified .pricing-features {
   text-align: left;
   max-width: 350px;
@@ -1677,6 +1681,10 @@
   .pricing-save {
     font-size: 16px;
     padding: 1rem;
+  }
+
+  .pricing-btn-outside {
+    margin-top: 1.5rem;
   }
 
   .pricing-card-unified .pricing-features {

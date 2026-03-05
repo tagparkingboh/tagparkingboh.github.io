@@ -294,9 +294,9 @@ function HomePage() {
           </ul>
 
           <p className="pricing-save">Save up to 60% off official airport parking</p>
-
-          <Link to="/tag-it" className="pricing-btn" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_section' })}>Book it <span>→</span></Link>
         </div>
+
+        <Link to="/tag-it" className="pricing-btn pricing-btn-outside" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_section' })}>Book it <span>→</span></Link>
       </section>
 
       {/* Features Banner Section */}
