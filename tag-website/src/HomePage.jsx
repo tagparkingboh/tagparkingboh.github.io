@@ -277,11 +277,21 @@ function HomePage() {
           <div className="pricing-options">
             <div className="pricing-option">
               <span className="pricing-label">1 WEEK TRIP</span>
-              <p className="pricing-from">Is <span className="pricing-option-price">£{prices.week1}</span></p>
+              <p className="pricing-from-text">Is</p>
+              <p className="pricing-option-amount">
+                <span className="currency">£</span>
+                <span className="amount">{prices.week1}</span>
+              </p>
+              <p className="pricing-payment-text">one off payment</p>
             </div>
             <div className="pricing-option">
               <span className="pricing-label">2 WEEK TRIP</span>
-              <p className="pricing-from">Is <span className="pricing-option-price">£{prices.week2}</span></p>
+              <p className="pricing-from-text">Is</p>
+              <p className="pricing-option-amount">
+                <span className="currency">£</span>
+                <span className="amount">{prices.week2}</span>
+              </p>
+              <p className="pricing-payment-text">one off payment</p>
             </div>
           </div>
 
