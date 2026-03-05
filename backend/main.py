@@ -6323,7 +6323,7 @@ async def get_admin_pricing(
         "days_10_11_price": float(settings.days_10_11_price) if settings.days_10_11_price else 119.0,
         "days_12_13_price": float(settings.days_12_13_price) if settings.days_12_13_price else 130.0,
         "week2_base_price": float(settings.week2_base_price) if settings.week2_base_price else 140.0,
-        "tier_increment": float(settings.tier_increment) if settings.tier_increment else 10.0,
+        "tier_increment": float(settings.tier_increment) if settings.tier_increment is not None else 10.0,
         "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
         "updated_by": settings.updater.first_name if settings.updater else None,
     }
