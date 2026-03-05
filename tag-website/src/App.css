@@ -611,6 +611,12 @@
   flex: 1;
   max-width: 280px;
   text-align: left;
+  transition: transform 0.2s ease;
+  cursor: pointer;
+}
+
+.pricing-option:hover {
+  transform: scale(1.05);
 }
 
 .pricing-label {
