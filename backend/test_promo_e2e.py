@@ -28,14 +28,62 @@ from datetime import datetime, timedelta
 import time
 import os
 import sys
+import psycopg2
 
 # Configuration
 HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
 STAGING_URL = "https://staging-tagparking.netlify.app/tag-it"
 
+# Staging database connection
+STAGING_DB = {
+    "host": "switchback.proxy.rlwy.net",
+    "port": 25567,
+    "user": "postgres",
+    "password": "oviYXmjpSwWKHejteMgdIxXTorTtGdUl",
+    "dbname": "railway"
+}
+
 # Test promo codes (must exist in staging database)
 TEST_PROMO_10 = "TEST10OFF"      # 10% off promo
 TEST_PROMO_FREE = "TESTFREE"     # 100% off (FREE) promo
+
+
+def reset_promo_code(promo_code: str, promo_type: str = "10") -> bool:
+    """Reset a promo code after successful use so it can be reused.
+
+    Args:
+        promo_code: The promo code to reset
+        promo_type: "10" for 10% promo, "free" for FREE promo
+    """
+    try:
+        conn = psycopg2.connect(**STAGING_DB)
+        cur = conn.cursor()
+
+        if promo_type == "10":
+            cur.execute('''
+                UPDATE marketing_subscribers
+                SET promo_10_used = false,
+                    promo_10_used_at = NULL,
+                    promo_10_used_booking_id = NULL
+                WHERE promo_10_code = %s
+            ''', (promo_code,))
+        else:  # free
+            cur.execute('''
+                UPDATE marketing_subscribers
+                SET promo_free_used = false,
+                    promo_free_used_at = NULL,
+                    promo_free_used_booking_id = NULL
+                WHERE promo_free_code = %s
+            ''', (promo_code,))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"    Promo code {promo_code} reset for reuse")
+        return True
+    except Exception as e:
+        print(f"    Warning: Could not reset promo code: {e}")
+        return False
 
 # Test customer details
 CUSTOMER = {
@@ -489,6 +537,8 @@ def test_10_percent_promo(page: Page) -> bool:
             print(f"\n  SUCCESS: {test_name}")
             if booking_ref:
                 print(f"  Booking Reference: {booking_ref}")
+            # Reset promo code for reuse in future tests
+            reset_promo_code(TEST_PROMO_10, "10")
             return True
         else:
             print(f"\n  FAILED: {test_name}")
@@ -558,6 +608,8 @@ def test_free_promo(page: Page) -> bool:
             print(f"\n  SUCCESS: {test_name}")
             if booking_ref:
                 print(f"  Booking Reference: {booking_ref}")
+            # Reset promo code for reuse in future tests
+            reset_promo_code(TEST_PROMO_FREE, "free")
             return True
         else:
             print(f"\n  FAILED: {test_name}")
