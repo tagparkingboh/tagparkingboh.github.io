@@ -3,6 +3,13 @@
 Create automated test bookings for TAG Parking staging environment.
 Uses Playwright to automate the browser booking flow with Stripe test card.
 
+Booking Flow:
+1. Welcome modal (dismiss)
+2. Step 1: Trip Details (flight selection, dates, times)
+3. Step 2: Package Selection (pricing)
+4. Step 3: Your Details (contact, billing, vehicle)
+5. Step 4: Payment (Stripe)
+
 Tests cover:
 - Extended stays (15, 20, 30, 60 days)
 - Overnight flights (23:35, 23:45, 23:50 landings)
@@ -345,135 +352,16 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         page.goto(STAGING_URL, wait_until="networkidle")
         time.sleep(3)
 
-        # ============ STEP 1: Your Details ============
-        print("  Step 1: Filling customer details...")
-
-        # Fill contact information
-        page.locator("#firstName").fill(CUSTOMER["first_name"])
-        time.sleep(0.2)
-        page.locator("#lastName").fill(CUSTOMER["last_name"])
-        time.sleep(0.2)
-        page.locator("#email").fill(CUSTOMER["email"])
-        time.sleep(0.2)
-
-        # Phone - using the PhoneInput component
-        # The component already has +44, so we need to click into it and type the number
-        # First clear any existing value, then type the full number with country code
-        phone_input = page.locator(".phone-input input[type='tel']")
-        phone_input.click()
-        time.sleep(0.2)
-        # Select all and type the full number including country code
-        phone_input.fill("+44" + CUSTOMER["phone"])
-        time.sleep(0.3)
-
-        # Fill billing address - enter postcode and use manual entry
-        page.locator("#billingPostcode").fill(CUSTOMER["postcode"])
-        time.sleep(0.3)
-
-        # Click Find Address button
-        page.locator("button:has-text('Find Address')").click()
-        time.sleep(2)
-
-        # If address select appears, select first address or use manual entry
-        try:
-            if page.locator("#addressSelect").is_visible(timeout=3000):
-                # Select first available address
-                page.locator("#addressSelect").select_option(index=1)
-                time.sleep(0.5)
-            else:
-                # Click manual entry link
-                page.locator("text=Enter address manually").click()
-                time.sleep(0.3)
-        except:
-            # Use manual entry if address lookup fails
-            try:
-                page.locator("text=Enter address manually").click()
-                time.sleep(0.3)
-            except:
-                pass
-
-        # Fill address fields if visible/empty
-        if not page.locator("#billingAddress1").input_value():
-            page.locator("#billingAddress1").fill(CUSTOMER["address1"])
-        time.sleep(0.2)
-
-        if not page.locator("#billingCity").input_value():
-            page.locator("#billingCity").fill(CUSTOMER["city"])
-        time.sleep(0.2)
-
-        if not page.locator("#billingCounty").input_value():
-            page.locator("#billingCounty").fill(CUSTOMER["county"])
-        time.sleep(0.2)
-
-        # Vehicle Information
-        print("  Filling vehicle details...")
-        page.locator("#registration").fill(VEHICLE["registration"])
-        time.sleep(0.3)
-
-        # Click DVLA Lookup button (the validate-btn, not back-to-lookup-link)
-        page.locator("button.validate-btn").click()
-        time.sleep(2)
-
-        # After DVLA lookup, the make may be a readonly input (if DVLA found it) or a select
-        # Check if DVLA verified the vehicle (readonly input) or if we need to select manually
-        make_readonly = page.locator("#make.readonly-input")
-        make_select = page.locator("select#make")
-
-        if make_readonly.is_visible(timeout=2000):
-            # DVLA lookup succeeded - make is readonly, skip to colour/model
-            print("    DVLA verified make:", make_readonly.input_value())
-        elif make_select.is_visible(timeout=2000):
-            # Need to select make manually
-            try:
-                make_select.select_option(label=VEHICLE["make"])
-                time.sleep(0.5)
-            except:
-                make_select.select_option(value=VEHICLE["make"])
-                time.sleep(0.5)
-
-        # Fill colour if needed (may be readonly if DVLA found it)
-        colour_readonly = page.locator("#colour.readonly-input")
-        colour_input = page.locator("#colour:not(.readonly-input)")
-
-        if colour_readonly.is_visible(timeout=1000):
-            print("    DVLA verified colour:", colour_readonly.input_value())
-        elif colour_input.is_visible(timeout=1000):
-            colour_input.fill(VEHICLE["colour"])
-            time.sleep(0.3)
-
-        # Select model from dropdown - this should always be a select
-        print("    Selecting model...")
-        time.sleep(1)  # Wait for model dropdown to appear
-        model_select = page.locator("select#model")
-        if model_select.is_visible(timeout=3000):
-            try:
-                model_select.select_option(label=VEHICLE["model"])
-                print(f"    Selected model: {VEHICLE['model']}")
-            except:
-                # Try Other if specific model not available
-                print(f"    Model {VEHICLE['model']} not found, selecting Other...")
-                model_select.select_option(value="Other")
-                time.sleep(0.3)
-                # Fill custom model
-                page.locator("#customModel").fill(VEHICLE["model"])
-            time.sleep(0.5)
-        else:
-            print("    Model dropdown not visible yet")
-
-        # Click Continue to Trip Details (first button on Step 1 form)
-        print("  Proceeding to Step 2...")
-        page.locator("button.next-btn:has-text('Continue to Trip Details')").click()
-        time.sleep(2)
-
-        # Handle Welcome Modal - it appears after Step 1 with another "Continue to Trip Details" button
+        # ============ WELCOME MODAL (shows first) ============
+        print("  Handling welcome modal...")
         welcome_modal_btn = page.locator(".welcome-modal-btn")
-        if welcome_modal_btn.is_visible(timeout=3000):
+        if welcome_modal_btn.is_visible(timeout=5000):
             print("    Closing welcome modal...")
             welcome_modal_btn.click()
             time.sleep(1)
 
-        # ============ STEP 2: Trip Details ============
-        print("  Step 2: Filling trip details...")
+        # ============ STEP 1: Trip Details ============
+        print("  Step 1: Filling trip details...")
 
         # Select Drop-off Date using the date picker
         print("    Selecting drop-off date...")
@@ -590,8 +478,8 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
             arrival_time_input.fill(test_case["return_time"])
         time.sleep(1)
 
-        # ============ STEP 3: Package Selection ============
-        print("  Proceeding to Step 3 (Package Selection)...")
+        # ============ STEP 2: Package Selection ============
+        print("  Proceeding to Step 2 (Package Selection)...")
 
         # Click Continue to Package Selection button
         package_btn = page.locator("button:has-text('Continue to Package Selection')")
@@ -599,11 +487,122 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
             package_btn.click()
             time.sleep(3)
 
-        # Step 3 shows the pricing and package info
+        # Step 2 shows the pricing and package info
         # Wait for pricing to load
         time.sleep(2)
 
-        # Click Continue to Payment button
+        # Click Continue to Your Details button
+        print("  Proceeding to Step 3 (Your Details)...")
+        continue_details_btn = page.locator("button:has-text('Continue to Your Details')")
+        if continue_details_btn.is_visible(timeout=5000):
+            continue_details_btn.click()
+            time.sleep(3)
+
+        # ============ STEP 3: Your Details (Customer + Billing + Vehicle) ============
+        print("  Step 3: Filling customer details...")
+
+        # Fill contact information
+        page.locator("#firstName").fill(CUSTOMER["first_name"])
+        time.sleep(0.2)
+        page.locator("#lastName").fill(CUSTOMER["last_name"])
+        time.sleep(0.2)
+        page.locator("#email").fill(CUSTOMER["email"])
+        time.sleep(0.2)
+
+        # Phone - using the PhoneInput component
+        phone_input = page.locator(".phone-input input[type='tel']")
+        phone_input.click()
+        time.sleep(0.2)
+        phone_input.fill("+44" + CUSTOMER["phone"])
+        time.sleep(0.3)
+
+        # Fill billing address - enter postcode and use manual entry
+        page.locator("#billingPostcode").fill(CUSTOMER["postcode"])
+        time.sleep(0.3)
+
+        # Click Find Address button
+        page.locator("button:has-text('Find Address')").click()
+        time.sleep(2)
+
+        # If address select appears, select first address or use manual entry
+        try:
+            if page.locator("#addressSelect").is_visible(timeout=3000):
+                page.locator("#addressSelect").select_option(index=1)
+                time.sleep(0.5)
+            else:
+                page.locator("text=Enter address manually").click()
+                time.sleep(0.3)
+        except:
+            try:
+                page.locator("text=Enter address manually").click()
+                time.sleep(0.3)
+            except:
+                pass
+
+        # Fill address fields if visible/empty
+        if not page.locator("#billingAddress1").input_value():
+            page.locator("#billingAddress1").fill(CUSTOMER["address1"])
+        time.sleep(0.2)
+
+        if not page.locator("#billingCity").input_value():
+            page.locator("#billingCity").fill(CUSTOMER["city"])
+        time.sleep(0.2)
+
+        if not page.locator("#billingCounty").input_value():
+            page.locator("#billingCounty").fill(CUSTOMER["county"])
+        time.sleep(0.2)
+
+        # Vehicle Information
+        print("  Filling vehicle details...")
+        page.locator("#registration").fill(VEHICLE["registration"])
+        time.sleep(0.3)
+
+        # Click DVLA Lookup button
+        page.locator("button.validate-btn").click()
+        time.sleep(2)
+
+        # Check if DVLA verified the vehicle or if we need to select manually
+        make_readonly = page.locator("#make.readonly-input")
+        make_select = page.locator("select#make")
+
+        if make_readonly.is_visible(timeout=2000):
+            print("    DVLA verified make:", make_readonly.input_value())
+        elif make_select.is_visible(timeout=2000):
+            try:
+                make_select.select_option(label=VEHICLE["make"])
+                time.sleep(0.5)
+            except:
+                make_select.select_option(value=VEHICLE["make"])
+                time.sleep(0.5)
+
+        # Fill colour if needed
+        colour_readonly = page.locator("#colour.readonly-input")
+        colour_input = page.locator("#colour:not(.readonly-input)")
+
+        if colour_readonly.is_visible(timeout=1000):
+            print("    DVLA verified colour:", colour_readonly.input_value())
+        elif colour_input.is_visible(timeout=1000):
+            colour_input.fill(VEHICLE["colour"])
+            time.sleep(0.3)
+
+        # Select model from dropdown
+        print("    Selecting model...")
+        time.sleep(1)
+        model_select = page.locator("select#model")
+        if model_select.is_visible(timeout=3000):
+            try:
+                model_select.select_option(label=VEHICLE["model"])
+                print(f"    Selected model: {VEHICLE['model']}")
+            except:
+                print(f"    Model {VEHICLE['model']} not found, selecting Other...")
+                model_select.select_option(value="Other")
+                time.sleep(0.3)
+                page.locator("#customModel").fill(VEHICLE["model"])
+            time.sleep(0.5)
+        else:
+            print("    Model dropdown not visible yet")
+
+        # Click Continue to Payment
         print("  Proceeding to Step 4 (Payment)...")
         continue_payment_btn = page.locator("button:has-text('Continue to Payment')")
         if continue_payment_btn.is_visible(timeout=5000):
