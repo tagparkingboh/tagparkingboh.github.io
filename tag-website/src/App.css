@@ -568,6 +568,16 @@
 
 .pricing-headline {
   margin-bottom: 2rem;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 2rem;
+  display: inline-block;
+  transition: transform 0.2s ease;
+  cursor: pointer;
+}
+
+.pricing-headline:hover {
+  transform: scale(1.05);
 }
 
 .pricing-perday-label {
