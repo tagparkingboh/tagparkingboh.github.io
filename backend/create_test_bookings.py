@@ -30,6 +30,7 @@ import time
 import random
 import os
 import sys
+import psycopg2
 
 # Configuration
 HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
@@ -64,6 +65,57 @@ STRIPE_TEST_CARD = {
     "expiry": "10/69",
     "cvc": "549",
 }
+
+# Staging database for promo code reset
+STAGING_DB = {
+    "host": "switchback.proxy.rlwy.net",
+    "port": 25567,
+    "user": "postgres",
+    "password": "oviYXmjpSwWKHejteMgdIxXTorTtGdUl",
+    "dbname": "railway"
+}
+
+# Test promo codes
+TEST_PROMO_10 = "TEST10OFF"      # 10% off promo
+TEST_PROMO_FREE = "TESTFREE"     # 100% off (FREE) promo
+
+
+def reset_promo_code(promo_code: str, promo_type: str = "10") -> bool:
+    """Reset a promo code after successful use so it can be reused.
+
+    Args:
+        promo_code: The promo code to reset
+        promo_type: "10" for 10% promo, "free" for FREE promo
+    """
+    try:
+        conn = psycopg2.connect(**STAGING_DB)
+        cur = conn.cursor()
+
+        if promo_type == "10":
+            cur.execute('''
+                UPDATE marketing_subscribers
+                SET promo_10_used = false,
+                    promo_10_used_at = NULL,
+                    promo_10_used_booking_id = NULL
+                WHERE promo_10_code = %s
+            ''', (promo_code,))
+        else:  # free
+            cur.execute('''
+                UPDATE marketing_subscribers
+                SET promo_free_used = false,
+                    promo_free_used_at = NULL,
+                    promo_free_used_booking_id = NULL
+                WHERE promo_free_code = %s
+            ''', (promo_code,))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"    Promo code {promo_code} reset for reuse")
+        return True
+    except Exception as e:
+        print(f"    Warning: Could not reset promo code: {e}")
+        return False
 
 # Test cases - reduced set for initial testing
 TEST_CASES = [
@@ -267,6 +319,39 @@ TEST_CASES = [
         "destination_code": "TFS",
         "flight_number": "301",
         "return_flight_number": "302",
+    },
+    # ============ PROMO CODE TESTS ============
+    # 10% OFF Promo Code Test
+    {
+        "name": "10% OFF Promo Code (7-day trip)",
+        "days_from_now": 25,
+        "duration": 7,
+        "dropoff_time": "10:00",
+        "return_time": "14:00",
+        "airline": "Ryanair",
+        "airline_code": "FR",
+        "destination": "Alicante",
+        "destination_code": "ALC",
+        "flight_number": "1010",
+        "return_flight_number": "1011",
+        "promo_code": "TEST10OFF",
+        "promo_type": "10",
+    },
+    # FREE Parking Promo Code Test (7 days = completely free)
+    {
+        "name": "FREE Promo Code (7-day trip)",
+        "days_from_now": 30,
+        "duration": 7,
+        "dropoff_time": "09:00",
+        "return_time": "15:00",
+        "airline": "easyJet",
+        "airline_code": "U2",
+        "destination": "Malaga",
+        "destination_code": "AGP",
+        "flight_number": "2020",
+        "return_flight_number": "2021",
+        "promo_code": "TESTFREE",
+        "promo_type": "free",
     },
 ]
 
@@ -612,6 +697,34 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         # ============ STEP 4: Payment ============
         print("  Step 4: Payment...")
 
+        # Apply promo code if this test case has one
+        promo_code = test_case.get("promo_code")
+        promo_type = test_case.get("promo_type", "10")
+        if promo_code:
+            print(f"    Applying promo code: {promo_code}")
+            time.sleep(1)
+
+            # Find and fill promo code input
+            promo_input = page.locator(".promo-code-input input, input[placeholder*='promo' i]")
+            if promo_input.is_visible(timeout=5000):
+                promo_input.fill(promo_code)
+                time.sleep(0.5)
+
+                # Click Apply button
+                apply_btn = page.locator(".promo-apply-btn, button:has-text('Apply')")
+                if apply_btn.is_visible(timeout=3000):
+                    apply_btn.click()
+                    time.sleep(2)
+
+                    # Check for success
+                    promo_success = page.locator(".promo-success, .promo-code-applied, text=/applied|valid|discount/i")
+                    if promo_success.is_visible(timeout=5000):
+                        print(f"    Promo code {promo_code} applied successfully!")
+                    else:
+                        print(f"    Warning: Could not confirm promo code applied")
+            else:
+                print("    Warning: Promo code input not found")
+
         # Accept terms checkbox
         print("    Accepting terms...")
         terms_checkbox = page.locator("input[name='terms']")
@@ -789,6 +902,11 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                 print(f"  ✓ Booking created! Reference: {booking_ref}")
             else:
                 print(f"  ✓ Booking created successfully!")
+
+            # Reset promo code for reuse if this was a promo test
+            if promo_code:
+                reset_promo_code(promo_code, promo_type)
+
             return True
         else:
             print(f"  ✗ Could not confirm booking - checking page state...")
