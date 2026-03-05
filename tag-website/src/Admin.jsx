@@ -325,11 +325,11 @@ function Admin() {
       ])
       if (resultsRes.ok) {
         const data = await resultsRes.json()
-        setTestResults(data)
+        setTestResults(data.test_runs || [])
       }
       if (latestRes.ok) {
         const data = await latestRes.json()
-        setLatestTestRun(data)
+        setLatestTestRun(data.test_run)
       }
     } catch (err) {
       console.error('Failed to fetch test results:', err)
