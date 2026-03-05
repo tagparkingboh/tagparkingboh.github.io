@@ -276,12 +276,12 @@ function HomePage() {
 
           <div className="pricing-options">
             <div className="pricing-option">
-              <span className="pricing-label">1 week price is</span>
-              <p className="pricing-from"><span className="pricing-option-price">£{prices.week1}</span></p>
+              <span className="pricing-label">1 WEEK TRIP</span>
+              <p className="pricing-from">Is <span className="pricing-option-price">£{prices.week1}</span></p>
             </div>
             <div className="pricing-option">
-              <span className="pricing-label">2 week price is</span>
-              <p className="pricing-from"><span className="pricing-option-price">£{prices.week2}</span></p>
+              <span className="pricing-label">2 WEEK TRIP</span>
+              <p className="pricing-from">Is <span className="pricing-option-price">£{prices.week2}</span></p>
             </div>
           </div>
 
