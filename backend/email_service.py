@@ -207,6 +207,7 @@ def send_booking_confirmation_email(
     pickup_date: str,
     pickup_time: str,
     flight_arrival_time: str,
+    flight_departure_time: str,
     departure_flight: str,
     return_flight: str,
     vehicle_make: str,
@@ -292,6 +293,7 @@ def send_booking_confirmation_email(
         html_content = html_content.replace("{{PICKUP_DATE}}", pickup_date)
         html_content = html_content.replace("{{PICKUP_TIME}}", pickup_time)
         html_content = html_content.replace("{{FLIGHT_ARRIVAL_TIME}}", flight_arrival_time)
+        html_content = html_content.replace("{{FLIGHT_DEPARTURE_TIME}}", flight_departure_time)
         html_content = html_content.replace("{{DEPARTURE_FLIGHT}}", departure_flight)
         html_content = html_content.replace("{{RETURN_FLIGHT}}", return_flight)
         html_content = html_content.replace("{{VEHICLE_MAKE}}", vehicle_make)

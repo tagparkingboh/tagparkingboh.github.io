@@ -1356,6 +1356,7 @@ async def create_manual_booking(
                 pickup_date=pickup_date_formatted,
                 pickup_time=request.pickup_time,
                 flight_arrival_time=request.flight_arrival_time or "",
+                flight_departure_time=request.flight_departure_time or "",
                 departure_flight=departure_flight_str,
                 return_flight=return_flight_str,
                 vehicle_registration=request.registration.upper(),
@@ -1484,6 +1485,7 @@ async def mark_booking_paid(
         pickup_time_str = booking.pickup_time_from.strftime("%H:%M") if booking.pickup_time_from else (booking.pickup_time.strftime("%H:%M") if booking.pickup_time else "TBC")
         # Flight arrival time for email
         flight_arrival_time_str = booking.flight_arrival_time.strftime("%H:%M") if booking.flight_arrival_time else ""
+        flight_departure_time_str = booking.flight_departure_time.strftime("%H:%M") if booking.flight_departure_time else ""
 
         # Package name based on duration
         if booking.package == "daily":
@@ -1553,6 +1555,7 @@ async def mark_booking_paid(
             pickup_date=pickup_date_str,
             pickup_time=pickup_time_str,
             flight_arrival_time=flight_arrival_time_str,
+            flight_departure_time=flight_departure_time_str,
             departure_flight=departure_flight,
             return_flight=return_flight,
             vehicle_make=booking.vehicle.make,
@@ -1975,6 +1978,11 @@ async def resend_booking_confirmation_email(
         # Fallback to pickup_time which stores landing time
         flight_arrival_time_str = booking.pickup_time.strftime("%H:%M")
 
+    # Get flight departure time
+    flight_departure_time_str = ""
+    if booking.flight_departure_time:
+        flight_departure_time_str = booking.flight_departure_time.strftime("%H:%M")
+
     # Format dates
     dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
     pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
@@ -2050,6 +2058,7 @@ async def resend_booking_confirmation_email(
         pickup_date=pickup_date_str,
         pickup_time=pickup_time_str,
         flight_arrival_time=flight_arrival_time_str,
+        flight_departure_time=flight_departure_time_str,
         departure_flight=departure_flight,
         return_flight=return_flight,
         vehicle_make=booking.vehicle.make,
@@ -4965,6 +4974,9 @@ async def create_payment(
                     # Fallback to pickup_time which stores landing time
                     flight_arrival_time_str = pickup_time.strftime("%H:%M")
 
+                # Get flight departure time for email
+                flight_departure_time_str = request.flight_departure_time or ""
+
                 # Package name - use flexible duration format
                 duration_days = (pickup_date - dropoff_date).days
                 package_name = f"{duration_days} day{'s' if duration_days != 1 else ''}"
@@ -5021,6 +5033,7 @@ async def create_payment(
                     pickup_date=pickup_date_str,
                     pickup_time=pickup_time_str,
                     flight_arrival_time=flight_arrival_time_str,
+                    flight_departure_time=flight_departure_time_str,
                     departure_flight=departure_flight,
                     return_flight=return_flight,
                     vehicle_make=vehicle_make,
@@ -5363,6 +5376,11 @@ async def stripe_webhook(
                     # Fallback to pickup_time which stores landing time
                     flight_arrival_time_str = booking.pickup_time.strftime("%H:%M")
 
+                # Get flight departure time for email
+                flight_departure_time_str = ""
+                if booking.flight_departure_time:
+                    flight_departure_time_str = booking.flight_departure_time.strftime("%H:%M")
+
                 # Format dates nicely
                 dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
                 pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
@@ -5425,6 +5443,7 @@ async def stripe_webhook(
                     pickup_date=pickup_date_str,
                     pickup_time=pickup_time_str,
                     flight_arrival_time=flight_arrival_time_str,
+                    flight_departure_time=flight_departure_time_str,
                     departure_flight=departure_flight,
                     return_flight=return_flight,
                     vehicle_make=booking.vehicle.make,

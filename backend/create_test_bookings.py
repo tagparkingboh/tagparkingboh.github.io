@@ -625,30 +625,44 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         time.sleep(3)
 
         # Dismiss Stripe Link popup if it appears (for emails registered with Link)
-        # The Link modal has an X button (SVG icon) to close it
+        # The Link modal needs to be closed so we can use the card form
         time.sleep(2)
 
         try:
-            # The Link popup is inside a Stripe iframe
-            # Look for the close button - it's a button with an SVG X icon
-            # Try finding it in all frames
             link_closed = False
+
+            # First try pressing Escape multiple times - this often dismisses Link
+            for _ in range(3):
+                page.keyboard.press("Escape")
+                time.sleep(0.3)
+
+            # Try clicking outside the modal area (top-left corner of page)
+            try:
+                page.mouse.click(10, 10)
+                time.sleep(0.5)
+            except:
+                pass
+
+            # Look for close/back buttons in all frames
             for frame in page.frames:
                 try:
-                    # The X button might have various selectors
+                    # Various selectors for Link close/dismiss buttons
                     close_selectors = [
-                        "button:has(svg path[d*='1.24896'])",  # The specific X path
-                        "button:has(svg)",  # Any button with SVG
-                        "[role='button']:has(svg)",
-                        ".p-LinkAutofillPrompt button",
+                        "[data-testid='link-close-button']",
+                        "button[aria-label='Close']",
+                        "button[aria-label='Back']",
+                        ".p-LinkAutofillPrompt [role='button']",
+                        "button:has(svg path[d*='M1.2'])",  # X icon paths
+                        "[class*='CloseButton']",
+                        "[class*='close']",
                     ]
                     for selector in close_selectors:
                         close_btn = frame.locator(selector).first
-                        if close_btn.is_visible(timeout=500):
-                            print(f"    Found Link close button with selector: {selector}")
+                        if close_btn.is_visible(timeout=300):
+                            print(f"    Found Link close button: {selector}")
                             close_btn.click()
                             link_closed = True
-                            time.sleep(1)
+                            time.sleep(0.5)
                             break
                     if link_closed:
                         break
@@ -656,21 +670,13 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                     continue
 
             if not link_closed:
-                print("    Link modal close button not found in frames, trying main page...")
-                # Try on main page
-                close_btn = page.locator("button:has(svg path)").first
-                if close_btn.is_visible(timeout=1000):
-                    close_btn.click()
-                    time.sleep(1)
+                print("    Link modal close button not found, trying Escape again...")
+                for _ in range(3):
+                    page.keyboard.press("Escape")
+                    time.sleep(0.3)
+
         except Exception as e:
             print(f"    Could not close Link modal: {e}")
-
-        # Also try pressing Escape key
-        try:
-            page.keyboard.press("Escape")
-            time.sleep(0.5)
-        except:
-            pass
 
         time.sleep(1)
 
