@@ -4998,32 +4998,34 @@ async def create_payment(
                         vehicle_registration = vehicle.registration
 
                 # Format flight info: airline + flight number (if provided) + destination
+                # Use booking's stored values (works for both dropdown selection and manual "Other" entry)
                 departure_flight = ""
-                if departure and departure.airline_name:
-                    parts = [departure.airline_name]
+                if booking.dropoff_airline_name or booking.dropoff_destination:
+                    parts = []
+                    if booking.dropoff_airline_name:
+                        parts.append(booking.dropoff_airline_name)
                     if request.flight_number:
                         parts.append(request.flight_number)
                     departure_flight = " ".join(parts)
-                    if departure.destination_name:
-                        dest = departure.destination_name.split(', ')[0]
-                        if dest == 'Tenerife-Reinasofia':
-                            dest = 'Tenerife'
-                        departure_flight += f" to {dest}"
+                    if booking.dropoff_destination:
+                        departure_flight += f" to {booking.dropoff_destination}"
                 elif request.flight_number:
                     departure_flight = request.flight_number
 
                 return_flight = ""
-                if arrival_flight and arrival_flight.airline_name:
-                    parts = [arrival_flight.airline_name]
+                if booking.pickup_airline_name or booking.pickup_origin:
+                    parts = []
+                    if booking.pickup_airline_name:
+                        parts.append(booking.pickup_airline_name)
                     if request.pickup_flight_number:
                         parts.append(request.pickup_flight_number)
                     return_flight = " ".join(parts)
-                    if pickup_origin:
-                        return_flight += f" from {pickup_origin}"
+                    if booking.pickup_origin:
+                        return_flight += f" from {booking.pickup_origin}"
                 elif request.pickup_flight_number:
                     return_flight = request.pickup_flight_number
-                    if pickup_origin:
-                        return_flight += f" from {pickup_origin}"
+                    if booking.pickup_origin:
+                        return_flight += f" from {booking.pickup_origin}"
 
                 email_sent = send_booking_confirmation_email(
                     email=request.email,
