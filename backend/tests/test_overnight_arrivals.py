@@ -16,6 +16,11 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_NEXT = FUTURE_DATE + timedelta(days=1)  # Day after FUTURE_DATE
+
 from fix_overnight_arrivals import is_overnight_arrival
 from import_flights import is_overnight_flight
 
@@ -129,14 +134,14 @@ class TestBookingDateCorrection:
         booking = MagicMock()
         booking.id = 1
         booking.reference = "TAG-TEST001"
-        booking.pickup_date = date(2026, 3, 28)  # Wrong - departure date
+        booking.pickup_date = FUTURE_DATE  # Wrong - departure date
         booking.pickup_flight_number = "TUI671"
         booking.arrival_id = 100
 
         # Mock arrival flight
         arrival = MagicMock()
         arrival.id = 100
-        arrival.date = date(2026, 3, 28)  # Also stored with wrong date in this scenario
+        arrival.date = FUTURE_DATE  # Also stored with wrong date in this scenario
         arrival.departure_time = time(22, 0)
         arrival.arrival_time = time(0, 35)
 
@@ -145,17 +150,17 @@ class TestBookingDateCorrection:
         assert is_overnight is True
 
         # The correct pickup_date should be 29th (arrival date after midnight)
-        correct_pickup_date = date(2026, 3, 29)
+        correct_pickup_date = FUTURE_DATE_NEXT
         needs_fix = booking.pickup_date != correct_pickup_date
         assert needs_fix is True
 
     def test_regular_flight_no_correction_needed(self):
         """Regular daytime flight booking needs no correction."""
         booking = MagicMock()
-        booking.pickup_date = date(2026, 2, 28)
+        booking.pickup_date = FUTURE_DATE - timedelta(days=28)
 
         arrival = MagicMock()
-        arrival.date = date(2026, 2, 28)
+        arrival.date = FUTURE_DATE - timedelta(days=28)
         arrival.departure_time = time(10, 0)
         arrival.arrival_time = time(14, 30)
 
@@ -169,7 +174,7 @@ class TestBookingDateCorrection:
     def test_pickup_time_windows_after_midnight(self):
         """Pickup time calculated correctly for after-midnight arrival."""
         arrival_time = time(0, 35)
-        arrival_dt = datetime.combine(date(2026, 3, 29), arrival_time)
+        arrival_dt = datetime.combine(FUTURE_DATE_NEXT, arrival_time)
 
         pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()  # 01:05
         pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()    # 01:05
@@ -180,10 +185,10 @@ class TestBookingDateCorrection:
     def test_late_evening_arrival_same_day(self):
         """Late evening arrival (23:30) stays on same day."""
         booking = MagicMock()
-        booking.pickup_date = date(2026, 2, 28)
+        booking.pickup_date = FUTURE_DATE - timedelta(days=28)
 
         arrival = MagicMock()
-        arrival.date = date(2026, 2, 28)
+        arrival.date = FUTURE_DATE - timedelta(days=28)
         arrival.departure_time = time(18, 0)
         arrival.arrival_time = time(23, 30)
 
@@ -191,7 +196,7 @@ class TestBookingDateCorrection:
         assert is_overnight is False
 
         # Pickup should stay on 28th
-        assert booking.pickup_date == date(2026, 2, 28)
+        assert booking.pickup_date == FUTURE_DATE - timedelta(days=28)
 
 
 # =============================================================================
@@ -260,9 +265,9 @@ class TestOvernightScenarios:
         assert is_overnight is True
 
         # Booking made for 28th departure should have pickup on 29th
-        departure_date = date(2026, 3, 28)
+        departure_date = FUTURE_DATE
         correct_pickup_date = departure_date + timedelta(days=1)
-        assert correct_pickup_date == date(2026, 3, 29)
+        assert correct_pickup_date == FUTURE_DATE_NEXT
 
     def test_multiple_overnight_flights_batch(self):
         """Multiple overnight flights in a batch."""
@@ -286,7 +291,7 @@ class TestOvernightScenarios:
         booking.reference = "TAG-ABC123"
         booking.customer_id = 456
         booking.vehicle_id = 789
-        booking.pickup_date = date(2026, 3, 28)
+        booking.pickup_date = FUTURE_DATE
         booking.pickup_time = time(0, 35)
         booking.pickup_flight_number = "TUI671"
 
@@ -298,7 +303,7 @@ class TestOvernightScenarios:
         original_time = booking.pickup_time
         original_flight = booking.pickup_flight_number
 
-        booking.pickup_date = date(2026, 3, 29)
+        booking.pickup_date = FUTURE_DATE_NEXT
 
         # All other fields unchanged
         assert booking.id == original_id
@@ -372,7 +377,7 @@ class TestImportFlightsDateAdjustment:
 
     def test_overnight_arrival_date_adjusted(self):
         """Overnight flight arrival date should be departure date + 1."""
-        departure_date = date(2026, 3, 28)
+        departure_date = FUTURE_DATE
         dep_time = "22:00"
         arr_time = "00:35"
 
@@ -381,11 +386,11 @@ class TestImportFlightsDateAdjustment:
         else:
             arrival_date = departure_date
 
-        assert arrival_date == date(2026, 3, 29)
+        assert arrival_date == FUTURE_DATE_NEXT
 
     def test_regular_flight_date_not_adjusted(self):
         """Regular flight arrival date stays same as departure date."""
-        departure_date = date(2026, 2, 28)
+        departure_date = FUTURE_DATE - timedelta(days=28)
         dep_time = "10:00"
         arr_time = "14:00"
 
@@ -394,11 +399,12 @@ class TestImportFlightsDateAdjustment:
         else:
             arrival_date = departure_date
 
-        assert arrival_date == date(2026, 2, 28)
+        assert arrival_date == FUTURE_DATE - timedelta(days=28)
 
     def test_year_boundary_overnight(self):
         """Overnight flight on Dec 31 should have arrival on Jan 1."""
-        departure_date = date(2025, 12, 31)
+        year = TODAY.year
+        departure_date = date(year, 12, 31)
         dep_time = "23:00"
         arr_time = "02:30"
 
@@ -407,11 +413,12 @@ class TestImportFlightsDateAdjustment:
         else:
             arrival_date = departure_date
 
-        assert arrival_date == date(2026, 1, 1)
+        assert arrival_date == date(year + 1, 1, 1)
 
     def test_month_boundary_overnight(self):
         """Overnight flight on Jan 31 should have arrival on Feb 1."""
-        departure_date = date(2026, 1, 31)
+        year = TODAY.year + 1
+        departure_date = date(year, 1, 31)
         dep_time = "21:30"
         arr_time = "01:15"
 
@@ -420,7 +427,7 @@ class TestImportFlightsDateAdjustment:
         else:
             arrival_date = departure_date
 
-        assert arrival_date == date(2026, 2, 1)
+        assert arrival_date == date(year, 2, 1)
 
 
 # =============================================================================
@@ -458,21 +465,21 @@ class TestFrontendPickupDateAdjustment:
 
     def test_overnight_flight_adds_one_day(self):
         """User selects 24/07, overnight flight, actual pickup = 25/07."""
-        selected_date = date(2026, 7, 24)
+        selected_date = FUTURE_DATE
         is_overnight = True
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
 
-        assert actual == date(2026, 7, 25)
+        assert actual == FUTURE_DATE_NEXT
 
     def test_regular_flight_keeps_same_date(self):
         """User selects 24/07, regular flight, actual pickup = 24/07."""
-        selected_date = date(2026, 7, 24)
+        selected_date = FUTURE_DATE
         is_overnight = False
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
 
-        assert actual == date(2026, 7, 24)
+        assert actual == FUTURE_DATE
 
     def test_none_date_returns_none(self):
         """No date selected returns None."""
@@ -481,41 +488,48 @@ class TestFrontendPickupDateAdjustment:
 
     def test_month_end_overnight_rolls_to_next_month(self):
         """User selects July 31, overnight flight, actual pickup = Aug 1."""
-        selected_date = date(2026, 7, 31)
+        selected_date = FUTURE_DATE + timedelta(days=7)
         is_overnight = True
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
 
-        assert actual == date(2026, 8, 1)
+        assert actual == FUTURE_DATE + timedelta(days=8)
 
     def test_year_end_overnight_rolls_to_next_year(self):
         """User selects Dec 31, overnight flight, actual pickup = Jan 1."""
-        selected_date = date(2025, 12, 31)
+        year = TODAY.year
+        selected_date = date(year, 12, 31)
         is_overnight = True
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
 
-        assert actual == date(2026, 1, 1)
+        assert actual == date(year + 1, 1, 1)
 
     def test_february_28_leap_year_overnight(self):
         """User selects Feb 28 in leap year, overnight, actual = Feb 29."""
-        # 2028 is a leap year
-        selected_date = date(2028, 2, 28)
+        # Find next leap year
+        year = TODAY.year
+        while not (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)):
+            year += 1
+        selected_date = date(year, 2, 28)
         is_overnight = True
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
 
-        assert actual == date(2028, 2, 29)
+        assert actual == date(year, 2, 29)
 
     def test_february_28_non_leap_year_overnight(self):
         """User selects Feb 28 in non-leap year, overnight, actual = Mar 1."""
-        # 2026 is not a leap year
-        selected_date = date(2026, 2, 28)
+        # Find next non-leap year
+        year = TODAY.year + 1
+        while year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
+            year += 1
+        selected_date = date(year, 2, 28)
         is_overnight = True
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
 
-        assert actual == date(2026, 3, 1)
+        assert actual == date(year, 3, 1)
 
 
 class TestIsOvernightFlightDetection:
@@ -624,7 +638,7 @@ class TestBookingSummaryDisplayLogic:
 
     def test_overnight_summary_shows_next_day(self):
         """Summary should show 25/07/2026 when user selects 24/07 + overnight flight."""
-        selected_date = date(2026, 7, 24)
+        selected_date = FUTURE_DATE
         is_overnight = True
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
@@ -634,7 +648,7 @@ class TestBookingSummaryDisplayLogic:
 
     def test_regular_summary_shows_same_day(self):
         """Summary should show 24/07/2026 when user selects 24/07 + regular flight."""
-        selected_date = date(2026, 7, 24)
+        selected_date = FUTURE_DATE
         is_overnight = False
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
@@ -660,7 +674,7 @@ class TestAPIRequestPickupDateLogic:
 
     def test_overnight_api_sends_next_day(self):
         """API should receive 2026-07-25 when user selects 24/07 + overnight flight."""
-        selected_date = date(2026, 7, 24)
+        selected_date = FUTURE_DATE
         is_overnight = True
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
@@ -670,7 +684,7 @@ class TestAPIRequestPickupDateLogic:
 
     def test_regular_api_sends_same_day(self):
         """API should receive 2026-07-24 when user selects 24/07 + regular flight."""
-        selected_date = date(2026, 7, 24)
+        selected_date = FUTURE_DATE
         is_overnight = False
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
@@ -749,7 +763,7 @@ class TestTUI671FullScenario:
         - Pickup time: from 01:05 (00:35 + 30 mins)
         """
         # User selections
-        user_selected_pickup_date = date(2026, 7, 24)  # Friday
+        user_selected_pickup_date = FUTURE_DATE  # Friday
         flight_departure_time = "22:05"
         flight_arrival_time = "00:35"
 
@@ -764,7 +778,7 @@ class TestTUI671FullScenario:
             actual_pickup_date = user_selected_pickup_date + timedelta(days=1)
         else:
             actual_pickup_date = user_selected_pickup_date
-        assert actual_pickup_date == date(2026, 7, 25)  # Saturday
+        assert actual_pickup_date == FUTURE_DATE_NEXT  # Saturday
 
         # Display format (dd/MM/yyyy)
         display_date = actual_pickup_date.strftime("%d/%m/%Y")

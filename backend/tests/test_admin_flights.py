@@ -23,6 +23,11 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
+
 
 # =============================================================================
 # Mock Data Factories
@@ -71,7 +76,7 @@ def create_mock_departure(
     unique = uuid.uuid4().hex[:6]
     departure = MagicMock()
     departure.id = id
-    departure.date = date_val or date(2025, 6, 15)
+    departure.date = date_val or FUTURE_DATE
     departure.flight_number = flight_number or f"TEST{unique}"
     departure.airline_code = airline_code
     departure.airline_name = airline_name
@@ -104,7 +109,7 @@ def create_mock_arrival(
     unique = uuid.uuid4().hex[:6]
     arrival = MagicMock()
     arrival.id = id
-    arrival.date = date_val or date(2025, 6, 22)
+    arrival.date = date_val or FUTURE_DATE_END
     arrival.flight_number = flight_number or f"ARR{unique}"
     arrival.airline_code = airline_code
     arrival.airline_name = airline_name
@@ -143,10 +148,10 @@ def create_mock_booking(
     booking.vehicle_id = vehicle_id
     booking.departure_id = departure_id
     booking.arrival_id = arrival_id
-    booking.dropoff_date = dropoff_date_val or date(2025, 8, 15)
+    booking.dropoff_date = dropoff_date_val or FUTURE_DATE
     booking.dropoff_time = dropoff_time_val or time(7, 15)
     booking.dropoff_slot = dropoff_slot
-    booking.pickup_date = pickup_date_val or date(2025, 8, 22)
+    booking.pickup_date = pickup_date_val or FUTURE_DATE_END
     booking.pickup_time = pickup_time_val or time(14, 0)
     booking.pickup_time_from = pickup_time_from_val or time(14, 35)
     booking.pickup_time_to = pickup_time_to_val or time(15, 0)
@@ -1154,9 +1159,9 @@ class TestBookingArrivalIdAutoLinking:
                 customer_id=1,
                 vehicle_id=1,
                 package="quick",
-                dropoff_date=date(2025, 10, 13),
+                dropoff_date=FUTURE_DATE,
                 dropoff_time=time(7, 15),
-                pickup_date=date(2025, 10, 20),
+                pickup_date=FUTURE_DATE_END,
                 pickup_time=time(14, 30),
                 pickup_flight_number="LNK1234",
                 departure_id=100,
@@ -1185,9 +1190,9 @@ class TestBookingArrivalIdAutoLinking:
                 customer_id=1,
                 vehicle_id=1,
                 package="quick",
-                dropoff_date=date(2025, 10, 13),
+                dropoff_date=FUTURE_DATE,
                 dropoff_time=time(7, 15),
-                pickup_date=date(2025, 10, 20),
+                pickup_date=FUTURE_DATE_END,
                 pickup_time=time(15, 0),
                 pickup_flight_number="NONEXISTENT999",
                 departure_id=100,
@@ -1227,7 +1232,7 @@ class TestBookingArrivalIdAutoLinking:
         mock_session = MagicMock()
         mock_arrival = MagicMock(spec=FlightArrival)
         mock_arrival.id = 42
-        mock_arrival.date = date(2025, 10, 20)
+        mock_arrival.date = FUTURE_DATE_END
         mock_arrival.flight_number = "LNK1234"
 
         mock_query = MagicMock()
@@ -1237,7 +1242,7 @@ class TestBookingArrivalIdAutoLinking:
         mock_session.query.return_value = mock_query
 
         arrival = mock_session.query(FlightArrival).filter(
-            FlightArrival.date == date(2025, 10, 20),
+            FlightArrival.date == FUTURE_DATE_END,
             FlightArrival.flight_number == "LNK1234"
         ).first()
 
@@ -1256,7 +1261,7 @@ class TestBookingArrivalIdAutoLinking:
         mock_session.query.return_value = mock_query
 
         arrival = mock_session.query(FlightArrival).filter(
-            FlightArrival.date == date(2025, 10, 20),
+            FlightArrival.date == FUTURE_DATE_END,
             FlightArrival.flight_number == "NONEXISTENT"
         ).first()
 
@@ -1273,8 +1278,9 @@ class TestCreateDeparture:
 
     def test_create_departure_success(self):
         """Creating a departure with valid data should succeed."""
+        test_date = FUTURE_DATE + timedelta(days=45)
         request_data = {
-            "date": "2026-03-15",
+            "date": test_date.isoformat(),
             "flight_number": "FR1234",
             "airline_code": "FR",
             "airline_name": "Ryanair",
@@ -1302,8 +1308,9 @@ class TestCreateDeparture:
 
     def test_create_departure_minimal_fields(self):
         """Creating departure with only required fields should succeed."""
+        test_date = FUTURE_DATE + timedelta(days=45)
         request_data = {
-            "date": "2026-03-15",
+            "date": test_date.isoformat(),
             "flight_number": "BA5678",
             "airline_code": "BA",
             "airline_name": "British Airways",
@@ -1332,11 +1339,12 @@ class TestCreateDeparture:
 
     def test_create_departure_duplicate_returns_409(self):
         """Creating duplicate departure (same date + flight_number) should return 409."""
+        test_date = FUTURE_DATE + timedelta(days=45)
         existing_departures = [
-            {"id": 1, "date": "2026-03-15", "flight_number": "FR1234"},
+            {"id": 1, "date": test_date.isoformat(), "flight_number": "FR1234"},
         ]
 
-        new_departure = {"date": "2026-03-15", "flight_number": "FR1234"}
+        new_departure = {"date": test_date.isoformat(), "flight_number": "FR1234"}
 
         is_duplicate = any(
             d["date"] == new_departure["date"] and d["flight_number"] == new_departure["flight_number"]
@@ -1389,7 +1397,8 @@ class TestCreateDeparture:
     def test_create_departure_validates_date_format(self):
         """Date should be in ISO format (YYYY-MM-DD)."""
         import re
-        valid_date = "2026-03-15"
+        test_date = FUTURE_DATE + timedelta(days=45)
+        valid_date = test_date.isoformat()
         invalid_date = "15/03/2026"
 
         iso_pattern = r"^\d{4}-\d{2}-\d{2}$"
@@ -1421,8 +1430,9 @@ class TestCreateArrival:
 
     def test_create_arrival_success(self):
         """Creating an arrival with valid data should succeed."""
+        test_date = FUTURE_DATE_END + timedelta(days=25)
         request_data = {
-            "date": "2026-03-22",
+            "date": test_date.isoformat(),
             "flight_number": "FR1235",
             "airline_code": "FR",
             "airline_name": "Ryanair",
@@ -1447,8 +1457,9 @@ class TestCreateArrival:
 
     def test_create_arrival_minimal_fields(self):
         """Creating arrival with only required fields should succeed."""
+        test_date = FUTURE_DATE_END + timedelta(days=25)
         request_data = {
-            "date": "2026-03-22",
+            "date": test_date.isoformat(),
             "flight_number": "BA5679",
             "airline_code": "BA",
             "airline_name": "British Airways",
@@ -1474,11 +1485,12 @@ class TestCreateArrival:
 
     def test_create_arrival_duplicate_returns_409(self):
         """Creating duplicate arrival (same date + flight_number) should return 409."""
+        test_date = FUTURE_DATE_END + timedelta(days=25)
         existing_arrivals = [
-            {"id": 1, "date": "2026-03-22", "flight_number": "FR1235"},
+            {"id": 1, "date": test_date.isoformat(), "flight_number": "FR1235"},
         ]
 
-        new_arrival = {"date": "2026-03-22", "flight_number": "FR1235"}
+        new_arrival = {"date": test_date.isoformat(), "flight_number": "FR1235"}
 
         is_duplicate = any(
             a["date"] == new_arrival["date"] and a["flight_number"] == new_arrival["flight_number"]
@@ -1572,10 +1584,11 @@ class TestDeleteDeparture:
 
     def test_delete_departure_creates_history_record(self):
         """Deleting should create a history record for audit trail."""
+        test_date = FUTURE_DATE + timedelta(days=45)
         departure = create_mock_departure(
             id=1,
             flight_number="DEL003",
-            date_val=date(2026, 3, 15),
+            date_val=test_date,
         )
         admin_email = "admin@tagparking.co.uk"
 
@@ -1661,10 +1674,11 @@ class TestDeleteArrival:
 
     def test_delete_arrival_creates_history_record(self):
         """Deleting should create a history record for audit trail."""
+        test_date = FUTURE_DATE_END + timedelta(days=25)
         arrival = create_mock_arrival(
             id=1,
             flight_number="ARRDEL003",
-            date_val=date(2026, 3, 22),
+            date_val=test_date,
         )
         admin_email = "admin@tagparking.co.uk"
 
@@ -1689,45 +1703,54 @@ class TestDeleteArrival:
 class TestStartDateFilter:
     """Tests for start_date query parameter in GET endpoints."""
 
-    def test_departures_default_start_date_is_2026_01_01(self):
-        """Departures endpoint should default start_date to 2026-01-01."""
-        default_start_date = date(2026, 1, 1)
+    def test_departures_default_start_date_filter(self):
+        """Departures endpoint should filter by start_date."""
+        default_start_date = FUTURE_DATE
+        before_date = (FUTURE_DATE - timedelta(days=1)).isoformat()
+        on_date = FUTURE_DATE.isoformat()
+        after_date = (FUTURE_DATE + timedelta(days=90)).isoformat()
         all_departures = [
-            {"id": 1, "date": "2025-12-31"},  # Before default start
-            {"id": 2, "date": "2026-01-01"},  # On default start
-            {"id": 3, "date": "2026-06-15"},  # After default start
+            {"id": 1, "date": before_date},  # Before default start
+            {"id": 2, "date": on_date},  # On default start
+            {"id": 3, "date": after_date},  # After default start
         ]
 
         # Filter with default start date
-        filtered = [d for d in all_departures if d["date"] >= str(default_start_date)]
+        filtered = [d for d in all_departures if d["date"] >= default_start_date.isoformat()]
 
         assert len(filtered) == 2
-        assert all(d["date"] >= "2026-01-01" for d in filtered)
+        assert all(d["date"] >= default_start_date.isoformat() for d in filtered)
 
     def test_departures_custom_start_date(self):
         """Departures endpoint should accept custom start_date parameter."""
-        custom_start = "2026-03-01"
+        custom_start = FUTURE_DATE.isoformat()
+        before_date = (FUTURE_DATE - timedelta(days=1)).isoformat()
+        on_date = FUTURE_DATE.isoformat()
+        after_date = (FUTURE_DATE + timedelta(days=90)).isoformat()
         all_departures = [
-            {"id": 1, "date": "2026-02-28"},  # Before custom start
-            {"id": 2, "date": "2026-03-01"},  # On custom start
-            {"id": 3, "date": "2026-06-15"},  # After custom start
+            {"id": 1, "date": before_date},  # Before custom start
+            {"id": 2, "date": on_date},  # On custom start
+            {"id": 3, "date": after_date},  # After custom start
         ]
 
         filtered = [d for d in all_departures if d["date"] >= custom_start]
 
         assert len(filtered) == 2
-        assert all(d["date"] >= "2026-03-01" for d in filtered)
+        assert all(d["date"] >= custom_start for d in filtered)
 
-    def test_arrivals_default_start_date_is_2026_01_01(self):
-        """Arrivals endpoint should default start_date to 2026-01-01."""
-        default_start_date = date(2026, 1, 1)
+    def test_arrivals_default_start_date_filter(self):
+        """Arrivals endpoint should filter by start_date."""
+        default_start_date = FUTURE_DATE
+        before_date = (FUTURE_DATE - timedelta(days=1)).isoformat()
+        on_date = FUTURE_DATE.isoformat()
+        after_date = (FUTURE_DATE + timedelta(days=90)).isoformat()
         all_arrivals = [
-            {"id": 1, "date": "2025-12-31"},
-            {"id": 2, "date": "2026-01-01"},
-            {"id": 3, "date": "2026-06-22"},
+            {"id": 1, "date": before_date},
+            {"id": 2, "date": on_date},
+            {"id": 3, "date": after_date},
         ]
 
-        filtered = [a for a in all_arrivals if a["date"] >= str(default_start_date)]
+        filtered = [a for a in all_arrivals if a["date"] >= default_start_date.isoformat()]
 
         assert len(filtered) == 2
         assert all(a["date"] >= "2026-01-01" for a in filtered)

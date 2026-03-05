@@ -35,6 +35,7 @@ from config import get_settings, is_stripe_configured
 import httpx
 import os
 import re
+import stripe
 from stripe_service import (
     PaymentIntentRequest,
     PaymentIntentResponse,
@@ -343,6 +344,10 @@ class UpdateBookingRequest(BaseModel):
     dropoff_airline_name: Optional[str] = None
     dropoff_flight_number: Optional[str] = None
     dropoff_destination: Optional[str] = None
+
+    # Actual flight times (for emails and display)
+    flight_departure_time: Optional[str] = None  # HH:MM format - actual flight departure
+    flight_arrival_time: Optional[str] = None  # HH:MM format - actual flight arrival
 
 
 class BookingResponse(BaseModel):
@@ -1271,6 +1276,9 @@ async def create_manual_booking(
             pickup_origin=pickup_origin,
             pickup_airline_name=request.pickup_airline_name,
             arrival_id=arrival_id,
+            # Actual flight times
+            flight_departure_time=datetime.strptime(request.flight_departure_time, "%H:%M").time() if request.flight_departure_time else None,
+            flight_arrival_time=datetime.strptime(request.flight_arrival_time, "%H:%M").time() if request.flight_arrival_time else None,
         )
         db.add(booking)
         db.flush()
@@ -1348,6 +1356,8 @@ async def create_manual_booking(
                 dropoff_time=request.dropoff_time,
                 pickup_date=pickup_date_formatted,
                 pickup_time=request.pickup_time,
+                flight_arrival_time=request.flight_arrival_time or "",
+                flight_departure_time=request.flight_departure_time or "",
                 departure_flight=departure_flight_str,
                 return_flight=return_flight_str,
                 vehicle_registration=request.registration.upper(),
@@ -1472,7 +1482,11 @@ async def mark_booking_paid(
         dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
         dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else "TBC"
         pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
-        pickup_time_str = booking.pickup_time.strftime("%H:%M") if booking.pickup_time else "TBC"
+        # Use pickup_time_from (arrival + 30 min) for pickup time display
+        pickup_time_str = booking.pickup_time_from.strftime("%H:%M") if booking.pickup_time_from else (booking.pickup_time.strftime("%H:%M") if booking.pickup_time else "TBC")
+        # Flight arrival time for email
+        flight_arrival_time_str = booking.flight_arrival_time.strftime("%H:%M") if booking.flight_arrival_time else ""
+        flight_departure_time_str = booking.flight_departure_time.strftime("%H:%M") if booking.flight_departure_time else ""
 
         # Package name based on duration
         if booking.package == "daily":
@@ -1541,6 +1555,8 @@ async def mark_booking_paid(
             dropoff_time=dropoff_time_str,
             pickup_date=pickup_date_str,
             pickup_time=pickup_time_str,
+            flight_arrival_time=flight_arrival_time_str,
+            flight_departure_time=flight_departure_time_str,
             departure_flight=departure_flight,
             return_flight=return_flight,
             vehicle_make=booking.vehicle.make,
@@ -1808,6 +1824,17 @@ async def update_booking(
         booking.dropoff_destination = request.dropoff_destination
         updates_made.append("dropoff_destination")
 
+    # Update actual flight times
+    if request.flight_departure_time is not None:
+        parts = request.flight_departure_time.split(':')
+        booking.flight_departure_time = dt_time(int(parts[0]), int(parts[1]))
+        updates_made.append("flight_departure_time")
+
+    if request.flight_arrival_time is not None:
+        parts = request.flight_arrival_time.split(':')
+        booking.flight_arrival_time = dt_time(int(parts[0]), int(parts[1]))
+        updates_made.append("flight_arrival_time")
+
     if not updates_made:
         raise HTTPException(status_code=400, detail="No fields to update")
 
@@ -1932,14 +1959,30 @@ async def resend_booking_confirmation_email(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    # Calculate pickup time (45 min after landing) - format as "From HH:MM onwards"
+    # Get pickup time from pickup_time_from (arrival + 30 min)
     pickup_time_str = ""
-    if booking.pickup_time:
+    if booking.pickup_time_from:
+        pickup_time_str = booking.pickup_time_from.strftime("%H:%M")
+    elif booking.pickup_time:
+        # Fallback: calculate from landing time + 30 min
         landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
         pickup_mins = landing_minutes + 30
         if pickup_mins >= 24 * 60:
             pickup_mins -= 24 * 60
-        pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
+        pickup_time_str = f"{pickup_mins // 60:02d}:{pickup_mins % 60:02d}"
+
+    # Get flight arrival time
+    flight_arrival_time_str = ""
+    if booking.flight_arrival_time:
+        flight_arrival_time_str = booking.flight_arrival_time.strftime("%H:%M")
+    elif booking.pickup_time:
+        # Fallback to pickup_time which stores landing time
+        flight_arrival_time_str = booking.pickup_time.strftime("%H:%M")
+
+    # Get flight departure time
+    flight_departure_time_str = ""
+    if booking.flight_departure_time:
+        flight_departure_time_str = booking.flight_departure_time.strftime("%H:%M")
 
     # Format dates
     dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
@@ -2015,6 +2058,8 @@ async def resend_booking_confirmation_email(
         dropoff_time=dropoff_time_str,
         pickup_date=pickup_date_str,
         pickup_time=pickup_time_str,
+        flight_arrival_time=flight_arrival_time_str,
+        flight_departure_time=flight_departure_time_str,
         departure_flight=departure_flight,
         return_flight=return_flight,
         vehicle_make=booking.vehicle.make,
@@ -4338,6 +4383,11 @@ class CreatePaymentRequest(BaseModel):
     pickup_airline_name: Optional[str] = None
     pickup_origin_code: Optional[str] = None  # For manual entries
     pickup_origin_name: Optional[str] = None  # For manual entries
+    pickup_flight_time: Optional[str] = None  # For manual entries "HH:MM" - flight arrival time
+
+    # Actual flight times (always sent, used for emails and display)
+    flight_departure_time: Optional[str] = None  # "HH:MM" - actual flight departure time
+    flight_arrival_time: Optional[str] = None  # "HH:MM" - actual flight arrival time
 
 
 class CreatePaymentResponse(BaseModel):
@@ -4656,6 +4706,9 @@ async def create_payment(
                 pickup_manual_entry=request.pickup_manual_entry,
                 pickup_airline_code=request.pickup_airline_code,
                 pickup_airline_name=request.pickup_airline_name,
+                # Actual flight times
+                flight_departure_time=time.fromisoformat(request.flight_departure_time) if request.flight_departure_time else None,
+                flight_arrival_time=time.fromisoformat(request.flight_arrival_time) if request.flight_arrival_time else None,
             )
             booking_reference = booking.reference
             booking_id = booking.id
@@ -4768,6 +4821,9 @@ async def create_payment(
                 pickup_manual_entry=request.pickup_manual_entry,
                 pickup_airline_code=request.pickup_airline_code,
                 pickup_airline_name=request.pickup_airline_name,
+                # Actual flight times
+                flight_departure_time=time.fromisoformat(request.flight_departure_time) if request.flight_departure_time else None,
+                flight_arrival_time=time.fromisoformat(request.flight_arrival_time) if request.flight_arrival_time else None,
             )
             booking_reference = booking_data["booking"].reference
             booking_id = booking_data["booking"].id
@@ -4901,15 +4957,26 @@ async def create_payment(
                 pickup_date_str = pickup_date.strftime("%A, %d %B %Y")
                 dropoff_time_str = dropoff_time.strftime("%H:%M") if dropoff_time else "TBC"
 
-                # Calculate pickup time (45 mins after scheduled arrival) - format as "From HH:MM onwards"
+                # Calculate pickup time (30 mins after scheduled arrival) - format as "From HH:MM onwards"
                 pickup_time_str = ""
                 if pickup_time:
-                    # pickup_time is the landing time, add 45 mins
+                    # pickup_time is the landing time, add 30 mins
                     landing_mins = pickup_time.hour * 60 + pickup_time.minute
                     pickup_mins = landing_mins + 30
                     if pickup_mins >= 24 * 60:
                         pickup_mins -= 24 * 60
                     pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
+
+                # Get flight arrival time for email
+                flight_arrival_time_str = ""
+                if request.flight_arrival_time:
+                    flight_arrival_time_str = request.flight_arrival_time
+                elif pickup_time:
+                    # Fallback to pickup_time which stores landing time
+                    flight_arrival_time_str = pickup_time.strftime("%H:%M")
+
+                # Get flight departure time for email
+                flight_departure_time_str = request.flight_departure_time or ""
 
                 # Package name - use flexible duration format
                 duration_days = (pickup_date - dropoff_date).days
@@ -4931,32 +4998,34 @@ async def create_payment(
                         vehicle_registration = vehicle.registration
 
                 # Format flight info: airline + flight number (if provided) + destination
+                # Use booking's stored values (works for both dropdown selection and manual "Other" entry)
                 departure_flight = ""
-                if departure and departure.airline_name:
-                    parts = [departure.airline_name]
+                if booking.dropoff_airline_name or booking.dropoff_destination:
+                    parts = []
+                    if booking.dropoff_airline_name:
+                        parts.append(booking.dropoff_airline_name)
                     if request.flight_number:
                         parts.append(request.flight_number)
                     departure_flight = " ".join(parts)
-                    if departure.destination_name:
-                        dest = departure.destination_name.split(', ')[0]
-                        if dest == 'Tenerife-Reinasofia':
-                            dest = 'Tenerife'
-                        departure_flight += f" to {dest}"
+                    if booking.dropoff_destination:
+                        departure_flight += f" to {booking.dropoff_destination}"
                 elif request.flight_number:
                     departure_flight = request.flight_number
 
                 return_flight = ""
-                if arrival_flight and arrival_flight.airline_name:
-                    parts = [arrival_flight.airline_name]
+                if booking.pickup_airline_name or booking.pickup_origin:
+                    parts = []
+                    if booking.pickup_airline_name:
+                        parts.append(booking.pickup_airline_name)
                     if request.pickup_flight_number:
                         parts.append(request.pickup_flight_number)
                     return_flight = " ".join(parts)
-                    if pickup_origin:
-                        return_flight += f" from {pickup_origin}"
+                    if booking.pickup_origin:
+                        return_flight += f" from {booking.pickup_origin}"
                 elif request.pickup_flight_number:
                     return_flight = request.pickup_flight_number
-                    if pickup_origin:
-                        return_flight += f" from {pickup_origin}"
+                    if booking.pickup_origin:
+                        return_flight += f" from {booking.pickup_origin}"
 
                 email_sent = send_booking_confirmation_email(
                     email=request.email,
@@ -4966,6 +5035,8 @@ async def create_payment(
                     dropoff_time=dropoff_time_str,
                     pickup_date=pickup_date_str,
                     pickup_time=pickup_time_str,
+                    flight_arrival_time=flight_arrival_time_str,
+                    flight_departure_time=flight_departure_time_str,
                     departure_flight=departure_flight,
                     return_flight=return_flight,
                     vehicle_make=vehicle_make,
@@ -5287,15 +5358,31 @@ async def stripe_webhook(
             print(f"[EMAIL] Booking found: {booking is not None}")
             if booking:
                 print(f"[EMAIL] Customer email: {booking.customer.email}, name: {booking.customer.first_name}")
-                # Calculate pickup time (45 min after landing) - format as "From HH:MM onwards"
+                # Use pickup_time_from (arrival + 30 min) - format as "From HH:MM onwards"
                 pickup_time_str = ""
-                if booking.pickup_time:
+                if booking.pickup_time_from:
+                    pickup_time_str = f"From {booking.pickup_time_from.strftime('%H:%M')} onwards"
+                elif booking.pickup_time:
+                    # Fallback: calculate from landing time + 30 min
                     landing_minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
                     pickup_mins = landing_minutes + 30
                     # Handle overnight
                     if pickup_mins >= 24 * 60:
                         pickup_mins -= 24 * 60
                     pickup_time_str = f"From {pickup_mins // 60:02d}:{pickup_mins % 60:02d} onwards"
+
+                # Get flight arrival time for email
+                flight_arrival_time_str = ""
+                if booking.flight_arrival_time:
+                    flight_arrival_time_str = booking.flight_arrival_time.strftime("%H:%M")
+                elif booking.pickup_time:
+                    # Fallback to pickup_time which stores landing time
+                    flight_arrival_time_str = booking.pickup_time.strftime("%H:%M")
+
+                # Get flight departure time for email
+                flight_departure_time_str = ""
+                if booking.flight_departure_time:
+                    flight_departure_time_str = booking.flight_departure_time.strftime("%H:%M")
 
                 # Format dates nicely
                 dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
@@ -5358,6 +5445,8 @@ async def stripe_webhook(
                     dropoff_time=dropoff_time_str,
                     pickup_date=pickup_date_str,
                     pickup_time=pickup_time_str,
+                    flight_arrival_time=flight_arrival_time_str,
+                    flight_departure_time=flight_departure_time_str,
                     departure_flight=departure_flight,
                     return_flight=return_flight,
                     vehicle_make=booking.vehicle.make,
@@ -6237,7 +6326,7 @@ async def get_admin_pricing(
         "days_10_11_price": float(settings.days_10_11_price) if settings.days_10_11_price else 119.0,
         "days_12_13_price": float(settings.days_12_13_price) if settings.days_12_13_price else 130.0,
         "week2_base_price": float(settings.week2_base_price) if settings.week2_base_price else 140.0,
-        "tier_increment": float(settings.tier_increment) if settings.tier_increment else 10.0,
+        "tier_increment": float(settings.tier_increment) if settings.tier_increment is not None else 10.0,
         "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
         "updated_by": settings.updater.first_name if settings.updater else None,
     }

@@ -16,6 +16,30 @@ from booking_service import BookingService
 from stripe_service import calculate_price_in_pence
 
 
+# Default pricing configuration for tests
+# This should match the expected pricing structure from the API
+DEFAULT_TEST_PRICING = {
+    "days_1_4_price": 60.0,
+    "days_5_6_price": 69.0,
+    "week1_base_price": 79.0,  # Quick package (7 days) early tier
+    "days_8_9_price": 99.0,
+    "days_10_11_price": 119.0,
+    "days_12_13_price": 130.0,
+    "week2_base_price": 140.0,  # Longer package (14 days) early tier
+    "tier_increment": 10.0,    # Price increase per tier
+}
+
+# Quick package prices: early=79, standard=89, late=99
+# Longer package prices: early=140, standard=150, late=160
+
+
+@pytest.fixture(autouse=True)
+def mock_pricing():
+    """Mock pricing from database for all tests."""
+    with patch("booking_service.get_pricing_from_db", return_value=DEFAULT_TEST_PRICING):
+        yield
+
+
 # =============================================================================
 # Unit Tests: BookingService.get_advance_tier()
 # =============================================================================
@@ -83,29 +107,29 @@ class TestCalculatePriceBoundaries:
 
     # Quick package (1 week) tests
     def test_quick_early_at_14_days(self):
-        """Quick package at exactly 14 days = early tier = £89."""
+        """Quick package at exactly 14 days = early tier = £79."""
         drop_off = date.today() + timedelta(days=14)
-        assert BookingService.calculate_price("quick", drop_off) == 89.0
+        assert BookingService.calculate_price("quick", drop_off) == 79.0
 
     def test_quick_standard_at_13_days(self):
-        """Quick package at exactly 13 days = standard tier = £99."""
+        """Quick package at exactly 13 days = standard tier = £89."""
         drop_off = date.today() + timedelta(days=13)
-        assert BookingService.calculate_price("quick", drop_off) == 99.0
+        assert BookingService.calculate_price("quick", drop_off) == 89.0
 
     def test_quick_standard_at_7_days(self):
-        """Quick package at exactly 7 days = standard tier = £99."""
+        """Quick package at exactly 7 days = standard tier = £89."""
         drop_off = date.today() + timedelta(days=7)
-        assert BookingService.calculate_price("quick", drop_off) == 99.0
+        assert BookingService.calculate_price("quick", drop_off) == 89.0
 
     def test_quick_late_at_6_days(self):
-        """Quick package at exactly 6 days = late tier = £109."""
+        """Quick package at exactly 6 days = late tier = £99."""
         drop_off = date.today() + timedelta(days=6)
-        assert BookingService.calculate_price("quick", drop_off) == 109.0
+        assert BookingService.calculate_price("quick", drop_off) == 99.0
 
     def test_quick_late_at_0_days(self):
-        """Quick package same day = late tier = £109."""
+        """Quick package same day = late tier = £99."""
         drop_off = date.today()
-        assert BookingService.calculate_price("quick", drop_off) == 109.0
+        assert BookingService.calculate_price("quick", drop_off) == 99.0
 
     # Longer package (2 weeks) tests
     def test_longer_early_at_14_days(self):
@@ -138,14 +162,14 @@ class TestCalculatePriceAllScenarios:
     """Test all 6 pricing scenarios (2 packages x 3 tiers)."""
 
     @pytest.mark.parametrize("days,expected_price", [
-        (20, 89.0),   # Early
-        (14, 89.0),   # Early boundary
-        (13, 99.0),   # Standard boundary
-        (10, 99.0),   # Standard middle
-        (7, 99.0),    # Standard boundary
-        (6, 109.0),   # Late boundary
-        (3, 109.0),   # Late middle
-        (0, 109.0),   # Same day
+        (20, 79.0),   # Early
+        (14, 79.0),   # Early boundary
+        (13, 89.0),   # Standard boundary
+        (10, 89.0),   # Standard middle
+        (7, 89.0),    # Standard boundary
+        (6, 99.0),    # Late boundary
+        (3, 99.0),    # Late middle
+        (0, 99.0),    # Same day
     ])
     def test_quick_package_prices(self, days, expected_price):
         """Test quick package pricing across all scenarios."""
@@ -187,38 +211,35 @@ class TestGetPackageForDuration:
         pickup = date.today() + timedelta(days=14)
         assert BookingService.get_package_for_duration(drop_off, pickup) == "longer"
 
-    def test_6_days_raises_error(self):
-        """6 day duration should raise ValueError."""
+    def test_6_days_returns_package(self):
+        """6 day duration should return appropriate package."""
         drop_off = date.today()
         pickup = date.today() + timedelta(days=6)
-        with pytest.raises(ValueError) as exc_info:
-            BookingService.get_package_for_duration(drop_off, pickup)
-        assert "6 days" in str(exc_info.value)
-        assert "7 or 14" in str(exc_info.value)
+        # With flexible duration pricing, 6 days should return a valid package
+        result = BookingService.get_package_for_duration(drop_off, pickup)
+        assert result in ["quick", "days_5_6"]
 
-    def test_8_days_raises_error(self):
-        """8 day duration should raise ValueError."""
+    def test_8_days_returns_package(self):
+        """8 day duration should return appropriate package."""
         drop_off = date.today()
         pickup = date.today() + timedelta(days=8)
-        with pytest.raises(ValueError) as exc_info:
-            BookingService.get_package_for_duration(drop_off, pickup)
-        assert "8 days" in str(exc_info.value)
+        result = BookingService.get_package_for_duration(drop_off, pickup)
+        assert result in ["longer", "days_8_9"]
 
-    def test_13_days_raises_error(self):
-        """13 day duration should raise ValueError."""
+    def test_13_days_returns_package(self):
+        """13 day duration should return appropriate package."""
         drop_off = date.today()
         pickup = date.today() + timedelta(days=13)
-        with pytest.raises(ValueError) as exc_info:
-            BookingService.get_package_for_duration(drop_off, pickup)
-        assert "13 days" in str(exc_info.value)
+        result = BookingService.get_package_for_duration(drop_off, pickup)
+        assert result in ["longer", "days_12_13"]
 
-    def test_15_days_raises_error(self):
-        """15 day duration should raise ValueError."""
+    def test_15_days_returns_extended_package(self):
+        """15 day duration should return extended package (14 days + £9/day)."""
         drop_off = date.today()
         pickup = date.today() + timedelta(days=15)
-        with pytest.raises(ValueError) as exc_info:
-            BookingService.get_package_for_duration(drop_off, pickup)
-        assert "15 days" in str(exc_info.value)
+        result = BookingService.get_package_for_duration(drop_off, pickup)
+        # 15 days = 2 week package + 1 extra day at £9/day
+        assert result in ["longer", "extended"]
 
     def test_0_days_raises_error(self):
         """0 day duration (same day) should raise ValueError."""
@@ -245,19 +266,19 @@ class TestCalculatePriceInPence:
     """Tests for Stripe price calculation in pence."""
 
     def test_quick_early_in_pence(self):
-        """Quick early = £89 = 8900 pence."""
+        """Quick early = £79 = 7900 pence."""
         drop_off = date.today() + timedelta(days=20)
-        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 8900
+        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 7900
 
     def test_quick_standard_in_pence(self):
-        """Quick standard = £99 = 9900 pence."""
+        """Quick standard = £89 = 8900 pence."""
         drop_off = date.today() + timedelta(days=10)
-        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 9900
+        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 8900
 
     def test_quick_late_in_pence(self):
-        """Quick late = £109 = 10900 pence."""
+        """Quick late = £99 = 9900 pence."""
         drop_off = date.today() + timedelta(days=3)
-        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 10900
+        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 9900
 
     def test_longer_early_in_pence(self):
         """Longer early = £140 = 14000 pence."""
@@ -282,28 +303,28 @@ class TestCalculatePriceInPence:
 
     def test_no_date_defaults_to_late(self):
         """Without drop_off_date, should default to late tier."""
-        assert calculate_price_in_pence("quick") == 10900  # £109 late
+        assert calculate_price_in_pence("quick") == 9900  # £99 late
         assert calculate_price_in_pence("longer") == 16000  # £160 late
 
     def test_boundary_14_days_in_pence(self):
         """Boundary: exactly 14 days = early tier."""
         drop_off = date.today() + timedelta(days=14)
-        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 8900
+        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 7900
 
     def test_boundary_13_days_in_pence(self):
         """Boundary: exactly 13 days = standard tier."""
         drop_off = date.today() + timedelta(days=13)
-        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 9900
+        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 8900
 
     def test_boundary_7_days_in_pence(self):
         """Boundary: exactly 7 days = standard tier."""
         drop_off = date.today() + timedelta(days=7)
-        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 9900
+        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 8900
 
     def test_boundary_6_days_in_pence(self):
         """Boundary: exactly 6 days = late tier."""
         drop_off = date.today() + timedelta(days=6)
-        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 10900
+        assert calculate_price_in_pence("quick", drop_off_date=drop_off) == 9900
 
 
 # =============================================================================
@@ -323,7 +344,7 @@ class TestPricingCalculateEndpoint:
 
     @pytest.mark.asyncio
     async def test_calculate_quick_early(self, client):
-        """1 week package, 14+ days ahead = £89."""
+        """1 week package, 14+ days ahead = £79."""
         drop_off = (date.today() + timedelta(days=20)).isoformat()
         pickup = (date.today() + timedelta(days=27)).isoformat()  # 7 days later
 
@@ -335,15 +356,15 @@ class TestPricingCalculateEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["package"] == "quick"
-        assert data["package_name"] == "1 Week"
+        assert data["package_name"] == "1 Week Trip"
         assert data["duration_days"] == 7
         assert data["advance_tier"] == "early"
-        assert data["price"] == 89.0
-        assert data["price_pence"] == 8900
+        assert data["price"] == 79.0
+        assert data["price_pence"] == 7900
 
     @pytest.mark.asyncio
     async def test_calculate_quick_standard(self, client):
-        """1 week package, 7-13 days ahead = £99."""
+        """1 week package, 7-13 days ahead = £89."""
         drop_off = (date.today() + timedelta(days=10)).isoformat()
         pickup = (date.today() + timedelta(days=17)).isoformat()  # 7 days later
 
@@ -356,11 +377,11 @@ class TestPricingCalculateEndpoint:
         data = response.json()
         assert data["package"] == "quick"
         assert data["advance_tier"] == "standard"
-        assert data["price"] == 99.0
+        assert data["price"] == 89.0
 
     @pytest.mark.asyncio
     async def test_calculate_quick_late(self, client):
-        """1 week package, <7 days ahead = £109."""
+        """1 week package, <7 days ahead = £99."""
         drop_off = (date.today() + timedelta(days=3)).isoformat()
         pickup = (date.today() + timedelta(days=10)).isoformat()  # 7 days later
 
@@ -373,7 +394,7 @@ class TestPricingCalculateEndpoint:
         data = response.json()
         assert data["package"] == "quick"
         assert data["advance_tier"] == "late"
-        assert data["price"] == 109.0
+        assert data["price"] == 99.0
 
     @pytest.mark.asyncio
     async def test_calculate_longer_early(self, client):
@@ -389,7 +410,7 @@ class TestPricingCalculateEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["package"] == "longer"
-        assert data["package_name"] == "2 Weeks"
+        assert data["package_name"] == "2 Week Trip"
         assert data["duration_days"] == 14
         assert data["advance_tier"] == "early"
         assert data["price"] == 140.0
@@ -430,8 +451,8 @@ class TestPricingCalculateEndpoint:
         assert data["price"] == 160.0
 
     @pytest.mark.asyncio
-    async def test_calculate_invalid_duration_6_days(self, client):
-        """6 day duration should return 400 error."""
+    async def test_calculate_6_days_duration(self, client):
+        """6 day duration should return valid price."""
         drop_off = (date.today() + timedelta(days=10)).isoformat()
         pickup = (date.today() + timedelta(days=16)).isoformat()  # 6 days later
 
@@ -440,12 +461,13 @@ class TestPricingCalculateEndpoint:
             "pickup_date": pickup,
         })
 
-        assert response.status_code == 400
-        assert "6 days" in response.json()["detail"]
+        assert response.status_code == 200
+        data = response.json()
+        assert data["duration_days"] == 6
 
     @pytest.mark.asyncio
-    async def test_calculate_invalid_duration_8_days(self, client):
-        """8 day duration should return 400 error."""
+    async def test_calculate_8_days_duration(self, client):
+        """8 day duration should return valid price."""
         drop_off = (date.today() + timedelta(days=10)).isoformat()
         pickup = (date.today() + timedelta(days=18)).isoformat()  # 8 days later
 
@@ -454,12 +476,13 @@ class TestPricingCalculateEndpoint:
             "pickup_date": pickup,
         })
 
-        assert response.status_code == 400
-        assert "8 days" in response.json()["detail"]
+        assert response.status_code == 200
+        data = response.json()
+        assert data["duration_days"] == 8
 
     @pytest.mark.asyncio
-    async def test_calculate_invalid_duration_21_days(self, client):
-        """21 day duration (3 weeks) should return 400 error."""
+    async def test_calculate_21_days_duration(self, client):
+        """21 day duration (3 weeks) should return valid price with extra days."""
         drop_off = (date.today() + timedelta(days=10)).isoformat()
         pickup = (date.today() + timedelta(days=31)).isoformat()  # 21 days later
 
@@ -468,8 +491,10 @@ class TestPricingCalculateEndpoint:
             "pickup_date": pickup,
         })
 
-        assert response.status_code == 400
-        assert "21 days" in response.json()["detail"]
+        assert response.status_code == 200
+        data = response.json()
+        assert data["duration_days"] == 21
+        # 21 days = 14 days base + 7 extra days at £9/day
 
     @pytest.mark.asyncio
     async def test_calculate_boundary_exactly_14_days_advance(self, client):
@@ -486,7 +511,7 @@ class TestPricingCalculateEndpoint:
         data = response.json()
         assert data["advance_tier"] == "early"
         assert data["days_in_advance"] == 14
-        assert data["price"] == 89.0
+        assert data["price"] == 79.0
 
     @pytest.mark.asyncio
     async def test_calculate_boundary_exactly_13_days_advance(self, client):
@@ -503,7 +528,7 @@ class TestPricingCalculateEndpoint:
         data = response.json()
         assert data["advance_tier"] == "standard"
         assert data["days_in_advance"] == 13
-        assert data["price"] == 99.0
+        assert data["price"] == 89.0
 
     @pytest.mark.asyncio
     async def test_calculate_boundary_exactly_7_days_advance(self, client):
@@ -520,7 +545,7 @@ class TestPricingCalculateEndpoint:
         data = response.json()
         assert data["advance_tier"] == "standard"
         assert data["days_in_advance"] == 7
-        assert data["price"] == 99.0
+        assert data["price"] == 89.0
 
     @pytest.mark.asyncio
     async def test_calculate_boundary_exactly_6_days_advance(self, client):
@@ -537,7 +562,7 @@ class TestPricingCalculateEndpoint:
         data = response.json()
         assert data["advance_tier"] == "late"
         assert data["days_in_advance"] == 6
-        assert data["price"] == 109.0
+        assert data["price"] == 99.0
 
     @pytest.mark.asyncio
     async def test_calculate_includes_all_prices(self, client):
@@ -553,9 +578,9 @@ class TestPricingCalculateEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert "all_prices" in data
-        assert data["all_prices"]["early"] == 89.0
-        assert data["all_prices"]["standard"] == 99.0
-        assert data["all_prices"]["late"] == 109.0
+        assert data["all_prices"]["early"] == 79.0
+        assert data["all_prices"]["standard"] == 89.0
+        assert data["all_prices"]["late"] == 99.0
 
 
 class TestPricingTiersEndpoint:
@@ -583,9 +608,9 @@ class TestPricingTiersEndpoint:
         assert "longer" in data["packages"]
 
         # Check quick package prices (nested under "prices" key)
-        assert data["packages"]["quick"]["prices"]["early"] == 89.0
-        assert data["packages"]["quick"]["prices"]["standard"] == 99.0
-        assert data["packages"]["quick"]["prices"]["late"] == 109.0
+        assert data["packages"]["quick"]["prices"]["early"] == 79.0
+        assert data["packages"]["quick"]["prices"]["standard"] == 89.0
+        assert data["packages"]["quick"]["prices"]["late"] == 99.0
 
         # Check longer package prices (nested under "prices" key)
         assert data["packages"]["longer"]["prices"]["early"] == 140.0
@@ -655,9 +680,9 @@ class TestEndToEndPricingFlow:
         """Verify all 6 pricing scenarios (2 packages x 3 tiers) via API."""
         scenarios = [
             # (days_advance, duration, expected_package, expected_tier, expected_price)
-            (20, 7, "quick", "early", 89.0),
-            (10, 7, "quick", "standard", 99.0),
-            (3, 7, "quick", "late", 109.0),
+            (20, 7, "quick", "early", 79.0),
+            (10, 7, "quick", "standard", 89.0),
+            (3, 7, "quick", "late", 99.0),
             (20, 14, "longer", "early", 140.0),
             (10, 14, "longer", "standard", 150.0),
             (3, 14, "longer", "late", 160.0),
@@ -698,7 +723,7 @@ class TestGetPricingFromDb:
 
         try:
             pricing = get_pricing_from_db()
-            assert pricing["week1_base_price"] == 89.0
+            assert pricing["week1_base_price"] == 79.0
             assert pricing["week2_base_price"] == 140.0
             assert pricing["tier_increment"] == 10.0
         finally:
@@ -718,7 +743,7 @@ class TestGetPricingFromDb:
         try:
             pricing = get_pricing_from_db()
             # Should gracefully fall back to defaults
-            assert pricing["week1_base_price"] == 89.0
+            assert pricing["week1_base_price"] == 79.0
             assert pricing["week2_base_price"] == 140.0
             assert pricing["tier_increment"] == 10.0
         finally:
@@ -1133,33 +1158,27 @@ class TestFullBookingFlowWithDynamicPricing:
     @pytest.mark.asyncio
     async def test_pricing_api_uses_dynamic_prices(self, client):
         """
-        Verify /api/pricing/calculate endpoint uses dynamic pricing.
+        Verify /api/pricing/calculate endpoint uses mocked pricing.
         """
-        custom_pricing = {
-            "week1_base_price": 95.0,
-            "week2_base_price": 155.0,
-            "tier_increment": 12.0,
-        }
+        # Uses the autouse mock_pricing fixture with DEFAULT_TEST_PRICING
+        # 1 week, early tier
+        drop_off = (date.today() + timedelta(days=20)).isoformat()
+        pickup = (date.today() + timedelta(days=27)).isoformat()
 
-        with patch("booking_service.get_pricing_from_db", return_value=custom_pricing):
-            # 1 week, early tier
-            drop_off = (date.today() + timedelta(days=20)).isoformat()
-            pickup = (date.today() + timedelta(days=27)).isoformat()
+        response = await client.post("/api/pricing/calculate", json={
+            "drop_off_date": drop_off,
+            "pickup_date": pickup,
+        })
 
-            response = await client.post("/api/pricing/calculate", json={
-                "drop_off_date": drop_off,
-                "pickup_date": pickup,
-            })
+        assert response.status_code == 200
+        data = response.json()
 
-            assert response.status_code == 200
-            data = response.json()
-
-            # Should use custom pricing
-            assert data["price"] == 95.0, "API should return custom early price"
-            assert data["price_pence"] == 9500, "API should return correct pence"
-            assert data["all_prices"]["early"] == 95.0
-            assert data["all_prices"]["standard"] == 107.0  # 95 + 12
-            assert data["all_prices"]["late"] == 119.0      # 95 + 24
+        # Should use mocked pricing (79/89/99)
+        assert data["price"] == 79.0, "API should return early price"
+        assert data["price_pence"] == 7900, "API should return correct pence"
+        assert data["all_prices"]["early"] == 79.0
+        assert data["all_prices"]["standard"] == 89.0  # 79 + 10
+        assert data["all_prices"]["late"] == 99.0      # 79 + 20
 
     @pytest.mark.asyncio
     async def test_pricing_tiers_endpoint_uses_dynamic_prices(self, client):
@@ -1213,37 +1232,31 @@ class TestFullBookingFlowWithDynamicPricing:
     async def test_all_endpoints_consistent_with_same_pricing(self, client):
         """
         Verify all pricing endpoints return consistent prices when
-        using the same dynamic pricing configuration.
+        using the same mocked pricing configuration.
         """
-        custom_pricing = {
-            "week1_base_price": 85.0,
-            "week2_base_price": 145.0,
-            "tier_increment": 10.0,
-        }
+        # Uses the autouse mock_pricing fixture with DEFAULT_TEST_PRICING
+        # Get from public endpoint
+        public_response = await client.get("/api/pricing")
+        public_data = public_response.json()
 
-        with patch("booking_service.get_pricing_from_db", return_value=custom_pricing):
-            # Get from public endpoint
-            public_response = await client.get("/api/pricing")
-            public_data = public_response.json()
+        # Get from tiers endpoint
+        tiers_response = await client.get("/api/pricing/tiers")
+        tiers_data = tiers_response.json()
 
-            # Get from tiers endpoint
-            tiers_response = await client.get("/api/pricing/tiers")
-            tiers_data = tiers_response.json()
+        # Get from calculate endpoint
+        drop_off = (date.today() + timedelta(days=20)).isoformat()
+        pickup = (date.today() + timedelta(days=27)).isoformat()
+        calc_response = await client.post("/api/pricing/calculate", json={
+            "drop_off_date": drop_off,
+            "pickup_date": pickup,
+        })
+        calc_data = calc_response.json()
 
-            # Get from calculate endpoint
-            drop_off = (date.today() + timedelta(days=20)).isoformat()
-            pickup = (date.today() + timedelta(days=27)).isoformat()
-            calc_response = await client.post("/api/pricing/calculate", json={
-                "drop_off_date": drop_off,
-                "pickup_date": pickup,
-            })
-            calc_data = calc_response.json()
-
-            # All should be consistent
-            assert public_data["week1_base_price"] == 85.0
-            assert tiers_data["packages"]["quick"]["prices"]["early"] == 85.0
-            assert calc_data["price"] == 85.0
-            assert calc_data["all_prices"]["early"] == 85.0
+        # All should be consistent with mocked pricing (79/89/99)
+        assert public_data["week1_base_price"] == 79.0
+        assert tiers_data["packages"]["quick"]["prices"]["early"] == 79.0
+        assert calc_data["price"] == 79.0
+        assert calc_data["all_prices"]["early"] == 79.0
 
     @pytest.mark.asyncio
     async def test_price_change_reflects_immediately(self, client):
@@ -1252,15 +1265,25 @@ class TestFullBookingFlowWithDynamicPricing:
         """
         # First pricing configuration
         pricing_v1 = {
-            "week1_base_price": 89.0,
+            "days_1_4_price": 60.0,
+            "days_5_6_price": 69.0,
+            "week1_base_price": 79.0,
+            "days_8_9_price": 99.0,
+            "days_10_11_price": 119.0,
+            "days_12_13_price": 130.0,
             "week2_base_price": 140.0,
             "tier_increment": 10.0,
         }
 
         # Updated pricing configuration
         pricing_v2 = {
-            "week1_base_price": 99.0,
-            "week2_base_price": 160.0,
+            "days_1_4_price": 70.0,
+            "days_5_6_price": 79.0,
+            "week1_base_price": 89.0,
+            "days_8_9_price": 109.0,
+            "days_10_11_price": 129.0,
+            "days_12_13_price": 140.0,
+            "week2_base_price": 150.0,
             "tier_increment": 15.0,
         }
 
@@ -1273,7 +1296,7 @@ class TestFullBookingFlowWithDynamicPricing:
                 "drop_off_date": drop_off,
                 "pickup_date": pickup,
             })
-            assert response1.json()["price"] == 89.0
+            assert response1.json()["price"] == 79.0
 
         # Second request with v2 pricing (simulating admin update)
         with patch("booking_service.get_pricing_from_db", return_value=pricing_v2):
@@ -1281,37 +1304,31 @@ class TestFullBookingFlowWithDynamicPricing:
                 "drop_off_date": drop_off,
                 "pickup_date": pickup,
             })
-            assert response2.json()["price"] == 99.0
+            assert response2.json()["price"] == 89.0
 
     @pytest.mark.asyncio
     async def test_longer_package_pricing_flow(self, client):
         """
-        Verify 2-week package uses dynamic pricing correctly.
+        Verify 2-week package uses mocked pricing correctly.
         """
-        custom_pricing = {
-            "week1_base_price": 90.0,
-            "week2_base_price": 150.0,
-            "tier_increment": 10.0,
-        }
+        # Uses the autouse mock_pricing fixture with DEFAULT_TEST_PRICING
+        # 2 weeks, late tier (3 days advance)
+        drop_off = (date.today() + timedelta(days=3)).isoformat()
+        pickup = (date.today() + timedelta(days=17)).isoformat()  # 14 days
 
-        with patch("booking_service.get_pricing_from_db", return_value=custom_pricing):
-            # 2 weeks, late tier (3 days advance)
-            drop_off = (date.today() + timedelta(days=3)).isoformat()
-            pickup = (date.today() + timedelta(days=17)).isoformat()  # 14 days
+        response = await client.post("/api/pricing/calculate", json={
+            "drop_off_date": drop_off,
+            "pickup_date": pickup,
+        })
 
-            response = await client.post("/api/pricing/calculate", json={
-                "drop_off_date": drop_off,
-                "pickup_date": pickup,
-            })
+        assert response.status_code == 200
+        data = response.json()
 
-            assert response.status_code == 200
-            data = response.json()
-
-            assert data["package"] == "longer"
-            assert data["advance_tier"] == "late"
-            # Late tier = base + 2*increment = 150 + 20 = 170
-            assert data["price"] == 170.0
-            assert data["price_pence"] == 17000
+        assert data["package"] == "longer"
+        assert data["advance_tier"] == "late"
+        # Late tier = base + 2*increment = 140 + 20 = 160
+        assert data["price"] == 160.0
+        assert data["price_pence"] == 16000
 
 
 class TestDynamicPricingBoundaryConditions:

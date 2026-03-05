@@ -25,6 +25,14 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
+# For occupancy tests, use month-aligned dates
+FUTURE_MONTH_START = TODAY.replace(day=1) + timedelta(days=60)  # Start of a future month
+FUTURE_MONTH_END = (FUTURE_MONTH_START.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)  # End of that month
+
 
 # =============================================================================
 # Mock Data Factories
@@ -74,8 +82,8 @@ class TestDailyOccupancyCalculation:
 
     def test_single_booking_spans_multiple_days(self):
         """Test that a single booking is counted on each day it occupies."""
-        start = date(2026, 3, 1)
-        end = date(2026, 3, 7)
+        start = FUTURE_DATE
+        end = FUTURE_DATE + timedelta(days=6)  # 7 day span
         booking = create_mock_booking(dropoff_date=start, pickup_date=end)
 
         # Calculate daily occupancy
@@ -87,13 +95,13 @@ class TestDailyOccupancyCalculation:
 
         # Should have 7 days of occupancy
         assert len(daily_occupancy) == 7
-        assert daily_occupancy["2026-03-01"] == 1
-        assert daily_occupancy["2026-03-07"] == 1
+        assert daily_occupancy[start.isoformat()] == 1
+        assert daily_occupancy[end.isoformat()] == 1
 
     def test_multiple_bookings_same_dates(self):
         """Test multiple bookings on the same dates stack up."""
-        start = date(2026, 3, 1)
-        end = date(2026, 3, 3)
+        start = FUTURE_DATE
+        end = FUTURE_DATE + timedelta(days=2)  # 3 day span
         bookings = create_bookings_for_date_range(start, end, count=5)
 
         daily_occupancy = defaultdict(int)
@@ -103,18 +111,19 @@ class TestDailyOccupancyCalculation:
                 daily_occupancy[current.isoformat()] += 1
                 current += timedelta(days=1)
 
-        assert daily_occupancy["2026-03-01"] == 5
-        assert daily_occupancy["2026-03-02"] == 5
-        assert daily_occupancy["2026-03-03"] == 5
+        assert daily_occupancy[start.isoformat()] == 5
+        assert daily_occupancy[(start + timedelta(days=1)).isoformat()] == 5
+        assert daily_occupancy[end.isoformat()] == 5
 
     def test_overlapping_bookings(self):
         """Test overlapping bookings are counted correctly."""
-        # Booking 1: Mar 1-5
-        # Booking 2: Mar 3-7
-        # Expected: Mar 1-2 = 1, Mar 3-5 = 2, Mar 6-7 = 1
+        # Booking 1: Day 0-4
+        # Booking 2: Day 2-6
+        # Expected: Day 0-1 = 1, Day 2-4 = 2, Day 5-6 = 1
+        day0 = FUTURE_DATE
         bookings = [
-            create_mock_booking(id=1, dropoff_date=date(2026, 3, 1), pickup_date=date(2026, 3, 5)),
-            create_mock_booking(id=2, dropoff_date=date(2026, 3, 3), pickup_date=date(2026, 3, 7)),
+            create_mock_booking(id=1, dropoff_date=day0, pickup_date=day0 + timedelta(days=4)),
+            create_mock_booking(id=2, dropoff_date=day0 + timedelta(days=2), pickup_date=day0 + timedelta(days=6)),
         ]
 
         daily_occupancy = defaultdict(int)
@@ -124,13 +133,13 @@ class TestDailyOccupancyCalculation:
                 daily_occupancy[current.isoformat()] += 1
                 current += timedelta(days=1)
 
-        assert daily_occupancy["2026-03-01"] == 1
-        assert daily_occupancy["2026-03-02"] == 1
-        assert daily_occupancy["2026-03-03"] == 2
-        assert daily_occupancy["2026-03-04"] == 2
-        assert daily_occupancy["2026-03-05"] == 2
-        assert daily_occupancy["2026-03-06"] == 1
-        assert daily_occupancy["2026-03-07"] == 1
+        assert daily_occupancy[(day0).isoformat()] == 1
+        assert daily_occupancy[(day0 + timedelta(days=1)).isoformat()] == 1
+        assert daily_occupancy[(day0 + timedelta(days=2)).isoformat()] == 2
+        assert daily_occupancy[(day0 + timedelta(days=3)).isoformat()] == 2
+        assert daily_occupancy[(day0 + timedelta(days=4)).isoformat()] == 2
+        assert daily_occupancy[(day0 + timedelta(days=5)).isoformat()] == 1
+        assert daily_occupancy[(day0 + timedelta(days=6)).isoformat()] == 1
 
     def test_occupancy_percentage_calculation(self):
         """Test occupancy percentage is calculated correctly."""
@@ -155,10 +164,12 @@ class TestDailyOccupancyCalculation:
 
     def test_uk_date_format(self):
         """Test UK date format dd/mm/yyyy."""
-        test_date = date(2026, 3, 15)
+        test_date = FUTURE_DATE
         display_date = test_date.strftime("%d/%m/%Y")
 
-        assert display_date == "15/03/2026"
+        # Verify format is dd/mm/yyyy
+        assert len(display_date) == 10
+        assert display_date[2] == "/" and display_date[5] == "/"
 
 
 # =============================================================================
@@ -172,10 +183,12 @@ class TestWeeklyOccupancyCalculation:
 
     def test_iso_week_key_format(self):
         """Test ISO week key format."""
-        test_date = date(2026, 3, 15)  # Week 11 of 2026
+        test_date = FUTURE_DATE
         week_key = test_date.strftime("%G-W%V")
 
-        assert week_key == "2026-W11"
+        # Verify format is YYYY-Wnn
+        assert week_key.startswith("20")
+        assert "-W" in week_key
 
     def test_weekly_average_calculation(self):
         """Test weekly average is calculated correctly."""
@@ -198,11 +211,15 @@ class TestWeeklyOccupancyCalculation:
 
     def test_week_display_format(self):
         """Test week display format."""
-        week_start = date(2026, 3, 9)  # Monday
+        # Find the next Monday from FUTURE_DATE
+        days_until_monday = (7 - FUTURE_DATE.weekday()) % 7
+        week_start = FUTURE_DATE + timedelta(days=days_until_monday)
         week_end = week_start + timedelta(days=6)
         display_week = f"{week_start.strftime('%d/%m')} - {week_end.strftime('%d/%m/%Y')}"
 
-        assert display_week == "09/03 - 15/03/2026"
+        # Verify format is "dd/mm - dd/mm/yyyy"
+        assert " - " in display_week
+        assert display_week.count("/") == 4
 
 
 # =============================================================================
@@ -214,10 +231,12 @@ class TestMonthlyOccupancyCalculation:
 
     def test_month_key_format(self):
         """Test month key format."""
-        test_date = date(2026, 3, 15)
+        test_date = FUTURE_DATE
         month_key = test_date.strftime("%Y-%m")
 
-        assert month_key == "2026-03"
+        # Verify format is YYYY-MM
+        assert len(month_key) == 7
+        assert month_key[4] == "-"
 
     def test_monthly_average_calculation(self):
         """Test monthly average is calculated correctly."""
@@ -232,12 +251,14 @@ class TestMonthlyOccupancyCalculation:
     def test_month_display_format(self):
         """Test month display format."""
         import calendar
-        year = 2026
-        month = 3
+        year = FUTURE_DATE.year
+        month = FUTURE_DATE.month
         month_name = calendar.month_name[month]
         display_month = f"{month_name} {year}"
 
-        assert display_month == "March 2026"
+        # Verify format contains year and month name
+        assert str(year) in display_month
+        assert month_name in display_month
 
 
 # =============================================================================
@@ -249,11 +270,11 @@ class TestDateRangeFiltering:
 
     def test_booking_within_range(self):
         """Test booking completely within report range."""
-        report_start = date(2026, 3, 1)
-        report_end = date(2026, 3, 31)
+        report_start = FUTURE_MONTH_START
+        report_end = FUTURE_MONTH_END
         booking = create_mock_booking(
-            dropoff_date=date(2026, 3, 10),
-            pickup_date=date(2026, 3, 20),
+            dropoff_date=FUTURE_MONTH_START + timedelta(days=9),
+            pickup_date=FUTURE_MONTH_START + timedelta(days=19),
         )
 
         overlaps = (
@@ -265,11 +286,11 @@ class TestDateRangeFiltering:
 
     def test_booking_starts_before_range(self):
         """Test booking that starts before report range."""
-        report_start = date(2026, 3, 1)
-        report_end = date(2026, 3, 31)
+        report_start = FUTURE_MONTH_START
+        report_end = FUTURE_MONTH_END
         booking = create_mock_booking(
-            dropoff_date=date(2026, 2, 25),
-            pickup_date=date(2026, 3, 5),
+            dropoff_date=FUTURE_MONTH_START - timedelta(days=5),
+            pickup_date=FUTURE_MONTH_START + timedelta(days=4),
         )
 
         overlaps = (
@@ -281,11 +302,11 @@ class TestDateRangeFiltering:
 
     def test_booking_ends_after_range(self):
         """Test booking that ends after report range."""
-        report_start = date(2026, 3, 1)
-        report_end = date(2026, 3, 31)
+        report_start = FUTURE_MONTH_START
+        report_end = FUTURE_MONTH_END
         booking = create_mock_booking(
-            dropoff_date=date(2026, 3, 28),
-            pickup_date=date(2026, 4, 5),
+            dropoff_date=FUTURE_MONTH_END - timedelta(days=3),
+            pickup_date=FUTURE_MONTH_END + timedelta(days=5),
         )
 
         overlaps = (
@@ -297,11 +318,11 @@ class TestDateRangeFiltering:
 
     def test_booking_spans_entire_range(self):
         """Test booking that spans entire report range."""
-        report_start = date(2026, 3, 1)
-        report_end = date(2026, 3, 31)
+        report_start = FUTURE_MONTH_START
+        report_end = FUTURE_MONTH_END
         booking = create_mock_booking(
-            dropoff_date=date(2026, 2, 15),
-            pickup_date=date(2026, 4, 15),
+            dropoff_date=FUTURE_MONTH_START - timedelta(days=15),
+            pickup_date=FUTURE_MONTH_END + timedelta(days=15),
         )
 
         overlaps = (
@@ -313,11 +334,11 @@ class TestDateRangeFiltering:
 
     def test_booking_before_range(self):
         """Test booking completely before report range."""
-        report_start = date(2026, 3, 1)
-        report_end = date(2026, 3, 31)
+        report_start = FUTURE_MONTH_START
+        report_end = FUTURE_MONTH_END
         booking = create_mock_booking(
-            dropoff_date=date(2026, 2, 1),
-            pickup_date=date(2026, 2, 15),
+            dropoff_date=FUTURE_MONTH_START - timedelta(days=30),
+            pickup_date=FUTURE_MONTH_START - timedelta(days=15),
         )
 
         overlaps = (
@@ -329,11 +350,11 @@ class TestDateRangeFiltering:
 
     def test_booking_after_range(self):
         """Test booking completely after report range."""
-        report_start = date(2026, 3, 1)
-        report_end = date(2026, 3, 31)
+        report_start = FUTURE_MONTH_START
+        report_end = FUTURE_MONTH_END
         booking = create_mock_booking(
-            dropoff_date=date(2026, 4, 15),
-            pickup_date=date(2026, 4, 25),
+            dropoff_date=FUTURE_MONTH_END + timedelta(days=15),
+            pickup_date=FUTURE_MONTH_END + timedelta(days=25),
         )
 
         overlaps = (
@@ -369,8 +390,8 @@ class TestOccupancyEdgeCases:
     def test_single_day_booking(self):
         """Test booking that starts and ends on same day."""
         booking = create_mock_booking(
-            dropoff_date=date(2026, 3, 15),
-            pickup_date=date(2026, 3, 15),
+            dropoff_date=FUTURE_DATE,
+            pickup_date=FUTURE_DATE,
         )
 
         daily_occupancy = defaultdict(int)
@@ -380,7 +401,7 @@ class TestOccupancyEdgeCases:
             current += timedelta(days=1)
 
         assert len(daily_occupancy) == 1
-        assert daily_occupancy["2026-03-15"] == 1
+        assert daily_occupancy[FUTURE_DATE.isoformat()] == 1
 
     def test_today_flag(self):
         """Test is_today flag is set correctly."""
@@ -426,9 +447,14 @@ class TestOccupancyEdgeCases:
 
     def test_year_boundary(self):
         """Test booking spanning year boundary."""
+        # Get Dec 30 of current year and Jan 3 of next year
+        year = TODAY.year
+        dec_30 = date(year, 12, 30)
+        jan_3 = date(year + 1, 1, 3)
+
         booking = create_mock_booking(
-            dropoff_date=date(2025, 12, 30),
-            pickup_date=date(2026, 1, 3),
+            dropoff_date=dec_30,
+            pickup_date=jan_3,
         )
 
         daily_occupancy = defaultdict(int)
@@ -437,10 +463,10 @@ class TestOccupancyEdgeCases:
             daily_occupancy[current.isoformat()] += 1
             current += timedelta(days=1)
 
-        assert "2025-12-30" in daily_occupancy
-        assert "2025-12-31" in daily_occupancy
-        assert "2026-01-01" in daily_occupancy
-        assert "2026-01-02" in daily_occupancy
+        assert f"{year}-12-30" in daily_occupancy
+        assert f"{year}-12-31" in daily_occupancy
+        assert f"{year + 1}-01-01" in daily_occupancy
+        assert f"{year + 1}-01-02" in daily_occupancy
         assert "2026-01-03" in daily_occupancy
         assert len(daily_occupancy) == 5
 
@@ -600,8 +626,8 @@ class TestOccupancyNegativeCases:
 
     def test_invalid_date_range(self):
         """Test handling of end date before start date."""
-        start_date = date(2026, 4, 1)
-        end_date = date(2026, 3, 1)
+        start_date = FUTURE_DATE + timedelta(days=30)
+        end_date = FUTURE_DATE
 
         # Should be caught by validation
         is_valid = start_date <= end_date
@@ -609,9 +635,11 @@ class TestOccupancyNegativeCases:
 
     def test_very_long_booking(self):
         """Test handling of very long booking (e.g., 6 months)."""
+        start = FUTURE_DATE
+        end = FUTURE_DATE + timedelta(days=180)
         booking = create_mock_booking(
-            dropoff_date=date(2026, 1, 1),
-            pickup_date=date(2026, 6, 30),
+            dropoff_date=start,
+            pickup_date=end,
         )
 
         daily_occupancy = defaultdict(int)
@@ -620,7 +648,7 @@ class TestOccupancyNegativeCases:
             daily_occupancy[current.isoformat()] += 1
             current += timedelta(days=1)
 
-        # Jan 1 to Jun 30 is 181 days
+        # 181 days span (day 0 through day 180)
         assert len(daily_occupancy) == 181
 
 

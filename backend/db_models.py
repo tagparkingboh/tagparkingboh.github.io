@@ -127,6 +127,10 @@ class Booking(Base):
     dropoff_airline_code = Column(String(10), nullable=True)  # e.g., "BY" for TUI
     dropoff_airline_name = Column(String(100), nullable=True)  # e.g., "TUI"
 
+    # Actual flight times (always stored, used for emails and display)
+    flight_departure_time = Column(Time, nullable=True)  # Actual flight departure time
+    flight_arrival_time = Column(Time, nullable=True)  # Actual flight arrival time
+
     # Pick-up details
     pickup_date = Column(Date, nullable=False)
     pickup_time = Column(Time)  # Arrival/landing time of return flight

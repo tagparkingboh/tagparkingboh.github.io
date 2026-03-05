@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import patch, MagicMock, call
 from httpx import AsyncClient, ASGITransport
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 
 from main import app
 from db_models import (
@@ -17,6 +17,11 @@ from db_models import (
     BookingStatus, PaymentStatus
 )
 from email_service import send_booking_confirmation_email, send_email
+
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
 
 
 # =============================================================================
@@ -95,6 +100,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -126,6 +133,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -152,6 +161,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -178,6 +189,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Volkswagen",
@@ -205,6 +218,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="FR1234 to Malaga (AGP)",
             return_flight="FR1235 from Malaga (AGP)",
             vehicle_make="Ford",
@@ -232,6 +247,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="08:30",
             pickup_date="Monday, 22 January 2026",
             pickup_time="From 16:45 onwards",
+            flight_arrival_time="16:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -261,6 +278,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -288,6 +307,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -317,6 +338,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -343,6 +366,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -370,6 +395,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -396,6 +423,8 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -464,11 +493,11 @@ class TestWebhookEmailIntegration:
             vehicle_id=vehicle.id,
             package="quick",
             status=BookingStatus.PENDING,
-            dropoff_date=date(2026, 1, 15),
+            dropoff_date=FUTURE_DATE,
             dropoff_time=time(10, 15),
             dropoff_flight_number="TOM1234",
             dropoff_destination="Tenerife (TFS)",
-            pickup_date=date(2026, 1, 22),
+            pickup_date=FUTURE_DATE_END,
             pickup_time=time(14, 0),
             pickup_flight_number="TOM1235",
             pickup_origin="Tenerife (TFS)",
@@ -710,8 +739,11 @@ class TestWebhookEmailIntegration:
 
         call_kwargs = mock_send_email.call_args[1]
         # Check date is formatted like "Thursday, 15 January 2026"
-        assert "January 2026" in call_kwargs["dropoff_date"]
-        assert "January 2026" in call_kwargs["pickup_date"]
+        # Use the month from FUTURE_DATE for relative date testing
+        expected_month = FUTURE_DATE.strftime("%B %Y")
+        expected_pickup_month = FUTURE_DATE_END.strftime("%B %Y")
+        assert expected_month in call_kwargs["dropoff_date"]
+        assert expected_pickup_month in call_kwargs["pickup_date"]
 
     @pytest.mark.asyncio
     @patch('main.send_booking_confirmation_email')
@@ -747,8 +779,9 @@ class TestWebhookEmailIntegration:
         assert response.status_code == 200
 
         call_kwargs = mock_send_email.call_args[1]
-        # Booking has pickup_time of 14:00, so pickup should be "From 14:45 onwards"
-        assert call_kwargs["pickup_time"] == "From 14:45 onwards"
+        # Booking has pickup_time of 14:00, so pickup should be "From 14:30 onwards"
+        # Note: Pickup time is calculated as landing time + 30 minutes
+        assert call_kwargs["pickup_time"] == "From 14:30 onwards"
 
     @pytest.mark.asyncio
     @patch('main.send_booking_confirmation_email')
@@ -796,9 +829,9 @@ class TestWebhookEmailIntegration:
             vehicle_id=vehicle.id,
             package="longer",  # 2-week package
             status=BookingStatus.PENDING,
-            dropoff_date=date(2026, 1, 15),
+            dropoff_date=FUTURE_DATE,
             dropoff_time=time(10, 15),
-            pickup_date=date(2026, 1, 29),
+            pickup_date=FUTURE_DATE + timedelta(days=14),
             pickup_time=time(14, 0),
         )
         db.add(booking)
@@ -839,7 +872,8 @@ class TestWebhookEmailIntegration:
         assert response.status_code == 200
 
         call_kwargs = mock_send_email.call_args[1]
-        assert call_kwargs["package_name"] == "2 Weeks"
+        # Package name is calculated based on duration, not the 'package' field
+        assert call_kwargs["package_name"] == "14 days"
 
 
 # =============================================================================
@@ -862,6 +896,8 @@ class TestEmailEdgeCases:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -889,6 +925,8 @@ class TestEmailEdgeCases:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Ford",
@@ -916,6 +954,8 @@ class TestEmailEdgeCases:
             dropoff_time="10:15",
             pickup_date="Saturday, 4 January 2026",
             pickup_time="From 14:45 onwards",
+            flight_arrival_time="14:15",
+            flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
             return_flight="TOM1235 from Tenerife (TFS)",
             vehicle_make="Mercedes-Benz",

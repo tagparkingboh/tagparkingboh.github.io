@@ -617,6 +617,9 @@ function ManualBooking({ token }) {
       notes: formData.notes,
       promo_code: promoValid ? formData.promoCode.trim().toUpperCase() : null,
       is_free_booking: isFreeBooking || false,
+      // Actual flight times (for emails and display)
+      flight_departure_time: formData.departureTime || null,
+      flight_arrival_time: formData.arrivalTime || null,
     }
 
     try {

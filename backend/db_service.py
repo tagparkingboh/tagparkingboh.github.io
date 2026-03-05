@@ -265,6 +265,9 @@ def create_booking(
     pickup_manual_entry: bool = False,
     pickup_airline_code: str = None,
     pickup_airline_name: str = None,
+    # Actual flight times
+    flight_departure_time: time = None,
+    flight_arrival_time: time = None,
 ) -> Booking:
     """Create a new booking."""
     # Generate unique reference
@@ -309,6 +312,9 @@ def create_booking(
         pickup_manual_entry=pickup_manual_entry,
         pickup_airline_code=pickup_airline_code,
         pickup_airline_name=pickup_airline_name,
+        # Actual flight times
+        flight_departure_time=flight_departure_time,
+        flight_arrival_time=flight_arrival_time,
     )
     db.add(booking)
     db.commit()
@@ -704,6 +710,9 @@ def create_full_booking(
     pickup_manual_entry: bool = False,
     pickup_airline_code: str = None,
     pickup_airline_name: str = None,
+    # Actual flight times
+    flight_departure_time: time = None,
+    flight_arrival_time: time = None,
 ) -> dict:
     """
     Create a complete booking with customer, vehicle, booking, and payment records.
@@ -765,6 +774,9 @@ def create_full_booking(
         pickup_manual_entry=pickup_manual_entry,
         pickup_airline_code=pickup_airline_code,
         pickup_airline_name=pickup_airline_name,
+        # Actual flight times
+        flight_departure_time=flight_departure_time,
+        flight_arrival_time=flight_arrival_time,
     )
 
     # 4. Create payment record if stripe details provided

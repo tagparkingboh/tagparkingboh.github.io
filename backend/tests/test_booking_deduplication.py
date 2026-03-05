@@ -10,13 +10,18 @@ All tests use mocked data to avoid database and Stripe API conflicts.
 """
 import pytest
 from unittest.mock import MagicMock, patch, Mock
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timedelta
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from db_models import Booking, BookingStatus, Payment, PaymentStatus
+
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
 
 
 # =============================================================================
@@ -117,9 +122,9 @@ class TestCreateBookingWithSessionId:
             vehicle_id=1,
             package="quick",
             status=BookingStatus.PENDING,
-            dropoff_date=date(2026, 3, 15),
+            dropoff_date=FUTURE_DATE,
             dropoff_time=time(10, 0),
-            pickup_date=date(2026, 3, 22),
+            pickup_date=FUTURE_DATE_END,
             session_id="test-session-abc"
         )
 
@@ -133,9 +138,9 @@ class TestCreateBookingWithSessionId:
             vehicle_id=1,
             package="quick",
             status=BookingStatus.PENDING,
-            dropoff_date=date(2026, 3, 15),
+            dropoff_date=FUTURE_DATE,
             dropoff_time=time(10, 0),
-            pickup_date=date(2026, 3, 22),
+            pickup_date=FUTURE_DATE_END,
             session_id=None
         )
 

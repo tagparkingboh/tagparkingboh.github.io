@@ -34,7 +34,7 @@ describe('HomePage Pricing Display', () => {
     )
 
     // Should show default prices initially
-    expect(container.textContent).toContain('89')
+    expect(container.textContent).toContain('79')
     expect(container.textContent).toContain('140')
   })
 
@@ -96,7 +96,7 @@ describe('HomePage Pricing Display', () => {
     await new Promise(resolve => setTimeout(resolve, 100))
 
     // Should still show default prices
-    expect(container.textContent).toContain('89')
+    expect(container.textContent).toContain('79')
     expect(container.textContent).toContain('140')
   })
 
@@ -115,7 +115,7 @@ describe('HomePage Pricing Display', () => {
     await new Promise(resolve => setTimeout(resolve, 100))
 
     // Should still show default prices
-    expect(container.textContent).toContain('89')
+    expect(container.textContent).toContain('79')
     expect(container.textContent).toContain('140')
   })
 })
@@ -133,7 +133,7 @@ describe('Admin Pricing Settings', () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({
-        week1_base_price: 89,
+        week1_base_price: 79,
         week2_base_price: 140,
         tier_increment: 10,
         updated_at: '2026-01-25T10:00:00Z',
@@ -143,7 +143,7 @@ describe('Admin Pricing Settings', () => {
     render(<MockAdminPricing token="test-token" />)
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue('89')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('79')).toBeInTheDocument()
       expect(screen.getByDisplayValue('140')).toBeInTheDocument()
       expect(screen.getByDisplayValue('10')).toBeInTheDocument()
     })
@@ -153,7 +153,7 @@ describe('Admin Pricing Settings', () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({
-        week1_base_price: 89,
+        week1_base_price: 79,
         week2_base_price: 140,
         tier_increment: 10,
       }),
@@ -162,20 +162,20 @@ describe('Admin Pricing Settings', () => {
     render(<MockAdminPricing token="test-token" />)
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue('89')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('79')).toBeInTheDocument()
     })
 
-    const week1Input = screen.getByDisplayValue('89')
-    fireEvent.change(week1Input, { target: { value: '99' } })
+    const week1Input = screen.getByDisplayValue('79')
+    fireEvent.change(week1Input, { target: { value: '89' } })
 
-    expect(screen.getByDisplayValue('99')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('89')).toBeInTheDocument()
   })
 
   it('shows price preview with calculated tiers', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({
-        week1_base_price: 89,
+        week1_base_price: 79,
         week2_base_price: 140,
         tier_increment: 10,
       }),
@@ -184,14 +184,14 @@ describe('Admin Pricing Settings', () => {
     const { container } = render(<MockAdminPricing token="test-token" />)
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue('89')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('79')).toBeInTheDocument()
     })
 
     // Preview should show calculated prices
-    // 1 Week: 89, 99, 109
+    // 1 Week: 79, 89, 99
     // 2 Weeks: 140, 150, 160
-    expect(container.textContent).toContain('99')  // 89 + 10
-    expect(container.textContent).toContain('109') // 89 + 20
+    expect(container.textContent).toContain('89')  // 79 + 10
+    expect(container.textContent).toContain('99')  // 79 + 20
     expect(container.textContent).toContain('150') // 140 + 10
     expect(container.textContent).toContain('160') // 140 + 20
   })
@@ -201,7 +201,7 @@ describe('Admin Pricing Settings', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
-          week1_base_price: 89,
+          week1_base_price: 79,
           week2_base_price: 140,
           tier_increment: 10,
         }),
@@ -217,12 +217,12 @@ describe('Admin Pricing Settings', () => {
     render(<MockAdminPricing token="test-token" />)
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue('89')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('79')).toBeInTheDocument()
     })
 
     // Change values
-    const week1Input = screen.getByDisplayValue('89')
-    fireEvent.change(week1Input, { target: { value: '95' } })
+    const week1Input = screen.getByDisplayValue('79')
+    fireEvent.change(week1Input, { target: { value: '85' } })
 
     // Click save
     const saveButton = screen.getByText('Save Changes')
@@ -233,7 +233,7 @@ describe('Admin Pricing Settings', () => {
         expect.stringContaining('/api/admin/pricing'),
         expect.objectContaining({
           method: 'PUT',
-          body: expect.stringContaining('95'),
+          body: expect.stringContaining('85'),
         })
       )
     })
@@ -244,7 +244,7 @@ describe('Admin Pricing Settings', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
-          week1_base_price: 89,
+          week1_base_price: 79,
           week2_base_price: 140,
           tier_increment: 10,
         }),
@@ -260,7 +260,7 @@ describe('Admin Pricing Settings', () => {
     render(<MockAdminPricing token="test-token" />)
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue('89')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('79')).toBeInTheDocument()
     })
 
     const saveButton = screen.getByText('Save Changes')
@@ -276,7 +276,7 @@ describe('Admin Pricing Settings', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
-          week1_base_price: 89,
+          week1_base_price: 79,
           week2_base_price: 140,
           tier_increment: 10,
         }),
@@ -291,7 +291,7 @@ describe('Admin Pricing Settings', () => {
     render(<MockAdminPricing token="test-token" />)
 
     await waitFor(() => {
-      expect(screen.getByDisplayValue('89')).toBeInTheDocument()
+      expect(screen.getByDisplayValue('79')).toBeInTheDocument()
     })
 
     const saveButton = screen.getByText('Save Changes')
@@ -388,7 +388,7 @@ describe('Pricing Edge Cases', () => {
     )
 
     // Should still render with defaults
-    expect(container.textContent).toContain('89')
+    expect(container.textContent).toContain('79')
 
     vi.useRealTimers()
   })
@@ -401,25 +401,25 @@ describe('Pricing Edge Cases', () => {
 describe('Price Preview Calculations', () => {
   it('calculates standard tier correctly', () => {
     const pricing = {
-      week1_base_price: 89,
+      week1_base_price: 79,
       week2_base_price: 140,
       tier_increment: 10,
     }
 
     // Standard = base + increment
-    expect(pricing.week1_base_price + pricing.tier_increment).toBe(99)
+    expect(pricing.week1_base_price + pricing.tier_increment).toBe(89)
     expect(pricing.week2_base_price + pricing.tier_increment).toBe(150)
   })
 
   it('calculates late tier correctly', () => {
     const pricing = {
-      week1_base_price: 89,
+      week1_base_price: 79,
       week2_base_price: 140,
       tier_increment: 10,
     }
 
     // Late = base + (increment * 2)
-    expect(pricing.week1_base_price + (pricing.tier_increment * 2)).toBe(109)
+    expect(pricing.week1_base_price + (pricing.tier_increment * 2)).toBe(99)
     expect(pricing.week2_base_price + (pricing.tier_increment * 2)).toBe(160)
   })
 
@@ -448,7 +448,7 @@ describe('Price Preview Calculations', () => {
 
 // Simplified HomePage component for testing
 function MockHomePage() {
-  const [prices, setPrices] = React.useState({ week1: 89, week2: 140 })
+  const [prices, setPrices] = React.useState({ week1: 79, week2: 140 })
 
   React.useEffect(() => {
     const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000'
@@ -459,7 +459,7 @@ function MockHomePage() {
       })
       .then(data => {
         setPrices({
-          week1: data.week1_base_price || 89,
+          week1: data.week1_base_price || 79,
           week2: data.week2_base_price || 140,
         })
       })
@@ -483,7 +483,7 @@ function MockHomePage() {
 // Simplified Admin Pricing component for testing
 function MockAdminPricing({ token }) {
   const [pricing, setPricing] = React.useState({
-    week1_base_price: 89,
+    week1_base_price: 79,
     week2_base_price: 140,
     tier_increment: 10,
   })

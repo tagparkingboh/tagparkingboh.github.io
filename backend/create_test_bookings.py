@@ -3,6 +3,13 @@
 Create automated test bookings for TAG Parking staging environment.
 Uses Playwright to automate the browser booking flow with Stripe test card.
 
+Booking Flow:
+1. Welcome modal (dismiss)
+2. Step 1: Trip Details (flight selection, dates, times)
+3. Step 2: Package Selection (pricing)
+4. Step 3: Your Details (contact, billing, vehicle)
+5. Step 4: Payment (Stripe)
+
 Tests cover:
 - Extended stays (15, 20, 30, 60 days)
 - Overnight flights (23:35, 23:45, 23:50 landings)
@@ -21,6 +28,13 @@ from playwright.sync_api import sync_playwright, Page
 from datetime import datetime, timedelta
 import time
 import random
+import os
+import sys
+import psycopg2
+
+# Configuration
+HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
+SINGLE_TEST = os.environ.get("SINGLE_TEST", "false").lower() == "true"  # Run only first test
 
 # Staging URL
 STAGING_URL = "https://staging-tagparking.netlify.app/tag-it"
@@ -51,6 +65,57 @@ STRIPE_TEST_CARD = {
     "expiry": "10/69",
     "cvc": "549",
 }
+
+# Staging database for promo code reset
+STAGING_DB = {
+    "host": "switchback.proxy.rlwy.net",
+    "port": 25567,
+    "user": "postgres",
+    "password": "oviYXmjpSwWKHejteMgdIxXTorTtGdUl",
+    "dbname": "railway"
+}
+
+# Test promo codes
+TEST_PROMO_10 = "TEST10OFF"      # 10% off promo
+TEST_PROMO_FREE = "TESTFREE"     # 100% off (FREE) promo
+
+
+def reset_promo_code(promo_code: str, promo_type: str = "10") -> bool:
+    """Reset a promo code after successful use so it can be reused.
+
+    Args:
+        promo_code: The promo code to reset
+        promo_type: "10" for 10% promo, "free" for FREE promo
+    """
+    try:
+        conn = psycopg2.connect(**STAGING_DB)
+        cur = conn.cursor()
+
+        if promo_type == "10":
+            cur.execute('''
+                UPDATE marketing_subscribers
+                SET promo_10_used = false,
+                    promo_10_used_at = NULL,
+                    promo_10_used_booking_id = NULL
+                WHERE promo_10_code = %s
+            ''', (promo_code,))
+        else:  # free
+            cur.execute('''
+                UPDATE marketing_subscribers
+                SET promo_free_used = false,
+                    promo_free_used_at = NULL,
+                    promo_free_used_booking_id = NULL
+                WHERE promo_free_code = %s
+            ''', (promo_code,))
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"    Promo code {promo_code} reset for reuse")
+        return True
+    except Exception as e:
+        print(f"    Warning: Could not reset promo code: {e}")
+        return False
 
 # Test cases - reduced set for initial testing
 TEST_CASES = [
@@ -255,6 +320,39 @@ TEST_CASES = [
         "flight_number": "301",
         "return_flight_number": "302",
     },
+    # ============ PROMO CODE TESTS ============
+    # 10% OFF Promo Code Test
+    {
+        "name": "10% OFF Promo Code (7-day trip)",
+        "days_from_now": 25,
+        "duration": 7,
+        "dropoff_time": "10:00",
+        "return_time": "14:00",
+        "airline": "Ryanair",
+        "airline_code": "FR",
+        "destination": "Alicante",
+        "destination_code": "ALC",
+        "flight_number": "1010",
+        "return_flight_number": "1011",
+        "promo_code": "TEST10OFF",
+        "promo_type": "10",
+    },
+    # FREE Parking Promo Code Test (7 days = completely free)
+    {
+        "name": "FREE Promo Code (7-day trip)",
+        "days_from_now": 30,
+        "duration": 7,
+        "dropoff_time": "09:00",
+        "return_time": "15:00",
+        "airline": "easyJet",
+        "airline_code": "U2",
+        "destination": "Malaga",
+        "destination_code": "AGP",
+        "flight_number": "2020",
+        "return_flight_number": "2021",
+        "promo_code": "TESTFREE",
+        "promo_type": "free",
+    },
 ]
 
 
@@ -339,135 +437,16 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         page.goto(STAGING_URL, wait_until="networkidle")
         time.sleep(3)
 
-        # ============ STEP 1: Your Details ============
-        print("  Step 1: Filling customer details...")
-
-        # Fill contact information
-        page.locator("#firstName").fill(CUSTOMER["first_name"])
-        time.sleep(0.2)
-        page.locator("#lastName").fill(CUSTOMER["last_name"])
-        time.sleep(0.2)
-        page.locator("#email").fill(CUSTOMER["email"])
-        time.sleep(0.2)
-
-        # Phone - using the PhoneInput component
-        # The component already has +44, so we need to click into it and type the number
-        # First clear any existing value, then type the full number with country code
-        phone_input = page.locator(".phone-input input[type='tel']")
-        phone_input.click()
-        time.sleep(0.2)
-        # Select all and type the full number including country code
-        phone_input.fill("+44" + CUSTOMER["phone"])
-        time.sleep(0.3)
-
-        # Fill billing address - enter postcode and use manual entry
-        page.locator("#billingPostcode").fill(CUSTOMER["postcode"])
-        time.sleep(0.3)
-
-        # Click Find Address button
-        page.locator("button:has-text('Find Address')").click()
-        time.sleep(2)
-
-        # If address select appears, select first address or use manual entry
-        try:
-            if page.locator("#addressSelect").is_visible(timeout=3000):
-                # Select first available address
-                page.locator("#addressSelect").select_option(index=1)
-                time.sleep(0.5)
-            else:
-                # Click manual entry link
-                page.locator("text=Enter address manually").click()
-                time.sleep(0.3)
-        except:
-            # Use manual entry if address lookup fails
-            try:
-                page.locator("text=Enter address manually").click()
-                time.sleep(0.3)
-            except:
-                pass
-
-        # Fill address fields if visible/empty
-        if not page.locator("#billingAddress1").input_value():
-            page.locator("#billingAddress1").fill(CUSTOMER["address1"])
-        time.sleep(0.2)
-
-        if not page.locator("#billingCity").input_value():
-            page.locator("#billingCity").fill(CUSTOMER["city"])
-        time.sleep(0.2)
-
-        if not page.locator("#billingCounty").input_value():
-            page.locator("#billingCounty").fill(CUSTOMER["county"])
-        time.sleep(0.2)
-
-        # Vehicle Information
-        print("  Filling vehicle details...")
-        page.locator("#registration").fill(VEHICLE["registration"])
-        time.sleep(0.3)
-
-        # Click DVLA Lookup button (the validate-btn, not back-to-lookup-link)
-        page.locator("button.validate-btn").click()
-        time.sleep(2)
-
-        # After DVLA lookup, the make may be a readonly input (if DVLA found it) or a select
-        # Check if DVLA verified the vehicle (readonly input) or if we need to select manually
-        make_readonly = page.locator("#make.readonly-input")
-        make_select = page.locator("select#make")
-
-        if make_readonly.is_visible(timeout=2000):
-            # DVLA lookup succeeded - make is readonly, skip to colour/model
-            print("    DVLA verified make:", make_readonly.input_value())
-        elif make_select.is_visible(timeout=2000):
-            # Need to select make manually
-            try:
-                make_select.select_option(label=VEHICLE["make"])
-                time.sleep(0.5)
-            except:
-                make_select.select_option(value=VEHICLE["make"])
-                time.sleep(0.5)
-
-        # Fill colour if needed (may be readonly if DVLA found it)
-        colour_readonly = page.locator("#colour.readonly-input")
-        colour_input = page.locator("#colour:not(.readonly-input)")
-
-        if colour_readonly.is_visible(timeout=1000):
-            print("    DVLA verified colour:", colour_readonly.input_value())
-        elif colour_input.is_visible(timeout=1000):
-            colour_input.fill(VEHICLE["colour"])
-            time.sleep(0.3)
-
-        # Select model from dropdown - this should always be a select
-        print("    Selecting model...")
-        time.sleep(1)  # Wait for model dropdown to appear
-        model_select = page.locator("select#model")
-        if model_select.is_visible(timeout=3000):
-            try:
-                model_select.select_option(label=VEHICLE["model"])
-                print(f"    Selected model: {VEHICLE['model']}")
-            except:
-                # Try Other if specific model not available
-                print(f"    Model {VEHICLE['model']} not found, selecting Other...")
-                model_select.select_option(value="Other")
-                time.sleep(0.3)
-                # Fill custom model
-                page.locator("#customModel").fill(VEHICLE["model"])
-            time.sleep(0.5)
-        else:
-            print("    Model dropdown not visible yet")
-
-        # Click Continue to Trip Details (first button on Step 1 form)
-        print("  Proceeding to Step 2...")
-        page.locator("button.next-btn:has-text('Continue to Trip Details')").click()
-        time.sleep(2)
-
-        # Handle Welcome Modal - it appears after Step 1 with another "Continue to Trip Details" button
+        # ============ WELCOME MODAL (shows first) ============
+        print("  Handling welcome modal...")
         welcome_modal_btn = page.locator(".welcome-modal-btn")
-        if welcome_modal_btn.is_visible(timeout=3000):
+        if welcome_modal_btn.is_visible(timeout=5000):
             print("    Closing welcome modal...")
             welcome_modal_btn.click()
             time.sleep(1)
 
-        # ============ STEP 2: Trip Details ============
-        print("  Step 2: Filling trip details...")
+        # ============ STEP 1: Trip Details ============
+        print("  Step 1: Filling trip details...")
 
         # Select Drop-off Date using the date picker
         print("    Selecting drop-off date...")
@@ -584,8 +563,8 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
             arrival_time_input.fill(test_case["return_time"])
         time.sleep(1)
 
-        # ============ STEP 3: Package Selection ============
-        print("  Proceeding to Step 3 (Package Selection)...")
+        # ============ STEP 2: Package Selection ============
+        print("  Proceeding to Step 2 (Package Selection)...")
 
         # Click Continue to Package Selection button
         package_btn = page.locator("button:has-text('Continue to Package Selection')")
@@ -593,11 +572,122 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
             package_btn.click()
             time.sleep(3)
 
-        # Step 3 shows the pricing and package info
+        # Step 2 shows the pricing and package info
         # Wait for pricing to load
         time.sleep(2)
 
-        # Click Continue to Payment button
+        # Click Continue to Your Details button
+        print("  Proceeding to Step 3 (Your Details)...")
+        continue_details_btn = page.locator("button:has-text('Continue to Your Details')")
+        if continue_details_btn.is_visible(timeout=5000):
+            continue_details_btn.click()
+            time.sleep(3)
+
+        # ============ STEP 3: Your Details (Customer + Billing + Vehicle) ============
+        print("  Step 3: Filling customer details...")
+
+        # Fill contact information
+        page.locator("#firstName").fill(CUSTOMER["first_name"])
+        time.sleep(0.2)
+        page.locator("#lastName").fill(CUSTOMER["last_name"])
+        time.sleep(0.2)
+        page.locator("#email").fill(CUSTOMER["email"])
+        time.sleep(0.2)
+
+        # Phone - using the PhoneInput component
+        phone_input = page.locator(".phone-input input[type='tel']")
+        phone_input.click()
+        time.sleep(0.2)
+        phone_input.fill("+44" + CUSTOMER["phone"])
+        time.sleep(0.3)
+
+        # Fill billing address - enter postcode and use manual entry
+        page.locator("#billingPostcode").fill(CUSTOMER["postcode"])
+        time.sleep(0.3)
+
+        # Click Find Address button
+        page.locator("button:has-text('Find Address')").click()
+        time.sleep(2)
+
+        # If address select appears, select first address or use manual entry
+        try:
+            if page.locator("#addressSelect").is_visible(timeout=3000):
+                page.locator("#addressSelect").select_option(index=1)
+                time.sleep(0.5)
+            else:
+                page.locator("text=Enter address manually").click()
+                time.sleep(0.3)
+        except:
+            try:
+                page.locator("text=Enter address manually").click()
+                time.sleep(0.3)
+            except:
+                pass
+
+        # Fill address fields if visible/empty
+        if not page.locator("#billingAddress1").input_value():
+            page.locator("#billingAddress1").fill(CUSTOMER["address1"])
+        time.sleep(0.2)
+
+        if not page.locator("#billingCity").input_value():
+            page.locator("#billingCity").fill(CUSTOMER["city"])
+        time.sleep(0.2)
+
+        if not page.locator("#billingCounty").input_value():
+            page.locator("#billingCounty").fill(CUSTOMER["county"])
+        time.sleep(0.2)
+
+        # Vehicle Information
+        print("  Filling vehicle details...")
+        page.locator("#registration").fill(VEHICLE["registration"])
+        time.sleep(0.3)
+
+        # Click DVLA Lookup button
+        page.locator("button.validate-btn").click()
+        time.sleep(2)
+
+        # Check if DVLA verified the vehicle or if we need to select manually
+        make_readonly = page.locator("#make.readonly-input")
+        make_select = page.locator("select#make")
+
+        if make_readonly.is_visible(timeout=2000):
+            print("    DVLA verified make:", make_readonly.input_value())
+        elif make_select.is_visible(timeout=2000):
+            try:
+                make_select.select_option(label=VEHICLE["make"])
+                time.sleep(0.5)
+            except:
+                make_select.select_option(value=VEHICLE["make"])
+                time.sleep(0.5)
+
+        # Fill colour if needed
+        colour_readonly = page.locator("#colour.readonly-input")
+        colour_input = page.locator("#colour:not(.readonly-input)")
+
+        if colour_readonly.is_visible(timeout=1000):
+            print("    DVLA verified colour:", colour_readonly.input_value())
+        elif colour_input.is_visible(timeout=1000):
+            colour_input.fill(VEHICLE["colour"])
+            time.sleep(0.3)
+
+        # Select model from dropdown
+        print("    Selecting model...")
+        time.sleep(1)
+        model_select = page.locator("select#model")
+        if model_select.is_visible(timeout=3000):
+            try:
+                model_select.select_option(label=VEHICLE["model"])
+                print(f"    Selected model: {VEHICLE['model']}")
+            except:
+                print(f"    Model {VEHICLE['model']} not found, selecting Other...")
+                model_select.select_option(value="Other")
+                time.sleep(0.3)
+                page.locator("#customModel").fill(VEHICLE["model"])
+            time.sleep(0.5)
+        else:
+            print("    Model dropdown not visible yet")
+
+        # Click Continue to Payment
         print("  Proceeding to Step 4 (Payment)...")
         continue_payment_btn = page.locator("button:has-text('Continue to Payment')")
         if continue_payment_btn.is_visible(timeout=5000):
@@ -606,6 +696,34 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
 
         # ============ STEP 4: Payment ============
         print("  Step 4: Payment...")
+
+        # Apply promo code if this test case has one
+        promo_code = test_case.get("promo_code")
+        promo_type = test_case.get("promo_type", "10")
+        if promo_code:
+            print(f"    Applying promo code: {promo_code}")
+            time.sleep(1)
+
+            # Find and fill promo code input
+            promo_input = page.locator(".promo-code-input input, input[placeholder*='promo' i]")
+            if promo_input.is_visible(timeout=5000):
+                promo_input.fill(promo_code)
+                time.sleep(0.5)
+
+                # Click Apply button
+                apply_btn = page.locator(".promo-apply-btn, button:has-text('Apply')")
+                if apply_btn.is_visible(timeout=3000):
+                    apply_btn.click()
+                    time.sleep(2)
+
+                    # Check for success
+                    promo_success = page.locator(".promo-success, .promo-code-applied, text=/applied|valid|discount/i")
+                    if promo_success.is_visible(timeout=5000):
+                        print(f"    Promo code {promo_code} applied successfully!")
+                    else:
+                        print(f"    Warning: Could not confirm promo code applied")
+            else:
+                print("    Warning: Promo code input not found")
 
         # Accept terms checkbox
         print("    Accepting terms...")
@@ -620,30 +738,44 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         time.sleep(3)
 
         # Dismiss Stripe Link popup if it appears (for emails registered with Link)
-        # The Link modal has an X button (SVG icon) to close it
+        # The Link modal needs to be closed so we can use the card form
         time.sleep(2)
 
         try:
-            # The Link popup is inside a Stripe iframe
-            # Look for the close button - it's a button with an SVG X icon
-            # Try finding it in all frames
             link_closed = False
+
+            # First try pressing Escape multiple times - this often dismisses Link
+            for _ in range(3):
+                page.keyboard.press("Escape")
+                time.sleep(0.3)
+
+            # Try clicking outside the modal area (top-left corner of page)
+            try:
+                page.mouse.click(10, 10)
+                time.sleep(0.5)
+            except:
+                pass
+
+            # Look for close/back buttons in all frames
             for frame in page.frames:
                 try:
-                    # The X button might have various selectors
+                    # Various selectors for Link close/dismiss buttons
                     close_selectors = [
-                        "button:has(svg path[d*='1.24896'])",  # The specific X path
-                        "button:has(svg)",  # Any button with SVG
-                        "[role='button']:has(svg)",
-                        ".p-LinkAutofillPrompt button",
+                        "[data-testid='link-close-button']",
+                        "button[aria-label='Close']",
+                        "button[aria-label='Back']",
+                        ".p-LinkAutofillPrompt [role='button']",
+                        "button:has(svg path[d*='M1.2'])",  # X icon paths
+                        "[class*='CloseButton']",
+                        "[class*='close']",
                     ]
                     for selector in close_selectors:
                         close_btn = frame.locator(selector).first
-                        if close_btn.is_visible(timeout=500):
-                            print(f"    Found Link close button with selector: {selector}")
+                        if close_btn.is_visible(timeout=300):
+                            print(f"    Found Link close button: {selector}")
                             close_btn.click()
                             link_closed = True
-                            time.sleep(1)
+                            time.sleep(0.5)
                             break
                     if link_closed:
                         break
@@ -651,21 +783,13 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                     continue
 
             if not link_closed:
-                print("    Link modal close button not found in frames, trying main page...")
-                # Try on main page
-                close_btn = page.locator("button:has(svg path)").first
-                if close_btn.is_visible(timeout=1000):
-                    close_btn.click()
-                    time.sleep(1)
+                print("    Link modal close button not found, trying Escape again...")
+                for _ in range(3):
+                    page.keyboard.press("Escape")
+                    time.sleep(0.3)
+
         except Exception as e:
             print(f"    Could not close Link modal: {e}")
-
-        # Also try pressing Escape key
-        try:
-            page.keyboard.press("Escape")
-            time.sleep(0.5)
-        except:
-            pass
 
         time.sleep(1)
 
@@ -778,6 +902,11 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                 print(f"  ✓ Booking created! Reference: {booking_ref}")
             else:
                 print(f"  ✓ Booking created successfully!")
+
+            # Reset promo code for reuse if this was a promo test
+            if promo_code:
+                reset_promo_code(promo_code, promo_type)
+
             return True
         else:
             print(f"  ✗ Could not confirm booking - checking page state...")
@@ -802,13 +931,18 @@ def main():
     print()
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False, slow_mo=100)  # slow_mo helps with visibility
+        # Use headless mode for CI/automation, headed for local debugging
+        slow_mo = 0 if HEADLESS else 100
+        browser = p.chromium.launch(headless=HEADLESS, slow_mo=slow_mo)
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         page = context.new_page()
 
         results = {"success": [], "failed": []}
 
-        for i, test_case in enumerate(TEST_CASES, 1):
+        # Optionally run only the first test case for smoke testing
+        test_cases_to_run = TEST_CASES[:1] if SINGLE_TEST else TEST_CASES
+
+        for i, test_case in enumerate(test_cases_to_run, 1):
             success = create_booking(page, test_case, i)
             if success:
                 results["success"].append(test_case["name"])

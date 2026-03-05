@@ -23,11 +23,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 # =============================================================================
-# Constants for testing
+# Constants for testing (relative dates for future-proof tests)
 # =============================================================================
 
-START_DATE = date(2026, 3, 1)
-START_DATETIME = datetime(2026, 3, 1, 0, 0, 0)
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
+START_DATE = FUTURE_DATE
+START_DATETIME = datetime.combine(FUTURE_DATE, datetime.min.time())
 
 
 # =============================================================================

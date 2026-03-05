@@ -22,6 +22,11 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
+
 
 # =============================================================================
 # Mock Data Factories
@@ -464,7 +469,7 @@ class TestGetInspections:
             notes="Drop-off notes",
             photos=MOCK_PHOTOS,
             customer_name="John Smith",
-            signed_date=date(2026, 2, 3),
+            signed_date=FUTURE_DATE,
             signature=MOCK_SIGNATURE,
             vehicle_inspection_read=True,
         )
@@ -493,7 +498,7 @@ class TestGetInspections:
         dropoff_resp = next(i for i in response_data["inspections"] if i["inspection_type"] == "dropoff")
         assert dropoff_resp["photos"]["front"] == MOCK_PHOTOS["front"]
         assert dropoff_resp["customer_name"] == "John Smith"
-        assert dropoff_resp["signed_date"] == "2026-02-03"
+        assert dropoff_resp["signed_date"] == FUTURE_DATE.isoformat()
         assert dropoff_resp["signature"] == MOCK_SIGNATURE
         assert dropoff_resp["vehicle_inspection_read"] is True
 
@@ -567,7 +572,7 @@ class TestUpdateInspection:
             id=1,
             booking_id=100,
             customer_name="Jane Doe",
-            signed_date=date(2026, 2, 3),
+            signed_date=FUTURE_DATE,
         )
 
         response_data = {
@@ -577,7 +582,7 @@ class TestUpdateInspection:
 
         insp = response_data["inspection"]
         assert insp["customer_name"] == "Jane Doe"
-        assert insp["signed_date"] == "2026-02-03"
+        assert insp["signed_date"] == FUTURE_DATE.isoformat()
 
     def test_update_inspection_not_found(self):
         """Should return 404 for non-existent inspection."""
@@ -645,7 +650,7 @@ class TestUpdateInspection:
             id=1,
             booking_id=100,
             customer_name="Jane Doe",
-            signed_date=date(2026, 2, 10),
+            signed_date=FUTURE_DATE + timedelta(days=3),
             signature=MOCK_SIGNATURE,
             vehicle_inspection_read=True,
             updated_at=datetime.utcnow(),
@@ -658,7 +663,7 @@ class TestUpdateInspection:
 
         insp = response_data["inspection"]
         assert insp["customer_name"] == "Jane Doe"
-        assert insp["signed_date"] == "2026-02-10"
+        assert insp["signed_date"] == (FUTURE_DATE + timedelta(days=3)).isoformat()
         assert insp["signature"] == MOCK_SIGNATURE
         assert insp["vehicle_inspection_read"] is True
 

@@ -11,11 +11,16 @@ All tests use mocked data to avoid database state conflicts.
 """
 import pytest
 from unittest.mock import MagicMock
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timedelta
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
 
 
 # =============================================================================
@@ -113,11 +118,11 @@ def create_mock_booking(
     else:
         booking.status = status
 
-    booking.dropoff_date = dropoff_date_val or date(2026, 2, 10)
+    booking.dropoff_date = dropoff_date_val or FUTURE_DATE
     booking.dropoff_time = dropoff_time_val or time(7, 15)
     booking.dropoff_flight_number = dropoff_flight_number
     booking.dropoff_destination = dropoff_destination
-    booking.pickup_date = pickup_date_val or date(2026, 2, 17)
+    booking.pickup_date = pickup_date_val or FUTURE_DATE_END
     booking.pickup_time = pickup_time_val or time(14, 30)
     booking.pickup_time_from = pickup_time_from_val or time(15, 5)
     booking.pickup_time_to = pickup_time_to_val or time(15, 30)
@@ -184,7 +189,7 @@ def create_mock_departure(
     """Create a mock flight departure object."""
     departure = MagicMock()
     departure.id = id
-    departure.date = date_val or date(2026, 2, 10)
+    departure.date = date_val or FUTURE_DATE
     departure.flight_number = flight_number
     departure.airline_code = airline_code
     departure.airline_name = airline_name
@@ -340,10 +345,13 @@ class TestGetAdminBookingsFiltering:
 
     def test_bookings_sorted_by_dropoff_date_ascending(self):
         """Bookings should be sorted by dropoff date ascending."""
+        date1 = FUTURE_DATE
+        date2 = FUTURE_DATE + timedelta(days=7)
+        date3 = FUTURE_DATE + timedelta(days=14)
         bookings = [
-            {"dropoff_date": "2026-01-15"},
-            {"dropoff_date": "2026-02-10"},
-            {"dropoff_date": "2026-03-01"},
+            {"dropoff_date": date1.isoformat()},
+            {"dropoff_date": date2.isoformat()},
+            {"dropoff_date": date3.isoformat()},
         ]
 
         dates = [b["dropoff_date"] for b in bookings]
@@ -351,10 +359,10 @@ class TestGetAdminBookingsFiltering:
 
     def test_filter_by_date_returns_overlapping_bookings(self):
         """Date filter should return bookings that overlap with given date."""
-        # Booking: dropoff 2026-01-15, pickup 2026-01-22
-        filter_date = date(2026, 1, 18)
-        dropoff = date(2026, 1, 15)
-        pickup = date(2026, 1, 22)
+        # Booking: dropoff FUTURE_DATE, pickup FUTURE_DATE + 7 days
+        dropoff = FUTURE_DATE
+        pickup = FUTURE_DATE + timedelta(days=7)
+        filter_date = FUTURE_DATE + timedelta(days=3)  # Mid-way through booking
 
         # Check if filter_date falls within booking period
         is_overlap = dropoff <= filter_date <= pickup
@@ -397,18 +405,18 @@ class TestGetAdminBookingsFiltering:
 
     def test_date_filter_boundary_dropoff_date(self):
         """Filter date equal to dropoff date should include booking."""
-        filter_date = date(2026, 1, 15)
-        dropoff = date(2026, 1, 15)
-        pickup = date(2026, 1, 22)
+        dropoff = FUTURE_DATE
+        pickup = FUTURE_DATE + timedelta(days=7)
+        filter_date = dropoff  # Same as dropoff date
 
         is_overlap = dropoff <= filter_date <= pickup
         assert is_overlap is True
 
     def test_date_filter_boundary_pickup_date(self):
         """Filter date equal to pickup date should include booking."""
-        filter_date = date(2026, 1, 22)
-        dropoff = date(2026, 1, 15)
-        pickup = date(2026, 1, 22)
+        dropoff = FUTURE_DATE
+        pickup = FUTURE_DATE + timedelta(days=7)
+        filter_date = pickup  # Same as pickup date
 
         is_overlap = dropoff <= filter_date <= pickup
         assert is_overlap is True
@@ -749,12 +757,13 @@ class TestUpdateBooking:
         """Should successfully update pickup date."""
         from db_models import BookingStatus
 
+        original_pickup = FUTURE_DATE_END
         booking = create_mock_booking(
             status=BookingStatus.CONFIRMED,
-            pickup_date_val=date(2026, 3, 28),
+            pickup_date_val=original_pickup,
         )
 
-        new_pickup_date = date(2026, 3, 29)
+        new_pickup_date = original_pickup + timedelta(days=1)
         booking.pickup_date = new_pickup_date
 
         response_data = {
@@ -766,7 +775,7 @@ class TestUpdateBooking:
 
         assert response_data["success"] is True
         assert "pickup_date" in response_data["fields_updated"]
-        assert response_data["booking"]["pickup_date"] == "2026-03-29"
+        assert response_data["booking"]["pickup_date"] == new_pickup_date.isoformat()
 
     def test_update_pickup_time_recalculates_windows(self):
         """Updating pickup_time should recalculate pickup_time_from and pickup_time_to."""
@@ -847,15 +856,17 @@ class TestUpdateBookingOvernightFix:
     """Tests for fixing overnight arrival booking dates."""
 
     def test_overnight_arrival_date_correction(self):
-        """Flight arriving 00:35 on 29th should have pickup_date as 29th."""
+        """Flight arriving 00:35 on next day should have pickup_date as that day."""
+        original_date = FUTURE_DATE_END
+        corrected_date = original_date + timedelta(days=1)
         booking = create_mock_booking(
-            pickup_date_val=date(2026, 3, 28),
+            pickup_date_val=original_date,
             pickup_time_val=time(0, 35),
         )
 
-        booking.pickup_date = date(2026, 3, 29)
+        booking.pickup_date = corrected_date
 
-        assert booking.pickup_date == date(2026, 3, 29)
+        assert booking.pickup_date == corrected_date
         assert booking.pickup_time == time(0, 35)
 
     def test_overnight_pickup_windows_correct(self):
@@ -872,13 +883,14 @@ class TestUpdateBookingOvernightFix:
         assert pickup_time_to == time(1, 5)
 
     def test_late_evening_no_date_change(self):
-        """Flight arriving 22:00 on 28th should stay on 28th."""
+        """Flight arriving 22:00 should stay on same date."""
+        pickup_date = FUTURE_DATE_END
         booking = create_mock_booking(
-            pickup_date_val=date(2026, 2, 28),
+            pickup_date_val=pickup_date,
             pickup_time_val=time(22, 0),
         )
 
-        assert booking.pickup_date == date(2026, 2, 28)
+        assert booking.pickup_date == pickup_date
 
 
 # =============================================================================
@@ -1016,13 +1028,14 @@ class TestEditPickupDateTime:
         """Should successfully update only the pickup date."""
         from db_models import BookingStatus
 
+        original_pickup = FUTURE_DATE_END
         booking = create_mock_booking(
             status=BookingStatus.CONFIRMED,
-            pickup_date_val=date(2026, 3, 28),
+            pickup_date_val=original_pickup,
             pickup_time_val=time(14, 30),
         )
 
-        new_pickup_date = date(2026, 3, 30)
+        new_pickup_date = original_pickup + timedelta(days=2)
         booking.pickup_date = new_pickup_date
 
         response_data = {
@@ -1037,7 +1050,7 @@ class TestEditPickupDateTime:
 
         assert response_data["success"] is True
         assert "pickup_date" in response_data["fields_updated"]
-        assert response_data["booking"]["pickup_date"] == "2026-03-30"
+        assert response_data["booking"]["pickup_date"] == new_pickup_date.isoformat()
         assert response_data["booking"]["pickup_time"] == "14:30"  # Unchanged
 
     def test_update_pickup_time_only(self):
@@ -1048,9 +1061,10 @@ class TestEditPickupDateTime:
         """
         from db_models import BookingStatus
 
+        pickup_date = FUTURE_DATE_END
         booking = create_mock_booking(
             status=BookingStatus.CONFIRMED,
-            pickup_date_val=date(2026, 3, 28),
+            pickup_date_val=pickup_date,
             pickup_time_val=time(14, 30),
             pickup_time_from_val=time(15, 5),
             pickup_time_to_val=time(15, 30),
@@ -1075,7 +1089,7 @@ class TestEditPickupDateTime:
 
         assert response_data["success"] is True
         assert "pickup_time" in response_data["fields_updated"]
-        assert response_data["booking"]["pickup_date"] == "2026-03-28"  # Unchanged
+        assert response_data["booking"]["pickup_date"] == pickup_date.isoformat()  # Unchanged
         # Collection time should be exactly what was entered, not +30 min
         assert response_data["booking"]["pickup_time_from"] == "16:45"
         assert response_data["booking"]["pickup_time_to"] == "16:45"
@@ -1087,15 +1101,16 @@ class TestEditPickupDateTime:
         """
         from db_models import BookingStatus
 
+        original_pickup = FUTURE_DATE_END
         booking = create_mock_booking(
             status=BookingStatus.CONFIRMED,
-            pickup_date_val=date(2026, 3, 28),
+            pickup_date_val=original_pickup,
             pickup_time_val=time(14, 30),
             pickup_time_from_val=time(15, 0),
             pickup_time_to_val=time(15, 0),
         )
 
-        new_pickup_date = date(2026, 4, 1)
+        new_pickup_date = original_pickup + timedelta(days=4)
         new_pickup_time = time(10, 15)
         booking.pickup_date = new_pickup_date
 
@@ -1117,7 +1132,7 @@ class TestEditPickupDateTime:
         assert response_data["success"] is True
         assert "pickup_date" in response_data["fields_updated"]
         assert "pickup_time" in response_data["fields_updated"]
-        assert response_data["booking"]["pickup_date"] == "2026-04-01"
+        assert response_data["booking"]["pickup_date"] == new_pickup_date.isoformat()
         # Collection time should be exactly what was entered
         assert response_data["booking"]["pickup_time_from"] == "10:15"
         assert response_data["booking"]["pickup_time_to"] == "10:15"
@@ -1132,7 +1147,7 @@ class TestEditPickupDateTime:
 
         booking = create_mock_booking(
             status=BookingStatus.CONFIRMED,
-            pickup_date_val=date(2026, 3, 28),
+            pickup_date_val=FUTURE_DATE_END,
             pickup_time_val=time(23, 30),
         )
 
@@ -1154,7 +1169,7 @@ class TestEditPickupDateTime:
 
         booking = create_mock_booking(
             status=BookingStatus.CONFIRMED,
-            pickup_date_val=date(2026, 3, 29),
+            pickup_date_val=FUTURE_DATE_END + timedelta(days=1),
             pickup_time_val=time(14, 30),
         )
 
@@ -1198,22 +1213,24 @@ class TestEditPickupDateTime:
         """Updating pickup date/time should not affect departure/dropoff data."""
         from db_models import BookingStatus
 
+        dropoff_date = FUTURE_DATE
+        pickup_date = FUTURE_DATE_END
         booking = create_mock_booking(
             status=BookingStatus.CONFIRMED,
-            dropoff_date_val=date(2026, 3, 21),
+            dropoff_date_val=dropoff_date,
             dropoff_time_val=time(7, 15),
             dropoff_flight_number="FR5523",
             dropoff_destination="Tenerife",
-            pickup_date_val=date(2026, 3, 28),
+            pickup_date_val=pickup_date,
             pickup_time_val=time(14, 30),
         )
 
         # Update pickup details
-        booking.pickup_date = date(2026, 3, 30)
+        booking.pickup_date = pickup_date + timedelta(days=2)
         booking.pickup_time = time(16, 0)
 
         # Dropoff details should remain unchanged
-        assert booking.dropoff_date == date(2026, 3, 21)
+        assert booking.dropoff_date == dropoff_date
         assert booking.dropoff_time == time(7, 15)
         assert booking.dropoff_flight_number == "FR5523"
         assert booking.dropoff_destination == "Tenerife"
@@ -1222,35 +1239,39 @@ class TestEditPickupDateTime:
         """Should allow updating pickup for pending bookings."""
         from db_models import BookingStatus
 
+        original_pickup = FUTURE_DATE_END
         booking = create_mock_booking(
             status=BookingStatus.PENDING,
-            pickup_date_val=date(2026, 3, 28),
+            pickup_date_val=original_pickup,
             pickup_time_val=time(14, 30),
         )
 
-        booking.pickup_date = date(2026, 3, 29)
+        new_pickup = original_pickup + timedelta(days=1)
+        booking.pickup_date = new_pickup
         booking.pickup_time = time(15, 0)
 
         assert booking.status == BookingStatus.PENDING
-        assert booking.pickup_date == date(2026, 3, 29)
+        assert booking.pickup_date == new_pickup
         assert booking.pickup_time == time(15, 0)
 
     def test_update_completed_booking_pickup(self):
         """Should allow updating pickup for completed bookings (for records)."""
         from db_models import BookingStatus
 
+        original_pickup = FUTURE_DATE_END
         booking = create_mock_booking(
             status=BookingStatus.COMPLETED,
-            pickup_date_val=date(2026, 3, 28),
+            pickup_date_val=original_pickup,
             pickup_time_val=time(14, 30),
         )
 
         # Admin can still update for record-keeping purposes
-        booking.pickup_date = date(2026, 3, 29)
+        new_pickup = original_pickup + timedelta(days=1)
+        booking.pickup_date = new_pickup
         booking.pickup_time = time(15, 0)
 
         assert booking.status == BookingStatus.COMPLETED
-        assert booking.pickup_date == date(2026, 3, 29)
+        assert booking.pickup_date == new_pickup
         assert booking.pickup_time == time(15, 0)
 
 
@@ -1400,7 +1421,7 @@ class TestEditDropoffTime:
         """Updating dropoff time should not affect pickup details."""
         booking = create_mock_booking(
             dropoff_time_val=time(9, 30),
-            pickup_date_val=date(2026, 3, 28),
+            pickup_date_val=FUTURE_DATE_END,
             pickup_time_val=time(14, 30),
         )
 

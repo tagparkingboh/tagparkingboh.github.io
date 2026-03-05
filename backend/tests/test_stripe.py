@@ -16,6 +16,24 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from stripe_service import calculate_price_in_pence
 
+# Default pricing configuration for tests
+DEFAULT_TEST_PRICING = {
+    "days_1_4_price": 60.0,
+    "days_5_6_price": 69.0,
+    "week1_base_price": 79.0,
+    "days_8_9_price": 99.0,
+    "days_10_11_price": 119.0,
+    "days_12_13_price": 130.0,
+    "week2_base_price": 140.0,
+    "tier_increment": 10.0,
+}
+
+@pytest.fixture(autouse=True)
+def mock_pricing():
+    """Mock pricing from database for all tests."""
+    with patch("booking_service.get_pricing_from_db", return_value=DEFAULT_TEST_PRICING):
+        yield
+
 @pytest_asyncio.fixture
 async def client():
     """Create an async test client."""
@@ -29,22 +47,22 @@ class TestCalculatePriceInPence:
     """Tests for price calculation."""
 
     def test_quick_package_early_bird_price(self):
-        """Quick package booked 14+ days in advance should be £89.00 = 8900 pence."""
+        """Quick package booked 14+ days in advance should be £79.00 = 7900 pence."""
         from datetime import date, timedelta
         early_date = date.today() + timedelta(days=20)
-        assert calculate_price_in_pence("quick", drop_off_date=early_date) == 8900
+        assert calculate_price_in_pence("quick", drop_off_date=early_date) == 7900
 
     def test_quick_package_standard_price(self):
-        """Quick package booked 7-13 days in advance should be £99.00 = 9900 pence."""
+        """Quick package booked 7-13 days in advance should be £89.00 = 8900 pence."""
         from datetime import date, timedelta
         standard_date = date.today() + timedelta(days=10)
-        assert calculate_price_in_pence("quick", drop_off_date=standard_date) == 9900
+        assert calculate_price_in_pence("quick", drop_off_date=standard_date) == 8900
 
     def test_quick_package_late_price(self):
-        """Quick package booked <7 days in advance should be £109.00 = 10900 pence."""
+        """Quick package booked <7 days in advance should be £99.00 = 9900 pence."""
         from datetime import date, timedelta
         late_date = date.today() + timedelta(days=3)
-        assert calculate_price_in_pence("quick", drop_off_date=late_date) == 10900
+        assert calculate_price_in_pence("quick", drop_off_date=late_date) == 9900
 
     def test_longer_package_early_bird_price(self):
         """Longer package booked 14+ days in advance should be £140.00 = 14000 pence."""
@@ -67,8 +85,8 @@ class TestCalculatePriceInPence:
 
     def test_no_date_defaults_to_late_tier(self):
         """Without drop_off_date, should default to late tier price."""
-        # Without date, fallback to late tier: quick = £109, longer = £160
-        assert calculate_price_in_pence("quick") == 10900
+        # Without date, fallback to late tier: quick = £99, longer = £160
+        assert calculate_price_in_pence("quick") == 9900
         assert calculate_price_in_pence("longer") == 16000
 
 

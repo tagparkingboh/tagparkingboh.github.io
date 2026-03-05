@@ -20,6 +20,11 @@ from booking_service import (
     get_pricing_from_db,
 )
 
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
+
 
 # =============================================================================
 # Test Fixtures: Default pricing for all tests
@@ -363,20 +368,20 @@ class TestGetDurationDays:
 
     def test_7_day_trip(self):
         """7 day trip calculation."""
-        drop_off = date(2026, 2, 16)
-        pickup = date(2026, 2, 23)
+        drop_off = FUTURE_DATE
+        pickup = FUTURE_DATE + timedelta(days=7)
         assert BookingService.get_duration_days(drop_off, pickup) == 7
 
     def test_14_day_trip(self):
         """14 day trip calculation."""
-        drop_off = date(2026, 2, 16)
-        pickup = date(2026, 3, 2)
+        drop_off = FUTURE_DATE
+        pickup = FUTURE_DATE + timedelta(days=14)
         assert BookingService.get_duration_days(drop_off, pickup) == 14
 
     def test_10_day_trip(self):
         """10 day trip calculation."""
-        drop_off = date(2026, 2, 16)
-        pickup = date(2026, 2, 26)
+        drop_off = FUTURE_DATE
+        pickup = FUTURE_DATE + timedelta(days=10)
         assert BookingService.get_duration_days(drop_off, pickup) == 10
 
 

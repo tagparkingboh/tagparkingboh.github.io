@@ -14,6 +14,13 @@ from email_service import send_2_day_reminder_email
 from db_models import BookingStatus
 
 
+def format_uk_date(d):
+    """Format date for UK display (e.g., 'Monday, 11 March 2026')."""
+    # strftime %d gives zero-padded day, we want non-padded for UK format
+    day = d.day
+    return d.strftime(f"%A, {day} %B %Y")
+
+
 # =============================================================================
 # Unit Tests for send_2_day_reminder_email
 # =============================================================================
@@ -25,13 +32,15 @@ class TestSend2DayReminderEmail:
     def test_sends_email_with_correct_parameters(self, mock_send_email):
         """Test that the function calls send_email with correct parameters."""
         mock_send_email.return_value = True
+        future_date = date.today() + timedelta(days=2)
+        formatted_date = format_uk_date(future_date)
 
         result = send_2_day_reminder_email(
             email="test@example.com",
             first_name="John",
             last_name="Doe",
             booking_reference="TAG-12345678",
-            dropoff_date="Friday, 13 February 2026",
+            dropoff_date=formatted_date,
             dropoff_time="12:10",
             flight_departure_time="14:10",
         )
@@ -48,13 +57,15 @@ class TestSend2DayReminderEmail:
     def test_email_contains_booking_reference(self, mock_send_email):
         """Test that the email HTML contains the booking reference."""
         mock_send_email.return_value = True
+        future_date = date.today() + timedelta(days=2)
+        formatted_date = format_uk_date(future_date)
 
         send_2_day_reminder_email(
             email="test@example.com",
             first_name="John",
             last_name="Doe",
             booking_reference="TAG-ABCD1234",
-            dropoff_date="Friday, 13 February 2026",
+            dropoff_date=formatted_date,
             dropoff_time="12:10",
             flight_departure_time="14:10",
         )
@@ -66,13 +77,15 @@ class TestSend2DayReminderEmail:
     def test_email_contains_customer_name(self, mock_send_email):
         """Test that the email HTML contains the customer's full name."""
         mock_send_email.return_value = True
+        future_date = date.today() + timedelta(days=2)
+        formatted_date = format_uk_date(future_date)
 
         send_2_day_reminder_email(
             email="test@example.com",
             first_name="Sarah",
             last_name="Smith",
             booking_reference="TAG-12345678",
-            dropoff_date="Friday, 13 February 2026",
+            dropoff_date=formatted_date,
             dropoff_time="12:10",
             flight_departure_time="14:10",
         )
@@ -85,31 +98,35 @@ class TestSend2DayReminderEmail:
     def test_email_contains_dropoff_date(self, mock_send_email):
         """Test that the email HTML contains the dropoff date."""
         mock_send_email.return_value = True
+        future_date = date.today() + timedelta(days=7)
+        formatted_date = format_uk_date(future_date)
 
         send_2_day_reminder_email(
             email="test@example.com",
             first_name="John",
             last_name="Doe",
             booking_reference="TAG-12345678",
-            dropoff_date="Monday, 20 February 2026",
+            dropoff_date=formatted_date,
             dropoff_time="09:30",
             flight_departure_time="11:30",
         )
 
         html_content = mock_send_email.call_args[0][2]
-        assert "Monday, 20 February 2026" in html_content
+        assert formatted_date in html_content
 
     @patch('email_service.send_email')
     def test_email_contains_meeting_time(self, mock_send_email):
         """Test that the email HTML contains the agreed meeting time."""
         mock_send_email.return_value = True
+        future_date = date.today() + timedelta(days=2)
+        formatted_date = format_uk_date(future_date)
 
         send_2_day_reminder_email(
             email="test@example.com",
             first_name="John",
             last_name="Doe",
             booking_reference="TAG-12345678",
-            dropoff_date="Friday, 13 February 2026",
+            dropoff_date=formatted_date,
             dropoff_time="08:45",
             flight_departure_time="10:45",
         )
@@ -121,13 +138,15 @@ class TestSend2DayReminderEmail:
     def test_email_contains_flight_departure_time(self, mock_send_email):
         """Test that the email HTML contains the flight departure time."""
         mock_send_email.return_value = True
+        future_date = date.today() + timedelta(days=2)
+        formatted_date = format_uk_date(future_date)
 
         send_2_day_reminder_email(
             email="test@example.com",
             first_name="John",
             last_name="Doe",
             booking_reference="TAG-12345678",
-            dropoff_date="Friday, 13 February 2026",
+            dropoff_date=formatted_date,
             dropoff_time="12:10",
             flight_departure_time="14:10",
         )
@@ -139,13 +158,15 @@ class TestSend2DayReminderEmail:
     def test_email_contains_contact_information(self, mock_send_email):
         """Test that the email HTML contains contact details."""
         mock_send_email.return_value = True
+        future_date = date.today() + timedelta(days=2)
+        formatted_date = format_uk_date(future_date)
 
         send_2_day_reminder_email(
             email="test@example.com",
             first_name="John",
             last_name="Doe",
             booking_reference="TAG-12345678",
-            dropoff_date="Friday, 13 February 2026",
+            dropoff_date=formatted_date,
             dropoff_time="12:10",
             flight_departure_time="14:10",
         )
@@ -158,13 +179,15 @@ class TestSend2DayReminderEmail:
     def test_email_contains_vehicle_inspection_link(self, mock_send_email):
         """Test that the email HTML contains the vehicle inspection terms link."""
         mock_send_email.return_value = True
+        future_date = date.today() + timedelta(days=2)
+        formatted_date = format_uk_date(future_date)
 
         send_2_day_reminder_email(
             email="test@example.com",
             first_name="John",
             last_name="Doe",
             booking_reference="TAG-12345678",
-            dropoff_date="Friday, 13 February 2026",
+            dropoff_date=formatted_date,
             dropoff_time="12:10",
             flight_departure_time="14:10",
         )
@@ -176,13 +199,15 @@ class TestSend2DayReminderEmail:
     def test_returns_false_when_send_fails(self, mock_send_email):
         """Test that the function returns False when email sending fails."""
         mock_send_email.return_value = False
+        future_date = date.today() + timedelta(days=2)
+        formatted_date = format_uk_date(future_date)
 
         result = send_2_day_reminder_email(
             email="test@example.com",
             first_name="John",
             last_name="Doe",
             booking_reference="TAG-12345678",
-            dropoff_date="Friday, 13 February 2026",
+            dropoff_date=formatted_date,
             dropoff_time="12:10",
             flight_departure_time="14:10",
         )
@@ -193,13 +218,15 @@ class TestSend2DayReminderEmail:
     def test_handles_special_characters_in_name(self, mock_send_email):
         """Test that special characters in names are handled correctly."""
         mock_send_email.return_value = True
+        future_date = date.today() + timedelta(days=2)
+        formatted_date = format_uk_date(future_date)
 
         result = send_2_day_reminder_email(
             email="test@example.com",
             first_name="José",
             last_name="García",
             booking_reference="TAG-12345678",
-            dropoff_date="Friday, 13 February 2026",
+            dropoff_date=formatted_date,
             dropoff_time="12:10",
             flight_departure_time="14:10",
         )
@@ -223,6 +250,8 @@ def create_mock_booking(
     reminder_2day_sent=False,
     reminder_2day_sent_at=None,
     departure_id=None,
+    flight_departure_time=None,
+    flight_arrival_time=None,
 ):
     """Helper to create a mock booking."""
     if dropoff_date is None:
@@ -239,6 +268,8 @@ def create_mock_booking(
     booking.reminder_2day_sent = reminder_2day_sent
     booking.reminder_2day_sent_at = reminder_2day_sent_at
     booking.departure_id = departure_id
+    booking.flight_departure_time = flight_departure_time
+    booking.flight_arrival_time = flight_arrival_time
     return booking
 
 
@@ -320,19 +351,13 @@ class TestProcess2DayReminders:
         mock_customer_query = MagicMock()
         mock_customer_query.filter.return_value.first.return_value = mock_customer
 
-        # Setup query chain for flight query (no linked flight)
-        mock_flight_query = MagicMock()
-        mock_flight_query.filter.return_value.first.return_value = None
-
         # Configure db.query to return appropriate mocks based on model
         def query_side_effect(model):
-            from db_models import Booking, Customer, FlightDeparture
+            from db_models import Booking, Customer
             if model == Booking:
                 return mock_booking_query
             elif model == Customer:
                 return mock_customer_query
-            elif model == FlightDeparture:
-                return mock_flight_query
             return MagicMock()
 
         mock_db.query.side_effect = query_side_effect
@@ -495,13 +520,11 @@ class TestProcess2DayReminders:
         mock_flight_query.filter.return_value.first.return_value = None
 
         def query_side_effect(model):
-            from db_models import Booking, Customer, FlightDeparture
+            from db_models import Booking, Customer
             if model == Booking:
                 return mock_booking_query
             elif model == Customer:
                 return mock_customer_query
-            elif model == FlightDeparture:
-                return mock_flight_query
             return MagicMock()
 
         mock_db.query.side_effect = query_side_effect
@@ -547,13 +570,11 @@ class TestProcess2DayReminders:
         mock_flight_query.filter.return_value.first.return_value = None
 
         def query_side_effect(model):
-            from db_models import Booking, Customer, FlightDeparture
+            from db_models import Booking, Customer
             if model == Booking:
                 return mock_booking_query
             elif model == Customer:
                 return mock_customer_query
-            elif model == FlightDeparture:
-                return mock_flight_query
             return MagicMock()
 
         mock_db.query.side_effect = query_side_effect
@@ -567,10 +588,10 @@ class TestProcess2DayReminders:
     @patch('email_scheduler.send_2_day_reminder_email')
     @patch('email_scheduler.is_email_enabled')
     @patch('email_scheduler.get_db')
-    def test_includes_flight_departure_time_from_linked_flight(
+    def test_shows_tbc_when_no_flight_departure_time(
         self, mock_get_db, mock_enabled, mock_send
     ):
-        """Test that flight departure time is fetched from linked FlightDeparture."""
+        """Test that flight departure time shows TBC when not stored on booking."""
         mock_enabled.return_value = True
         mock_send.return_value = True
 
@@ -578,35 +599,30 @@ class TestProcess2DayReminders:
         mock_db = MagicMock()
         mock_get_db.return_value = mock_db
 
-        # Create mock booking with linked flight
+        # Create mock booking with NO flight_departure_time column
         tomorrow = date.today() + timedelta(days=1)
         mock_booking = create_mock_booking(
             reference="TAG-REMIND009",
             dropoff_date=tomorrow,
             dropoff_time=time(12, 30),
             departure_id=1,
+            flight_departure_time=None,  # No stored flight time
         )
         mock_customer = create_mock_customer()
-        mock_flight = create_mock_flight(departure_time=time(14, 30))
 
-        # Setup query chain
+        # Setup query chain - no FlightDeparture needed anymore
         mock_booking_query = MagicMock()
         mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
 
         mock_customer_query = MagicMock()
         mock_customer_query.filter.return_value.first.return_value = mock_customer
 
-        mock_flight_query = MagicMock()
-        mock_flight_query.filter.return_value.first.return_value = mock_flight
-
         def query_side_effect(model):
-            from db_models import Booking, Customer, FlightDeparture
+            from db_models import Booking, Customer
             if model == Booking:
                 return mock_booking_query
             elif model == Customer:
                 return mock_customer_query
-            elif model == FlightDeparture:
-                return mock_flight_query
             return MagicMock()
 
         mock_db.query.side_effect = query_side_effect
@@ -616,7 +632,106 @@ class TestProcess2DayReminders:
 
         mock_send.assert_called_once()
         call_kwargs = mock_send.call_args[1]
-        assert call_kwargs["flight_departure_time"] == "14:30"
+        assert call_kwargs["flight_departure_time"] == "TBC"
+
+    @patch('email_scheduler.send_2_day_reminder_email')
+    @patch('email_scheduler.is_email_enabled')
+    @patch('email_scheduler.get_db')
+    def test_uses_stored_flight_departure_time(
+        self, mock_get_db, mock_enabled, mock_send
+    ):
+        """Test that stored flight_departure_time column is used."""
+        mock_enabled.return_value = True
+        mock_send.return_value = True
+
+        # Setup mock database
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+
+        # Create mock booking with flight_departure_time column stored
+        tomorrow = date.today() + timedelta(days=1)
+        mock_booking = create_mock_booking(
+            reference="TAG-REMIND010",
+            dropoff_date=tomorrow,
+            dropoff_time=time(12, 30),
+            departure_id=1,
+            flight_departure_time=time(15, 45),  # Stored time - should be used
+        )
+        mock_customer = create_mock_customer()
+
+        # Setup query chain - no FlightDeparture needed
+        mock_booking_query = MagicMock()
+        mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
+
+        mock_customer_query = MagicMock()
+        mock_customer_query.filter.return_value.first.return_value = mock_customer
+
+        def query_side_effect(model):
+            from db_models import Booking, Customer
+            if model == Booking:
+                return mock_booking_query
+            elif model == Customer:
+                return mock_customer_query
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
+
+        from email_scheduler import process_pending_2day_reminders
+        process_pending_2day_reminders()
+
+        mock_send.assert_called_once()
+        call_kwargs = mock_send.call_args[1]
+        # Should use the stored flight_departure_time (15:45)
+        assert call_kwargs["flight_departure_time"] == "15:45"
+
+    @patch('email_scheduler.send_2_day_reminder_email')
+    @patch('email_scheduler.is_email_enabled')
+    @patch('email_scheduler.get_db')
+    def test_uses_tbc_when_no_flight_time_available(
+        self, mock_get_db, mock_enabled, mock_send
+    ):
+        """Test that 'TBC' is used when no flight time is available."""
+        mock_enabled.return_value = True
+        mock_send.return_value = True
+
+        # Setup mock database
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+
+        # Create mock booking with NO flight_departure_time
+        tomorrow = date.today() + timedelta(days=1)
+        mock_booking = create_mock_booking(
+            reference="TAG-REMIND011",
+            dropoff_date=tomorrow,
+            dropoff_time=time(12, 30),
+            departure_id=None,
+            flight_departure_time=None,  # No stored time
+        )
+        mock_customer = create_mock_customer()
+
+        # Setup query chain - no FlightDeparture needed
+        mock_booking_query = MagicMock()
+        mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
+
+        mock_customer_query = MagicMock()
+        mock_customer_query.filter.return_value.first.return_value = mock_customer
+
+        def query_side_effect(model):
+            from db_models import Booking, Customer
+            if model == Booking:
+                return mock_booking_query
+            elif model == Customer:
+                return mock_customer_query
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
+
+        from email_scheduler import process_pending_2day_reminders
+        process_pending_2day_reminders()
+
+        mock_send.assert_called_once()
+        call_kwargs = mock_send.call_args[1]
+        assert call_kwargs["flight_departure_time"] == "TBC"
 
 
 # =============================================================================
@@ -677,13 +792,11 @@ class TestSchedulerIntegration:
         mock_flight_query.filter.return_value.first.return_value = None
 
         def query_side_effect(model):
-            from db_models import Booking, Customer, FlightDeparture
+            from db_models import Booking, Customer
             if model == Booking:
                 return mock_booking_query
             elif model == Customer:
                 return mock_customer_query
-            elif model == FlightDeparture:
-                return mock_flight_query
             return MagicMock()
 
         mock_db.query.side_effect = query_side_effect
@@ -728,13 +841,11 @@ class TestSchedulerIntegration:
         mock_flight_query.filter.return_value.first.return_value = None
 
         def query_side_effect(model):
-            from db_models import Booking, Customer, FlightDeparture
+            from db_models import Booking, Customer
             if model == Booking:
                 return mock_booking_query
             elif model == Customer:
                 return mock_customer_query
-            elif model == FlightDeparture:
-                return mock_flight_query
             return MagicMock()
 
         mock_db.query.side_effect = query_side_effect

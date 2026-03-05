@@ -12,7 +12,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from db_models import MarketingSubscriber, Booking, BookingStatus, Customer, FlightDeparture
+from db_models import MarketingSubscriber, Booking, BookingStatus, Customer
 from email_service import send_welcome_email, send_promo_code_email, send_2_day_reminder_email, send_thank_you_email, send_founder_followup_email, is_email_enabled, generate_promo_code
 from datetime import date as date_type
 import pytz
@@ -175,17 +175,11 @@ def process_pending_2day_reminders():
                 logger.error(f"Customer not found for booking {booking.reference}")
                 continue
 
-            # Get flight departure time
-            flight_departure_time = None
-            if booking.departure_id:
-                flight = db.query(FlightDeparture).filter(FlightDeparture.id == booking.departure_id).first()
-                if flight:
-                    flight_departure_time = flight.departure_time.strftime("%H:%M")
-
-            # Fallback if no flight linked
-            if not flight_departure_time:
-                # Estimate: add 2 hours to dropoff time as rough flight time
-                flight_departure_time = "TBC"
+            # Get flight departure time from the booking's stored column
+            # We no longer use FlightDeparture lookup - all times are stored directly on the booking
+            flight_departure_time = "TBC"
+            if booking.flight_departure_time:
+                flight_departure_time = booking.flight_departure_time.strftime("%H:%M")
 
             # Format dropoff date
             dropoff_date_formatted = booking.dropoff_date.strftime("%A, %d %B %Y")

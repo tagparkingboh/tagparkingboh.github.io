@@ -10,11 +10,16 @@ All tests use mocked data to avoid database state conflicts.
 """
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timedelta
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
 
 
 # =============================================================================
@@ -84,9 +89,12 @@ def create_mock_booking(
     vehicle=None,
     payment=None,
     created_at=None,
+    flight_departure_time=None,
+    flight_arrival_time=None,
 ):
     """Create a mock booking object with airline fields."""
     from db_models import BookingStatus
+    from datetime import timedelta
 
     booking = MagicMock()
     booking.id = id
@@ -101,8 +109,11 @@ def create_mock_booking(
     else:
         booking.status = status
 
+    # Use relative dates based on today's date
+    today = date.today()
+
     # Dropoff fields
-    booking.dropoff_date = dropoff_date_val or date(2026, 2, 10)
+    booking.dropoff_date = dropoff_date_val or (today + timedelta(days=7))
     booking.dropoff_time = dropoff_time_val or time(7, 15)
     booking.dropoff_airline_name = dropoff_airline_name
     booking.dropoff_airline_code = dropoff_airline_code
@@ -110,7 +121,7 @@ def create_mock_booking(
     booking.dropoff_destination = dropoff_destination
 
     # Pickup fields
-    booking.pickup_date = pickup_date_val or date(2026, 2, 17)
+    booking.pickup_date = pickup_date_val or (today + timedelta(days=14))
     booking.pickup_time = pickup_time_val or time(14, 30)
     booking.pickup_time_from = pickup_time_from_val or time(15, 0)
     booking.pickup_time_to = pickup_time_to_val or time(15, 0)
@@ -118,6 +129,10 @@ def create_mock_booking(
     booking.pickup_airline_code = pickup_airline_code
     booking.pickup_flight_number = pickup_flight_number
     booking.pickup_origin = pickup_origin
+
+    # Actual flight times (for emails and display)
+    booking.flight_departure_time = flight_departure_time
+    booking.flight_arrival_time = flight_arrival_time
 
     # Relations
     booking.departure_id = departure_id
@@ -207,6 +222,36 @@ class TestUpdateBookingRequestModel:
         assert request.pickup_airline_name is None
         assert request.pickup_flight_number is None
         assert request.pickup_origin is None
+        assert request.flight_departure_time is None
+        assert request.flight_arrival_time is None
+
+    def test_model_accepts_flight_times(self):
+        """Model should accept flight_departure_time and flight_arrival_time."""
+        from main import UpdateBookingRequest
+
+        request = UpdateBookingRequest(
+            flight_departure_time="14:30",
+            flight_arrival_time="16:45",
+        )
+
+        assert request.flight_departure_time == "14:30"
+        assert request.flight_arrival_time == "16:45"
+
+    def test_model_accepts_mixed_flight_and_time_fields(self):
+        """Model should accept both flight details and flight times together."""
+        from main import UpdateBookingRequest
+
+        request = UpdateBookingRequest(
+            dropoff_airline_name="TUI Airways",
+            dropoff_flight_number="BY1234",
+            flight_departure_time="09:15",
+            pickup_airline_name="TUI Airways",
+            flight_arrival_time="18:30",
+        )
+
+        assert request.dropoff_airline_name == "TUI Airways"
+        assert request.flight_departure_time == "09:15"
+        assert request.flight_arrival_time == "18:30"
 
 
 # =============================================================================
@@ -435,6 +480,109 @@ class TestUpdateFlightDetailsHappyPath:
         assert response_data["success"] is True
         assert len(response_data["fields_updated"]) == 6
 
+    def test_update_flight_departure_time_only(self):
+        """Should successfully update only the flight departure time."""
+        booking = create_mock_booking(
+            flight_departure_time=None,
+        )
+
+        booking.flight_departure_time = time(14, 30)
+
+        response_data = {
+            "success": True,
+            "fields_updated": ["flight_departure_time"],
+            "booking": {
+                "flight_departure_time": booking.flight_departure_time.strftime("%H:%M"),
+            }
+        }
+
+        assert response_data["success"] is True
+        assert response_data["booking"]["flight_departure_time"] == "14:30"
+
+    def test_update_flight_arrival_time_only(self):
+        """Should successfully update only the flight arrival time."""
+        booking = create_mock_booking(
+            flight_arrival_time=None,
+        )
+
+        booking.flight_arrival_time = time(18, 45)
+
+        response_data = {
+            "success": True,
+            "fields_updated": ["flight_arrival_time"],
+            "booking": {
+                "flight_arrival_time": booking.flight_arrival_time.strftime("%H:%M"),
+            }
+        }
+
+        assert response_data["success"] is True
+        assert response_data["booking"]["flight_arrival_time"] == "18:45"
+
+    def test_update_both_flight_times_together(self):
+        """Should successfully update both flight times together."""
+        booking = create_mock_booking(
+            flight_departure_time=None,
+            flight_arrival_time=None,
+        )
+
+        booking.flight_departure_time = time(9, 15)
+        booking.flight_arrival_time = time(16, 30)
+
+        response_data = {
+            "success": True,
+            "fields_updated": ["flight_departure_time", "flight_arrival_time"],
+            "booking": {
+                "flight_departure_time": booking.flight_departure_time.strftime("%H:%M"),
+                "flight_arrival_time": booking.flight_arrival_time.strftime("%H:%M"),
+            }
+        }
+
+        assert response_data["success"] is True
+        assert len(response_data["fields_updated"]) == 2
+        assert response_data["booking"]["flight_departure_time"] == "09:15"
+        assert response_data["booking"]["flight_arrival_time"] == "16:30"
+
+    def test_update_all_fields_including_flight_times(self):
+        """Should successfully update all 8 flight fields together (6 + 2 times)."""
+        booking = create_mock_booking(
+            dropoff_airline_name=None,
+            dropoff_flight_number=None,
+            dropoff_destination=None,
+            pickup_airline_name=None,
+            pickup_flight_number=None,
+            pickup_origin=None,
+            flight_departure_time=None,
+            flight_arrival_time=None,
+        )
+
+        booking.dropoff_airline_name = "TUI Airways"
+        booking.dropoff_flight_number = "BY1234"
+        booking.dropoff_destination = "Rhodes Airport"
+        booking.pickup_airline_name = "TUI Airways"
+        booking.pickup_flight_number = "BY1235"
+        booking.pickup_origin = "Rhodes Airport"
+        booking.flight_departure_time = time(10, 0)
+        booking.flight_arrival_time = time(17, 30)
+
+        response_data = {
+            "success": True,
+            "fields_updated": [
+                "dropoff_airline_name", "dropoff_flight_number", "dropoff_destination",
+                "pickup_airline_name", "pickup_flight_number", "pickup_origin",
+                "flight_departure_time", "flight_arrival_time"
+            ],
+            "booking": {
+                "dropoff_airline_name": booking.dropoff_airline_name,
+                "flight_departure_time": booking.flight_departure_time.strftime("%H:%M"),
+                "flight_arrival_time": booking.flight_arrival_time.strftime("%H:%M"),
+            }
+        }
+
+        assert response_data["success"] is True
+        assert len(response_data["fields_updated"]) == 8
+        assert response_data["booking"]["flight_departure_time"] == "10:00"
+        assert response_data["booking"]["flight_arrival_time"] == "17:30"
+
     def test_update_confirmed_booking_flight_details(self):
         """Should allow updating flight details for confirmed booking."""
         from db_models import BookingStatus
@@ -652,9 +800,9 @@ class TestUpdateFlightDetailsEdgeCases:
         """Updating flight details should not affect other booking fields."""
         booking = create_mock_booking(
             reference="TAG-TEST123",
-            dropoff_date_val=date(2026, 3, 15),
+            dropoff_date_val=FUTURE_DATE,
             dropoff_time_val=time(8, 30),
-            pickup_date_val=date(2026, 3, 22),
+            pickup_date_val=FUTURE_DATE_END,
             pickup_time_val=time(16, 0),
         )
 
@@ -756,6 +904,67 @@ class TestUpdateFlightDetailsEdgeCases:
 
         assert booking.dropoff_airline_name == "Airline A"
         assert booking.pickup_origin == "Origin B"
+
+    def test_update_flight_time_format_hhmm(self):
+        """Flight times should be stored in HH:MM format."""
+        booking = create_mock_booking()
+
+        # Set as time object
+        booking.flight_departure_time = time(8, 5)
+
+        # Verify formatting
+        formatted = booking.flight_departure_time.strftime("%H:%M")
+        assert formatted == "08:05"
+
+    def test_update_flight_time_midnight(self):
+        """Flight times at midnight should be handled correctly."""
+        booking = create_mock_booking()
+
+        booking.flight_departure_time = time(0, 0)
+
+        assert booking.flight_departure_time == time(0, 0)
+
+    def test_update_flight_time_late_night(self):
+        """Late night flight times (23:xx) should be handled correctly."""
+        booking = create_mock_booking()
+
+        booking.flight_arrival_time = time(23, 59)
+
+        formatted = booking.flight_arrival_time.strftime("%H:%M")
+        assert formatted == "23:59"
+
+    def test_update_flight_time_to_none_clears_value(self):
+        """Setting flight time to None should clear the value."""
+        booking = create_mock_booking(flight_departure_time=time(10, 0))
+
+        booking.flight_departure_time = None
+
+        assert booking.flight_departure_time is None
+
+    def test_update_flight_times_preserves_other_booking_fields(self):
+        """Updating flight times should not affect other booking fields."""
+        from datetime import timedelta
+        today = date.today()
+
+        booking = create_mock_booking(
+            reference="TAG-FLIGHTTIME",
+            dropoff_date_val=today + timedelta(days=10),
+            dropoff_time_val=time(8, 30),
+            dropoff_airline_name="TUI Airways",
+        )
+
+        original_reference = booking.reference
+        original_dropoff_date = booking.dropoff_date
+        original_airline = booking.dropoff_airline_name
+
+        # Update only flight times
+        booking.flight_departure_time = time(10, 30)
+        booking.flight_arrival_time = time(18, 0)
+
+        # Other fields should be unchanged
+        assert booking.reference == original_reference
+        assert booking.dropoff_date == original_dropoff_date
+        assert booking.dropoff_airline_name == original_airline
 
 
 # =============================================================================

@@ -71,7 +71,7 @@ def get_pricing_from_db() -> dict:
                 "days_10_11_price": float(row[4]) if row[4] else defaults["days_10_11_price"],
                 "days_12_13_price": float(row[5]) if row[5] else defaults["days_12_13_price"],
                 "week2_base_price": float(row[6]) if row[6] else defaults["week2_base_price"],
-                "tier_increment": float(row[7]) if row[7] else defaults["tier_increment"],
+                "tier_increment": float(row[7]) if row[7] is not None else defaults["tier_increment"],
             }
         return defaults
     except Exception:

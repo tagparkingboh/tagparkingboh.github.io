@@ -9,13 +9,18 @@ historical booking names when a different person makes a new booking.
 All tests use mocked data to avoid database dependencies.
 """
 import pytest
-from datetime import date, time
+from datetime import date, time, timedelta
 from unittest.mock import patch, MagicMock
 import uuid
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
 
 
 # =============================================================================
@@ -76,9 +81,9 @@ def create_mock_booking(
     booking.customer_first_name = customer_first_name
     booking.customer_last_name = customer_last_name
     booking.customer = customer
-    booking.dropoff_date = date(2026, 7, 1)
+    booking.dropoff_date = FUTURE_DATE
     booking.dropoff_time = time(10, 0)
-    booking.pickup_date = date(2026, 7, 8)
+    booking.pickup_date = FUTURE_DATE_END
     booking.pickup_time = time(14, 0)
     booking.package = "quick"
     booking.status = BookingStatus.PENDING
