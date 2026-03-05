@@ -98,8 +98,8 @@ function Bookings() {
   const [savedEmail, setSavedEmail] = useState(() => loadBookingState('savedEmail', null))
   const [vehicleId, setVehicleId] = useState(() => loadBookingState('vehicleId', null))
   const [saving, setSaving] = useState(false)
-  // Welcome modal state - shown when user clicks Continue from Step 1
-  const [showWelcomeModal, setShowWelcomeModal] = useState(false)
+  // Welcome modal state - shown first before any steps
+  const [showWelcomeModal, setShowWelcomeModal] = useState(true)
   // Track when user has attempted to submit each step (to show validation errors)
   const [step1Attempted, setStep1Attempted] = useState(false)
   const [step2Attempted, setStep2Attempted] = useState(false)
@@ -1177,8 +1177,8 @@ function Bookings() {
     }
   }
 
-  // Save Step 1 data and show welcome modal (called on first Continue click)
-  const saveStep1AndShowModal = async () => {
+  // Save Step 3 data (Contact/Billing/Vehicle) and advance to Payment
+  const saveStep3DataAndAdvance = async () => {
     setSaving(true)
     try {
       const { customerId: custId, isNewCustomer } = await saveCustomer()
@@ -1186,10 +1186,11 @@ function Bookings() {
         await saveBillingAddress(custId)
         await saveVehicle(custId, isNewCustomer)
       }
-      // Data saved, now show the welcome modal
-      setShowWelcomeModal(true)
+      // Data saved, advance to payment step
+      setCurrentStep(4)
+      window.scrollTo(0, 0)
     } catch (error) {
-      console.error('Error saving step 1 data:', error)
+      console.error('Error saving step 3 data:', error)
     } finally {
       setSaving(false)
     }
@@ -1198,14 +1199,13 @@ function Bookings() {
   const nextStep = async () => {
     setSaving(true)
     try {
-      // Step 1 data is already saved via saveStep1AndShowModal
-      // Steps 2, 3, 4 don't need incremental saves (data already captured)
+      // Step 3 data is saved via saveStep3DataAndAdvance
+      // Steps 1, 2 don't need saves (just flight/package selection)
 
       // Track booking flow progress in GA
       const stepNames = {
-        1: 'continue_to_trip',             // Details → Trip
-        2: 'continue_to_package_selection', // Trip → Package
-        3: 'continue_to_payment'           // Package → Payment
+        1: 'continue_to_package_selection', // Trip → Package
+        2: 'continue_to_details'            // Package → Details
       }
       if (window.gtag && stepNames[currentStep]) {
         window.gtag('event', stepNames[currentStep], {
@@ -1234,8 +1234,8 @@ function Bookings() {
   const isMakeComplete = formData.make && (formData.make !== 'Other' || formData.customMake)
   const isModelComplete = formData.make === 'Other' ? formData.customModel : (formData.model && (formData.model !== 'Other' || formData.customModel))
 
-  // Step 1: Contact + Billing + Vehicle Information (all on Page 1)
-  const isStep1Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid && isBillingComplete && formData.registration && isMakeComplete && isModelComplete && formData.colour
+  // Step 3: Contact + Billing + Vehicle Information (Details page)
+  const isStep3Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid && isBillingComplete && formData.registration && isMakeComplete && isModelComplete && formData.colour
 
   // Step 2: Trip Details - Direct entry validation
   const isDepartureAirlineComplete = manualDepartureData.airlineCode &&
@@ -1265,10 +1265,11 @@ function Bookings() {
     isValidTimeFormat(manualArrivalData.flightTime) &&
     isOriginComplete
 
-  const isStep2Complete = formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete && isCapacityAvailable
-  // Step 3: Package Selection
-  const isStep3Complete = formData.package
-  // Step 4: Payment (uses billing from Step 1)
+  // Step 1: Trip Details
+  const isStep1Complete = formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete && isCapacityAvailable
+  // Step 2: Package Selection
+  const isStep2Complete = formData.package
+  // Step 4: Payment
   const isStep4Complete = formData.terms
 
   // Scroll to first incomplete/invalid field for the current step
@@ -1277,20 +1278,7 @@ function Bookings() {
     let useNameSelector = false // For radio buttons that use name instead of id
 
     if (step === 1) {
-      // Step 1 validation order: firstName, lastName, email, phone, billingAddress1, billingCity, billingPostcode, registration, make, model, colour
-      if (!formData.firstName) fieldId = 'firstName'
-      else if (!formData.lastName) fieldId = 'lastName'
-      else if (!isEmailValid) fieldId = 'email'
-      else if (!isPhoneValid) fieldId = 'phone'
-      else if (!formData.billingAddress1) fieldId = 'billingAddress1'
-      else if (!formData.billingCity) fieldId = 'billingCity'
-      else if (!formData.billingPostcode) fieldId = manualAddressEntry ? 'billingPostcodeManual' : 'billingPostcode'
-      else if (!formData.registration) fieldId = 'registration'
-      else if (!isMakeComplete) fieldId = formData.make === 'Other' ? 'customMake' : 'make'
-      else if (!isModelComplete) fieldId = formData.model === 'Other' || formData.make === 'Other' ? 'customModel' : 'model'
-      else if (!formData.colour) fieldId = 'colour'
-    } else if (step === 2) {
-      // Step 2 validation order: dropoffDate, airline, customAirline, flightTime, destination, customDestination, dropoffSlot, pickupDate, arrivalAirline, arrivalFlightTime, origin
+      // Step 1 (Trip) validation order: dropoffDate, airline, customAirline, flightTime, destination, customDestination, dropoffSlot, pickupDate, arrivalAirline, arrivalFlightTime, origin
       if (!formData.dropoffDate) fieldId = 'dropoffDate'
       else if (!manualDepartureData.airlineCode) fieldId = 'manualAirline'
       else if (manualDepartureData.airlineCode === 'Other' && (!manualDepartureData.customAirline || containsProfanity(manualDepartureData.customAirline))) fieldId = 'customDepartureAirline'
@@ -1304,6 +1292,19 @@ function Bookings() {
       else if (!isValidTimeFormat(manualArrivalData.flightTime)) fieldId = 'manualArrivalFlightTime'
       else if (!manualArrivalData.originCode) fieldId = 'manualArrivalOrigin'
       else if (manualArrivalData.originCode === 'Other' && (!manualArrivalData.customOrigin || containsProfanity(manualArrivalData.customOrigin))) fieldId = 'customOrigin'
+    } else if (step === 3) {
+      // Step 3 (Details) validation order: firstName, lastName, email, phone, billingAddress1, billingCity, billingPostcode, registration, make, model, colour
+      if (!formData.firstName) fieldId = 'firstName'
+      else if (!formData.lastName) fieldId = 'lastName'
+      else if (!isEmailValid) fieldId = 'email'
+      else if (!isPhoneValid) fieldId = 'phone'
+      else if (!formData.billingAddress1) fieldId = 'billingAddress1'
+      else if (!formData.billingCity) fieldId = 'billingCity'
+      else if (!formData.billingPostcode) fieldId = manualAddressEntry ? 'billingPostcodeManual' : 'billingPostcode'
+      else if (!formData.registration) fieldId = 'registration'
+      else if (!isMakeComplete) fieldId = formData.make === 'Other' ? 'customMake' : 'make'
+      else if (!isModelComplete) fieldId = formData.model === 'Other' || formData.make === 'Other' ? 'customModel' : 'model'
+      else if (!formData.colour) fieldId = 'colour'
     }
 
     if (fieldId) {
@@ -1328,16 +1329,21 @@ function Bookings() {
       scrollToFirstError(1)
       return
     }
-    saveStep1AndShowModal()
+    nextStep()
   }
 
   const handleContinueStep2 = () => {
-    setStep2Attempted(true)
-    if (!isStep2Complete) {
-      scrollToFirstError(2)
+    // Package step - just advance (package is auto-selected based on dates)
+    nextStep()
+  }
+
+  const handleContinueStep3 = () => {
+    setStep1Attempted(true) // Reuse step1Attempted for validation display
+    if (!isStep3Complete) {
+      scrollToFirstError(3)
       return
     }
-    nextStep()
+    saveStep3DataAndAdvance()
   }
 
   const handleSubmit = async (e) => {
@@ -1417,7 +1423,7 @@ function Bookings() {
 
   return (
     <div className="bookings-new-page">
-      {/* Welcome Modal - shown when user clicks Continue from Step 1 to Step 2 */}
+      {/* Welcome Modal - shown first when user lands on booking page */}
       {showWelcomeModal && (
         <div className="welcome-modal-overlay">
           <div className="welcome-modal">
@@ -1451,24 +1457,22 @@ function Bookings() {
                 className="welcome-modal-btn"
                 onClick={() => {
                   if (window.gtag) {
-                    window.gtag('event', 'continue_to_details', {
+                    window.gtag('event', 'continue_to_booking', {
                       event_category: 'booking_flow',
-                      event_label: 'welcome_modal',
-                      step_number: 1
+                      event_label: 'welcome_modal'
                     })
                   }
                   setShowWelcomeModal(false)
-                  setCurrentStep(2)  // Data already saved, just advance step
                 }}
               >
-                Continue to Trip Details
+                Continue to booking
               </button>
               <button
                 type="button"
                 className="welcome-modal-back-btn"
-                onClick={() => setShowWelcomeModal(false)}
+                onClick={() => navigate('/')}
               >
-                Go back
+                Back to home
               </button>
             </div>
           </div>
@@ -1494,9 +1498,9 @@ function Bookings() {
               >
                 <span className="step-number">{step}</span>
                 <span className="step-label">
-                  {step === 1 && 'Details'}
-                  {step === 2 && 'Trip'}
-                  {step === 3 && 'Package'}
+                  {step === 1 && 'Trip'}
+                  {step === 2 && 'Package'}
+                  {step === 3 && 'Details'}
                   {step === 4 && 'Payment'}
                 </span>
               </div>
@@ -1505,8 +1509,8 @@ function Bookings() {
         </div>
 
         <form className="bookings-new-form" onSubmit={handleSubmit}>
-          {/* Step 1: Contact + Billing Information */}
-          {currentStep === 1 && (
+          {/* Step 3: Contact + Billing Information */}
+          {currentStep === 3 && (
             <div className="form-section">
               <h2>Your Details</h2>
 
@@ -1979,20 +1983,23 @@ function Bookings() {
               )}
 
               <div className="form-actions">
+                <button type="button" className="back-btn" onClick={prevStep}>
+                  Back
+                </button>
                 <button
                   type="button"
                   className="next-btn"
-                  onClick={handleContinueStep1}
+                  onClick={handleContinueStep3}
                   disabled={saving}
                 >
-                  {saving ? 'Saving...' : 'Continue to Trip Details'}
+                  {saving ? 'Saving...' : 'Continue to Payment'}
                 </button>
               </div>
             </div>
           )}
 
-          {/* Step 2: Trip Details */}
-          {currentStep === 2 && (
+          {/* Step 1: Trip Details */}
+          {currentStep === 1 && (
             <div className="form-section">
               <h2>Trip Details</h2>
 
@@ -2404,13 +2411,10 @@ function Bookings() {
               )}
 
               <div className="form-actions">
-                <button type="button" className="back-btn" onClick={prevStep}>
-                  Back
-                </button>
                 <button
                   type="button"
                   className="next-btn"
-                  onClick={handleContinueStep2}
+                  onClick={handleContinueStep1}
                 >
                   Continue to Package Selection
                 </button>
@@ -2418,8 +2422,8 @@ function Bookings() {
             </div>
           )}
 
-          {/* Step 3: Package Selection */}
-          {currentStep === 3 && (
+          {/* Step 2: Package Selection */}
+          {currentStep === 2 && (
             <div className="form-section">
               <h2>Your Package</h2>
 
@@ -2448,10 +2452,10 @@ function Bookings() {
                 <button
                   type="button"
                   className="next-btn"
-                  onClick={nextStep}
-                  disabled={!isStep3Complete}
+                  onClick={handleContinueStep2}
+                  disabled={!isStep2Complete}
                 >
-                  Continue to Payment
+                  Continue to Your Details
                 </button>
               </div>
             </div>
