@@ -7348,6 +7348,170 @@ async def delete_admin_arrival(
     }
 
 
+# =============================================================================
+# QA Dashboard - Test Results Endpoints
+# =============================================================================
+
+@app.get("/api/admin/test-results")
+async def get_test_results(
+    limit: int = Query(10, ge=1, le=100),
+    environment: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get recent test run results for the QA Dashboard.
+    Returns the most recent test runs, optionally filtered by environment.
+    """
+    from db_models import TestRun, TestRunStatus
+
+    query = db.query(TestRun).order_by(TestRun.started_at.desc())
+
+    if environment:
+        query = query.filter(TestRun.environment == environment)
+
+    test_runs = query.limit(limit).all()
+
+    return {
+        "test_runs": [
+            {
+                "id": run.id,
+                "environment": run.environment,
+                "run_type": run.run_type,
+                "status": run.status.value,
+                "tests_passed": run.tests_passed,
+                "tests_failed": run.tests_failed,
+                "tests_skipped": run.tests_skipped,
+                "tests_total": run.tests_total,
+                "coverage_percent": float(run.coverage_percent) if run.coverage_percent else None,
+                "duration_seconds": run.duration_seconds,
+                "started_at": run.started_at.isoformat() if run.started_at else None,
+                "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+                "commit_sha": run.commit_sha,
+                "branch": run.branch,
+                "logs_url": run.logs_url,
+                "triggered_by": run.triggered_by,
+                "pass_rate": run.pass_rate,
+            }
+            for run in test_runs
+        ]
+    }
+
+
+@app.get("/api/admin/test-results/latest")
+async def get_latest_test_result(
+    environment: str = "staging",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get the most recent test run for a specific environment.
+    """
+    from db_models import TestRun, TestRunStatus
+
+    test_run = db.query(TestRun).filter(
+        TestRun.environment == environment
+    ).order_by(TestRun.started_at.desc()).first()
+
+    if not test_run:
+        return {"test_run": None}
+
+    return {
+        "test_run": {
+            "id": test_run.id,
+            "environment": test_run.environment,
+            "run_type": test_run.run_type,
+            "status": test_run.status.value,
+            "tests_passed": test_run.tests_passed,
+            "tests_failed": test_run.tests_failed,
+            "tests_skipped": test_run.tests_skipped,
+            "tests_total": test_run.tests_total,
+            "coverage_percent": float(test_run.coverage_percent) if test_run.coverage_percent else None,
+            "duration_seconds": test_run.duration_seconds,
+            "started_at": test_run.started_at.isoformat() if test_run.started_at else None,
+            "completed_at": test_run.completed_at.isoformat() if test_run.completed_at else None,
+            "commit_sha": test_run.commit_sha,
+            "branch": test_run.branch,
+            "logs_url": test_run.logs_url,
+            "triggered_by": test_run.triggered_by,
+            "pass_rate": test_run.pass_rate,
+        }
+    }
+
+
+class CreateTestRunRequest(BaseModel):
+    """Request to create a new test run."""
+    environment: str = "staging"
+    run_type: str = "scheduled"
+    tests_passed: int = 0
+    tests_failed: int = 0
+    tests_skipped: int = 0
+    tests_total: int = 0
+    coverage_percent: Optional[float] = None
+    duration_seconds: Optional[int] = None
+    commit_sha: Optional[str] = None
+    branch: Optional[str] = None
+    logs_url: Optional[str] = None
+    report_json: Optional[str] = None
+    triggered_by: Optional[str] = None
+    api_key: str  # Simple API key for CI authentication
+
+
+@app.post("/api/test-results")
+async def create_test_result(
+    request: CreateTestRunRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Create a new test run result. Called by CI/CD pipeline.
+    Uses API key authentication instead of session auth.
+    """
+    from db_models import TestRun, TestRunStatus
+    import os
+
+    # Simple API key check (set via environment variable)
+    expected_key = os.environ.get("TEST_RESULTS_API_KEY", "tag-test-results-2026")
+    if request.api_key != expected_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # Determine status based on results
+    if request.tests_failed > 0:
+        status = TestRunStatus.FAILED
+    elif request.tests_total == 0:
+        status = TestRunStatus.ERROR
+    else:
+        status = TestRunStatus.PASSED
+
+    test_run = TestRun(
+        environment=request.environment,
+        run_type=request.run_type,
+        status=status,
+        tests_passed=request.tests_passed,
+        tests_failed=request.tests_failed,
+        tests_skipped=request.tests_skipped,
+        tests_total=request.tests_total,
+        coverage_percent=request.coverage_percent,
+        duration_seconds=request.duration_seconds,
+        commit_sha=request.commit_sha,
+        branch=request.branch,
+        logs_url=request.logs_url,
+        report_json=request.report_json,
+        triggered_by=request.triggered_by,
+        completed_at=datetime.now(timezone.utc),
+    )
+
+    db.add(test_run)
+    db.commit()
+    db.refresh(test_run)
+
+    return {
+        "success": True,
+        "test_run_id": test_run.id,
+        "status": test_run.status.value,
+        "pass_rate": test_run.pass_rate,
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

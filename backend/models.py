@@ -300,3 +300,49 @@ class ManualBookingRequest(BaseModel):
 
     # Notes
     notes: Optional[str] = None
+
+
+
+# ============================================================================
+# Test Run Models (QA Dashboard)
+# ============================================================================
+
+class TestRunCreate(BaseModel):
+    """Request to create/update a test run."""
+    environment: str = "staging"
+    run_type: str = "scheduled"  # scheduled, manual, pr_check
+    tests_passed: int = 0
+    tests_failed: int = 0
+    tests_skipped: int = 0
+    tests_total: int = 0
+    coverage_percent: Optional[float] = None
+    duration_seconds: Optional[int] = None
+    commit_sha: Optional[str] = None
+    branch: Optional[str] = None
+    logs_url: Optional[str] = None
+    report_json: Optional[str] = None
+    triggered_by: Optional[str] = None
+
+
+class TestRunResponse(BaseModel):
+    """Response model for a test run."""
+    id: int
+    environment: str
+    run_type: str
+    status: str
+    tests_passed: int
+    tests_failed: int
+    tests_skipped: int
+    tests_total: int
+    coverage_percent: Optional[float] = None
+    duration_seconds: Optional[int] = None
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    commit_sha: Optional[str] = None
+    branch: Optional[str] = None
+    logs_url: Optional[str] = None
+    triggered_by: Optional[str] = None
+    pass_rate: float = 0
+
+    class Config:
+        from_attributes = True

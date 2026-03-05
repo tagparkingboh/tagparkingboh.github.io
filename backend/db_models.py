@@ -665,3 +665,58 @@ class PricingSettings(Base):
 
     def __repr__(self):
         return f"<PricingSettings 1-4d={self.days_1_4_price} 5-6d={self.days_5_6_price} 7d={self.week1_base_price} 8-9d={self.days_8_9_price} 10-11d={self.days_10_11_price} 12-13d={self.days_12_13_price} 14d={self.week2_base_price} increment={self.tier_increment}>"
+
+
+class TestRunStatus(enum.Enum):
+    """Status of a test run."""
+    RUNNING = "running"
+    PASSED = "passed"
+    FAILED = "failed"
+    ERROR = "error"
+
+
+class TestRun(Base):
+    """Automated test run results for QA Dashboard."""
+    __tablename__ = "test_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Test run info
+    environment = Column(String(20), nullable=False, default="staging")  # staging, production
+    run_type = Column(String(30), nullable=False, default="scheduled")  # scheduled, manual, pr_check
+    status = Column(Enum(TestRunStatus), default=TestRunStatus.RUNNING, nullable=False)
+
+    # Results
+    tests_passed = Column(Integer, default=0, nullable=False)
+    tests_failed = Column(Integer, default=0, nullable=False)
+    tests_skipped = Column(Integer, default=0, nullable=False)
+    tests_total = Column(Integer, default=0, nullable=False)
+
+    # Coverage
+    coverage_percent = Column(Numeric(5, 2), nullable=True)  # e.g., 78.50
+
+    # Timing
+    duration_seconds = Column(Integer, nullable=True)
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Git info
+    commit_sha = Column(String(40), nullable=True)
+    branch = Column(String(100), nullable=True)
+
+    # Links/artifacts
+    logs_url = Column(String(500), nullable=True)  # Link to CI logs
+    report_json = Column(Text, nullable=True)  # JSON with detailed test results
+
+    # Trigger info
+    triggered_by = Column(String(100), nullable=True)  # "github_actions", "manual", "cron"
+
+    def __repr__(self):
+        return f"<TestRun {self.id} {self.environment} {self.status.value} - {self.tests_passed}/{self.tests_total}>"
+
+    @property
+    def pass_rate(self):
+        """Calculate pass rate percentage."""
+        if self.tests_total == 0:
+            return 0
+        return round((self.tests_passed / self.tests_total) * 100, 1)
