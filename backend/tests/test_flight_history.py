@@ -10,12 +10,17 @@ Covers:
 All tests use mocked data to avoid database state conflicts.
 """
 import pytest
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timedelta
 from unittest.mock import MagicMock, patch, call
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
 
 from db_models import (
     FlightDeparture, FlightArrival,
@@ -39,7 +44,7 @@ class TestFlightDepartureHistoryModel:
         """FlightDepartureHistory should have all required fields."""
         history = FlightDepartureHistory(
             flight_id=1,
-            date=date(2026, 3, 15),
+            date=FUTURE_DATE,
             flight_number="FR5523",
             airline_code="FR",
             airline_name="Ryanair",
@@ -54,7 +59,7 @@ class TestFlightDepartureHistoryModel:
         )
 
         assert history.flight_id == 1
-        assert history.date == date(2026, 3, 15)
+        assert history.date == FUTURE_DATE
         assert history.flight_number == "FR5523"
         assert history.airline_code == "FR"
         assert history.airline_name == "Ryanair"
@@ -72,7 +77,7 @@ class TestFlightDepartureHistoryModel:
         history = FlightDepartureHistory(
             id=1,
             flight_id=100,
-            date=date(2026, 3, 15),
+            date=FUTURE_DATE,
             flight_number="FR5523",
             airline_code="FR",
             airline_name="Ryanair",
@@ -97,7 +102,7 @@ class TestFlightArrivalHistoryModel:
         """FlightArrivalHistory should have all required fields."""
         history = FlightArrivalHistory(
             flight_id=1,
-            date=date(2026, 3, 22),
+            date=FUTURE_DATE_END,
             flight_number="FR5524",
             airline_code="FR",
             airline_name="Ryanair",
@@ -110,7 +115,7 @@ class TestFlightArrivalHistoryModel:
         )
 
         assert history.flight_id == 1
-        assert history.date == date(2026, 3, 22)
+        assert history.date == FUTURE_DATE_END
         assert history.flight_number == "FR5524"
         assert history.airline_code == "FR"
         assert history.airline_name == "Ryanair"
@@ -126,7 +131,7 @@ class TestFlightArrivalHistoryModel:
         history = FlightArrivalHistory(
             id=1,
             flight_id=200,
-            date=date(2026, 3, 22),
+            date=FUTURE_DATE_END,
             flight_number="FR5524",
             airline_code="FR",
             airline_name="Ryanair",
@@ -153,7 +158,7 @@ class TestRecordDepartureHistory:
         mock_db = MagicMock()
         mock_flight = MagicMock(spec=FlightDeparture)
         mock_flight.id = 100
-        mock_flight.date = date(2026, 3, 15)
+        mock_flight.date = FUTURE_DATE
         mock_flight.flight_number = "FR5523"
         mock_flight.airline_code = "FR"
         mock_flight.airline_name = "Ryanair"
@@ -173,7 +178,7 @@ class TestRecordDepartureHistory:
         history = mock_db.add.call_args[0][0]
 
         assert history.flight_id == 100
-        assert history.date == date(2026, 3, 15)
+        assert history.date == FUTURE_DATE
         assert history.flight_number == "FR5523"
         assert history.airline_code == "FR"
         assert history.airline_name == "Ryanair"
@@ -191,7 +196,7 @@ class TestRecordDepartureHistory:
         mock_db = MagicMock()
         mock_flight = MagicMock(spec=FlightDeparture)
         mock_flight.id = 1
-        mock_flight.date = date(2026, 3, 15)
+        mock_flight.date = FUTURE_DATE
         mock_flight.flight_number = "U21234"
         mock_flight.airline_code = "U2"
         mock_flight.airline_name = "easyJet"
@@ -213,7 +218,7 @@ class TestRecordDepartureHistory:
         mock_db = MagicMock()
         mock_flight = MagicMock(spec=FlightDeparture)
         mock_flight.id = 50
-        mock_flight.date = date(2026, 3, 15)
+        mock_flight.date = FUTURE_DATE
         mock_flight.flight_number = "LS123"
         mock_flight.airline_code = "LS"
         mock_flight.airline_name = "Jet2"
@@ -234,7 +239,7 @@ class TestRecordDepartureHistory:
         mock_db = MagicMock()
         mock_flight = MagicMock(spec=FlightDeparture)
         mock_flight.id = 1
-        mock_flight.date = date(2026, 3, 15)
+        mock_flight.date = FUTURE_DATE
         mock_flight.flight_number = "FR1234"
         mock_flight.airline_code = "FR"
         mock_flight.airline_name = "Ryanair"
@@ -258,7 +263,7 @@ class TestRecordArrivalHistory:
         mock_db = MagicMock()
         mock_flight = MagicMock(spec=FlightArrival)
         mock_flight.id = 200
-        mock_flight.date = date(2026, 3, 22)
+        mock_flight.date = FUTURE_DATE_END
         mock_flight.flight_number = "FR5524"
         mock_flight.airline_code = "FR"
         mock_flight.airline_name = "Ryanair"
@@ -273,7 +278,7 @@ class TestRecordArrivalHistory:
         history = mock_db.add.call_args[0][0]
 
         assert history.flight_id == 200
-        assert history.date == date(2026, 3, 22)
+        assert history.date == FUTURE_DATE_END
         assert history.flight_number == "FR5524"
         assert history.airline_code == "FR"
         assert history.airline_name == "Ryanair"
@@ -289,7 +294,7 @@ class TestRecordArrivalHistory:
         mock_db = MagicMock()
         mock_flight = MagicMock(spec=FlightArrival)
         mock_flight.id = 201
-        mock_flight.date = date(2026, 3, 22)
+        mock_flight.date = FUTURE_DATE_END
         mock_flight.flight_number = "U21234"
         mock_flight.airline_code = "U2"
         mock_flight.airline_name = "easyJet"

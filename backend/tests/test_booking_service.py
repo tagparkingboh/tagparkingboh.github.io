@@ -5,7 +5,7 @@ Tests cover booking creation, slot availability management,
 capacity tracking, and cancellation logic.
 """
 import pytest
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timedelta
 
 import sys
 from pathlib import Path
@@ -13,6 +13,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from booking_service import BookingService, NO_SLOTS_CONTACT_MESSAGE
 from models import BookingRequest, AdminBookingRequest, SlotType
+
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
 
 
 @pytest.fixture
@@ -29,16 +34,16 @@ def sample_booking_request():
         last_name="Doe",
         email="john.doe@example.com",
         phone="07700900000",
-        drop_off_date=date(2026, 2, 10),
+        drop_off_date=FUTURE_DATE,
         drop_off_slot_type=SlotType.EARLY,
-        flight_date=date(2026, 2, 10),
+        flight_date=FUTURE_DATE,
         flight_time="10:00",
         flight_number="5523",
         airline_code="FR",
         airline_name="Ryanair",
         destination_code="KRK",
         destination_name="Krakow, PL",
-        pickup_date=date(2026, 2, 17),
+        pickup_date=FUTURE_DATE_END,
         return_flight_time="14:30",
         return_flight_number="5524",
         registration="AB12 CDE",
@@ -77,7 +82,7 @@ class TestSlotAvailability:
     def test_new_slot_is_available(self, service):
         """Unbooked slot should be available."""
         slots = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -88,7 +93,7 @@ class TestSlotAvailability:
         """Booked slot should not appear in available slots."""
         # Get initial slots
         initial_slots = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -100,7 +105,7 @@ class TestSlotAvailability:
 
         # Check slots again
         remaining_slots = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -123,7 +128,7 @@ class TestSlotAvailability:
 
         # Check slots
         slots = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -133,7 +138,7 @@ class TestSlotAvailability:
 
     def test_is_slot_available_returns_true_for_new(self, service):
         """is_slot_available should return True for unbooked slots."""
-        slot_id = "2026-02-10_0715_FR5523_165"
+        slot_id = f"{FUTURE_DATE.isoformat()}_0715_FR5523_165"
         assert service.is_slot_available(slot_id) is True
 
     def test_is_slot_available_returns_false_after_booking(
@@ -143,7 +148,7 @@ class TestSlotAvailability:
         service.create_booking(sample_booking_request)
 
         # The slot ID format for the early slot
-        slot_id = "2026-02-10_0715_FR5523_165"
+        slot_id = f"{FUTURE_DATE.isoformat()}_0715_FR5523_165"
         assert service.is_slot_available(slot_id) is False
 
 
@@ -180,7 +185,7 @@ class TestBookingCreation:
 
         # 10:00 - 2:45 = 07:15
         assert booking.drop_off_time == time(7, 15)
-        assert booking.drop_off_date == date(2026, 2, 10)
+        assert booking.drop_off_date == FUTURE_DATE
 
     def test_booking_stores_in_collection(self, service, sample_booking_request):
         """Created booking should be retrievable."""
@@ -209,21 +214,23 @@ class TestOvernightBookings:
 
     def test_overnight_booking_calculates_correct_date(self, service):
         """Early morning flight should have drop-off on previous day."""
+        overnight_date = FUTURE_DATE
+        overnight_date_prev = FUTURE_DATE - timedelta(days=1)
         request = BookingRequest(
             first_name="John",
             last_name="Doe",
             email="john@example.com",
             phone="07700900000",
-            drop_off_date=date(2026, 2, 10),  # This is the flight date
+            drop_off_date=overnight_date,  # This is the flight date
             drop_off_slot_type=SlotType.EARLY,
-            flight_date=date(2026, 2, 10),  # Tuesday
+            flight_date=overnight_date,
             flight_time="00:35",  # Very early morning
             flight_number="5523",
             airline_code="FR",
             airline_name="Ryanair",
             destination_code="KRK",
             destination_name="Krakow, PL",
-            pickup_date=date(2026, 2, 17),
+            pickup_date=FUTURE_DATE_END,
             return_flight_time="14:30",
             return_flight_number="5524",
             registration="AB12 CDE",
@@ -239,27 +246,29 @@ class TestOvernightBookings:
 
         booking = service.create_booking(request)
 
-        # Drop-off should be Monday evening
-        assert booking.drop_off_date == date(2026, 2, 9)  # Monday
+        # Drop-off should be previous day evening
+        assert booking.drop_off_date == overnight_date_prev
         assert booking.drop_off_time == time(21, 50)  # 00:35 - 2:45
 
     def test_overnight_late_slot_booking(self, service):
         """Early morning flight with late slot."""
+        overnight_date = FUTURE_DATE
+        overnight_date_prev = FUTURE_DATE - timedelta(days=1)
         request = BookingRequest(
             first_name="Jane",
             last_name="Doe",
             email="jane@example.com",
             phone="07700900001",
-            drop_off_date=date(2026, 2, 10),
+            drop_off_date=overnight_date,
             drop_off_slot_type=SlotType.LATE,
-            flight_date=date(2026, 2, 10),  # Tuesday
+            flight_date=overnight_date,
             flight_time="00:35",
             flight_number="5523",
             airline_code="FR",
             airline_name="Ryanair",
             destination_code="KRK",
             destination_name="Krakow, PL",
-            pickup_date=date(2026, 2, 17),
+            pickup_date=FUTURE_DATE_END,
             return_flight_time="14:30",
             return_flight_number="5524",
             registration="CD34 EFG",
@@ -275,8 +284,8 @@ class TestOvernightBookings:
 
         booking = service.create_booking(request)
 
-        # Drop-off should be Monday evening
-        assert booking.drop_off_date == date(2026, 2, 9)  # Monday
+        # Drop-off should be previous day evening
+        assert booking.drop_off_date == overnight_date_prev
         assert booking.drop_off_time == time(22, 35)  # 00:35 - 2:00
 
 
@@ -289,7 +298,7 @@ class TestBookingCancellation:
 
         # Verify slot is booked
         slots_before = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -302,7 +311,7 @@ class TestBookingCancellation:
 
         # Verify slot is available again
         slots_after = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -331,8 +340,8 @@ class TestCapacityManagement:
     def test_capacity_check_empty_parking(self, service):
         """Empty parking should show full availability."""
         result = service.check_capacity_for_date_range(
-            date(2026, 2, 10),
-            date(2026, 2, 17)
+            FUTURE_DATE,
+            FUTURE_DATE_END
         )
 
         assert result["all_available"] is True
@@ -342,8 +351,9 @@ class TestCapacityManagement:
         """Creating a booking should update occupancy counts."""
         service.create_booking(sample_booking_request)
 
-        # Check a date in the booking range
-        bookings = service.get_bookings_for_date(date(2026, 2, 12))
+        # Check a date in the booking range (2 days after start)
+        mid_date = FUTURE_DATE + timedelta(days=2)
+        bookings = service.get_bookings_for_date(mid_date)
         assert len(bookings) == 1
 
     def test_cancellation_updates_daily_occupancy(
@@ -352,13 +362,16 @@ class TestCapacityManagement:
         """Cancelling a booking should decrease occupancy."""
         booking = service.create_booking(sample_booking_request)
 
+        # Check a date in the booking range (2 days after start)
+        mid_date = FUTURE_DATE + timedelta(days=2)
+
         # Verify booking is counted
-        bookings_before = service.get_bookings_for_date(date(2026, 2, 12))
+        bookings_before = service.get_bookings_for_date(mid_date)
         assert len(bookings_before) == 1
 
         # Cancel and verify
         service.cancel_booking(booking.booking_id)
-        bookings_after = service.get_bookings_for_date(date(2026, 2, 12))
+        bookings_after = service.get_bookings_for_date(mid_date)
         assert len(bookings_after) == 0
 
 
@@ -377,9 +390,9 @@ class TestBookingQueries:
         # Create another booking with different slot
         second_request = sample_booking_request.model_copy()
         second_request.drop_off_slot_type = SlotType.LATE
-        second_request.drop_off_date = date(2026, 3, 10)
-        second_request.flight_date = date(2026, 3, 10)
-        second_request.pickup_date = date(2026, 3, 17)
+        second_request.drop_off_date = FUTURE_DATE + timedelta(days=30)
+        second_request.flight_date = FUTURE_DATE + timedelta(days=30)
+        second_request.pickup_date = FUTURE_DATE + timedelta(days=37)
         service.create_booking(second_request)
 
         bookings = service.get_bookings_by_email("john.doe@example.com")
@@ -415,16 +428,19 @@ class TestBookingQueries:
         # Booking from Feb 10-17
         service.create_booking(sample_booking_request)
 
-        # Should find it on Feb 12
-        bookings = service.get_bookings_for_date(date(2026, 2, 12))
+        # Should find it on a date in the middle (2 days after start)
+        mid_date = FUTURE_DATE + timedelta(days=2)
+        bookings = service.get_bookings_for_date(mid_date)
         assert len(bookings) == 1
 
-        # Should not find it on Feb 18 (after pickup)
-        bookings = service.get_bookings_for_date(date(2026, 2, 18))
+        # Should not find it after pickup (8 days after start)
+        after_pickup = FUTURE_DATE_END + timedelta(days=1)
+        bookings = service.get_bookings_for_date(after_pickup)
         assert len(bookings) == 0
 
-        # Should not find it on Feb 9 (before drop-off)
-        bookings = service.get_bookings_for_date(date(2026, 2, 9))
+        # Should not find it before drop-off (1 day before start)
+        before_dropoff = FUTURE_DATE - timedelta(days=1)
+        bookings = service.get_bookings_for_date(before_dropoff)
         assert len(bookings) == 0
 
 
@@ -434,7 +450,7 @@ class TestAllSlotsBookedContactMessage:
     def test_no_contact_message_when_slots_available(self, service):
         """Should not show contact message when slots are available."""
         response = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -452,7 +468,7 @@ class TestAllSlotsBookedContactMessage:
         service.create_booking(sample_booking_request)
 
         response = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -476,7 +492,7 @@ class TestAllSlotsBookedContactMessage:
         service.create_booking(late_request)
 
         response = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -501,7 +517,7 @@ class TestAllSlotsBookedContactMessage:
 
         # Verify all booked
         response = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -513,7 +529,7 @@ class TestAllSlotsBookedContactMessage:
 
         # Verify contact message gone
         response = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -534,16 +550,16 @@ class TestAdminBooking:
             last_name="Created",
             email="customer@example.com",
             phone="07700900000",
-            drop_off_date=date(2026, 2, 10),
+            drop_off_date=FUTURE_DATE,
             drop_off_time="08:30",  # Custom time, not restricted to slots
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time="10:00",
             flight_number="5523",
             airline_code="FR",
             airline_name="Ryanair",
             destination_code="KRK",
             destination_name="Krakow, PL",
-            pickup_date=date(2026, 2, 17),
+            pickup_date=FUTURE_DATE_END,
             return_flight_time="14:30",
             return_flight_number="5524",
             registration="AB12 CDE",
@@ -571,7 +587,7 @@ class TestAdminBooking:
 
         # Should use admin-specified time, not calculated from slot
         assert booking.drop_off_time == time(8, 30)
-        assert booking.drop_off_date == date(2026, 2, 10)
+        assert booking.drop_off_date == FUTURE_DATE
 
     def test_admin_booking_with_custom_price(self, service, admin_booking_request):
         """Admin can override the standard package price."""
@@ -595,7 +611,7 @@ class TestAdminBooking:
 
         # Verify regular slots are full
         response = service.get_available_slots_for_flight(
-            flight_date=date(2026, 2, 10),
+            flight_date=FUTURE_DATE,
             flight_time=time(10, 0),
             flight_number="5523",
             airline_code="FR"
@@ -613,7 +629,8 @@ class TestAdminBooking:
         """Admin bookings should count toward parking capacity."""
         service.create_admin_booking(admin_booking_request)
 
-        bookings = service.get_bookings_for_date(date(2026, 2, 12))
+        mid_date = FUTURE_DATE + timedelta(days=2)
+        bookings = service.get_bookings_for_date(mid_date)
         assert len(bookings) == 1
 
     def test_admin_booking_with_minimal_billing(self, service, admin_booking_request):

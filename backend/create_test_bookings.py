@@ -21,6 +21,12 @@ from playwright.sync_api import sync_playwright, Page
 from datetime import datetime, timedelta
 import time
 import random
+import os
+import sys
+
+# Configuration
+HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
+SINGLE_TEST = os.environ.get("SINGLE_TEST", "false").lower() == "true"  # Run only first test
 
 # Staging URL
 STAGING_URL = "https://staging-tagparking.netlify.app/tag-it"
@@ -802,13 +808,18 @@ def main():
     print()
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False, slow_mo=100)  # slow_mo helps with visibility
+        # Use headless mode for CI/automation, headed for local debugging
+        slow_mo = 0 if HEADLESS else 100
+        browser = p.chromium.launch(headless=HEADLESS, slow_mo=slow_mo)
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         page = context.new_page()
 
         results = {"success": [], "failed": []}
 
-        for i, test_case in enumerate(TEST_CASES, 1):
+        # Optionally run only the first test case for smoke testing
+        test_cases_to_run = TEST_CASES[:1] if SINGLE_TEST else TEST_CASES
+
+        for i, test_case in enumerate(test_cases_to_run, 1):
             success = create_booking(page, test_case, i)
             if success:
                 results["success"].append(test_case["name"])

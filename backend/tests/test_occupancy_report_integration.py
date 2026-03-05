@@ -19,6 +19,14 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
+# For occupancy tests, use month-aligned dates
+FUTURE_MONTH_START = TODAY.replace(day=1) + timedelta(days=60)  # Start of a future month
+FUTURE_MONTH_END = (FUTURE_MONTH_START.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)  # End of that month
+
 
 # =============================================================================
 # Mock Data Factories
@@ -406,12 +414,12 @@ class TestOccupancyDateRangeOverlap:
 
     def test_booking_within_range_included(self):
         """Test booking completely within report range."""
-        report_start = date(2026, 3, 1)
-        report_end = date(2026, 3, 31)
+        report_start = FUTURE_MONTH_START
+        report_end = FUTURE_MONTH_END
 
         booking = create_mock_db_booking(
-            dropoff_date=date(2026, 3, 10),
-            pickup_date=date(2026, 3, 20),
+            dropoff_date=FUTURE_MONTH_START + timedelta(days=9),
+            pickup_date=FUTURE_MONTH_START + timedelta(days=19),
         )
 
         overlaps = (
@@ -423,12 +431,12 @@ class TestOccupancyDateRangeOverlap:
 
     def test_booking_partial_overlap_start(self):
         """Test booking that starts before report range."""
-        report_start = date(2026, 3, 1)
-        report_end = date(2026, 3, 31)
+        report_start = FUTURE_MONTH_START
+        report_end = FUTURE_MONTH_END
 
         booking = create_mock_db_booking(
-            dropoff_date=date(2026, 2, 25),
-            pickup_date=date(2026, 3, 5),
+            dropoff_date=FUTURE_MONTH_START - timedelta(days=5),
+            pickup_date=FUTURE_MONTH_START + timedelta(days=4),
         )
 
         overlaps = (
@@ -440,12 +448,12 @@ class TestOccupancyDateRangeOverlap:
 
     def test_booking_partial_overlap_end(self):
         """Test booking that ends after report range."""
-        report_start = date(2026, 3, 1)
-        report_end = date(2026, 3, 31)
+        report_start = FUTURE_MONTH_START
+        report_end = FUTURE_MONTH_END
 
         booking = create_mock_db_booking(
-            dropoff_date=date(2026, 3, 28),
-            pickup_date=date(2026, 4, 5),
+            dropoff_date=FUTURE_MONTH_END - timedelta(days=3),
+            pickup_date=FUTURE_MONTH_END + timedelta(days=5),
         )
 
         overlaps = (
@@ -457,12 +465,12 @@ class TestOccupancyDateRangeOverlap:
 
     def test_booking_outside_range_not_included(self):
         """Test booking completely outside report range."""
-        report_start = date(2026, 3, 1)
-        report_end = date(2026, 3, 31)
+        report_start = FUTURE_MONTH_START
+        report_end = FUTURE_MONTH_END
 
         booking = create_mock_db_booking(
-            dropoff_date=date(2026, 4, 15),
-            pickup_date=date(2026, 4, 25),
+            dropoff_date=FUTURE_MONTH_END + timedelta(days=15),
+            pickup_date=FUTURE_MONTH_END + timedelta(days=25),
         )
 
         overlaps = (

@@ -51,11 +51,13 @@ function Admin() {
     dropoff_flight_number: '',
     dropoff_destination_code: '',
     dropoff_destination: '',
+    flight_departure_time: '',
     pickup_airline_code: '',
     pickup_airline_name: '',
     pickup_flight_number: '',
     pickup_origin_code: '',
-    pickup_origin: ''
+    pickup_origin: '',
+    flight_arrival_time: ''
   })
   const [savingFlightDetails, setSavingFlightDetails] = useState(false)
   const [resendingEmailId, setResendingEmailId] = useState(null)
@@ -1292,11 +1294,13 @@ function Admin() {
       dropoff_flight_number: booking.dropoff_flight_number || '',
       dropoff_destination_code: matchedDropoffDest?.code || (booking.dropoff_destination ? 'Other' : ''),
       dropoff_destination: booking.dropoff_destination || '',
+      flight_departure_time: booking.flight_departure_time || '',
       pickup_airline_code: matchedPickupAirline?.code || (booking.pickup_airline_name ? 'Other' : ''),
       pickup_airline_name: booking.pickup_airline_name || '',
       pickup_flight_number: booking.pickup_flight_number || '',
       pickup_origin_code: matchedPickupOrigin?.code || (booking.pickup_origin ? 'Other' : ''),
       pickup_origin: booking.pickup_origin || '',
+      flight_arrival_time: booking.flight_arrival_time || '',
     })
     setShowEditFlightModal(true)
   }
@@ -1318,9 +1322,11 @@ function Admin() {
           dropoff_airline_name: editFlightDetailsForm.dropoff_airline_name || null,
           dropoff_flight_number: editFlightDetailsForm.dropoff_flight_number || null,
           dropoff_destination: editFlightDetailsForm.dropoff_destination || null,
+          flight_departure_time: editFlightDetailsForm.flight_departure_time || null,
           pickup_airline_name: editFlightDetailsForm.pickup_airline_name || null,
           pickup_flight_number: editFlightDetailsForm.pickup_flight_number || null,
           pickup_origin: editFlightDetailsForm.pickup_origin || null,
+          flight_arrival_time: editFlightDetailsForm.flight_arrival_time || null,
         }),
       })
 
@@ -4772,6 +4778,14 @@ function Admin() {
                     />
                   )}
                 </div>
+                <div className="modal-form-group">
+                  <label>Flight Departure Time</label>
+                  <input
+                    type="time"
+                    value={editFlightDetailsForm.flight_departure_time}
+                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, flight_departure_time: e.target.value })}
+                  />
+                </div>
               </div>
 
               <h4 className="modal-section-title">Pick-up / Return</h4>
@@ -4842,6 +4856,14 @@ function Admin() {
                       style={{ marginTop: '8px' }}
                     />
                   )}
+                </div>
+                <div className="modal-form-group">
+                  <label>Flight Arrival Time</label>
+                  <input
+                    type="time"
+                    value={editFlightDetailsForm.flight_arrival_time}
+                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, flight_arrival_time: e.target.value })}
+                  />
                 </div>
               </div>
             </div>

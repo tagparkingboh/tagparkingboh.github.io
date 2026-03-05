@@ -326,6 +326,9 @@ function StripePayment({
         pickup_airline_name: manualArrivalData?.airlineName || null,
         pickup_origin_code: manualArrivalData?.originCode || null,
         pickup_origin_name: manualArrivalData?.originName || null,
+        // Actual flight times (always sent, used for emails and display)
+        flight_departure_time: departureTimeOverride || manualDepartureData?.flightTime || selectedFlight?.time || null,
+        flight_arrival_time: arrivalTimeOverride || manualArrivalData?.flightTime || selectedArrivalFlight?.time || null,
       }),
     })
 

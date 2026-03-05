@@ -12,12 +12,17 @@ Test categories:
 All tests use mocked data to avoid database dependencies.
 """
 import pytest
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timedelta
 from unittest.mock import MagicMock
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
 
 
 # =============================================================================
@@ -78,9 +83,9 @@ def create_mock_booking(
         booking.status = BookingStatus.PENDING
 
     booking.package = "quick"
-    booking.dropoff_date = date(2026, 6, 1)
+    booking.dropoff_date = FUTURE_DATE
     booking.dropoff_time = time(8, 0)
-    booking.pickup_date = date(2026, 6, 8)
+    booking.pickup_date = FUTURE_DATE_END
     return booking
 
 

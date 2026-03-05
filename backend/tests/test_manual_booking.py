@@ -48,7 +48,12 @@ def mock_admin_user():
 
 @pytest.fixture
 def valid_manual_booking_request():
-    """Create a valid manual booking request payload."""
+    """Create a valid manual booking request payload with relative dates."""
+    # Use dates relative to today for consistent test behavior
+    today = date.today()
+    dropoff = today + timedelta(days=11)  # ~11 days from now
+    pickup = today + timedelta(days=18)   # ~18 days from now (7 day trip)
+
     return {
         "first_name": "Jane",
         "last_name": "Smith",
@@ -64,9 +69,9 @@ def valid_manual_booking_request():
         "make": "Toyota",
         "model": "Corolla",
         "colour": "Silver",
-        "dropoff_date": "2026-03-15",
+        "dropoff_date": dropoff.isoformat(),
         "dropoff_time": "08:30",
-        "pickup_date": "2026-03-22",
+        "pickup_date": pickup.isoformat(),
         "pickup_time": "14:00",
         "stripe_payment_link": "https://buy.stripe.com/test_abc123",
         "amount_pence": 9900,
@@ -115,6 +120,8 @@ def create_mock_vehicle(**kwargs):
 
 def create_mock_booking(**kwargs):
     """Factory to create mock booking objects."""
+    # Use relative dates
+    today = date.today()
     defaults = {
         "id": 1,
         "reference": "TAG-ABC12345",
@@ -122,9 +129,9 @@ def create_mock_booking(**kwargs):
         "vehicle_id": 1,
         "status": MagicMock(value="pending"),
         "booking_source": "manual",
-        "dropoff_date": date(2026, 3, 15),
+        "dropoff_date": today + timedelta(days=11),
         "dropoff_time": time(8, 30),
-        "pickup_date": date(2026, 3, 22),
+        "pickup_date": today + timedelta(days=18),
         "pickup_time": time(14, 0),
         "package": None,
         "admin_notes": None,
@@ -132,6 +139,10 @@ def create_mock_booking(**kwargs):
         "arrival_id": None,
         "departure_flight_number": None,
         "arrival_flight_number": None,
+        "dropoff_flight_number": None,
+        "pickup_flight_number": None,
+        "flight_departure_time": None,
+        "flight_arrival_time": None,
         "slot_type": None,
         "confirmation_email_sent_at": None,
     }
@@ -161,10 +172,11 @@ def create_mock_payment(**kwargs):
 
 def create_mock_departure(**kwargs):
     """Factory to create mock flight departure objects."""
+    today = date.today()
     defaults = {
         "id": 1,
         "flight_number": "FR1234",
-        "date": date(2026, 3, 15),
+        "date": today + timedelta(days=11),
         "departure_time": time(11, 0),
         "destination_code": "FAO",
         "destination_name": "Faro, PT",
@@ -181,10 +193,11 @@ def create_mock_departure(**kwargs):
 
 def create_mock_arrival(**kwargs):
     """Factory to create mock flight arrival objects."""
+    today = date.today()
     defaults = {
         "id": 1,
         "flight_number": "FR1235",
-        "date": date(2026, 3, 22),
+        "date": today + timedelta(days=18),
         "arrival_time": time(14, 30),
         "origin_code": "FAO",
         "origin_name": "Faro, PT",
@@ -241,6 +254,10 @@ class TestManualBookingRequestValidation:
         """Should accept None for optional fields."""
         from models import ManualBookingRequest
 
+        today = date.today()
+        dropoff = today + timedelta(days=11)
+        pickup = today + timedelta(days=18)
+
         minimal_request = {
             "first_name": "Jane",
             "last_name": "Smith",
@@ -252,9 +269,9 @@ class TestManualBookingRequestValidation:
             "make": "Toyota",
             "model": "Corolla",
             "colour": "Silver",
-            "dropoff_date": "2026-03-15",
+            "dropoff_date": dropoff.isoformat(),
             "dropoff_time": "08:30",
-            "pickup_date": "2026-03-22",
+            "pickup_date": pickup.isoformat(),
             "pickup_time": "14:00",
             "amount_pence": 9900,
             "stripe_payment_link": "https://buy.stripe.com/test",
@@ -270,6 +287,10 @@ class TestManualBookingRequestValidation:
         """Should allow free bookings without Stripe link."""
         from models import ManualBookingRequest
 
+        today = date.today()
+        dropoff = today + timedelta(days=11)
+        pickup = today + timedelta(days=18)
+
         free_request = {
             "first_name": "Jane",
             "last_name": "Smith",
@@ -281,9 +302,9 @@ class TestManualBookingRequestValidation:
             "make": "Toyota",
             "model": "Corolla",
             "colour": "Silver",
-            "dropoff_date": "2026-03-15",
+            "dropoff_date": dropoff.isoformat(),
             "dropoff_time": "08:30",
-            "pickup_date": "2026-03-22",
+            "pickup_date": pickup.isoformat(),
             "pickup_time": "14:00",
             "amount_pence": 0,
             "is_free_booking": True,
@@ -294,6 +315,72 @@ class TestManualBookingRequestValidation:
         assert request.amount_pence == 0
         assert request.is_free_booking is True
         assert request.stripe_payment_link is None
+
+    def test_request_accepts_flight_times(self):
+        """Should accept flight_departure_time and flight_arrival_time fields."""
+        from models import ManualBookingRequest
+
+        today = date.today()
+        dropoff = today + timedelta(days=11)
+        pickup = today + timedelta(days=18)
+
+        request_with_times = {
+            "first_name": "Jane",
+            "last_name": "Smith",
+            "email": "jane@example.com",
+            "billing_address1": "123 Test St",
+            "billing_city": "Bournemouth",
+            "billing_postcode": "BH1 1AA",
+            "registration": "AB12CDE",
+            "make": "Toyota",
+            "model": "Corolla",
+            "colour": "Silver",
+            "dropoff_date": dropoff.isoformat(),
+            "dropoff_time": "08:30",
+            "pickup_date": pickup.isoformat(),
+            "pickup_time": "14:00",
+            "amount_pence": 9900,
+            "stripe_payment_link": "https://buy.stripe.com/test",
+            "flight_departure_time": "10:30",
+            "flight_arrival_time": "16:45",
+        }
+
+        request = ManualBookingRequest(**request_with_times)
+
+        assert request.flight_departure_time == "10:30"
+        assert request.flight_arrival_time == "16:45"
+
+    def test_flight_times_are_optional(self):
+        """Flight times should be optional in ManualBookingRequest."""
+        from models import ManualBookingRequest
+
+        today = date.today()
+        dropoff = today + timedelta(days=11)
+        pickup = today + timedelta(days=18)
+
+        request_without_times = {
+            "first_name": "Jane",
+            "last_name": "Smith",
+            "email": "jane@example.com",
+            "billing_address1": "123 Test St",
+            "billing_city": "Bournemouth",
+            "billing_postcode": "BH1 1AA",
+            "registration": "AB12CDE",
+            "make": "Toyota",
+            "model": "Corolla",
+            "colour": "Silver",
+            "dropoff_date": dropoff.isoformat(),
+            "dropoff_time": "08:30",
+            "pickup_date": pickup.isoformat(),
+            "pickup_time": "14:00",
+            "amount_pence": 9900,
+            "stripe_payment_link": "https://buy.stripe.com/test",
+        }
+
+        request = ManualBookingRequest(**request_without_times)
+
+        assert request.flight_departure_time is None
+        assert request.flight_arrival_time is None
 
 
 # =============================================================================
@@ -910,9 +997,12 @@ class TestEdgeCases:
 
     def test_same_day_booking(self):
         """Should handle same-day drop-off and pick-up."""
+        today = date.today()
+        same_day = today + timedelta(days=14)
+
         booking = create_mock_booking(
-            dropoff_date=date(2026, 9, 1),
-            pickup_date=date(2026, 9, 1),
+            dropoff_date=same_day,
+            pickup_date=same_day,
         )
 
         duration = (booking.pickup_date - booking.dropoff_date).days
@@ -921,9 +1011,13 @@ class TestEdgeCases:
 
     def test_very_long_booking(self):
         """Should handle very long booking durations."""
+        today = date.today()
+        dropoff = today + timedelta(days=30)
+        pickup = today + timedelta(days=75)  # 45 day trip
+
         booking = create_mock_booking(
-            dropoff_date=date(2026, 10, 1),
-            pickup_date=date(2026, 11, 15),
+            dropoff_date=dropoff,
+            pickup_date=pickup,
         )
 
         duration = (booking.pickup_date - booking.dropoff_date).days

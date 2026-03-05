@@ -12,7 +12,7 @@ All tests use mocked data to avoid database state conflicts and external API cal
 import pytest
 import pytest_asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timedelta
 from httpx import AsyncClient, ASGITransport
 
 import sys
@@ -20,6 +20,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from main import app, require_admin, get_db
+
+# Use relative dates for future-proof tests
+TODAY = date.today()
+FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
 
 
 # =============================================================================
@@ -65,7 +70,7 @@ def create_mock_booking(
     booking.id = id
     booking.reference = reference
     booking.status = BookingStatus(status) if isinstance(status, str) else status
-    booking.dropoff_date = dropoff_date_val or date(2026, 3, 15)
+    booking.dropoff_date = dropoff_date_val or FUTURE_DATE
     booking.customer = customer
     booking.customer_first_name = customer_first_name
     booking.customer_last_name = customer_last_name

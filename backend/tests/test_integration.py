@@ -967,29 +967,31 @@ class TestAdminEditPickupDateTimeIntegration:
             registration="EDIT123",
         )
 
+        initial_pickup = FUTURE_DATE_END + timedelta(days=31)
         booking = create_mock_booking(
             id=1,
             reference="TAG-EDIT001",
             customer_id=customer.id,
             vehicle_id=vehicle.id,
             status="confirmed",
-            pickup_date=date(2026, 3, 28),
+            pickup_date=initial_pickup,
             pickup_time_val=time(14, 30),
         )
 
         # Step 2: Verify initial booking state
         assert booking.status == BookingStatus.CONFIRMED
-        assert booking.pickup_date == date(2026, 3, 28)
+        assert booking.pickup_date == initial_pickup
         assert booking.pickup_time == time(14, 30)
 
         # Step 3: Simulate admin update request
+        new_pickup = initial_pickup + timedelta(days=1)
         update_request = {
-            "pickup_date": "2026-03-29",
+            "pickup_date": new_pickup.isoformat(),
             "pickup_time": "16:45",
         }
 
         # Step 4: Apply the update
-        booking.pickup_date = date(2026, 3, 29)
+        booking.pickup_date = new_pickup
         booking.pickup_time = time(16, 45)
 
         # Recalculate pickup time (30 min after landing)
@@ -998,7 +1000,7 @@ class TestAdminEditPickupDateTimeIntegration:
         booking.pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
 
         # Step 5: Verify the update was applied
-        assert booking.pickup_date == date(2026, 3, 29)
+        assert booking.pickup_date == new_pickup
         assert booking.pickup_time == time(16, 45)
         assert booking.pickup_time_from == time(17, 15)
         assert booking.pickup_time_to == time(17, 15)
@@ -1026,11 +1028,12 @@ class TestAdminEditPickupDateTimeIntegration:
         """Test editing only pickup time without changing date."""
         from db_models import BookingStatus
 
+        test_date = FUTURE_DATE + timedelta(days=120)
         booking = create_mock_booking(
             id=1,
             reference="TAG-TIME001",
             status="confirmed",
-            pickup_date=date(2026, 4, 15),
+            pickup_date=test_date,
             pickup_time_val=time(10, 0),
         )
 
@@ -1054,21 +1057,22 @@ class TestAdminEditPickupDateTimeIntegration:
         """Test editing only pickup date without changing time."""
         from db_models import BookingStatus
 
+        test_date = FUTURE_DATE + timedelta(days=120)
         booking = create_mock_booking(
             id=1,
             reference="TAG-DATE001",
             status="confirmed",
-            pickup_date=date(2026, 4, 15),
+            pickup_date=test_date,
             pickup_time_val=time(14, 0),
         )
 
         original_time = booking.pickup_time
 
         # Update only date
-        booking.pickup_date = date(2026, 4, 20)
+        booking.pickup_date = test_date + timedelta(days=5)
 
         # Time should remain unchanged
-        assert booking.pickup_date == date(2026, 4, 20)
+        assert booking.pickup_date == test_date + timedelta(days=5)
         assert booking.pickup_time == original_time
 
     def test_edit_pickup_overnight_arrival_correction(self):
@@ -1076,16 +1080,18 @@ class TestAdminEditPickupDateTimeIntegration:
         from db_models import BookingStatus
 
         # Booking was incorrectly created with wrong date due to overnight flight
+        wrong_date = FUTURE_DATE_END + timedelta(days=31)
+        correct_date = wrong_date + timedelta(days=1)
         booking = create_mock_booking(
             id=1,
             reference="TAG-OVERNIGHT",
             status="confirmed",
-            pickup_date=date(2026, 3, 28),  # Wrong - should be 29th
+            pickup_date=wrong_date,  # Wrong - should be next day
             pickup_time_val=time(0, 35),     # Flight lands at 00:35
         )
 
         # Admin corrects the date
-        booking.pickup_date = date(2026, 3, 29)
+        booking.pickup_date = correct_date
 
         # Recalculate pickup time (30 min after landing)
         arrival_dt = datetime.combine(date.today(), booking.pickup_time)
@@ -1093,7 +1099,7 @@ class TestAdminEditPickupDateTimeIntegration:
         booking.pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
 
         # Verify correction
-        assert booking.pickup_date == date(2026, 3, 29)
+        assert booking.pickup_date == correct_date
         assert booking.pickup_time == time(0, 35)
         assert booking.pickup_time_from == time(1, 5)
         assert booking.pickup_time_to == time(1, 5)
@@ -1102,15 +1108,17 @@ class TestAdminEditPickupDateTimeIntegration:
         """Test that editing pickup does not affect dropoff details."""
         from db_models import BookingStatus
 
+        dropoff_test_date = FUTURE_DATE + timedelta(days=24)
+        pickup_test_date = FUTURE_DATE_END + timedelta(days=31)
         booking = create_mock_booking(
             id=1,
             reference="TAG-UNCHANGED",
             status="confirmed",
-            dropoff_date=date(2026, 3, 21),
+            dropoff_date=dropoff_test_date,
             dropoff_time_val=time(7, 15),
             dropoff_flight_number="FR5523",
             dropoff_destination="Tenerife",
-            pickup_date=date(2026, 3, 28),
+            pickup_date=pickup_test_date,
             pickup_time_val=time(14, 30),
             pickup_flight_number="FR5524",
             pickup_origin="Tenerife",
@@ -1123,7 +1131,7 @@ class TestAdminEditPickupDateTimeIntegration:
         original_dropoff_dest = booking.dropoff_destination
 
         # Update pickup details
-        booking.pickup_date = date(2026, 3, 30)
+        booking.pickup_date = pickup_test_date + timedelta(days=2)
         booking.pickup_time = time(16, 0)
 
         # Verify dropoff unchanged
@@ -1169,16 +1177,18 @@ class TestAdminEditPickupDateTimeIntegration:
         """Test that booking list API reflects updated pickup details."""
         from db_models import BookingStatus
 
+        test_date = FUTURE_DATE_END + timedelta(days=31)
         booking = create_mock_booking(
             id=1,
             reference="TAG-LIST001",
             status="confirmed",
-            pickup_date=date(2026, 3, 28),
+            pickup_date=test_date,
             pickup_time_val=time(14, 30),
         )
 
         # Simulate update
-        booking.pickup_date = date(2026, 3, 30)
+        new_date = test_date + timedelta(days=2)
+        booking.pickup_date = new_date
         booking.pickup_time = time(16, 0)
 
         # Simulate booking list API response
@@ -1194,18 +1204,19 @@ class TestAdminEditPickupDateTimeIntegration:
             ]
         }
 
-        assert bookings_response["bookings"][0]["pickup_date"] == "2026-03-30"
+        assert bookings_response["bookings"][0]["pickup_date"] == new_date.isoformat()
         assert bookings_response["bookings"][0]["pickup_time"] == "16:00"
 
     def test_edit_pickup_multiple_bookings_independent(self):
         """Test that editing one booking doesn't affect others."""
         from db_models import BookingStatus
 
+        test_date = FUTURE_DATE_END + timedelta(days=31)
         booking1 = create_mock_booking(
             id=1,
             reference="TAG-IND001",
             status="confirmed",
-            pickup_date=date(2026, 3, 28),
+            pickup_date=test_date,
             pickup_time_val=time(14, 30),
         )
 
@@ -1213,7 +1224,7 @@ class TestAdminEditPickupDateTimeIntegration:
             id=2,
             reference="TAG-IND002",
             status="confirmed",
-            pickup_date=date(2026, 3, 28),
+            pickup_date=test_date,
             pickup_time_val=time(15, 0),
         )
 
@@ -1222,11 +1233,12 @@ class TestAdminEditPickupDateTimeIntegration:
         original_time_b2 = booking2.pickup_time
 
         # Update booking1 only
-        booking1.pickup_date = date(2026, 4, 1)
+        new_date = test_date + timedelta(days=4)
+        booking1.pickup_date = new_date
         booking1.pickup_time = time(10, 0)
 
         # Verify booking1 updated
-        assert booking1.pickup_date == date(2026, 4, 1)
+        assert booking1.pickup_date == new_date
         assert booking1.pickup_time == time(10, 0)
 
         # Verify booking2 unchanged
@@ -1259,13 +1271,14 @@ class TestAdminEditDropoffTimeIntegration:
             registration="DROP123",
         )
 
+        test_date = FUTURE_DATE + timedelta(days=24)
         booking = create_mock_booking(
             id=1,
             reference="TAG-DROP001",
             customer_id=customer.id,
             vehicle_id=vehicle.id,
             status="confirmed",
-            dropoff_date=date(2026, 3, 21),
+            dropoff_date=test_date,
             dropoff_time_val=time(9, 30),
         )
 
@@ -1419,11 +1432,12 @@ class TestAdminEditDropoffTimeIntegration:
         """Test that booking list API reflects updated drop-off time."""
         from db_models import BookingStatus
 
+        test_date = FUTURE_DATE + timedelta(days=24)
         booking = create_mock_booking(
             id=1,
             reference="TAG-LIST002",
             status="confirmed",
-            dropoff_date=date(2026, 3, 21),
+            dropoff_date=test_date,
             dropoff_time_val=time(9, 30),
         )
 
@@ -1449,13 +1463,15 @@ class TestAdminEditDropoffTimeIntegration:
         """Test that editing drop-off time does not affect pickup details."""
         from db_models import BookingStatus
 
+        dropoff_date = FUTURE_DATE + timedelta(days=24)
+        pickup_date = FUTURE_DATE_END + timedelta(days=31)
         booking = create_mock_booking(
             id=1,
             reference="TAG-PICKUP001",
             status="confirmed",
-            dropoff_date=date(2026, 3, 21),
+            dropoff_date=dropoff_date,
             dropoff_time_val=time(9, 30),
-            pickup_date=date(2026, 3, 28),
+            pickup_date=pickup_date,
             pickup_time_val=time(14, 30),
         )
 
@@ -1614,13 +1630,15 @@ class TestReturnInspectionIntegration:
         from db_models import BookingStatus
 
         # Step 1: Customer drops off car
+        dropoff_date = FUTURE_DATE + timedelta(days=24)
+        pickup_date = FUTURE_DATE_END + timedelta(days=31)
         booking = create_mock_booking(
             id=1,
             reference="TAG-WORKFLOW01",
             status="confirmed",
-            dropoff_date=date(2026, 3, 21),
+            dropoff_date=dropoff_date,
             dropoff_time_val=time(8, 0),
-            pickup_date=date(2026, 3, 28),
+            pickup_date=pickup_date,
             pickup_time_val=time(14, 30),
         )
 
@@ -1632,7 +1650,7 @@ class TestReturnInspectionIntegration:
             "notes": "Small dent on rear quarter panel. Customer acknowledged.",
             "photos": {"front": "img1", "rear": "img2", "driver_side": "img3", "passenger_side": "img4"},
             "customer_name": "Jane Doe",
-            "signed_date": "2026-03-21",
+            "signed_date": dropoff_date.isoformat(),
             "signature": "sig_base64",
             "vehicle_inspection_read": True,
             "acknowledgement_confirmed": False,
@@ -1655,7 +1673,7 @@ class TestReturnInspectionIntegration:
             "notes": "Same dent on rear quarter panel as noted at drop-off. No new damage.",
             "photos": {"front": "ret_img1", "rear": "ret_img2", "driver_side": "ret_img3", "passenger_side": "ret_img4"},
             "customer_name": "Jane Doe",
-            "signed_date": "2026-03-28",
+            "signed_date": pickup_date.isoformat(),
             "signature": "ret_sig_base64",
             "vehicle_inspection_read": False,  # Not required for return
             "acknowledgement_confirmed": True,  # Required for return
@@ -1698,7 +1716,7 @@ class TestReturnInspectionIntegration:
             "inspection_type": "pickup",
             "notes": "Return inspection. Note: No drop-off inspection was recorded.",
             "customer_name": "John Smith",
-            "signed_date": "2026-03-28",
+            "signed_date": (FUTURE_DATE_END + timedelta(days=31)).isoformat(),
             "signature": "sig_base64",
         }
 

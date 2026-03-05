@@ -286,6 +286,10 @@ class ManualBookingRequest(BaseModel):
     # Legacy field name (kept for backwards compatibility)
     return_flight_number: Optional[str] = None
 
+    # Actual flight times
+    flight_departure_time: Optional[str] = None  # "HH:MM" - actual flight departure time
+    flight_arrival_time: Optional[str] = None  # "HH:MM" - actual flight arrival time
+
     # Payment
     stripe_payment_link: Optional[str] = None  # Not required for free bookings
     amount_pence: int

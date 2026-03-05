@@ -53,6 +53,10 @@ def mock_non_admin_user():
 def mock_booking():
     """Create a mock booking for testing."""
     from db_models import BookingStatus
+    from datetime import timedelta
+
+    # Use relative dates based on today
+    today = date.today()
 
     booking = MagicMock()
     booking.id = 999
@@ -61,13 +65,13 @@ def mock_booking():
     booking.vehicle_id = 1
     booking.package = "week1"
     booking.status = BookingStatus.CONFIRMED
-    booking.dropoff_date = date(2026, 4, 15)
+    booking.dropoff_date = today + timedelta(days=7)
     booking.dropoff_time = time(8, 30)
     booking.dropoff_airline_name = None
     booking.dropoff_airline_code = None
     booking.dropoff_flight_number = "FR5523"
     booking.dropoff_destination = "Tenerife"
-    booking.pickup_date = date(2026, 4, 22)
+    booking.pickup_date = today + timedelta(days=14)
     booking.pickup_time = time(15, 0)
     booking.pickup_time_from = time(15, 30)
     booking.pickup_time_to = time(15, 30)
@@ -77,6 +81,9 @@ def mock_booking():
     booking.pickup_origin = "Tenerife"
     booking.departure_id = None
     booking.arrival_id = None
+    # Flight times (for emails and display)
+    booking.flight_departure_time = None
+    booking.flight_arrival_time = None
 
     # Mock customer
     booking.customer = MagicMock()
