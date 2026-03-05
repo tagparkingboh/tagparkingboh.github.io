@@ -263,50 +263,51 @@ function HomePage() {
       {/* Pricing Section */}
       <section className="pricing-section" id="pricing">
         <h2>Pricing & plans</h2>
-        <p className="pricing-subtitle">Heading off for a short trip or a longer stay? We've got you covered.</p>
+        <p className="pricing-subtitle">Heading off for a short trip or a longer stay? Pick one of our pricing options that's right for you.</p>
 
-        <div className="pricing-card pricing-card-unified">
-          <div className="pricing-headline">
-            <p className="pricing-perday-label">Price per day from</p>
-            <div className="pricing-perday-amount">
+        <div className="pricing-cards">
+          <div className="pricing-card">
+            <span className="pricing-label">1 WEEK TRIP</span>
+            <p className="pricing-from">Is</p>
+            <div className="pricing-amount">
               <span className="currency">£</span>
-              <span className="price">10</span>
+              <span className="price">{prices.week1}</span>
             </div>
+            <p className="pricing-note">one off payment</p>
+
+            <ul className="pricing-features">
+              <li><span className="check">✓</span> Meet & Greet at terminal</li>
+              <li><span className="check">✓</span> Secure storage facility</li>
+              <li><span className="check">✓</span> 24/7 monitoring</li>
+              <li><span className="check">✓</span> No hidden fees</li>
+              <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
+            </ul>
+
+            <p className="pricing-save">Save up to 60% off<br />official airport parking</p>
           </div>
 
-          <div className="pricing-options">
-            <div className="pricing-option">
-              <span className="pricing-label">1 WEEK TRIP</span>
-              <p className="pricing-from-text">Is</p>
-              <p className="pricing-option-amount">
-                <span className="currency">£</span>
-                <span className="amount">{prices.week1}</span>
-              </p>
-              <p className="pricing-payment-text">one off payment</p>
+          <div className="pricing-card">
+            <span className="pricing-label">2 WEEK TRIP</span>
+            <p className="pricing-from">Is</p>
+            <div className="pricing-amount">
+              <span className="currency">£</span>
+              <span className="price">{prices.week2}</span>
             </div>
-            <div className="pricing-option">
-              <span className="pricing-label">2 WEEK TRIP</span>
-              <p className="pricing-from-text">Is</p>
-              <p className="pricing-option-amount">
-                <span className="currency">£</span>
-                <span className="amount">{prices.week2}</span>
-              </p>
-              <p className="pricing-payment-text">one off payment</p>
-            </div>
+            <p className="pricing-note">one off payment</p>
+
+            <ul className="pricing-features">
+              <li><span className="check">✓</span> Meet & Greet at terminal</li>
+              <li><span className="check">✓</span> Secure storage facility</li>
+              <li><span className="check">✓</span> 24/7 monitoring</li>
+              <li><span className="check">✓</span> No hidden fees</li>
+              <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
+            </ul>
+
+            <p className="pricing-save">Save up to 60% off<br />official airport parking</p>
           </div>
-
-          <ul className="pricing-features">
-            <li><span className="check">✓</span> Meet & Greet at terminal</li>
-            <li><span className="check">✓</span> Secure storage facility</li>
-            <li><span className="check">✓</span> 24/7 monitoring</li>
-            <li><span className="check">✓</span> No hidden fees</li>
-            <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
-          </ul>
-
-          <p className="pricing-save">Save up to 60% off official airport parking</p>
         </div>
 
-        <Link to="/tag-it" className="pricing-btn pricing-btn-outside" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_section' })}>Book it <span>→</span></Link>
+        <Link to="/tag-it" className="pricing-btn pricing-btn-center" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_section' })}>Book it <span>→</span></Link>
       </section>
 
       {/* Features Banner Section */}
