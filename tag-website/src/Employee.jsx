@@ -716,7 +716,7 @@ function Employee() {
                         <span>Customer Declined Inspection</span>
                       </label>
                       {inspectionDeclined && (
-                        <p className="declined-note">When checked, signature and acknowledgement are not required. Only mileage will be recorded.</p>
+                        <p className="declined-note">Customer signature and acknowledgement are not required. You can still record mileage, take photos, and add notes.</p>
                       )}
                     </div>
                   )}
@@ -785,99 +785,102 @@ function Employee() {
                   </div>
                 </div>
 
-                <div className="inspection-acknowledgement">
-                  <h4>Customer Acknowledgement</h4>
+                {/* Customer Acknowledgement - hidden when inspection is declined */}
+                {!(inspectionType === 'pickup' && inspectionDeclined) && (
+                  <div className="inspection-acknowledgement">
+                    <h4>Customer Acknowledgement</h4>
 
-                  {/* Vehicle Inspection Read Checkbox - Only for drop-off */}
-                  {inspectionType === 'dropoff' && (
-                    <div className="vehicle-inspection-checkbox">
-                      <label className="checkbox-label-inline">
+                    {/* Vehicle Inspection Read Checkbox - Only for drop-off */}
+                    {inspectionType === 'dropoff' && (
+                      <div className="vehicle-inspection-checkbox">
+                        <label className="checkbox-label-inline">
+                          <input
+                            type="checkbox"
+                            checked={vehicleInspectionRead}
+                            onChange={e => setVehicleInspectionRead(e.target.checked)}
+                          />
+                          <span>I have read the </span>
+                          <button
+                            type="button"
+                            className="view-document-link"
+                            onClick={() => setInspectionPage(2)}
+                          >
+                            Vehicle Inspection Terms
+                          </button>
+                        </label>
+                      </div>
+                    )}
+
+                    {/* Acknowledgement text for drop-off (already covered by T&C checkbox above) */}
+                    {inspectionType === 'dropoff' && (
+                      <p className="acknowledgement-text">
+                        I confirm that I have reviewed the vehicle condition and agree with the inspection findings.
+                      </p>
+                    )}
+
+                    {/* Acknowledgement checkbox for return inspections */}
+                    {inspectionType === 'pickup' && (
+                      <div className="vehicle-inspection-checkbox">
+                        <label className="checkbox-label-inline">
+                          <input
+                            type="checkbox"
+                            checked={acknowledgementConfirmed}
+                            onChange={e => setAcknowledgementConfirmed(e.target.checked)}
+                          />
+                          <span>I confirm that my vehicle has been returned to me and I am satisfied with its condition.</span>
+                        </label>
+                      </div>
+                    )}
+
+                    <div className="acknowledgement-fields">
+                      <div className="inspection-field">
+                        <label>Customer Name</label>
                         <input
-                          type="checkbox"
-                          checked={vehicleInspectionRead}
-                          onChange={e => setVehicleInspectionRead(e.target.checked)}
+                          type="text"
+                          value={customerName}
+                          onChange={e => setCustomerName(e.target.value)}
+                          placeholder="Enter full name"
+                          className="acknowledgement-input"
                         />
-                        <span>I have read the </span>
-                        <button
-                          type="button"
-                          className="view-document-link"
-                          onClick={() => setInspectionPage(2)}
-                        >
-                          Vehicle Inspection Terms
-                        </button>
-                      </label>
-                    </div>
-                  )}
-
-                  {/* Acknowledgement text for drop-off (already covered by T&C checkbox above) */}
-                  {inspectionType === 'dropoff' && (
-                    <p className="acknowledgement-text">
-                      I confirm that I have reviewed the vehicle condition and agree with the inspection findings.
-                    </p>
-                  )}
-
-                  {/* Acknowledgement checkbox for return inspections */}
-                  {inspectionType === 'pickup' && (
-                    <div className="vehicle-inspection-checkbox">
-                      <label className="checkbox-label-inline">
+                      </div>
+                      <div className="inspection-field">
+                        <label>Date (dd/mm/yyyy)</label>
                         <input
-                          type="checkbox"
-                          checked={acknowledgementConfirmed}
-                          onChange={e => setAcknowledgementConfirmed(e.target.checked)}
+                          type="text"
+                          value={formatDateUK(signedDate)}
+                          onChange={e => {
+                            const ukDate = e.target.value
+                            // Allow typing with auto-formatting
+                            const digits = ukDate.replace(/\D/g, '')
+                            let formatted = ''
+                            if (digits.length <= 2) formatted = digits
+                            else if (digits.length <= 4) formatted = digits.slice(0, 2) + '/' + digits.slice(2)
+                            else formatted = digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4, 8)
+                            // Convert to ISO format for storage
+                            if (formatted.length === 10) {
+                              setSignedDate(parseUKDate(formatted))
+                            } else {
+                              // Store partial input in UK format temporarily
+                              setSignedDate(parseUKDate(formatted))
+                            }
+                          }}
+                          placeholder="dd/mm/yyyy"
+                          maxLength={10}
+                          className="acknowledgement-input"
                         />
-                        <span>I confirm that my vehicle has been returned to me and I am satisfied with its condition.</span>
-                      </label>
+                      </div>
                     </div>
-                  )}
 
-                  <div className="acknowledgement-fields">
-                    <div className="inspection-field">
-                      <label>Customer Name</label>
-                      <input
-                        type="text"
-                        value={customerName}
-                        onChange={e => setCustomerName(e.target.value)}
-                        placeholder="Enter full name"
-                        className="acknowledgement-input"
-                      />
-                    </div>
-                    <div className="inspection-field">
-                      <label>Date (dd/mm/yyyy)</label>
-                      <input
-                        type="text"
-                        value={formatDateUK(signedDate)}
-                        onChange={e => {
-                          const ukDate = e.target.value
-                          // Allow typing with auto-formatting
-                          const digits = ukDate.replace(/\D/g, '')
-                          let formatted = ''
-                          if (digits.length <= 2) formatted = digits
-                          else if (digits.length <= 4) formatted = digits.slice(0, 2) + '/' + digits.slice(2)
-                          else formatted = digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4, 8)
-                          // Convert to ISO format for storage
-                          if (formatted.length === 10) {
-                            setSignedDate(parseUKDate(formatted))
-                          } else {
-                            // Store partial input in UK format temporarily
-                            setSignedDate(parseUKDate(formatted))
-                          }
-                        }}
-                        placeholder="dd/mm/yyyy"
-                        maxLength={10}
-                        className="acknowledgement-input"
+                    {/* Signature Pad */}
+                    <div className="inspection-field signature-field">
+                      <label>Customer Signature <span className="required">*</span></label>
+                      <SignaturePad
+                        onSignatureChange={setSignature}
+                        initialSignature={signature}
                       />
                     </div>
                   </div>
-
-                  {/* Signature Pad */}
-                  <div className="inspection-field signature-field">
-                    <label>Customer Signature <span className="required">*</span></label>
-                    <SignaturePad
-                      onSignatureChange={setSignature}
-                      initialSignature={signature}
-                    />
-                  </div>
-                </div>
+                )}
 
                 <div className="modal-actions">
                   <button
