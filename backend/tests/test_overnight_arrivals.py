@@ -637,24 +637,26 @@ class TestBookingSummaryDisplayLogic:
         return selected_date
 
     def test_overnight_summary_shows_next_day(self):
-        """Summary should show 25/07/2026 when user selects 24/07 + overnight flight."""
+        """Summary should show next day when user selects a date + overnight flight."""
         selected_date = FUTURE_DATE
         is_overnight = True
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
         display = self.format_display_date(actual)
 
-        assert display == "25/07/2026"
+        expected_display = FUTURE_DATE_NEXT.strftime("%d/%m/%Y")
+        assert display == expected_display
 
     def test_regular_summary_shows_same_day(self):
-        """Summary should show 24/07/2026 when user selects 24/07 + regular flight."""
+        """Summary should show same day when user selects a date + regular flight."""
         selected_date = FUTURE_DATE
         is_overnight = False
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
         display = self.format_display_date(actual)
 
-        assert display == "24/07/2026"
+        expected_display = FUTURE_DATE.strftime("%d/%m/%Y")
+        assert display == expected_display
 
 
 class TestAPIRequestPickupDateLogic:
@@ -673,34 +675,38 @@ class TestAPIRequestPickupDateLogic:
         return selected_date
 
     def test_overnight_api_sends_next_day(self):
-        """API should receive 2026-07-25 when user selects 24/07 + overnight flight."""
+        """API should receive next day when user selects date + overnight flight."""
         selected_date = FUTURE_DATE
         is_overnight = True
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
         api_date = self.format_api_date(actual)
 
-        assert api_date == "2026-07-25"
+        expected_api_date = FUTURE_DATE_NEXT.strftime("%Y-%m-%d")
+        assert api_date == expected_api_date
 
     def test_regular_api_sends_same_day(self):
-        """API should receive 2026-07-24 when user selects 24/07 + regular flight."""
+        """API should receive same day when user selects date + regular flight."""
         selected_date = FUTURE_DATE
         is_overnight = False
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
         api_date = self.format_api_date(actual)
 
-        assert api_date == "2026-07-24"
+        expected_api_date = FUTURE_DATE.strftime("%Y-%m-%d")
+        assert api_date == expected_api_date
 
     def test_overnight_year_boundary_api_format(self):
-        """API should receive 2026-01-01 when user selects 31/12/2025 + overnight."""
-        selected_date = date(2025, 12, 31)
+        """API should receive next year's Jan 1 when user selects 31/12 + overnight."""
+        year = TODAY.year
+        selected_date = date(year, 12, 31)
         is_overnight = True
 
         actual = self.calculate_actual_pickup_date(selected_date, is_overnight)
         api_date = self.format_api_date(actual)
 
-        assert api_date == "2026-01-01"
+        expected_api_date = date(year + 1, 1, 1).strftime("%Y-%m-%d")
+        assert api_date == expected_api_date
 
 
 class TestPickupTimeCalculation:
@@ -755,15 +761,14 @@ class TestTUI671FullScenario:
     def test_tui_671_booking_flow(self):
         """
         Full TUI 671 booking scenario:
-        - Departure: Bournemouth to Antalya on Fri 17/07/2026
-        - Return: Antalya to Bournemouth, depart Fri 24/07 22:05, arrive Sat 25/07 00:35
-        - User selects pickup date: 24/07/2026 (Friday)
+        - User selects pickup date for outbound (FUTURE_DATE)
+        - Return flight: depart evening (22:05), arrive early morning (00:35) next day
         - Flight shows +1 indicator
-        - Actual pickup should be: 25/07/2026 (Saturday)
+        - Actual pickup should be next day
         - Pickup time: from 01:05 (00:35 + 30 mins)
         """
         # User selections
-        user_selected_pickup_date = FUTURE_DATE  # Friday
+        user_selected_pickup_date = FUTURE_DATE
         flight_departure_time = "22:05"
         flight_arrival_time = "00:35"
 
@@ -778,15 +783,17 @@ class TestTUI671FullScenario:
             actual_pickup_date = user_selected_pickup_date + timedelta(days=1)
         else:
             actual_pickup_date = user_selected_pickup_date
-        assert actual_pickup_date == FUTURE_DATE_NEXT  # Saturday
+        assert actual_pickup_date == FUTURE_DATE_NEXT
 
         # Display format (dd/MM/yyyy)
         display_date = actual_pickup_date.strftime("%d/%m/%Y")
-        assert display_date == "25/07/2026"
+        expected_display_date = FUTURE_DATE_NEXT.strftime("%d/%m/%Y")
+        assert display_date == expected_display_date
 
         # API format (yyyy-MM-dd)
         api_date = actual_pickup_date.strftime("%Y-%m-%d")
-        assert api_date == "2026-07-25"
+        expected_api_date = FUTURE_DATE_NEXT.strftime("%Y-%m-%d")
+        assert api_date == expected_api_date
 
         # Pickup time calculation
         h, m = map(int, flight_arrival_time.split(':'))
@@ -796,4 +803,5 @@ class TestTUI671FullScenario:
 
         # Final booking summary text
         summary = f"Pick-up: {display_date} from {pickup_time}"
-        assert summary == "Pick-up: 25/07/2026 from 01:05"
+        expected_summary = f"Pick-up: {expected_display_date} from 01:05"
+        assert summary == expected_summary

@@ -26,6 +26,7 @@ import pytest
 import sys
 from pathlib import Path
 from datetime import date, timedelta
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -45,7 +46,14 @@ DEFAULT_PRICING = {
     "days_12_13_price": 130.0,
     "week2_base_price": 140.0,  # 14 days
     "extra_day_price": 9.0,     # 15+ days
+    "tier_increment": 10.0,     # For standard/late pricing tiers
 }
+
+@pytest.fixture(autouse=True)
+def mock_pricing():
+    """Mock pricing from database for all tests to use DEFAULT_PRICING."""
+    with patch("booking_service.get_pricing_from_db", return_value=DEFAULT_PRICING):
+        yield
 
 
 class TestFreePromoWithFlexiblePricing:

@@ -29,9 +29,25 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 TODAY = date.today()
 FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
 FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
+
 # For occupancy tests, use month-aligned dates
-FUTURE_MONTH_START = TODAY.replace(day=1) + timedelta(days=60)  # Start of a future month
-FUTURE_MONTH_END = (FUTURE_MONTH_START.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)  # End of that month
+# Get the first day of a future month (2 months ahead)
+def _get_future_month_start():
+    """Get the first day of a month approximately 2 months from now."""
+    future = TODAY + timedelta(days=60)
+    return future.replace(day=1)
+
+def _get_future_month_end(month_start):
+    """Get the last day of the given month."""
+    # Go to next month's first day, then subtract one day
+    if month_start.month == 12:
+        next_month = month_start.replace(year=month_start.year + 1, month=1)
+    else:
+        next_month = month_start.replace(month=month_start.month + 1)
+    return next_month - timedelta(days=1)
+
+FUTURE_MONTH_START = _get_future_month_start()
+FUTURE_MONTH_END = _get_future_month_end(FUTURE_MONTH_START)
 
 
 # =============================================================================
@@ -217,9 +233,9 @@ class TestWeeklyOccupancyCalculation:
         week_end = week_start + timedelta(days=6)
         display_week = f"{week_start.strftime('%d/%m')} - {week_end.strftime('%d/%m/%Y')}"
 
-        # Verify format is "dd/mm - dd/mm/yyyy"
+        # Verify format is "dd/mm - dd/mm/yyyy" (has 3 slashes: 1 in dd/mm + 2 in dd/mm/yyyy)
         assert " - " in display_week
-        assert display_week.count("/") == 4
+        assert display_week.count("/") == 3
 
 
 # =============================================================================
@@ -467,7 +483,7 @@ class TestOccupancyEdgeCases:
         assert f"{year}-12-31" in daily_occupancy
         assert f"{year + 1}-01-01" in daily_occupancy
         assert f"{year + 1}-01-02" in daily_occupancy
-        assert "2026-01-03" in daily_occupancy
+        assert f"{year + 1}-01-03" in daily_occupancy
         assert len(daily_occupancy) == 5
 
 

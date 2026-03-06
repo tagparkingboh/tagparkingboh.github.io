@@ -312,11 +312,15 @@ class TestFormatTimeDisplay:
 class TestGetDayName:
     """Tests for the get_day_name function."""
 
-    def test_monday(self):
-        assert get_day_name(FUTURE_DATE_PREV) == "Monday"
+    def test_future_date_prev_day_name(self):
+        """Test that FUTURE_DATE_PREV returns correct day name."""
+        expected_day = FUTURE_DATE_PREV.strftime("%A")
+        assert get_day_name(FUTURE_DATE_PREV) == expected_day
 
-    def test_tuesday(self):
-        assert get_day_name(FUTURE_DATE) == "Tuesday"
+    def test_future_date_day_name(self):
+        """Test that FUTURE_DATE returns correct day name."""
+        expected_day = FUTURE_DATE.strftime("%A")
+        assert get_day_name(FUTURE_DATE) == expected_day
 
     def test_sunday(self):
         # Find the next Sunday from FUTURE_DATE
@@ -336,9 +340,9 @@ class TestGetDropOffSummary:
             SlotType.EARLY
         )
 
-        assert summary["flight_date"] == "2026-02-10"
+        assert summary["flight_date"] == FUTURE_DATE.isoformat()
         assert summary["flight_time"] == "10:00"
-        assert summary["drop_off_date"] == "2026-02-10"
+        assert summary["drop_off_date"] == FUTURE_DATE.isoformat()
         assert summary["drop_off_time"] == "07:15"
         assert summary["is_overnight"] is False
         assert summary["display_message"] is None
@@ -346,29 +350,32 @@ class TestGetDropOffSummary:
     def test_overnight_flight_summary(self):
         """Summary for an early morning flight with overnight drop-off."""
         summary = get_drop_off_summary(
-            FUTURE_DATE,  # Tuesday
+            FUTURE_DATE,
             time(0, 35),
             SlotType.EARLY
         )
 
-        assert summary["flight_date"] == "2026-02-10"
-        assert summary["flight_day"] == "Tuesday"
-        assert summary["drop_off_date"] == "2026-02-09"
-        assert summary["drop_off_day"] == "Monday"
+        expected_day = FUTURE_DATE.strftime("%A")
+        expected_prev_day = FUTURE_DATE_PREV.strftime("%A")
+
+        assert summary["flight_date"] == FUTURE_DATE.isoformat()
+        assert summary["flight_day"] == expected_day
+        assert summary["drop_off_date"] == FUTURE_DATE_PREV.isoformat()
+        assert summary["drop_off_day"] == expected_prev_day
         assert summary["drop_off_time"] == "21:50"
         assert summary["is_overnight"] is True
-        assert "Monday" in summary["display_message"]
+        assert expected_prev_day in summary["display_message"]
         assert "21:50" in summary["display_message"]
 
     def test_overnight_late_slot_summary(self):
         """Summary for early morning flight with late slot."""
         summary = get_drop_off_summary(
-            FUTURE_DATE,  # Tuesday
+            FUTURE_DATE,
             time(0, 35),
             SlotType.LATE
         )
 
-        assert summary["drop_off_date"] == "2026-02-09"
+        assert summary["drop_off_date"] == FUTURE_DATE_PREV.isoformat()
         assert summary["drop_off_time"] == "22:35"
         assert summary["is_overnight"] is True
 
@@ -561,9 +568,9 @@ class TestGetPickupSummary:
             time(14, 30)
         )
 
-        assert summary["arrival_date"] == "2026-02-10"
+        assert summary["arrival_date"] == FUTURE_DATE.isoformat()
         assert summary["arrival_time"] == "14:30"
-        assert summary["pickup_date"] == "2026-02-10"
+        assert summary["pickup_date"] == FUTURE_DATE.isoformat()
         assert summary["pickup_time"] == "15:00"
         assert summary["clearance_buffer_minutes"] == 30
         assert summary["is_overnight"] is False
@@ -575,19 +582,23 @@ class TestGetPickupSummary:
         Summary for late night arrival (23:55) crossing midnight.
         Should show pickup on next day with appropriate warning.
         """
+        next_day = FUTURE_DATE + timedelta(days=1)
         summary = get_pickup_summary(
-            FUTURE_DATE,  # Tuesday
+            FUTURE_DATE,
             time(23, 55)
         )
 
-        assert summary["arrival_date"] == "2026-02-10"
-        assert summary["arrival_day"] == "Tuesday"
+        expected_day = FUTURE_DATE.strftime("%A")
+        expected_next_day = next_day.strftime("%A")
+
+        assert summary["arrival_date"] == FUTURE_DATE.isoformat()
+        assert summary["arrival_day"] == expected_day
         assert summary["arrival_time"] == "23:55"
-        assert summary["pickup_date"] == "2026-02-11"
-        assert summary["pickup_day"] == "Wednesday"
+        assert summary["pickup_date"] == next_day.isoformat()
+        assert summary["pickup_day"] == expected_next_day
         assert summary["pickup_time"] == "00:25"
         assert summary["is_overnight"] is True
-        assert "Wednesday" in summary["display_message"]
+        assert expected_next_day in summary["display_message"]
         assert "after midnight" in summary["display_message"]
 
     def test_2330_arrival_overnight_summary(self):
@@ -595,15 +606,18 @@ class TestGetPickupSummary:
         Summary for 23:30 arrival crossing midnight.
         Pickup at 00:00 next day.
         """
+        next_day = FUTURE_DATE + timedelta(days=1)
         summary = get_pickup_summary(
-            FUTURE_DATE,  # Tuesday
+            FUTURE_DATE,
             time(23, 30)
         )
 
-        assert summary["pickup_date"] == "2026-02-11"
+        expected_next_day = next_day.strftime("%A")
+
+        assert summary["pickup_date"] == next_day.isoformat()
         assert summary["pickup_time"] == "00:00"
         assert summary["is_overnight"] is True
-        assert "Wednesday" in summary["display_message"]
+        assert expected_next_day in summary["display_message"]
 
     def test_evening_arrival_same_day(self):
         """Evening arrival (21:00) stays on same day."""
@@ -612,6 +626,6 @@ class TestGetPickupSummary:
             time(21, 0)
         )
 
-        assert summary["pickup_date"] == "2026-02-10"
+        assert summary["pickup_date"] == FUTURE_DATE.isoformat()
         assert summary["pickup_time"] == "21:30"
         assert summary["is_overnight"] is False
