@@ -139,7 +139,7 @@ function TestimonialsCarousel() {
   return (
     <section className="testimonials-section">
       <h2>What our customers say</h2>
-      <p className="section-subtitle">Real experiences from travellers who chose TAG for their parking needs.</p>
+      <p className="section-subtitle">In their words: what our customers are saying about Tag</p>
       <div
         className="testimonials-carousel"
         onMouseEnter={() => setIsPaused(true)}
