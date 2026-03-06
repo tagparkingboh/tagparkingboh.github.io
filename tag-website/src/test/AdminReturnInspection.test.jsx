@@ -62,20 +62,21 @@ const createMockReturnInspection = (overrides = {}) => ({
   booking_id: 1,
   inspection_type: 'pickup',
   inspector_id: 1,
-  inspector_name: 'Test Inspector',
+  customer_name: 'John Doe',
+  signed_date: '2026-03-22',
   mileage: 45678,
-  fuel_level: '3/4',
   notes: 'Vehicle returned in good condition',
-  photo_front: 'https://example.com/front.jpg',
-  photo_rear: 'https://example.com/rear.jpg',
-  photo_left: 'https://example.com/left.jpg',
-  photo_right: 'https://example.com/right.jpg',
-  photo_dashboard: 'https://example.com/dashboard.jpg',
-  photo_additional: null,
-  customer_signature: 'https://example.com/signature.png',
+  photos: {
+    front: 'https://example.com/front.jpg',
+    rear: 'https://example.com/rear.jpg',
+    left: 'https://example.com/left.jpg',
+    right: 'https://example.com/right.jpg',
+    dashboard: 'https://example.com/dashboard.jpg',
+  },
+  signature: 'https://example.com/signature.png',
   declined: false,
   declined_reason: null,
-  vehicle_inspection_read: true,
+  acknowledgement_confirmed: true,
   created_at: '2026-03-22T15:30:00Z',
   ...overrides,
 })
@@ -85,10 +86,13 @@ const createMockDropoffInspection = (overrides = {}) => ({
   booking_id: 1,
   inspection_type: 'dropoff',
   inspector_id: 1,
-  inspector_name: 'Test Inspector',
+  customer_name: 'John Doe',
+  signed_date: '2026-03-15',
   mileage: 45000,
-  fuel_level: 'Full',
   notes: 'Vehicle received in good condition',
+  photos: {},
+  signature: 'https://example.com/signature.png',
+  vehicle_inspection_read: true,
   created_at: '2026-03-15T09:45:00Z',
   ...overrides,
 })
@@ -292,9 +296,9 @@ describe('Admin Return Inspection Modal Visibility', () => {
 
 describe('Admin Return Inspection Data Display', () => {
   describe('Unit Tests - Inspection details rendering', () => {
-    it('should display inspector name', () => {
-      const inspection = createMockReturnInspection({ inspector_name: 'Jane Doe' })
-      expect(inspection.inspector_name).toBe('Jane Doe')
+    it('should display customer name', () => {
+      const inspection = createMockReturnInspection({ customer_name: 'Jane Doe' })
+      expect(inspection.customer_name).toBe('Jane Doe')
     })
 
     it('should display mileage with formatting', () => {
@@ -303,9 +307,9 @@ describe('Admin Return Inspection Data Display', () => {
       expect(formattedMileage).toBe('45,678 miles')
     })
 
-    it('should display fuel level', () => {
-      const inspection = createMockReturnInspection({ fuel_level: '3/4' })
-      expect(inspection.fuel_level).toBe('3/4')
+    it('should display signed date', () => {
+      const inspection = createMockReturnInspection({ signed_date: '2026-03-22' })
+      expect(inspection.signed_date).toBe('2026-03-22')
     })
 
     it('should display notes', () => {
@@ -321,16 +325,16 @@ describe('Admin Return Inspection Data Display', () => {
       expect(mileageText).toBe('Not recorded')
     })
 
-    it('should handle missing fuel level', () => {
-      const inspection = createMockReturnInspection({ fuel_level: null })
-      const fuelText = inspection.fuel_level || 'Not recorded'
-      expect(fuelText).toBe('Not recorded')
+    it('should handle missing signed date', () => {
+      const inspection = createMockReturnInspection({ signed_date: null })
+      const dateText = inspection.signed_date || '-'
+      expect(dateText).toBe('-')
     })
 
-    it('should handle missing inspector name', () => {
-      const inspection = createMockReturnInspection({ inspector_name: null })
-      const inspectorText = inspection.inspector_name || 'Unknown'
-      expect(inspectorText).toBe('Unknown')
+    it('should handle missing customer name', () => {
+      const inspection = createMockReturnInspection({ customer_name: null })
+      const customerText = inspection.customer_name || 'Not recorded'
+      expect(customerText).toBe('Not recorded')
     })
   })
 
@@ -546,26 +550,19 @@ describe('Admin Return Inspection Negative Tests', () => {
       expect(vehicleInfo).toBe('No vehicle data')
     })
 
-    it('should handle inspection with null photos', () => {
+    it('should handle inspection with empty photos', () => {
       const inspection = createMockReturnInspection({
-        photo_front: null,
-        photo_rear: null,
-        photo_left: null,
-        photo_right: null,
-        photo_dashboard: null,
-        photo_additional: null,
+        photos: {},
       })
 
-      const hasPhotos = inspection.photo_front || inspection.photo_rear ||
-        inspection.photo_left || inspection.photo_right ||
-        inspection.photo_dashboard || inspection.photo_additional
+      const hasPhotos = inspection.photos && Object.keys(inspection.photos).length > 0
 
       expect(hasPhotos).toBeFalsy()
     })
 
     it('should handle inspection with null signature', () => {
-      const inspection = createMockReturnInspection({ customer_signature: null })
-      expect(inspection.customer_signature).toBeNull()
+      const inspection = createMockReturnInspection({ signature: null })
+      expect(inspection.signature).toBeNull()
     })
   })
 })

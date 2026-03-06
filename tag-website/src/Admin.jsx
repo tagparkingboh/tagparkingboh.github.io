@@ -5343,20 +5343,20 @@ function Admin() {
                   <h4>Inspection Details</h4>
                   <div className="inspection-grid">
                     <div className="inspection-item">
-                      <span className="inspection-label">Inspector</span>
-                      <span className="inspection-value">{returnInspectionData.inspector_name || 'Unknown'}</span>
+                      <span className="inspection-label">Customer Name</span>
+                      <span className="inspection-value">{returnInspectionData.customer_name || 'Not recorded'}</span>
                     </div>
                     <div className="inspection-item">
-                      <span className="inspection-label">Date</span>
-                      <span className="inspection-value">{returnInspectionData.created_at ? formatDateTimeUK(returnInspectionData.created_at) : '-'}</span>
+                      <span className="inspection-label">Signed Date</span>
+                      <span className="inspection-value">{returnInspectionData.signed_date ? formatDateTimeUK(returnInspectionData.signed_date) : '-'}</span>
                     </div>
                     <div className="inspection-item">
                       <span className="inspection-label">Mileage</span>
                       <span className="inspection-value">{returnInspectionData.mileage ? `${returnInspectionData.mileage.toLocaleString()} miles` : 'Not recorded'}</span>
                     </div>
                     <div className="inspection-item">
-                      <span className="inspection-label">Fuel Level</span>
-                      <span className="inspection-value">{returnInspectionData.fuel_level || 'Not recorded'}</span>
+                      <span className="inspection-label">Recorded</span>
+                      <span className="inspection-value">{returnInspectionData.created_at ? formatDateTimeUK(returnInspectionData.created_at) : '-'}</span>
                     </div>
                   </div>
                 </div>
@@ -5378,57 +5378,55 @@ function Admin() {
                       </div>
                     )}
 
-                    {(returnInspectionData.photo_front || returnInspectionData.photo_rear ||
-                      returnInspectionData.photo_left || returnInspectionData.photo_right ||
-                      returnInspectionData.photo_dashboard || returnInspectionData.photo_additional) && (
+                    {returnInspectionData.photos && Object.keys(returnInspectionData.photos).length > 0 && (
                       <div className="inspection-section">
                         <h4>Photos</h4>
                         <div className="inspection-photos">
-                          {returnInspectionData.photo_front && (
+                          {returnInspectionData.photos.front && (
                             <div className="inspection-photo">
                               <span className="photo-label">Front</span>
-                              <img src={returnInspectionData.photo_front} alt="Front" />
+                              <img src={returnInspectionData.photos.front} alt="Front" />
                             </div>
                           )}
-                          {returnInspectionData.photo_rear && (
+                          {returnInspectionData.photos.rear && (
                             <div className="inspection-photo">
                               <span className="photo-label">Rear</span>
-                              <img src={returnInspectionData.photo_rear} alt="Rear" />
+                              <img src={returnInspectionData.photos.rear} alt="Rear" />
                             </div>
                           )}
-                          {returnInspectionData.photo_left && (
+                          {returnInspectionData.photos.left && (
                             <div className="inspection-photo">
                               <span className="photo-label">Left Side</span>
-                              <img src={returnInspectionData.photo_left} alt="Left Side" />
+                              <img src={returnInspectionData.photos.left} alt="Left Side" />
                             </div>
                           )}
-                          {returnInspectionData.photo_right && (
+                          {returnInspectionData.photos.right && (
                             <div className="inspection-photo">
                               <span className="photo-label">Right Side</span>
-                              <img src={returnInspectionData.photo_right} alt="Right Side" />
+                              <img src={returnInspectionData.photos.right} alt="Right Side" />
                             </div>
                           )}
-                          {returnInspectionData.photo_dashboard && (
+                          {returnInspectionData.photos.dashboard && (
                             <div className="inspection-photo">
                               <span className="photo-label">Dashboard</span>
-                              <img src={returnInspectionData.photo_dashboard} alt="Dashboard" />
+                              <img src={returnInspectionData.photos.dashboard} alt="Dashboard" />
                             </div>
                           )}
-                          {returnInspectionData.photo_additional && (
+                          {returnInspectionData.photos.additional && (
                             <div className="inspection-photo">
                               <span className="photo-label">Additional</span>
-                              <img src={returnInspectionData.photo_additional} alt="Additional" />
+                              <img src={returnInspectionData.photos.additional} alt="Additional" />
                             </div>
                           )}
                         </div>
                       </div>
                     )}
 
-                    {returnInspectionData.customer_signature && (
+                    {returnInspectionData.signature && (
                       <div className="inspection-section">
                         <h4>Customer Signature</h4>
                         <div className="inspection-signature">
-                          <img src={returnInspectionData.customer_signature} alt="Customer Signature" />
+                          <img src={returnInspectionData.signature} alt="Customer Signature" />
                         </div>
                       </div>
                     )}
@@ -5476,20 +5474,20 @@ function Admin() {
                   <h4>Inspection Details</h4>
                   <div className="inspection-grid">
                     <div className="inspection-item">
-                      <span className="inspection-label">Inspector</span>
-                      <span className="inspection-value">{dropoffInspectionData.inspector_name || 'Unknown'}</span>
+                      <span className="inspection-label">Customer Name</span>
+                      <span className="inspection-value">{dropoffInspectionData.customer_name || 'Not recorded'}</span>
                     </div>
                     <div className="inspection-item">
-                      <span className="inspection-label">Date</span>
-                      <span className="inspection-value">{dropoffInspectionData.created_at ? formatDateTimeUK(dropoffInspectionData.created_at) : '-'}</span>
+                      <span className="inspection-label">Signed Date</span>
+                      <span className="inspection-value">{dropoffInspectionData.signed_date ? formatDateTimeUK(dropoffInspectionData.signed_date) : '-'}</span>
                     </div>
                     <div className="inspection-item">
                       <span className="inspection-label">Mileage</span>
                       <span className="inspection-value">{dropoffInspectionData.mileage ? `${dropoffInspectionData.mileage.toLocaleString()} miles` : 'Not recorded'}</span>
                     </div>
                     <div className="inspection-item">
-                      <span className="inspection-label">Fuel Level</span>
-                      <span className="inspection-value">{dropoffInspectionData.fuel_level || 'Not recorded'}</span>
+                      <span className="inspection-label">Recorded</span>
+                      <span className="inspection-value">{dropoffInspectionData.created_at ? formatDateTimeUK(dropoffInspectionData.created_at) : '-'}</span>
                     </div>
                   </div>
                 </div>
@@ -5508,57 +5506,55 @@ function Admin() {
                   </div>
                 )}
 
-                {(dropoffInspectionData.photo_front || dropoffInspectionData.photo_rear ||
-                  dropoffInspectionData.photo_left || dropoffInspectionData.photo_right ||
-                  dropoffInspectionData.photo_dashboard || dropoffInspectionData.photo_additional) && (
+                {dropoffInspectionData.photos && Object.keys(dropoffInspectionData.photos).length > 0 && (
                   <div className="inspection-section">
                     <h4>Photos</h4>
                     <div className="inspection-photos">
-                      {dropoffInspectionData.photo_front && (
+                      {dropoffInspectionData.photos.front && (
                         <div className="inspection-photo">
                           <span className="photo-label">Front</span>
-                          <img src={dropoffInspectionData.photo_front} alt="Front" />
+                          <img src={dropoffInspectionData.photos.front} alt="Front" />
                         </div>
                       )}
-                      {dropoffInspectionData.photo_rear && (
+                      {dropoffInspectionData.photos.rear && (
                         <div className="inspection-photo">
                           <span className="photo-label">Rear</span>
-                          <img src={dropoffInspectionData.photo_rear} alt="Rear" />
+                          <img src={dropoffInspectionData.photos.rear} alt="Rear" />
                         </div>
                       )}
-                      {dropoffInspectionData.photo_left && (
+                      {dropoffInspectionData.photos.left && (
                         <div className="inspection-photo">
                           <span className="photo-label">Left Side</span>
-                          <img src={dropoffInspectionData.photo_left} alt="Left Side" />
+                          <img src={dropoffInspectionData.photos.left} alt="Left Side" />
                         </div>
                       )}
-                      {dropoffInspectionData.photo_right && (
+                      {dropoffInspectionData.photos.right && (
                         <div className="inspection-photo">
                           <span className="photo-label">Right Side</span>
-                          <img src={dropoffInspectionData.photo_right} alt="Right Side" />
+                          <img src={dropoffInspectionData.photos.right} alt="Right Side" />
                         </div>
                       )}
-                      {dropoffInspectionData.photo_dashboard && (
+                      {dropoffInspectionData.photos.dashboard && (
                         <div className="inspection-photo">
                           <span className="photo-label">Dashboard</span>
-                          <img src={dropoffInspectionData.photo_dashboard} alt="Dashboard" />
+                          <img src={dropoffInspectionData.photos.dashboard} alt="Dashboard" />
                         </div>
                       )}
-                      {dropoffInspectionData.photo_additional && (
+                      {dropoffInspectionData.photos.additional && (
                         <div className="inspection-photo">
                           <span className="photo-label">Additional</span>
-                          <img src={dropoffInspectionData.photo_additional} alt="Additional" />
+                          <img src={dropoffInspectionData.photos.additional} alt="Additional" />
                         </div>
                       )}
                     </div>
                   </div>
                 )}
 
-                {dropoffInspectionData.customer_signature && (
+                {dropoffInspectionData.signature && (
                   <div className="inspection-section">
                     <h4>Customer Signature</h4>
                     <div className="inspection-signature">
-                      <img src={dropoffInspectionData.customer_signature} alt="Customer Signature" />
+                      <img src={dropoffInspectionData.signature} alt="Customer Signature" />
                     </div>
                   </div>
                 )}
