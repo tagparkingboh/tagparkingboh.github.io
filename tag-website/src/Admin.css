@@ -1306,6 +1306,15 @@
   color: #856404;
 }
 
+.inspection-acknowledged {
+  background: #d4edda;
+  padding: 12px;
+  border-radius: 6px;
+  color: #155724;
+  margin: 0;
+  font-size: 14px;
+}
+
 .inspection-photos {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

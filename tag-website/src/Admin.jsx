@@ -80,6 +80,12 @@ function Admin() {
   const [returnInspectionData, setReturnInspectionData] = useState(null)
   const [loadingReturnInspection, setLoadingReturnInspection] = useState(false)
 
+  // Drop-off Vehicle Inspection modal state
+  const [showDropoffInspectionModal, setShowDropoffInspectionModal] = useState(false)
+  const [bookingForDropoffInspection, setBookingForDropoffInspection] = useState(null)
+  const [dropoffInspectionData, setDropoffInspectionData] = useState(null)
+  const [loadingDropoffInspection, setLoadingDropoffInspection] = useState(false)
+
   // Airlines and destinations for dropdowns
   const [availableAirlines, setAvailableAirlines] = useState([])
   const [availableDestinations, setAvailableDestinations] = useState([])
@@ -1635,6 +1641,43 @@ function Admin() {
     setReturnInspectionData(null)
   }
 
+  // Drop-off Vehicle Inspection handlers
+  const handleViewDropoffInspectionClick = async (booking, e) => {
+    e.stopPropagation()
+    setBookingForDropoffInspection(booking)
+    setShowDropoffInspectionModal(true)
+    setLoadingDropoffInspection(true)
+    setDropoffInspectionData(null)
+
+    try {
+      const response = await fetch(`${API_URL}/api/employee/inspections/${booking.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const inspections = await response.json()
+        // Find the dropoff inspection
+        const dropoffInspection = inspections.find(i => i.inspection_type === 'dropoff')
+        setDropoffInspectionData(dropoffInspection || null)
+      } else {
+        setDropoffInspectionData(null)
+      }
+    } catch (err) {
+      console.error('Error fetching drop-off inspection:', err)
+      setDropoffInspectionData(null)
+    } finally {
+      setLoadingDropoffInspection(false)
+    }
+  }
+
+  const closeDropoffInspectionModal = () => {
+    setShowDropoffInspectionModal(false)
+    setBookingForDropoffInspection(null)
+    setDropoffInspectionData(null)
+  }
+
   const handleLogout = async () => {
     await logout()
     navigate('/login', { replace: true })
@@ -2219,6 +2262,15 @@ function Admin() {
                                         >
                                           {sendingFounderEmailId === booking.id ? 'Sending...' :
                                            booking.customer?.founder_followup_sent ? 'Founder Email Sent ✓' : 'Send Founder Email'}
+                                        </button>
+                                      )}
+                                      {/* View Drop-off Vehicle Inspection button for completed bookings */}
+                                      {booking.status?.toLowerCase() === 'completed' && booking.id && (
+                                        <button
+                                          className="action-btn view-inspection-btn"
+                                          onClick={(e) => handleViewDropoffInspectionClick(booking, e)}
+                                        >
+                                          View Drop-off Inspection
                                         </button>
                                       )}
                                       {/* View Return Vehicle Inspection button for completed bookings */}
@@ -5394,6 +5446,134 @@ function Admin() {
               <button
                 className="modal-btn modal-btn-secondary"
                 onClick={closeReturnInspectionModal}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Drop-off Vehicle Inspection Modal */}
+      {showDropoffInspectionModal && bookingForDropoffInspection && (
+        <div className="modal-overlay" onClick={closeDropoffInspectionModal}>
+          <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
+            <h3>Drop-off Vehicle Inspection</h3>
+            <div className="modal-booking-info">
+              <p><strong>Booking:</strong> {bookingForDropoffInspection.reference}</p>
+              <p><strong>Customer:</strong> {bookingForDropoffInspection.customer?.first_name} {bookingForDropoffInspection.customer?.last_name}</p>
+              <p><strong>Vehicle:</strong> {bookingForDropoffInspection.vehicle?.registration} - {bookingForDropoffInspection.vehicle?.make} {bookingForDropoffInspection.vehicle?.model}</p>
+            </div>
+
+            {loadingDropoffInspection ? (
+              <div className="inspection-loading">
+                <div className="spinner"></div>
+                <p>Loading inspection data...</p>
+              </div>
+            ) : dropoffInspectionData ? (
+              <div className="inspection-details">
+                <div className="inspection-section">
+                  <h4>Inspection Details</h4>
+                  <div className="inspection-grid">
+                    <div className="inspection-item">
+                      <span className="inspection-label">Inspector</span>
+                      <span className="inspection-value">{dropoffInspectionData.inspector_name || 'Unknown'}</span>
+                    </div>
+                    <div className="inspection-item">
+                      <span className="inspection-label">Date</span>
+                      <span className="inspection-value">{dropoffInspectionData.created_at ? formatDateTimeUK(dropoffInspectionData.created_at) : '-'}</span>
+                    </div>
+                    <div className="inspection-item">
+                      <span className="inspection-label">Mileage</span>
+                      <span className="inspection-value">{dropoffInspectionData.mileage ? `${dropoffInspectionData.mileage.toLocaleString()} miles` : 'Not recorded'}</span>
+                    </div>
+                    <div className="inspection-item">
+                      <span className="inspection-label">Fuel Level</span>
+                      <span className="inspection-value">{dropoffInspectionData.fuel_level || 'Not recorded'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {dropoffInspectionData.vehicle_inspection_read && (
+                  <div className="inspection-section">
+                    <h4>Terms Acknowledgement</h4>
+                    <p className="inspection-acknowledged">Customer confirmed they read the vehicle inspection terms.</p>
+                  </div>
+                )}
+
+                {dropoffInspectionData.notes && (
+                  <div className="inspection-section">
+                    <h4>Notes</h4>
+                    <p className="inspection-notes">{dropoffInspectionData.notes}</p>
+                  </div>
+                )}
+
+                {(dropoffInspectionData.photo_front || dropoffInspectionData.photo_rear ||
+                  dropoffInspectionData.photo_left || dropoffInspectionData.photo_right ||
+                  dropoffInspectionData.photo_dashboard || dropoffInspectionData.photo_additional) && (
+                  <div className="inspection-section">
+                    <h4>Photos</h4>
+                    <div className="inspection-photos">
+                      {dropoffInspectionData.photo_front && (
+                        <div className="inspection-photo">
+                          <span className="photo-label">Front</span>
+                          <img src={dropoffInspectionData.photo_front} alt="Front" />
+                        </div>
+                      )}
+                      {dropoffInspectionData.photo_rear && (
+                        <div className="inspection-photo">
+                          <span className="photo-label">Rear</span>
+                          <img src={dropoffInspectionData.photo_rear} alt="Rear" />
+                        </div>
+                      )}
+                      {dropoffInspectionData.photo_left && (
+                        <div className="inspection-photo">
+                          <span className="photo-label">Left Side</span>
+                          <img src={dropoffInspectionData.photo_left} alt="Left Side" />
+                        </div>
+                      )}
+                      {dropoffInspectionData.photo_right && (
+                        <div className="inspection-photo">
+                          <span className="photo-label">Right Side</span>
+                          <img src={dropoffInspectionData.photo_right} alt="Right Side" />
+                        </div>
+                      )}
+                      {dropoffInspectionData.photo_dashboard && (
+                        <div className="inspection-photo">
+                          <span className="photo-label">Dashboard</span>
+                          <img src={dropoffInspectionData.photo_dashboard} alt="Dashboard" />
+                        </div>
+                      )}
+                      {dropoffInspectionData.photo_additional && (
+                        <div className="inspection-photo">
+                          <span className="photo-label">Additional</span>
+                          <img src={dropoffInspectionData.photo_additional} alt="Additional" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {dropoffInspectionData.customer_signature && (
+                  <div className="inspection-section">
+                    <h4>Customer Signature</h4>
+                    <div className="inspection-signature">
+                      <img src={dropoffInspectionData.customer_signature} alt="Customer Signature" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="inspection-empty">
+                <p>No drop-off vehicle inspection found for this booking.</p>
+                <p className="inspection-empty-hint">The drop-off inspection may not have been completed yet.</p>
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={closeDropoffInspectionModal}
               >
                 Close
               </button>
