@@ -140,6 +140,52 @@ jobs:
           echo "| Coverage | ${{ steps.test_run.outputs.coverage }}% |" >> $GITHUB_STEP_SUMMARY
           echo "| Duration | ${{ steps.test_run.outputs.duration }}s |" >> $GITHUB_STEP_SUMMARY
 
+      - name: Send email notification on failure
+        if: steps.test_run.outputs.exit_code != '0'
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        run: |
+          curl -X POST "https://api.sendgrid.com/v3/mail/send" \
+            -H "Authorization: Bearer $SENDGRID_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "personalizations": [{
+                "to": [
+                  {"email": "qa.orca.contact@gmail.com"},
+                  {"email": "kristian@tagparking.co.uk"}
+                ],
+                "subject": "⚠️ TAG Scheduled Tests Failed - ${{ steps.test_run.outputs.failed }} failures"
+              }],
+              "from": {"email": "no-reply@tagparking.co.uk", "name": "TAG Test Suite"},
+              "content": [{
+                "type": "text/html",
+                "value": "<h2>Scheduled Test Suite Failed</h2><p><strong>Branch:</strong> ${{ github.ref_name }}</p><p><strong>Results:</strong></p><ul><li>Passed: ${{ steps.test_run.outputs.passed }}</li><li>Failed: ${{ steps.test_run.outputs.failed }}</li><li>Skipped: ${{ steps.test_run.outputs.skipped }}</li><li>Coverage: ${{ steps.test_run.outputs.coverage }}%</li><li>Duration: ${{ steps.test_run.outputs.duration }}s</li></ul><p><a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View full logs</a></p>"
+              }]
+            }' || echo "Failed to send email notification"
+
+      - name: Send email notification on success
+        if: steps.test_run.outputs.exit_code == '0'
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        run: |
+          curl -X POST "https://api.sendgrid.com/v3/mail/send" \
+            -H "Authorization: Bearer $SENDGRID_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "personalizations": [{
+                "to": [
+                  {"email": "qa.orca.contact@gmail.com"},
+                  {"email": "kristian@tagparking.co.uk"}
+                ],
+                "subject": "✅ TAG Scheduled Tests Passed - ${{ steps.test_run.outputs.passed }} tests"
+              }],
+              "from": {"email": "no-reply@tagparking.co.uk", "name": "TAG Test Suite"},
+              "content": [{
+                "type": "text/html",
+                "value": "<h2>Scheduled Test Suite Passed</h2><p><strong>Branch:</strong> ${{ github.ref_name }}</p><p><strong>Results:</strong></p><ul><li>Passed: ${{ steps.test_run.outputs.passed }}</li><li>Skipped: ${{ steps.test_run.outputs.skipped }}</li><li>Coverage: ${{ steps.test_run.outputs.coverage }}%</li><li>Duration: ${{ steps.test_run.outputs.duration }}s</li></ul><p><a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View full logs</a></p>"
+              }]
+            }' || echo "Failed to send email notification"
+
       - name: Check test results
         if: steps.test_run.outputs.exit_code != '0'
         run: |
