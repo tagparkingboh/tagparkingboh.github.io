@@ -10,6 +10,16 @@ import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// Photo slots - must match Employee.jsx
+const PHOTO_SLOTS = [
+  { key: 'front', label: 'Front' },
+  { key: 'rear', label: 'Rear' },
+  { key: 'driver_side', label: 'Driver Side' },
+  { key: 'passenger_side', label: 'Passenger Side' },
+  { key: 'additional_1', label: 'Additional 1' },
+  { key: 'additional_2', label: 'Additional 2' },
+]
+
 function Admin() {
   const { user, token, loading, isAuthenticated, isAdmin, logout } = useAuth()
   const navigate = useNavigate()
@@ -5392,42 +5402,14 @@ function Admin() {
                       <div className="inspection-section">
                         <h4>Photos</h4>
                         <div className="inspection-photos">
-                          {returnInspectionData.photos.front && (
-                            <div className="inspection-photo">
-                              <span className="photo-label">Front</span>
-                              <img src={returnInspectionData.photos.front} alt="Front" />
-                            </div>
-                          )}
-                          {returnInspectionData.photos.rear && (
-                            <div className="inspection-photo">
-                              <span className="photo-label">Rear</span>
-                              <img src={returnInspectionData.photos.rear} alt="Rear" />
-                            </div>
-                          )}
-                          {returnInspectionData.photos.left && (
-                            <div className="inspection-photo">
-                              <span className="photo-label">Left Side</span>
-                              <img src={returnInspectionData.photos.left} alt="Left Side" />
-                            </div>
-                          )}
-                          {returnInspectionData.photos.right && (
-                            <div className="inspection-photo">
-                              <span className="photo-label">Right Side</span>
-                              <img src={returnInspectionData.photos.right} alt="Right Side" />
-                            </div>
-                          )}
-                          {returnInspectionData.photos.dashboard && (
-                            <div className="inspection-photo">
-                              <span className="photo-label">Dashboard</span>
-                              <img src={returnInspectionData.photos.dashboard} alt="Dashboard" />
-                            </div>
-                          )}
-                          {returnInspectionData.photos.additional && (
-                            <div className="inspection-photo">
-                              <span className="photo-label">Additional</span>
-                              <img src={returnInspectionData.photos.additional} alt="Additional" />
-                            </div>
-                          )}
+                          {PHOTO_SLOTS.map(slot => (
+                            returnInspectionData.photos[slot.key] && (
+                              <div key={slot.key} className="inspection-photo">
+                                <span className="photo-label">{slot.label}</span>
+                                <img src={returnInspectionData.photos[slot.key]} alt={slot.label} />
+                              </div>
+                            )
+                          ))}
                         </div>
                       </div>
                     )}
@@ -5520,42 +5502,14 @@ function Admin() {
                   <div className="inspection-section">
                     <h4>Photos</h4>
                     <div className="inspection-photos">
-                      {dropoffInspectionData.photos.front && (
-                        <div className="inspection-photo">
-                          <span className="photo-label">Front</span>
-                          <img src={dropoffInspectionData.photos.front} alt="Front" />
-                        </div>
-                      )}
-                      {dropoffInspectionData.photos.rear && (
-                        <div className="inspection-photo">
-                          <span className="photo-label">Rear</span>
-                          <img src={dropoffInspectionData.photos.rear} alt="Rear" />
-                        </div>
-                      )}
-                      {dropoffInspectionData.photos.left && (
-                        <div className="inspection-photo">
-                          <span className="photo-label">Left Side</span>
-                          <img src={dropoffInspectionData.photos.left} alt="Left Side" />
-                        </div>
-                      )}
-                      {dropoffInspectionData.photos.right && (
-                        <div className="inspection-photo">
-                          <span className="photo-label">Right Side</span>
-                          <img src={dropoffInspectionData.photos.right} alt="Right Side" />
-                        </div>
-                      )}
-                      {dropoffInspectionData.photos.dashboard && (
-                        <div className="inspection-photo">
-                          <span className="photo-label">Dashboard</span>
-                          <img src={dropoffInspectionData.photos.dashboard} alt="Dashboard" />
-                        </div>
-                      )}
-                      {dropoffInspectionData.photos.additional && (
-                        <div className="inspection-photo">
-                          <span className="photo-label">Additional</span>
-                          <img src={dropoffInspectionData.photos.additional} alt="Additional" />
-                        </div>
-                      )}
+                      {PHOTO_SLOTS.map(slot => (
+                        dropoffInspectionData.photos[slot.key] && (
+                          <div key={slot.key} className="inspection-photo">
+                            <span className="photo-label">{slot.label}</span>
+                            <img src={dropoffInspectionData.photos[slot.key]} alt={slot.label} />
+                          </div>
+                        )
+                      ))}
                     </div>
                   </div>
                 )}
