@@ -7623,7 +7623,7 @@ def format_testimonial(t) -> dict:
         "customer_name": t.customer_name,
         "review_text": t.review_text,
         "star_rating": t.star_rating,  # Can be None for unrated
-        "date_of_travel": t.date_of_travel.strftime("%d/%m/%Y") if t.date_of_travel else None,
+        "date_of_travel": t.date_of_travel.isoformat() if t.date_of_travel else None,  # ISO format for JS Date parsing
         "date_added": t.date_added.isoformat() if t.date_added else None,
         "status": t.status.value if hasattr(t.status, 'value') else t.status,
         "is_featured": t.is_featured,

@@ -87,19 +87,7 @@
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
-.testimonial-card::before {
-  content: '"';
-  position: absolute;
-  top: -20px;
-  left: 30px;
-  font-size: 120px;
-  font-weight: 700;
-  color: var(--lime-green);
-  opacity: 0.15;
-  line-height: 1;
-  font-family: Georgia, serif;
-  pointer-events: none;
-}
+/* Decorative quote removed - was bleeding outside card */
 
 .testimonial-card.transitioning {
   opacity: 0;
