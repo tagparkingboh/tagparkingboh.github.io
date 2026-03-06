@@ -168,14 +168,13 @@ class TestBookingCreation:
 
     def test_booking_calculates_price_from_pricing_service(self, service, sample_booking_request):
         """Booking price should match what pricing service returns for the duration."""
-        from booking_service import calculate_price_for_duration
-
         booking = service.create_booking(sample_booking_request)
 
-        # Calculate expected price using the same logic
+        # Calculate expected price using the same logic (classmethod on BookingService)
         duration_days = (sample_booking_request.pickup_date - sample_booking_request.drop_off_date).days
-        slot_type = "early" if sample_booking_request.drop_off_slot_type == SlotType.EARLY else "late"
-        expected_price = calculate_price_for_duration(duration_days, slot_type)
+        expected_price = BookingService.calculate_price_for_duration(
+            duration_days, sample_booking_request.drop_off_date
+        )
 
         # Booking price should match pricing service calculation
         assert booking.price == expected_price
@@ -187,7 +186,9 @@ class TestBookingCreation:
         longer_request.drop_off_slot_type = SlotType.LATE
 
         longer_booking = service.create_booking(longer_request)
-        expected_longer_price = calculate_price_for_duration(14, "late")
+        expected_longer_price = BookingService.calculate_price_for_duration(
+            14, longer_request.drop_off_date
+        )
 
         assert longer_booking.price == expected_longer_price
 
