@@ -100,7 +100,7 @@ function TestimonialsCarousel() {
     )
   }
 
-  // Format date as "February, 2026"
+  // Format date as "February 2026"
   const formatDate = (dateString) => {
     if (!dateString) return ''
     const date = new Date(dateString)

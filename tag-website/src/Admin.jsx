@@ -467,13 +467,23 @@ function Admin() {
     }
   }
 
+  const formatDateToUK = (isoDate) => {
+    if (!isoDate) return ''
+    // Convert YYYY-MM-DD to dd/mm/yyyy
+    const parts = isoDate.split('-')
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`
+    }
+    return isoDate
+  }
+
   const openEditTestimonialModal = (testimonial) => {
     setEditingTestimonial(testimonial)
     setTestimonialForm({
       customer_name: testimonial.customer_name,
       review_text: testimonial.review_text,
       star_rating: testimonial.star_rating,
-      date_of_travel: testimonial.date_of_travel || '',
+      date_of_travel: formatDateToUK(testimonial.date_of_travel),
       status: testimonial.status,
       is_featured: testimonial.is_featured,
       source: testimonial.source || ''
@@ -5199,7 +5209,8 @@ function Admin() {
                 <div className="form-group">
                   <label>Date of Travel</label>
                   <input
-                    type="date"
+                    type="text"
+                    placeholder="dd/mm/yyyy"
                     value={testimonialForm.date_of_travel}
                     onChange={(e) => setTestimonialForm({ ...testimonialForm, date_of_travel: e.target.value })}
                   />
