@@ -570,14 +570,14 @@ describe('TestimonialsCarousel Additional Edge Cases', () => {
 
   it('should handle date formatting for various months', () => {
     const months = [
-      { date: '2026-01-15', expected: 'Jan 2026' },
-      { date: '2026-06-15', expected: 'Jun 2026' },
-      { date: '2026-12-15', expected: 'Dec 2026' },
+      { date: '2026-01-15', expected: 'January 2026' },
+      { date: '2026-06-15', expected: 'June 2026' },
+      { date: '2026-12-15', expected: 'December 2026' },
     ]
 
     months.forEach(({ date, expected }) => {
       const dateObj = new Date(date)
-      const formatted = dateObj.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+      const formatted = dateObj.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
       expect(formatted).toBe(expected)
     })
   })

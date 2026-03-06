@@ -100,11 +100,11 @@ function TestimonialsCarousel() {
     )
   }
 
-  // Format date
+  // Format date as "February, 2026"
   const formatDate = (dateString) => {
     if (!dateString) return ''
     const date = new Date(dateString)
-    return date.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+    return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
   }
 
   // Source badge

@@ -5197,12 +5197,11 @@ function Admin() {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Date of Travel (DD/MM/YYYY)</label>
+                  <label>Date of Travel</label>
                   <input
-                    type="text"
+                    type="date"
                     value={testimonialForm.date_of_travel}
                     onChange={(e) => setTestimonialForm({ ...testimonialForm, date_of_travel: e.target.value })}
-                    placeholder="e.g. 15/03/2026"
                   />
                 </div>
 
