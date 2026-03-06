@@ -148,6 +148,45 @@ def run_migrations():
         else:
             print("Migration check: discount_percent column already exists")
 
+        # Migration 4: Create testimonials table
+        result = db.execute(text("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_name = 'testimonials'
+        """))
+
+        if not result.fetchone():
+            print("Running migration: Creating testimonials table...")
+            # Create enum type first
+            db.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'testimonialstatus') THEN
+                        CREATE TYPE testimonialstatus AS ENUM ('active', 'inactive');
+                    END IF;
+                END$$;
+            """))
+            db.execute(text("""
+                CREATE TABLE testimonials (
+                    id SERIAL PRIMARY KEY,
+                    customer_name VARCHAR(100) NOT NULL,
+                    review_text TEXT NOT NULL,
+                    star_rating INTEGER,
+                    date_of_travel DATE,
+                    date_added TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    status testimonialstatus NOT NULL DEFAULT 'inactive',
+                    is_featured BOOLEAN NOT NULL DEFAULT FALSE,
+                    source VARCHAR(50)
+                )
+            """))
+            db.execute(text("CREATE INDEX ix_testimonials_id ON testimonials (id)"))
+            db.execute(text("CREATE INDEX ix_testimonials_status ON testimonials (status)"))
+            db.execute(text("CREATE INDEX ix_testimonials_star_rating ON testimonials (star_rating)"))
+            db.commit()
+            print("Migration completed: testimonials table created")
+        else:
+            print("Migration check: testimonials table already exists")
+
     except Exception as e:
         print(f"Migration error (non-fatal): {e}")
         db.rollback()
@@ -7509,6 +7548,294 @@ async def create_test_result(
         "test_run_id": test_run.id,
         "status": test_run.status.value,
         "pass_rate": test_run.pass_rate,
+    }
+
+
+# =============================================================================
+# Testimonials Endpoints
+# =============================================================================
+
+class TestimonialCreate(BaseModel):
+    """Request to create a testimonial."""
+    customer_name: str
+    review_text: str
+    star_rating: Optional[int] = None  # NULL for unrated (LinkedIn, FB, etc.)
+    date_of_travel: Optional[str] = None  # DD/MM/YYYY format
+    status: str = "inactive"
+    is_featured: bool = False
+    source: Optional[str] = None
+
+
+class TestimonialUpdate(BaseModel):
+    """Request to update a testimonial."""
+    customer_name: Optional[str] = None
+    review_text: Optional[str] = None
+    star_rating: Optional[int] = None
+    date_of_travel: Optional[str] = None
+    status: Optional[str] = None
+    is_featured: Optional[bool] = None
+    source: Optional[str] = None
+
+
+def validate_testimonial_data(data: dict):
+    """Validate testimonial input data."""
+    errors = []
+
+    if "customer_name" in data and data["customer_name"] is not None:
+        if not data["customer_name"] or len(data["customer_name"].strip()) == 0:
+            errors.append({"field": "customer_name", "message": "Customer name is required"})
+        elif len(data["customer_name"]) > 100:
+            errors.append({"field": "customer_name", "message": "Customer name must be 100 characters or less"})
+
+    if "review_text" in data and data["review_text"] is not None:
+        if not data["review_text"] or len(data["review_text"].strip()) < 10:
+            errors.append({"field": "review_text", "message": "Review must be at least 10 characters"})
+
+    # star_rating is optional, but if provided must be 1-5
+    if "star_rating" in data and data["star_rating"] is not None:
+        if not isinstance(data["star_rating"], int) or data["star_rating"] < 1 or data["star_rating"] > 5:
+            errors.append({"field": "star_rating", "message": "Star rating must be between 1 and 5"})
+
+    if "status" in data and data["status"] is not None:
+        if data["status"] not in ["active", "inactive"]:
+            errors.append({"field": "status", "message": "Status must be 'active' or 'inactive'"})
+
+    return errors
+
+
+def parse_date_of_travel(date_str: Optional[str]) -> Optional[date]:
+    """Parse DD/MM/YYYY date string to date object."""
+    if not date_str:
+        return None
+    try:
+        parts = date_str.split("/")
+        if len(parts) == 3:
+            return date(int(parts[2]), int(parts[1]), int(parts[0]))
+    except (ValueError, IndexError):
+        pass
+    return None
+
+
+def format_testimonial(t) -> dict:
+    """Format a testimonial for API response."""
+    return {
+        "id": t.id,
+        "customer_name": t.customer_name,
+        "review_text": t.review_text,
+        "star_rating": t.star_rating,  # Can be None for unrated
+        "date_of_travel": t.date_of_travel.strftime("%d/%m/%Y") if t.date_of_travel else None,
+        "date_added": t.date_added.isoformat() if t.date_added else None,
+        "status": t.status.value if hasattr(t.status, 'value') else t.status,
+        "is_featured": t.is_featured,
+        "source": t.source,
+    }
+
+
+@app.get("/api/admin/testimonials")
+async def get_all_testimonials(
+    star_rating: Optional[int] = None,
+    status: Optional[str] = None,
+    sort: str = "date_added",
+    order: str = "desc",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Get all testimonials with optional filters (admin only)."""
+    from db_models import Testimonial, TestimonialStatus
+
+    query = db.query(Testimonial)
+
+    # Apply filters
+    if star_rating:
+        query = query.filter(Testimonial.star_rating == star_rating)
+
+    if status:
+        if status == "active":
+            query = query.filter(Testimonial.status == TestimonialStatus.ACTIVE)
+        elif status == "inactive":
+            query = query.filter(Testimonial.status == TestimonialStatus.INACTIVE)
+
+    # Apply sorting
+    if sort == "star_rating":
+        query = query.order_by(Testimonial.star_rating.desc() if order == "desc" else Testimonial.star_rating.asc())
+    else:  # default to date_added
+        query = query.order_by(Testimonial.date_added.desc() if order == "desc" else Testimonial.date_added.asc())
+
+    testimonials = query.all()
+
+    return {
+        "testimonials": [format_testimonial(t) for t in testimonials],
+        "total": len(testimonials),
+    }
+
+
+@app.post("/api/admin/testimonials")
+async def create_testimonial(
+    request: TestimonialCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Create a new testimonial (admin only)."""
+    from db_models import Testimonial, TestimonialStatus
+
+    # Validate
+    errors = validate_testimonial_data(request.dict())
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+
+    testimonial = Testimonial(
+        customer_name=request.customer_name.strip(),
+        review_text=request.review_text.strip(),
+        star_rating=request.star_rating,  # Can be None
+        date_of_travel=parse_date_of_travel(request.date_of_travel),
+        status=TestimonialStatus.ACTIVE if request.status == "active" else TestimonialStatus.INACTIVE,
+        is_featured=request.is_featured,
+        source=request.source.strip() if request.source else None,
+    )
+
+    db.add(testimonial)
+    db.commit()
+    db.refresh(testimonial)
+
+    return {
+        "success": True,
+        "testimonial": format_testimonial(testimonial),
+    }
+
+
+@app.put("/api/admin/testimonials/{testimonial_id}")
+async def update_testimonial(
+    testimonial_id: int,
+    request: TestimonialUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Update an existing testimonial (admin only)."""
+    from db_models import Testimonial, TestimonialStatus
+
+    testimonial = db.query(Testimonial).filter(Testimonial.id == testimonial_id).first()
+    if not testimonial:
+        raise HTTPException(status_code=404, detail="Testimonial not found")
+
+    # Validate provided fields
+    update_data = {k: v for k, v in request.dict().items() if v is not None}
+    errors = validate_testimonial_data(update_data)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+
+    # Apply updates
+    if request.customer_name is not None:
+        testimonial.customer_name = request.customer_name.strip()
+    if request.review_text is not None:
+        testimonial.review_text = request.review_text.strip()
+    if request.star_rating is not None:
+        testimonial.star_rating = request.star_rating
+    if request.date_of_travel is not None:
+        testimonial.date_of_travel = parse_date_of_travel(request.date_of_travel)
+    if request.status is not None:
+        testimonial.status = TestimonialStatus.ACTIVE if request.status == "active" else TestimonialStatus.INACTIVE
+    if request.is_featured is not None:
+        testimonial.is_featured = request.is_featured
+    if request.source is not None:
+        testimonial.source = request.source.strip() if request.source else None
+
+    db.commit()
+    db.refresh(testimonial)
+
+    return {
+        "success": True,
+        "testimonial": format_testimonial(testimonial),
+    }
+
+
+@app.delete("/api/admin/testimonials/{testimonial_id}")
+async def delete_testimonial(
+    testimonial_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Delete a testimonial (admin only)."""
+    from db_models import Testimonial
+
+    testimonial = db.query(Testimonial).filter(Testimonial.id == testimonial_id).first()
+    if not testimonial:
+        raise HTTPException(status_code=404, detail="Testimonial not found")
+
+    db.delete(testimonial)
+    db.commit()
+
+    return {"success": True, "message": "Testimonial deleted"}
+
+
+@app.patch("/api/admin/testimonials/{testimonial_id}/status")
+async def toggle_testimonial_status(
+    testimonial_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Toggle testimonial status between active and inactive (admin only)."""
+    from db_models import Testimonial, TestimonialStatus
+
+    testimonial = db.query(Testimonial).filter(Testimonial.id == testimonial_id).first()
+    if not testimonial:
+        raise HTTPException(status_code=404, detail="Testimonial not found")
+
+    # Toggle status
+    if testimonial.status == TestimonialStatus.ACTIVE:
+        testimonial.status = TestimonialStatus.INACTIVE
+    else:
+        testimonial.status = TestimonialStatus.ACTIVE
+
+    db.commit()
+    db.refresh(testimonial)
+
+    return {
+        "success": True,
+        "testimonial": format_testimonial(testimonial),
+    }
+
+
+@app.get("/api/testimonials")
+async def get_active_testimonials(
+    db: Session = Depends(get_db),
+):
+    """
+    Get active testimonials for public display (weighted pool).
+    Weighting: 5★=5x, 4★=3x, unrated=3x, 3★=1x, 1-2★=excluded.
+    Featured reviews always included regardless of rating.
+    """
+    from db_models import Testimonial, TestimonialStatus
+
+    # Get active testimonials
+    testimonials = db.query(Testimonial).filter(
+        Testimonial.status == TestimonialStatus.ACTIVE
+    ).all()
+
+    # Build weighted pool
+    weighted_pool = []
+    for t in testimonials:
+        formatted = format_testimonial(t)
+
+        # Featured reviews always included (once)
+        if t.is_featured:
+            weighted_pool.append(formatted)
+            continue
+
+        # Apply weighting based on star rating
+        if t.star_rating is None:
+            # Unrated reviews (LinkedIn, FB, etc.) - treat as positive
+            weighted_pool.extend([formatted] * 3)
+        elif t.star_rating == 5:
+            weighted_pool.extend([formatted] * 5)
+        elif t.star_rating == 4:
+            weighted_pool.extend([formatted] * 3)
+        elif t.star_rating == 3:
+            weighted_pool.append(formatted)
+        # 1-2 star reviews excluded unless featured
+
+    return {
+        "testimonials": weighted_pool,
+        "total": len(weighted_pool),
     }
 
 
