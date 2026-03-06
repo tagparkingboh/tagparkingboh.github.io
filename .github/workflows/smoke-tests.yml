@@ -85,26 +85,26 @@ jobs:
               }]
             }' || echo "Failed to send email notification"
 
-      - name: Report to QA Dashboard
+      - name: Report to Production QA Dashboard
         if: always()
         working-directory: ./backend
         env:
           TEST_RESULTS_API_KEY: ${{ secrets.TEST_RESULTS_API_KEY }}
-          API_URL: ${{ secrets.STAGING_API_URL }}
+          PROD_API_URL: ${{ secrets.PROD_API_URL }}
         run: |
-          # Use Python to safely encode JSON with special characters in API key
+          # Report to production API for QA Dashboard
           python3 -c "
           import json
           import urllib.request
           import os
 
           payload = {
-              'environment': 'staging',
-              'run_type': 'pr_check',
+              'environment': 'production',
+              'run_type': 'smoke',
               'tests_passed': ${{ steps.smoke_tests.outputs.passed || 0 }},
               'tests_failed': ${{ steps.smoke_tests.outputs.failed || 0 }},
               'tests_skipped': 0,
-              'tests_total': ${{ steps.smoke_tests.outputs.passed || 0 }},
+              'tests_total': ${{ steps.smoke_tests.outputs.passed || 0 }} + ${{ steps.smoke_tests.outputs.failed || 0 }},
               'commit_sha': '${{ github.sha }}',
               'branch': '${{ github.head_ref || github.ref_name }}',
               'logs_url': '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
@@ -112,15 +112,24 @@ jobs:
               'api_key': os.environ.get('TEST_RESULTS_API_KEY', '')
           }
 
-          api_url = os.environ.get('API_URL', '')
+          api_url = os.environ.get('PROD_API_URL', '')
+          if not api_url:
+              print('WARNING: PROD_API_URL secret is not set!')
+              exit(0)
+
+          print(f'Reporting to: {api_url}/api/test-results')
           data = json.dumps(payload).encode('utf-8')
           req = urllib.request.Request(f'{api_url}/api/test-results', data=data, headers={'Content-Type': 'application/json'})
           try:
-              with urllib.request.urlopen(req) as response:
+              with urllib.request.urlopen(req, timeout=30) as response:
                   print(f'Success: {response.status}')
+                  print(response.read().decode())
+          except urllib.error.HTTPError as e:
+              print(f'HTTP Error {e.code}: {e.reason}')
+              print(e.read().decode())
           except Exception as e:
               print(f'Failed to report results: {e}')
-          " || echo "Failed to report results to API"
+          "
 
       - name: Create summary
         if: always()

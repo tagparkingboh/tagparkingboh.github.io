@@ -319,7 +319,7 @@ function Admin() {
         fetch(`${API_URL}/api/admin/test-results?limit=20`, {
           headers: { 'Authorization': `Bearer ${token}` },
         }),
-        fetch(`${API_URL}/api/admin/test-results/latest?environment=staging`, {
+        fetch(`${API_URL}/api/admin/test-results/latest?environment=production`, {
           headers: { 'Authorization': `Bearer ${token}` },
         }),
       ])
