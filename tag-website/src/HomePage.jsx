@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import TestimonialsCarousel from './TestimonialsCarousel'
 import './App.css'
 
 function HomePage() {
@@ -404,6 +405,9 @@ function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Testimonials Section */}
+      <TestimonialsCarousel />
 
       {/* Support Section */}
       <section className="support-section">
