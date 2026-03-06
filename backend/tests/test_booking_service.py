@@ -166,19 +166,30 @@ class TestBookingCreation:
         assert booking.email == "john.doe@example.com"
         assert booking.status == "confirmed"
 
-    def test_booking_calculates_correct_price(self, service, sample_booking_request):
-        """Booking should have correct package price."""
-        booking = service.create_booking(sample_booking_request)
-        assert booking.price == 89.0  # "quick" package early tier
+    def test_booking_calculates_price_from_pricing_service(self, service, sample_booking_request):
+        """Booking price should match what pricing service returns for the duration."""
+        from booking_service import calculate_price_for_duration
 
-        # Test longer package
+        booking = service.create_booking(sample_booking_request)
+
+        # Calculate expected price using the same logic
+        duration_days = (sample_booking_request.pickup_date - sample_booking_request.drop_off_date).days
+        slot_type = "early" if sample_booking_request.drop_off_slot_type == SlotType.EARLY else "late"
+        expected_price = calculate_price_for_duration(duration_days, slot_type)
+
+        # Booking price should match pricing service calculation
+        assert booking.price == expected_price
+
+        # Test longer trip gets correct price too
         longer_request = sample_booking_request.model_copy()
-        longer_request.package = "longer"
+        longer_request.pickup_date = sample_booking_request.drop_off_date + timedelta(days=14)
         longer_request.email = "other@example.com"
-        longer_request.drop_off_slot_type = SlotType.LATE  # Use different slot
+        longer_request.drop_off_slot_type = SlotType.LATE
 
         longer_booking = service.create_booking(longer_request)
-        assert longer_booking.price == 140.0
+        expected_longer_price = calculate_price_for_duration(14, "late")
+
+        assert longer_booking.price == expected_longer_price
 
     def test_booking_calculates_drop_off_time(self, service, sample_booking_request):
         """Booking should calculate correct drop-off time."""
