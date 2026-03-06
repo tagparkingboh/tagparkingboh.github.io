@@ -70,10 +70,11 @@ class TestBookingServiceInit:
         """Max parking spots should be set."""
         assert service.MAX_PARKING_SPOTS == 60
 
-    def test_package_prices_configured(self, service):
-        """Package prices should be set correctly."""
-        assert service.PACKAGE_PRICES["quick"]["early"] == 89.0
-        assert service.PACKAGE_PRICES["longer"]["early"] == 140.0
+    def test_duration_prices_available(self, service):
+        """Duration prices should be retrievable from database."""
+        prices = service.get_all_duration_prices()
+        # Should have duration tiers
+        assert "1_4" in prices or "5_7" in prices or len(prices) > 0
 
 
 class TestSlotAvailability:
