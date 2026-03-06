@@ -738,7 +738,12 @@ class Testimonial(Base):
     star_rating = Column(Integer, nullable=True)  # 1-5, or NULL for unrated (LinkedIn, FB, etc.)
     date_of_travel = Column(Date, nullable=True)
     date_added = Column(DateTime(timezone=True), server_default=func.now())
-    status = Column(Enum(TestimonialStatus), default=TestimonialStatus.INACTIVE, nullable=False)
+    # Use values_callable to send enum values (lowercase) instead of names (uppercase) to PostgreSQL
+    status = Column(
+        Enum(TestimonialStatus, values_callable=lambda x: [e.value for e in x]),
+        default=TestimonialStatus.INACTIVE,
+        nullable=False
+    )
     is_featured = Column(Boolean, default=False, nullable=False)
     source = Column(String(50), nullable=True)  # e.g. Google, TrustPilot, Direct
 
