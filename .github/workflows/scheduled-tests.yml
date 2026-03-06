@@ -98,23 +98,37 @@ jobs:
           TEST_RESULTS_API_KEY: ${{ secrets.TEST_RESULTS_API_KEY }}
           API_URL: ${{ secrets.STAGING_API_URL }}
         run: |
-          curl -X POST "$API_URL/api/test-results" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "environment": "${{ inputs.environment || 'staging' }}",
-              "run_type": "scheduled",
-              "tests_passed": ${{ steps.test_run.outputs.passed || 0 }},
-              "tests_failed": ${{ steps.test_run.outputs.failed || 0 }},
-              "tests_skipped": ${{ steps.test_run.outputs.skipped || 0 }},
-              "tests_total": ${{ steps.test_run.outputs.total || 0 }},
-              "coverage_percent": ${{ steps.test_run.outputs.coverage || 0 }},
-              "duration_seconds": ${{ steps.test_run.outputs.duration || 0 }},
-              "commit_sha": "${{ github.sha }}",
-              "branch": "${{ github.ref_name }}",
-              "logs_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-              "triggered_by": "github_actions",
-              "api_key": "'$TEST_RESULTS_API_KEY'"
-            }' || echo "Failed to report results to API"
+          # Use Python to safely encode JSON with special characters in API key
+          python3 -c "
+          import json
+          import urllib.request
+          import os
+
+          payload = {
+              'environment': '${{ inputs.environment || 'staging' }}',
+              'run_type': 'scheduled',
+              'tests_passed': ${{ steps.test_run.outputs.passed || 0 }},
+              'tests_failed': ${{ steps.test_run.outputs.failed || 0 }},
+              'tests_skipped': ${{ steps.test_run.outputs.skipped || 0 }},
+              'tests_total': ${{ steps.test_run.outputs.total || 0 }},
+              'coverage_percent': ${{ steps.test_run.outputs.coverage || 0 }},
+              'duration_seconds': ${{ steps.test_run.outputs.duration || 0 }},
+              'commit_sha': '${{ github.sha }}',
+              'branch': '${{ github.ref_name }}',
+              'logs_url': '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
+              'triggered_by': 'github_actions',
+              'api_key': os.environ.get('TEST_RESULTS_API_KEY', '')
+          }
+
+          api_url = os.environ.get('API_URL', '')
+          data = json.dumps(payload).encode('utf-8')
+          req = urllib.request.Request(f'{api_url}/api/test-results', data=data, headers={'Content-Type': 'application/json'})
+          try:
+              with urllib.request.urlopen(req) as response:
+                  print(f'Success: {response.status}')
+          except Exception as e:
+              print(f'Failed to report results: {e}')
+          " || echo "Failed to report results to API"
 
       - name: Upload test results
         if: always()
