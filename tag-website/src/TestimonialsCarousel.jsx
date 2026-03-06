@@ -75,15 +75,11 @@ function TestimonialsCarousel() {
     }, 300)
   }
 
-  // Render star rating or quote icon for unrated
+  // Render star rating (or nothing for unrated)
   const renderRating = (rating) => {
     if (rating === null || rating === undefined) {
-      // Unrated - show opening quote icon
-      return (
-        <div className="testimonial-quote-icon">
-          <span style={{ fontSize: '2.5rem', fontFamily: 'Georgia, serif', lineHeight: 1 }}>"</span>
-        </div>
-      )
+      // Unrated - show nothing
+      return null
     }
     // Show stars for rated testimonials
     return (
