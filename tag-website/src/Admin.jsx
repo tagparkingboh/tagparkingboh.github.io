@@ -219,6 +219,28 @@ function Admin() {
   const [latestTestRun, setLatestTestRun] = useState(null)
   const [loadingTestResults, setLoadingTestResults] = useState(false)
 
+  // Testimonials state
+  const [testimonials, setTestimonials] = useState([])
+  const [loadingTestimonials, setLoadingTestimonials] = useState(false)
+  const [testimonialFilter, setTestimonialFilter] = useState({ star_rating: '', status: '' })
+  const [testimonialSort, setTestimonialSort] = useState({ field: 'date_added', order: 'desc' })
+  const [showTestimonialModal, setShowTestimonialModal] = useState(false)
+  const [editingTestimonial, setEditingTestimonial] = useState(null)
+  const [testimonialForm, setTestimonialForm] = useState({
+    customer_name: '',
+    review_text: '',
+    star_rating: null,
+    date_of_travel: '',
+    status: 'inactive',
+    is_featured: false,
+    source: ''
+  })
+  const [savingTestimonial, setSavingTestimonial] = useState(false)
+  const [showDeleteTestimonialModal, setShowDeleteTestimonialModal] = useState(false)
+  const [testimonialToDelete, setTestimonialToDelete] = useState(null)
+  const [deletingTestimonial, setDeletingTestimonial] = useState(false)
+  const [testimonialSuccessMessage, setTestimonialSuccessMessage] = useState('')
+
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
 
@@ -333,6 +355,161 @@ function Admin() {
       fetchTestResults()
     }
   }, [activeTab, token])
+
+  // Fetch testimonials when testimonials tab is active
+  useEffect(() => {
+    if (activeTab === 'testimonials' && token) {
+      fetchTestimonials()
+    }
+  }, [activeTab, token, testimonialFilter, testimonialSort])
+
+  const fetchTestimonials = async () => {
+    setLoadingTestimonials(true)
+    try {
+      const params = new URLSearchParams()
+      if (testimonialFilter.star_rating) params.append('star_rating', testimonialFilter.star_rating)
+      if (testimonialFilter.status) params.append('status', testimonialFilter.status)
+      params.append('sort', testimonialSort.field)
+      params.append('order', testimonialSort.order)
+
+      const response = await fetch(`${API_URL}/api/admin/testimonials?${params}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setTestimonials(data.testimonials || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch testimonials:', err)
+    } finally {
+      setLoadingTestimonials(false)
+    }
+  }
+
+  const handleSaveTestimonial = async () => {
+    setSavingTestimonial(true)
+    setTestimonialSuccessMessage('')
+    try {
+      const url = editingTestimonial
+        ? `${API_URL}/api/admin/testimonials/${editingTestimonial.id}`
+        : `${API_URL}/api/admin/testimonials`
+      const method = editingTestimonial ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(testimonialForm),
+      })
+
+      if (response.ok) {
+        setShowTestimonialModal(false)
+        setEditingTestimonial(null)
+        setTestimonialForm({
+          customer_name: '',
+          review_text: '',
+          star_rating: null,
+          date_of_travel: '',
+          status: 'inactive',
+          is_featured: false,
+          source: ''
+        })
+        setTestimonialSuccessMessage(editingTestimonial ? 'Testimonial updated!' : 'Testimonial added!')
+        fetchTestimonials()
+        setTimeout(() => setTestimonialSuccessMessage(''), 3000)
+      } else {
+        const err = await response.json()
+        alert(err.detail ? JSON.stringify(err.detail) : 'Failed to save testimonial')
+      }
+    } catch (err) {
+      console.error('Error saving testimonial:', err)
+      alert('Failed to save testimonial')
+    } finally {
+      setSavingTestimonial(false)
+    }
+  }
+
+  const handleDeleteTestimonial = async () => {
+    if (!testimonialToDelete) return
+    setDeletingTestimonial(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/testimonials/${testimonialToDelete.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setShowDeleteTestimonialModal(false)
+        setTestimonialToDelete(null)
+        setTestimonialSuccessMessage('Testimonial deleted!')
+        fetchTestimonials()
+        setTimeout(() => setTestimonialSuccessMessage(''), 3000)
+      }
+    } catch (err) {
+      console.error('Error deleting testimonial:', err)
+    } finally {
+      setDeletingTestimonial(false)
+    }
+  }
+
+  const handleToggleTestimonialStatus = async (testimonial) => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/testimonials/${testimonial.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        fetchTestimonials()
+      }
+    } catch (err) {
+      console.error('Error toggling status:', err)
+    }
+  }
+
+  const openEditTestimonialModal = (testimonial) => {
+    setEditingTestimonial(testimonial)
+    setTestimonialForm({
+      customer_name: testimonial.customer_name,
+      review_text: testimonial.review_text,
+      star_rating: testimonial.star_rating,
+      date_of_travel: testimonial.date_of_travel || '',
+      status: testimonial.status,
+      is_featured: testimonial.is_featured,
+      source: testimonial.source || ''
+    })
+    setShowTestimonialModal(true)
+  }
+
+  const openAddTestimonialModal = () => {
+    setEditingTestimonial(null)
+    setTestimonialForm({
+      customer_name: '',
+      review_text: '',
+      star_rating: null,
+      date_of_travel: '',
+      status: 'inactive',
+      is_featured: false,
+      source: ''
+    })
+    setShowTestimonialModal(true)
+  }
+
+  // Helper to render star rating display
+  const renderStars = (rating) => {
+    if (rating === null || rating === undefined) {
+      return <span className="no-rating">No rating</span>
+    }
+    return (
+      <span className="star-rating">
+        {[1, 2, 3, 4, 5].map(star => (
+          <span key={star} className={star <= rating ? 'star filled' : 'star empty'}>
+            {star <= rating ? '★' : '☆'}
+          </span>
+        ))}
+      </span>
+    )
+  }
 
   const fetchTestResults = async () => {
     setLoadingTestResults(true)
@@ -1821,6 +1998,12 @@ function Admin() {
           onClick={() => setActiveTab('qa')}
         >
           QA
+        </button>
+        <button
+          className={`admin-nav-item ${activeTab === 'testimonials' ? 'active' : ''}`}
+          onClick={() => setActiveTab('testimonials')}
+        >
+          Testimonials
         </button>
       </nav>
 
@@ -4814,7 +4997,285 @@ function Admin() {
             )}
           </div>
         )}
+
+        {/* Testimonials Section */}
+        {activeTab === 'testimonials' && (
+          <div className="admin-section">
+            <div className="admin-section-header">
+              <h2>Testimonials</h2>
+              <div className="admin-header-actions">
+                <button onClick={openAddTestimonialModal} className="admin-btn admin-btn-primary">
+                  + Add Testimonial
+                </button>
+                <button onClick={fetchTestimonials} className="admin-refresh" disabled={loadingTestimonials}>
+                  {loadingTestimonials ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+            </div>
+
+            {testimonialSuccessMessage && (
+              <div className="admin-success">{testimonialSuccessMessage}</div>
+            )}
+
+            {/* Filters */}
+            <div className="admin-filters" style={{ marginBottom: '1rem' }}>
+              <select
+                value={testimonialFilter.star_rating}
+                onChange={(e) => setTestimonialFilter({ ...testimonialFilter, star_rating: e.target.value })}
+                className="admin-filter-select"
+              >
+                <option value="">All Ratings</option>
+                <option value="5">5★ Only</option>
+                <option value="4">4★ Only</option>
+                <option value="3">3★ Only</option>
+                <option value="2">2★ Only</option>
+                <option value="1">1★ Only</option>
+              </select>
+              <select
+                value={testimonialFilter.status}
+                onChange={(e) => setTestimonialFilter({ ...testimonialFilter, status: e.target.value })}
+                className="admin-filter-select"
+              >
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+              <select
+                value={`${testimonialSort.field}-${testimonialSort.order}`}
+                onChange={(e) => {
+                  const [field, order] = e.target.value.split('-')
+                  setTestimonialSort({ field, order })
+                }}
+                className="admin-filter-select"
+              >
+                <option value="date_added-desc">Newest First</option>
+                <option value="date_added-asc">Oldest First</option>
+                <option value="star_rating-desc">Highest Rated</option>
+                <option value="star_rating-asc">Lowest Rated</option>
+              </select>
+            </div>
+
+            {loadingTestimonials ? (
+              <div className="admin-loading-inline">
+                <div className="spinner-small"></div>
+                <span>Loading testimonials...</span>
+              </div>
+            ) : testimonials.length === 0 ? (
+              <p className="admin-empty">No testimonials found. Click "Add Testimonial" to create one.</p>
+            ) : (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Customer</th>
+                    <th>Rating</th>
+                    <th>Review</th>
+                    <th>Source</th>
+                    <th>Date Added</th>
+                    <th>Status</th>
+                    <th>Featured</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {testimonials.map((t) => (
+                    <tr key={t.id} className={t.is_featured ? 'row-featured' : ''}>
+                      <td>{t.customer_name}</td>
+                      <td>{renderStars(t.star_rating)}</td>
+                      <td className="review-cell">
+                        {t.review_text.length > 80
+                          ? t.review_text.substring(0, 80) + '...'
+                          : t.review_text}
+                      </td>
+                      <td>{t.source || '-'}</td>
+                      <td>{t.date_added ? new Date(t.date_added).toLocaleDateString('en-GB') : '-'}</td>
+                      <td>
+                        <span className={`status-badge status-${t.status === 'active' ? 'confirmed' : 'pending'}`}>
+                          {t.status}
+                        </span>
+                      </td>
+                      <td>{t.is_featured ? '✓' : '-'}</td>
+                      <td className="actions-cell">
+                        <button
+                          className="action-btn edit-btn"
+                          onClick={() => openEditTestimonialModal(t)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="action-btn"
+                          onClick={() => handleToggleTestimonialStatus(t)}
+                          style={{ backgroundColor: t.status === 'active' ? '#f59e0b' : '#22c55e', color: '#fff' }}
+                        >
+                          {t.status === 'active' ? 'Deactivate' : 'Activate'}
+                        </button>
+                        <button
+                          className="action-btn cancel-btn"
+                          onClick={() => {
+                            setTestimonialToDelete(t)
+                            setShowDeleteTestimonialModal(true)
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </main>
+
+      {/* Testimonial Add/Edit Modal */}
+      {showTestimonialModal && (
+        <div className="modal-overlay" onClick={() => setShowTestimonialModal(false)}>
+          <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
+            <h3>{editingTestimonial ? 'Edit Testimonial' : 'Add Testimonial'}</h3>
+
+            <div className="modal-form">
+              <div className="form-group">
+                <label>Customer Name *</label>
+                <input
+                  type="text"
+                  value={testimonialForm.customer_name}
+                  onChange={(e) => setTestimonialForm({ ...testimonialForm, customer_name: e.target.value })}
+                  placeholder="e.g. John Smith"
+                  maxLength={100}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Review Text *</label>
+                <textarea
+                  value={testimonialForm.review_text}
+                  onChange={(e) => setTestimonialForm({ ...testimonialForm, review_text: e.target.value })}
+                  placeholder="Enter the customer's review..."
+                  rows={4}
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Star Rating (optional for LinkedIn/FB)</label>
+                  <div className="star-selector">
+                    {[1, 2, 3, 4, 5].map(star => (
+                      <button
+                        key={star}
+                        type="button"
+                        className={`star-btn ${testimonialForm.star_rating >= star ? 'selected' : ''}`}
+                        onClick={() => setTestimonialForm({
+                          ...testimonialForm,
+                          star_rating: testimonialForm.star_rating === star ? null : star
+                        })}
+                      >
+                        {testimonialForm.star_rating >= star ? '★' : '☆'}
+                      </button>
+                    ))}
+                    {testimonialForm.star_rating && (
+                      <button
+                        type="button"
+                        className="clear-rating-btn"
+                        onClick={() => setTestimonialForm({ ...testimonialForm, star_rating: null })}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Source</label>
+                  <input
+                    type="text"
+                    value={testimonialForm.source}
+                    onChange={(e) => setTestimonialForm({ ...testimonialForm, source: e.target.value })}
+                    placeholder="e.g. Google, TrustPilot, LinkedIn"
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Date of Travel</label>
+                  <input
+                    type="date"
+                    value={testimonialForm.date_of_travel}
+                    onChange={(e) => setTestimonialForm({ ...testimonialForm, date_of_travel: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Status</label>
+                  <select
+                    value={testimonialForm.status}
+                    onChange={(e) => setTestimonialForm({ ...testimonialForm, status: e.target.value })}
+                  >
+                    <option value="inactive">Inactive (Draft)</option>
+                    <option value="active">Active (Published)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={testimonialForm.is_featured}
+                    onChange={(e) => setTestimonialForm({ ...testimonialForm, is_featured: e.target.checked })}
+                  />
+                  Mark as Featured (appears more frequently in rotation)
+                </label>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowTestimonialModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={handleSaveTestimonial}
+                disabled={savingTestimonial || !testimonialForm.customer_name || !testimonialForm.review_text}
+              >
+                {savingTestimonial ? 'Saving...' : (editingTestimonial ? 'Update' : 'Save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Testimonial Modal */}
+      {showDeleteTestimonialModal && testimonialToDelete && (
+        <div className="modal-overlay" onClick={() => setShowDeleteTestimonialModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Testimonial</h3>
+            <p>Are you sure you want to delete this review? This action cannot be undone.</p>
+            <div className="modal-booking-info">
+              <p><strong>Customer:</strong> {testimonialToDelete.customer_name}</p>
+              <p><strong>Review:</strong> {testimonialToDelete.review_text.substring(0, 80)}...</p>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowDeleteTestimonialModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-danger"
+                onClick={handleDeleteTestimonial}
+                disabled={deletingTestimonial}
+              >
+                {deletingTestimonial ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cancel Confirmation Modal */}
       {showCancelModal && bookingToCancel && (

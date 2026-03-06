@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import TestimonialsCarousel from './TestimonialsCarousel'
 import './App.css'
 
 function HomePage() {
@@ -208,6 +209,7 @@ function HomePage() {
           <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
             <li><a href="#how-it-works" onClick={closeMenu}>Meet & Greet</a></li>
             <li><a href="#pricing" onClick={closeMenu}>Pricing</a></li>
+            <li><a href="#testimonials" onClick={closeMenu}>Testimonials</a></li>
             <li><a href="#subscribe" onClick={closeMenu}>Subscribe</a></li>
             <li><a href="#contact" onClick={closeMenu}>Contact</a></li>
           </ul>
@@ -404,6 +406,9 @@ function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Testimonials Section */}
+      <TestimonialsCarousel />
 
       {/* Support Section */}
       <section className="support-section">
