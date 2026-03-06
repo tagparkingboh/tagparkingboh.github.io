@@ -7604,13 +7604,20 @@ def validate_testimonial_data(data: dict):
 
 
 def parse_date_of_travel(date_str: Optional[str]) -> Optional[date]:
-    """Parse DD/MM/YYYY date string to date object."""
+    """Parse date string to date object. Supports ISO format (YYYY-MM-DD) from HTML date input."""
     if not date_str:
         return None
     try:
-        parts = date_str.split("/")
-        if len(parts) == 3:
-            return date(int(parts[2]), int(parts[1]), int(parts[0]))
+        # HTML date input sends ISO format: YYYY-MM-DD
+        if "-" in date_str:
+            parts = date_str.split("-")
+            if len(parts) == 3:
+                return date(int(parts[0]), int(parts[1]), int(parts[2]))
+        # Legacy support for DD/MM/YYYY format
+        elif "/" in date_str:
+            parts = date_str.split("/")
+            if len(parts) == 3:
+                return date(int(parts[2]), int(parts[1]), int(parts[0]))
     except (ValueError, IndexError):
         pass
     return None

@@ -121,9 +121,9 @@ describe('TestimonialsCarousel Unit Tests', () => {
     it('should format date correctly', () => {
       const dateString = mockTestimonialRated5Stars.date_of_travel
       const date = new Date(dateString)
-      const formatted = date.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+      const formatted = date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 
-      expect(formatted).toBe('Jan 2026')
+      expect(formatted).toBe('January 2026')
     })
 
     it('should handle null date', () => {

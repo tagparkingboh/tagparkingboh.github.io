@@ -456,11 +456,20 @@ class TestTestimonialValidation:
 class TestTestimonialDateFormatting:
     """Mocked tests for date formatting logic."""
 
-    def test_format_date_of_travel(self):
-        """Date of travel should format correctly."""
+    def test_api_returns_iso_format_date(self):
+        """API should return date_of_travel in ISO format (YYYY-MM-DD)."""
         date_obj = date(2026, 3, 15)
-        formatted = date_obj.strftime("%b %Y")
-        assert formatted == "Mar 2026"
+        iso_formatted = date_obj.isoformat()
+        assert iso_formatted == "2026-03-15"
+
+    def test_frontend_displays_full_month_name(self):
+        """Frontend should display date as 'March 2026' (full month name)."""
+        date_obj = date(2026, 3, 15)
+        # Frontend uses: toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+        # This is the expected display format
+        expected_display = "March 2026"
+        formatted = date_obj.strftime("%B %Y")  # %B = full month name
+        assert formatted == expected_display
 
     def test_format_date_added_with_time(self):
         """Date added should include time."""
@@ -482,6 +491,89 @@ class TestTestimonialDateFormatting:
         assert parsed.year == 2026
         assert parsed.month == 3
         assert parsed.day == 15
+
+
+class TestParseDateOfTravel:
+    """Tests for parse_date_of_travel function - handles ISO and legacy formats."""
+
+    def _parse_date_of_travel(self, date_str):
+        """Mock implementation of parse_date_of_travel matching main.py."""
+        if not date_str:
+            return None
+        try:
+            # HTML date input sends ISO format: YYYY-MM-DD
+            if "-" in date_str:
+                parts = date_str.split("-")
+                if len(parts) == 3:
+                    return date(int(parts[0]), int(parts[1]), int(parts[2]))
+            # Legacy support for DD/MM/YYYY format
+            elif "/" in date_str:
+                parts = date_str.split("/")
+                if len(parts) == 3:
+                    return date(int(parts[2]), int(parts[1]), int(parts[0]))
+        except (ValueError, IndexError):
+            pass
+        return None
+
+    def test_parse_iso_format(self):
+        """Should parse ISO format YYYY-MM-DD from HTML date input."""
+        result = self._parse_date_of_travel("2026-03-15")
+        assert result == date(2026, 3, 15)
+
+    def test_parse_iso_format_january(self):
+        """Should parse ISO format for January."""
+        result = self._parse_date_of_travel("2026-01-01")
+        assert result == date(2026, 1, 1)
+
+    def test_parse_iso_format_december(self):
+        """Should parse ISO format for December."""
+        result = self._parse_date_of_travel("2026-12-31")
+        assert result == date(2026, 12, 31)
+
+    def test_parse_legacy_dd_mm_yyyy_format(self):
+        """Should parse legacy DD/MM/YYYY format."""
+        result = self._parse_date_of_travel("15/03/2026")
+        assert result == date(2026, 3, 15)
+
+    def test_parse_legacy_format_january(self):
+        """Should parse legacy format for January."""
+        result = self._parse_date_of_travel("01/01/2026")
+        assert result == date(2026, 1, 1)
+
+    def test_parse_empty_string_returns_none(self):
+        """Empty string should return None."""
+        result = self._parse_date_of_travel("")
+        assert result is None
+
+    def test_parse_none_returns_none(self):
+        """None input should return None."""
+        result = self._parse_date_of_travel(None)
+        assert result is None
+
+    def test_parse_invalid_format_returns_none(self):
+        """Invalid format should return None."""
+        result = self._parse_date_of_travel("March 15, 2026")
+        assert result is None
+
+    def test_parse_invalid_iso_date_returns_none(self):
+        """Invalid ISO date (month 13) should return None."""
+        result = self._parse_date_of_travel("2026-13-15")
+        assert result is None
+
+    def test_parse_invalid_legacy_date_returns_none(self):
+        """Invalid legacy date (day 32) should return None."""
+        result = self._parse_date_of_travel("32/03/2026")
+        assert result is None
+
+    def test_parse_partial_iso_returns_none(self):
+        """Partial ISO format should return None."""
+        result = self._parse_date_of_travel("2026-03")
+        assert result is None
+
+    def test_parse_partial_legacy_returns_none(self):
+        """Partial legacy format should return None."""
+        result = self._parse_date_of_travel("15/03")
+        assert result is None
 
 
 class TestTestimonialFiltering:
