@@ -1211,6 +1211,174 @@
   max-width: 700px;
 }
 
+/* View Return Inspection Button */
+.view-inspection-btn {
+  background: #17a2b8 !important;
+  color: white !important;
+}
+
+.view-inspection-btn:hover {
+  background: #138496 !important;
+}
+
+/* Return Vehicle Inspection Modal Styles */
+.inspection-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px;
+  gap: 12px;
+}
+
+.inspection-loading p {
+  color: #666;
+  margin: 0;
+}
+
+.inspection-details {
+  margin-top: 16px;
+}
+
+.inspection-section {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.inspection-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.inspection-section h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 12px 0;
+}
+
+.inspection-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.inspection-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inspection-label {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+.inspection-value {
+  font-size: 14px;
+  color: #1a1a2e;
+}
+
+.inspection-notes {
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.inspection-declined {
+  background: #fff3cd;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid #ffc107;
+}
+
+.inspection-declined h4 {
+  color: #856404;
+}
+
+.inspection-declined p {
+  margin: 8px 0 0 0;
+  color: #856404;
+}
+
+.inspection-photos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.inspection-photo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inspection-photo .photo-label {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+.inspection-photo img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.inspection-photo img:hover {
+  transform: scale(1.02);
+}
+
+.inspection-signature {
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.inspection-signature img {
+  max-width: 300px;
+  max-height: 100px;
+}
+
+.inspection-empty {
+  text-align: center;
+  padding: 32px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+
+.inspection-empty p {
+  margin: 0;
+  color: #666;
+}
+
+.inspection-empty-hint {
+  font-size: 13px;
+  margin-top: 8px !important;
+  color: #999 !important;
+}
+
+@media (max-width: 600px) {
+  .inspection-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inspection-photos {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .admin-container .modal-section-title {
   font-size: 14px;
   font-weight: 600;
