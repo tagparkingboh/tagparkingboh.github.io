@@ -78,13 +78,10 @@ function TestimonialsCarousel() {
   // Render star rating or quote icon for unrated
   const renderRating = (rating) => {
     if (rating === null || rating === undefined) {
-      // Unrated - show quote icon
+      // Unrated - show opening quote icon
       return (
         <div className="testimonial-quote-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M10 11H6C5.46957 11 4.96086 10.7893 4.58579 10.4142C4.21071 10.0391 4 9.53043 4 9V8C4 7.46957 4.21071 6.96086 4.58579 6.58579C4.96086 6.21071 5.46957 6 6 6H8C8.53043 6 9.03914 6.21071 9.41421 6.58579C9.78929 6.96086 10 7.46957 10 8V14C10 15.0609 9.57857 16.0783 8.82843 16.8284C8.07828 17.5786 7.06087 18 6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M20 11H16C15.4696 11 14.9609 10.7893 14.5858 10.4142C14.2107 10.0391 14 9.53043 14 9V8C14 7.46957 14.2107 6.96086 14.5858 6.58579C14.9609 6.21071 15.4696 6 16 6H18C18.5304 6 19.0391 6.21071 19.4142 6.58579C19.7893 6.96086 20 7.46957 20 8V14C20 15.0609 19.5786 16.0783 18.8284 16.8284C18.0783 17.5786 17.0609 18 16 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <span style={{ fontSize: '2.5rem', fontFamily: 'Georgia, serif', lineHeight: 1 }}>"</span>
         </div>
       )
     }
@@ -160,7 +157,7 @@ function TestimonialsCarousel() {
             {renderSourceBadge(currentTestimonial.source)}
           </div>
           <blockquote className="testimonial-text">
-            "{currentTestimonial.review_text}"
+            {`"${currentTestimonial.review_text}"`}
           </blockquote>
           <div className="testimonial-footer">
             <span className="testimonial-author">{currentTestimonial.customer_name}</span>
