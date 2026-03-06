@@ -74,6 +74,12 @@ function Admin() {
   const [bookingForFounderEmail, setBookingForFounderEmail] = useState(null)
   const [successMessage, setSuccessMessage] = useState('')
 
+  // Return Vehicle Inspection modal state
+  const [showReturnInspectionModal, setShowReturnInspectionModal] = useState(false)
+  const [bookingForInspection, setBookingForInspection] = useState(null)
+  const [returnInspectionData, setReturnInspectionData] = useState(null)
+  const [loadingReturnInspection, setLoadingReturnInspection] = useState(false)
+
   // Airlines and destinations for dropdowns
   const [availableAirlines, setAvailableAirlines] = useState([])
   const [availableDestinations, setAvailableDestinations] = useState([])
@@ -1592,6 +1598,43 @@ function Admin() {
     }
   }
 
+  // Return Vehicle Inspection handlers
+  const handleViewReturnInspectionClick = async (booking, e) => {
+    e.stopPropagation()
+    setBookingForInspection(booking)
+    setShowReturnInspectionModal(true)
+    setLoadingReturnInspection(true)
+    setReturnInspectionData(null)
+
+    try {
+      const response = await fetch(`${API_URL}/api/employee/inspections/${booking.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const inspections = await response.json()
+        // Find the pickup/return inspection
+        const returnInspection = inspections.find(i => i.inspection_type === 'pickup')
+        setReturnInspectionData(returnInspection || null)
+      } else {
+        setReturnInspectionData(null)
+      }
+    } catch (err) {
+      console.error('Error fetching return inspection:', err)
+      setReturnInspectionData(null)
+    } finally {
+      setLoadingReturnInspection(false)
+    }
+  }
+
+  const closeReturnInspectionModal = () => {
+    setShowReturnInspectionModal(false)
+    setBookingForInspection(null)
+    setReturnInspectionData(null)
+  }
+
   const handleLogout = async () => {
     await logout()
     navigate('/login', { replace: true })
@@ -2176,6 +2219,15 @@ function Admin() {
                                         >
                                           {sendingFounderEmailId === booking.id ? 'Sending...' :
                                            booking.customer?.founder_followup_sent ? 'Founder Email Sent ✓' : 'Send Founder Email'}
+                                        </button>
+                                      )}
+                                      {/* View Return Vehicle Inspection button for completed bookings */}
+                                      {booking.status?.toLowerCase() === 'completed' && booking.id && (
+                                        <button
+                                          className="action-btn view-inspection-btn"
+                                          onClick={(e) => handleViewReturnInspectionClick(booking, e)}
+                                        >
+                                          View Return Inspection
                                         </button>
                                       )}
                                       {/* Delete button for pending and cancelled bookings */}
@@ -5211,6 +5263,139 @@ function Admin() {
                 disabled={sendingPromoId}
               >
                 {sendingPromoId ? 'Sending...' : `Yes, Send ${promoToSend.discountPercent === 100 ? 'FREE' : '10% Off'} Code`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Return Vehicle Inspection Modal */}
+      {showReturnInspectionModal && bookingForInspection && (
+        <div className="modal-overlay" onClick={closeReturnInspectionModal}>
+          <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
+            <h3>Return Vehicle Inspection</h3>
+            <div className="modal-booking-info">
+              <p><strong>Booking:</strong> {bookingForInspection.reference}</p>
+              <p><strong>Customer:</strong> {bookingForInspection.customer?.first_name} {bookingForInspection.customer?.last_name}</p>
+              <p><strong>Vehicle:</strong> {bookingForInspection.vehicle?.registration} - {bookingForInspection.vehicle?.make} {bookingForInspection.vehicle?.model}</p>
+            </div>
+
+            {loadingReturnInspection ? (
+              <div className="inspection-loading">
+                <div className="spinner"></div>
+                <p>Loading inspection data...</p>
+              </div>
+            ) : returnInspectionData ? (
+              <div className="inspection-details">
+                <div className="inspection-section">
+                  <h4>Inspection Details</h4>
+                  <div className="inspection-grid">
+                    <div className="inspection-item">
+                      <span className="inspection-label">Inspector</span>
+                      <span className="inspection-value">{returnInspectionData.inspector_name || 'Unknown'}</span>
+                    </div>
+                    <div className="inspection-item">
+                      <span className="inspection-label">Date</span>
+                      <span className="inspection-value">{returnInspectionData.created_at ? formatDateTimeUK(returnInspectionData.created_at) : '-'}</span>
+                    </div>
+                    <div className="inspection-item">
+                      <span className="inspection-label">Mileage</span>
+                      <span className="inspection-value">{returnInspectionData.mileage ? `${returnInspectionData.mileage.toLocaleString()} miles` : 'Not recorded'}</span>
+                    </div>
+                    <div className="inspection-item">
+                      <span className="inspection-label">Fuel Level</span>
+                      <span className="inspection-value">{returnInspectionData.fuel_level || 'Not recorded'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {returnInspectionData.declined ? (
+                  <div className="inspection-section inspection-declined">
+                    <h4>Inspection Declined</h4>
+                    <p>The customer declined this return inspection.</p>
+                    {returnInspectionData.declined_reason && (
+                      <p><strong>Reason:</strong> {returnInspectionData.declined_reason}</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {returnInspectionData.notes && (
+                      <div className="inspection-section">
+                        <h4>Notes</h4>
+                        <p className="inspection-notes">{returnInspectionData.notes}</p>
+                      </div>
+                    )}
+
+                    {(returnInspectionData.photo_front || returnInspectionData.photo_rear ||
+                      returnInspectionData.photo_left || returnInspectionData.photo_right ||
+                      returnInspectionData.photo_dashboard || returnInspectionData.photo_additional) && (
+                      <div className="inspection-section">
+                        <h4>Photos</h4>
+                        <div className="inspection-photos">
+                          {returnInspectionData.photo_front && (
+                            <div className="inspection-photo">
+                              <span className="photo-label">Front</span>
+                              <img src={returnInspectionData.photo_front} alt="Front" />
+                            </div>
+                          )}
+                          {returnInspectionData.photo_rear && (
+                            <div className="inspection-photo">
+                              <span className="photo-label">Rear</span>
+                              <img src={returnInspectionData.photo_rear} alt="Rear" />
+                            </div>
+                          )}
+                          {returnInspectionData.photo_left && (
+                            <div className="inspection-photo">
+                              <span className="photo-label">Left Side</span>
+                              <img src={returnInspectionData.photo_left} alt="Left Side" />
+                            </div>
+                          )}
+                          {returnInspectionData.photo_right && (
+                            <div className="inspection-photo">
+                              <span className="photo-label">Right Side</span>
+                              <img src={returnInspectionData.photo_right} alt="Right Side" />
+                            </div>
+                          )}
+                          {returnInspectionData.photo_dashboard && (
+                            <div className="inspection-photo">
+                              <span className="photo-label">Dashboard</span>
+                              <img src={returnInspectionData.photo_dashboard} alt="Dashboard" />
+                            </div>
+                          )}
+                          {returnInspectionData.photo_additional && (
+                            <div className="inspection-photo">
+                              <span className="photo-label">Additional</span>
+                              <img src={returnInspectionData.photo_additional} alt="Additional" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {returnInspectionData.customer_signature && (
+                      <div className="inspection-section">
+                        <h4>Customer Signature</h4>
+                        <div className="inspection-signature">
+                          <img src={returnInspectionData.customer_signature} alt="Customer Signature" />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="inspection-empty">
+                <p>No return vehicle inspection found for this booking.</p>
+                <p className="inspection-empty-hint">The return inspection may not have been completed yet.</p>
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={closeReturnInspectionModal}
+              >
+                Close
               </button>
             </div>
           </div>
