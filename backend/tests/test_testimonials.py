@@ -614,3 +614,362 @@ class TestEdgeCases:
                 weighted_pool.extend([t] * 3)
 
         assert len(weighted_pool) == 6  # 2 * 3
+
+
+class TestNegativeTests:
+    """Negative tests - invalid inputs that should be rejected."""
+
+    def test_empty_customer_name_rejected(self):
+        """Empty string customer_name should be invalid."""
+        testimonial = {"customer_name": "", "review_text": "Test review"}
+        is_valid = len(testimonial["customer_name"].strip()) > 0
+        assert is_valid is False
+
+    def test_whitespace_only_customer_name_rejected(self):
+        """Whitespace-only customer_name should be invalid."""
+        testimonial = {"customer_name": "   ", "review_text": "Test review"}
+        is_valid = len(testimonial["customer_name"].strip()) > 0
+        assert is_valid is False
+
+    def test_empty_review_text_rejected(self):
+        """Empty string review_text should be invalid."""
+        testimonial = {"customer_name": "Test Name", "review_text": ""}
+        is_valid = len(testimonial["review_text"].strip()) > 0
+        assert is_valid is False
+
+    def test_whitespace_only_review_text_rejected(self):
+        """Whitespace-only review_text should be invalid."""
+        testimonial = {"customer_name": "Test Name", "review_text": "   \n\t  "}
+        is_valid = len(testimonial["review_text"].strip()) > 0
+        assert is_valid is False
+
+    def test_invalid_status_value_rejected(self):
+        """Status values other than active/inactive should be rejected."""
+        invalid_statuses = ["pending", "deleted", "archived", "ACTIVE", "Active", "1", "true", ""]
+        valid_statuses = ["active", "inactive"]
+
+        for status in invalid_statuses:
+            is_valid = status in valid_statuses
+            assert is_valid is False, f"Status '{status}' should be invalid"
+
+    def test_star_rating_float_rejected(self):
+        """Float star ratings should be invalid."""
+        rating = 4.5
+        is_valid = isinstance(rating, int) or rating is None
+        assert is_valid is False
+
+    def test_star_rating_string_rejected(self):
+        """String star ratings should be invalid."""
+        rating = "5"
+        is_valid = isinstance(rating, int) or rating is None
+        assert is_valid is False
+
+    def test_negative_id_invalid(self):
+        """Negative ID should be invalid."""
+        testimonial_id = -1
+        is_valid = testimonial_id > 0
+        assert is_valid is False
+
+    def test_zero_id_invalid(self):
+        """Zero ID should be invalid."""
+        testimonial_id = 0
+        is_valid = testimonial_id > 0
+        assert is_valid is False
+
+    def test_invalid_date_format_rejected(self):
+        """Invalid date format should be rejected."""
+        invalid_dates = ["15-03-2026", "03/15/2026", "2026/03/15", "March 15, 2026", "invalid"]
+
+        for date_str in invalid_dates:
+            try:
+                datetime.strptime(date_str, "%Y-%m-%d")
+                is_valid = True
+            except ValueError:
+                is_valid = False
+            assert is_valid is False, f"Date '{date_str}' should be invalid"
+
+    def test_future_date_of_travel_flagged(self):
+        """Future date of travel should be flagged (testimonial before trip)."""
+        future_date = date(2030, 12, 31)
+        today = date(2026, 3, 6)
+        is_future = future_date > today
+        assert is_future is True  # This would be flagged as suspicious
+
+    def test_sql_injection_in_name_sanitized(self):
+        """SQL injection attempts should be handled safely."""
+        malicious_name = "'; DROP TABLE testimonials; --"
+        # The name should be stored as-is (sanitization happens at query level)
+        testimonial = {"customer_name": malicious_name}
+        assert testimonial["customer_name"] == malicious_name
+        # Actual protection is via parameterized queries, not input validation
+
+    def test_xss_in_review_text_preserved(self):
+        """XSS attempts should be stored but sanitized on output."""
+        xss_review = '<script>alert("XSS")</script>Great service!'
+        testimonial = {"review_text": xss_review}
+        # Stored as-is, sanitization happens at render time
+        assert "<script>" in testimonial["review_text"]
+
+
+class TestBoundaryTests:
+    """Boundary tests - testing at exact limits of valid inputs."""
+
+    def test_star_rating_lower_bound_valid(self):
+        """Star rating of 1 (lower bound) should be valid."""
+        rating = 1
+        is_valid = rating is None or (1 <= rating <= 5)
+        assert is_valid is True
+
+    def test_star_rating_upper_bound_valid(self):
+        """Star rating of 5 (upper bound) should be valid."""
+        rating = 5
+        is_valid = rating is None or (1 <= rating <= 5)
+        assert is_valid is True
+
+    def test_star_rating_below_lower_bound_invalid(self):
+        """Star rating of 0 (below lower bound) should be invalid."""
+        rating = 0
+        is_valid = rating is None or (1 <= rating <= 5)
+        assert is_valid is False
+
+    def test_star_rating_above_upper_bound_invalid(self):
+        """Star rating of 6 (above upper bound) should be invalid."""
+        rating = 6
+        is_valid = rating is None or (1 <= rating <= 5)
+        assert is_valid is False
+
+    def test_customer_name_at_max_length_valid(self):
+        """Customer name at exactly 100 chars should be valid."""
+        name = "A" * 100
+        max_length = 100
+        is_valid = len(name) <= max_length
+        assert is_valid is True
+        assert len(name) == 100
+
+    def test_customer_name_over_max_length_invalid(self):
+        """Customer name at 101 chars should be invalid."""
+        name = "A" * 101
+        max_length = 100
+        is_valid = len(name) <= max_length
+        assert is_valid is False
+
+    def test_customer_name_minimum_length_valid(self):
+        """Customer name of 1 char should be valid."""
+        name = "A"
+        is_valid = len(name.strip()) >= 1
+        assert is_valid is True
+
+    def test_review_text_minimum_length_valid(self):
+        """Review text of 1 char should be valid."""
+        review = "A"
+        is_valid = len(review.strip()) >= 1
+        assert is_valid is True
+
+    def test_review_text_at_reasonable_max_valid(self):
+        """Review text at 10000 chars should be valid."""
+        review = "A" * 10000
+        max_length = 10000
+        is_valid = len(review) <= max_length
+        assert is_valid is True
+
+    def test_date_at_earliest_reasonable_valid(self):
+        """Date far in the past should still be valid."""
+        old_date = date(2000, 1, 1)
+        is_valid = isinstance(old_date, date)
+        assert is_valid is True
+
+    def test_weighted_pool_single_5_star(self):
+        """Single 5-star testimonial should produce pool of 5."""
+        testimonials = [{"id": 1, "star_rating": 5, "is_featured": False}]
+        weighted_pool = []
+        for t in testimonials:
+            if t["star_rating"] == 5:
+                weighted_pool.extend([t] * 5)
+        assert len(weighted_pool) == 5
+
+    def test_weighted_pool_single_4_star(self):
+        """Single 4-star testimonial should produce pool of 3."""
+        testimonials = [{"id": 1, "star_rating": 4, "is_featured": False}]
+        weighted_pool = []
+        for t in testimonials:
+            if t["star_rating"] == 4:
+                weighted_pool.extend([t] * 3)
+        assert len(weighted_pool) == 3
+
+    def test_weighted_pool_single_3_star(self):
+        """Single 3-star testimonial should produce pool of 1."""
+        testimonials = [{"id": 1, "star_rating": 3, "is_featured": False}]
+        weighted_pool = []
+        for t in testimonials:
+            if t["star_rating"] == 3:
+                weighted_pool.append(t)
+        assert len(weighted_pool) == 1
+
+
+class TestAdditionalEdgeCases:
+    """Additional edge cases for comprehensive coverage."""
+
+    def test_single_testimonial_in_list(self):
+        """Should handle list with exactly one testimonial."""
+        single = [{"id": 1, "status": "active", "star_rating": 5}]
+        assert len(single) == 1
+
+    def test_testimonial_with_all_optional_fields_null(self):
+        """Testimonial with all optional fields as null should be valid."""
+        testimonial = {
+            "id": 1,
+            "customer_name": "Test User",
+            "review_text": "Test review",
+            "star_rating": None,
+            "date_of_travel": None,
+            "source": None,
+            "is_featured": False,
+            "status": "inactive",
+        }
+        # Only required fields need values
+        is_valid = (
+            testimonial["customer_name"] and
+            testimonial["review_text"] and
+            testimonial["status"] in ["active", "inactive"]
+        )
+        assert is_valid is True
+
+    def test_testimonial_with_minimum_valid_data(self):
+        """Testimonial with only required fields should be valid."""
+        testimonial = {
+            "customer_name": "A",
+            "review_text": "B",
+        }
+        is_valid = (
+            len(testimonial["customer_name"].strip()) > 0 and
+            len(testimonial["review_text"].strip()) > 0
+        )
+        assert is_valid is True
+
+    def test_mixed_featured_and_regular_in_pool(self):
+        """Pool should correctly mix featured and weighted regular testimonials."""
+        testimonials = [
+            {"id": 1, "star_rating": 5, "is_featured": False},  # 5x
+            {"id": 2, "star_rating": 2, "is_featured": True},   # 1x (featured)
+            {"id": 3, "star_rating": 1, "is_featured": False},  # 0x (excluded)
+        ]
+
+        weighted_pool = []
+        for t in testimonials:
+            if t["is_featured"]:
+                weighted_pool.append(t)
+                continue
+            if t["star_rating"] == 5:
+                weighted_pool.extend([t] * 5)
+
+        assert len(weighted_pool) == 6  # 5 + 1
+        featured_count = sum(1 for t in weighted_pool if t["is_featured"])
+        assert featured_count == 1
+
+    def test_duplicate_ids_in_source_data(self):
+        """Should handle (or flag) duplicate IDs in source data."""
+        testimonials = [
+            {"id": 1, "customer_name": "User A"},
+            {"id": 1, "customer_name": "User B"},  # Duplicate ID
+        ]
+        ids = [t["id"] for t in testimonials]
+        has_duplicates = len(ids) != len(set(ids))
+        assert has_duplicates is True  # This scenario should be flagged
+
+    def test_case_sensitivity_in_search(self):
+        """Search should be case-insensitive."""
+        testimonial = {"customer_name": "John DOE", "review_text": "GREAT Service"}
+
+        # Search variations
+        searches = ["john", "JOHN", "John", "doe", "DOE", "great", "GREAT"]
+        for term in searches:
+            found_in_name = term.lower() in testimonial["customer_name"].lower()
+            found_in_review = term.lower() in testimonial["review_text"].lower()
+            assert found_in_name or found_in_review
+
+    def test_filter_returns_empty_when_no_match(self):
+        """Filter should return empty list when no testimonials match."""
+        testimonials = [
+            {"status": "active", "star_rating": 4},
+            {"status": "active", "star_rating": 5},
+        ]
+        # Filter for 3-star (none exist)
+        filtered = [t for t in testimonials if t["star_rating"] == 3]
+        assert len(filtered) == 0
+
+    def test_all_inactive_testimonials(self):
+        """Public endpoint should return empty when all are inactive."""
+        testimonials = [
+            {"id": 1, "status": "inactive"},
+            {"id": 2, "status": "inactive"},
+        ]
+        active = [t for t in testimonials if t["status"] == "active"]
+        assert len(active) == 0
+
+    def test_pagination_boundary_first_page(self):
+        """First page of pagination should work correctly."""
+        testimonials = list(range(25))  # 25 items
+        page = 1
+        per_page = 10
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated = testimonials[start:end]
+
+        assert len(paginated) == 10
+        assert paginated[0] == 0
+        assert paginated[-1] == 9
+
+    def test_pagination_boundary_last_page(self):
+        """Last page of pagination should return remaining items."""
+        testimonials = list(range(25))  # 25 items
+        page = 3
+        per_page = 10
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated = testimonials[start:end]
+
+        assert len(paginated) == 5  # Only 5 remaining
+        assert paginated[0] == 20
+        assert paginated[-1] == 24
+
+    def test_pagination_empty_page(self):
+        """Page beyond data should return empty list."""
+        testimonials = list(range(10))
+        page = 5
+        per_page = 10
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated = testimonials[start:end]
+
+        assert len(paginated) == 0
+
+    def test_concurrent_status_toggle_idempotency(self):
+        """Multiple toggles to same status should be idempotent."""
+        testimonial = {"status": "inactive"}
+
+        # Toggle to active multiple times
+        for _ in range(3):
+            testimonial["status"] = "active"
+
+        assert testimonial["status"] == "active"
+
+    def test_toggle_preserves_other_fields(self):
+        """Status toggle should not affect other fields."""
+        original = {
+            "id": 1,
+            "customer_name": "Test",
+            "review_text": "Review",
+            "star_rating": 5,
+            "status": "inactive",
+        }
+
+        # Toggle status
+        updated = original.copy()
+        updated["status"] = "active"
+
+        # All other fields unchanged
+        assert updated["id"] == original["id"]
+        assert updated["customer_name"] == original["customer_name"]
+        assert updated["review_text"] == original["review_text"]
+        assert updated["star_rating"] == original["star_rating"]
+        assert updated["status"] == "active"

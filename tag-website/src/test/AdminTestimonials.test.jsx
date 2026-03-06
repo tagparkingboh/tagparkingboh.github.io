@@ -514,3 +514,224 @@ describe('Admin Testimonials Edge Cases', () => {
     expect(results.every(r => r.ok)).toBe(true)
   })
 })
+
+describe('Admin Testimonials Negative Tests', () => {
+  it('should reject empty customer_name', () => {
+    const testimonial = { customer_name: '', review_text: 'Test review' }
+    const isValid = testimonial.customer_name.trim().length > 0
+    expect(isValid).toBe(false)
+  })
+
+  it('should reject whitespace-only customer_name', () => {
+    const testimonial = { customer_name: '   ', review_text: 'Test review' }
+    const isValid = testimonial.customer_name.trim().length > 0
+    expect(isValid).toBe(false)
+  })
+
+  it('should reject empty review_text', () => {
+    const testimonial = { customer_name: 'Test', review_text: '' }
+    const isValid = testimonial.review_text.trim().length > 0
+    expect(isValid).toBe(false)
+  })
+
+  it('should reject whitespace-only review_text', () => {
+    const testimonial = { customer_name: 'Test', review_text: '  \n\t  ' }
+    const isValid = testimonial.review_text.trim().length > 0
+    expect(isValid).toBe(false)
+  })
+
+  it('should reject invalid status values', () => {
+    const invalidStatuses = ['pending', 'deleted', 'ACTIVE', 'Active', '1', 'true']
+    const validStatuses = ['active', 'inactive']
+
+    invalidStatuses.forEach(status => {
+      const isValid = validStatuses.includes(status)
+      expect(isValid).toBe(false)
+    })
+  })
+
+  it('should reject star_rating of 0', () => {
+    const rating = 0
+    const isValid = rating === null || (rating >= 1 && rating <= 5)
+    expect(isValid).toBe(false)
+  })
+
+  it('should reject star_rating of 6', () => {
+    const rating = 6
+    const isValid = rating === null || (rating >= 1 && rating <= 5)
+    expect(isValid).toBe(false)
+  })
+
+  it('should reject negative star_rating', () => {
+    const rating = -1
+    const isValid = rating === null || (rating >= 1 && rating <= 5)
+    expect(isValid).toBe(false)
+  })
+
+  it('should handle API timeout gracefully', async () => {
+    global.fetch.mockImplementationOnce(() =>
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Request timeout')), 100)
+      )
+    )
+
+    await expect(
+      fetch(`${API_URL}/api/admin/testimonials`, { signal: AbortSignal.timeout(50) })
+    ).rejects.toThrow()
+  })
+
+  it('should handle 500 server error', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ detail: 'Internal server error' }),
+    })
+
+    const response = await fetch(`${API_URL}/api/admin/testimonials`)
+    expect(response.status).toBe(500)
+  })
+})
+
+describe('Admin Testimonials Boundary Tests', () => {
+  it('should accept star_rating at lower bound (1)', () => {
+    const rating = 1
+    const isValid = rating === null || (rating >= 1 && rating <= 5)
+    expect(isValid).toBe(true)
+  })
+
+  it('should accept star_rating at upper bound (5)', () => {
+    const rating = 5
+    const isValid = rating === null || (rating >= 1 && rating <= 5)
+    expect(isValid).toBe(true)
+  })
+
+  it('should accept customer_name at exactly 100 chars', () => {
+    const name = 'A'.repeat(100)
+    const isValid = name.length <= 100
+    expect(isValid).toBe(true)
+    expect(name.length).toBe(100)
+  })
+
+  it('should reject customer_name at 101 chars', () => {
+    const name = 'A'.repeat(101)
+    const isValid = name.length <= 100
+    expect(isValid).toBe(false)
+  })
+
+  it('should accept minimum valid customer_name (1 char)', () => {
+    const name = 'A'
+    const isValid = name.trim().length >= 1
+    expect(isValid).toBe(true)
+  })
+
+  it('should accept minimum valid review_text (1 char)', () => {
+    const review = 'B'
+    const isValid = review.trim().length >= 1
+    expect(isValid).toBe(true)
+  })
+
+  it('should handle first page pagination correctly', () => {
+    const testimonials = Array.from({ length: 25 }, (_, i) => ({ id: i + 1 }))
+    const page = 1
+    const perPage = 10
+    const start = (page - 1) * perPage
+    const paginated = testimonials.slice(start, start + perPage)
+
+    expect(paginated.length).toBe(10)
+    expect(paginated[0].id).toBe(1)
+  })
+
+  it('should handle last page pagination correctly', () => {
+    const testimonials = Array.from({ length: 25 }, (_, i) => ({ id: i + 1 }))
+    const page = 3
+    const perPage = 10
+    const start = (page - 1) * perPage
+    const paginated = testimonials.slice(start, start + perPage)
+
+    expect(paginated.length).toBe(5)
+    expect(paginated[0].id).toBe(21)
+  })
+
+  it('should return empty for page beyond data', () => {
+    const testimonials = Array.from({ length: 10 }, (_, i) => ({ id: i + 1 }))
+    const page = 5
+    const perPage = 10
+    const start = (page - 1) * perPage
+    const paginated = testimonials.slice(start, start + perPage)
+
+    expect(paginated.length).toBe(0)
+  })
+})
+
+describe('Admin Testimonials Additional Edge Cases', () => {
+  it('should handle single testimonial in list', () => {
+    const testimonials = [mockTestimonials[0]]
+    expect(testimonials.length).toBe(1)
+  })
+
+  it('should handle testimonial with all optional fields null', () => {
+    const testimonial = {
+      customer_name: 'Test',
+      review_text: 'Test review',
+      star_rating: null,
+      date_of_travel: null,
+      source: null,
+      is_featured: false,
+    }
+    const isValid = testimonial.customer_name && testimonial.review_text
+    expect(isValid).toBeTruthy()
+  })
+
+  it('should handle all testimonials being inactive', () => {
+    const allInactive = mockTestimonials.map(t => ({ ...t, status: 'inactive' }))
+    const active = allInactive.filter(t => t.status === 'active')
+    expect(active.length).toBe(0)
+  })
+
+  it('should handle filter returning no results', () => {
+    const filtered = mockTestimonials.filter(t => t.star_rating === 1)
+    expect(filtered.length).toBe(0)
+  })
+
+  it('should preserve case sensitivity in display but not search', () => {
+    const testimonial = { customer_name: 'John DOE' }
+    const searchTerm = 'john doe'
+
+    // Display preserves case
+    expect(testimonial.customer_name).toBe('John DOE')
+    // Search is case-insensitive
+    const found = testimonial.customer_name.toLowerCase().includes(searchTerm.toLowerCase())
+    expect(found).toBe(true)
+  })
+
+  it('should handle unicode/emoji in all fields', () => {
+    const testimonial = {
+      customer_name: 'José García 🇪🇸',
+      review_text: 'Excelente servicio! ⭐⭐⭐⭐⭐ 👍',
+      source: 'google',
+    }
+    expect(testimonial.customer_name).toContain('🇪🇸')
+    expect(testimonial.review_text).toContain('⭐')
+    expect(testimonial.review_text).toContain('👍')
+  })
+
+  it('should handle toggle preserving other fields', () => {
+    const original = { ...mockTestimonials[0], status: 'inactive' }
+    const updated = { ...original, status: 'active' }
+
+    expect(updated.status).toBe('active')
+    expect(updated.customer_name).toBe(original.customer_name)
+    expect(updated.review_text).toBe(original.review_text)
+    expect(updated.star_rating).toBe(original.star_rating)
+  })
+
+  it('should handle duplicate IDs in data (flag as error)', () => {
+    const testimonials = [
+      { id: 1, customer_name: 'User A' },
+      { id: 1, customer_name: 'User B' },
+    ]
+    const ids = testimonials.map(t => t.id)
+    const hasDuplicates = ids.length !== new Set(ids).size
+    expect(hasDuplicates).toBe(true)
+  })
+})

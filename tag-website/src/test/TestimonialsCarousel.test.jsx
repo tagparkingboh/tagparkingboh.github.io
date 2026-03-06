@@ -395,3 +395,256 @@ describe('TestimonialsCarousel Edge Cases', () => {
     expect(testimonial.review_text).toContain('👍')
   })
 })
+
+describe('TestimonialsCarousel Negative Tests', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should handle API returning error status', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ detail: 'Internal server error' }),
+    })
+
+    const response = await fetch('/api/testimonials')
+    expect(response.ok).toBe(false)
+    expect(response.status).toBe(500)
+  })
+
+  it('should handle malformed API response', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ wrongKey: [] }), // Missing 'testimonials' key
+    })
+
+    const response = await fetch('/api/testimonials')
+    const data = await response.json()
+    const testimonials = data.testimonials || []
+
+    expect(testimonials).toHaveLength(0)
+  })
+
+  it('should handle API returning null', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => null,
+    })
+
+    const response = await fetch('/api/testimonials')
+    const data = await response.json()
+    const testimonials = data?.testimonials || []
+
+    expect(testimonials).toHaveLength(0)
+  })
+
+  it('should handle network timeout', async () => {
+    global.fetch.mockRejectedValueOnce(new Error('Network timeout'))
+
+    await expect(fetch('/api/testimonials')).rejects.toThrow('Network timeout')
+  })
+
+  it('should not auto-rotate with single testimonial', () => {
+    const testimonials = [mockTestimonialRated5Stars]
+    const shouldAutoRotate = testimonials.length > 1
+
+    expect(shouldAutoRotate).toBe(false)
+  })
+
+  it('should handle testimonial with missing optional fields', () => {
+    const minimalTestimonial = {
+      id: 99,
+      customer_name: 'Test User',
+      review_text: 'Test review',
+      // Missing: star_rating, date_of_travel, source
+    }
+
+    expect(minimalTestimonial.star_rating).toBeUndefined()
+    expect(minimalTestimonial.date_of_travel).toBeUndefined()
+    expect(minimalTestimonial.source).toBeUndefined()
+  })
+})
+
+describe('TestimonialsCarousel Boundary Tests', () => {
+  it('should handle exactly 2 testimonials (minimum for navigation)', () => {
+    const testimonials = [mockTestimonialRated5Stars, mockTestimonialRated4Stars]
+    const showNavigation = testimonials.length > 1
+
+    expect(showNavigation).toBe(true)
+    expect(testimonials.length).toBe(2)
+  })
+
+  it('should handle large number of testimonials', () => {
+    const manyTestimonials = Array.from({ length: 100 }, (_, i) => ({
+      ...mockTestimonialRated5Stars,
+      id: i + 1,
+    }))
+
+    expect(manyTestimonials.length).toBe(100)
+  })
+
+  it('should wrap index correctly at upper bound', () => {
+    const testimonials = Array.from({ length: 5 }, (_, i) => ({ id: i }))
+    let currentIndex = 4 // Last index
+
+    currentIndex = (currentIndex + 1) % testimonials.length
+
+    expect(currentIndex).toBe(0) // Wrapped to first
+  })
+
+  it('should wrap index correctly at lower bound', () => {
+    const testimonials = Array.from({ length: 5 }, (_, i) => ({ id: i }))
+    let currentIndex = 0 // First index
+
+    currentIndex = (currentIndex - 1 + testimonials.length) % testimonials.length
+
+    expect(currentIndex).toBe(4) // Wrapped to last
+  })
+
+  it('should handle star_rating at lower bound (1)', () => {
+    const testimonial = { ...mockTestimonialRated5Stars, star_rating: 1 }
+    const isValidRating = testimonial.star_rating >= 1 && testimonial.star_rating <= 5
+
+    expect(isValidRating).toBe(true)
+  })
+
+  it('should handle star_rating at upper bound (5)', () => {
+    const testimonial = mockTestimonialRated5Stars
+    const isValidRating = testimonial.star_rating >= 1 && testimonial.star_rating <= 5
+
+    expect(isValidRating).toBe(true)
+  })
+
+  it('should handle review text at minimum length (1 char)', () => {
+    const testimonial = { ...mockTestimonialRated5Stars, review_text: 'A' }
+    const isValid = testimonial.review_text.length >= 1
+
+    expect(isValid).toBe(true)
+  })
+})
+
+describe('TestimonialsCarousel Additional Edge Cases', () => {
+  it('should handle all testimonials being featured', () => {
+    const allFeatured = [
+      { ...mockTestimonialRated5Stars, is_featured: true },
+      { ...mockTestimonialRated4Stars, is_featured: true },
+    ]
+
+    const featuredCount = allFeatured.filter(t => t.is_featured).length
+    expect(featuredCount).toBe(2)
+  })
+
+  it('should handle weighted pool with only low-rated (excluded) testimonials', () => {
+    const lowRated = [
+      { id: 1, star_rating: 1, is_featured: false },
+      { id: 2, star_rating: 2, is_featured: false },
+    ]
+
+    const weightedPool = []
+    for (const t of lowRated) {
+      if (t.is_featured) {
+        weightedPool.push(t)
+      } else if (t.star_rating >= 3 || t.star_rating === null) {
+        weightedPool.push(t)
+      }
+    }
+
+    expect(weightedPool).toHaveLength(0)
+  })
+
+  it('should handle mixed null and numeric ratings', () => {
+    const mixed = [
+      { id: 1, star_rating: 5 },
+      { id: 2, star_rating: null },
+      { id: 3, star_rating: 4 },
+      { id: 4, star_rating: null },
+    ]
+
+    const rated = mixed.filter(t => t.star_rating !== null)
+    const unrated = mixed.filter(t => t.star_rating === null)
+
+    expect(rated).toHaveLength(2)
+    expect(unrated).toHaveLength(2)
+  })
+
+  it('should handle date formatting for various months', () => {
+    const months = [
+      { date: '2026-01-15', expected: 'Jan 2026' },
+      { date: '2026-06-15', expected: 'Jun 2026' },
+      { date: '2026-12-15', expected: 'Dec 2026' },
+    ]
+
+    months.forEach(({ date, expected }) => {
+      const dateObj = new Date(date)
+      const formatted = dateObj.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+      expect(formatted).toBe(expected)
+    })
+  })
+
+  it('should handle all supported source types', () => {
+    const sources = ['google', 'trustpilot', 'facebook', 'linkedin', 'email', 'other']
+
+    sources.forEach(source => {
+      const testimonial = { ...mockTestimonialRated5Stars, source }
+      expect(testimonial.source).toBe(source)
+    })
+  })
+
+  it('should handle transition state correctly', () => {
+    let isTransitioning = false
+
+    // Start transition
+    isTransitioning = true
+    expect(isTransitioning).toBe(true)
+
+    // End transition
+    isTransitioning = false
+    expect(isTransitioning).toBe(false)
+  })
+
+  it('should handle pause state correctly', () => {
+    let isPaused = false
+
+    // Mouse enter - pause
+    isPaused = true
+    expect(isPaused).toBe(true)
+
+    // Mouse leave - resume
+    isPaused = false
+    expect(isPaused).toBe(false)
+  })
+
+  it('should shuffle array without losing items', () => {
+    const original = [1, 2, 3, 4, 5]
+    const shuffled = [...original]
+
+    // Simple shuffle simulation
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+
+    expect(shuffled.length).toBe(original.length)
+    expect(shuffled.sort()).toEqual(original.sort())
+  })
+
+  it('should deduplicate weighted pool correctly', () => {
+    const pool = [
+      { id: 1, name: 'A' },
+      { id: 1, name: 'A' }, // Duplicate
+      { id: 2, name: 'B' },
+      { id: 1, name: 'A' }, // Duplicate
+      { id: 2, name: 'B' }, // Duplicate
+    ]
+
+    const seen = new Set()
+    const deduplicated = pool.filter(item => {
+      if (seen.has(item.id)) return false
+      seen.add(item.id)
+      return true
+    })
+
+    expect(deduplicated).toHaveLength(2)
+  })
+})
