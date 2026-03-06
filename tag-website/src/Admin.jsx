@@ -2188,19 +2188,23 @@ function Admin() {
                                           Edit Drop-off Time
                                         </button>
                                       )}
-                                      <button
-                                        className="action-btn edit-btn"
-                                        onClick={(e) => handleEditFlightDetailsClick(booking, e)}
-                                      >
-                                        Edit Flight Details
-                                      </button>
-                                      <button
-                                        className="action-btn email-btn"
-                                        onClick={(e) => handleResendEmailClick(booking, e)}
-                                        disabled={resendingEmailId === booking.id}
-                                      >
-                                        {resendingEmailId === booking.id ? 'Sending...' : 'Resend Confirmation Email'}
-                                      </button>
+                                      {booking.status?.toLowerCase() !== 'completed' && (
+                                        <button
+                                          className="action-btn edit-btn"
+                                          onClick={(e) => handleEditFlightDetailsClick(booking, e)}
+                                        >
+                                          Edit Flight Details
+                                        </button>
+                                      )}
+                                      {booking.status?.toLowerCase() !== 'completed' && (
+                                        <button
+                                          className="action-btn email-btn"
+                                          onClick={(e) => handleResendEmailClick(booking, e)}
+                                          disabled={resendingEmailId === booking.id}
+                                        >
+                                          {resendingEmailId === booking.id ? 'Sending...' : 'Resend Confirmation Email'}
+                                        </button>
+                                      )}
                                       {/* Show cancellation email button only when status is cancelled */}
                                       {booking.status?.toLowerCase() === 'cancelled' && (
                                         <button
@@ -2223,7 +2227,8 @@ function Admin() {
                                       )}
                                       {booking.payment?.stripe_payment_intent_id &&
                                        booking.payment?.status?.toLowerCase() === 'succeeded' &&
-                                       booking.status?.toLowerCase() !== 'refunded' && (
+                                       booking.status?.toLowerCase() !== 'refunded' &&
+                                       booking.status?.toLowerCase() !== 'completed' && (
                                         <button
                                           className="action-btn refund-btn"
                                           onClick={(e) => handleRefundClick(booking, e)}
@@ -2232,7 +2237,8 @@ function Admin() {
                                         </button>
                                       )}
                                       {booking.status?.toLowerCase() !== 'cancelled' &&
-                                       booking.status?.toLowerCase() !== 'refunded' && (
+                                       booking.status?.toLowerCase() !== 'refunded' &&
+                                       booking.status?.toLowerCase() !== 'completed' && (
                                         <button
                                           className="action-btn cancel-btn"
                                           onClick={(e) => handleCancelClick(booking, e)}
