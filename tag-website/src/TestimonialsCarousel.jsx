@@ -138,7 +138,7 @@ function TestimonialsCarousel() {
 
   return (
     <section id="testimonials" className="testimonials-section">
-      <h2>What our customers say</h2>
+      <h2>What our customers say:</h2>
       <div
         className="testimonials-carousel"
         onMouseEnter={() => setIsPaused(true)}
