@@ -5022,7 +5022,7 @@ function Admin() {
               <select
                 value={testimonialFilter.star_rating}
                 onChange={(e) => setTestimonialFilter({ ...testimonialFilter, star_rating: e.target.value })}
-                className="admin-select"
+                className="admin-filter-select"
               >
                 <option value="">All Ratings</option>
                 <option value="5">5★ Only</option>
@@ -5034,7 +5034,7 @@ function Admin() {
               <select
                 value={testimonialFilter.status}
                 onChange={(e) => setTestimonialFilter({ ...testimonialFilter, status: e.target.value })}
-                className="admin-select"
+                className="admin-filter-select"
               >
                 <option value="">All Status</option>
                 <option value="active">Active</option>
@@ -5046,7 +5046,7 @@ function Admin() {
                   const [field, order] = e.target.value.split('-')
                   setTestimonialSort({ field, order })
                 }}
-                className="admin-select"
+                className="admin-filter-select"
               >
                 <option value="date_added-desc">Newest First</option>
                 <option value="date_added-asc">Oldest First</option>
