@@ -5197,11 +5197,16 @@ function Admin() {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Date of Travel <span style={{ fontWeight: 'normal', color: '#888', fontSize: '12px' }}>(dd/mm/yyyy)</span></label>
-                  <input
-                    type="date"
-                    value={testimonialForm.date_of_travel}
-                    onChange={(e) => setTestimonialForm({ ...testimonialForm, date_of_travel: e.target.value })}
+                  <label>Date of Travel</label>
+                  <DatePicker
+                    selected={testimonialForm.date_of_travel ? new Date(testimonialForm.date_of_travel) : null}
+                    onChange={(date) => setTestimonialForm({
+                      ...testimonialForm,
+                      date_of_travel: date ? date.toISOString().split('T')[0] : ''
+                    })}
+                    dateFormat="dd/MM/yyyy"
+                    placeholderText="dd/mm/yyyy"
+                    className="admin-input"
                   />
                 </div>
 
