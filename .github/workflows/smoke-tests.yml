@@ -1,0 +1,95 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging]
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio httpx
+          pip install -r requirements.txt
+
+      - name: Run smoke tests
+        id: smoke_tests
+        working-directory: ./backend
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          ENVIRONMENT: test
+        run: |
+          # Run critical smoke tests only (fast subset)
+          python -m pytest \
+            tests/test_api.py \
+            tests/test_auth.py \
+            tests/test_pricing.py \
+            tests/test_booking_service.py \
+            -v \
+            --tb=short \
+            -x \
+            2>&1 | tee smoke-output.txt
+
+          EXIT_CODE=${PIPESTATUS[0]}
+
+          # Parse results
+          PASSED=$(grep -oP '\d+(?= passed)' smoke-output.txt | head -1 || echo "0")
+          FAILED=$(grep -oP '\d+(?= failed)' smoke-output.txt | head -1 || echo "0")
+
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "failed=$FAILED" >> $GITHUB_OUTPUT
+
+          exit $EXIT_CODE
+
+      - name: Report to QA Dashboard
+        if: always()
+        working-directory: ./backend
+        env:
+          TEST_RESULTS_API_KEY: ${{ secrets.TEST_RESULTS_API_KEY }}
+          API_URL: ${{ secrets.STAGING_API_URL }}
+        run: |
+          curl -X POST "$API_URL/api/test-results" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "environment": "staging",
+              "run_type": "pr_check",
+              "tests_passed": ${{ steps.smoke_tests.outputs.passed || 0 }},
+              "tests_failed": ${{ steps.smoke_tests.outputs.failed || 0 }},
+              "tests_skipped": 0,
+              "tests_total": ${{ steps.smoke_tests.outputs.passed || 0 }},
+              "commit_sha": "${{ github.sha }}",
+              "branch": "${{ github.head_ref || github.ref_name }}",
+              "logs_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "triggered_by": "github_actions",
+              "api_key": "'"$TEST_RESULTS_API_KEY"'"
+            }' || echo "Failed to report results to API"
+
+      - name: Create summary
+        if: always()
+        run: |
+          echo "## Smoke Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Passed | ${{ steps.smoke_tests.outputs.passed }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Failed | ${{ steps.smoke_tests.outputs.failed }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | ${{ github.head_ref || github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
