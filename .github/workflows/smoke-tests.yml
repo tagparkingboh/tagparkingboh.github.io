@@ -57,8 +57,33 @@ jobs:
 
           echo "passed=$PASSED" >> $GITHUB_OUTPUT
           echo "failed=$FAILED" >> $GITHUB_OUTPUT
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
 
           exit $EXIT_CODE
+        continue-on-error: true
+
+      - name: Send email notification on failure
+        if: steps.smoke_tests.outputs.exit_code != '0'
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        run: |
+          curl -X POST "https://api.sendgrid.com/v3/mail/send" \
+            -H "Authorization: Bearer $SENDGRID_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "personalizations": [{
+                "to": [
+                  {"email": "qa.orca.contact@gmail.com"},
+                  {"email": "kristian@tagparking.co.uk"}
+                ],
+                "subject": "🚨 TAG Smoke Tests Failed on ${{ github.head_ref || github.ref_name }}"
+              }],
+              "from": {"email": "no-reply@tagparking.co.uk", "name": "TAG Test Suite"},
+              "content": [{
+                "type": "text/html",
+                "value": "<h2>Smoke Tests Failed</h2><p><strong>Branch:</strong> ${{ github.head_ref || github.ref_name }}</p><p><strong>Commit:</strong> ${{ github.sha }}</p><p><strong>Results:</strong></p><ul><li>Passed: ${{ steps.smoke_tests.outputs.passed }}</li><li>Failed: ${{ steps.smoke_tests.outputs.failed }}</li></ul><p><a href=\"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\">View full logs</a></p>"
+              }]
+            }' || echo "Failed to send email notification"
 
       - name: Report to QA Dashboard
         if: always()
@@ -93,3 +118,9 @@ jobs:
           echo "| Passed | ${{ steps.smoke_tests.outputs.passed }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Failed | ${{ steps.smoke_tests.outputs.failed }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Branch | ${{ github.head_ref || github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check test results
+        if: steps.smoke_tests.outputs.exit_code != '0'
+        run: |
+          echo "Smoke tests failed! See the logs above for details."
+          exit 1
