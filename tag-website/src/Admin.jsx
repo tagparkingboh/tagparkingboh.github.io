@@ -1620,7 +1620,9 @@ function Admin() {
       })
 
       if (response.ok) {
-        const inspections = await response.json()
+        const data = await response.json()
+        // API returns { inspections: [...] } or just [...]
+        const inspections = Array.isArray(data) ? data : (data.inspections || [])
         // Find the pickup/return inspection
         const returnInspection = inspections.find(i => i.inspection_type === 'pickup')
         setReturnInspectionData(returnInspection || null)
@@ -1657,7 +1659,9 @@ function Admin() {
       })
 
       if (response.ok) {
-        const inspections = await response.json()
+        const data = await response.json()
+        // API returns { inspections: [...] } or just [...]
+        const inspections = Array.isArray(data) ? data : (data.inspections || [])
         // Find the dropoff inspection
         const dropoffInspection = inspections.find(i => i.inspection_type === 'dropoff')
         setDropoffInspectionData(dropoffInspection || null)
