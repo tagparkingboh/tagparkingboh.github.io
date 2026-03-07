@@ -164,6 +164,22 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
     return `${parts[0]}:${parts[1]}`
   }
 
+  // Format pickup time: arrival time + 30 minutes
+  const formatPickupTime = (timeStr) => {
+    if (!timeStr) return ''
+    const parts = timeStr.split(':')
+    let hours = parseInt(parts[0], 10)
+    let minutes = parseInt(parts[1], 10) + 30
+    if (minutes >= 60) {
+      minutes -= 60
+      hours += 1
+    }
+    if (hours >= 24) {
+      hours -= 24
+    }
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
+  }
+
   // Get month name
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -332,7 +348,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                       <div key={booking.id} className="detail-booking-card">
                         <div className="booking-header-row">
                           <div className="booking-time">
-                            {formatTime(booking.pickup_time_from || booking.pickup_time)}
+                            {formatPickupTime(booking.pickup_time_from || booking.pickup_time)}
                           </div>
                           <div className="booking-flight">
                             {booking.pickup_airline_name && <span className="airline-name">{booking.pickup_airline_name}</span>}
