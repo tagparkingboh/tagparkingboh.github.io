@@ -1498,7 +1498,7 @@ function Admin() {
     setBookingToEdit(booking)
     setEditForm({
       pickup_date: booking.pickup_date || '',
-      pickup_time: addMinutesToTime(booking.flight_arrival_time || booking.pickup_time) || '',
+      pickup_time: booking.flight_arrival_time || booking.pickup_time || '',
     })
     setShowEditModal(true)
   }
@@ -1518,8 +1518,8 @@ function Admin() {
         },
         body: JSON.stringify({
           pickup_date: editForm.pickup_date || null,
-          pickup_time: subtractMinutesFromTime(editForm.pickup_time) || null,
-          flight_arrival_time: subtractMinutesFromTime(editForm.pickup_time) || null,
+          pickup_time: editForm.pickup_time || null,
+          flight_arrival_time: editForm.pickup_time || null,
         }),
       })
 

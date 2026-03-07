@@ -1894,11 +1894,13 @@ async def update_booking(
             "pickup_airline_name": booking.pickup_airline_name,
             "pickup_flight_number": booking.pickup_flight_number,
             "pickup_origin": booking.pickup_origin,
+            "flight_arrival_time": booking.flight_arrival_time.strftime("%H:%M") if booking.flight_arrival_time else None,
             "dropoff_date": booking.dropoff_date.isoformat() if booking.dropoff_date else None,
             "dropoff_time": booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None,
             "dropoff_airline_name": booking.dropoff_airline_name,
             "dropoff_flight_number": booking.dropoff_flight_number,
             "dropoff_destination": booking.dropoff_destination,
+            "flight_departure_time": booking.flight_departure_time.strftime("%H:%M") if booking.flight_departure_time else None,
         }
     }
 
