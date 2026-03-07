@@ -343,12 +343,12 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                 </h4>
                 <div className="detail-bookings">
                   {selectedDayBookings.pickups
-                    .sort((a, b) => (a.pickup_time_from || a.pickup_time || '').localeCompare(b.pickup_time_from || b.pickup_time || ''))
+                    .sort((a, b) => (a.pickup_time_from || a.flight_arrival_time || a.pickup_time || '').localeCompare(b.pickup_time_from || b.flight_arrival_time || b.pickup_time || ''))
                     .map(booking => (
                       <div key={booking.id} className="detail-booking-card">
                         <div className="booking-header-row">
                           <div className="booking-time">
-                            {formatPickupTime(booking.pickup_time_from || booking.pickup_time)}
+                            {formatPickupTime(booking.pickup_time_from || booking.flight_arrival_time || booking.pickup_time)}
                           </div>
                           <div className="booking-flight">
                             {booking.pickup_airline_name && <span className="airline-name">{booking.pickup_airline_name}</span>}

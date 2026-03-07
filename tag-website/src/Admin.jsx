@@ -10,6 +10,40 @@ import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// Add 30 minutes to arrival time to get pickup time
+const addMinutesToTime = (timeStr, minutes = 30) => {
+  if (!timeStr) return ''
+  const parts = timeStr.split(':')
+  if (parts.length < 2) return timeStr
+  let hours = parseInt(parts[0], 10)
+  let mins = parseInt(parts[1], 10) + minutes
+  if (mins >= 60) {
+    mins -= 60
+    hours += 1
+  }
+  if (hours >= 24) {
+    hours -= 24
+  }
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+}
+
+// Subtract 30 minutes from pickup time to get arrival time (for storage)
+const subtractMinutesFromTime = (timeStr, minutes = 30) => {
+  if (!timeStr) return ''
+  const parts = timeStr.split(':')
+  if (parts.length < 2) return timeStr
+  let hours = parseInt(parts[0], 10)
+  let mins = parseInt(parts[1], 10) - minutes
+  if (mins < 0) {
+    mins += 60
+    hours -= 1
+  }
+  if (hours < 0) {
+    hours += 24
+  }
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+}
+
 // Photo slots - must match Employee.jsx
 const PHOTO_SLOTS = [
   { key: 'front', label: 'Front' },
@@ -1464,7 +1498,7 @@ function Admin() {
     setBookingToEdit(booking)
     setEditForm({
       pickup_date: booking.pickup_date || '',
-      pickup_time: booking.pickup_time || '',
+      pickup_time: addMinutesToTime(booking.flight_arrival_time || booking.pickup_time) || '',
     })
     setShowEditModal(true)
   }
@@ -1484,7 +1518,8 @@ function Admin() {
         },
         body: JSON.stringify({
           pickup_date: editForm.pickup_date || null,
-          pickup_time: editForm.pickup_time || null,
+          pickup_time: subtractMinutesFromTime(editForm.pickup_time) || null,
+          flight_arrival_time: subtractMinutesFromTime(editForm.pickup_time) || null,
         }),
       })
 
@@ -2310,7 +2345,7 @@ function Admin() {
                                           <span className="detail-label">Pick-up Time</span>
                                           <span className="detail-value">
                                             {booking.booking_source === 'manual'
-                                              ? (booking.pickup_time || '-')
+                                              ? (addMinutesToTime(booking.flight_arrival_time || booking.pickup_time) || '-')
                                               : (booking.pickup_collection_time
                                                   ? `From ${booking.pickup_collection_time} onwards`
                                                   : '-')}
@@ -5351,13 +5386,7 @@ function Admin() {
             <div className="modal-booking-info">
               <p><strong>Reference:</strong> {bookingToEdit.reference}</p>
               <p><strong>Customer:</strong> {bookingToEdit.customer?.first_name} {bookingToEdit.customer?.last_name}</p>
-              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {bookingToEdit.pickup_time ? `at ${(() => {
-                const [h, m] = bookingToEdit.pickup_time.split(':').map(Number)
-                const totalMins = h * 60 + m + 30
-                const newH = Math.floor(totalMins / 60) % 24
-                const newM = totalMins % 60
-                return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
-              })()}` : ''}</p>
+              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {(bookingToEdit.flight_arrival_time || bookingToEdit.pickup_time) ? `at ${addMinutesToTime(bookingToEdit.flight_arrival_time || bookingToEdit.pickup_time)}` : ''}</p>
             </div>
             <div className="modal-form">
               <div className="modal-form-group">
