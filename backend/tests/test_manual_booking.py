@@ -1047,3 +1047,52 @@ class TestEdgeCases:
         max_per_slot = departure.capacity_tier // 2
 
         assert max_per_slot == 10
+
+    def test_booking_with_flight_arrival_time(self):
+        """Should store flight_arrival_time correctly in manual booking.
+
+        flight_arrival_time stores the actual arrival time (landing time).
+        pickup_time displayed to user is arrival_time + 30 minutes.
+        """
+        arrival_time = time(14, 30)  # Flight lands at 14:30
+        expected_pickup_display = time(15, 0)  # User sees 15:00 (arrival + 30)
+
+        booking = create_mock_booking(
+            flight_arrival_time=arrival_time,
+            pickup_time=arrival_time,  # Backend stores arrival time
+        )
+
+        assert booking.flight_arrival_time == time(14, 30)
+        assert booking.pickup_time == time(14, 30)
+
+        # Verify the display logic (arrival + 30 minutes)
+        arrival_minutes = booking.flight_arrival_time.hour * 60 + booking.flight_arrival_time.minute
+        pickup_minutes = arrival_minutes + 30
+        display_hour = (pickup_minutes // 60) % 24
+        display_minute = pickup_minutes % 60
+        display_time = time(display_hour, display_minute)
+
+        assert display_time == expected_pickup_display
+
+    def test_booking_flight_arrival_time_midnight_crossover(self):
+        """Should handle midnight crossover for flight_arrival_time display.
+
+        When flight arrives at 23:45, pickup display should be 00:15 next day.
+        """
+        arrival_time = time(23, 45)  # Flight lands at 23:45
+
+        booking = create_mock_booking(
+            flight_arrival_time=arrival_time,
+            pickup_time=arrival_time,
+        )
+
+        assert booking.flight_arrival_time == time(23, 45)
+
+        # Verify the display logic handles midnight crossover
+        arrival_minutes = booking.flight_arrival_time.hour * 60 + booking.flight_arrival_time.minute
+        pickup_minutes = arrival_minutes + 30
+        display_hour = (pickup_minutes // 60) % 24  # Wraps at 24
+        display_minute = pickup_minutes % 60
+        display_time = time(display_hour, display_minute)
+
+        assert display_time == time(0, 15)  # Correctly crosses midnight

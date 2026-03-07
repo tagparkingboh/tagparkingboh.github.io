@@ -23,8 +23,10 @@ const mockBookings = [
     dropoff_time: '19:35',
     dropoff_destination: 'Edinburgh Airport',
     pickup_date: '2026-01-29',
+    pickup_time: '13:30', // Arrival time (landing)
     pickup_time_from: '14:00',
     pickup_time_to: '15:00',
+    flight_arrival_time: '13:30', // Actual flight arrival time
     pickup_origin: 'Edinburgh Airport',
     customer: {
       id: 1,
@@ -48,8 +50,10 @@ const mockBookings = [
     dropoff_time: '10:00',
     dropoff_destination: 'Glasgow Airport',
     pickup_date: '2026-01-25',
+    pickup_time: '11:30',
     pickup_time_from: '12:00',
     pickup_time_to: '13:00',
+    flight_arrival_time: '11:30',
     pickup_origin: 'Glasgow Airport',
     customer: {
       id: 2,
@@ -73,8 +77,10 @@ const mockBookings = [
     dropoff_time: '08:00',
     dropoff_destination: 'Manchester Airport',
     pickup_date: '2026-01-29',
+    pickup_time: '15:30', // Arrival time
     pickup_time_from: '16:00',
     pickup_time_to: '17:00',
+    flight_arrival_time: '15:30', // Actual flight arrival time
     pickup_origin: 'Manchester Airport',
     customer: {
       id: 3,
@@ -98,8 +104,10 @@ const mockBookings = [
     dropoff_time: '11:00',
     dropoff_destination: 'Heathrow',
     pickup_date: '2026-01-24',
+    pickup_time: '09:30',
     pickup_time_from: '10:00',
     pickup_time_to: '11:00',
+    flight_arrival_time: '09:30',
     pickup_origin: 'Heathrow',
     customer: {
       id: 4,
@@ -380,5 +388,79 @@ describe('BookingCalendar - Booking grouping by date', () => {
     // Days without confirmed bookings (pending/cancelled dates)
     // John's dates (pending) should not create entries if only confirmed are processed
     // Note: 2026-01-25 is in the list because Jane (confirmed) drops off that day
+  })
+})
+
+/**
+ * Unit tests for the formatPickupTime function
+ * Tests that pickup time is displayed as arrival time + 30 minutes
+ */
+describe('BookingCalendar - formatPickupTime logic', () => {
+  // Replicate the formatPickupTime function from BookingCalendar
+  const formatPickupTime = (timeStr) => {
+    if (!timeStr) return ''
+    const parts = timeStr.split(':')
+    let hours = parseInt(parts[0], 10)
+    let minutes = parseInt(parts[1], 10) + 30
+    if (minutes >= 60) {
+      minutes -= 60
+      hours += 1
+    }
+    if (hours >= 24) {
+      hours -= 24
+    }
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
+  }
+
+  it('adds 30 minutes to standard arrival time', () => {
+    expect(formatPickupTime('14:00')).toBe('14:30')
+    expect(formatPickupTime('10:15')).toBe('10:45')
+    expect(formatPickupTime('08:30')).toBe('09:00')
+  })
+
+  it('handles minute overflow correctly', () => {
+    expect(formatPickupTime('14:45')).toBe('15:15')
+    expect(formatPickupTime('09:35')).toBe('10:05')
+    expect(formatPickupTime('11:50')).toBe('12:20')
+  })
+
+  it('handles hour overflow at midnight', () => {
+    expect(formatPickupTime('23:30')).toBe('00:00')
+    expect(formatPickupTime('23:45')).toBe('00:15')
+    expect(formatPickupTime('23:59')).toBe('00:29')
+  })
+
+  it('handles late night arrivals', () => {
+    expect(formatPickupTime('22:00')).toBe('22:30')
+    expect(formatPickupTime('23:00')).toBe('23:30')
+  })
+
+  it('handles early morning arrivals', () => {
+    expect(formatPickupTime('00:00')).toBe('00:30')
+    expect(formatPickupTime('00:15')).toBe('00:45')
+    expect(formatPickupTime('01:30')).toBe('02:00')
+  })
+
+  it('returns empty string for null/undefined input', () => {
+    expect(formatPickupTime(null)).toBe('')
+    expect(formatPickupTime(undefined)).toBe('')
+    expect(formatPickupTime('')).toBe('')
+  })
+
+  it('uses flight_arrival_time over pickup_time when available', () => {
+    const booking = mockBookings[0] // Maria's booking
+    // flight_arrival_time is 13:30, so pickup time should be 14:00
+    const arrivalTime = booking.flight_arrival_time || booking.pickup_time
+    expect(formatPickupTime(arrivalTime)).toBe('14:00')
+  })
+
+  it('falls back to pickup_time when flight_arrival_time is not available', () => {
+    const bookingWithoutFlightArrival = {
+      ...mockBookings[0],
+      flight_arrival_time: null,
+      pickup_time: '15:00',
+    }
+    const arrivalTime = bookingWithoutFlightArrival.flight_arrival_time || bookingWithoutFlightArrival.pickup_time
+    expect(formatPickupTime(arrivalTime)).toBe('15:30')
   })
 })

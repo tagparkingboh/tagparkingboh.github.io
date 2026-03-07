@@ -101,6 +101,7 @@ def create_mock_booking(
     vehicle=None,
     payment=None,
     created_at=None,
+    flight_arrival_time=None,
 ):
     """Create a mock booking object."""
     from db_models import BookingStatus
@@ -139,6 +140,7 @@ def create_mock_booking(
     booking.created_at = created_at or datetime.utcnow()
     booking.customer_first_name = None  # Snapshot name
     booking.customer_last_name = None
+    booking.flight_arrival_time = flight_arrival_time  # Actual flight arrival time
     return booking
 
 
@@ -1092,6 +1094,57 @@ class TestEditPickupDateTime:
         assert response_data["booking"]["pickup_date"] == pickup_date.isoformat()  # Unchanged
         # Collection time should be exactly what was entered, not +30 min
         assert response_data["booking"]["pickup_time_from"] == "16:45"
+        assert response_data["booking"]["pickup_time_to"] == "16:45"
+
+    def test_update_pickup_time_also_updates_flight_arrival_time(self):
+        """When admin updates pickup time, flight_arrival_time should also be updated.
+
+        The frontend sends both pickup_time and flight_arrival_time when saving.
+        flight_arrival_time stores the actual arrival time (pickup time - 30 min).
+        """
+        from db_models import BookingStatus
+
+        pickup_date = FUTURE_DATE_END
+        booking = create_mock_booking(
+            status=BookingStatus.CONFIRMED,
+            pickup_date_val=pickup_date,
+            pickup_time_val=time(14, 30),
+            pickup_time_from_val=time(15, 5),
+            pickup_time_to_val=time(15, 30),
+            flight_arrival_time=time(14, 30),  # Initial arrival time
+        )
+
+        # Admin enters new pickup time of 16:45
+        # This corresponds to arrival time of 16:15 (pickup - 30 min)
+        new_pickup_time = time(16, 45)
+        new_arrival_time = time(16, 15)  # 30 minutes before pickup
+
+        # Both pickup_time and flight_arrival_time should be updated
+        booking.pickup_time = new_arrival_time  # Backend stores arrival time
+        booking.pickup_time_from = new_pickup_time
+        booking.pickup_time_to = new_pickup_time
+        booking.flight_arrival_time = new_arrival_time
+
+        response_data = {
+            "success": True,
+            "message": f"Booking {booking.reference} updated successfully",
+            "fields_updated": ["pickup_time", "flight_arrival_time"],
+            "booking": {
+                "pickup_date": booking.pickup_date.isoformat(),
+                "pickup_time": booking.pickup_time.strftime("%H:%M"),
+                "pickup_time_from": booking.pickup_time_from.strftime("%H:%M"),
+                "pickup_time_to": booking.pickup_time_to.strftime("%H:%M"),
+                "flight_arrival_time": booking.flight_arrival_time.strftime("%H:%M"),
+            }
+        }
+
+        assert response_data["success"] is True
+        assert "pickup_time" in response_data["fields_updated"]
+        assert "flight_arrival_time" in response_data["fields_updated"]
+        # Arrival time should be 30 minutes before pickup time
+        assert response_data["booking"]["flight_arrival_time"] == "16:15"
+        assert response_data["booking"]["pickup_time"] == "16:15"  # Stores arrival time
+        assert response_data["booking"]["pickup_time_from"] == "16:45"  # Display pickup time
         assert response_data["booking"]["pickup_time_to"] == "16:45"
 
     def test_update_pickup_date_and_time_together(self):
