@@ -5398,7 +5398,7 @@ function Admin() {
                 />
               </div>
               <div className="modal-form-group">
-                <label>New Pickup Time (anticipated collection time, 24hr)</label>
+                <label>Arrival Time (24hr)</label>
                 <input
                   type="text"
                   placeholder="HH:MM (e.g. 14:30)"
