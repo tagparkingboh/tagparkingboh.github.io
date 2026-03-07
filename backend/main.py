@@ -1871,8 +1871,19 @@ async def update_booking(
 
     if request.flight_arrival_time is not None:
         parts = request.flight_arrival_time.split(':')
-        booking.flight_arrival_time = dt_time(int(parts[0]), int(parts[1]))
+        arrival_time = dt_time(int(parts[0]), int(parts[1]))
+        booking.flight_arrival_time = arrival_time
+
+        # Calculate pickup_time as arrival + 30 minutes
+        arrival_dt = datetime.combine(datetime.today(), arrival_time)
+        pickup_dt = arrival_dt + timedelta(minutes=30)
+        pickup_time = pickup_dt.time()
+
+        booking.pickup_time = pickup_time
+        booking.pickup_time_from = pickup_time
+        booking.pickup_time_to = pickup_time
         updates_made.append("flight_arrival_time")
+        updates_made.append("pickup_time")
 
     if not updates_made:
         raise HTTPException(status_code=400, detail="No fields to update")
