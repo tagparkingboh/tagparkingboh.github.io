@@ -1464,7 +1464,7 @@ function Admin() {
     setBookingToEdit(booking)
     setEditForm({
       pickup_date: booking.pickup_date || '',
-      pickup_time: booking.pickup_time || '',
+      pickup_time: booking.flight_arrival_time || booking.pickup_time || '',
     })
     setShowEditModal(true)
   }
@@ -1485,6 +1485,7 @@ function Admin() {
         body: JSON.stringify({
           pickup_date: editForm.pickup_date || null,
           pickup_time: editForm.pickup_time || null,
+          flight_arrival_time: editForm.pickup_time || null,
         }),
       })
 
@@ -2309,11 +2310,9 @@ function Admin() {
                                         <div className="booking-detail">
                                           <span className="detail-label">Pick-up Time</span>
                                           <span className="detail-value">
-                                            {booking.booking_source === 'manual'
-                                              ? (booking.pickup_time || '-')
-                                              : (booking.pickup_collection_time
-                                                  ? `From ${booking.pickup_collection_time} onwards`
-                                                  : '-')}
+                                            {booking.pickup_time
+                                              ? `From ${booking.pickup_time} onwards`
+                                              : '-'}
                                           </span>
                                         </div>
                                         <div className="booking-detail">
@@ -5351,13 +5350,7 @@ function Admin() {
             <div className="modal-booking-info">
               <p><strong>Reference:</strong> {bookingToEdit.reference}</p>
               <p><strong>Customer:</strong> {bookingToEdit.customer?.first_name} {bookingToEdit.customer?.last_name}</p>
-              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {bookingToEdit.pickup_time ? `at ${(() => {
-                const [h, m] = bookingToEdit.pickup_time.split(':').map(Number)
-                const totalMins = h * 60 + m + 30
-                const newH = Math.floor(totalMins / 60) % 24
-                const newM = totalMins % 60
-                return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
-              })()}` : ''}</p>
+              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {bookingToEdit.pickup_time ? `at ${bookingToEdit.pickup_time}` : ''}</p>
             </div>
             <div className="modal-form">
               <div className="modal-form-group">
@@ -5369,7 +5362,7 @@ function Admin() {
                 />
               </div>
               <div className="modal-form-group">
-                <label>New Pickup Time (anticipated collection time, 24hr)</label>
+                <label>Arrival Time (24hr)</label>
                 <input
                   type="text"
                   placeholder="HH:MM (e.g. 14:30)"

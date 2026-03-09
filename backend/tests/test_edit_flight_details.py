@@ -77,8 +77,6 @@ def create_mock_booking(
     dropoff_destination="Tenerife",
     pickup_date_val=None,
     pickup_time_val=None,
-    pickup_time_from_val=None,
-    pickup_time_to_val=None,
     pickup_airline_name=None,
     pickup_airline_code=None,
     pickup_flight_number="FR5524",
@@ -122,9 +120,7 @@ def create_mock_booking(
 
     # Pickup fields
     booking.pickup_date = pickup_date_val or (today + timedelta(days=14))
-    booking.pickup_time = pickup_time_val or time(14, 30)
-    booking.pickup_time_from = pickup_time_from_val or time(15, 0)
-    booking.pickup_time_to = pickup_time_to_val or time(15, 0)
+    booking.pickup_time = pickup_time_val or time(15, 0)  # Collection time (arrival + 30)
     booking.pickup_airline_name = pickup_airline_name
     booking.pickup_airline_code = pickup_airline_code
     booking.pickup_flight_number = pickup_flight_number

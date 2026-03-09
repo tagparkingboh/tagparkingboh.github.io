@@ -176,11 +176,10 @@ class TestBookingDateCorrection:
         arrival_time = time(0, 35)
         arrival_dt = datetime.combine(FUTURE_DATE_NEXT, arrival_time)
 
-        pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()  # 01:05
-        pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()    # 01:05
+        # pickup_time = arrival + 30 minutes
+        pickup_time = (arrival_dt + timedelta(minutes=30)).time()  # 01:05
 
-        assert pickup_time_from == time(1, 5)
-        assert pickup_time_to == time(1, 5)
+        assert pickup_time == time(1, 5)
 
     def test_late_evening_arrival_same_day(self):
         """Late evening arrival (23:30) stays on same day."""
