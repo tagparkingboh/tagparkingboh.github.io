@@ -164,21 +164,8 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
     return `${parts[0]}:${parts[1]}`
   }
 
-  // Format pickup time: arrival time + 30 minutes
-  const formatPickupTime = (timeStr) => {
-    if (!timeStr) return ''
-    const parts = timeStr.split(':')
-    let hours = parseInt(parts[0], 10)
-    let minutes = parseInt(parts[1], 10) + 30
-    if (minutes >= 60) {
-      minutes -= 60
-      hours += 1
-    }
-    if (hours >= 24) {
-      hours -= 24
-    }
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
-  }
+  // Format pickup time - pickup_time is now the collection time (arrival + 30)
+  // No longer need to add 30 minutes
 
   // Get month name
   const monthNames = [
@@ -343,12 +330,12 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                 </h4>
                 <div className="detail-bookings">
                   {selectedDayBookings.pickups
-                    .sort((a, b) => (a.pickup_time_from || a.flight_arrival_time || a.pickup_time || '').localeCompare(b.pickup_time_from || b.flight_arrival_time || b.pickup_time || ''))
+                    .sort((a, b) => (a.pickup_time || '').localeCompare(b.pickup_time || ''))
                     .map(booking => (
                       <div key={booking.id} className="detail-booking-card">
                         <div className="booking-header-row">
                           <div className="booking-time">
-                            {formatPickupTime(booking.pickup_time_from || booking.flight_arrival_time || booking.pickup_time)}
+                            {formatTime(booking.pickup_time)}
                           </div>
                           <div className="booking-flight">
                             {booking.pickup_airline_name && <span className="airline-name">{booking.pickup_airline_name}</span>}

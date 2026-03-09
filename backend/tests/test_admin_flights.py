@@ -135,8 +135,6 @@ def create_mock_booking(
     dropoff_slot="165",
     pickup_date_val=None,
     pickup_time_val=None,
-    pickup_time_from_val=None,
-    pickup_time_to_val=None,
     pickup_flight_number=None,
 ):
     """Create a mock booking object."""
@@ -152,9 +150,7 @@ def create_mock_booking(
     booking.dropoff_time = dropoff_time_val or time(7, 15)
     booking.dropoff_slot = dropoff_slot
     booking.pickup_date = pickup_date_val or FUTURE_DATE_END
-    booking.pickup_time = pickup_time_val or time(14, 0)
-    booking.pickup_time_from = pickup_time_from_val or time(14, 35)
-    booking.pickup_time_to = pickup_time_to_val or time(15, 0)
+    booking.pickup_time = pickup_time_val or time(14, 30)  # Collection time
     booking.pickup_flight_number = pickup_flight_number
     booking.status = "confirmed"
     return booking
@@ -1041,8 +1037,8 @@ class TestArrivalTimeUpdateRecalculatesBookings:
 
         assert booking.pickup_time == time(15, 30)
 
-    def test_update_arrival_time_recalculates_pickup_time_from(self):
-        """Updating arrival time should recalculate booking pickup_time_from (landing + 30 min)."""
+    def test_update_arrival_time_recalculates_pickup_time(self):
+        """Updating arrival time should recalculate booking pickup_time (arrival + 30 min)."""
         arrival = create_mock_arrival(
             id=1,
             arrival_time_val=time(14, 0),
@@ -1050,46 +1046,21 @@ class TestArrivalTimeUpdateRecalculatesBookings:
         booking = create_mock_booking(
             id=1,
             arrival_id=arrival.id,
-            pickup_time_from_val=time(14, 30),  # 14:00 + 30 min
+            pickup_time_val=time(14, 30),  # 14:00 + 30 min
         )
 
-        assert booking.pickup_time_from == time(14, 30)
+        assert booking.pickup_time == time(14, 30)
 
         # Update arrival time to 16:00
         new_arrival_time = time(16, 0)
 
         from datetime import datetime, timedelta
         arrival_datetime = datetime.combine(date.today(), new_arrival_time)
-        new_pickup_from_datetime = arrival_datetime + timedelta(minutes=30)
-        booking.pickup_time_from = new_pickup_from_datetime.time()
+        new_pickup_datetime = arrival_datetime + timedelta(minutes=30)
+        booking.pickup_time = new_pickup_datetime.time()
 
-        # New: arrival 16:00, pickup_time_from should be 16:30
-        assert booking.pickup_time_from == time(16, 30)
-
-    def test_update_arrival_time_recalculates_pickup_time_to(self):
-        """Updating arrival time should recalculate booking pickup_time_to (landing + 30 min)."""
-        arrival = create_mock_arrival(
-            id=1,
-            arrival_time_val=time(14, 0),
-        )
-        booking = create_mock_booking(
-            id=1,
-            arrival_id=arrival.id,
-            pickup_time_to_val=time(14, 30),  # 14:00 + 30 min
-        )
-
-        assert booking.pickup_time_to == time(14, 30)
-
-        # Update arrival time to 17:30
-        new_arrival_time = time(17, 30)
-
-        from datetime import datetime, timedelta
-        arrival_datetime = datetime.combine(date.today(), new_arrival_time)
-        new_pickup_to_datetime = arrival_datetime + timedelta(minutes=30)
-        booking.pickup_time_to = new_pickup_to_datetime.time()
-
-        # New: arrival 17:30, pickup_time_to should be 18:00
-        assert booking.pickup_time_to == time(18, 0)
+        # New: arrival 16:00, pickup_time should be 16:30
+        assert booking.pickup_time == time(16, 30)
 
     def test_update_arrival_time_shows_warning_with_count(self):
         """Updating arrival time should show warning with number of bookings updated."""

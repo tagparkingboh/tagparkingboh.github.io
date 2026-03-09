@@ -88,8 +88,6 @@ def create_mock_booking(
     dropoff_destination="Tenerife",
     pickup_date_val=None,
     pickup_time_val=None,
-    pickup_time_from_val=None,
-    pickup_time_to_val=None,
     pickup_flight_number="FR5524",
     pickup_origin="Tenerife",
     departure_id=None,
@@ -124,9 +122,7 @@ def create_mock_booking(
     booking.dropoff_flight_number = dropoff_flight_number
     booking.dropoff_destination = dropoff_destination
     booking.pickup_date = pickup_date_val or FUTURE_DATE_END
-    booking.pickup_time = pickup_time_val or time(14, 30)
-    booking.pickup_time_from = pickup_time_from_val or time(15, 5)
-    booking.pickup_time_to = pickup_time_to_val or time(15, 30)
+    booking.pickup_time = pickup_time_val or time(15, 0)  # Collection time (arrival + 30)
     booking.pickup_flight_number = pickup_flight_number
     booking.pickup_origin = pickup_origin
     booking.departure_id = departure_id
@@ -779,26 +775,19 @@ class TestUpdateBooking:
         assert "pickup_date" in response_data["fields_updated"]
         assert response_data["booking"]["pickup_date"] == new_pickup_date.isoformat()
 
-    def test_update_pickup_time_recalculates_windows(self):
-        """Updating pickup_time should recalculate pickup_time_from and pickup_time_to."""
+    def test_pickup_time_is_collection_time(self):
+        """pickup_time should represent the collection time (flight_arrival_time + 30 min)."""
         from datetime import timedelta
 
+        # Create booking with pickup_time as collection time
         booking = create_mock_booking(
-            pickup_time_val=time(14, 30),
-            pickup_time_from_val=time(15, 5),
-            pickup_time_to_val=time(15, 30),
+            pickup_time_val=time(15, 0),  # Collection time
+            flight_arrival_time=time(14, 30),  # Arrival time
         )
 
-        new_arrival_time = time(0, 35)
-        booking.pickup_time = new_arrival_time
-
-        arrival_dt = datetime.combine(date.today(), new_arrival_time)
-        booking.pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()
-        booking.pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
-
-        assert booking.pickup_time == time(0, 35)
-        assert booking.pickup_time_from == time(1, 5)
-        assert booking.pickup_time_to == time(1, 5)
+        # Verify pickup_time is the collection time (arrival + 30)
+        assert booking.pickup_time == time(15, 0)
+        assert booking.flight_arrival_time == time(14, 30)
 
     def test_update_nonexistent_booking_returns_404(self):
         """Should return 404 for non-existent booking."""
@@ -871,18 +860,17 @@ class TestUpdateBookingOvernightFix:
         assert booking.pickup_date == corrected_date
         assert booking.pickup_time == time(0, 35)
 
-    def test_overnight_pickup_windows_correct(self):
-        """Overnight flight pickup windows calculated correctly."""
+    def test_overnight_pickup_time_correct(self):
+        """Overnight flight pickup time calculated correctly (arrival + 30 min)."""
         from datetime import timedelta
 
         arrival_time = time(0, 35)
         arrival_dt = datetime.combine(date.today(), arrival_time)
 
-        pickup_time_from = (arrival_dt + timedelta(minutes=30)).time()
-        pickup_time_to = (arrival_dt + timedelta(minutes=30)).time()
+        # pickup_time = arrival + 30 minutes
+        pickup_time = (arrival_dt + timedelta(minutes=30)).time()
 
-        assert pickup_time_from == time(1, 5)
-        assert pickup_time_to == time(1, 5)
+        assert pickup_time == time(1, 5)
 
     def test_late_evening_no_date_change(self):
         """Flight arriving 22:00 should stay on same date."""
@@ -1058,8 +1046,7 @@ class TestEditPickupDateTime:
     def test_update_pickup_time_only(self):
         """Should successfully update only the pickup time (collection time).
 
-        When admin edits pickup time, they're setting the collection time directly,
-        not the arrival flight time. pickup_time_from/to should match the entered time.
+        pickup_time is now the collection time (arrival + 30).
         """
         from db_models import BookingStatus
 
@@ -1067,16 +1054,11 @@ class TestEditPickupDateTime:
         booking = create_mock_booking(
             status=BookingStatus.CONFIRMED,
             pickup_date_val=pickup_date,
-            pickup_time_val=time(14, 30),
-            pickup_time_from_val=time(15, 5),
-            pickup_time_to_val=time(15, 30),
+            pickup_time_val=time(15, 0),  # Collection time
         )
 
         new_pickup_time = time(16, 45)
-
-        # Admin sets collection time directly - no +30 minute offset
-        booking.pickup_time_from = new_pickup_time
-        booking.pickup_time_to = new_pickup_time
+        booking.pickup_time = new_pickup_time
 
         response_data = {
             "success": True,
@@ -1084,23 +1066,19 @@ class TestEditPickupDateTime:
             "fields_updated": ["pickup_time"],
             "booking": {
                 "pickup_date": booking.pickup_date.isoformat(),
-                "pickup_time_from": booking.pickup_time_from.strftime("%H:%M"),
-                "pickup_time_to": booking.pickup_time_to.strftime("%H:%M"),
+                "pickup_time": booking.pickup_time.strftime("%H:%M"),
             }
         }
 
         assert response_data["success"] is True
         assert "pickup_time" in response_data["fields_updated"]
-        assert response_data["booking"]["pickup_date"] == pickup_date.isoformat()  # Unchanged
-        # Collection time should be exactly what was entered, not +30 min
-        assert response_data["booking"]["pickup_time_from"] == "16:45"
-        assert response_data["booking"]["pickup_time_to"] == "16:45"
+        assert response_data["booking"]["pickup_date"] == pickup_date.isoformat()
+        assert response_data["booking"]["pickup_time"] == "16:45"
 
-    def test_update_pickup_time_also_updates_flight_arrival_time(self):
-        """When admin updates pickup time, flight_arrival_time should also be updated.
+    def test_update_flight_arrival_time_updates_pickup_time(self):
+        """When admin updates flight_arrival_time, pickup_time should be recalculated.
 
-        The frontend sends both pickup_time and flight_arrival_time when saving.
-        flight_arrival_time stores the actual arrival time (pickup time - 30 min).
+        pickup_time = flight_arrival_time + 30 minutes
         """
         from db_models import BookingStatus
 
@@ -1108,49 +1086,39 @@ class TestEditPickupDateTime:
         booking = create_mock_booking(
             status=BookingStatus.CONFIRMED,
             pickup_date_val=pickup_date,
-            pickup_time_val=time(14, 30),
-            pickup_time_from_val=time(15, 5),
-            pickup_time_to_val=time(15, 30),
+            pickup_time_val=time(15, 0),  # Initial collection time
             flight_arrival_time=time(14, 30),  # Initial arrival time
         )
 
-        # Admin enters new pickup time of 16:45
-        # This corresponds to arrival time of 16:15 (pickup - 30 min)
-        new_pickup_time = time(16, 45)
-        new_arrival_time = time(16, 15)  # 30 minutes before pickup
+        # Admin enters new arrival time of 16:15
+        # pickup_time should become 16:45 (arrival + 30)
+        new_arrival_time = time(16, 15)
+        new_pickup_time = time(16, 45)  # arrival + 30 minutes
 
-        # Both pickup_time and flight_arrival_time should be updated
-        booking.pickup_time = new_arrival_time  # Backend stores arrival time
-        booking.pickup_time_from = new_pickup_time
-        booking.pickup_time_to = new_pickup_time
         booking.flight_arrival_time = new_arrival_time
+        booking.pickup_time = new_pickup_time
 
         response_data = {
             "success": True,
             "message": f"Booking {booking.reference} updated successfully",
-            "fields_updated": ["pickup_time", "flight_arrival_time"],
+            "fields_updated": ["flight_arrival_time", "pickup_time"],
             "booking": {
                 "pickup_date": booking.pickup_date.isoformat(),
                 "pickup_time": booking.pickup_time.strftime("%H:%M"),
-                "pickup_time_from": booking.pickup_time_from.strftime("%H:%M"),
-                "pickup_time_to": booking.pickup_time_to.strftime("%H:%M"),
                 "flight_arrival_time": booking.flight_arrival_time.strftime("%H:%M"),
             }
         }
 
         assert response_data["success"] is True
-        assert "pickup_time" in response_data["fields_updated"]
         assert "flight_arrival_time" in response_data["fields_updated"]
-        # Arrival time should be 30 minutes before pickup time
+        assert "pickup_time" in response_data["fields_updated"]
         assert response_data["booking"]["flight_arrival_time"] == "16:15"
-        assert response_data["booking"]["pickup_time"] == "16:15"  # Stores arrival time
-        assert response_data["booking"]["pickup_time_from"] == "16:45"  # Display pickup time
-        assert response_data["booking"]["pickup_time_to"] == "16:45"
+        assert response_data["booking"]["pickup_time"] == "16:45"  # arrival + 30
 
     def test_update_pickup_date_and_time_together(self):
         """Should successfully update both pickup date and time.
 
-        When admin edits pickup time, they're setting the collection time directly.
+        pickup_time is the collection time (arrival + 30).
         """
         from db_models import BookingStatus
 
@@ -1158,18 +1126,13 @@ class TestEditPickupDateTime:
         booking = create_mock_booking(
             status=BookingStatus.CONFIRMED,
             pickup_date_val=original_pickup,
-            pickup_time_val=time(14, 30),
-            pickup_time_from_val=time(15, 0),
-            pickup_time_to_val=time(15, 0),
+            pickup_time_val=time(15, 0),  # Collection time
         )
 
         new_pickup_date = original_pickup + timedelta(days=4)
         new_pickup_time = time(10, 15)
         booking.pickup_date = new_pickup_date
-
-        # Admin sets collection time directly - no +30 minute offset
-        booking.pickup_time_from = new_pickup_time
-        booking.pickup_time_to = new_pickup_time
+        booking.pickup_time = new_pickup_time
 
         response_data = {
             "success": True,
@@ -1177,8 +1140,7 @@ class TestEditPickupDateTime:
             "fields_updated": ["pickup_date", "pickup_time"],
             "booking": {
                 "pickup_date": booking.pickup_date.isoformat(),
-                "pickup_time_from": booking.pickup_time_from.strftime("%H:%M"),
-                "pickup_time_to": booking.pickup_time_to.strftime("%H:%M"),
+                "pickup_time": booking.pickup_time.strftime("%H:%M"),
             }
         }
 
@@ -1186,15 +1148,12 @@ class TestEditPickupDateTime:
         assert "pickup_date" in response_data["fields_updated"]
         assert "pickup_time" in response_data["fields_updated"]
         assert response_data["booking"]["pickup_date"] == new_pickup_date.isoformat()
-        # Collection time should be exactly what was entered
-        assert response_data["booking"]["pickup_time_from"] == "10:15"
-        assert response_data["booking"]["pickup_time_to"] == "10:15"
+        assert response_data["booking"]["pickup_time"] == "10:15"
 
     def test_update_pickup_time_midnight_crossover(self):
         """Updating pickup time near midnight works correctly.
 
-        When admin edits pickup time, they're setting the collection time directly.
-        No midnight crossover logic needed since we're not adding +30 minutes.
+        pickup_time is the collection time.
         """
         from db_models import BookingStatus
 
@@ -1205,36 +1164,28 @@ class TestEditPickupDateTime:
         )
 
         new_pickup_time = time(23, 45)
+        booking.pickup_time = new_pickup_time
 
-        # Admin sets collection time directly - exact time specified
-        booking.pickup_time_from = new_pickup_time
-        booking.pickup_time_to = new_pickup_time
-
-        assert booking.pickup_time_from == time(23, 45)  # Exact time entered
-        assert booking.pickup_time_to == time(23, 45)  # Exact time entered
+        assert booking.pickup_time == time(23, 45)
 
     def test_update_pickup_time_early_morning(self):
         """Updating pickup time to early morning hours works correctly.
 
-        When admin edits pickup time, they're setting the collection time directly.
+        pickup_time is the collection time.
         """
         from db_models import BookingStatus
 
         booking = create_mock_booking(
             status=BookingStatus.CONFIRMED,
             pickup_date_val=FUTURE_DATE_END + timedelta(days=1),
-            pickup_time_val=time(14, 30),
+            pickup_time_val=time(15, 0),
         )
 
-        # Admin sets collection time to 1:15 AM
+        # Collection time set to 1:15 AM
         new_pickup_time = time(1, 15)
+        booking.pickup_time = new_pickup_time
 
-        # Collection time is set directly - no +30 minute offset
-        booking.pickup_time_from = new_pickup_time
-        booking.pickup_time_to = new_pickup_time
-
-        assert booking.pickup_time_from == time(1, 15)  # Exact time entered
-        assert booking.pickup_time_to == time(1, 15)  # Exact time entered
+        assert booking.pickup_time == time(1, 15)
 
     def test_update_pickup_time_invalid_format_rejected(self):
         """Invalid time format should be rejected."""

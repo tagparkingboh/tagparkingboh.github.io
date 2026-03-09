@@ -10,40 +10,6 @@ import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-// Add 30 minutes to arrival time to get pickup time
-const addMinutesToTime = (timeStr, minutes = 30) => {
-  if (!timeStr) return ''
-  const parts = timeStr.split(':')
-  if (parts.length < 2) return timeStr
-  let hours = parseInt(parts[0], 10)
-  let mins = parseInt(parts[1], 10) + minutes
-  if (mins >= 60) {
-    mins -= 60
-    hours += 1
-  }
-  if (hours >= 24) {
-    hours -= 24
-  }
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
-}
-
-// Subtract 30 minutes from pickup time to get arrival time (for storage)
-const subtractMinutesFromTime = (timeStr, minutes = 30) => {
-  if (!timeStr) return ''
-  const parts = timeStr.split(':')
-  if (parts.length < 2) return timeStr
-  let hours = parseInt(parts[0], 10)
-  let mins = parseInt(parts[1], 10) - minutes
-  if (mins < 0) {
-    mins += 60
-    hours -= 1
-  }
-  if (hours < 0) {
-    hours += 24
-  }
-  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
-}
-
 // Photo slots - must match Employee.jsx
 const PHOTO_SLOTS = [
   { key: 'front', label: 'Front' },
@@ -2344,11 +2310,9 @@ function Admin() {
                                         <div className="booking-detail">
                                           <span className="detail-label">Pick-up Time</span>
                                           <span className="detail-value">
-                                            {booking.booking_source === 'manual'
-                                              ? (addMinutesToTime(booking.flight_arrival_time || booking.pickup_time) || '-')
-                                              : (booking.pickup_collection_time
-                                                  ? `From ${booking.pickup_collection_time} onwards`
-                                                  : '-')}
+                                            {booking.pickup_time
+                                              ? `From ${booking.pickup_time} onwards`
+                                              : '-'}
                                           </span>
                                         </div>
                                         <div className="booking-detail">
@@ -5386,7 +5350,7 @@ function Admin() {
             <div className="modal-booking-info">
               <p><strong>Reference:</strong> {bookingToEdit.reference}</p>
               <p><strong>Customer:</strong> {bookingToEdit.customer?.first_name} {bookingToEdit.customer?.last_name}</p>
-              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {(bookingToEdit.flight_arrival_time || bookingToEdit.pickup_time) ? `at ${addMinutesToTime(bookingToEdit.flight_arrival_time || bookingToEdit.pickup_time)}` : ''}</p>
+              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {bookingToEdit.pickup_time ? `at ${bookingToEdit.pickup_time}` : ''}</p>
             </div>
             <div className="modal-form">
               <div className="modal-form-group">

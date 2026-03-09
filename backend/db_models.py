@@ -133,9 +133,9 @@ class Booking(Base):
 
     # Pick-up details
     pickup_date = Column(Date, nullable=False)
-    pickup_time = Column(Time)  # Arrival/landing time of return flight
-    pickup_time_from = Column(Time)  # 35 min after landing
-    pickup_time_to = Column(Time)  # 60 min after landing
+    pickup_time = Column(Time)  # Collection time (flight_arrival_time + 30 min)
+    pickup_time_from = Column(Time)  # DEPRECATED - to be removed
+    pickup_time_to = Column(Time)  # DEPRECATED - to be removed
     pickup_flight_number = Column(String(20))
     pickup_origin = Column(String(100))
 
