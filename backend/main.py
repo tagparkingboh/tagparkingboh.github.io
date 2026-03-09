@@ -907,6 +907,7 @@ async def get_all_bookings(
             ),
             "dropoff_date": b.dropoff_date.isoformat() if b.dropoff_date else None,
             "dropoff_time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
+            "flight_departure_time": b.flight_departure_time.strftime("%H:%M") if b.flight_departure_time else None,
             "dropoff_flight_number": b.dropoff_flight_number,
             "dropoff_airline_name": b.dropoff_airline_name,
             "dropoff_airline_code": b.dropoff_airline_code,
@@ -915,6 +916,7 @@ async def get_all_bookings(
             "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
             # pickup_time is now the collection time (arrival + 30)
             "pickup_collection_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
+            "flight_arrival_time": b.flight_arrival_time.strftime("%H:%M") if b.flight_arrival_time else None,
             "pickup_flight_number": b.pickup_flight_number,
             "pickup_airline_name": b.pickup_airline_name,
             "pickup_airline_code": b.pickup_airline_code,

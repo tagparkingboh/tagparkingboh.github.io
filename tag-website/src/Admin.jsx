@@ -20,6 +20,21 @@ const PHOTO_SLOTS = [
   { key: 'additional_2', label: 'Additional 2' },
 ]
 
+// UK date format helpers (DD/MM/YYYY)
+const isoToUkDate = (isoDate) => {
+  if (!isoDate) return ''
+  const [year, month, day] = isoDate.split('-')
+  return `${day}/${month}/${year}`
+}
+
+const ukToIsoDate = (ukDate) => {
+  if (!ukDate) return ''
+  const parts = ukDate.split('/')
+  if (parts.length !== 3) return ''
+  const [day, month, year] = parts
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+}
+
 function Admin() {
   const { user, token, loading, isAuthenticated, isAdmin, logout } = useAuth()
   const navigate = useNavigate()
@@ -1436,8 +1451,8 @@ function Admin() {
       dropoff_airline_name: booking.dropoff_airline_name || '',
       dropoff_flight_number: booking.dropoff_flight_number || '',
       dropoff_destination: booking.dropoff_destination || '',
-      // Pickup/Return details
-      pickup_date: booking.pickup_date || '',
+      // Pickup/Return details - convert ISO date to UK format for display
+      pickup_date: isoToUkDate(booking.pickup_date) || '',
       flight_arrival_time: booking.flight_arrival_time || '',
       pickup_airline_name: booking.pickup_airline_name || '',
       pickup_flight_number: booking.pickup_flight_number || '',
@@ -1466,8 +1481,8 @@ function Admin() {
           dropoff_airline_name: editForm.dropoff_airline_name || null,
           dropoff_flight_number: editForm.dropoff_flight_number || null,
           dropoff_destination: editForm.dropoff_destination || null,
-          // Pickup/Return details
-          pickup_date: editForm.pickup_date || null,
+          // Pickup/Return details - convert UK date back to ISO format for API
+          pickup_date: ukToIsoDate(editForm.pickup_date) || null,
           flight_arrival_time: editForm.flight_arrival_time || null,
           pickup_airline_name: editForm.pickup_airline_name || null,
           pickup_flight_number: editForm.pickup_flight_number || null,
@@ -5209,17 +5224,21 @@ function Admin() {
               <h4 className="modal-section-title">Drop-off / Departure</h4>
               <div className="modal-form-row">
                 <div className="modal-form-group">
-                  <label>Drop-off Time</label>
+                  <label>Drop-off Time (24hr)</label>
                   <input
-                    type="time"
+                    type="text"
+                    placeholder="HH:MM"
+                    pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
                     value={editForm.dropoff_time}
                     onChange={(e) => setEditForm({ ...editForm, dropoff_time: e.target.value })}
                   />
                 </div>
                 <div className="modal-form-group">
-                  <label>Flight Departure Time</label>
+                  <label>Flight Departure Time (24hr)</label>
                   <input
-                    type="time"
+                    type="text"
+                    placeholder="HH:MM"
+                    pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
                     value={editForm.flight_departure_time}
                     onChange={(e) => setEditForm({ ...editForm, flight_departure_time: e.target.value })}
                   />
@@ -5256,17 +5275,21 @@ function Admin() {
               <h4 className="modal-section-title">Pick-up / Return</h4>
               <div className="modal-form-row">
                 <div className="modal-form-group">
-                  <label>Pickup Date</label>
+                  <label>Pickup Date (DD/MM/YYYY)</label>
                   <input
-                    type="date"
+                    type="text"
+                    placeholder="DD/MM/YYYY"
+                    pattern="\d{2}/\d{2}/\d{4}"
                     value={editForm.pickup_date}
                     onChange={(e) => setEditForm({ ...editForm, pickup_date: e.target.value })}
                   />
                 </div>
                 <div className="modal-form-group">
-                  <label>Flight Arrival Time</label>
+                  <label>Arrival Time (24hr)</label>
                   <input
-                    type="time"
+                    type="text"
+                    placeholder="HH:MM"
+                    pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
                     value={editForm.flight_arrival_time}
                     onChange={(e) => setEditForm({ ...editForm, flight_arrival_time: e.target.value })}
                   />
