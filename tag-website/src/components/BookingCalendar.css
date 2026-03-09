@@ -338,6 +338,13 @@
   flex: 1;
 }
 
+.flight-time-info {
+  margin-left: 10px;
+  color: #D9FF00;
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
 .booking-calendar .booking-ref {
   font-size: 0.9rem;
   font-weight: 700;

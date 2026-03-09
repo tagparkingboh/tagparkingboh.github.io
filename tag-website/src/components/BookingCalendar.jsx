@@ -299,6 +299,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                           </div>
                           <div className="booking-destination">
                             → {booking.dropoff_destination || 'Unknown'}
+                            {booking.flight_departure_time && <span className="flight-time-info">Departs: {formatTime(booking.flight_departure_time)}</span>}
                           </div>
                           <div className="booking-ref">
                             {booking.reference}
@@ -343,6 +344,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                           </div>
                           <div className="booking-destination">
                             ← {booking.pickup_origin || 'Unknown'}
+                            {booking.flight_arrival_time && <span className="flight-time-info">Arrives: {formatTime(booking.flight_arrival_time)}</span>}
                           </div>
                           <div className="booking-ref">
                             {booking.reference}
