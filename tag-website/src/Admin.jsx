@@ -2165,6 +2165,10 @@ function Admin() {
                                           <span className="detail-value">{formatTime(booking.dropoff_time)}</span>
                                         </div>
                                         <div className="booking-detail">
+                                          <span className="detail-label">Flight Departs</span>
+                                          <span className="detail-value">{booking.flight_departure_time || '-'}</span>
+                                        </div>
+                                        <div className="booking-detail">
                                           <span className="detail-label">Flight</span>
                                           <span className="detail-value">
                                             {booking.dropoff_airline_name && (
@@ -2200,6 +2204,10 @@ function Admin() {
                                               ? `From ${booking.pickup_time} onwards`
                                               : '-'}
                                           </span>
+                                        </div>
+                                        <div className="booking-detail">
+                                          <span className="detail-label">Flight Arrives</span>
+                                          <span className="detail-value">{booking.flight_arrival_time || '-'}</span>
                                         </div>
                                         <div className="booking-detail">
                                           <span className="detail-label">Flight</span>
