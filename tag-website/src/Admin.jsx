@@ -41,35 +41,27 @@ function Admin() {
   const [bookingToDelete, setBookingToDelete] = useState(null)
   const [showEditModal, setShowEditModal] = useState(false)
   const [bookingToEdit, setBookingToEdit] = useState(null)
-  const [editForm, setEditForm] = useState({ pickup_date: '', pickup_time: '' })
   const [savingEdit, setSavingEdit] = useState(false)
-  const [showEditDropoffModal, setShowEditDropoffModal] = useState(false)
-  const [bookingToEditDropoff, setBookingToEditDropoff] = useState(null)
-  const [editDropoffForm, setEditDropoffForm] = useState({ dropoff_time: '' })
-  const [savingDropoffEdit, setSavingDropoffEdit] = useState(false)
-  const [showEditFlightModal, setShowEditFlightModal] = useState(false)
-  const [bookingToEditFlight, setBookingToEditFlight] = useState(null)
   const [collapsedStatusSections, setCollapsedStatusSections] = useState({
     confirmed: false,
     completed: true,
     pending: false,
     cancelled: true
   })
-  const [editFlightDetailsForm, setEditFlightDetailsForm] = useState({
-    dropoff_airline_code: '',
+  const [editForm, setEditForm] = useState({
+    // Dropoff/Departure details
+    dropoff_time: '',
+    flight_departure_time: '',
     dropoff_airline_name: '',
     dropoff_flight_number: '',
-    dropoff_destination_code: '',
     dropoff_destination: '',
-    flight_departure_time: '',
-    pickup_airline_code: '',
+    // Pickup/Return details
+    pickup_date: '',
+    flight_arrival_time: '',
     pickup_airline_name: '',
     pickup_flight_number: '',
-    pickup_origin_code: '',
     pickup_origin: '',
-    flight_arrival_time: ''
   })
-  const [savingFlightDetails, setSavingFlightDetails] = useState(false)
   const [resendingEmailId, setResendingEmailId] = useState(null)
   const [showResendModal, setShowResendModal] = useState(false)
   const [bookingToResend, setBookingToResend] = useState(null)
@@ -96,9 +88,6 @@ function Admin() {
   const [dropoffInspectionData, setDropoffInspectionData] = useState(null)
   const [loadingDropoffInspection, setLoadingDropoffInspection] = useState(false)
 
-  // Airlines and destinations for dropdowns
-  const [availableAirlines, setAvailableAirlines] = useState([])
-  const [availableDestinations, setAvailableDestinations] = useState([])
 
   // Marketing subscribers state
   const [subscribers, setSubscribers] = useState([])
@@ -268,28 +257,6 @@ function Admin() {
     }
   }, [activeTab, token])
 
-  // Fetch airlines and destinations for Edit Flight Details dropdowns
-  useEffect(() => {
-    const fetchAirlinesAndDestinations = async () => {
-      try {
-        const [airlinesRes, destinationsRes] = await Promise.all([
-          fetch(`${API_URL}/api/booking/airlines`),
-          fetch(`${API_URL}/api/booking/destinations`)
-        ])
-        if (airlinesRes.ok) {
-          const data = await airlinesRes.json()
-          setAvailableAirlines(data.airlines || [])
-        }
-        if (destinationsRes.ok) {
-          const data = await destinationsRes.json()
-          setAvailableDestinations(data.destinations || [])
-        }
-      } catch (error) {
-        console.error('Error fetching airlines/destinations:', error)
-      }
-    }
-    fetchAirlinesAndDestinations()
-  }, [])
 
   // Fetch subscribers when marketing tab is active
   useEffect(() => {
@@ -1459,12 +1426,22 @@ function Admin() {
     }
   }
 
-  const handleEditClick = (booking, e) => {
+  const handleEditBookingClick = (booking, e) => {
     e.stopPropagation()
     setBookingToEdit(booking)
     setEditForm({
+      // Dropoff/Departure details
+      dropoff_time: booking.dropoff_time || '',
+      flight_departure_time: booking.flight_departure_time || '',
+      dropoff_airline_name: booking.dropoff_airline_name || '',
+      dropoff_flight_number: booking.dropoff_flight_number || '',
+      dropoff_destination: booking.dropoff_destination || '',
+      // Pickup/Return details
       pickup_date: booking.pickup_date || '',
-      pickup_time: booking.flight_arrival_time || booking.pickup_time || '',
+      flight_arrival_time: booking.flight_arrival_time || '',
+      pickup_airline_name: booking.pickup_airline_name || '',
+      pickup_flight_number: booking.pickup_flight_number || '',
+      pickup_origin: booking.pickup_origin || '',
     })
     setShowEditModal(true)
   }
@@ -1483,9 +1460,18 @@ function Admin() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          // Dropoff/Departure details
+          dropoff_time: editForm.dropoff_time || null,
+          flight_departure_time: editForm.flight_departure_time || null,
+          dropoff_airline_name: editForm.dropoff_airline_name || null,
+          dropoff_flight_number: editForm.dropoff_flight_number || null,
+          dropoff_destination: editForm.dropoff_destination || null,
+          // Pickup/Return details
           pickup_date: editForm.pickup_date || null,
-          pickup_time: editForm.pickup_time || null,
-          flight_arrival_time: editForm.pickup_time || null,
+          flight_arrival_time: editForm.flight_arrival_time || null,
+          pickup_airline_name: editForm.pickup_airline_name || null,
+          pickup_flight_number: editForm.pickup_flight_number || null,
+          pickup_origin: editForm.pickup_origin || null,
         }),
       })
 
@@ -1504,121 +1490,6 @@ function Admin() {
       setError('Network error while updating booking')
     } finally {
       setSavingEdit(false)
-    }
-  }
-
-  const handleEditDropoffClick = (booking, e) => {
-    e.stopPropagation()
-    setBookingToEditDropoff(booking)
-    setEditDropoffForm({
-      dropoff_time: booking.dropoff_time || '',
-    })
-    setShowEditDropoffModal(true)
-  }
-
-  const handleEditFlightDetailsClick = (booking, e) => {
-    e.stopPropagation()
-    setBookingToEditFlight(booking)
-
-    // Try to match existing values to dropdown options, otherwise use 'Other'
-    const matchedDropoffAirline = availableAirlines.find(a => a.name === booking.dropoff_airline_name)
-    const matchedPickupAirline = availableAirlines.find(a => a.name === booking.pickup_airline_name)
-    const matchedDropoffDest = availableDestinations.find(d => d.name === booking.dropoff_destination)
-    const matchedPickupOrigin = availableDestinations.find(d => d.name === booking.pickup_origin)
-
-    setEditFlightDetailsForm({
-      dropoff_airline_code: matchedDropoffAirline?.code || (booking.dropoff_airline_name ? 'Other' : ''),
-      dropoff_airline_name: booking.dropoff_airline_name || '',
-      dropoff_flight_number: booking.dropoff_flight_number || '',
-      dropoff_destination_code: matchedDropoffDest?.code || (booking.dropoff_destination ? 'Other' : ''),
-      dropoff_destination: booking.dropoff_destination || '',
-      flight_departure_time: booking.flight_departure_time || '',
-      pickup_airline_code: matchedPickupAirline?.code || (booking.pickup_airline_name ? 'Other' : ''),
-      pickup_airline_name: booking.pickup_airline_name || '',
-      pickup_flight_number: booking.pickup_flight_number || '',
-      pickup_origin_code: matchedPickupOrigin?.code || (booking.pickup_origin ? 'Other' : ''),
-      pickup_origin: booking.pickup_origin || '',
-      flight_arrival_time: booking.flight_arrival_time || '',
-    })
-    setShowEditFlightModal(true)
-  }
-
-  const confirmEditFlightDetails = async () => {
-    if (!bookingToEditFlight) return
-
-    setSavingFlightDetails(true)
-    setError('')
-
-    try {
-      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingToEditFlight.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          dropoff_airline_name: editFlightDetailsForm.dropoff_airline_name || null,
-          dropoff_flight_number: editFlightDetailsForm.dropoff_flight_number || null,
-          dropoff_destination: editFlightDetailsForm.dropoff_destination || null,
-          flight_departure_time: editFlightDetailsForm.flight_departure_time || null,
-          pickup_airline_name: editFlightDetailsForm.pickup_airline_name || null,
-          pickup_flight_number: editFlightDetailsForm.pickup_flight_number || null,
-          pickup_origin: editFlightDetailsForm.pickup_origin || null,
-          flight_arrival_time: editFlightDetailsForm.flight_arrival_time || null,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        setSuccessMessage(data.message || 'Flight details updated successfully')
-        fetchBookings()
-        setTimeout(() => setSuccessMessage(''), 5000)
-        setShowEditFlightModal(false)
-        setBookingToEditFlight(null)
-      } else {
-        setError(data.detail || 'Failed to update flight details')
-      }
-    } catch (err) {
-      setError('Network error while updating booking')
-    } finally {
-      setSavingFlightDetails(false)
-    }
-  }
-
-  const confirmEditDropoffBooking = async () => {
-    if (!bookingToEditDropoff) return
-
-    setSavingDropoffEdit(true)
-    setError('')
-
-    try {
-      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingToEditDropoff.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          dropoff_time: editDropoffForm.dropoff_time || null,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        setSuccessMessage(data.message || 'Drop-off time updated successfully')
-        fetchBookings()
-        setTimeout(() => setSuccessMessage(''), 5000)
-        setShowEditDropoffModal(false)
-        setBookingToEditDropoff(null)
-      } else {
-        setError(data.detail || 'Failed to update drop-off time')
-      }
-    } catch (err) {
-      setError('Network error while updating booking')
-    } finally {
-      setSavingDropoffEdit(false)
     }
   }
 
@@ -2368,28 +2239,12 @@ function Admin() {
                                   <div className="booking-section booking-actions-section">
                                     <h4>Actions</h4>
                                     <div className="booking-actions">
-                                      {booking.status?.toLowerCase() === 'confirmed' && (
-                                        <button
-                                          className="action-btn edit-btn"
-                                          onClick={(e) => handleEditClick(booking, e)}
-                                        >
-                                          Edit Pickup Date/Time
-                                        </button>
-                                      )}
-                                      {booking.status?.toLowerCase() === 'confirmed' && (
-                                        <button
-                                          className="action-btn edit-btn"
-                                          onClick={(e) => handleEditDropoffClick(booking, e)}
-                                        >
-                                          Edit Drop-off Time
-                                        </button>
-                                      )}
                                       {booking.status?.toLowerCase() !== 'completed' && (
                                         <button
                                           className="action-btn edit-btn"
-                                          onClick={(e) => handleEditFlightDetailsClick(booking, e)}
+                                          onClick={(e) => handleEditBookingClick(booking, e)}
                                         >
-                                          Edit Flight Details
+                                          Edit Booking Details
                                         </button>
                                       )}
                                       {booking.status?.toLowerCase() !== 'completed' && (
@@ -5341,44 +5196,109 @@ function Admin() {
         </div>
       )}
 
-      {/* Edit Booking Modal */}
+      {/* Edit Booking Details Modal */}
       {showEditModal && bookingToEdit && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Edit Booking</h3>
-            <p>Update the pickup date and/or time for this booking.</p>
+          <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
+            <h3>Edit Booking Details</h3>
             <div className="modal-booking-info">
               <p><strong>Reference:</strong> {bookingToEdit.reference}</p>
               <p><strong>Customer:</strong> {bookingToEdit.customer?.first_name} {bookingToEdit.customer?.last_name}</p>
-              <p><strong>Current Pickup:</strong> {formatDate(bookingToEdit.pickup_date)} {bookingToEdit.pickup_time ? `at ${bookingToEdit.pickup_time}` : ''}</p>
             </div>
             <div className="modal-form">
-              <div className="modal-form-group">
-                <label>New Pickup Date</label>
-                <input
-                  type="date"
-                  value={editForm.pickup_date}
-                  onChange={(e) => setEditForm({ ...editForm, pickup_date: e.target.value })}
-                />
+              <h4 className="modal-section-title">Drop-off / Departure</h4>
+              <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Drop-off Time</label>
+                  <input
+                    type="time"
+                    value={editForm.dropoff_time}
+                    onChange={(e) => setEditForm({ ...editForm, dropoff_time: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>Flight Departure Time</label>
+                  <input
+                    type="time"
+                    value={editForm.flight_departure_time}
+                    onChange={(e) => setEditForm({ ...editForm, flight_departure_time: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>Airline</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Jet2"
+                    value={editForm.dropoff_airline_name}
+                    onChange={(e) => setEditForm({ ...editForm, dropoff_airline_name: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>Flight Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. BY1234"
+                    value={editForm.dropoff_flight_number}
+                    onChange={(e) => setEditForm({ ...editForm, dropoff_flight_number: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>Destination</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Malaga Airport"
+                    value={editForm.dropoff_destination}
+                    onChange={(e) => setEditForm({ ...editForm, dropoff_destination: e.target.value })}
+                  />
+                </div>
               </div>
-              <div className="modal-form-group">
-                <label>Arrival Time (24hr)</label>
-                <input
-                  type="text"
-                  placeholder="HH:MM (e.g. 14:30)"
-                  pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
-                  maxLength={5}
-                  value={editForm.pickup_time}
-                  onChange={(e) => {
-                    let val = e.target.value.replace(/[^0-9:]/g, '')
-                    if (val.length === 2 && !val.includes(':') && editForm.pickup_time.length < 3) {
-                      val = val + ':'
-                    }
-                    if (val.length <= 5) {
-                      setEditForm({ ...editForm, pickup_time: val })
-                    }
-                  }}
-                />
+
+              <h4 className="modal-section-title">Pick-up / Return</h4>
+              <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Pickup Date</label>
+                  <input
+                    type="date"
+                    value={editForm.pickup_date}
+                    onChange={(e) => setEditForm({ ...editForm, pickup_date: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>Flight Arrival Time</label>
+                  <input
+                    type="time"
+                    value={editForm.flight_arrival_time}
+                    onChange={(e) => setEditForm({ ...editForm, flight_arrival_time: e.target.value })}
+                  />
+                  <p className="modal-form-hint">Pickup time = arrival + 30 min</p>
+                </div>
+                <div className="modal-form-group">
+                  <label>Airline</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Jet2"
+                    value={editForm.pickup_airline_name}
+                    onChange={(e) => setEditForm({ ...editForm, pickup_airline_name: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>Flight Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. BY1235"
+                    value={editForm.pickup_flight_number}
+                    onChange={(e) => setEditForm({ ...editForm, pickup_flight_number: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>Origin</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Malaga Airport"
+                    value={editForm.pickup_origin}
+                    onChange={(e) => setEditForm({ ...editForm, pickup_origin: e.target.value })}
+                  />
+                </div>
               </div>
             </div>
             <div className="modal-actions">
@@ -5391,250 +5311,9 @@ function Admin() {
               <button
                 className="modal-btn modal-btn-primary"
                 onClick={confirmEditBooking}
-                disabled={savingEdit || (!editForm.pickup_date && !editForm.pickup_time)}
+                disabled={savingEdit}
               >
                 {savingEdit ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Drop-off Time Modal */}
-      {showEditDropoffModal && bookingToEditDropoff && (
-        <div className="modal-overlay" onClick={() => setShowEditDropoffModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Edit Drop-off Time</h3>
-            <p>Adjust the drop-off time for this booking. Limited to 1 hour earlier or 15 minutes later.</p>
-            <div className="modal-booking-info">
-              <p><strong>Reference:</strong> {bookingToEditDropoff.reference}</p>
-              <p><strong>Customer:</strong> {bookingToEditDropoff.customer?.first_name} {bookingToEditDropoff.customer?.last_name}</p>
-              <p><strong>Drop-off Date:</strong> {formatDate(bookingToEditDropoff.dropoff_date)}</p>
-              <p><strong>Current Drop-off Time:</strong> {bookingToEditDropoff.dropoff_time || 'Not set'}</p>
-            </div>
-            <div className="modal-form">
-              <div className="modal-form-group">
-                <label>New Drop-off Time (24hr format)</label>
-                <input
-                  type="text"
-                  placeholder="HH:MM (e.g. 09:30)"
-                  pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]"
-                  maxLength={5}
-                  value={editDropoffForm.dropoff_time}
-                  onChange={(e) => {
-                    let val = e.target.value.replace(/[^0-9:]/g, '')
-                    if (val.length === 2 && !val.includes(':') && editDropoffForm.dropoff_time.length < 3) {
-                      val = val + ':'
-                    }
-                    if (val.length <= 5) {
-                      setEditDropoffForm({ ...editDropoffForm, dropoff_time: val })
-                    }
-                  }}
-                />
-                <p className="modal-form-hint">Can be up to 1 hour earlier or 15 minutes later than current time</p>
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button
-                className="modal-btn modal-btn-secondary"
-                onClick={() => setShowEditDropoffModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="modal-btn modal-btn-primary"
-                onClick={confirmEditDropoffBooking}
-                disabled={savingDropoffEdit || !editDropoffForm.dropoff_time}
-              >
-                {savingDropoffEdit ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Flight Details Modal */}
-      {showEditFlightModal && bookingToEditFlight && (
-        <div className="modal-overlay" onClick={() => setShowEditFlightModal(false)}>
-          <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
-            <h3>Edit Flight Details</h3>
-            <p>Update flight and destination information for this booking.</p>
-            <div className="modal-booking-info">
-              <p><strong>Reference:</strong> {bookingToEditFlight.reference}</p>
-              <p><strong>Customer:</strong> {bookingToEditFlight.customer?.first_name} {bookingToEditFlight.customer?.last_name}</p>
-            </div>
-            <div className="modal-form">
-              <h4 className="modal-section-title">Drop-off / Departure</h4>
-              <div className="modal-form-row">
-                <div className="modal-form-group">
-                  <label>Airline</label>
-                  <select
-                    value={editFlightDetailsForm.dropoff_airline_code}
-                    onChange={(e) => {
-                      const airline = availableAirlines.find(a => a.code === e.target.value)
-                      setEditFlightDetailsForm({
-                        ...editFlightDetailsForm,
-                        dropoff_airline_code: e.target.value,
-                        dropoff_airline_name: airline?.name || ''
-                      })
-                    }}
-                  >
-                    <option value="">Select airline</option>
-                    {availableAirlines.filter(a => a.code !== 'Other').map(airline => (
-                      <option key={airline.code} value={airline.code}>{airline.name}</option>
-                    ))}
-                    <option value="Other">Other</option>
-                  </select>
-                  {editFlightDetailsForm.dropoff_airline_code === 'Other' && (
-                    <input
-                      type="text"
-                      placeholder="Enter airline name"
-                      value={editFlightDetailsForm.dropoff_airline_name}
-                      onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, dropoff_airline_name: e.target.value })}
-                      style={{ marginTop: '8px' }}
-                    />
-                  )}
-                </div>
-                <div className="modal-form-group">
-                  <label>Flight Number</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. BY1234"
-                    value={editFlightDetailsForm.dropoff_flight_number}
-                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, dropoff_flight_number: e.target.value })}
-                  />
-                </div>
-                <div className="modal-form-group">
-                  <label>Destination</label>
-                  <select
-                    value={editFlightDetailsForm.dropoff_destination_code}
-                    onChange={(e) => {
-                      const dest = availableDestinations.find(d => d.code === e.target.value)
-                      setEditFlightDetailsForm({
-                        ...editFlightDetailsForm,
-                        dropoff_destination_code: e.target.value,
-                        dropoff_destination: dest?.name || ''
-                      })
-                    }}
-                  >
-                    <option value="">Select destination</option>
-                    {availableDestinations.filter(d => d.code !== 'Other').map(dest => (
-                      <option key={dest.code} value={dest.code}>{dest.name}</option>
-                    ))}
-                    <option value="Other">Other</option>
-                  </select>
-                  {editFlightDetailsForm.dropoff_destination_code === 'Other' && (
-                    <input
-                      type="text"
-                      placeholder="Enter destination"
-                      value={editFlightDetailsForm.dropoff_destination}
-                      onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, dropoff_destination: e.target.value })}
-                      style={{ marginTop: '8px' }}
-                    />
-                  )}
-                </div>
-                <div className="modal-form-group">
-                  <label>Flight Departure Time</label>
-                  <input
-                    type="time"
-                    value={editFlightDetailsForm.flight_departure_time}
-                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, flight_departure_time: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <h4 className="modal-section-title">Pick-up / Return</h4>
-              <div className="modal-form-row">
-                <div className="modal-form-group">
-                  <label>Airline</label>
-                  <select
-                    value={editFlightDetailsForm.pickup_airline_code}
-                    onChange={(e) => {
-                      const airline = availableAirlines.find(a => a.code === e.target.value)
-                      setEditFlightDetailsForm({
-                        ...editFlightDetailsForm,
-                        pickup_airline_code: e.target.value,
-                        pickup_airline_name: airline?.name || ''
-                      })
-                    }}
-                  >
-                    <option value="">Select airline</option>
-                    {availableAirlines.filter(a => a.code !== 'Other').map(airline => (
-                      <option key={airline.code} value={airline.code}>{airline.name}</option>
-                    ))}
-                    <option value="Other">Other</option>
-                  </select>
-                  {editFlightDetailsForm.pickup_airline_code === 'Other' && (
-                    <input
-                      type="text"
-                      placeholder="Enter airline name"
-                      value={editFlightDetailsForm.pickup_airline_name}
-                      onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, pickup_airline_name: e.target.value })}
-                      style={{ marginTop: '8px' }}
-                    />
-                  )}
-                </div>
-                <div className="modal-form-group">
-                  <label>Flight Number</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. BY1235"
-                    value={editFlightDetailsForm.pickup_flight_number}
-                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, pickup_flight_number: e.target.value })}
-                  />
-                </div>
-                <div className="modal-form-group">
-                  <label>Origin</label>
-                  <select
-                    value={editFlightDetailsForm.pickup_origin_code}
-                    onChange={(e) => {
-                      const origin = availableDestinations.find(d => d.code === e.target.value)
-                      setEditFlightDetailsForm({
-                        ...editFlightDetailsForm,
-                        pickup_origin_code: e.target.value,
-                        pickup_origin: origin?.name || ''
-                      })
-                    }}
-                  >
-                    <option value="">Select origin</option>
-                    {availableDestinations.filter(d => d.code !== 'Other').map(dest => (
-                      <option key={dest.code} value={dest.code}>{dest.name}</option>
-                    ))}
-                    <option value="Other">Other</option>
-                  </select>
-                  {editFlightDetailsForm.pickup_origin_code === 'Other' && (
-                    <input
-                      type="text"
-                      placeholder="Enter origin"
-                      value={editFlightDetailsForm.pickup_origin}
-                      onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, pickup_origin: e.target.value })}
-                      style={{ marginTop: '8px' }}
-                    />
-                  )}
-                </div>
-                <div className="modal-form-group">
-                  <label>Flight Arrival Time</label>
-                  <input
-                    type="time"
-                    value={editFlightDetailsForm.flight_arrival_time}
-                    onChange={(e) => setEditFlightDetailsForm({ ...editFlightDetailsForm, flight_arrival_time: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button
-                className="modal-btn modal-btn-secondary"
-                onClick={() => setShowEditFlightModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="modal-btn modal-btn-primary"
-                onClick={confirmEditFlightDetails}
-                disabled={savingFlightDetails}
-              >
-                {savingFlightDetails ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>
