@@ -572,7 +572,7 @@ def send_founder_thank_you_email(
     founder_email = os.getenv("FOUNDER_EMAIL", "kristian@tagparking.co.uk")
 
     # Load template from file
-    template_path = EMAIL_TEMPLATES_DIR / "founder_email.html"
+    template_path = EMAIL_TEMPLATES_DIR / "founder_promo_email.html"
     try:
         with open(template_path, "r", encoding="utf-8") as f:
             html_content = f.read()
