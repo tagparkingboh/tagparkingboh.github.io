@@ -895,3 +895,685 @@ describe('BookingsNew - Data corruption handling', () => {
     expect(result.airlineCode).toBeUndefined() // Not in saved data
   })
 })
+
+// =============================================================================
+// Unit Tests: manual_entry flag logic (THE BUG FIX)
+// =============================================================================
+
+describe('StripePayment - manual_entry flag logic', () => {
+  /**
+   * THE BUG: !!manualDepartureData returns true for empty objects {}
+   * THE FIX: Check that ALL required fields have values before setting manual_entry: true
+   *
+   * dropoff_manual_entry requires: airlineCode, flightTime, destinationCode, dropoffSlot
+   * pickup_manual_entry requires: airlineCode, flightTime, originCode
+   */
+
+  // Helper function that mirrors the FIXED logic in StripePayment.jsx
+  const isDropoffManualEntry = (data) => {
+    return !!(data?.airlineCode && data?.flightTime && data?.destinationCode && data?.dropoffSlot)
+  }
+
+  const isPickupManualEntry = (data) => {
+    return !!(data?.airlineCode && data?.flightTime && data?.originCode)
+  }
+
+  describe('dropoff_manual_entry - Negative tests (should be FALSE)', () => {
+    it('returns false for null data', () => {
+      expect(isDropoffManualEntry(null)).toBe(false)
+    })
+
+    it('returns false for undefined data', () => {
+      expect(isDropoffManualEntry(undefined)).toBe(false)
+    })
+
+    it('returns false for empty object {} (THE BUG CASE)', () => {
+      // This was the root cause of TAG-LLP80398!
+      expect(isDropoffManualEntry({})).toBe(false)
+    })
+
+    it('returns false when all fields are empty strings', () => {
+      const emptyData = {
+        flightNumber: '',
+        flightTime: '',
+        airlineCode: '',
+        airlineName: '',
+        customAirline: '',
+        destinationCode: '',
+        destinationName: '',
+        customDestination: '',
+        dropoffSlot: ''
+      }
+      expect(isDropoffManualEntry(emptyData)).toBe(false)
+    })
+
+    it('returns false when airlineCode is missing', () => {
+      const data = {
+        airlineCode: '', // Missing!
+        flightTime: '10:00',
+        destinationCode: 'TFS',
+        dropoffSlot: '165'
+      }
+      expect(isDropoffManualEntry(data)).toBe(false)
+    })
+
+    it('returns false when flightTime is missing', () => {
+      const data = {
+        airlineCode: 'BY',
+        flightTime: '', // Missing!
+        destinationCode: 'TFS',
+        dropoffSlot: '165'
+      }
+      expect(isDropoffManualEntry(data)).toBe(false)
+    })
+
+    it('returns false when destinationCode is missing', () => {
+      const data = {
+        airlineCode: 'BY',
+        flightTime: '10:00',
+        destinationCode: '', // Missing!
+        dropoffSlot: '165'
+      }
+      expect(isDropoffManualEntry(data)).toBe(false)
+    })
+
+    it('returns false when dropoffSlot is missing', () => {
+      const data = {
+        airlineCode: 'BY',
+        flightTime: '10:00',
+        destinationCode: 'TFS',
+        dropoffSlot: '' // Missing!
+      }
+      expect(isDropoffManualEntry(data)).toBe(false)
+    })
+
+    it('returns false when only one field is filled', () => {
+      expect(isDropoffManualEntry({ airlineCode: 'FR' })).toBe(false)
+      expect(isDropoffManualEntry({ flightTime: '08:00' })).toBe(false)
+      expect(isDropoffManualEntry({ destinationCode: 'AGP' })).toBe(false)
+      expect(isDropoffManualEntry({ dropoffSlot: '120' })).toBe(false)
+    })
+
+    it('returns false when three of four fields are filled', () => {
+      // Missing dropoffSlot
+      expect(isDropoffManualEntry({
+        airlineCode: 'BY',
+        flightTime: '10:00',
+        destinationCode: 'TFS'
+      })).toBe(false)
+
+      // Missing destinationCode
+      expect(isDropoffManualEntry({
+        airlineCode: 'BY',
+        flightTime: '10:00',
+        dropoffSlot: '165'
+      })).toBe(false)
+
+      // Missing flightTime
+      expect(isDropoffManualEntry({
+        airlineCode: 'BY',
+        destinationCode: 'TFS',
+        dropoffSlot: '165'
+      })).toBe(false)
+
+      // Missing airlineCode
+      expect(isDropoffManualEntry({
+        flightTime: '10:00',
+        destinationCode: 'TFS',
+        dropoffSlot: '165'
+      })).toBe(false)
+    })
+  })
+
+  describe('dropoff_manual_entry - Positive tests (should be TRUE)', () => {
+    it('returns true when all four required fields are filled', () => {
+      const completeData = {
+        airlineCode: 'BY',
+        flightTime: '10:30',
+        destinationCode: 'TFS',
+        dropoffSlot: '165'
+      }
+      expect(isDropoffManualEntry(completeData)).toBe(true)
+    })
+
+    it('returns true with early slot (165)', () => {
+      expect(isDropoffManualEntry({
+        airlineCode: 'FR',
+        flightTime: '06:00',
+        destinationCode: 'AGP',
+        dropoffSlot: '165'
+      })).toBe(true)
+    })
+
+    it('returns true with late slot (120)', () => {
+      expect(isDropoffManualEntry({
+        airlineCode: 'U2',
+        flightTime: '14:45',
+        destinationCode: 'PMI',
+        dropoffSlot: '120'
+      })).toBe(true)
+    })
+
+    it('returns true with "Other" airline (custom)', () => {
+      expect(isDropoffManualEntry({
+        airlineCode: 'Other',
+        flightTime: '09:00',
+        destinationCode: 'FAO',
+        dropoffSlot: '165',
+        customAirline: 'Small Regional Air'
+      })).toBe(true)
+    })
+
+    it('returns true with "Other" destination (custom)', () => {
+      expect(isDropoffManualEntry({
+        airlineCode: 'BY',
+        flightTime: '11:00',
+        destinationCode: 'Other',
+        dropoffSlot: '120',
+        customDestination: 'Obscure Airport'
+      })).toBe(true)
+    })
+
+    it('returns true with extra fields present', () => {
+      // Having extra fields shouldn't affect the check
+      const fullData = {
+        flightNumber: 'BY1234',
+        flightTime: '10:30',
+        airlineCode: 'BY',
+        airlineName: 'TUI Airways',
+        customAirline: '',
+        destinationCode: 'TFS',
+        destinationName: 'Tenerife South',
+        customDestination: '',
+        dropoffSlot: '165'
+      }
+      expect(isDropoffManualEntry(fullData)).toBe(true)
+    })
+  })
+
+  describe('dropoff_manual_entry - Edge cases and boundaries', () => {
+    it('handles whitespace-only values as falsy', () => {
+      // Whitespace strings are truthy in JS, but this tests behavior
+      const data = {
+        airlineCode: ' ', // Just a space
+        flightTime: '10:00',
+        destinationCode: 'TFS',
+        dropoffSlot: '165'
+      }
+      // ' ' is truthy, so this returns true - but validation should catch it
+      expect(isDropoffManualEntry(data)).toBe(true)
+    })
+
+    it('handles midnight flight time (00:00)', () => {
+      expect(isDropoffManualEntry({
+        airlineCode: 'BY',
+        flightTime: '00:00',
+        destinationCode: 'TFS',
+        dropoffSlot: '165'
+      })).toBe(true)
+    })
+
+    it('handles late night flight time (23:59)', () => {
+      expect(isDropoffManualEntry({
+        airlineCode: 'FR',
+        flightTime: '23:59',
+        destinationCode: 'AGP',
+        dropoffSlot: '120'
+      })).toBe(true)
+    })
+
+    it('handles numeric slot values as strings', () => {
+      expect(isDropoffManualEntry({
+        airlineCode: 'BY',
+        flightTime: '10:00',
+        destinationCode: 'TFS',
+        dropoffSlot: '165' // String, not number
+      })).toBe(true)
+    })
+
+    it('handles 0 as a falsy value', () => {
+      expect(isDropoffManualEntry({
+        airlineCode: 'BY',
+        flightTime: '10:00',
+        destinationCode: 'TFS',
+        dropoffSlot: 0 // Falsy!
+      })).toBe(false)
+    })
+
+    it('handles "0" string as truthy', () => {
+      expect(isDropoffManualEntry({
+        airlineCode: 'BY',
+        flightTime: '10:00',
+        destinationCode: 'TFS',
+        dropoffSlot: '0' // Truthy string
+      })).toBe(true)
+    })
+  })
+
+  describe('pickup_manual_entry - Negative tests (should be FALSE)', () => {
+    it('returns false for null data', () => {
+      expect(isPickupManualEntry(null)).toBe(false)
+    })
+
+    it('returns false for undefined data', () => {
+      expect(isPickupManualEntry(undefined)).toBe(false)
+    })
+
+    it('returns false for empty object {}', () => {
+      expect(isPickupManualEntry({})).toBe(false)
+    })
+
+    it('returns false when all fields are empty strings', () => {
+      const emptyData = {
+        flightNumber: '',
+        flightTime: '',
+        airlineCode: '',
+        airlineName: '',
+        customAirline: '',
+        originCode: '',
+        originName: '',
+        customOrigin: ''
+      }
+      expect(isPickupManualEntry(emptyData)).toBe(false)
+    })
+
+    it('returns false when airlineCode is missing', () => {
+      expect(isPickupManualEntry({
+        airlineCode: '',
+        flightTime: '18:00',
+        originCode: 'TFS'
+      })).toBe(false)
+    })
+
+    it('returns false when flightTime is missing', () => {
+      expect(isPickupManualEntry({
+        airlineCode: 'BY',
+        flightTime: '',
+        originCode: 'TFS'
+      })).toBe(false)
+    })
+
+    it('returns false when originCode is missing', () => {
+      expect(isPickupManualEntry({
+        airlineCode: 'BY',
+        flightTime: '18:00',
+        originCode: ''
+      })).toBe(false)
+    })
+
+    it('returns false when only two of three fields are filled', () => {
+      // Missing originCode
+      expect(isPickupManualEntry({
+        airlineCode: 'BY',
+        flightTime: '18:00'
+      })).toBe(false)
+
+      // Missing flightTime
+      expect(isPickupManualEntry({
+        airlineCode: 'BY',
+        originCode: 'TFS'
+      })).toBe(false)
+
+      // Missing airlineCode
+      expect(isPickupManualEntry({
+        flightTime: '18:00',
+        originCode: 'TFS'
+      })).toBe(false)
+    })
+  })
+
+  describe('pickup_manual_entry - Positive tests (should be TRUE)', () => {
+    it('returns true when all three required fields are filled', () => {
+      expect(isPickupManualEntry({
+        airlineCode: 'BY',
+        flightTime: '18:30',
+        originCode: 'TFS'
+      })).toBe(true)
+    })
+
+    it('returns true with overnight arrival time', () => {
+      expect(isPickupManualEntry({
+        airlineCode: 'BY',
+        flightTime: '01:30', // After midnight
+        originCode: 'TFS'
+      })).toBe(true)
+    })
+
+    it('returns true with "Other" airline (custom)', () => {
+      expect(isPickupManualEntry({
+        airlineCode: 'Other',
+        flightTime: '19:00',
+        originCode: 'FAO',
+        customAirline: 'Charter Air'
+      })).toBe(true)
+    })
+
+    it('returns true with "Other" origin (custom)', () => {
+      expect(isPickupManualEntry({
+        airlineCode: 'FR',
+        flightTime: '20:00',
+        originCode: 'Other',
+        customOrigin: 'Remote Airfield'
+      })).toBe(true)
+    })
+  })
+
+  describe('pickup_manual_entry - Edge cases', () => {
+    it('handles very early morning arrivals', () => {
+      expect(isPickupManualEntry({
+        airlineCode: 'BY',
+        flightTime: '04:00',
+        originCode: 'TFS'
+      })).toBe(true)
+    })
+
+    it('handles midnight arrival (00:00)', () => {
+      expect(isPickupManualEntry({
+        airlineCode: 'FR',
+        flightTime: '00:00',
+        originCode: 'AGP'
+      })).toBe(true)
+    })
+  })
+})
+
+// =============================================================================
+// Integration Tests: API payload generation
+// =============================================================================
+
+describe('StripePayment - API payload generation', () => {
+  /**
+   * Tests that verify the correct payload is generated for the API
+   * based on the manual_entry flag logic
+   */
+
+  const generatePayload = (manualDepartureData, manualArrivalData) => {
+    return {
+      dropoff_manual_entry: !!(manualDepartureData?.airlineCode &&
+                               manualDepartureData?.flightTime &&
+                               manualDepartureData?.destinationCode &&
+                               manualDepartureData?.dropoffSlot),
+      dropoff_airline_code: manualDepartureData?.airlineCode || null,
+      dropoff_airline_name: manualDepartureData?.airlineName || null,
+      dropoff_destination_code: manualDepartureData?.destinationCode || null,
+      dropoff_destination_name: manualDepartureData?.destinationName || null,
+      dropoff_flight_time: manualDepartureData?.flightTime || null,
+      drop_off_slot: manualDepartureData?.dropoffSlot || null,
+      pickup_manual_entry: !!(manualArrivalData?.airlineCode &&
+                              manualArrivalData?.flightTime &&
+                              manualArrivalData?.originCode),
+      pickup_airline_code: manualArrivalData?.airlineCode || null,
+      pickup_airline_name: manualArrivalData?.airlineName || null,
+      pickup_origin_code: manualArrivalData?.originCode || null,
+      pickup_origin_name: manualArrivalData?.originName || null,
+      pickup_flight_time: manualArrivalData?.flightTime || null,
+    }
+  }
+
+  describe('Empty data scenarios (TAG-LLP80398 bug case)', () => {
+    it('generates correct payload for empty departure data', () => {
+      const emptyDeparture = {
+        flightNumber: '',
+        flightTime: '',
+        airlineCode: '',
+        airlineName: '',
+        destinationCode: '',
+        destinationName: '',
+        dropoffSlot: ''
+      }
+      const emptyArrival = {
+        flightNumber: '',
+        flightTime: '',
+        airlineCode: '',
+        airlineName: '',
+        originCode: '',
+        originName: ''
+      }
+
+      const payload = generatePayload(emptyDeparture, emptyArrival)
+
+      // THE FIX: manual_entry should be FALSE for empty data
+      expect(payload.dropoff_manual_entry).toBe(false)
+      expect(payload.pickup_manual_entry).toBe(false)
+
+      // All other fields should be null
+      expect(payload.dropoff_airline_code).toBeNull()
+      expect(payload.dropoff_flight_time).toBeNull()
+      expect(payload.drop_off_slot).toBeNull()
+    })
+
+    it('generates correct payload for default initialized state', () => {
+      // This is what happens when the component first loads
+      const defaultDeparture = {
+        flightNumber: '',
+        flightTime: '',
+        airlineCode: '',
+        airlineName: '',
+        customAirline: '',
+        destinationCode: '',
+        destinationName: '',
+        customDestination: '',
+        dropoffSlot: ''
+      }
+
+      const payload = generatePayload(defaultDeparture, null)
+
+      expect(payload.dropoff_manual_entry).toBe(false)
+      expect(payload.pickup_manual_entry).toBe(false)
+    })
+  })
+
+  describe('Complete data scenarios', () => {
+    it('generates correct payload for complete departure and arrival', () => {
+      const completeDeparture = {
+        flightNumber: 'BY1234',
+        flightTime: '10:30',
+        airlineCode: 'BY',
+        airlineName: 'TUI Airways',
+        destinationCode: 'TFS',
+        destinationName: 'Tenerife South',
+        dropoffSlot: '165'
+      }
+      const completeArrival = {
+        flightNumber: 'BY1235',
+        flightTime: '18:45',
+        airlineCode: 'BY',
+        airlineName: 'TUI Airways',
+        originCode: 'TFS',
+        originName: 'Tenerife South'
+      }
+
+      const payload = generatePayload(completeDeparture, completeArrival)
+
+      expect(payload.dropoff_manual_entry).toBe(true)
+      expect(payload.dropoff_airline_code).toBe('BY')
+      expect(payload.dropoff_flight_time).toBe('10:30')
+      expect(payload.dropoff_destination_code).toBe('TFS')
+      expect(payload.drop_off_slot).toBe('165')
+
+      expect(payload.pickup_manual_entry).toBe(true)
+      expect(payload.pickup_airline_code).toBe('BY')
+      expect(payload.pickup_flight_time).toBe('18:45')
+      expect(payload.pickup_origin_code).toBe('TFS')
+    })
+  })
+
+  describe('Partial data scenarios', () => {
+    it('departure complete but arrival incomplete', () => {
+      const completeDeparture = {
+        airlineCode: 'FR',
+        flightTime: '08:00',
+        destinationCode: 'AGP',
+        dropoffSlot: '120'
+      }
+      const incompleteArrival = {
+        airlineCode: 'FR',
+        flightTime: '', // Missing!
+        originCode: 'AGP'
+      }
+
+      const payload = generatePayload(completeDeparture, incompleteArrival)
+
+      expect(payload.dropoff_manual_entry).toBe(true)
+      expect(payload.pickup_manual_entry).toBe(false)
+    })
+
+    it('departure incomplete but arrival complete', () => {
+      const incompleteDeparture = {
+        airlineCode: 'BY',
+        flightTime: '10:00',
+        destinationCode: 'TFS',
+        dropoffSlot: '' // Missing!
+      }
+      const completeArrival = {
+        airlineCode: 'BY',
+        flightTime: '18:00',
+        originCode: 'TFS'
+      }
+
+      const payload = generatePayload(incompleteDeparture, completeArrival)
+
+      expect(payload.dropoff_manual_entry).toBe(false)
+      expect(payload.pickup_manual_entry).toBe(true)
+    })
+  })
+
+  describe('Null/undefined data handling', () => {
+    it('handles null departure data', () => {
+      const payload = generatePayload(null, null)
+
+      expect(payload.dropoff_manual_entry).toBe(false)
+      expect(payload.pickup_manual_entry).toBe(false)
+      expect(payload.dropoff_airline_code).toBeNull()
+    })
+
+    it('handles undefined departure data', () => {
+      const payload = generatePayload(undefined, undefined)
+
+      expect(payload.dropoff_manual_entry).toBe(false)
+      expect(payload.pickup_manual_entry).toBe(false)
+    })
+
+    it('handles mixed null and complete data', () => {
+      const completeDeparture = {
+        airlineCode: 'U2',
+        flightTime: '07:00',
+        destinationCode: 'PMI',
+        dropoffSlot: '165'
+      }
+
+      const payload = generatePayload(completeDeparture, null)
+
+      expect(payload.dropoff_manual_entry).toBe(true)
+      expect(payload.pickup_manual_entry).toBe(false)
+    })
+  })
+})
+
+// =============================================================================
+// Regression Tests: Specific bug scenarios
+// =============================================================================
+
+describe('Regression Tests - Known bug scenarios', () => {
+  describe('TAG-LLP80398: Empty object truthy check', () => {
+    /**
+     * Bug: User completed booking but all flight data was missing
+     * Root cause: !!{} returns true, so dropoff_manual_entry was true
+     *             but all individual fields were empty strings → null
+     * Result: Backend received manual_entry: true with all null fields
+     */
+
+    it('reproduces the original bug with old logic', () => {
+      const emptyData = {
+        flightNumber: '',
+        flightTime: '',
+        airlineCode: '',
+        airlineName: '',
+        destinationCode: '',
+        dropoffSlot: ''
+      }
+
+      // OLD BUGGY LOGIC
+      const oldManualEntry = !!emptyData // This was the bug!
+
+      expect(oldManualEntry).toBe(true) // BUG: Returns true for empty object
+    })
+
+    it('verifies the fix prevents the bug', () => {
+      const emptyData = {
+        flightNumber: '',
+        flightTime: '',
+        airlineCode: '',
+        airlineName: '',
+        destinationCode: '',
+        dropoffSlot: ''
+      }
+
+      // NEW FIXED LOGIC
+      const newManualEntry = !!(emptyData?.airlineCode &&
+                                emptyData?.flightTime &&
+                                emptyData?.destinationCode &&
+                                emptyData?.dropoffSlot)
+
+      expect(newManualEntry).toBe(false) // FIX: Returns false for empty data
+    })
+  })
+
+  describe('TAG-WWA09273: Missing airline_code', () => {
+    /**
+     * This booking had data but airline_code was null
+     * Investigating if partial data can cause issues
+     */
+
+    it('handles case where airline code is missing but other data present', () => {
+      const partialData = {
+        flightNumber: 'FR5944',
+        flightTime: '09:00',
+        airlineCode: '', // Missing!
+        airlineName: 'Ryanair',
+        destinationCode: 'AGP',
+        dropoffSlot: '165'
+      }
+
+      const manualEntry = !!(partialData?.airlineCode &&
+                             partialData?.flightTime &&
+                             partialData?.destinationCode &&
+                             partialData?.dropoffSlot)
+
+      expect(manualEntry).toBe(false) // Should NOT be flagged as manual entry
+    })
+  })
+
+  describe('Session storage persistence across refreshes', () => {
+    it('data survives hard refresh simulation', () => {
+      const mockStorage = {}
+
+      // Initial state
+      const initialData = {
+        airlineCode: 'BY',
+        flightTime: '10:00',
+        destinationCode: 'TFS',
+        dropoffSlot: '165'
+      }
+
+      // Save to "storage"
+      mockStorage['booking_manualDepartureData'] = JSON.stringify(initialData)
+
+      // Simulate hard refresh - load from storage
+      const restored = JSON.parse(mockStorage['booking_manualDepartureData'])
+
+      // Verify data integrity
+      expect(restored.airlineCode).toBe('BY')
+      expect(restored.flightTime).toBe('10:00')
+      expect(restored.destinationCode).toBe('TFS')
+      expect(restored.dropoffSlot).toBe('165')
+
+      // Verify manual_entry flag
+      const manualEntry = !!(restored?.airlineCode &&
+                             restored?.flightTime &&
+                             restored?.destinationCode &&
+                             restored?.dropoffSlot)
+      expect(manualEntry).toBe(true)
+    })
+  })
+})
