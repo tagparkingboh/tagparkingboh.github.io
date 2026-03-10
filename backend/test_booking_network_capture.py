@@ -517,76 +517,199 @@ def run_test():
             close_welcome_modal(page)
             dump_session_storage(page, "Initial Load")
 
-            # ============ STEP 1: TRIP DETAILS ============
+            # ============ STEP 1: ENTER FLIGHT DETAILS ============
             print("\n" + "-"*70)
-            print("STEP 1: Trip Details")
+            print("STEP 1: Enter flight details")
             print("-"*70)
 
-            # HARD REFRESH before Step 1
-            hard_refresh(page)
-            close_welcome_modal(page)
-            dump_session_storage(page, "After Hard Refresh (Step 1)")
-
             fill_step1(page, dropoff_date, pickup_date, FLIGHT_DATA)
-            dump_session_storage(page, "After Filling Step 1")
+            dump_session_storage(page, "After Entering Flight Details")
 
-            # Click Continue to Step 2
+            # Click Continue to Package Selection
             btn = page.locator("button:has-text('Continue to Package Selection')")
             if btn.is_visible(timeout=5000):
                 btn.click()
                 time.sleep(3)
 
-            # ============ STEP 2: PACKAGE SELECTION ============
+            # ============ HARD REFRESH ON PACKAGE SELECTION ============
             print("\n" + "-"*70)
-            print("STEP 2: Package Selection")
+            print(">>> HARD REFRESH on Package Selection page <<<")
             print("-"*70)
-
-            # HARD REFRESH before Step 2
             hard_refresh(page)
             close_welcome_modal(page)
-            dump_session_storage(page, "After Hard Refresh (Step 2)")
+            dump_session_storage(page, "After Hard Refresh (Package Selection)")
 
+            # ============ STEP 2: SELECT PACKAGE ============
+            print("\n" + "-"*70)
+            print("STEP 2: Select package (continue to details)")
+            print("-"*70)
             time.sleep(2)
 
-            # Click Continue to Step 3
+            # Click Continue to Your Details
             btn = page.locator("button:has-text('Continue to Your Details')")
             if btn.is_visible(timeout=5000):
                 btn.click()
                 time.sleep(3)
 
-            # ============ STEP 3: YOUR DETAILS ============
+            # ============ HARD REFRESH ON CONTACT/BILLING/VEHICLE ============
             print("\n" + "-"*70)
-            print("STEP 3: Your Details")
+            print(">>> HARD REFRESH on Contact/Billing/Vehicle page <<<")
             print("-"*70)
-
-            # HARD REFRESH before Step 3
             hard_refresh(page)
             close_welcome_modal(page)
-            dump_session_storage(page, "After Hard Refresh (Step 3)")
+            dump_session_storage(page, "After Hard Refresh (Contact/Billing/Vehicle)")
+
+            # ============ STEP 3: ENTER CONTACT/BILLING/VEHICLE ============
+            print("\n" + "-"*70)
+            print("STEP 3: Enter contact/billing/vehicle details")
+            print("-"*70)
 
             fill_step3(page, CUSTOMER, VEHICLE)
-            dump_session_storage(page, "After Filling Step 3")
+            dump_session_storage(page, "After Entering Contact/Billing/Vehicle")
 
-            # Click Continue to Step 4
+            # Click Continue to Payment
             btn = page.locator("button:has-text('Continue to Payment')")
             if btn.is_visible(timeout=5000):
                 btn.click()
                 time.sleep(3)
 
-            # ============ STEP 4: PAYMENT ============
+            # ============ HARD REFRESH ON PAYMENT PAGE ============
             print("\n" + "-"*70)
-            print("STEP 4: Payment")
+            print(">>> HARD REFRESH on Payment page <<<")
             print("-"*70)
-
-            # HARD REFRESH before Step 4
             hard_refresh(page)
             close_welcome_modal(page)
-            dump_session_storage(page, "After Hard Refresh (Step 4)")
+            dump_session_storage(page, "After Hard Refresh (Payment Page)")
+
+            # ============ STEP 4: CHECK T&Cs AND ENTER PAYMENT INFO ============
+            print("\n" + "-"*70)
+            print("STEP 4: Check T&Cs and enter payment info")
+            print("-"*70)
+
+            # Accept terms
+            print("    Accepting T&Cs...")
+            time.sleep(1)
+            try:
+                terms_input = page.locator("input[name='terms']")
+                if not terms_input.is_checked():
+                    page.evaluate("document.querySelector('input[name=\"terms\"]').click()")
+                    time.sleep(0.5)
+            except Exception as e:
+                print(f"    Warning: {e}")
 
             time.sleep(2)
 
-            # Complete payment
-            success = complete_payment(page)
+            # Wait for Stripe
+            print("    Waiting for Stripe...")
+            time.sleep(3)
+
+            # Dismiss Link popup
+            for _ in range(3):
+                page.keyboard.press("Escape")
+                time.sleep(0.3)
+
+            # Fill card details
+            print("    Filling card details...")
+            try:
+                stripe_frame = page.frame_locator("iframe[name*='__privateStripeFrame']").first
+
+                card_input = stripe_frame.locator("input[name='number']")
+                if card_input.is_visible(timeout=5000):
+                    card_input.fill(STRIPE_TEST_CARD["number"])
+                    time.sleep(0.5)
+
+                expiry_input = stripe_frame.locator("input[name='expiry']")
+                if expiry_input.is_visible(timeout=2000):
+                    expiry_input.fill(STRIPE_TEST_CARD["expiry"])
+                    time.sleep(0.5)
+
+                cvc_input = stripe_frame.locator("input[name='cvc']")
+                if cvc_input.is_visible(timeout=2000):
+                    cvc_input.fill(STRIPE_TEST_CARD["cvc"])
+                    time.sleep(0.5)
+
+            except Exception as e:
+                print(f"    Stripe iframe error: {e}")
+
+            dump_session_storage(page, "After Entering Payment Info (before hard refresh)")
+
+            # ============ HARD REFRESH AFTER ENTERING PAYMENT INFO ============
+            print("\n" + "-"*70)
+            print(">>> HARD REFRESH after entering payment info <<<")
+            print("-"*70)
+            hard_refresh(page)
+            close_welcome_modal(page)
+            dump_session_storage(page, "After Hard Refresh (Payment Info Entered)")
+
+            # Re-accept terms and re-fill card if needed
+            time.sleep(2)
+            print("    Re-checking T&Cs after refresh...")
+            try:
+                terms_input = page.locator("input[name='terms']")
+                if not terms_input.is_checked():
+                    page.evaluate("document.querySelector('input[name=\"terms\"]').click()")
+                    time.sleep(0.5)
+            except:
+                pass
+
+            time.sleep(2)
+
+            # Dismiss Link popup again
+            for _ in range(3):
+                page.keyboard.press("Escape")
+                time.sleep(0.3)
+
+            # Re-fill card details
+            print("    Re-filling card details after refresh...")
+            try:
+                stripe_frame = page.frame_locator("iframe[name*='__privateStripeFrame']").first
+
+                card_input = stripe_frame.locator("input[name='number']")
+                if card_input.is_visible(timeout=5000):
+                    card_input.fill(STRIPE_TEST_CARD["number"])
+                    time.sleep(0.5)
+
+                expiry_input = stripe_frame.locator("input[name='expiry']")
+                if expiry_input.is_visible(timeout=2000):
+                    expiry_input.fill(STRIPE_TEST_CARD["expiry"])
+                    time.sleep(0.5)
+
+                cvc_input = stripe_frame.locator("input[name='cvc']")
+                if cvc_input.is_visible(timeout=2000):
+                    cvc_input.fill(STRIPE_TEST_CARD["cvc"])
+                    time.sleep(0.5)
+            except Exception as e:
+                print(f"    Re-fill error: {e}")
+
+            # ============ COMPLETE PAYMENT ============
+            print("\n" + "-"*70)
+            print("STEP 5: Complete payment")
+            print("-"*70)
+
+            # Click Pay
+            print("    Clicking Pay button...")
+            time.sleep(1)
+            pay_button = page.locator(".stripe-pay-btn, button:has-text('Pay')")
+            if pay_button.is_visible(timeout=5000):
+                pay_button.click()
+                time.sleep(5)
+
+                # Check success
+                success_elem = page.locator(".booking-confirmation, :has-text('Booking Confirmed'), :has-text('Payment Complete')")
+                if success_elem.is_visible(timeout=30000):
+                    print("    Payment successful!")
+                    success = True
+                else:
+                    time.sleep(3)
+                    if "confirmation" in page.url.lower() or page.locator(":has-text('TAG-')").is_visible(timeout=5000):
+                        print("    Booking confirmed!")
+                        success = True
+                    else:
+                        print("    Payment may not have completed")
+                        success = False
+            else:
+                print("    Pay button not visible")
+                success = False
 
             if success:
                 print("\n" + "="*70)
