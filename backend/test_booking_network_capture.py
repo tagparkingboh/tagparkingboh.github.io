@@ -137,16 +137,18 @@ def log_response(response: Response):
 
 
 def hard_refresh(page: Page):
-    """Perform a hard refresh (clear cache and reload)."""
-    print("  >>> HARD REFRESH (clearing cache) <<<")
-    # Clear all caches
-    page.context.clear_cookies()
-    # Reload with cache bypass
-    page.reload(wait_until="networkidle")
-    # Alternative: use keyboard shortcut
-    # page.keyboard.press("Control+Shift+r")  # Windows/Linux
-    # page.keyboard.press("Meta+Shift+r")  # Mac
-    time.sleep(2)
+    """Perform a hard refresh (bypass cache and reload)."""
+    print("  >>> HARD REFRESH <<<")
+    # Use keyboard shortcut for hard refresh (Cmd+Shift+R on Mac)
+    # This bypasses the cache without clearing cookies/session
+    page.keyboard.press("Meta+Shift+KeyR")
+    time.sleep(3)
+    # Fallback: regular reload if keyboard shortcut didn't work
+    try:
+        page.wait_for_load_state("networkidle", timeout=5000)
+    except:
+        page.reload(wait_until="networkidle")
+        time.sleep(2)
 
 
 def dump_session_storage(page: Page, label: str):
