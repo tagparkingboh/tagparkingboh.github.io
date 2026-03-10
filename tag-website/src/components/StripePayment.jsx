@@ -256,6 +256,14 @@ function StripePayment({
   // Create payment intent API call - extracted so it can be called on demand
   const createPaymentIntent = async () => {
     console.log('[PAYMENT] Creating payment intent with promo code:', promoCode)
+    console.log('[PAYMENT] manualDepartureData received:', manualDepartureData)
+    console.log('[PAYMENT] manualArrivalData received:', manualArrivalData)
+    console.log('[PAYMENT] !!manualDepartureData =', !!manualDepartureData)
+    console.log('[PAYMENT] !!manualArrivalData =', !!manualArrivalData)
+    console.log('[PAYMENT] manualDepartureData?.airlineCode =', manualDepartureData?.airlineCode)
+    console.log('[PAYMENT] manualDepartureData?.flightTime =', manualDepartureData?.flightTime)
+    console.log('[PAYMENT] manualArrivalData?.airlineCode =', manualArrivalData?.airlineCode)
+    console.log('[PAYMENT] manualArrivalData?.flightTime =', manualArrivalData?.flightTime)
     const response = await fetch(`${API_BASE_URL}/api/payments/create-intent`, {
       method: 'POST',
       headers: {

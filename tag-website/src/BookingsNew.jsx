@@ -84,8 +84,15 @@ const containsProfanity = (text) => {
 function loadBookingState(key, fallback) {
   try {
     const saved = sessionStorage.getItem(`booking_${key}`)
-    if (saved !== null) return JSON.parse(saved)
-  } catch (e) { /* ignore parse errors */ }
+    if (saved !== null) {
+      const parsed = JSON.parse(saved)
+      console.log(`[loadBookingState] Loaded ${key}:`, parsed)
+      return parsed
+    }
+    console.log(`[loadBookingState] No saved value for ${key}, using fallback`)
+  } catch (e) {
+    console.error(`[loadBookingState] Error parsing ${key}:`, e)
+  }
   return fallback
 }
 
@@ -291,10 +298,12 @@ function Bookings() {
   }, [arrivalTimeOverride, showArrivalTimeOverride])
 
   useEffect(() => {
+    console.log('[useEffect] Saving manualDepartureData to sessionStorage:', manualDepartureData)
     sessionStorage.setItem('booking_manualDepartureData', JSON.stringify(manualDepartureData))
   }, [manualDepartureData])
 
   useEffect(() => {
+    console.log('[useEffect] Saving manualArrivalData to sessionStorage:', manualArrivalData)
     sessionStorage.setItem('booking_manualArrivalData', JSON.stringify(manualArrivalData))
   }, [manualArrivalData])
 
