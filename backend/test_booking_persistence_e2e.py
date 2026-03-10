@@ -704,6 +704,260 @@ def test_partial_step1_refresh(page: Page) -> bool:
         return False
 
 
+# Stripe test card
+STRIPE_TEST_CARD = {
+    "number": "4242424242424242",
+    "expiry": "10/69",
+    "cvc": "549",
+}
+
+
+def complete_payment(page: Page) -> bool:
+    """Complete the Stripe payment step."""
+    print("    Accepting terms...")
+    time.sleep(1)
+
+    terms_input = page.locator("input[name='terms']")
+    try:
+        if not terms_input.is_checked():
+            page.evaluate("document.querySelector('input[name=\"terms\"]').click()")
+            time.sleep(0.5)
+    except Exception as e:
+        print(f"    Warning: Could not click terms: {e}")
+
+    time.sleep(2)
+
+    # Wait for Stripe to load
+    print("    Waiting for Stripe payment form...")
+    time.sleep(3)
+
+    # Dismiss Stripe Link popup
+    for _ in range(3):
+        page.keyboard.press("Escape")
+        time.sleep(0.3)
+
+    # Fill Stripe card details
+    print("    Filling card details...")
+    try:
+        # Find Stripe iframe
+        stripe_frame = page.frame_locator("iframe[name*='__privateStripeFrame']").first
+
+        # Card number
+        card_input = stripe_frame.locator("input[name='number']")
+        if card_input.is_visible(timeout=5000):
+            card_input.fill(STRIPE_TEST_CARD["number"])
+            time.sleep(0.5)
+
+        # Expiry
+        expiry_input = stripe_frame.locator("input[name='expiry']")
+        if expiry_input.is_visible(timeout=2000):
+            expiry_input.fill(STRIPE_TEST_CARD["expiry"])
+            time.sleep(0.5)
+
+        # CVC
+        cvc_input = stripe_frame.locator("input[name='cvc']")
+        if cvc_input.is_visible(timeout=2000):
+            cvc_input.fill(STRIPE_TEST_CARD["cvc"])
+            time.sleep(0.5)
+
+    except Exception as e:
+        print(f"    Could not fill Stripe fields via iframe: {e}")
+        # Try alternative approach - PaymentElement
+        try:
+            time.sleep(2)
+            # Click on card tab if tabs exist
+            card_tab = page.locator("button:has-text('Card')")
+            if card_tab.is_visible(timeout=2000):
+                card_tab.click()
+                time.sleep(1)
+
+            # Use keyboard to fill - focus on Stripe element
+            stripe_container = page.locator(".StripeElement, [class*='stripe'], [data-stripe]").first
+            if stripe_container.is_visible(timeout=3000):
+                stripe_container.click()
+                time.sleep(0.5)
+                # Type card number
+                page.keyboard.type(STRIPE_TEST_CARD["number"])
+                time.sleep(0.3)
+                page.keyboard.type(STRIPE_TEST_CARD["expiry"].replace("/", ""))
+                time.sleep(0.3)
+                page.keyboard.type(STRIPE_TEST_CARD["cvc"])
+                time.sleep(0.5)
+        except Exception as e2:
+            print(f"    Alternative Stripe fill failed: {e2}")
+
+    # Click Pay button
+    print("    Clicking Pay button...")
+    time.sleep(1)
+    pay_button = page.locator(".stripe-pay-btn, button:has-text('Pay')")
+    if pay_button.is_visible(timeout=5000):
+        pay_button.click()
+        time.sleep(5)
+
+        # Check for success
+        success_indicator = page.locator(".booking-confirmation, :has-text('Booking Confirmed'), :has-text('Payment Complete')")
+        if success_indicator.is_visible(timeout=30000):
+            print("    Payment successful!")
+            return True
+        else:
+            print("    Payment may have succeeded - checking...")
+            # Check if we're on confirmation or redirected
+            time.sleep(3)
+            if "confirmation" in page.url.lower() or page.locator(":has-text('TAG-')").is_visible(timeout=5000):
+                print("    Booking confirmed!")
+                return True
+
+    print("    Could not confirm payment success")
+    return False
+
+
+def test_full_e2e_with_refresh(page: Page) -> bool:
+    """
+    Full E2E test: Complete booking with page refresh at each step, including payment.
+    This verifies the persistence fix works in a real booking scenario.
+    """
+    print("\n" + "="*60)
+    print("TEST: Full E2E booking with refresh at each step")
+    print("="*60)
+
+    today = datetime.now().date()
+    dropoff_date = today + timedelta(days=21)
+    pickup_date = dropoff_date + timedelta(days=7)
+
+    try:
+        # Step 1
+        print("\n  === Step 1: Trip Details ===")
+        page.goto(STAGING_URL, wait_until="networkidle")
+        time.sleep(3)
+        close_welcome_modal(page)
+
+        fill_step1_departure(page, dropoff_date, FLIGHT_DATA)
+        fill_step1_arrival(page, pickup_date, FLIGHT_DATA)
+
+        print("  Refreshing at Step 1...")
+        page.reload(wait_until="networkidle")
+        time.sleep(3)
+        close_welcome_modal(page)
+
+        if not verify_step1_data(page, FLIGHT_DATA):
+            print("  FAILED: Flight data lost after Step 1 refresh")
+            return False
+
+        click_continue_to_step2(page)
+
+        # Step 2
+        print("\n  === Step 2: Package Selection ===")
+        print("  Refreshing at Step 2...")
+        page.reload(wait_until="networkidle")
+        time.sleep(3)
+        close_welcome_modal(page)
+        time.sleep(2)
+
+        click_continue_to_step3(page)
+
+        # Step 3
+        print("\n  === Step 3: Your Details ===")
+        fill_step3(page, CUSTOMER, VEHICLE)
+
+        print("  Refreshing at Step 3...")
+        page.reload(wait_until="networkidle")
+        time.sleep(3)
+        close_welcome_modal(page)
+        time.sleep(2)
+
+        # Re-fill Step 3 after refresh
+        fill_step3(page, CUSTOMER, VEHICLE)
+
+        click_continue_to_step4(page)
+
+        # Step 4
+        print("\n  === Step 4: Payment ===")
+        print("  Refreshing at Step 4...")
+        page.reload(wait_until="networkidle")
+        time.sleep(3)
+        close_welcome_modal(page)
+        time.sleep(2)
+
+        # Complete payment
+        if not complete_payment(page):
+            print("  FAILED: Payment did not complete")
+            return False
+
+        print("\n  SUCCESS: Full E2E booking completed with refresh at each step!")
+        return True
+
+    except Exception as e:
+        print(f"  FAILED with exception: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def test_e2e_with_navigation_away(page: Page) -> bool:
+    """
+    Full E2E test: Navigate away mid-booking, return, and complete payment.
+    """
+    print("\n" + "="*60)
+    print("TEST: Full E2E with navigate away and return")
+    print("="*60)
+
+    today = datetime.now().date()
+    dropoff_date = today + timedelta(days=23)
+    pickup_date = dropoff_date + timedelta(days=7)
+
+    try:
+        # Complete Step 1
+        print("\n  === Step 1: Trip Details ===")
+        page.goto(STAGING_URL, wait_until="networkidle")
+        time.sleep(3)
+        close_welcome_modal(page)
+
+        fill_step1_departure(page, dropoff_date, FLIGHT_DATA)
+        fill_step1_arrival(page, pickup_date, FLIGHT_DATA)
+
+        # Navigate away
+        print("  Navigating away to homepage...")
+        page.goto("https://staging-tagparking.netlify.app/", wait_until="networkidle")
+        time.sleep(2)
+
+        # Return
+        print("  Returning to booking page...")
+        page.goto(STAGING_URL, wait_until="networkidle")
+        time.sleep(3)
+        close_welcome_modal(page)
+
+        if not verify_step1_data(page, FLIGHT_DATA):
+            print("  FAILED: Flight data lost after navigation!")
+            return False
+
+        click_continue_to_step2(page)
+
+        # Step 2
+        print("\n  === Step 2: Package Selection ===")
+        time.sleep(2)
+        click_continue_to_step3(page)
+
+        # Step 3
+        print("\n  === Step 3: Your Details ===")
+        fill_step3(page, CUSTOMER, VEHICLE)
+        click_continue_to_step4(page)
+
+        # Step 4 - Payment
+        print("\n  === Step 4: Payment ===")
+        if not complete_payment(page):
+            print("  FAILED: Payment did not complete")
+            return False
+
+        print("\n  SUCCESS: Full E2E booking completed after navigating away!")
+        return True
+
+    except Exception as e:
+        print(f"  FAILED with exception: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def run_all_tests():
     """Run all persistence tests."""
     print("\n" + "="*60)
@@ -721,8 +975,8 @@ def run_all_tests():
         )
         page = context.new_page()
 
-        # Run tests
-        tests = [
+        # Run persistence verification tests first
+        persistence_tests = [
             ("Refresh after Step 1 complete", test_refresh_after_step1_complete),
             ("Partial Step 1 data refresh", test_partial_step1_refresh),
             ("Navigate away and return", test_navigate_away_and_return),
@@ -730,7 +984,36 @@ def run_all_tests():
             ("Refresh at each step", test_refresh_at_each_step),
         ]
 
-        for test_name, test_func in tests:
+        print("\n" + "-"*60)
+        print("PERSISTENCE VERIFICATION TESTS")
+        print("-"*60)
+
+        for test_name, test_func in persistence_tests:
+            # Clear session storage before each test
+            page.goto(STAGING_URL, wait_until="networkidle")
+            time.sleep(1)
+            try:
+                page.evaluate("Object.keys(sessionStorage).forEach(key => { if(key.startsWith('booking_')) sessionStorage.removeItem(key) })")
+            except:
+                pass
+
+            try:
+                results[test_name] = test_func(page)
+            except Exception as e:
+                print(f"  Test {test_name} crashed: {e}")
+                results[test_name] = False
+
+        # Run full E2E tests with payment
+        e2e_tests = [
+            ("Full E2E with refresh at each step", test_full_e2e_with_refresh),
+            ("Full E2E with navigate away", test_e2e_with_navigation_away),
+        ]
+
+        print("\n" + "-"*60)
+        print("FULL E2E TESTS (WITH PAYMENT)")
+        print("-"*60)
+
+        for test_name, test_func in e2e_tests:
             # Clear session storage before each test
             page.goto(STAGING_URL, wait_until="networkidle")
             time.sleep(1)
