@@ -2435,6 +2435,112 @@ async def get_customers(
     }
 
 
+class UpdateCustomerRequest(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+@app.patch("/api/admin/customers/{customer_id}")
+async def update_customer(
+    customer_id: int,
+    request: UpdateCustomerRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Update customer email and/or phone.
+    At least one field must be provided.
+    """
+    from db_models import Customer
+
+    # Validate at least one field provided
+    if request.email is None and request.phone is None:
+        raise HTTPException(status_code=400, detail="At least one field (email or phone) must be provided")
+
+    # Find customer
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Validate email format if provided
+    if request.email is not None:
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, request.email):
+            raise HTTPException(status_code=400, detail="Invalid email format")
+
+        # Check email uniqueness (excluding current customer)
+        existing = db.query(Customer).filter(
+            Customer.email == request.email,
+            Customer.id != customer_id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already exists")
+
+        customer.email = request.email
+
+    # Validate phone if provided
+    if request.phone is not None:
+        # Basic phone validation - allow digits, spaces, +, -, ()
+        import re
+        phone_clean = re.sub(r'[\s\-\(\)\+]', '', request.phone)
+        if not phone_clean.isdigit() or len(phone_clean) < 10 or len(phone_clean) > 15:
+            raise HTTPException(status_code=400, detail="Invalid phone format")
+
+        customer.phone = request.phone
+
+    db.commit()
+    db.refresh(customer)
+
+    return {
+        "success": True,
+        "customer": {
+            "id": customer.id,
+            "first_name": customer.first_name,
+            "last_name": customer.last_name,
+            "email": customer.email,
+            "phone": customer.phone,
+            "billing_postcode": customer.billing_postcode,
+            "created_at": customer.created_at.isoformat() if customer.created_at else None,
+        }
+    }
+
+
+@app.delete("/api/admin/customers/{customer_id}")
+async def delete_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Delete a customer by ID.
+    Will fail if customer has associated bookings.
+    """
+    from db_models import Customer, Booking
+
+    # Find customer
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Check for associated bookings
+    booking_count = db.query(Booking).filter(Booking.customer_id == customer_id).count()
+    if booking_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete customer with {booking_count} associated booking(s)"
+        )
+
+    # Delete customer
+    db.delete(customer)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Customer {customer_id} deleted successfully"
+    }
+
+
 @app.get("/api/admin/reports/booking-locations")
 async def get_booking_locations(
     map_type: str = Query("bookings", description="Map type: 'bookings' for confirmed bookings, 'origins' for all leads"),

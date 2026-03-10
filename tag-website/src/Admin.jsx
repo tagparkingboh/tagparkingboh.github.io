@@ -137,6 +137,11 @@ function Admin() {
   const [customerDateFrom, setCustomerDateFrom] = useState(null)
   const [customerDateTo, setCustomerDateTo] = useState(null)
   const [expandedCustomerMonths, setExpandedCustomerMonths] = useState({})
+  const [editingCustomerId, setEditingCustomerId] = useState(null)
+  const [editCustomerForm, setEditCustomerForm] = useState({ email: '', phone: '' })
+  const [savingCustomer, setSavingCustomer] = useState(false)
+  const [deletingCustomerId, setDeletingCustomerId] = useState(null)
+  const [customerMessage, setCustomerMessage] = useState('')
 
   // Pricing settings state - all duration tiers
   const [pricing, setPricing] = useState({
@@ -953,6 +958,84 @@ function Admin() {
       setError('Network error loading customers')
     } finally {
       setLoadingCustomers(false)
+    }
+  }
+
+  const startEditCustomer = (customer) => {
+    setEditingCustomerId(customer.id)
+    setEditCustomerForm({ email: customer.email || '', phone: customer.phone || '' })
+    setCustomerMessage('')
+  }
+
+  const cancelEditCustomer = () => {
+    setEditingCustomerId(null)
+    setEditCustomerForm({ email: '', phone: '' })
+  }
+
+  const saveCustomerEdit = async () => {
+    if (!editingCustomerId) return
+
+    setSavingCustomer(true)
+    setCustomerMessage('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/customers/${editingCustomerId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editCustomerForm),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Update customer in local state
+        setCustomers(prev => prev.map(c =>
+          c.id === editingCustomerId ? data.customer : c
+        ))
+        setEditingCustomerId(null)
+        setEditCustomerForm({ email: '', phone: '' })
+        setCustomerMessage('Customer updated successfully')
+        setTimeout(() => setCustomerMessage(''), 3000)
+      } else {
+        const error = await response.json()
+        setCustomerMessage(`Error: ${error.detail || 'Failed to update customer'}`)
+      }
+    } catch (err) {
+      setCustomerMessage('Network error updating customer')
+    } finally {
+      setSavingCustomer(false)
+    }
+  }
+
+  const deleteCustomer = async (customerId) => {
+    if (!window.confirm('Are you sure you want to delete this customer?')) return
+
+    setDeletingCustomerId(customerId)
+    setCustomerMessage('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/customers/${customerId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        // Remove from local state
+        setCustomers(prev => prev.filter(c => c.id !== customerId))
+        setCustomerMessage('Customer deleted successfully')
+        setTimeout(() => setCustomerMessage(''), 3000)
+      } else {
+        const error = await response.json()
+        setCustomerMessage(`Error: ${error.detail || 'Failed to delete customer'}`)
+      }
+    } catch (err) {
+      setCustomerMessage('Network error deleting customer')
+    } finally {
+      setDeletingCustomerId(null)
     }
   }
 
@@ -4048,6 +4131,12 @@ function Admin() {
               </div>
             </div>
 
+            {customerMessage && (
+              <div className={`flights-message ${customerMessage.includes('Error') ? 'warning' : 'success'}`}>
+                {customerMessage}
+              </div>
+            )}
+
             {loadingCustomers ? (
               <div className="admin-loading-inline">
                 <div className="spinner-small"></div>
@@ -4105,20 +4194,69 @@ function Admin() {
                               <th>Email</th>
                               <th>Post Code</th>
                               <th>Date</th>
+                              <th>Actions</th>
                             </tr>
                           </thead>
                           <tbody>
                             {monthCustomers.map((customer) => (
-                              <tr key={customer.id}>
-                                <td>{customer.first_name} {customer.last_name}</td>
-                                <td>{customer.phone || '-'}</td>
-                                <td>{customer.email || '-'}</td>
-                                <td>{customer.billing_postcode || '-'}</td>
-                                <td>
-                                  {customer.created_at
-                                    ? new Date(customer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
-                                    : '-'}
-                                </td>
+                              <tr key={customer.id} className={editingCustomerId === customer.id ? 'editing' : ''}>
+                                {editingCustomerId === customer.id ? (
+                                  <>
+                                    <td>{customer.first_name} {customer.last_name}</td>
+                                    <td>
+                                      <input
+                                        type="text"
+                                        value={editCustomerForm.phone}
+                                        onChange={(e) => setEditCustomerForm({...editCustomerForm, phone: e.target.value})}
+                                        className="flight-edit-input"
+                                        placeholder="Phone"
+                                      />
+                                    </td>
+                                    <td>
+                                      <input
+                                        type="email"
+                                        value={editCustomerForm.email}
+                                        onChange={(e) => setEditCustomerForm({...editCustomerForm, email: e.target.value})}
+                                        className="flight-edit-input"
+                                        placeholder="Email"
+                                      />
+                                    </td>
+                                    <td>{customer.billing_postcode || '-'}</td>
+                                    <td>
+                                      {customer.created_at
+                                        ? new Date(customer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
+                                        : '-'}
+                                    </td>
+                                    <td className="flight-actions">
+                                      <button className="btn-save" onClick={saveCustomerEdit} disabled={savingCustomer}>
+                                        {savingCustomer ? '...' : '✓'}
+                                      </button>
+                                      <button className="btn-cancel" onClick={cancelEditCustomer}>✕</button>
+                                    </td>
+                                  </>
+                                ) : (
+                                  <>
+                                    <td>{customer.first_name} {customer.last_name}</td>
+                                    <td>{customer.phone || '-'}</td>
+                                    <td>{customer.email || '-'}</td>
+                                    <td>{customer.billing_postcode || '-'}</td>
+                                    <td>
+                                      {customer.created_at
+                                        ? new Date(customer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
+                                        : '-'}
+                                    </td>
+                                    <td className="flight-actions">
+                                      <button className="btn-edit" onClick={() => startEditCustomer(customer)}>Edit</button>
+                                      <button
+                                        className="btn-delete"
+                                        onClick={() => deleteCustomer(customer.id)}
+                                        disabled={deletingCustomerId === customer.id}
+                                      >
+                                        {deletingCustomerId === customer.id ? '...' : 'Delete'}
+                                      </button>
+                                    </td>
+                                  </>
+                                )}
                               </tr>
                             ))}
                           </tbody>
