@@ -151,7 +151,7 @@ function Bookings() {
   const [arrivalTimeError, setArrivalTimeError] = useState('')
   // Manual entry is now the default (simplified booking flow)
   const [showManualDeparture, setShowManualDeparture] = useState(true)
-  const [manualDepartureData, setManualDepartureData] = useState({
+  const [manualDepartureData, setManualDepartureData] = useState(() => loadBookingState('manualDepartureData', {
     flightNumber: '',
     flightTime: '',
     airlineCode: '',
@@ -161,10 +161,10 @@ function Bookings() {
     destinationName: '',
     customDestination: '',
     dropoffSlot: ''
-  })
+  }))
   // Manual entry is now the default (simplified booking flow)
   const [showManualArrival, setShowManualArrival] = useState(true)
-  const [manualArrivalData, setManualArrivalData] = useState({
+  const [manualArrivalData, setManualArrivalData] = useState(() => loadBookingState('manualArrivalData', {
     flightNumber: '',
     flightTime: '',
     airlineCode: '',
@@ -173,7 +173,7 @@ function Bookings() {
     originCode: '',
     originName: '',
     customOrigin: ''
-  })
+  }))
   const [availableAirlines, setAvailableAirlines] = useState([])
   const [availableDestinations, setAvailableDestinations] = useState([])
   const [formData, setFormData] = useState(() => {
@@ -289,6 +289,14 @@ function Bookings() {
     sessionStorage.setItem('booking_arrivalTimeOverride', JSON.stringify(arrivalTimeOverride))
     sessionStorage.setItem('booking_showArrivalTimeOverride', JSON.stringify(showArrivalTimeOverride))
   }, [arrivalTimeOverride, showArrivalTimeOverride])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_manualDepartureData', JSON.stringify(manualDepartureData))
+  }, [manualDepartureData])
+
+  useEffect(() => {
+    sessionStorage.setItem('booking_manualArrivalData', JSON.stringify(manualArrivalData))
+  }, [manualArrivalData])
 
   // Check availability for a date range
   const checkAvailability = (dropoffDate, pickupDate) => {
