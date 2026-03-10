@@ -31,7 +31,7 @@ CUSTOMER = {
     "first_name": "Network",
     "last_name": "Test",
     "email": "network.test@example.com",
-    "phone": "7911999888",
+    "phone": "7977321321",
     "address1": "123 Network Street",
     "city": "Bournemouth",
     "county": "Dorset",
@@ -138,17 +138,10 @@ def log_response(response: Response):
 
 def hard_refresh(page: Page):
     """Perform a hard refresh (bypass cache and reload)."""
-    print("  >>> HARD REFRESH <<<")
-    # Use keyboard shortcut for hard refresh (Cmd+Shift+R on Mac)
-    # This bypasses the cache without clearing cookies/session
-    page.keyboard.press("Meta+Shift+KeyR")
+    print("  >>> HARD REFRESH (page.reload) <<<")
+    # Use page.reload - most reliable approach
+    page.reload(wait_until="networkidle")
     time.sleep(3)
-    # Fallback: regular reload if keyboard shortcut didn't work
-    try:
-        page.wait_for_load_state("networkidle", timeout=5000)
-    except:
-        page.reload(wait_until="networkidle")
-        time.sleep(2)
 
 
 def dump_session_storage(page: Page, label: str):
