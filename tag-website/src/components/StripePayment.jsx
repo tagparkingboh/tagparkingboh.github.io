@@ -258,8 +258,8 @@ function StripePayment({
     console.log('[PAYMENT] Creating payment intent with promo code:', promoCode)
     console.log('[PAYMENT] manualDepartureData received:', manualDepartureData)
     console.log('[PAYMENT] manualArrivalData received:', manualArrivalData)
-    console.log('[PAYMENT] !!manualDepartureData =', !!manualDepartureData)
-    console.log('[PAYMENT] !!manualArrivalData =', !!manualArrivalData)
+    console.log('[PAYMENT] dropoff_manual_entry =', !!(manualDepartureData?.airlineCode && manualDepartureData?.flightTime && manualDepartureData?.destinationCode && manualDepartureData?.dropoffSlot))
+    console.log('[PAYMENT] pickup_manual_entry =', !!(manualArrivalData?.airlineCode && manualArrivalData?.flightTime && manualArrivalData?.originCode))
     console.log('[PAYMENT] manualDepartureData?.airlineCode =', manualDepartureData?.airlineCode)
     console.log('[PAYMENT] manualDepartureData?.flightTime =', manualDepartureData?.flightTime)
     console.log('[PAYMENT] manualArrivalData?.airlineCode =', manualArrivalData?.airlineCode)
@@ -320,7 +320,7 @@ function StripePayment({
         dropoff_time_override: !!departureTimeOverride && departureTimeOverride !== (selectedFlight?.time || ''),
         dropoff_scheduled_time: (!!departureTimeOverride && departureTimeOverride !== (selectedFlight?.time || '')) ? (selectedFlight?.time || null) : null,
         dropoff_customer_time: (!!departureTimeOverride && departureTimeOverride !== (selectedFlight?.time || '')) ? departureTimeOverride : null,
-        dropoff_manual_entry: !!manualDepartureData,
+        dropoff_manual_entry: !!(manualDepartureData?.airlineCode && manualDepartureData?.flightTime && manualDepartureData?.destinationCode && manualDepartureData?.dropoffSlot),
         dropoff_airline_code: manualDepartureData?.airlineCode || null,
         dropoff_airline_name: manualDepartureData?.airlineName || null,
         dropoff_destination_code: manualDepartureData?.destinationCode || null,
@@ -329,7 +329,7 @@ function StripePayment({
         pickup_time_override: !!arrivalTimeOverride && arrivalTimeOverride !== (selectedArrivalFlight?.time || ''),
         pickup_scheduled_time: (!!arrivalTimeOverride && arrivalTimeOverride !== (selectedArrivalFlight?.time || '')) ? (selectedArrivalFlight?.time || null) : null,
         pickup_customer_time: (!!arrivalTimeOverride && arrivalTimeOverride !== (selectedArrivalFlight?.time || '')) ? arrivalTimeOverride : null,
-        pickup_manual_entry: !!manualArrivalData,
+        pickup_manual_entry: !!(manualArrivalData?.airlineCode && manualArrivalData?.flightTime && manualArrivalData?.originCode),
         pickup_airline_code: manualArrivalData?.airlineCode || null,
         pickup_airline_name: manualArrivalData?.airlineName || null,
         pickup_origin_code: manualArrivalData?.originCode || null,
