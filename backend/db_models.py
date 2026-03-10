@@ -482,6 +482,14 @@ class MarketingSubscriber(Base):
     promo_free_used_at = Column(DateTime(timezone=True))
     promo_free_used_booking_id = Column(Integer, ForeignKey("bookings.id"))
 
+    # Founder Thank You Email - personalized email from Kristian with 10% promo
+    founder_promo_code = Column(String(20), unique=True, index=True)  # Founder's 10% off promo code
+    founder_email_sent = Column(Boolean, default=False)
+    founder_email_sent_at = Column(DateTime(timezone=True))
+    founder_promo_used = Column(Boolean, default=False)
+    founder_promo_used_at = Column(DateTime(timezone=True))
+    founder_promo_used_booking_id = Column(Integer, ForeignKey("bookings.id"))
+
     # Source tracking
     source = Column(String(50), default="landing_page")  # landing_page, homepage, etc.
     hubspot_contact_id = Column(String(100))  # For HubSpot integration

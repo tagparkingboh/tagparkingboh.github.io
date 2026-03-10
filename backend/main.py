@@ -2331,6 +2331,12 @@ async def get_marketing_subscribers(
                 "promo_free_sent_at": s.promo_free_sent_at.isoformat() if s.promo_free_sent_at else None,
                 "promo_free_used": s.promo_free_used,
                 "promo_free_used_at": s.promo_free_used_at.isoformat() if s.promo_free_used_at else None,
+                # Founder thank you email (separate)
+                "founder_promo_code": s.founder_promo_code,
+                "founder_email_sent": s.founder_email_sent,
+                "founder_email_sent_at": s.founder_email_sent_at.isoformat() if s.founder_email_sent_at else None,
+                "founder_promo_used": s.founder_promo_used,
+                "founder_promo_used_at": s.founder_promo_used_at.isoformat() if s.founder_promo_used_at else None,
                 # Unsubscribe
                 "unsubscribed": s.unsubscribed,
                 "unsubscribed_at": s.unsubscribed_at.isoformat() if s.unsubscribed_at else None,
@@ -3064,6 +3070,78 @@ async def send_promo_email_to_subscriber(
         raise HTTPException(
             status_code=500,
             detail="Failed to send promo email. Check SendGrid configuration."
+        )
+
+
+@app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-founder-email")
+async def send_founder_email_to_subscriber(
+    subscriber_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Generate a unique promo code and send founder thank you email to a subscriber.
+
+    The founder email is a personal message from Kristian with a 10% off promo code.
+    It's CC'd to the founder's email so they can see and respond to replies.
+    """
+    from email_service import generate_promo_code, send_founder_thank_you_email
+
+    subscriber = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.id == subscriber_id
+    ).first()
+
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+
+    if subscriber.unsubscribed:
+        raise HTTPException(status_code=400, detail="Subscriber has unsubscribed")
+
+    # Check if founder email has already been used
+    if subscriber.founder_promo_used:
+        raise HTTPException(status_code=400, detail="Founder promo code has already been used")
+
+    # Generate unique promo code for founder email if not already generated
+    if not subscriber.founder_promo_code:
+        for _ in range(10):
+            new_code = generate_promo_code()
+            # Check uniqueness across all promo code fields
+            existing = db.query(MarketingSubscriber).filter(
+                (MarketingSubscriber.promo_10_code == new_code) |
+                (MarketingSubscriber.promo_free_code == new_code) |
+                (MarketingSubscriber.promo_code == new_code) |
+                (MarketingSubscriber.founder_promo_code == new_code)
+            ).first()
+            if not existing:
+                subscriber.founder_promo_code = new_code
+                break
+        else:
+            raise HTTPException(status_code=500, detail="Failed to generate unique promo code")
+
+    promo_code = subscriber.founder_promo_code
+    db.commit()
+
+    # Send the founder thank you email
+    email_sent = send_founder_thank_you_email(
+        email=subscriber.email,
+        first_name=subscriber.first_name,
+        promo_code=promo_code,
+    )
+
+    if email_sent:
+        subscriber.founder_email_sent = True
+        subscriber.founder_email_sent_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Founder thank you email sent to {subscriber.email}",
+            "promo_code": promo_code,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send founder email. Check SendGrid configuration."
         )
 
 

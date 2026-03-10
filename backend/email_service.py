@@ -546,6 +546,85 @@ def send_manual_booking_payment_email(
     return send_email(email, subject, html_content)
 
 
+def send_founder_thank_you_email(
+    email: str,
+    first_name: str,
+    promo_code: str,
+) -> bool:
+    """
+    Send personal thank you email from founder to marketing subscribers with promo code.
+
+    This email is styled as a personal message from Kristian (founder).
+    CC'd to founder's email so they can see responses.
+
+    Args:
+        email: Subscriber email address
+        first_name: Subscriber first name
+        promo_code: Unique promo code for 10% off
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    from sendgrid.helpers.mail import Cc
+
+    subject = os.getenv("FOUNDER_EMAIL_SUBJECT", "A personal thank you from me")
+    founder_name = os.getenv("FOUNDER_NAME", "Kristian")
+    founder_email = os.getenv("FOUNDER_EMAIL", "kristian@tagparking.co.uk")
+
+    # Load template from file
+    template_path = EMAIL_TEMPLATES_DIR / "founder_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{PROMO_CODE}}", promo_code)
+        html_content = html_content.replace("{{FOUNDER_NAME}}", founder_name)
+    except FileNotFoundError:
+        logger.error(f"Founder email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading founder email template: {e}")
+        return False
+
+    print(f"[EMAIL] send_founder_thank_you_email called for: {email}, subject: {subject}")
+    if not SENDGRID_API_KEY:
+        print("[EMAIL] ERROR: SendGrid API key not configured!")
+        logger.warning("SendGrid API key not configured - email not sent")
+        return False
+
+    try:
+        message = Mail(
+            from_email=Email(FROM_EMAIL, founder_name),  # From system email but with founder's name
+            to_emails=To(email),
+            subject=subject,
+            html_content=Content("text/html", html_content),
+        )
+
+        # CC the founder so they can see and respond to replies
+        message.add_cc(Cc(founder_email, founder_name))
+
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        print(f"[EMAIL] Sending founder thank you email via SendGrid (CC: {founder_email})...")
+        response = sg.send(message)
+        print(f"[EMAIL] SendGrid response status: {response.status_code}")
+
+        if response.status_code in (200, 201, 202):
+            print(f"[EMAIL] Founder thank you email sent successfully to {email}")
+            logger.info(f"Founder thank you email sent to {email} (CC: {founder_email})")
+            return True
+        else:
+            print(f"[EMAIL] SendGrid returned non-success status: {response.status_code}")
+            logger.error(f"Failed to send founder thank you email to {email}: {response.status_code}")
+            return False
+
+    except Exception as e:
+        print(f"[EMAIL] Exception sending founder thank you email: {str(e)}")
+        logger.error(f"Error sending founder thank you email to {email}: {str(e)}")
+        return False
+
+
 def send_founder_followup_email(
     email: str,
     first_name: str,

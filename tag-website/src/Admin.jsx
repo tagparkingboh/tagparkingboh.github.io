@@ -115,6 +115,8 @@ function Admin() {
   const [expandedSubscriberMonths, setExpandedSubscriberMonths] = useState({})
   const [showPromoModal, setShowPromoModal] = useState(false)
   const [promoToSend, setPromoToSend] = useState(null) // { subscriber, discountPercent }
+  const [showSubscriberFounderModal, setShowSubscriberFounderModal] = useState(false)
+  const [founderEmailToSend, setFounderEmailToSend] = useState(null) // { subscriber }
   const [promoSuccessMessage, setPromoSuccessMessage] = useState('')
 
   // Abandoned leads state
@@ -1019,6 +1021,47 @@ function Admin() {
       setError('Network error sending promo email')
     } finally {
       setSendingPromoId(null)
+    }
+  }
+
+  const openFounderEmailModal = (subscriber) => {
+    setFounderEmailToSend({ subscriber })
+    setShowSubscriberFounderModal(true)
+  }
+
+  const confirmSendFounderEmail = async () => {
+    if (!founderEmailToSend) return
+
+    const { subscriber } = founderEmailToSend
+    setSendingFounderEmailId(subscriber.id)
+    setError('')
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/admin/marketing-subscribers/${subscriber.id}/send-founder-email`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      )
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setPromoSuccessMessage(`Founder thank you email sent to ${subscriber.email}`)
+        setTimeout(() => setPromoSuccessMessage(''), 5000)
+        fetchSubscribers()
+        setShowSubscriberFounderModal(false)
+        setFounderEmailToSend(null)
+      } else {
+        setError(data.detail || 'Failed to send founder email')
+      }
+    } catch (err) {
+      setError('Network error sending founder email')
+    } finally {
+      setSendingFounderEmailId(null)
     }
   }
 
@@ -3285,6 +3328,49 @@ function Admin() {
                                   </div>
                                 </div>
 
+                                {/* Founder Thank You Email Section */}
+                                <div className="booking-section">
+                                  <div className="section-header-with-action">
+                                    <h4>Founder Thank You Email</h4>
+                                    {!subscriber.unsubscribed && !subscriber.founder_promo_used && !subscriber.founder_email_sent && (
+                                      <button
+                                        className="action-btn promo-btn founder"
+                                        onClick={(e) => { e.stopPropagation(); openFounderEmailModal(subscriber); }}
+                                      >
+                                        Send Founder Email
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="booking-section-content">
+                                    {subscriber.founder_promo_code ? (
+                                      <div className="booking-detail-row">
+                                        <div className="booking-detail">
+                                          <span className="detail-label">Code</span>
+                                          <span className="detail-value">
+                                            <span className="promo-code-display">{subscriber.founder_promo_code}</span>
+                                          </span>
+                                        </div>
+                                        <div className="booking-detail">
+                                          <span className="detail-label">Status</span>
+                                          <span className="detail-value">
+                                            <span className={`status-badge ${subscriber.founder_promo_used ? 'used' : 'sent'}`}>
+                                              {subscriber.founder_promo_used ? 'Used' : 'Sent'}
+                                            </span>
+                                          </span>
+                                        </div>
+                                        <div className="booking-detail">
+                                          <span className="detail-label">Sent At</span>
+                                          <span className="detail-value">
+                                            {formatDateTimeUK(subscriber.founder_email_sent_at)}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="section-empty">Not sent yet</p>
+                                    )}
+                                  </div>
+                                </div>
+
                                 {subscriber.unsubscribed && (
                                   <div className="subscriber-unsubscribed-notice">
                                     Unsubscribed on {formatDateUK(subscriber.unsubscribed_at)}
@@ -5504,6 +5590,39 @@ function Admin() {
                 disabled={sendingPromoId}
               >
                 {sendingPromoId ? 'Sending...' : `Yes, Send ${promoToSend.discountPercent === 100 ? 'FREE' : '10% Off'} Code`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Founder Thank You Email Confirmation Modal (for Marketing Subscribers) */}
+      {showSubscriberFounderModal && founderEmailToSend && (
+        <div className="modal-overlay" onClick={() => { setShowSubscriberFounderModal(false); setFounderEmailToSend(null); }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Send Founder Thank You Email</h3>
+            <p>Are you sure you want to send this personal thank you email from Kristian?</p>
+            <div className="modal-booking-info">
+              <p><strong>Subscriber:</strong> {founderEmailToSend.subscriber.first_name} {founderEmailToSend.subscriber.last_name}</p>
+              <p><strong>Email:</strong> {founderEmailToSend.subscriber.email}</p>
+            </div>
+            <p className="modal-warning">
+              This will generate a unique 10% promo code and send a personal thank you email from Kristian.
+              The email will be CC'd to Kristian so he can see and respond to any replies.
+            </p>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => { setShowSubscriberFounderModal(false); setFounderEmailToSend(null); }}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={confirmSendFounderEmail}
+                disabled={sendingFounderEmailId}
+              >
+                {sendingFounderEmailId ? 'Sending...' : 'Yes, Send Founder Email'}
               </button>
             </div>
           </div>

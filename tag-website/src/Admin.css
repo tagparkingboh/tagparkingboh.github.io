@@ -1657,6 +1657,16 @@
   background: #9ae6b4;
 }
 
+.promo-btn.founder {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.promo-btn.founder:hover:not(:disabled) {
+  background: #fde68a;
+}
+
 .subscribers-summary {
   margin-top: 20px;
   padding: 15px;
