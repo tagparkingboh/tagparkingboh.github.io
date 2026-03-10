@@ -2400,6 +2400,41 @@ async def get_abandoned_leads(
     }
 
 
+@app.get("/api/admin/customers")
+async def get_customers(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get all customers ordered by created_at ascending.
+    Returns customer contact and billing information.
+    """
+    from db_models import Customer
+
+    customers = (
+        db.query(Customer)
+        .order_by(Customer.created_at.asc())
+        .all()
+    )
+
+    customers_data = []
+    for customer in customers:
+        customers_data.append({
+            "id": customer.id,
+            "first_name": customer.first_name,
+            "last_name": customer.last_name,
+            "email": customer.email,
+            "phone": customer.phone,
+            "billing_postcode": customer.billing_postcode,
+            "created_at": customer.created_at.isoformat() if customer.created_at else None,
+        })
+
+    return {
+        "count": len(customers_data),
+        "customers": customers_data,
+    }
+
+
 @app.get("/api/admin/reports/booking-locations")
 async def get_booking_locations(
     map_type: str = Query("bookings", description="Map type: 'bookings' for confirmed bookings, 'origins' for all leads"),

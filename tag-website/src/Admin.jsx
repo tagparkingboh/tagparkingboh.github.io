@@ -130,6 +130,14 @@ function Admin() {
   const [leadDateTo, setLeadDateTo] = useState(null)
   const [expandedLeadMonths, setExpandedLeadMonths] = useState({})
 
+  // Customers state
+  const [customers, setCustomers] = useState([])
+  const [loadingCustomers, setLoadingCustomers] = useState(false)
+  const [customerSearchTerm, setCustomerSearchTerm] = useState('')
+  const [customerDateFrom, setCustomerDateFrom] = useState(null)
+  const [customerDateTo, setCustomerDateTo] = useState(null)
+  const [expandedCustomerMonths, setExpandedCustomerMonths] = useState({})
+
   // Pricing settings state - all duration tiers
   const [pricing, setPricing] = useState({
     days_1_4_price: 60,
@@ -288,6 +296,13 @@ function Admin() {
   useEffect(() => {
     if (activeTab === 'leads' && token) {
       fetchLeads()
+    }
+  }, [activeTab, token])
+
+  // Fetch customers when customers tab is active
+  useEffect(() => {
+    if (activeTab === 'customers' && token) {
+      fetchCustomers()
     }
   }, [activeTab, token])
 
@@ -919,6 +934,28 @@ function Admin() {
     }
   }
 
+  const fetchCustomers = async () => {
+    setLoadingCustomers(true)
+    setError('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/customers`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setCustomers(data.customers || [])
+      } else {
+        setError('Failed to load customers')
+      }
+    } catch (err) {
+      setError('Network error loading customers')
+    } finally {
+      setLoadingCustomers(false)
+    }
+  }
+
   const fetchPricing = async () => {
     setLoadingPricing(true)
     setPricingMessage('')
@@ -1396,6 +1433,45 @@ function Admin() {
 
     return filtered
   }, [subscribers, subscriberSearchTerm, subscriberStatusFilter, hideTestEmails, subscriberDateFrom, subscriberDateTo])
+
+  // Filter customers
+  const filteredCustomers = useMemo(() => {
+    let filtered = [...customers]
+
+    // Apply search filter
+    if (customerSearchTerm.trim()) {
+      const search = customerSearchTerm.toLowerCase().trim()
+      filtered = filtered.filter(c =>
+        c.first_name?.toLowerCase().includes(search) ||
+        c.last_name?.toLowerCase().includes(search) ||
+        c.email?.toLowerCase().includes(search) ||
+        c.phone?.includes(search) ||
+        c.billing_postcode?.toLowerCase().includes(search) ||
+        `${c.first_name} ${c.last_name}`.toLowerCase().includes(search)
+      )
+    }
+
+    // Apply date filter
+    if (customerDateFrom || customerDateTo) {
+      filtered = filtered.filter(c => {
+        const custDate = c.created_at ? new Date(c.created_at) : null
+        if (!custDate) return false
+        if (customerDateFrom) {
+          const fromDate = new Date(customerDateFrom)
+          fromDate.setHours(0, 0, 0, 0)
+          if (custDate < fromDate) return false
+        }
+        if (customerDateTo) {
+          const toDate = new Date(customerDateTo)
+          toDate.setHours(23, 59, 59, 999)
+          if (custDate > toDate) return false
+        }
+        return true
+      })
+    }
+
+    return filtered
+  }, [customers, customerSearchTerm, customerDateFrom, customerDateTo])
 
   const toggleBookingExpanded = (bookingId) => {
     setExpandedBookingId(expandedBookingId === bookingId ? null : bookingId)
@@ -1931,6 +2007,12 @@ function Admin() {
           onClick={() => setActiveTab('leads')}
         >
           Leads
+        </button>
+        <button
+          className={`admin-nav-item ${activeTab === 'customers' ? 'active' : ''}`}
+          onClick={() => setActiveTab('customers')}
+        >
+          Customers
         </button>
         <button
           className={`admin-nav-item ${activeTab === 'pricing' ? 'active' : ''}`}
@@ -3847,6 +3929,206 @@ function Admin() {
                 })()}
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'customers' && (
+          <div className="admin-section">
+            <div className="admin-section-header">
+              <h2>Customers</h2>
+              <div className="flights-header-actions">
+                <button
+                  className="btn-secondary"
+                  onClick={fetchCustomers}
+                  disabled={loadingCustomers}
+                >
+                  {loadingCustomers ? 'Loading...' : '↻ Refresh'}
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={() => {
+                    // Generate CSV from filtered customers
+                    const csvRows = [['First Name', 'Last Name', 'Phone', 'Email', 'Post Code', 'Date Signed Up']]
+                    filteredCustomers.forEach(cust => {
+                      const dateSignedUp = cust.created_at
+                        ? new Date(cust.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
+                        : ''
+                      csvRows.push([
+                        cust.first_name || '',
+                        cust.last_name || '',
+                        cust.phone || '',
+                        cust.email || '',
+                        cust.billing_postcode || '',
+                        dateSignedUp
+                      ])
+                    })
+                    const csvContent = csvRows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')).join('\n')
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+                    const url = URL.createObjectURL(blob)
+                    const link = document.createElement('a')
+                    link.setAttribute('href', url)
+                    // Build descriptive filename based on filters
+                    const formatDateForFilename = (date) => {
+                      const day = String(date.getDate()).padStart(2, '0')
+                      const month = String(date.getMonth() + 1).padStart(2, '0')
+                      const year = date.getFullYear()
+                      return `${day}-${month}-${year}`
+                    }
+                    let filename = 'customers'
+                    if (customerDateFrom && customerDateTo) {
+                      filename = `customers_${formatDateForFilename(customerDateFrom)}_to_${formatDateForFilename(customerDateTo)}`
+                    } else if (customerDateFrom) {
+                      filename = `customers_from_${formatDateForFilename(customerDateFrom)}`
+                    } else if (customerDateTo) {
+                      filename = `customers_to_${formatDateForFilename(customerDateTo)}`
+                    } else {
+                      filename = `customers_all_${formatDateForFilename(new Date())}`
+                    }
+                    link.setAttribute('download', `${filename}.csv`)
+                    link.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                  disabled={loadingCustomers}
+                >
+                  ↓ Download CSV
+                </button>
+              </div>
+            </div>
+
+            <div className="flights-filters">
+              <div className="flight-filter-group lead-search-group">
+                <input
+                  type="text"
+                  placeholder="Search by name, email, phone, or postcode..."
+                  value={customerSearchTerm}
+                  onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                  className="flight-number-input lead-search-input"
+                />
+                {customerSearchTerm && (
+                  <button
+                    className="lead-search-clear"
+                    onClick={() => setCustomerSearchTerm('')}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              <div className="flight-filter-group leads-date-picker">
+                <label>From:</label>
+                <DatePicker
+                  selected={customerDateFrom}
+                  onChange={(date) => setCustomerDateFrom(date)}
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="DD/MM/YYYY"
+                  className="flight-date-input"
+                  isClearable
+                />
+              </div>
+              <div className="flight-filter-group leads-date-picker">
+                <label>To:</label>
+                <DatePicker
+                  selected={customerDateTo}
+                  onChange={(date) => setCustomerDateTo(date)}
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="DD/MM/YYYY"
+                  className="flight-date-input"
+                  isClearable
+                />
+              </div>
+              {(customerDateFrom || customerDateTo) && (
+                <button
+                  className="btn-secondary clear-dates-btn"
+                  onClick={() => { setCustomerDateFrom(null); setCustomerDateTo(null); }}
+                >
+                  × Clear
+                </button>
+              )}
+              <div className="leads-filter-count">
+                Showing {filteredCustomers.length} of {customers.length} customers
+              </div>
+            </div>
+
+            {loadingCustomers ? (
+              <div className="admin-loading-inline">
+                <div className="spinner-small"></div>
+                <span>Loading customers...</span>
+              </div>
+            ) : filteredCustomers.length === 0 ? (
+              <p className="admin-no-data">
+                {customers.length === 0 ? 'No customers found' : 'No customers match your search'}
+              </p>
+            ) : (() => {
+              // Group by month
+              const monthlyGroups = {}
+              filteredCustomers.forEach(customer => {
+                const date = customer.created_at ? new Date(customer.created_at) : null
+                if (date) {
+                  const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+                  if (!monthlyGroups[monthKey]) monthlyGroups[monthKey] = []
+                  monthlyGroups[monthKey].push(customer)
+                }
+              })
+
+              const sortedMonths = Object.keys(monthlyGroups).sort()  // ASC order
+              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+              if (sortedMonths.length === 0) {
+                return <p className="admin-no-data">No customers found</p>
+              }
+
+              return sortedMonths.map(monthKey => {
+                const [year, month] = monthKey.split('-')
+                const monthName = `${monthNames[parseInt(month, 10) - 1]} ${year}`
+                const monthCustomers = monthlyGroups[monthKey]
+                const isExpanded = expandedCustomerMonths[monthKey]
+
+                return (
+                  <div key={monthKey} className="leads-month-container">
+                    <div
+                      className="leads-month-header"
+                      onClick={() => setExpandedCustomerMonths(prev => ({
+                        ...prev,
+                        [monthKey]: !prev[monthKey]
+                      }))}
+                    >
+                      <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                      <span className="month-name">{monthName}</span>
+                      <span className="month-total">{monthCustomers.length} customer{monthCustomers.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    {isExpanded && (
+                      <div className="leads-month-content">
+                        <table className="admin-table leads-table">
+                          <thead>
+                            <tr>
+                              <th>Name</th>
+                              <th>Phone</th>
+                              <th>Email</th>
+                              <th>Post Code</th>
+                              <th>Date</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {monthCustomers.map((customer) => (
+                              <tr key={customer.id}>
+                                <td>{customer.first_name} {customer.last_name}</td>
+                                <td>{customer.phone || '-'}</td>
+                                <td>{customer.email || '-'}</td>
+                                <td>{customer.billing_postcode || '-'}</td>
+                                <td>
+                                  {customer.created_at
+                                    ? new Date(customer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
+                                    : '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            })()}
           </div>
         )}
 
