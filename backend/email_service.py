@@ -662,14 +662,11 @@ def send_founder_followup_email(
 
     try:
         message = Mail(
-            from_email=Email(FROM_EMAIL, founder_name),  # From system email but with founder's name
+            from_email=Email(founder_email, founder_name),  # From founder's email
             to_emails=To(email),
             subject=subject,
             html_content=Content("text/html", html_content),
         )
-
-        # CC the founder so they can see and respond to replies
-        message.add_cc(Cc(founder_email, founder_name))
 
         sg = SendGridAPIClient(SENDGRID_API_KEY)
         print(f"[EMAIL] Sending founder followup via SendGrid (CC: {founder_email})...")
