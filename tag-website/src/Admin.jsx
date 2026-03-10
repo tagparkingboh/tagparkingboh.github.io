@@ -4158,7 +4158,7 @@ function Admin() {
                 }
               })
 
-              const sortedMonths = Object.keys(monthlyGroups).sort()  // ASC order
+              const sortedMonths = Object.keys(monthlyGroups).sort().reverse()  // DESC order
               const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
               if (sortedMonths.length === 0) {

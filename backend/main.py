@@ -2413,7 +2413,7 @@ async def get_customers(
 
     customers = (
         db.query(Customer)
-        .order_by(Customer.created_at.asc())
+        .order_by(Customer.created_at.desc())
         .all()
     )
 
