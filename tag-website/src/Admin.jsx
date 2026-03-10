@@ -3125,7 +3125,7 @@ function Admin() {
                   className="btn-primary"
                   onClick={() => {
                     // Generate CSV from filtered subscribers
-                    const csvRows = [['First Name', 'Last Name', 'Email', 'Date Subscribed', 'Status', '10% Code', 'Free Code']]
+                    const csvRows = [['First Name', 'Last Name', 'Email', 'Date Subscribed', 'Status', '10% Code', 'Free Code', 'Founder Thank You Email']]
                     filteredSubscribers.forEach(sub => {
                       const dateSubscribed = sub.subscribed_at
                         ? new Date(sub.subscribed_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
@@ -3134,6 +3134,7 @@ function Admin() {
                       if (sub.unsubscribed) status = 'Unsubscribed'
                       else if (sub.promo_10_used || sub.promo_free_used) status = 'Code Used'
                       else if (sub.promo_10_sent || sub.promo_free_sent) status = 'Code Sent'
+                      const founderEmailStatus = sub.founder_email_sent ? 'Sent' : 'Not Sent'
                       csvRows.push([
                         sub.first_name || '',
                         sub.last_name || '',
@@ -3141,7 +3142,8 @@ function Admin() {
                         dateSubscribed,
                         status,
                         sub.promo_10_code || '',
-                        sub.promo_free_code || ''
+                        sub.promo_free_code || '',
+                        founderEmailStatus
                       ])
                     })
                     const csvContent = csvRows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')).join('\n')
