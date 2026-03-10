@@ -118,6 +118,8 @@ function Admin() {
   const [showSubscriberFounderModal, setShowSubscriberFounderModal] = useState(false)
   const [founderEmailToSend, setFounderEmailToSend] = useState(null) // { subscriber }
   const [promoSuccessMessage, setPromoSuccessMessage] = useState('')
+  const [subscriberDateFrom, setSubscriberDateFrom] = useState(null)
+  const [subscriberDateTo, setSubscriberDateTo] = useState(null)
 
   // Abandoned leads state
   const [leads, setLeads] = useState([])
@@ -1373,8 +1375,27 @@ function Admin() {
       )
     }
 
+    // Apply date filter
+    if (subscriberDateFrom || subscriberDateTo) {
+      filtered = filtered.filter(s => {
+        const subDate = s.subscribed_at ? new Date(s.subscribed_at) : null
+        if (!subDate) return false
+        if (subscriberDateFrom) {
+          const fromDate = new Date(subscriberDateFrom)
+          fromDate.setHours(0, 0, 0, 0)
+          if (subDate < fromDate) return false
+        }
+        if (subscriberDateTo) {
+          const toDate = new Date(subscriberDateTo)
+          toDate.setHours(23, 59, 59, 999)
+          if (subDate > toDate) return false
+        }
+        return true
+      })
+    }
+
     return filtered
-  }, [subscribers, subscriberSearchTerm, subscriberStatusFilter, hideTestEmails])
+  }, [subscribers, subscriberSearchTerm, subscriberStatusFilter, hideTestEmails, subscriberDateFrom, subscriberDateTo])
 
   const toggleBookingExpanded = (bookingId) => {
     setExpandedBookingId(expandedBookingId === bookingId ? null : bookingId)
@@ -3090,7 +3111,71 @@ function Admin() {
 
         {activeTab === 'marketing' && (
           <div className="admin-section">
-            <h2>Marketing Subscribers</h2>
+            <div className="admin-section-header">
+              <h2>Marketing Subscribers</h2>
+              <div className="flights-header-actions">
+                <button
+                  className="btn-secondary"
+                  onClick={fetchSubscribers}
+                  disabled={loadingSubscribers}
+                >
+                  {loadingSubscribers ? 'Loading...' : '↻ Refresh'}
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={() => {
+                    // Generate CSV from filtered subscribers
+                    const csvRows = [['First Name', 'Last Name', 'Email', 'Date Subscribed', 'Status', '10% Code', 'Free Code']]
+                    filteredSubscribers.forEach(sub => {
+                      const dateSubscribed = sub.subscribed_at
+                        ? new Date(sub.subscribed_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
+                        : ''
+                      let status = 'Pending'
+                      if (sub.unsubscribed) status = 'Unsubscribed'
+                      else if (sub.promo_10_used || sub.promo_free_used) status = 'Code Used'
+                      else if (sub.promo_10_sent || sub.promo_free_sent) status = 'Code Sent'
+                      csvRows.push([
+                        sub.first_name || '',
+                        sub.last_name || '',
+                        sub.email || '',
+                        dateSubscribed,
+                        status,
+                        sub.promo_10_code || '',
+                        sub.promo_free_code || ''
+                      ])
+                    })
+                    const csvContent = csvRows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')).join('\n')
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+                    const url = URL.createObjectURL(blob)
+                    const link = document.createElement('a')
+                    link.setAttribute('href', url)
+                    // Build descriptive filename based on filters
+                    const formatDateForFilename = (date) => {
+                      const day = String(date.getDate()).padStart(2, '0')
+                      const month = String(date.getMonth() + 1).padStart(2, '0')
+                      const year = date.getFullYear()
+                      return `${day}-${month}-${year}`
+                    }
+                    let filename = 'subscribers'
+                    if (subscriberDateFrom && subscriberDateTo) {
+                      filename = `subscribers_${formatDateForFilename(subscriberDateFrom)}_to_${formatDateForFilename(subscriberDateTo)}`
+                    } else if (subscriberDateFrom) {
+                      filename = `subscribers_from_${formatDateForFilename(subscriberDateFrom)}`
+                    } else if (subscriberDateTo) {
+                      filename = `subscribers_to_${formatDateForFilename(subscriberDateTo)}`
+                    } else {
+                      filename = `subscribers_all_${formatDateForFilename(new Date())}`
+                    }
+                    link.setAttribute('download', `${filename}.csv`)
+                    link.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                  disabled={loadingSubscribers}
+                >
+                  ↓ Download CSV
+                </button>
+              </div>
+            </div>
 
             {/* Success Message Banner */}
             {promoSuccessMessage && (
@@ -3131,6 +3216,28 @@ function Admin() {
                   <option value="used">Code Used</option>
                   <option value="unsubscribed">Unsubscribed</option>
                 </select>
+              </div>
+              <div className="flight-filter-group leads-date-picker">
+                <label>From:</label>
+                <DatePicker
+                  selected={subscriberDateFrom}
+                  onChange={(date) => setSubscriberDateFrom(date)}
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="DD/MM/YYYY"
+                  className="flight-date-input"
+                  isClearable
+                />
+              </div>
+              <div className="flight-filter-group leads-date-picker">
+                <label>To:</label>
+                <DatePicker
+                  selected={subscriberDateTo}
+                  onChange={(date) => setSubscriberDateTo(date)}
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="DD/MM/YYYY"
+                  className="flight-date-input"
+                  isClearable
+                />
               </div>
               <label className="admin-checkbox-label">
                 <input
