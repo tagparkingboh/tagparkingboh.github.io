@@ -567,7 +567,7 @@ def send_founder_thank_you_email(
     """
     from sendgrid.helpers.mail import Cc
 
-    subject = os.getenv("FOUNDER_EMAIL_SUBJECT", "A personal thank you from me")
+    subject = os.getenv("FOUNDER_PROMO_EMAIL_SUBJECT", "A personal thank you from me")
     founder_name = os.getenv("FOUNDER_NAME", "Kristian")
     founder_email = os.getenv("FOUNDER_EMAIL", "kristian@tagparking.co.uk")
 
