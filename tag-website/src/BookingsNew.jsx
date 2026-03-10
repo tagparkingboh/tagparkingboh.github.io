@@ -1196,6 +1196,9 @@ function Bookings() {
 
   // Save Step 3 data (Contact/Billing/Vehicle) and advance to Payment
   const saveStep3DataAndAdvance = async () => {
+    console.log('[Step 3 → 4] Advancing to payment')
+    console.log('[Step 3 → 4] manualDepartureData:', manualDepartureData)
+    console.log('[Step 3 → 4] manualArrivalData:', manualArrivalData)
     setSaving(true)
     try {
       const { customerId: custId, isNewCustomer } = await saveCustomer()
@@ -1214,6 +1217,9 @@ function Bookings() {
   }
 
   const nextStep = async () => {
+    console.log(`[Step ${currentStep} → ${currentStep + 1}] Advancing`)
+    console.log(`[Step ${currentStep} → ${currentStep + 1}] manualDepartureData:`, manualDepartureData)
+    console.log(`[Step ${currentStep} → ${currentStep + 1}] manualArrivalData:`, manualArrivalData)
     setSaving(true)
     try {
       // Step 3 data is saved via saveStep3DataAndAdvance
@@ -2637,6 +2643,8 @@ function Bookings() {
                   </button>
                 </div>
               ) : isStep4Complete ? (
+                console.log('[Step 4] Rendering StripePayment with manualDepartureData:', manualDepartureData) ||
+                console.log('[Step 4] Rendering StripePayment with manualArrivalData:', manualArrivalData) ||
                 <StripePayment
                   formData={formData}
                   selectedFlight={null}
