@@ -3246,12 +3246,13 @@ function Admin() {
                                 <div className="booking-section">
                                   <div className="section-header-with-action">
                                     <h4>10% Off Promo</h4>
-                                    {!subscriber.unsubscribed && !subscriber.promo_10_used && !subscriber.promo_10_sent && (
+                                    {!subscriber.unsubscribed && !subscriber.promo_10_used && (
                                       <button
-                                        className="action-btn promo-btn"
-                                        onClick={(e) => { e.stopPropagation(); openPromoModal(subscriber, 10); }}
+                                        className={`action-btn promo-btn ${subscriber.promo_10_sent ? 'sent' : ''}`}
+                                        onClick={(e) => { e.stopPropagation(); if (!subscriber.promo_10_sent) openPromoModal(subscriber, 10); }}
+                                        disabled={subscriber.promo_10_sent}
                                       >
-                                        Send 10% Off
+                                        {subscriber.promo_10_sent ? 'Sent ✓' : 'Send 10% Off'}
                                       </button>
                                     )}
                                   </div>
@@ -3289,12 +3290,13 @@ function Admin() {
                                 <div className="booking-section">
                                   <div className="section-header-with-action">
                                     <h4>FREE Parking Promo</h4>
-                                    {!subscriber.unsubscribed && !subscriber.promo_free_used && !subscriber.promo_free_sent && (
+                                    {!subscriber.unsubscribed && !subscriber.promo_free_used && (
                                       <button
-                                        className="action-btn promo-btn free"
-                                        onClick={(e) => { e.stopPropagation(); openPromoModal(subscriber, 100); }}
+                                        className={`action-btn promo-btn free ${subscriber.promo_free_sent ? 'sent' : ''}`}
+                                        onClick={(e) => { e.stopPropagation(); if (!subscriber.promo_free_sent) openPromoModal(subscriber, 100); }}
+                                        disabled={subscriber.promo_free_sent}
                                       >
-                                        Send FREE
+                                        {subscriber.promo_free_sent ? 'Sent ✓' : 'Send FREE'}
                                       </button>
                                     )}
                                   </div>
@@ -3332,12 +3334,13 @@ function Admin() {
                                 <div className="booking-section">
                                   <div className="section-header-with-action">
                                     <h4>Founder Thank You Email</h4>
-                                    {!subscriber.unsubscribed && !subscriber.founder_promo_used && !subscriber.founder_email_sent && (
+                                    {!subscriber.unsubscribed && !subscriber.founder_promo_used && (
                                       <button
-                                        className="action-btn promo-btn founder"
-                                        onClick={(e) => { e.stopPropagation(); openFounderEmailModal(subscriber); }}
+                                        className={`action-btn promo-btn founder ${subscriber.founder_email_sent ? 'sent' : ''}`}
+                                        onClick={(e) => { e.stopPropagation(); if (!subscriber.founder_email_sent) openFounderEmailModal(subscriber); }}
+                                        disabled={subscriber.founder_email_sent}
                                       >
-                                        Send Founder Email
+                                        {subscriber.founder_email_sent ? 'Sent ✓' : 'Send Founder Email'}
                                       </button>
                                     )}
                                   </div>

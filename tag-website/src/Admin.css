@@ -1667,6 +1667,13 @@
   background: #fde68a;
 }
 
+.promo-btn.sent {
+  background: #e2e8f0;
+  color: #718096;
+  border: 1px solid #cbd5e0;
+  cursor: not-allowed;
+}
+
 .subscribers-summary {
   margin-top: 20px;
   padding: 15px;
