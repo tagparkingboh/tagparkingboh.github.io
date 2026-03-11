@@ -4017,6 +4017,7 @@ async def get_heard_about_us_status(
     Called when Page 4 (Payment) loads to determine if the question should be shown.
     """
     from db_models import Customer
+    from sqlalchemy import func
 
     # Case-insensitive email lookup
     customer = db.query(Customer).filter(
@@ -4055,6 +4056,7 @@ async def save_heard_about_us(
     Called immediately when the customer selects an option (before payment).
     """
     from db_models import Customer, MarketingSource, MarketingSourceMonthlyTotal
+    from sqlalchemy import func
 
     # Validate source value
     if request.source not in VALID_MARKETING_SOURCES:
