@@ -3575,6 +3575,7 @@ function Admin() {
                                   </div>
                                   <div className="booking-section-content">
                                     {subscriber.promo_10_code ? (
+                                    <>
                                       <div className="booking-detail-row">
                                         <div className="booking-detail">
                                           <span className="detail-label">Code</span>
@@ -3614,6 +3615,7 @@ function Admin() {
                                           </div>
                                         </div>
                                       )}
+                                    </>
                                     ) : (
                                       <p className="section-empty">Not sent yet</p>
                                     )}
