@@ -251,24 +251,60 @@ class TestSummaryResponseStructure:
 
 
 class TestOtherDetailsResponseStructure:
-    """Tests for the "Other" details API response structure."""
+    """
+    Tests for the "Other" details API response structure.
 
-    def test_response_has_details_array(self):
-        """Response must include 'details' array."""
+    CRITICAL: These field names must match exactly what the frontend expects.
+    Frontend code in Admin.jsx:
+      - setMarketingOtherDetails(data.details || [])
+      - item.source_detail
+      - item.created_at
+      - item.customer_name || item.customer_email
+    """
+
+    def test_response_has_details_array_not_responses(self):
+        """
+        CRITICAL: Response must use 'details' NOT 'responses'.
+
+        Frontend code: setMarketingOtherDetails(data.details || [])
+        """
         response = create_mock_other_details_response()
 
-        assert "details" in response
+        assert "details" in response, "API must return 'details' not 'responses'"
+        assert "responses" not in response, "API should NOT use 'responses'"
         assert isinstance(response["details"], list)
 
-    def test_detail_entry_has_required_fields(self):
-        """Each detail entry must have customer info, detail, and date."""
+    def test_detail_entry_has_source_detail_not_detail(self):
+        """
+        CRITICAL: Each entry must use 'source_detail' NOT 'detail'.
+
+        Frontend code: <td>{item.source_detail}</td>
+        """
         response = create_mock_other_details_response()
 
-        for detail in response["details"]:
-            # Must have either customer_name or customer_email
-            assert "customer_name" in detail or "customer_email" in detail
-            assert "source_detail" in detail
-            assert "created_at" in detail
+        for entry in response["details"]:
+            assert "source_detail" in entry, "Must use 'source_detail' not 'detail'"
+            assert "detail" not in entry, "Should NOT use 'detail'"
+
+    def test_detail_entry_has_created_at_not_date(self):
+        """
+        CRITICAL: Each entry must use 'created_at' NOT 'date'.
+
+        Frontend code: new Date(item.created_at).toLocaleDateString('en-GB')
+        """
+        response = create_mock_other_details_response()
+
+        for entry in response["details"]:
+            assert "created_at" in entry, "Must use 'created_at' not 'date'"
+            assert "date" not in entry, "Should NOT use 'date'"
+
+    def test_detail_entry_has_customer_name_and_email(self):
+        """Each entry must have customer_name and customer_email."""
+        response = create_mock_other_details_response()
+
+        for entry in response["details"]:
+            assert "customer_name" in entry
+            assert "customer_email" in entry
 
 
 # =============================================================================
