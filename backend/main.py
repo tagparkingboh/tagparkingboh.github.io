@@ -2301,6 +2301,8 @@ async def get_marketing_subscribers(
                 "promo_10_sent_at": s.promo_10_sent_at.isoformat() if s.promo_10_sent_at else None,
                 "promo_10_used": s.promo_10_used,
                 "promo_10_used_at": s.promo_10_used_at.isoformat() if s.promo_10_used_at else None,
+                "promo_10_reminder_sent": s.promo_10_reminder_sent,
+                "promo_10_reminder_sent_at": s.promo_10_reminder_sent_at.isoformat() if s.promo_10_reminder_sent_at else None,
                 # FREE promo (separate)
                 "promo_free_code": s.promo_free_code,
                 "promo_free_sent": s.promo_free_sent,
