@@ -473,6 +473,8 @@ class MarketingSubscriber(Base):
     promo_10_used = Column(Boolean, default=False)
     promo_10_used_at = Column(DateTime(timezone=True))
     promo_10_used_booking_id = Column(Integer, ForeignKey("bookings.id"))
+    promo_10_reminder_sent = Column(Boolean, default=False)
+    promo_10_reminder_sent_at = Column(DateTime(timezone=True))
 
     # FREE Parking Promo (100% off) - separate tracking
     promo_free_code = Column(String(20), unique=True, index=True)  # Free parking promo code

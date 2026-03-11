@@ -882,6 +882,93 @@ class TestUpdateBookingOvernightFix:
 
         assert booking.pickup_date == pickup_date
 
+    def test_arrival_2335_pickup_crosses_midnight(self):
+        """
+        Arrival at 23:35 + 30 min = pickup at 00:05 (crosses midnight to next day).
+
+        User scenario: Flight lands 23:35 on Monday, collection at 00:05 Tuesday.
+        """
+        arrival_time = time(23, 35)
+        arrival_dt = datetime.combine(date.today(), arrival_time)
+        pickup_dt = arrival_dt + timedelta(minutes=30)
+
+        # Check pickup time is 00:05
+        assert pickup_dt.time() == time(0, 5)
+
+        # Verify booking model
+        booking = create_mock_booking(
+            flight_arrival_time=arrival_time,
+            pickup_time_val=time(0, 5),
+        )
+
+        assert booking.flight_arrival_time == time(23, 35)
+        assert booking.pickup_time == time(0, 5)
+
+    def test_arrival_2345_pickup_0015(self):
+        """Arrival at 23:45 + 30 min = pickup at 00:15."""
+        arrival_time = time(23, 45)
+        arrival_dt = datetime.combine(date.today(), arrival_time)
+        pickup_dt = arrival_dt + timedelta(minutes=30)
+
+        assert pickup_dt.time() == time(0, 15)
+
+    def test_arrival_2330_pickup_0000_midnight(self):
+        """Arrival at 23:30 + 30 min = pickup at 00:00 (exactly midnight)."""
+        arrival_time = time(23, 30)
+        arrival_dt = datetime.combine(date.today(), arrival_time)
+        pickup_dt = arrival_dt + timedelta(minutes=30)
+
+        assert pickup_dt.time() == time(0, 0)
+
+    def test_arrival_2350_pickup_0020(self):
+        """Arrival at 23:50 + 30 min = pickup at 00:20."""
+        arrival_time = time(23, 50)
+        arrival_dt = datetime.combine(date.today(), arrival_time)
+        pickup_dt = arrival_dt + timedelta(minutes=30)
+
+        assert pickup_dt.time() == time(0, 20)
+
+    def test_arrival_2329_pickup_2359_no_midnight(self):
+        """Arrival at 23:29 + 30 min = pickup at 23:59 (no midnight crossing)."""
+        arrival_time = time(23, 29)
+        arrival_dt = datetime.combine(date.today(), arrival_time)
+        pickup_dt = arrival_dt + timedelta(minutes=30)
+
+        assert pickup_dt.time() == time(23, 59)
+
+    def test_pickup_date_increments_when_crossing_midnight(self):
+        """
+        When pickup time crosses midnight, pickup_date should be arrival_date + 1.
+
+        Scenario: Arrival on 2026-04-15 at 23:35
+        Result: Pickup on 2026-04-16 at 00:05
+        """
+        arrival_date = FUTURE_DATE_END
+        arrival_time = time(23, 35)
+
+        # Calculate pickup
+        arrival_dt = datetime.combine(arrival_date, arrival_time)
+        pickup_dt = arrival_dt + timedelta(minutes=30)
+
+        expected_pickup_date = arrival_date + timedelta(days=1)
+        expected_pickup_time = time(0, 5)
+
+        assert pickup_dt.date() == expected_pickup_date
+        assert pickup_dt.time() == expected_pickup_time
+
+    def test_overnight_flight_0050_arrival_pickup_0120(self):
+        """
+        Overnight flight arriving 00:50 (already next day) + 30 min = 01:20.
+
+        Flight departs Tuesday evening, arrives Wednesday 00:50.
+        Pickup: Wednesday 01:20.
+        """
+        arrival_time = time(0, 50)
+        arrival_dt = datetime.combine(date.today(), arrival_time)
+        pickup_dt = arrival_dt + timedelta(minutes=30)
+
+        assert pickup_dt.time() == time(1, 20)
+
 
 # =============================================================================
 # Admin Bookings Integration Flow Tests

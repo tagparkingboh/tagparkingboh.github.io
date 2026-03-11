@@ -35,6 +35,8 @@ import psycopg2
 # Configuration
 HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
 SINGLE_TEST = os.environ.get("SINGLE_TEST", "false").lower() == "true"  # Run only first test
+PROMO_ONLY = os.environ.get("PROMO_ONLY", "false").lower() == "true"  # Run only promo code tests
+TEST_FILTER = os.environ.get("TEST_FILTER", "")  # Filter tests by name (case-insensitive partial match)
 
 # Staging URL
 STAGING_URL = "https://staging-tagparking.netlify.app/tag-it"
@@ -260,10 +262,10 @@ TEST_CASES = [
         "duration": 1,
         "dropoff_time": "06:00",
         "return_time": "20:00",
-        "airline": "easyJet",
-        "airline_code": "U2",
-        "destination": "Dublin",
-        "destination_code": "DUB",
+        "airline": "Ryanair",
+        "airline_code": "FR",
+        "destination": "Alicante",
+        "destination_code": "ALC",
         "flight_number": "777",
         "return_flight_number": "778",
     },
@@ -337,9 +339,25 @@ TEST_CASES = [
         "promo_code": "TEST10OFF",
         "promo_type": "10",
     },
-    # FREE Parking Promo Code Test (7 days = completely free)
+    # FREE Parking Promo Code Test (5 days = completely free - under 7 day limit)
     {
-        "name": "FREE Promo Code (7-day trip)",
+        "name": "FREE Promo (5-day) - 100% free",
+        "days_from_now": 28,
+        "duration": 5,
+        "dropoff_time": "08:00",
+        "return_time": "14:00",
+        "airline": "Virgin Atlantic",
+        "airline_code": "OTHER",
+        "destination": "Barcelona",
+        "destination_code": "OTHER",
+        "flight_number": "VS100",
+        "return_flight_number": "VS101",
+        "promo_code": "TESTFREE",
+        "promo_type": "free",
+    },
+    # FREE Parking Promo Code Test (7 days = completely free - boundary max)
+    {
+        "name": "FREE Promo (7-day) - 100% free",
         "days_from_now": 30,
         "duration": 7,
         "dropoff_time": "09:00",
@@ -352,6 +370,70 @@ TEST_CASES = [
         "return_flight_number": "2021",
         "promo_code": "TESTFREE",
         "promo_type": "free",
+    },
+    # FREE Parking Promo Code Test (8 days = 7-day deducted, pays 1 extra day - boundary)
+    {
+        "name": "FREE Promo (8-day) - pays extra day",
+        "days_from_now": 32,
+        "duration": 8,
+        "dropoff_time": "10:00",
+        "return_time": "14:00",
+        "airline": "Ryanair",
+        "airline_code": "FR",
+        "destination": "Faro",
+        "destination_code": "FAO",
+        "flight_number": "3030",
+        "return_flight_number": "3031",
+        "promo_code": "TESTFREE",
+        "promo_type": "free",
+    },
+    # FREE Parking Promo Code Test (11 days = 7-day deducted, pays 4 extra days)
+    {
+        "name": "FREE Promo (11-day) - pays 4 days",
+        "days_from_now": 34,
+        "duration": 11,
+        "dropoff_time": "07:00",
+        "return_time": "17:00",
+        "airline": "Virgin Atlantic",
+        "airline_code": "OTHER",
+        "destination": "Madrid",
+        "destination_code": "OTHER",
+        "flight_number": "VS200",
+        "return_flight_number": "VS201",
+        "promo_code": "TESTFREE",
+        "promo_type": "free",
+    },
+    # FREE Parking Promo Code Test (14 days = 7-day deducted, pays 7 extra days)
+    {
+        "name": "FREE Promo (14-day) - pays 7 days",
+        "days_from_now": 35,
+        "duration": 14,
+        "dropoff_time": "08:00",
+        "return_time": "16:00",
+        "airline": "easyJet",
+        "airline_code": "U2",
+        "destination": "Palma de Mallorca",
+        "destination_code": "PMI",
+        "flight_number": "4040",
+        "return_flight_number": "4041",
+        "promo_code": "TESTFREE",
+        "promo_type": "free",
+    },
+    # 10% OFF Promo Code - 14-day trip boundary
+    {
+        "name": "10% OFF Promo (14-day trip)",
+        "days_from_now": 38,
+        "duration": 14,
+        "dropoff_time": "11:00",
+        "return_time": "13:00",
+        "airline": "Ryanair",
+        "airline_code": "FR",
+        "destination": "Alicante",
+        "destination_code": "ALC",
+        "flight_number": "5050",
+        "return_flight_number": "5051",
+        "promo_code": "TEST10OFF",
+        "promo_type": "10",
     },
 ]
 
@@ -455,22 +537,48 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
 
         # Select Airline
         print("    Selecting airline...")
-        page.locator("#manualAirline").select_option(value=test_case["airline_code"])
-        time.sleep(0.5)
+        airline_dropdown = page.locator("#manualAirline")
+        airline_dropdown.wait_for(state="visible", timeout=10000)
+        if test_case["airline_code"] == "OTHER":
+            # Select "Other" and fill in custom airline name
+            airline_dropdown.select_option(value="Other")
+            time.sleep(0.5)
+            other_airline_input = page.locator("#customDepartureAirline")
+            other_airline_input.wait_for(state="visible", timeout=5000)
+            other_airline_input.fill(test_case["airline"])
+            print(f"    Entered custom airline: {test_case['airline']}")
+        else:
+            airline_dropdown.select_option(value=test_case["airline_code"])
+        time.sleep(1)  # Wait for destination dropdown to populate
 
         # Select Destination
         print("    Selecting destination...")
-        page.locator("#manualDestination").select_option(value=test_case["destination_code"])
-        time.sleep(0.5)
+        destination_dropdown = page.locator("#manualDestination")
+        destination_dropdown.wait_for(state="visible", timeout=10000)
+        if test_case["destination_code"] == "OTHER":
+            # Select "Other" and fill in custom destination name
+            destination_dropdown.select_option(value="Other")
+            time.sleep(0.5)
+            other_destination_input = page.locator("#customDestination")
+            other_destination_input.wait_for(state="visible", timeout=5000)
+            other_destination_input.fill(test_case["destination"])
+            print(f"    Entered custom destination: {test_case['destination']}")
+        else:
+            destination_dropdown.select_option(value=test_case["destination_code"])
+        time.sleep(1)
 
         # Enter Flight Number
         print("    Entering flight number...")
-        page.locator("#manualFlightNumber").fill(test_case["flight_number"])
-        time.sleep(0.3)
+        flight_number_input = page.locator("#manualFlightNumber")
+        flight_number_input.wait_for(state="visible", timeout=10000)
+        flight_number_input.fill(test_case["flight_number"])
+        time.sleep(0.5)
 
         # Enter Departure Time
         print("    Entering departure time...")
-        page.locator("#manualFlightTime").fill(test_case["dropoff_time"])
+        flight_time_input = page.locator("#manualFlightTime")
+        flight_time_input.wait_for(state="visible", timeout=10000)
+        flight_time_input.fill(test_case["dropoff_time"])
         time.sleep(1)
 
         # Select Drop-off Time Slot - randomly select 2hr or 2.75hr slot
@@ -544,11 +652,27 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         time.sleep(1)
 
         # Select Return Airline
-        page.locator("#manualArrivalAirline").select_option(value=test_case["airline_code"])
+        return_airline_dropdown = page.locator("#manualArrivalAirline")
+        if test_case["airline_code"] == "OTHER":
+            return_airline_dropdown.select_option(value="Other")
+            time.sleep(0.5)
+            custom_return_airline = page.locator("#customArrivalAirline")
+            custom_return_airline.wait_for(state="visible", timeout=5000)
+            custom_return_airline.fill(test_case["airline"])
+        else:
+            return_airline_dropdown.select_option(value=test_case["airline_code"])
         time.sleep(0.5)
 
-        # Select Origin
-        page.locator("#manualArrivalOrigin").select_option(value=test_case["destination_code"])
+        # Select Origin (for return flight, origin is where they're coming FROM = departure destination)
+        return_origin_dropdown = page.locator("#manualArrivalOrigin")
+        if test_case["destination_code"] == "OTHER":
+            return_origin_dropdown.select_option(value="Other")
+            time.sleep(0.5)
+            custom_return_origin = page.locator("#customOrigin")
+            custom_return_origin.wait_for(state="visible", timeout=5000)
+            custom_return_origin.fill(test_case["destination"])
+        else:
+            return_origin_dropdown.select_option(value=test_case["destination_code"])
         time.sleep(0.5)
 
         # Enter Return Flight Number
@@ -716,22 +840,44 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
                     apply_btn.click()
                     time.sleep(2)
 
-                    # Check for success
-                    promo_success = page.locator(".promo-success, .promo-code-applied, text=/applied|valid|discount/i")
-                    if promo_success.is_visible(timeout=5000):
+                    # Check for success - look for success indicators (use .first to avoid strict mode error)
+                    time.sleep(1)
+                    promo_success = page.locator(".promo-success, .promo-code-applied, .discount-applied").first
+
+                    if promo_success.is_visible(timeout=3000):
                         print(f"    Promo code {promo_code} applied successfully!")
                     else:
                         print(f"    Warning: Could not confirm promo code applied")
             else:
                 print("    Warning: Promo code input not found")
 
-        # Accept terms checkbox
+        # Accept terms checkbox - click the checkbox input directly, not the label links
         print("    Accepting terms...")
-        terms_checkbox = page.locator("input[name='terms']")
-        if terms_checkbox.is_visible(timeout=3000):
-            if not terms_checkbox.is_checked():
-                terms_checkbox.click()
-            time.sleep(1)
+        time.sleep(1)
+
+        terms_input = page.locator("input[name='terms']")
+
+        try:
+            # Check if already checked
+            if terms_input.is_checked():
+                print("    Terms already accepted")
+            else:
+                # Use JavaScript to check the checkbox - most reliable method
+                page.evaluate("document.querySelector('input[name=\"terms\"]').click()")
+                print("    Clicked terms checkbox via JavaScript")
+                time.sleep(0.5)
+
+                # Verify it's checked
+                if terms_input.is_checked():
+                    print("    Terms checkbox confirmed checked")
+                else:
+                    # Fallback: force set checked state
+                    page.evaluate("document.querySelector('input[name=\"terms\"]').checked = true")
+                    page.evaluate("document.querySelector('input[name=\"terms\"]').dispatchEvent(new Event('change', { bubbles: true }))")
+                    print("    Set terms via JavaScript fallback")
+        except Exception as e:
+            print(f"    Warning: Could not click terms checkbox: {e}")
+        time.sleep(1)
 
         # Wait for Stripe PaymentElement to load
         print("    Waiting for Stripe payment form...")
@@ -859,16 +1005,26 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
 
         time.sleep(2)
 
-        # Submit Payment using the stripe-pay-btn
+        # Submit Payment - handle both paid and free bookings
         print("  Submitting payment...")
+
+        # Check for FREE booking button first (£0 total)
+        free_booking_btn = page.locator("button:has-text('Complete Free Booking')")
         pay_btn = page.locator(".stripe-pay-btn, button:has-text('Pay ')")
-        if pay_btn.is_visible(timeout=5000):
+
+        if free_booking_btn.is_visible(timeout=3000):
+            print("    Free booking detected - clicking 'Complete Free Booking'")
+            free_booking_btn.click()
+        elif pay_btn.is_visible(timeout=5000):
             # Check if button is enabled
             if not pay_btn.is_disabled():
                 pay_btn.click()
             else:
                 print("    Pay button is disabled - card details may not have filled correctly")
                 page.screenshot(path=f"payment_disabled_{test_num}.png")
+        else:
+            print("    No payment button found!")
+            page.screenshot(path=f"no_payment_btn_{test_num}.png")
 
         # Wait for confirmation
         print("  Waiting for booking confirmation...")
@@ -939,8 +1095,17 @@ def main():
 
         results = {"success": [], "failed": []}
 
-        # Optionally run only the first test case for smoke testing
-        test_cases_to_run = TEST_CASES[:1] if SINGLE_TEST else TEST_CASES
+        # Filter test cases based on environment variables
+        if SINGLE_TEST:
+            test_cases_to_run = TEST_CASES[:1]
+        elif PROMO_ONLY:
+            test_cases_to_run = [tc for tc in TEST_CASES if tc.get("promo_code")]
+            print(f"Running PROMO_ONLY: {len(test_cases_to_run)} promo code tests")
+        elif TEST_FILTER:
+            test_cases_to_run = [tc for tc in TEST_CASES if TEST_FILTER.lower() in tc["name"].lower()]
+            print(f"Running tests matching '{TEST_FILTER}': {len(test_cases_to_run)} tests")
+        else:
+            test_cases_to_run = TEST_CASES
 
         for i, test_case in enumerate(test_cases_to_run, 1):
             success = create_booking(page, test_case, i)

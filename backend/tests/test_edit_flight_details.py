@@ -1198,3 +1198,247 @@ class TestUpdateFlightDetailsResponse:
         assert response_booking["pickup_airline_name"] == "Airline B"
         assert response_booking["pickup_flight_number"] == "BB456"
         assert response_booking["pickup_origin"] == "Origin B"
+
+
+# =============================================================================
+# Overnight Pickup Time Tests - Edit Flight Arrival Time
+# =============================================================================
+
+class TestEditFlightArrivalOvernightPickup:
+    """
+    Tests for editing flight_arrival_time when pickup_time crosses midnight.
+
+    Key scenarios:
+    - Flight arrives at 23:35 → pickup at 00:05 (next day)
+    - Flight arrives at 23:45 → pickup at 00:15 (next day)
+    - Flight arrives at 23:30 → pickup at 00:00 (midnight, next day)
+    - Flight arrives at 23:50 → pickup at 00:20 (next day)
+    """
+
+    def calculate_pickup_time(self, arrival_time_str):
+        """
+        Calculate pickup_time from flight_arrival_time.
+        pickup_time = flight_arrival_time + 30 minutes
+
+        Returns: (pickup_time_str, crosses_midnight)
+        """
+        h, m = map(int, arrival_time_str.split(':'))
+        total_mins = h * 60 + m + 30  # Add 30 minutes buffer
+
+        crosses_midnight = total_mins >= 24 * 60
+        pickup_hour = (total_mins // 60) % 24
+        pickup_min = total_mins % 60
+
+        return f"{pickup_hour:02d}:{pickup_min:02d}", crosses_midnight
+
+    def test_arrival_2335_pickup_0005(self):
+        """
+        Edit arrival time to 23:35 → pickup should be 00:05 (crosses midnight).
+
+        Scenario: Flight arrives at 23:35 on Monday.
+        Customer collection: 00:05 on Tuesday.
+        """
+        arrival_time = "23:35"
+        pickup_time, crosses = self.calculate_pickup_time(arrival_time)
+
+        assert pickup_time == "00:05"
+        assert crosses is True
+
+        # Simulate booking update
+        booking = create_mock_booking(
+            flight_arrival_time=time(23, 35),
+            pickup_time_val=time(0, 5),  # Calculated by API
+        )
+
+        assert booking.flight_arrival_time == time(23, 35)
+        assert booking.pickup_time == time(0, 5)
+
+    def test_arrival_2345_pickup_0015(self):
+        """
+        Edit arrival time to 23:45 → pickup should be 00:15 (crosses midnight).
+        """
+        arrival_time = "23:45"
+        pickup_time, crosses = self.calculate_pickup_time(arrival_time)
+
+        assert pickup_time == "00:15"
+        assert crosses is True
+
+        booking = create_mock_booking(
+            flight_arrival_time=time(23, 45),
+            pickup_time_val=time(0, 15),
+        )
+
+        assert booking.flight_arrival_time == time(23, 45)
+        assert booking.pickup_time == time(0, 15)
+
+    def test_arrival_2330_pickup_0000(self):
+        """
+        Edit arrival time to 23:30 → pickup should be 00:00 (exactly midnight).
+        """
+        arrival_time = "23:30"
+        pickup_time, crosses = self.calculate_pickup_time(arrival_time)
+
+        assert pickup_time == "00:00"
+        assert crosses is True
+
+        booking = create_mock_booking(
+            flight_arrival_time=time(23, 30),
+            pickup_time_val=time(0, 0),
+        )
+
+        assert booking.flight_arrival_time == time(23, 30)
+        assert booking.pickup_time == time(0, 0)
+
+    def test_arrival_2350_pickup_0020(self):
+        """
+        Edit arrival time to 23:50 → pickup should be 00:20 (crosses midnight).
+        """
+        arrival_time = "23:50"
+        pickup_time, crosses = self.calculate_pickup_time(arrival_time)
+
+        assert pickup_time == "00:20"
+        assert crosses is True
+
+        booking = create_mock_booking(
+            flight_arrival_time=time(23, 50),
+            pickup_time_val=time(0, 20),
+        )
+
+        assert booking.flight_arrival_time == time(23, 50)
+        assert booking.pickup_time == time(0, 20)
+
+    def test_arrival_2359_pickup_0029(self):
+        """
+        Edge case: Flight arrives at 23:59 → pickup at 00:29.
+        """
+        arrival_time = "23:59"
+        pickup_time, crosses = self.calculate_pickup_time(arrival_time)
+
+        assert pickup_time == "00:29"
+        assert crosses is True
+
+    def test_arrival_2329_pickup_2359_no_midnight_cross(self):
+        """
+        Flight arrives at 23:29 → pickup at 23:59 (does NOT cross midnight).
+        """
+        arrival_time = "23:29"
+        pickup_time, crosses = self.calculate_pickup_time(arrival_time)
+
+        assert pickup_time == "23:59"
+        assert crosses is False
+
+    def test_arrival_2200_pickup_2230_normal(self):
+        """
+        Normal evening arrival: 22:00 → pickup at 22:30 (same day).
+        """
+        arrival_time = "22:00"
+        pickup_time, crosses = self.calculate_pickup_time(arrival_time)
+
+        assert pickup_time == "22:30"
+        assert crosses is False
+
+    def test_arrival_0035_pickup_0105_early_morning(self):
+        """
+        Early morning arrival (already next day): 00:35 → pickup at 01:05.
+        This is for overnight flights that arrive after midnight.
+        """
+        arrival_time = "00:35"
+        pickup_time, crosses = self.calculate_pickup_time(arrival_time)
+
+        assert pickup_time == "01:05"
+        assert crosses is False  # Already past midnight, no additional crossing
+
+    def test_arrival_0050_pickup_0120(self):
+        """
+        Overnight flight arrives 00:50 → pickup at 01:20.
+        (Flight departed previous evening, arrives after midnight)
+        """
+        arrival_time = "00:50"
+        pickup_time, crosses = self.calculate_pickup_time(arrival_time)
+
+        assert pickup_time == "01:20"
+        assert crosses is False
+
+    def test_arrival_0130_pickup_0200(self):
+        """
+        Late overnight arrival: 01:30 → pickup at 02:00.
+        """
+        arrival_time = "01:30"
+        pickup_time, crosses = self.calculate_pickup_time(arrival_time)
+
+        assert pickup_time == "02:00"
+        assert crosses is False
+
+    def test_update_booking_arrival_time_recalculates_pickup(self):
+        """
+        When flight_arrival_time is updated, pickup_time should be auto-recalculated.
+        This simulates the API behavior.
+        """
+        # Initial booking with 18:00 arrival → 18:30 pickup
+        booking = create_mock_booking(
+            flight_arrival_time=time(18, 0),
+            pickup_time_val=time(18, 30),
+        )
+
+        assert booking.flight_arrival_time == time(18, 0)
+        assert booking.pickup_time == time(18, 30)
+
+        # Simulate editing arrival time to 23:35
+        new_arrival = time(23, 35)
+        new_pickup = time(0, 5)  # Calculated: 23:35 + 30 = 00:05
+
+        booking.flight_arrival_time = new_arrival
+        booking.pickup_time = new_pickup
+
+        assert booking.flight_arrival_time == time(23, 35)
+        assert booking.pickup_time == time(0, 5)
+
+    def test_fields_updated_includes_both_arrival_and_pickup(self):
+        """
+        When updating flight_arrival_time, response should show both fields updated.
+        """
+        fields_updated = ["flight_arrival_time", "pickup_time"]
+
+        assert "flight_arrival_time" in fields_updated
+        assert "pickup_time" in fields_updated
+        assert len(fields_updated) == 2
+
+    def test_overnight_booking_dates_scenario(self):
+        """
+        Full scenario: Booking with arrival 23:35 on Monday.
+
+        - pickup_date should be Tuesday (arrival date + 1 for overnight collection)
+        - pickup_time should be 00:05
+        - flight_arrival_time should be 23:35
+        """
+        arrival_date = FUTURE_DATE  # Monday
+
+        # When arrival is 23:35, pickup crosses to next day
+        pickup_date = arrival_date + timedelta(days=1)  # Tuesday
+
+        booking = create_mock_booking(
+            pickup_date_val=pickup_date,
+            pickup_time_val=time(0, 5),
+            flight_arrival_time=time(23, 35),
+        )
+
+        assert booking.pickup_date == arrival_date + timedelta(days=1)
+        assert booking.pickup_time == time(0, 5)
+        assert booking.flight_arrival_time == time(23, 35)
+
+    def test_response_format_overnight_pickup(self):
+        """
+        API response should format overnight pickup times correctly.
+        """
+        booking = create_mock_booking(
+            flight_arrival_time=time(23, 45),
+            pickup_time_val=time(0, 15),
+        )
+
+        response_booking = {
+            "flight_arrival_time": booking.flight_arrival_time.strftime("%H:%M") if booking.flight_arrival_time else None,
+            "pickup_time": booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None,
+        }
+
+        assert response_booking["flight_arrival_time"] == "23:45"
+        assert response_booking["pickup_time"] == "00:15"

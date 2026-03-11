@@ -3291,6 +3291,13 @@ async def send_promo_10_reminder_to_subscriber(
     if subscriber.promo_10_used:
         raise HTTPException(status_code=400, detail="Subscriber has already used their 10% promo code")
 
+    # Check if reminder already sent
+    if subscriber.promo_10_reminder_sent:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Promo 10% reminder already sent to {subscriber.email} on {subscriber.promo_10_reminder_sent_at.strftime('%d %b %Y at %H:%M') if subscriber.promo_10_reminder_sent_at else 'unknown date'}"
+        )
+
     # Send the reminder email
     email_sent = send_promo_10_reminder_email(
         email=subscriber.email,
@@ -3299,6 +3306,11 @@ async def send_promo_10_reminder_to_subscriber(
     )
 
     if email_sent:
+        # Update tracking
+        subscriber.promo_10_reminder_sent = True
+        subscriber.promo_10_reminder_sent_at = datetime.utcnow()
+        db.commit()
+
         return {
             "success": True,
             "message": f"Promo 10% reminder email sent to {subscriber.email}",

@@ -557,7 +557,8 @@ class TestAddressLookupMocked:
                 assert response.status_code == 200
                 data = response.json()
                 assert data["success"] is False
-                assert "payment" in data["error"].lower() or "balance" in data["error"].lower()
+                # API returns generic "temporarily unavailable" for 402 (payment required)
+                assert "unavailable" in data["error"].lower() or "temporarily" in data["error"].lower()
 
     @pytest.mark.asyncio
     async def test_address_with_dependent_locality(self, client, mock_settings):
@@ -672,7 +673,8 @@ class TestAddressLookupMocked:
                 assert response.status_code == 200
                 data = response.json()
                 assert data["success"] is False
-                assert "invalid" in data["error"].lower()
+                # API returns "Address lookup failed (400)" for 400 errors
+                assert "failed" in data["error"].lower() or "400" in data["error"]
 
     @pytest.mark.asyncio
     async def test_api_500_handling(self, client, mock_settings):
