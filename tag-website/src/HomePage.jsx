@@ -52,8 +52,9 @@ function HomePage() {
       const scrollToElement = () => {
         const element = document.getElementById(id)
         if (element) {
+          const isMobile = window.innerWidth < 768
           window.scrollTo({
-            top: element.offsetTop + 450,
+            top: element.offsetTop + (isMobile ? 800 : 450),
             behavior: 'smooth'
           })
         }
