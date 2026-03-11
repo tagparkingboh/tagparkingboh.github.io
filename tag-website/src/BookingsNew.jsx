@@ -331,7 +331,7 @@ function Bookings() {
         const response = await fetch(`${API_BASE_URL}/api/customers/heard-about-us-status?email=${encodeURIComponent(formData.email)}`)
         if (response.ok) {
           const data = await response.json()
-          if (data.has_answered) {
+          if (data.has_answered_heard_about_us) {
             // Already answered, skip the question
             setHeardAboutUsAnswered(true)
           }
