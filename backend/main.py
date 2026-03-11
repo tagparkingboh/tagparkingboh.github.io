@@ -3436,41 +3436,36 @@ async def get_marketing_sources_summary(
 
     results = query.order_by(MarketingSourceMonthlyTotal.year_month.desc()).all()
 
-    # Group by month
+    # Group by month - sources as object { source_name: count }
     months_data = {}
+    source_totals = {}  # All-time totals by source
+
     for row in results:
         if row.year_month not in months_data:
-            months_data[row.year_month] = {"sources": [], "total": 0}
-        months_data[row.year_month]["sources"].append({
-            "source": row.source,
-            "count": row.count,
-        })
-        months_data[row.year_month]["total"] += row.count
+            months_data[row.year_month] = {}
+        months_data[row.year_month][row.source] = row.count
 
-    # Calculate percentages and format response
-    months = []
-    total_customers = 0
-    for year_month, data in sorted(months_data.items(), reverse=True):
-        month_total = data["total"]
-        total_customers += month_total
-        sources_with_pct = []
-        for src in sorted(data["sources"], key=lambda x: x["count"], reverse=True):
-            pct = round((src["count"] / month_total * 100), 1) if month_total > 0 else 0
-            sources_with_pct.append({
-                "source": src["source"],
-                "count": src["count"],
-                "percentage": pct,
-            })
-        months.append({
+        # Accumulate source totals
+        if row.source not in source_totals:
+            source_totals[row.source] = 0
+        source_totals[row.source] += row.count
+
+    # Format response - monthly_data with sources as object
+    monthly_data = []
+    total_responses = 0
+    for year_month in sorted(months_data.keys(), reverse=True):
+        sources = months_data[year_month]
+        month_total = sum(sources.values())
+        total_responses += month_total
+        monthly_data.append({
             "year_month": year_month,
-            "sources": sources_with_pct,
-            "month_total": month_total,
+            "sources": sources,  # { "google": 5, "facebook": 3, ... }
         })
 
     return {
-        "period": {"from": from_month, "to": to_month},
-        "total_customers": total_customers,
-        "months": months,
+        "total_responses": total_responses,
+        "monthly_data": monthly_data,
+        "source_totals": source_totals,  # { "google": 211, "facebook": 139, ... }
     }
 
 
