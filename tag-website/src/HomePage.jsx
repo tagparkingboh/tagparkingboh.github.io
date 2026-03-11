@@ -53,7 +53,7 @@ function HomePage() {
         const element = document.getElementById(id)
         if (element) {
           window.scrollTo({
-            top: element.offsetTop - 250,
+            top: element.offsetTop + 200,
             behavior: 'smooth'
           })
         }
