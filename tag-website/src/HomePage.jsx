@@ -45,6 +45,19 @@ function HomePage() {
     return () => clearInterval(interval)
   }, [])
 
+  // Scroll to hash anchor on page load (for external links like emails)
+  useEffect(() => {
+    if (window.location.hash) {
+      const id = window.location.hash.substring(1)
+      setTimeout(() => {
+        const element = document.getElementById(id)
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth' })
+        }
+      }, 100)
+    }
+  }, [])
+
   // Fetch pricing from API
   const fetchPricing = () => {
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
