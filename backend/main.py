@@ -3398,6 +3398,172 @@ async def send_promo_free_reminder_to_subscriber(
         )
 
 
+# =============================================================================
+# Admin Marketing Sources (Attribution) Endpoints
+# =============================================================================
+
+@app.get("/api/admin/marketing-sources/summary")
+async def get_marketing_sources_summary(
+    from_month: str = Query(None, description="Start month in MM/YYYY format (e.g., 04/2026)"),
+    to_month: str = Query(None, description="End month in MM/YYYY format (e.g., 06/2026)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get marketing source summary by month for admin reports.
+    Reads from pre-aggregated marketing_source_monthly_totals table.
+    """
+    from db_models import MarketingSourceMonthlyTotal
+
+    query = db.query(MarketingSourceMonthlyTotal)
+
+    # Convert MM/YYYY to YYYY-MM for filtering
+    if from_month:
+        try:
+            parts = from_month.split('/')
+            from_ym = f"{parts[1]}-{parts[0]}"
+            query = query.filter(MarketingSourceMonthlyTotal.year_month >= from_ym)
+        except (IndexError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid from_month format. Use MM/YYYY")
+
+    if to_month:
+        try:
+            parts = to_month.split('/')
+            to_ym = f"{parts[1]}-{parts[0]}"
+            query = query.filter(MarketingSourceMonthlyTotal.year_month <= to_ym)
+        except (IndexError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid to_month format. Use MM/YYYY")
+
+    results = query.order_by(MarketingSourceMonthlyTotal.year_month.desc()).all()
+
+    # Group by month
+    months_data = {}
+    for row in results:
+        if row.year_month not in months_data:
+            months_data[row.year_month] = {"sources": [], "total": 0}
+        months_data[row.year_month]["sources"].append({
+            "source": row.source,
+            "count": row.count,
+        })
+        months_data[row.year_month]["total"] += row.count
+
+    # Calculate percentages and format response
+    months = []
+    total_customers = 0
+    for year_month, data in sorted(months_data.items(), reverse=True):
+        month_total = data["total"]
+        total_customers += month_total
+        sources_with_pct = []
+        for src in sorted(data["sources"], key=lambda x: x["count"], reverse=True):
+            pct = round((src["count"] / month_total * 100), 1) if month_total > 0 else 0
+            sources_with_pct.append({
+                "source": src["source"],
+                "count": src["count"],
+                "percentage": pct,
+            })
+        months.append({
+            "year_month": year_month,
+            "sources": sources_with_pct,
+            "month_total": month_total,
+        })
+
+    return {
+        "period": {"from": from_month, "to": to_month},
+        "total_customers": total_customers,
+        "months": months,
+    }
+
+
+@app.get("/api/admin/marketing-sources/other")
+async def get_marketing_sources_other(
+    from_date: str = Query(None, description="Start date in DD/MM/YYYY format"),
+    to_date: str = Query(None, description="End date in DD/MM/YYYY format"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get all 'other' marketing source responses with free-text details.
+    """
+    from db_models import MarketingSource, Customer
+
+    query = db.query(MarketingSource, Customer).join(
+        Customer, MarketingSource.customer_id == Customer.id
+    ).filter(MarketingSource.source == 'other')
+
+    # Convert DD/MM/YYYY to datetime for filtering
+    if from_date:
+        try:
+            parts = from_date.split('/')
+            from_dt = datetime(int(parts[2]), int(parts[1]), int(parts[0]))
+            query = query.filter(MarketingSource.created_at >= from_dt)
+        except (IndexError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid from_date format. Use DD/MM/YYYY")
+
+    if to_date:
+        try:
+            parts = to_date.split('/')
+            to_dt = datetime(int(parts[2]), int(parts[1]), int(parts[0]), 23, 59, 59)
+            query = query.filter(MarketingSource.created_at <= to_dt)
+        except (IndexError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid to_date format. Use DD/MM/YYYY")
+
+    results = query.order_by(MarketingSource.created_at.desc()).all()
+
+    other_responses = []
+    for ms, customer in results:
+        other_responses.append({
+            "customer_email": customer.email,
+            "customer_name": f"{customer.first_name} {customer.last_name}",
+            "date": ms.created_at.strftime('%d/%m/%Y') if ms.created_at else None,
+            "detail": ms.source_detail,
+        })
+
+    return {
+        "count": len(other_responses),
+        "responses": other_responses,
+    }
+
+
+@app.get("/api/admin/marketing-sources/export")
+async def export_marketing_sources_csv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Export all marketing source data as CSV.
+    """
+    from db_models import MarketingSource, Customer
+    from fastapi.responses import StreamingResponse
+    import io
+    import csv
+
+    results = db.query(MarketingSource, Customer).join(
+        Customer, MarketingSource.customer_id == Customer.id
+    ).order_by(MarketingSource.created_at.desc()).all()
+
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['customer_id', 'customer_email', 'customer_name', 'source', 'source_detail', 'created_at'])
+
+    for ms, customer in results:
+        writer.writerow([
+            customer.id,
+            customer.email,
+            f"{customer.first_name} {customer.last_name}",
+            ms.source,
+            ms.source_detail or '',
+            ms.created_at.strftime('%d/%m/%Y') if ms.created_at else '',
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=marketing_sources.csv"}
+    )
+
+
 def send_free_parking_promo_email(first_name: str, email: str, promo_code: str) -> bool:
     """Send 100% off (FREE parking) promo code email."""
     from email_service import send_email
@@ -3836,6 +4002,144 @@ async def update_customer(
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# =============================================================================
+# Marketing Attribution ("Where did you hear about us?") Endpoints
+# =============================================================================
+
+# Valid marketing source values
+VALID_MARKETING_SOURCES = ['newspaper', 'google', 'facebook', 'instagram', 'linkedin', 'afc_bournemouth', 'other']
+
+
+@app.get("/api/customers/heard-about-us-status")
+async def get_heard_about_us_status(
+    email: str = Query(..., description="Customer email address"),
+    db: Session = Depends(get_db),
+):
+    """
+    Check if a customer has already answered the "Where did you hear about us?" question.
+    Called when Page 4 (Payment) loads to determine if the question should be shown.
+    """
+    from db_models import Customer
+
+    # Case-insensitive email lookup
+    customer = db.query(Customer).filter(
+        func.lower(Customer.email) == func.lower(email)
+    ).first()
+
+    if not customer:
+        # New customer - show the question
+        return {
+            "customer_id": None,
+            "has_answered_heard_about_us": False,
+            "show_heard_about_us": True,
+        }
+
+    # Existing customer - check if they've already answered
+    return {
+        "customer_id": customer.id,
+        "has_answered_heard_about_us": customer.has_answered_heard_about_us or False,
+        "show_heard_about_us": not (customer.has_answered_heard_about_us or False),
+    }
+
+
+class HeardAboutUsRequest(BaseModel):
+    email: str
+    source: str
+    source_detail: Optional[str] = None
+
+
+@app.post("/api/customers/heard-about-us")
+async def save_heard_about_us(
+    request: HeardAboutUsRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Save the customer's marketing attribution response.
+    Called immediately when the customer selects an option (before payment).
+    """
+    from db_models import Customer, MarketingSource, MarketingSourceMonthlyTotal
+
+    # Validate source value
+    if request.source not in VALID_MARKETING_SOURCES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid source. Must be one of: {', '.join(VALID_MARKETING_SOURCES)}"
+        )
+
+    # Validate source_detail if source is 'other'
+    if request.source == 'other':
+        if not request.source_detail or len(request.source_detail.strip()) < 3:
+            raise HTTPException(
+                status_code=400,
+                detail="Please tell us how you heard about us (minimum 3 characters)"
+            )
+        if len(request.source_detail) > 255:
+            raise HTTPException(
+                status_code=400,
+                detail="Source detail too long (maximum 255 characters)"
+            )
+
+    # Case-insensitive email lookup
+    customer = db.query(Customer).filter(
+        func.lower(Customer.email) == func.lower(request.email)
+    ).first()
+
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found. Please complete contact details first.")
+
+    # Check if already answered - silently succeed (idempotent)
+    if customer.has_answered_heard_about_us:
+        return {
+            "success": True,
+            "message": "Marketing source already recorded",
+            "already_answered": True,
+        }
+
+    try:
+        # Create marketing source record
+        source_detail = request.source_detail.strip() if request.source == 'other' and request.source_detail else None
+
+        marketing_source = MarketingSource(
+            customer_id=customer.id,
+            source=request.source,
+            source_detail=source_detail,
+        )
+        db.add(marketing_source)
+
+        # Update customer flag
+        customer.has_answered_heard_about_us = True
+
+        # Update monthly totals (UPSERT)
+        year_month = datetime.utcnow().strftime('%Y-%m')
+
+        existing_total = db.query(MarketingSourceMonthlyTotal).filter(
+            MarketingSourceMonthlyTotal.year_month == year_month,
+            MarketingSourceMonthlyTotal.source == request.source,
+        ).first()
+
+        if existing_total:
+            existing_total.count += 1
+        else:
+            new_total = MarketingSourceMonthlyTotal(
+                year_month=year_month,
+                source=request.source,
+                count=1,
+            )
+            db.add(new_total)
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": "Marketing source recorded",
+            "already_answered": False,
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to save marketing source: {str(e)}")
 
 
 @app.patch("/api/customers/{customer_id}/billing")

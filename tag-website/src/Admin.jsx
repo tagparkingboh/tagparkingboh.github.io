@@ -235,6 +235,13 @@ function Admin() {
   const [loadingPopular, setLoadingPopular] = useState(false)
   const [popularTop, setPopularTop] = useState(10) // 5, 10, 20
 
+  // Marketing Sources report state
+  const [marketingSourcesData, setMarketingSourcesData] = useState(null)
+  const [loadingMarketingSources, setLoadingMarketingSources] = useState(false)
+  const [marketingOtherDetails, setMarketingOtherDetails] = useState(null)
+  const [loadingMarketingOther, setLoadingMarketingOther] = useState(false)
+  const [showMarketingOtherModal, setShowMarketingOtherModal] = useState(false)
+
   // QA Dashboard state
   const [testResults, setTestResults] = useState([])
   const [latestTestRun, setLatestTestRun] = useState(null)
@@ -351,6 +358,8 @@ function Admin() {
         fetchOccupancyReport(occupancyView)
       } else if (reportsSubTab === 'popular') {
         fetchPopularReport()
+      } else if (reportsSubTab === 'marketing') {
+        fetchMarketingSources()
       }
     }
   }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularTop])
@@ -600,6 +609,68 @@ function Admin() {
       console.error('Failed to fetch popular report:', err)
     } finally {
       setLoadingPopular(false)
+    }
+  }
+
+  const fetchMarketingSources = async () => {
+    setLoadingMarketingSources(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing-sources/summary`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setMarketingSourcesData(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch marketing sources:', err)
+    } finally {
+      setLoadingMarketingSources(false)
+    }
+  }
+
+  const fetchMarketingOtherDetails = async () => {
+    setLoadingMarketingOther(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing-sources/other`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setMarketingOtherDetails(data.details || [])
+        setShowMarketingOtherModal(true)
+      }
+    } catch (err) {
+      console.error('Failed to fetch marketing other details:', err)
+    } finally {
+      setLoadingMarketingOther(false)
+    }
+  }
+
+  const exportMarketingSourcesCSV = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing-sources/export`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `marketing-sources-${new Date().toISOString().split('T')[0]}.csv`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        a.remove()
+      }
+    } catch (err) {
+      console.error('Failed to export marketing sources:', err)
     }
   }
 
@@ -4660,6 +4731,12 @@ function Admin() {
               >
                 Location Maps
               </button>
+              <button
+                className={`reports-subtab ${reportsSubTab === 'marketing' ? 'active' : ''}`}
+                onClick={() => setReportsSubTab('marketing')}
+              >
+                Marketing Sources
+              </button>
             </div>
 
             {/* Booking Growth Charts */}
@@ -5489,6 +5566,143 @@ function Admin() {
                   </>
                 )}
               </>
+            )}
+
+            {/* Marketing Sources */}
+            {reportsSubTab === 'marketing' && (
+              <div className="marketing-sources-section">
+                <div className="marketing-sources-header">
+                  <h3>Marketing Sources</h3>
+                  <button
+                    className="admin-export-btn"
+                    onClick={exportMarketingSourcesCSV}
+                  >
+                    Export CSV
+                  </button>
+                </div>
+                <p className="reports-description">
+                  Where customers heard about TAG Parking (based on Page 4 attribution question).
+                </p>
+
+                {loadingMarketingSources ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading marketing sources...</span>
+                  </div>
+                ) : marketingSourcesData ? (
+                  <>
+                    {/* Total Summary */}
+                    <div className="marketing-total-summary">
+                      <div className="stats-card">
+                        <div className="stats-card-value">{marketingSourcesData.total_responses}</div>
+                        <div className="stats-card-label">Total Responses</div>
+                      </div>
+                    </div>
+
+                    {/* Monthly Breakdown */}
+                    <h4>Monthly Breakdown</h4>
+                    {marketingSourcesData.monthly_data && marketingSourcesData.monthly_data.length > 0 ? (
+                      <div className="marketing-monthly-table">
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Month</th>
+                              {['newspaper', 'google', 'facebook', 'instagram', 'linkedin', 'afc_bournemouth', 'other'].map(source => (
+                                <th key={source}>{source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</th>
+                              ))}
+                              <th>Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {marketingSourcesData.monthly_data.map((month, idx) => {
+                              const total = Object.values(month.sources).reduce((a, b) => a + b, 0)
+                              return (
+                                <tr key={idx}>
+                                  <td>{month.year_month}</td>
+                                  {['newspaper', 'google', 'facebook', 'instagram', 'linkedin', 'afc_bournemouth', 'other'].map(source => (
+                                    <td key={source}>
+                                      {month.sources[source] || 0}
+                                      {source === 'other' && month.sources.other > 0 && (
+                                        <button
+                                          className="view-other-details"
+                                          onClick={fetchMarketingOtherDetails}
+                                          title="View 'Other' details"
+                                        >
+                                          ?
+                                        </button>
+                                      )}
+                                    </td>
+                                  ))}
+                                  <td><strong>{total}</strong></td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="no-data">No marketing source data yet.</p>
+                    )}
+
+                    {/* Source Totals */}
+                    <h4>All-Time Totals by Source</h4>
+                    <div className="marketing-source-totals">
+                      {marketingSourcesData.source_totals && Object.entries(marketingSourcesData.source_totals)
+                        .sort(([, a], [, b]) => b - a)
+                        .map(([source, count]) => (
+                          <div key={source} className="source-total-item">
+                            <span className="source-name">{source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                            <span className="source-count">{count}</span>
+                            <div className="source-bar" style={{ width: `${(count / marketingSourcesData.total_responses) * 100}%` }}></div>
+                          </div>
+                        ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="no-data">No marketing source data available.</p>
+                )}
+              </div>
+            )}
+
+            {/* Marketing "Other" Details Modal */}
+            {showMarketingOtherModal && (
+              <div className="modal-overlay" onClick={() => setShowMarketingOtherModal(false)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h3>"Other" Source Details</h3>
+                    <button className="modal-close" onClick={() => setShowMarketingOtherModal(false)}>&times;</button>
+                  </div>
+                  <div className="modal-body">
+                    {loadingMarketingOther ? (
+                      <div className="admin-loading-inline">
+                        <div className="spinner-small"></div>
+                        <span>Loading...</span>
+                      </div>
+                    ) : marketingOtherDetails && marketingOtherDetails.length > 0 ? (
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Customer</th>
+                            <th>Detail</th>
+                            <th>Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {marketingOtherDetails.map((item, idx) => (
+                            <tr key={idx}>
+                              <td>{item.customer_name || item.customer_email}</td>
+                              <td>{item.source_detail}</td>
+                              <td>{new Date(item.created_at).toLocaleDateString('en-GB')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p>No "Other" details recorded.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}

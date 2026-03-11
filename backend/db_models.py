@@ -57,9 +57,13 @@ class Customer(Base):
     founder_followup_sent = Column(Boolean, default=False)
     founder_followup_sent_at = Column(DateTime(timezone=True))
 
+    # Marketing attribution ("Where did you hear about us?")
+    has_answered_heard_about_us = Column(Boolean, default=False)
+
     # Relationships
     vehicles = relationship("Vehicle", back_populates="customer")
     bookings = relationship("Booking", back_populates="customer")
+    marketing_source = relationship("MarketingSource", back_populates="customer", uselist=False)
 
     def __repr__(self):
         return f"<Customer {self.first_name} {self.last_name} ({self.email})>"
@@ -761,3 +765,42 @@ class Testimonial(Base):
 
     def __repr__(self):
         return f"<Testimonial {self.id} - {self.customer_name} ({self.star_rating}★)>"
+
+
+class MarketingSource(Base):
+    """Marketing attribution - where customers heard about TAG Parking."""
+    __tablename__ = "marketing_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, unique=True)
+
+    # Source dropdown value: newspaper, google, facebook, instagram, linkedin, afc_bournemouth, other
+    source = Column(String(50), nullable=False)
+    # Free-text detail (only populated when source = 'other')
+    source_detail = Column(String(255), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationship
+    customer = relationship("Customer", back_populates="marketing_source")
+
+    def __repr__(self):
+        return f"<MarketingSource {self.id} - {self.source} (customer_id={self.customer_id})>"
+
+
+class MarketingSourceMonthlyTotal(Base):
+    """Pre-aggregated monthly counts per marketing source for admin reports."""
+    __tablename__ = "marketing_source_monthly_totals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    year_month = Column(String(7), nullable=False, index=True)  # YYYY-MM format
+    source = Column(String(50), nullable=False)
+    count = Column(Integer, nullable=False, default=0)
+
+    # Unique constraint on year_month + source
+    __table_args__ = (
+        UniqueConstraint('year_month', 'source', name='uq_year_month_source'),
+    )
+
+    def __repr__(self):
+        return f"<MarketingSourceMonthlyTotal {self.year_month} - {self.source}: {self.count}>"

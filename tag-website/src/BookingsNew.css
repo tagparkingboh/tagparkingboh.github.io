@@ -2271,3 +2271,109 @@
     gap: 0.5rem;
   }
 }
+
+/* Where did you hear about us? - Marketing Attribution */
+.heard-about-us-section {
+  background: #343434;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #555555;
+}
+
+.heard-about-us-section h4 {
+  font-size: 0.95rem;
+  color: #ffffff;
+  margin: 0 0 1rem 0;
+  font-family: 'Gilroy', sans-serif;
+}
+
+.heard-about-us-section h4 .required {
+  color: #D9FF00;
+}
+
+.heard-about-us-select select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #555555;
+  border-radius: 6px;
+  background: #2a2a2a;
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-family: 'Gilroy', sans-serif;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999999' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+}
+
+.heard-about-us-select select:focus {
+  outline: none;
+  border-color: #D9FF00;
+}
+
+.heard-about-us-detail {
+  margin-top: 0.75rem;
+}
+
+.heard-about-us-detail input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #555555;
+  border-radius: 6px;
+  background: #2a2a2a;
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-family: 'Gilroy', sans-serif;
+  box-sizing: border-box;
+}
+
+.heard-about-us-detail input:focus {
+  outline: none;
+  border-color: #D9FF00;
+}
+
+.heard-about-us-detail input::placeholder {
+  color: #888888;
+}
+
+.heard-about-us-submit {
+  margin-top: 1rem;
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  background: #D9FF00;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #343434;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Gilroy', sans-serif;
+}
+
+.heard-about-us-submit:hover:not(:disabled) {
+  background: #e5ff33;
+  transform: translateY(-1px);
+}
+
+.heard-about-us-submit:disabled {
+  background: #555555;
+  color: #888888;
+  cursor: not-allowed;
+}
+
+.heard-about-us-loading {
+  background: #343434;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #555555;
+  text-align: center;
+}
+
+.heard-about-us-loading p {
+  color: #999999;
+  margin: 0;
+}

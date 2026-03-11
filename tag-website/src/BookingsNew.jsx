@@ -147,6 +147,13 @@ function Bookings() {
   const [promoCodeMessage, setPromoCodeMessage] = useState(() => loadBookingState('promoCodeMessage', ''))
   const [promoCodeDiscount, setPromoCodeDiscount] = useState(() => loadBookingState('promoCodeDiscount', 0))
 
+  // "Where did you hear about us?" marketing attribution state
+  const [heardAboutUsSource, setHeardAboutUsSource] = useState(() => loadBookingState('heardAboutUsSource', ''))
+  const [heardAboutUsDetail, setHeardAboutUsDetail] = useState(() => loadBookingState('heardAboutUsDetail', ''))
+  const [heardAboutUsAnswered, setHeardAboutUsAnswered] = useState(() => loadBookingState('heardAboutUsAnswered', false))
+  const [heardAboutUsLoading, setHeardAboutUsLoading] = useState(false)
+  const [heardAboutUsSubmitting, setHeardAboutUsSubmitting] = useState(false)
+
   // Manual flight entry and time override state
   const [showDepartureTimeOverride, setShowDepartureTimeOverride] = useState(() => loadBookingState('showDepartureTimeOverride', false))
   const [departureTimeOverride, setDepartureTimeOverride] = useState(() => loadBookingState('departureTimeOverride', ''))
@@ -306,6 +313,71 @@ function Bookings() {
     console.log('[useEffect] Saving manualArrivalData to sessionStorage:', manualArrivalData)
     sessionStorage.setItem('booking_manualArrivalData', JSON.stringify(manualArrivalData))
   }, [manualArrivalData])
+
+  // Persist heard-about-us state
+  useEffect(() => {
+    sessionStorage.setItem('booking_heardAboutUsSource', JSON.stringify(heardAboutUsSource))
+    sessionStorage.setItem('booking_heardAboutUsDetail', JSON.stringify(heardAboutUsDetail))
+    sessionStorage.setItem('booking_heardAboutUsAnswered', JSON.stringify(heardAboutUsAnswered))
+  }, [heardAboutUsSource, heardAboutUsDetail, heardAboutUsAnswered])
+
+  // Check heard-about-us status when customer ID is available and entering Step 4
+  useEffect(() => {
+    const checkHeardAboutUsStatus = async () => {
+      if (!customerId || currentStep !== 4 || heardAboutUsAnswered) return
+
+      setHeardAboutUsLoading(true)
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/customers/heard-about-us-status?email=${encodeURIComponent(formData.email)}`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.has_answered) {
+            // Already answered, skip the question
+            setHeardAboutUsAnswered(true)
+          }
+        }
+      } catch (error) {
+        console.error('Error checking heard-about-us status:', error)
+      } finally {
+        setHeardAboutUsLoading(false)
+      }
+    }
+
+    checkHeardAboutUsStatus()
+  }, [customerId, currentStep, heardAboutUsAnswered, formData.email, API_BASE_URL])
+
+  // Submit heard-about-us answer
+  const submitHeardAboutUs = async () => {
+    if (!heardAboutUsSource || heardAboutUsSubmitting) return
+
+    // Validate "other" selection has detail
+    if (heardAboutUsSource === 'other' && !heardAboutUsDetail.trim()) {
+      return
+    }
+
+    setHeardAboutUsSubmitting(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/customers/heard-about-us`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          source: heardAboutUsSource,
+          source_detail: heardAboutUsSource === 'other' ? heardAboutUsDetail.trim() : null
+        })
+      })
+
+      if (response.ok) {
+        setHeardAboutUsAnswered(true)
+      } else {
+        console.error('Failed to submit heard-about-us:', await response.text())
+      }
+    } catch (error) {
+      console.error('Error submitting heard-about-us:', error)
+    } finally {
+      setHeardAboutUsSubmitting(false)
+    }
+  }
 
   // Check availability for a date range
   const checkAvailability = (dropoffDate, pickupDate) => {
@@ -2611,18 +2683,74 @@ function Bookings() {
                 )}
               </div>
 
-              <div className="form-group checkbox-group">
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    name="terms"
-                    checked={formData.terms}
-                    onChange={handleChange}
-                    required
-                  />
-                  <span>I agree to the <Link to="/terms-conditions" target="_blank">Terms & Conditions</Link> and <Link to="/privacy-policy" target="_blank">Privacy Policy</Link></span>
-                </label>
-              </div>
+              {/* Where did you hear about us? - Marketing Attribution */}
+              {!heardAboutUsAnswered && !heardAboutUsLoading && (
+                <div className="heard-about-us-section">
+                  <h4>Where did you hear about us? <span className="required">*</span></h4>
+                  <div className="heard-about-us-select">
+                    <select
+                      value={heardAboutUsSource}
+                      onChange={(e) => {
+                        setHeardAboutUsSource(e.target.value)
+                        if (e.target.value !== 'other') {
+                          setHeardAboutUsDetail('')
+                        }
+                      }}
+                      className="form-control"
+                    >
+                      <option value="">Please select...</option>
+                      <option value="newspaper">Newspaper</option>
+                      <option value="google">Google</option>
+                      <option value="facebook">Facebook</option>
+                      <option value="instagram">Instagram</option>
+                      <option value="linkedin">LinkedIn</option>
+                      <option value="afc_bournemouth">AFC Bournemouth</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  {heardAboutUsSource === 'other' && (
+                    <div className="heard-about-us-detail">
+                      <input
+                        type="text"
+                        placeholder="Please tell us where..."
+                        value={heardAboutUsDetail}
+                        onChange={(e) => setHeardAboutUsDetail(e.target.value)}
+                        className="form-control"
+                        maxLength={255}
+                      />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={submitHeardAboutUs}
+                    disabled={!heardAboutUsSource || (heardAboutUsSource === 'other' && !heardAboutUsDetail.trim()) || heardAboutUsSubmitting}
+                    className="heard-about-us-submit"
+                  >
+                    {heardAboutUsSubmitting ? 'Saving...' : 'Continue'}
+                  </button>
+                </div>
+              )}
+
+              {heardAboutUsLoading && (
+                <div className="heard-about-us-loading">
+                  <p>Loading...</p>
+                </div>
+              )}
+
+              {heardAboutUsAnswered && (
+                <>
+                  <div className="form-group checkbox-group">
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        name="terms"
+                        checked={formData.terms}
+                        onChange={handleChange}
+                        required
+                      />
+                      <span>I agree to the <Link to="/terms-conditions" target="_blank">Terms & Conditions</Link> and <Link to="/privacy-policy" target="_blank">Privacy Policy</Link></span>
+                    </label>
+                  </div>
 
               {paymentComplete ? (
                 <div className="payment-success">
@@ -2668,6 +2796,8 @@ function Bookings() {
                     <p>Please accept the Terms & Conditions to proceed with payment</p>
                   )}
                 </div>
+              )}
+                </>
               )}
 
               {!paymentComplete && (

@@ -4212,3 +4212,117 @@
 .admin-btn-primary:hover {
   background: #e5a326;
 }
+
+/* Marketing Sources Report */
+.marketing-sources-section {
+  margin-top: 1rem;
+}
+
+.marketing-sources-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.marketing-sources-header h3 {
+  margin: 0;
+}
+
+.admin-export-btn {
+  background: #f7b32b;
+  color: #1a1a2e;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.admin-export-btn:hover {
+  background: #e5a326;
+}
+
+.marketing-total-summary {
+  margin: 1.5rem 0;
+}
+
+.marketing-monthly-table {
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.marketing-monthly-table .admin-table th,
+.marketing-monthly-table .admin-table td {
+  text-align: center;
+  padding: 8px 12px;
+}
+
+.marketing-monthly-table .admin-table th:first-child,
+.marketing-monthly-table .admin-table td:first-child {
+  text-align: left;
+}
+
+.view-other-details {
+  background: #4a4a6a;
+  color: #f7b32b;
+  border: none;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  cursor: pointer;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.view-other-details:hover {
+  background: #5a5a7a;
+}
+
+.marketing-source-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.source-total-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  position: relative;
+  padding: 0.75rem;
+  background: #2a2a4a;
+  border-radius: 6px;
+}
+
+.source-total-item .source-name {
+  width: 140px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.source-total-item .source-count {
+  width: 50px;
+  text-align: right;
+  font-weight: 600;
+  color: #f7b32b;
+}
+
+.source-total-item .source-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(247, 179, 43, 0.15);
+  border-radius: 6px;
+  z-index: 0;
+}
+
+.no-data {
+  color: #888;
+  font-style: italic;
+  padding: 1rem 0;
+}
