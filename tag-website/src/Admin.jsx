@@ -5607,8 +5607,16 @@ function Admin() {
                           <thead>
                             <tr>
                               <th>Month</th>
-                              {['newspaper', 'google', 'facebook', 'instagram', 'linkedin', 'afc_bournemouth', 'other'].map(source => (
-                                <th key={source}>{source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</th>
+                              {[
+                                { key: 'newspaper', label: 'Newspaper' },
+                                { key: 'google', label: 'Google' },
+                                { key: 'facebook', label: 'Facebook' },
+                                { key: 'instagram', label: 'Instagram' },
+                                { key: 'linkedin', label: 'LinkedIn' },
+                                { key: 'afc_bournemouth', label: 'AFC Bournemouth' },
+                                { key: 'other', label: 'Other' }
+                              ].map(source => (
+                                <th key={source.key}>{source.label}</th>
                               ))}
                               <th>Total</th>
                             </tr>
@@ -5649,13 +5657,24 @@ function Admin() {
                     <div className="marketing-source-totals">
                       {marketingSourcesData.source_totals && Object.entries(marketingSourcesData.source_totals)
                         .sort(([, a], [, b]) => b - a)
-                        .map(([source, count]) => (
-                          <div key={source} className="source-total-item">
-                            <span className="source-name">{source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
-                            <span className="source-count">{count}</span>
-                            <div className="source-bar" style={{ width: `${(count / marketingSourcesData.total_responses) * 100}%` }}></div>
-                          </div>
-                        ))}
+                        .map(([source, count]) => {
+                          const sourceLabels = {
+                            newspaper: 'Newspaper',
+                            google: 'Google',
+                            facebook: 'Facebook',
+                            instagram: 'Instagram',
+                            linkedin: 'LinkedIn',
+                            afc_bournemouth: 'AFC Bournemouth',
+                            other: 'Other'
+                          }
+                          return (
+                            <div key={source} className="source-total-item">
+                              <span className="source-name">{sourceLabels[source] || source}</span>
+                              <span className="source-count">{count}</span>
+                              <div className="source-bar" style={{ width: `${(count / marketingSourcesData.total_responses) * 100}%` }}></div>
+                            </div>
+                          )
+                        })}
                     </div>
                   </>
                 ) : (
