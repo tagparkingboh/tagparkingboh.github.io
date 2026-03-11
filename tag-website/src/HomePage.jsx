@@ -49,12 +49,13 @@ function HomePage() {
   useEffect(() => {
     if (window.location.hash) {
       const id = window.location.hash.substring(1)
+      // Wait for page to fully render before scrolling
       setTimeout(() => {
         const element = document.getElementById(id)
         if (element) {
-          element.scrollIntoView({ behavior: 'smooth' })
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' })
         }
-      }, 100)
+      }, 800)
     }
   }, [])
 
