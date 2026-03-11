@@ -5686,12 +5686,12 @@ function Admin() {
             {/* Marketing "Other" Details Modal */}
             {showMarketingOtherModal && (
               <div className="modal-overlay" onClick={() => setShowMarketingOtherModal(false)}>
-                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-content marketing-other-modal" onClick={(e) => e.stopPropagation()}>
                   <div className="modal-header">
                     <h3>"Other" Source Details</h3>
                     <button className="modal-close" onClick={() => setShowMarketingOtherModal(false)}>&times;</button>
                   </div>
-                  <div className="modal-body">
+                  <div className="modal-body marketing-other-modal-body">
                     {loadingMarketingOther ? (
                       <div className="admin-loading-inline">
                         <div className="spinner-small"></div>

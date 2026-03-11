@@ -4331,3 +4331,24 @@
   font-style: italic;
   padding: 1rem 0;
 }
+
+/* Marketing Other Details Modal */
+.marketing-other-modal {
+  max-width: 600px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.marketing-other-modal-body {
+  overflow-y: auto;
+  max-height: 55vh;
+}
+
+.marketing-other-modal-body table {
+  font-size: 0.85rem;
+}
+
+.marketing-other-modal-body td {
+  padding: 8px 10px;
+}
