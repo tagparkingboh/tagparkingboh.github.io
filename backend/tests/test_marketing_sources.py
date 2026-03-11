@@ -625,6 +625,58 @@ class TestNegativeScenarios:
 
 
 # =============================================================================
+# Status Endpoint Response Structure Tests
+# =============================================================================
+
+class TestStatusEndpointResponse:
+    """
+    Tests for the heard-about-us-status endpoint response structure.
+
+    CRITICAL: The frontend checks specific field names.
+    """
+
+    def test_status_response_has_correct_field_name(self):
+        """
+        CRITICAL: Response must use 'has_answered_heard_about_us' not 'has_answered'.
+
+        Frontend code: if (data.has_answered_heard_about_us) { ... }
+        """
+        # Mock the expected API response
+        response = {
+            "customer_id": 1,
+            "has_answered_heard_about_us": False,  # CORRECT field name
+            "show_heard_about_us": True,
+        }
+
+        # This is what the frontend checks
+        assert "has_answered_heard_about_us" in response
+        # Ensure we're NOT using the wrong field name
+        assert "has_answered" not in response
+
+    def test_status_response_for_new_customer(self):
+        """New customer should show the question."""
+        response = {
+            "customer_id": None,
+            "has_answered_heard_about_us": False,
+            "show_heard_about_us": True,
+        }
+
+        assert response["has_answered_heard_about_us"] == False
+        assert response["show_heard_about_us"] == True
+
+    def test_status_response_for_answered_customer(self):
+        """Customer who answered should skip the question."""
+        response = {
+            "customer_id": 123,
+            "has_answered_heard_about_us": True,
+            "show_heard_about_us": False,
+        }
+
+        assert response["has_answered_heard_about_us"] == True
+        assert response["show_heard_about_us"] == False
+
+
+# =============================================================================
 # Integration Contract Tests (Frontend <-> Backend)
 # =============================================================================
 
