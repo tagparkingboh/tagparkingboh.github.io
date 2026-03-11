@@ -638,7 +638,7 @@ def send_promo_10_reminder_email(
     Returns:
         True if sent successfully, False otherwise.
     """
-    subject = os.getenv("PROMO_10_REMINDER_EMAIL_SUBJECT", "Don't miss your 10% discount!")
+    subject = os.getenv("FOUNDER_10OFF_REMINDER_EMAIL_SUBJECT", "Don't miss your 10% discount!")
     founder_name = os.getenv("FOUNDER_NAME", "Kristian")
     founder_email = os.getenv("FOUNDER_EMAIL", "kristian@tagparking.co.uk")
 
