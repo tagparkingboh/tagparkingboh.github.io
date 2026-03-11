@@ -3554,6 +3554,23 @@ function Admin() {
                                           </span>
                                         </div>
                                       </div>
+                                      {/* Reminder Row */}
+                                      {subscriber.promo_10_reminder_sent && (
+                                        <div className="booking-detail-row" style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #eee' }}>
+                                          <div className="booking-detail">
+                                            <span className="detail-label">Reminder</span>
+                                            <span className="detail-value">
+                                              <span className="status-badge sent">Sent</span>
+                                            </span>
+                                          </div>
+                                          <div className="booking-detail">
+                                            <span className="detail-label">Reminder Sent At</span>
+                                            <span className="detail-value">
+                                              {formatDateTimeUK(subscriber.promo_10_reminder_sent_at)}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )}
                                     ) : (
                                       <p className="section-empty">Not sent yet</p>
                                     )}

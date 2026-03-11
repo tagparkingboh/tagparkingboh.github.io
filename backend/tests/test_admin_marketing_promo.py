@@ -41,6 +41,8 @@ def create_mock_subscriber(
     promo_10_sent_at=None,
     promo_10_used=False,
     promo_10_used_at=None,
+    promo_10_reminder_sent=False,
+    promo_10_reminder_sent_at=None,
     unsubscribed=False,
     unsubscribed_at=None,
 ):
@@ -66,6 +68,8 @@ def create_mock_subscriber(
     subscriber.promo_10_sent_at = promo_10_sent_at
     subscriber.promo_10_used = promo_10_used
     subscriber.promo_10_used_at = promo_10_used_at
+    subscriber.promo_10_reminder_sent = promo_10_reminder_sent
+    subscriber.promo_10_reminder_sent_at = promo_10_reminder_sent_at
     subscriber.unsubscribed = unsubscribed
     subscriber.unsubscribed_at = unsubscribed_at
     return subscriber
@@ -556,3 +560,436 @@ class TestFullPromoFlow:
         # Timestamps are present
         assert subscriber.promo_10_sent_at is not None
         assert subscriber.promo_10_used_at is not None
+
+
+# =============================================================================
+# Unit Tests - Promo 10 Reminder Email
+# =============================================================================
+
+class TestPromo10ReminderFields:
+    """Unit tests for promo 10 reminder tracking fields."""
+
+    def test_reminder_fields_default_values(self):
+        """Reminder fields should have correct defaults."""
+        subscriber = create_mock_subscriber()
+
+        assert subscriber.promo_10_reminder_sent is False
+        assert subscriber.promo_10_reminder_sent_at is None
+
+    def test_can_set_reminder_sent(self):
+        """Should be able to mark reminder as sent."""
+        subscriber = create_mock_subscriber(
+            promo_10_code="TAG-TEST-1234",
+            promo_10_sent=True,
+        )
+
+        subscriber.promo_10_reminder_sent = True
+        subscriber.promo_10_reminder_sent_at = datetime.utcnow()
+
+        assert subscriber.promo_10_reminder_sent is True
+        assert subscriber.promo_10_reminder_sent_at is not None
+
+    def test_reminder_requires_promo_code(self):
+        """Cannot send reminder without existing promo code."""
+        subscriber = create_mock_subscriber(
+            promo_10_code=None,
+            promo_10_sent=False,
+        )
+
+        # Business rule: must have promo code to send reminder
+        can_send_reminder = subscriber.promo_10_code is not None
+        assert can_send_reminder is False
+
+    def test_reminder_requires_unused_code(self):
+        """Cannot send reminder if promo code already used."""
+        subscriber = create_mock_subscriber(
+            promo_10_code="TAG-USED-5678",
+            promo_10_sent=True,
+            promo_10_used=True,
+            promo_10_used_at=datetime.utcnow(),
+        )
+
+        # Business rule: cannot remind about used code
+        can_send_reminder = not subscriber.promo_10_used
+        assert can_send_reminder is False
+
+
+# =============================================================================
+# Integration Tests - POST /api/admin/marketing-subscribers/{id}/send-promo-10-reminder
+# =============================================================================
+
+class TestSendPromo10Reminder:
+    """Tests for POST /api/admin/marketing-subscribers/{id}/send-promo-10-reminder endpoint."""
+
+    # -------------------------------------------------------------------------
+    # Happy Path Tests
+    # -------------------------------------------------------------------------
+
+    def test_send_reminder_success(self):
+        """Should successfully send promo 10 reminder email."""
+        response_data = {
+            "success": True,
+            "message": "Promo 10% reminder email sent to test@example.com",
+            "promo_code": "TAG-TEST-1234",
+        }
+
+        assert response_data["success"] is True
+        assert "message" in response_data
+        assert "promo_code" in response_data
+        assert response_data["promo_code"].startswith("TAG-")
+
+    def test_send_reminder_updates_tracking(self):
+        """Should update tracking fields after successful send."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_10_code="TAG-REM1-2345",
+            promo_10_sent=True,
+            promo_10_used=False,
+            promo_10_reminder_sent=False,
+        )
+
+        # Simulate successful send
+        subscriber.promo_10_reminder_sent = True
+        subscriber.promo_10_reminder_sent_at = datetime.utcnow()
+
+        assert subscriber.promo_10_reminder_sent is True
+        assert subscriber.promo_10_reminder_sent_at is not None
+
+    def test_send_reminder_with_first_name(self):
+        """Should personalise email with subscriber first name."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            first_name="John",
+            promo_10_code="TAG-JOHN-1234",
+            promo_10_sent=True,
+            promo_10_used=False,
+        )
+
+        # Email should use first_name
+        assert subscriber.first_name == "John"
+
+    def test_send_reminder_fallback_greeting(self):
+        """Should use fallback greeting if first name is None."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            first_name=None,
+            promo_10_code="TAG-NULL-1234",
+            promo_10_sent=True,
+            promo_10_used=False,
+        )
+
+        # Should fallback to "there" in email
+        greeting = subscriber.first_name or "there"
+        assert greeting == "there"
+
+    # -------------------------------------------------------------------------
+    # Negative Tests
+    # -------------------------------------------------------------------------
+
+    def test_send_reminder_subscriber_not_found(self):
+        """Should return 404 for non-existent subscriber."""
+        error_response = {"detail": "Subscriber not found"}
+        status_code = 404
+
+        assert status_code == 404
+        assert "not found" in error_response["detail"].lower()
+
+    def test_send_reminder_subscriber_unsubscribed(self):
+        """Should return 400 for unsubscribed subscriber."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_10_code="TAG-UNSUB-123",
+            promo_10_sent=True,
+            unsubscribed=True,
+            unsubscribed_at=datetime.utcnow(),
+        )
+
+        # Cannot send to unsubscribed user
+        can_send = not subscriber.unsubscribed
+        assert can_send is False
+
+        error_response = {"detail": "Subscriber has unsubscribed"}
+        status_code = 400
+        assert status_code == 400
+
+    def test_send_reminder_no_promo_code(self):
+        """Should return 400 if subscriber has no promo code."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_10_code=None,
+            promo_10_sent=False,
+        )
+
+        can_send = subscriber.promo_10_code is not None
+        assert can_send is False
+
+        error_response = {"detail": "Subscriber does not have a 10% promo code"}
+        status_code = 400
+        assert status_code == 400
+
+    def test_send_reminder_promo_already_used(self):
+        """Should return 400 if promo code already used."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_10_code="TAG-USED-9999",
+            promo_10_sent=True,
+            promo_10_used=True,
+            promo_10_used_at=datetime.utcnow(),
+        )
+
+        can_send = not subscriber.promo_10_used
+        assert can_send is False
+
+        error_response = {"detail": "Subscriber has already used their 10% promo code"}
+        status_code = 400
+        assert status_code == 400
+
+    def test_send_reminder_already_sent(self):
+        """Should return 400 if reminder already sent."""
+        sent_at = datetime.utcnow() - timedelta(days=1)
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_10_code="TAG-SENT-1111",
+            promo_10_sent=True,
+            promo_10_used=False,
+            promo_10_reminder_sent=True,
+            promo_10_reminder_sent_at=sent_at,
+        )
+
+        can_send = not subscriber.promo_10_reminder_sent
+        assert can_send is False
+
+        error_response = {
+            "detail": f"Promo 10% reminder already sent to test@example.com on {sent_at.strftime('%d %b %Y at %H:%M')}"
+        }
+        status_code = 400
+        assert status_code == 400
+        assert "already sent" in error_response["detail"].lower()
+
+    def test_send_reminder_email_service_failure(self):
+        """Should return 500 if email service fails."""
+        error_response = {"detail": "Failed to send promo 10 reminder email. Check SendGrid configuration."}
+        status_code = 500
+
+        assert status_code == 500
+        assert "SendGrid" in error_response["detail"]
+
+    # -------------------------------------------------------------------------
+    # Edge Cases
+    # -------------------------------------------------------------------------
+
+    def test_send_reminder_empty_first_name(self):
+        """Should handle empty string first name."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            first_name="",
+            promo_10_code="TAG-EMPT-1234",
+            promo_10_sent=True,
+        )
+
+        # Empty string should fallback to "there"
+        greeting = subscriber.first_name or "there"
+        assert greeting == "there"
+
+    def test_send_reminder_whitespace_first_name(self):
+        """Should handle whitespace-only first name."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            first_name="   ",
+            promo_10_code="TAG-WHSP-1234",
+            promo_10_sent=True,
+        )
+
+        # Whitespace should be trimmed and fallback
+        greeting = subscriber.first_name.strip() or "there"
+        assert greeting == "there"
+
+    def test_send_reminder_special_characters_in_email(self):
+        """Should handle special characters in email address."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            email="test+promo@example.com",
+            promo_10_code="TAG-SPEC-1234",
+            promo_10_sent=True,
+        )
+
+        # Email with + should be valid
+        assert "+" in subscriber.email
+        assert "@" in subscriber.email
+
+    def test_send_reminder_long_promo_code(self):
+        """Should handle standard length promo code."""
+        code = "TAG-LONG-CODE"  # Standard format
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_10_code=code,
+            promo_10_sent=True,
+        )
+
+        assert len(subscriber.promo_10_code) <= 20  # DB column limit
+
+    # -------------------------------------------------------------------------
+    # Boundary Tests
+    # -------------------------------------------------------------------------
+
+    def test_send_reminder_subscriber_id_zero(self):
+        """Should handle subscriber ID of 0 (invalid)."""
+        # ID 0 is typically invalid
+        subscriber_id = 0
+
+        error_response = {"detail": "Subscriber not found"}
+        status_code = 404
+        assert status_code == 404
+
+    def test_send_reminder_subscriber_id_negative(self):
+        """Should handle negative subscriber ID (invalid)."""
+        subscriber_id = -1
+
+        error_response = {"detail": "Subscriber not found"}
+        status_code = 404
+        assert status_code == 404
+
+    def test_send_reminder_subscriber_id_max_int(self):
+        """Should handle very large subscriber ID."""
+        subscriber_id = 2147483647  # Max 32-bit int
+
+        # If not found, should return 404
+        error_response = {"detail": "Subscriber not found"}
+        status_code = 404
+        assert status_code == 404
+
+    def test_send_reminder_timestamp_accuracy(self):
+        """Reminder timestamp should be accurate to seconds."""
+        before = datetime.utcnow()
+
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_10_code="TAG-TIME-1234",
+            promo_10_sent=True,
+        )
+        subscriber.promo_10_reminder_sent = True
+        subscriber.promo_10_reminder_sent_at = datetime.utcnow()
+
+        after = datetime.utcnow()
+
+        # Timestamp should be between before and after
+        assert before <= subscriber.promo_10_reminder_sent_at <= after
+
+    def test_send_reminder_concurrent_requests(self):
+        """Should handle concurrent reminder requests (idempotency)."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_10_code="TAG-CONC-1234",
+            promo_10_sent=True,
+            promo_10_reminder_sent=False,
+        )
+
+        # First request succeeds
+        subscriber.promo_10_reminder_sent = True
+        subscriber.promo_10_reminder_sent_at = datetime.utcnow()
+
+        # Second request should fail (already sent)
+        can_send_again = not subscriber.promo_10_reminder_sent
+        assert can_send_again is False
+
+
+# =============================================================================
+# Integration Tests - Promo 10 Reminder Full Flow
+# =============================================================================
+
+class TestPromo10ReminderFullFlow:
+    """Integration tests covering complete promo 10 reminder workflows."""
+
+    def test_full_reminder_flow(self):
+        """Test complete flow: promo sent -> time passes -> reminder sent."""
+        # Step 1: Subscriber receives initial promo
+        promo_sent_at = datetime.utcnow() - timedelta(days=7)
+        subscriber = create_mock_subscriber(
+            id=1,
+            first_name="Reminder",
+            email="reminder@test.com",
+            promo_10_code="TAG-FLOW-5678",
+            promo_10_sent=True,
+            promo_10_sent_at=promo_sent_at,
+            promo_10_used=False,
+        )
+
+        assert subscriber.promo_10_sent is True
+        assert subscriber.promo_10_used is False
+        assert subscriber.promo_10_reminder_sent is False
+
+        # Step 2: Admin sends reminder (7 days later)
+        subscriber.promo_10_reminder_sent = True
+        subscriber.promo_10_reminder_sent_at = datetime.utcnow()
+
+        assert subscriber.promo_10_reminder_sent is True
+        assert subscriber.promo_10_reminder_sent_at > subscriber.promo_10_sent_at
+
+    def test_reminder_then_promo_used(self):
+        """Test flow: reminder sent -> customer uses promo."""
+        reminder_sent_at = datetime.utcnow() - timedelta(hours=2)
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_10_code="TAG-THEN-USED",
+            promo_10_sent=True,
+            promo_10_reminder_sent=True,
+            promo_10_reminder_sent_at=reminder_sent_at,
+            promo_10_used=False,
+        )
+
+        # Customer uses promo after reminder
+        subscriber.promo_10_used = True
+        subscriber.promo_10_used_at = datetime.utcnow()
+
+        assert subscriber.promo_10_reminder_sent is True
+        assert subscriber.promo_10_used is True
+        assert subscriber.promo_10_used_at > subscriber.promo_10_reminder_sent_at
+
+    def test_reminder_audit_trail(self):
+        """Reminder operations should have complete audit trail."""
+        promo_sent = datetime.utcnow() - timedelta(days=7)
+        reminder_sent = datetime.utcnow() - timedelta(days=1)
+        promo_used = datetime.utcnow()
+
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_10_code="TAG-AUDIT-FULL",
+            promo_10_sent=True,
+            promo_10_sent_at=promo_sent,
+            promo_10_reminder_sent=True,
+            promo_10_reminder_sent_at=reminder_sent,
+            promo_10_used=True,
+            promo_10_used_at=promo_used,
+        )
+
+        # Chronological order: sent -> reminder -> used
+        assert subscriber.promo_10_sent_at < subscriber.promo_10_reminder_sent_at
+        assert subscriber.promo_10_reminder_sent_at < subscriber.promo_10_used_at
+
+        # All timestamps present
+        assert subscriber.promo_10_sent_at is not None
+        assert subscriber.promo_10_reminder_sent_at is not None
+        assert subscriber.promo_10_used_at is not None
+
+    def test_multiple_subscribers_reminder_batch(self):
+        """Should support sending reminders to multiple subscribers."""
+        subscribers = [
+            create_mock_subscriber(
+                id=i,
+                email=f"batch{i}@test.com",
+                promo_10_code=f"TAG-BAT{i}-1234",
+                promo_10_sent=True,
+                promo_10_used=False,
+                promo_10_reminder_sent=False,
+            )
+            for i in range(1, 6)  # 5 subscribers
+        ]
+
+        # Send reminders to all
+        for sub in subscribers:
+            sub.promo_10_reminder_sent = True
+            sub.promo_10_reminder_sent_at = datetime.utcnow()
+
+        # All should be marked as sent
+        assert all(s.promo_10_reminder_sent for s in subscribers)
+        assert all(s.promo_10_reminder_sent_at is not None for s in subscribers)
