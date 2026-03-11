@@ -48,12 +48,19 @@ function HomePage() {
   // Scroll to hash anchor on page load (for external links like emails)
   useEffect(() => {
     if (window.location.hash) {
-      const hash = window.location.hash
-      // Clear and re-set the hash to trigger native browser scroll
-      window.location.hash = ''
-      setTimeout(() => {
-        window.location.hash = hash
-      }, 100)
+      const id = window.location.hash.substring(1)
+      const scrollToElement = () => {
+        const element = document.getElementById(id)
+        if (element) {
+          window.scrollTo({
+            top: element.offsetTop - 80,
+            behavior: 'smooth'
+          })
+        }
+      }
+      // Try multiple times to ensure element exists
+      setTimeout(scrollToElement, 500)
+      setTimeout(scrollToElement, 1500)
     }
   }, [])
 
