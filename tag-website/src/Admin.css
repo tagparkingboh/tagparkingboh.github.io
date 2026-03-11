@@ -4300,8 +4300,11 @@
 
 .source-total-item .source-name {
   width: 140px;
-  font-weight: 500;
+  font-weight: 600;
   text-transform: capitalize;
+  position: relative;
+  z-index: 1;
+  color: #ffffff;
 }
 
 .source-total-item .source-count {
@@ -4309,6 +4312,8 @@
   text-align: right;
   font-weight: 600;
   color: #f7b32b;
+  position: relative;
+  z-index: 1;
 }
 
 .source-total-item .source-bar {
