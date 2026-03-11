@@ -1146,6 +1146,37 @@ function Admin() {
     }
   }
 
+  const sendPromo10Reminder = async (subscriber) => {
+    setSendingPromoId(subscriber.id)
+    setError('')
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/admin/marketing-subscribers/${subscriber.id}/send-promo-10-reminder`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      )
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setPromoSuccessMessage(`10% promo reminder sent to ${subscriber.email}`)
+        setTimeout(() => setPromoSuccessMessage(''), 5000)
+        fetchSubscribers()
+      } else {
+        setError(data.detail || 'Failed to send promo reminder email')
+      }
+    } catch (err) {
+      setError('Network error sending promo reminder email')
+    } finally {
+      setSendingPromoId(null)
+    }
+  }
+
   const openFounderEmailModal = (subscriber) => {
     setFounderEmailToSend({ subscriber })
     setShowSubscriberFounderModal(true)
@@ -3520,15 +3551,27 @@ function Admin() {
                                 <div className="booking-section">
                                   <div className="section-header-with-action">
                                     <h4>10% Off Promo</h4>
-                                    {!subscriber.unsubscribed && !subscriber.promo_10_used && (
-                                      <button
-                                        className={`action-btn promo-btn ${subscriber.promo_10_sent ? 'sent' : ''}`}
-                                        onClick={(e) => { e.stopPropagation(); if (!subscriber.promo_10_sent) openPromoModal(subscriber, 10); }}
-                                        disabled={subscriber.promo_10_sent}
-                                      >
-                                        {subscriber.promo_10_sent ? 'Sent ✓' : 'Send 10% Off'}
-                                      </button>
-                                    )}
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                      {!subscriber.unsubscribed && !subscriber.promo_10_used && (
+                                        <button
+                                          className={`action-btn promo-btn ${subscriber.promo_10_sent ? 'sent' : ''}`}
+                                          onClick={(e) => { e.stopPropagation(); if (!subscriber.promo_10_sent) openPromoModal(subscriber, 10); }}
+                                          disabled={subscriber.promo_10_sent}
+                                        >
+                                          {subscriber.promo_10_sent ? 'Sent ✓' : 'Send 10% Off'}
+                                        </button>
+                                      )}
+                                      {/* Send Reminder button - only show if promo sent, not used, and reminder not already sent */}
+                                      {subscriber.promo_10_sent && !subscriber.promo_10_used && !subscriber.unsubscribed && (
+                                        <button
+                                          className={`action-btn promo-btn ${subscriber.promo_10_reminder_sent ? 'sent' : ''}`}
+                                          onClick={(e) => { e.stopPropagation(); if (!subscriber.promo_10_reminder_sent) sendPromo10Reminder(subscriber); }}
+                                          disabled={subscriber.promo_10_reminder_sent}
+                                        >
+                                          {subscriber.promo_10_reminder_sent ? 'Reminder Sent ✓' : 'Send Reminder'}
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
                                   <div className="booking-section-content">
                                     {subscriber.promo_10_code ? (
