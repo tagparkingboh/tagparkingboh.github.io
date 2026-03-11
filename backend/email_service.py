@@ -622,6 +622,76 @@ def send_founder_thank_you_email(
         return False
 
 
+def send_promo_10_reminder_email(
+    email: str,
+    first_name: str,
+    promo_code: str,
+) -> bool:
+    """
+    Send reminder email to subscribers who haven't used their 10% promo code.
+
+    Args:
+        email: Subscriber email address
+        first_name: Subscriber first name
+        promo_code: Their existing 10% promo code
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    subject = os.getenv("PROMO_10_REMINDER_EMAIL_SUBJECT", "Don't miss your 10% discount!")
+    founder_name = os.getenv("FOUNDER_NAME", "Kristian")
+    founder_email = os.getenv("FOUNDER_EMAIL", "kristian@tagparking.co.uk")
+
+    # Load template from file
+    template_path = EMAIL_TEMPLATES_DIR / "promo_10_reminder_email.html"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # Replace placeholders
+        html_content = html_content.replace("{{FIRST_NAME}}", first_name)
+        html_content = html_content.replace("{{PROMO_CODE}}", promo_code)
+    except FileNotFoundError:
+        logger.error(f"Promo 10 reminder email template not found at {template_path}")
+        return False
+    except Exception as e:
+        logger.error(f"Error loading promo 10 reminder email template: {e}")
+        return False
+
+    print(f"[EMAIL] send_promo_10_reminder_email called for: {email}, subject: {subject}")
+    if not SENDGRID_API_KEY:
+        print("[EMAIL] ERROR: SendGrid API key not configured!")
+        logger.warning("SendGrid API key not configured - email not sent")
+        return False
+
+    try:
+        message = Mail(
+            from_email=Email(founder_email, founder_name),
+            to_emails=To(email),
+            subject=subject,
+            html_content=Content("text/html", html_content),
+        )
+
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        print(f"[EMAIL] Sending promo 10 reminder email via SendGrid...")
+        response = sg.send(message)
+        print(f"[EMAIL] SendGrid response status: {response.status_code}")
+
+        if response.status_code in (200, 201, 202):
+            print(f"[EMAIL] Promo 10 reminder email sent successfully to {email}")
+            logger.info(f"Promo 10 reminder email sent to {email}")
+            return True
+        else:
+            print(f"[EMAIL] SendGrid returned non-success status: {response.status_code}")
+            logger.error(f"Failed to send promo 10 reminder email to {email}: {response.status_code}")
+            return False
+
+    except Exception as e:
+        print(f"[EMAIL] Exception sending promo 10 reminder email: {str(e)}")
+        logger.error(f"Error sending promo 10 reminder email to {email}: {str(e)}")
+        return False
+
+
 def send_founder_followup_email(
     email: str,
     first_name: str,

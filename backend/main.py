@@ -3262,6 +3262,55 @@ async def send_founder_email_to_subscriber(
         )
 
 
+@app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo-10-reminder")
+async def send_promo_10_reminder_to_subscriber(
+    subscriber_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Send a reminder email to a subscriber who hasn't used their 10% promo code.
+    """
+    from email_service import send_promo_10_reminder_email
+
+    subscriber = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.id == subscriber_id
+    ).first()
+
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+
+    if subscriber.unsubscribed:
+        raise HTTPException(status_code=400, detail="Subscriber has unsubscribed")
+
+    # Check if they have a 10% promo code
+    if not subscriber.promo_10_code:
+        raise HTTPException(status_code=400, detail="Subscriber does not have a 10% promo code")
+
+    # Check if already used
+    if subscriber.promo_10_used:
+        raise HTTPException(status_code=400, detail="Subscriber has already used their 10% promo code")
+
+    # Send the reminder email
+    email_sent = send_promo_10_reminder_email(
+        email=subscriber.email,
+        first_name=subscriber.first_name or "there",
+        promo_code=subscriber.promo_10_code,
+    )
+
+    if email_sent:
+        return {
+            "success": True,
+            "message": f"Promo 10% reminder email sent to {subscriber.email}",
+            "promo_code": subscriber.promo_10_code,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send promo 10 reminder email. Check SendGrid configuration."
+        )
+
+
 def send_free_parking_promo_email(first_name: str, email: str, promo_code: str) -> bool:
     """Send 100% off (FREE parking) promo code email."""
     from email_service import send_email
