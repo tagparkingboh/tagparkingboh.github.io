@@ -3508,14 +3508,14 @@ async def get_marketing_sources_other(
     for ms, customer in results:
         other_responses.append({
             "customer_email": customer.email,
-            "customer_name": f"{customer.first_name} {customer.last_name}",
-            "date": ms.created_at.strftime('%d/%m/%Y') if ms.created_at else None,
-            "detail": ms.source_detail,
+            "customer_name": f"{customer.first_name or ''} {customer.last_name or ''}".strip(),
+            "source_detail": ms.source_detail,
+            "created_at": ms.created_at.isoformat() if ms.created_at else None,
         })
 
     return {
         "count": len(other_responses),
-        "responses": other_responses,
+        "details": other_responses,
     }
 
 
