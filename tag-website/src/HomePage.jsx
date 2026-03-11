@@ -55,7 +55,7 @@ function HomePage() {
           const width = window.innerWidth
           const isMobile = width < 768
           const isTablet = width >= 768 && width < 1024
-          const offset = isMobile ? 1700 : isTablet ? -600 : 450
+          const offset = isMobile ? 1700 : isTablet ? -900 : 450
           window.scrollTo({
             top: element.offsetTop + offset,
             behavior: 'smooth'
