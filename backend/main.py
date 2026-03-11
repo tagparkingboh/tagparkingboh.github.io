@@ -2309,6 +2309,8 @@ async def get_marketing_subscribers(
                 "promo_free_sent_at": s.promo_free_sent_at.isoformat() if s.promo_free_sent_at else None,
                 "promo_free_used": s.promo_free_used,
                 "promo_free_used_at": s.promo_free_used_at.isoformat() if s.promo_free_used_at else None,
+                "promo_free_reminder_sent": s.promo_free_reminder_sent,
+                "promo_free_reminder_sent_at": s.promo_free_reminder_sent_at.isoformat() if s.promo_free_reminder_sent_at else None,
                 # Founder thank you email (separate)
                 "founder_promo_code": s.founder_promo_code,
                 "founder_email_sent": s.founder_email_sent,
@@ -3295,9 +3297,14 @@ async def send_promo_10_reminder_to_subscriber(
 
     # Check if reminder already sent
     if subscriber.promo_10_reminder_sent:
+        from zoneinfo import ZoneInfo
+        sent_at_str = "unknown date"
+        if subscriber.promo_10_reminder_sent_at:
+            uk_time = subscriber.promo_10_reminder_sent_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Europe/London"))
+            sent_at_str = uk_time.strftime('%d %b %Y at %H:%M')
         raise HTTPException(
             status_code=400,
-            detail=f"Promo 10% reminder already sent to {subscriber.email} on {subscriber.promo_10_reminder_sent_at.strftime('%d %b %Y at %H:%M') if subscriber.promo_10_reminder_sent_at else 'unknown date'}"
+            detail=f"Promo 10% reminder already sent to {subscriber.email} on {sent_at_str}"
         )
 
     # Send the reminder email
@@ -3322,6 +3329,72 @@ async def send_promo_10_reminder_to_subscriber(
         raise HTTPException(
             status_code=500,
             detail="Failed to send promo 10 reminder email. Check SendGrid configuration."
+        )
+
+
+@app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo-free-reminder")
+async def send_promo_free_reminder_to_subscriber(
+    subscriber_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Send a reminder email to a subscriber who hasn't used their FREE parking promo code.
+    """
+    from email_service import send_promo_free_reminder_email
+
+    subscriber = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.id == subscriber_id
+    ).first()
+
+    if not subscriber:
+        raise HTTPException(status_code=404, detail="Subscriber not found")
+
+    if subscriber.unsubscribed:
+        raise HTTPException(status_code=400, detail="Subscriber has unsubscribed")
+
+    # Check if they have a FREE promo code
+    if not subscriber.promo_free_code:
+        raise HTTPException(status_code=400, detail="Subscriber does not have a FREE parking promo code")
+
+    # Check if already used
+    if subscriber.promo_free_used:
+        raise HTTPException(status_code=400, detail="Subscriber has already used their FREE parking promo code")
+
+    # Check if reminder already sent
+    if subscriber.promo_free_reminder_sent:
+        from zoneinfo import ZoneInfo
+        sent_at_str = "unknown date"
+        if subscriber.promo_free_reminder_sent_at:
+            uk_time = subscriber.promo_free_reminder_sent_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(ZoneInfo("Europe/London"))
+            sent_at_str = uk_time.strftime('%d %b %Y at %H:%M')
+        raise HTTPException(
+            status_code=400,
+            detail=f"FREE parking reminder already sent to {subscriber.email} on {sent_at_str}"
+        )
+
+    # Send the reminder email
+    email_sent = send_promo_free_reminder_email(
+        email=subscriber.email,
+        first_name=subscriber.first_name or "there",
+        promo_code=subscriber.promo_free_code,
+    )
+
+    if email_sent:
+        # Update tracking
+        subscriber.promo_free_reminder_sent = True
+        subscriber.promo_free_reminder_sent_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"FREE parking reminder email sent to {subscriber.email}",
+            "promo_code": subscriber.promo_free_code,
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send FREE parking reminder email. Check SendGrid configuration."
         )
 
 

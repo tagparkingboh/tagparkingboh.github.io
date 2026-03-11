@@ -483,6 +483,8 @@ class MarketingSubscriber(Base):
     promo_free_used = Column(Boolean, default=False)
     promo_free_used_at = Column(DateTime(timezone=True))
     promo_free_used_booking_id = Column(Integer, ForeignKey("bookings.id"))
+    promo_free_reminder_sent = Column(Boolean, default=False)
+    promo_free_reminder_sent_at = Column(DateTime(timezone=True))
 
     # Founder Thank You Email - personalized email from Kristian with 10% promo
     founder_promo_code = Column(String(20), unique=True, index=True)  # Founder's 10% off promo code

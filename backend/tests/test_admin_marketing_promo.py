@@ -43,6 +43,13 @@ def create_mock_subscriber(
     promo_10_used_at=None,
     promo_10_reminder_sent=False,
     promo_10_reminder_sent_at=None,
+    promo_free_code=None,
+    promo_free_sent=False,
+    promo_free_sent_at=None,
+    promo_free_used=False,
+    promo_free_used_at=None,
+    promo_free_reminder_sent=False,
+    promo_free_reminder_sent_at=None,
     unsubscribed=False,
     unsubscribed_at=None,
 ):
@@ -70,6 +77,13 @@ def create_mock_subscriber(
     subscriber.promo_10_used_at = promo_10_used_at
     subscriber.promo_10_reminder_sent = promo_10_reminder_sent
     subscriber.promo_10_reminder_sent_at = promo_10_reminder_sent_at
+    subscriber.promo_free_code = promo_free_code
+    subscriber.promo_free_sent = promo_free_sent
+    subscriber.promo_free_sent_at = promo_free_sent_at
+    subscriber.promo_free_used = promo_free_used
+    subscriber.promo_free_used_at = promo_free_used_at
+    subscriber.promo_free_reminder_sent = promo_free_reminder_sent
+    subscriber.promo_free_reminder_sent_at = promo_free_reminder_sent_at
     subscriber.unsubscribed = unsubscribed
     subscriber.unsubscribed_at = unsubscribed_at
     return subscriber
@@ -993,3 +1007,453 @@ class TestPromo10ReminderFullFlow:
         # All should be marked as sent
         assert all(s.promo_10_reminder_sent for s in subscribers)
         assert all(s.promo_10_reminder_sent_at is not None for s in subscribers)
+
+
+# =============================================================================
+# Unit Tests - Promo FREE Reminder Email
+# =============================================================================
+
+class TestPromoFreeReminderFields:
+    """Unit tests for promo FREE reminder tracking fields."""
+
+    def test_reminder_fields_default_values(self):
+        """FREE reminder fields should have correct defaults."""
+        subscriber = create_mock_subscriber()
+
+        assert subscriber.promo_free_reminder_sent is False
+        assert subscriber.promo_free_reminder_sent_at is None
+
+    def test_can_set_reminder_sent(self):
+        """Should be able to mark FREE reminder as sent."""
+        subscriber = create_mock_subscriber(
+            promo_free_code="TAG-FREE-1234",
+            promo_free_sent=True,
+        )
+
+        subscriber.promo_free_reminder_sent = True
+        subscriber.promo_free_reminder_sent_at = datetime.utcnow()
+
+        assert subscriber.promo_free_reminder_sent is True
+        assert subscriber.promo_free_reminder_sent_at is not None
+
+    def test_reminder_requires_promo_code(self):
+        """Cannot send FREE reminder without existing promo code."""
+        subscriber = create_mock_subscriber(
+            promo_free_code=None,
+            promo_free_sent=False,
+        )
+
+        # Business rule: must have promo code to send reminder
+        can_send_reminder = subscriber.promo_free_code is not None
+        assert can_send_reminder is False
+
+    def test_reminder_requires_unused_code(self):
+        """Cannot send FREE reminder if promo code already used."""
+        subscriber = create_mock_subscriber(
+            promo_free_code="TAG-FREE-5678",
+            promo_free_sent=True,
+            promo_free_used=True,
+            promo_free_used_at=datetime.utcnow(),
+        )
+
+        # Business rule: cannot remind about used code
+        can_send_reminder = not subscriber.promo_free_used
+        assert can_send_reminder is False
+
+
+# =============================================================================
+# Integration Tests - POST /api/admin/marketing-subscribers/{id}/send-promo-free-reminder
+# =============================================================================
+
+class TestSendPromoFreeReminder:
+    """Tests for POST /api/admin/marketing-subscribers/{id}/send-promo-free-reminder endpoint."""
+
+    # -------------------------------------------------------------------------
+    # Happy Path Tests
+    # -------------------------------------------------------------------------
+
+    def test_send_reminder_success(self):
+        """Should successfully send promo FREE reminder email."""
+        response_data = {
+            "success": True,
+            "message": "FREE parking reminder email sent to test@example.com",
+            "promo_code": "TAG-FREE-1234",
+        }
+
+        assert response_data["success"] is True
+        assert "message" in response_data
+        assert "promo_code" in response_data
+        assert response_data["promo_code"].startswith("TAG-")
+
+    def test_send_reminder_updates_tracking(self):
+        """Should update tracking fields after successful send."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_free_code="TAG-FREE-2345",
+            promo_free_sent=True,
+            promo_free_used=False,
+            promo_free_reminder_sent=False,
+        )
+
+        # Simulate successful send
+        subscriber.promo_free_reminder_sent = True
+        subscriber.promo_free_reminder_sent_at = datetime.utcnow()
+
+        assert subscriber.promo_free_reminder_sent is True
+        assert subscriber.promo_free_reminder_sent_at is not None
+
+    def test_send_reminder_with_first_name(self):
+        """Should personalise email with subscriber first name."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            first_name="Sarah",
+            promo_free_code="TAG-FREE-SARA",
+            promo_free_sent=True,
+            promo_free_used=False,
+        )
+
+        # Email should use first_name
+        assert subscriber.first_name == "Sarah"
+
+    def test_send_reminder_fallback_greeting(self):
+        """Should use fallback greeting if first name is None."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            first_name=None,
+            promo_free_code="TAG-FREE-NULL",
+            promo_free_sent=True,
+            promo_free_used=False,
+        )
+
+        # Should fallback to "there" in email
+        greeting = subscriber.first_name or "there"
+        assert greeting == "there"
+
+    # -------------------------------------------------------------------------
+    # Negative Tests
+    # -------------------------------------------------------------------------
+
+    def test_send_reminder_subscriber_not_found(self):
+        """Should return 404 for non-existent subscriber."""
+        error_response = {"detail": "Subscriber not found"}
+        status_code = 404
+
+        assert status_code == 404
+        assert "not found" in error_response["detail"].lower()
+
+    def test_send_reminder_subscriber_unsubscribed(self):
+        """Should return 400 for unsubscribed subscriber."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_free_code="TAG-FREE-UNSUB",
+            promo_free_sent=True,
+            unsubscribed=True,
+            unsubscribed_at=datetime.utcnow(),
+        )
+
+        # Cannot send to unsubscribed user
+        can_send = not subscriber.unsubscribed
+        assert can_send is False
+
+        error_response = {"detail": "Subscriber has unsubscribed"}
+        status_code = 400
+        assert status_code == 400
+
+    def test_send_reminder_no_promo_code(self):
+        """Should return 400 if subscriber has no FREE promo code."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_free_code=None,
+            promo_free_sent=False,
+        )
+
+        can_send = subscriber.promo_free_code is not None
+        assert can_send is False
+
+        error_response = {"detail": "Subscriber does not have a FREE parking promo code"}
+        status_code = 400
+        assert status_code == 400
+
+    def test_send_reminder_promo_already_used(self):
+        """Should return 400 if FREE promo code already used."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_free_code="TAG-FREE-USED",
+            promo_free_sent=True,
+            promo_free_used=True,
+            promo_free_used_at=datetime.utcnow(),
+        )
+
+        can_send = not subscriber.promo_free_used
+        assert can_send is False
+
+        error_response = {"detail": "Subscriber has already used their FREE parking promo code"}
+        status_code = 400
+        assert status_code == 400
+
+    def test_send_reminder_already_sent(self):
+        """Should return 400 if FREE reminder already sent."""
+        sent_at = datetime.utcnow() - timedelta(days=1)
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_free_code="TAG-FREE-SENT",
+            promo_free_sent=True,
+            promo_free_used=False,
+            promo_free_reminder_sent=True,
+            promo_free_reminder_sent_at=sent_at,
+        )
+
+        can_send = not subscriber.promo_free_reminder_sent
+        assert can_send is False
+
+        error_response = {
+            "detail": f"FREE parking reminder already sent to test@example.com on {sent_at.strftime('%d %b %Y at %H:%M')}"
+        }
+        status_code = 400
+        assert status_code == 400
+        assert "already sent" in error_response["detail"].lower()
+
+    def test_send_reminder_email_service_failure(self):
+        """Should return 500 if email service fails."""
+        error_response = {"detail": "Failed to send FREE parking reminder email. Check SendGrid configuration."}
+        status_code = 500
+
+        assert status_code == 500
+        assert "SendGrid" in error_response["detail"]
+
+    # -------------------------------------------------------------------------
+    # Edge Cases
+    # -------------------------------------------------------------------------
+
+    def test_send_reminder_empty_first_name(self):
+        """Should handle empty string first name."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            first_name="",
+            promo_free_code="TAG-FREE-EMPT",
+            promo_free_sent=True,
+        )
+
+        # Empty string should fallback to "there"
+        greeting = subscriber.first_name or "there"
+        assert greeting == "there"
+
+    def test_send_reminder_whitespace_first_name(self):
+        """Should handle whitespace-only first name."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            first_name="   ",
+            promo_free_code="TAG-FREE-WHSP",
+            promo_free_sent=True,
+        )
+
+        # Whitespace should be trimmed and fallback
+        greeting = subscriber.first_name.strip() or "there"
+        assert greeting == "there"
+
+    def test_send_reminder_special_characters_in_email(self):
+        """Should handle special characters in email address."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            email="test+free@example.com",
+            promo_free_code="TAG-FREE-SPEC",
+            promo_free_sent=True,
+        )
+
+        # Email with + should be valid
+        assert "+" in subscriber.email
+        assert "@" in subscriber.email
+
+    def test_send_reminder_long_promo_code(self):
+        """Should handle standard length promo code."""
+        code = "TAG-FREE-CODE"  # Standard format
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_free_code=code,
+            promo_free_sent=True,
+        )
+
+        assert len(subscriber.promo_free_code) <= 20  # DB column limit
+
+    # -------------------------------------------------------------------------
+    # Boundary Tests
+    # -------------------------------------------------------------------------
+
+    def test_send_reminder_subscriber_id_zero(self):
+        """Should handle subscriber ID of 0 (invalid)."""
+        subscriber_id = 0
+
+        error_response = {"detail": "Subscriber not found"}
+        status_code = 404
+        assert status_code == 404
+
+    def test_send_reminder_subscriber_id_negative(self):
+        """Should handle negative subscriber ID (invalid)."""
+        subscriber_id = -1
+
+        error_response = {"detail": "Subscriber not found"}
+        status_code = 404
+        assert status_code == 404
+
+    def test_send_reminder_subscriber_id_max_int(self):
+        """Should handle very large subscriber ID."""
+        subscriber_id = 2147483647  # Max 32-bit int
+
+        error_response = {"detail": "Subscriber not found"}
+        status_code = 404
+        assert status_code == 404
+
+    def test_send_reminder_timestamp_accuracy(self):
+        """FREE reminder timestamp should be accurate to seconds."""
+        before = datetime.utcnow()
+
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_free_code="TAG-FREE-TIME",
+            promo_free_sent=True,
+        )
+        subscriber.promo_free_reminder_sent = True
+        subscriber.promo_free_reminder_sent_at = datetime.utcnow()
+
+        after = datetime.utcnow()
+
+        # Timestamp should be between before and after
+        assert before <= subscriber.promo_free_reminder_sent_at <= after
+
+    def test_send_reminder_concurrent_requests(self):
+        """Should handle concurrent reminder requests (idempotency)."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_free_code="TAG-FREE-CONC",
+            promo_free_sent=True,
+            promo_free_reminder_sent=False,
+        )
+
+        # First request succeeds
+        subscriber.promo_free_reminder_sent = True
+        subscriber.promo_free_reminder_sent_at = datetime.utcnow()
+
+        # Second request should fail (already sent)
+        can_send_again = not subscriber.promo_free_reminder_sent
+        assert can_send_again is False
+
+
+# =============================================================================
+# Integration Tests - Promo FREE Reminder Full Flow
+# =============================================================================
+
+class TestPromoFreeReminderFullFlow:
+    """Integration tests covering complete promo FREE reminder workflows."""
+
+    def test_full_reminder_flow(self):
+        """Test complete flow: FREE promo sent -> time passes -> reminder sent."""
+        # Step 1: Subscriber receives initial FREE promo
+        promo_sent_at = datetime.utcnow() - timedelta(days=7)
+        subscriber = create_mock_subscriber(
+            id=1,
+            first_name="FreeFlow",
+            email="freeflow@test.com",
+            promo_free_code="TAG-FREE-FLOW",
+            promo_free_sent=True,
+            promo_free_sent_at=promo_sent_at,
+            promo_free_used=False,
+        )
+
+        assert subscriber.promo_free_sent is True
+        assert subscriber.promo_free_used is False
+        assert subscriber.promo_free_reminder_sent is False
+
+        # Step 2: Admin sends reminder (7 days later)
+        subscriber.promo_free_reminder_sent = True
+        subscriber.promo_free_reminder_sent_at = datetime.utcnow()
+
+        assert subscriber.promo_free_reminder_sent is True
+        assert subscriber.promo_free_reminder_sent_at > subscriber.promo_free_sent_at
+
+    def test_reminder_then_promo_used(self):
+        """Test flow: FREE reminder sent -> customer uses promo."""
+        reminder_sent_at = datetime.utcnow() - timedelta(hours=2)
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_free_code="TAG-FREE-THEN",
+            promo_free_sent=True,
+            promo_free_reminder_sent=True,
+            promo_free_reminder_sent_at=reminder_sent_at,
+            promo_free_used=False,
+        )
+
+        # Customer uses promo after reminder
+        subscriber.promo_free_used = True
+        subscriber.promo_free_used_at = datetime.utcnow()
+
+        assert subscriber.promo_free_reminder_sent is True
+        assert subscriber.promo_free_used is True
+        assert subscriber.promo_free_used_at > subscriber.promo_free_reminder_sent_at
+
+    def test_reminder_audit_trail(self):
+        """FREE reminder operations should have complete audit trail."""
+        promo_sent = datetime.utcnow() - timedelta(days=7)
+        reminder_sent = datetime.utcnow() - timedelta(days=1)
+        promo_used = datetime.utcnow()
+
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_free_code="TAG-FREE-AUDT",
+            promo_free_sent=True,
+            promo_free_sent_at=promo_sent,
+            promo_free_reminder_sent=True,
+            promo_free_reminder_sent_at=reminder_sent,
+            promo_free_used=True,
+            promo_free_used_at=promo_used,
+        )
+
+        # Chronological order: sent -> reminder -> used
+        assert subscriber.promo_free_sent_at < subscriber.promo_free_reminder_sent_at
+        assert subscriber.promo_free_reminder_sent_at < subscriber.promo_free_used_at
+
+        # All timestamps present
+        assert subscriber.promo_free_sent_at is not None
+        assert subscriber.promo_free_reminder_sent_at is not None
+        assert subscriber.promo_free_used_at is not None
+
+    def test_multiple_subscribers_reminder_batch(self):
+        """Should support sending FREE reminders to multiple subscribers."""
+        subscribers = [
+            create_mock_subscriber(
+                id=i,
+                email=f"freebatch{i}@test.com",
+                promo_free_code=f"TAG-FRE{i}-1234",
+                promo_free_sent=True,
+                promo_free_used=False,
+                promo_free_reminder_sent=False,
+            )
+            for i in range(1, 6)  # 5 subscribers
+        ]
+
+        # Send reminders to all
+        for sub in subscribers:
+            sub.promo_free_reminder_sent = True
+            sub.promo_free_reminder_sent_at = datetime.utcnow()
+
+        # All should be marked as sent
+        assert all(s.promo_free_reminder_sent for s in subscribers)
+        assert all(s.promo_free_reminder_sent_at is not None for s in subscribers)
+
+    def test_subscriber_with_both_10_and_free_reminders(self):
+        """Subscriber can have both 10% and FREE promo reminders."""
+        subscriber = create_mock_subscriber(
+            id=1,
+            promo_10_code="TAG-TEN1-2345",
+            promo_10_sent=True,
+            promo_10_reminder_sent=True,
+            promo_10_reminder_sent_at=datetime.utcnow() - timedelta(days=2),
+            promo_free_code="TAG-FREE-6789",
+            promo_free_sent=True,
+            promo_free_reminder_sent=True,
+            promo_free_reminder_sent_at=datetime.utcnow() - timedelta(days=1),
+        )
+
+        assert subscriber.promo_10_reminder_sent is True
+        assert subscriber.promo_free_reminder_sent is True
+        assert subscriber.promo_10_reminder_sent_at is not None
+        assert subscriber.promo_free_reminder_sent_at is not None

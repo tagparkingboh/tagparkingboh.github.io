@@ -1177,6 +1177,37 @@ function Admin() {
     }
   }
 
+  const sendPromoFreeReminder = async (subscriber) => {
+    setSendingPromoId(subscriber.id)
+    setError('')
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/admin/marketing-subscribers/${subscriber.id}/send-promo-free-reminder`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      )
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setPromoSuccessMessage(`FREE parking promo reminder sent to ${subscriber.email}`)
+        setTimeout(() => setPromoSuccessMessage(''), 5000)
+        fetchSubscribers()
+      } else {
+        setError(data.detail || 'Failed to send FREE promo reminder email')
+      }
+    } catch (err) {
+      setError('Network error sending FREE promo reminder email')
+    } finally {
+      setSendingPromoId(null)
+    }
+  }
+
   const openFounderEmailModal = (subscriber) => {
     setFounderEmailToSend({ subscriber })
     setShowSubscriberFounderModal(true)
@@ -3638,9 +3669,20 @@ function Admin() {
                                         {subscriber.promo_free_sent ? 'Sent ✓' : 'Send FREE'}
                                       </button>
                                     )}
+                                    {/* Send Reminder button - only show if promo sent, not used, and reminder not already sent */}
+                                    {subscriber.promo_free_sent && !subscriber.promo_free_used && !subscriber.unsubscribed && (
+                                      <button
+                                        className={`action-btn promo-btn ${subscriber.promo_free_reminder_sent ? 'sent' : ''}`}
+                                        onClick={(e) => { e.stopPropagation(); if (!subscriber.promo_free_reminder_sent) sendPromoFreeReminder(subscriber); }}
+                                        disabled={subscriber.promo_free_reminder_sent}
+                                      >
+                                        {subscriber.promo_free_reminder_sent ? 'Reminder Sent ✓' : 'Send Reminder'}
+                                      </button>
+                                    )}
                                   </div>
                                   <div className="booking-section-content">
                                     {subscriber.promo_free_code ? (
+                                    <>
                                       <div className="booking-detail-row">
                                         <div className="booking-detail">
                                           <span className="detail-label">Code</span>
@@ -3663,6 +3705,27 @@ function Admin() {
                                           </span>
                                         </div>
                                       </div>
+                                      {/* Reminder Row - aligned under Status and Sent At */}
+                                      {subscriber.promo_free_reminder_sent && (
+                                        <div className="booking-detail-row" style={{ marginTop: '8px' }}>
+                                          <div className="booking-detail">
+                                            {/* Empty spacer to align with Code column */}
+                                          </div>
+                                          <div className="booking-detail">
+                                            <span className="detail-label">Reminder</span>
+                                            <span className="detail-value">
+                                              <span className="status-badge sent">Sent</span>
+                                            </span>
+                                          </div>
+                                          <div className="booking-detail">
+                                            <span className="detail-label">Reminder Sent At</span>
+                                            <span className="detail-value">
+                                              {formatDateTimeUK(subscriber.promo_free_reminder_sent_at)}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </>
                                     ) : (
                                       <p className="section-empty">Not sent yet</p>
                                     )}
