@@ -3471,6 +3471,7 @@ async def get_marketing_sources_summary(
 
 @app.get("/api/admin/marketing-sources/other")
 async def get_marketing_sources_other(
+    year_month: str = Query(None, description="Filter by month in YYYY-MM format"),
     from_date: str = Query(None, description="Start date in DD/MM/YYYY format"),
     to_date: str = Query(None, description="End date in DD/MM/YYYY format"),
     db: Session = Depends(get_db),
@@ -3478,14 +3479,27 @@ async def get_marketing_sources_other(
 ):
     """
     Get all 'other' marketing source responses with free-text details.
+    Optionally filter by year_month (YYYY-MM) to show only that month's responses.
     """
     from db_models import MarketingSource, Customer
+    from sqlalchemy import extract
 
     query = db.query(MarketingSource, Customer).join(
         Customer, MarketingSource.customer_id == Customer.id
     ).filter(MarketingSource.source == 'other')
 
-    # Convert DD/MM/YYYY to datetime for filtering
+    # Filter by specific month (YYYY-MM format)
+    if year_month:
+        try:
+            year, month = map(int, year_month.split('-'))
+            query = query.filter(
+                extract('year', MarketingSource.created_at) == year,
+                extract('month', MarketingSource.created_at) == month
+            )
+        except (ValueError, AttributeError):
+            pass  # Invalid format, ignore filter
+
+    # Convert DD/MM/YYYY to datetime for filtering (legacy support)
     if from_date:
         try:
             parts = from_date.split('/')

@@ -241,6 +241,7 @@ function Admin() {
   const [marketingOtherDetails, setMarketingOtherDetails] = useState(null)
   const [loadingMarketingOther, setLoadingMarketingOther] = useState(false)
   const [showMarketingOtherModal, setShowMarketingOtherModal] = useState(false)
+  const [marketingOtherMonth, setMarketingOtherMonth] = useState(null) // Selected month for "Other" details
   const [marketingExportFromDate, setMarketingExportFromDate] = useState('')
   const [marketingExportToDate, setMarketingExportToDate] = useState('')
 
@@ -633,10 +634,12 @@ function Admin() {
     }
   }
 
-  const fetchMarketingOtherDetails = async () => {
+  const fetchMarketingOtherDetails = async (yearMonth = null) => {
     setLoadingMarketingOther(true)
+    setMarketingOtherMonth(yearMonth)
     try {
-      const response = await fetch(`${API_URL}/api/admin/marketing-sources/other`, {
+      const params = yearMonth ? `?year_month=${yearMonth}` : ''
+      const response = await fetch(`${API_URL}/api/admin/marketing-sources/other${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -5696,8 +5699,8 @@ function Admin() {
                                       {source === 'other' && month.sources.other > 0 && (
                                         <button
                                           className="view-other-details"
-                                          onClick={fetchMarketingOtherDetails}
-                                          title="View 'Other' details"
+                                          onClick={() => fetchMarketingOtherDetails(month.year_month)}
+                                          title={`View 'Other' details for ${month.year_month}`}
                                         >
                                           ?
                                         </button>
@@ -5751,7 +5754,7 @@ function Admin() {
               <div className="modal-overlay" onClick={() => setShowMarketingOtherModal(false)}>
                 <div className="modal-content marketing-other-modal" onClick={(e) => e.stopPropagation()}>
                   <div className="modal-header">
-                    <h3>"Other" Source Details</h3>
+                    <h3>"Other" Source Details {marketingOtherMonth && `- ${new Date(marketingOtherMonth + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`}</h3>
                     <button className="modal-close" onClick={() => setShowMarketingOtherModal(false)}>&times;</button>
                   </div>
                   <div className="modal-body marketing-other-modal-body">
