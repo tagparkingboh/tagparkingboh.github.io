@@ -5693,6 +5693,7 @@ function Admin() {
                                 { key: 'word_of_mouth', label: 'Word of Mouth' },
                                 { key: 'leaflet', label: 'Leaflet' },
                                 { key: 'tv', label: 'TV' },
+                                { key: 'radio', label: 'Radio' },
                                 { key: 'newspaper', label: 'Newspaper' },
                                 { key: 'linkedin', label: 'LinkedIn' },
                                 { key: 'afc_bournemouth', label: 'AFC Bournemouth' },
@@ -5709,7 +5710,7 @@ function Admin() {
                               return (
                                 <tr key={idx}>
                                   <td>{month.year_month.split('-').reverse().join('/')}</td>
-                                  {['google', 'facebook', 'instagram', 'word_of_mouth', 'leaflet', 'tv', 'newspaper', 'linkedin', 'afc_bournemouth', 'other'].map(source => (
+                                  {['google', 'facebook', 'instagram', 'word_of_mouth', 'leaflet', 'tv', 'radio', 'newspaper', 'linkedin', 'afc_bournemouth', 'other'].map(source => (
                                     <td key={source}>
                                       {month.sources[source] || 0}
                                       {source === 'other' && month.sources.other > 0 && (
@@ -5747,6 +5748,7 @@ function Admin() {
                             word_of_mouth: 'Word of Mouth',
                             leaflet: 'Leaflet',
                             tv: 'TV',
+                            radio: 'Radio',
                             newspaper: 'Newspaper',
                             linkedin: 'LinkedIn',
                             afc_bournemouth: 'AFC Bournemouth',
