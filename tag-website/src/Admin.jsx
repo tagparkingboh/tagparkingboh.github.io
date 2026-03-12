@@ -5767,7 +5767,10 @@ function Admin() {
               <div className="modal-overlay" onClick={() => setShowMarketingOtherModal(false)}>
                 <div className="modal-content marketing-other-modal" onClick={(e) => e.stopPropagation()}>
                   <div className="modal-header">
-                    <h3>"Other" Source Details {marketingOtherMonth && `- ${new Date(marketingOtherMonth + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`}</h3>
+                    <h3>"Other" Source Details {marketingOtherMonth && `- ${(() => {
+                        const [year, month] = marketingOtherMonth.split('-')
+                        return new Date(year, month - 1, 15).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+                      })()}`}</h3>
                     <button className="modal-close" onClick={() => setShowMarketingOtherModal(false)}>&times;</button>
                   </div>
                   <div className="modal-body marketing-other-modal-body">
