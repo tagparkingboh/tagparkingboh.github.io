@@ -34,6 +34,9 @@ VALID_MARKETING_SOURCES = [
     'instagram',
     'linkedin',
     'afc_bournemouth',
+    'word_of_mouth',
+    'leaflet',
+    'tv',
     'other'
 ]
 
@@ -317,7 +320,7 @@ class TestValidMarketingSources:
     def test_all_valid_sources_defined(self):
         """All expected sources should be in VALID_MARKETING_SOURCES."""
         expected = ['newspaper', 'google', 'facebook', 'instagram',
-                   'linkedin', 'afc_bournemouth', 'other']
+                   'linkedin', 'afc_bournemouth', 'word_of_mouth', 'leaflet', 'tv', 'other']
 
         for source in expected:
             assert source in VALID_MARKETING_SOURCES
@@ -329,7 +332,7 @@ class TestValidMarketingSources:
 
     def test_invalid_source_not_accepted(self):
         """Invalid sources should not be in the valid list."""
-        invalid_sources = ['twitter', 'tiktok', 'radio', 'tv', 'billboard']
+        invalid_sources = ['twitter', 'tiktok', 'radio', 'billboard', 'youtube']
 
         for source in invalid_sources:
             assert source not in VALID_MARKETING_SOURCES

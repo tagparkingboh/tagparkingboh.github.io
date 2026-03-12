@@ -5687,10 +5687,13 @@ function Admin() {
                             <tr>
                               <th>Month</th>
                               {[
-                                { key: 'newspaper', label: 'Newspaper' },
                                 { key: 'google', label: 'Google' },
                                 { key: 'facebook', label: 'Facebook' },
                                 { key: 'instagram', label: 'Instagram' },
+                                { key: 'word_of_mouth', label: 'Word of Mouth' },
+                                { key: 'leaflet', label: 'Leaflet' },
+                                { key: 'tv', label: 'TV' },
+                                { key: 'newspaper', label: 'Newspaper' },
                                 { key: 'linkedin', label: 'LinkedIn' },
                                 { key: 'afc_bournemouth', label: 'AFC Bournemouth' },
                                 { key: 'other', label: 'Other' }
@@ -5706,7 +5709,7 @@ function Admin() {
                               return (
                                 <tr key={idx}>
                                   <td>{month.year_month.split('-').reverse().join('/')}</td>
-                                  {['newspaper', 'google', 'facebook', 'instagram', 'linkedin', 'afc_bournemouth', 'other'].map(source => (
+                                  {['google', 'facebook', 'instagram', 'word_of_mouth', 'leaflet', 'tv', 'newspaper', 'linkedin', 'afc_bournemouth', 'other'].map(source => (
                                     <td key={source}>
                                       {month.sources[source] || 0}
                                       {source === 'other' && month.sources.other > 0 && (
@@ -5738,10 +5741,13 @@ function Admin() {
                         .sort(([, a], [, b]) => b - a)
                         .map(([source, count]) => {
                           const sourceLabels = {
-                            newspaper: 'Newspaper',
                             google: 'Google',
                             facebook: 'Facebook',
                             instagram: 'Instagram',
+                            word_of_mouth: 'Word of Mouth',
+                            leaflet: 'Leaflet',
+                            tv: 'TV',
+                            newspaper: 'Newspaper',
                             linkedin: 'LinkedIn',
                             afc_bournemouth: 'AFC Bournemouth',
                             other: 'Other'

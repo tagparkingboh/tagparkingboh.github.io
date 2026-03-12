@@ -2699,10 +2699,13 @@ function Bookings() {
                       className="form-control"
                     >
                       <option value="">Please select...</option>
-                      <option value="newspaper">Newspaper</option>
                       <option value="google">Google</option>
                       <option value="facebook">Facebook</option>
                       <option value="instagram">Instagram</option>
+                      <option value="word_of_mouth">Word of Mouth</option>
+                      <option value="leaflet">Leaflet</option>
+                      <option value="tv">TV</option>
+                      <option value="newspaper">Newspaper</option>
                       <option value="linkedin">LinkedIn</option>
                       <option value="afc_bournemouth">AFC Bournemouth</option>
                       <option value="other">Other</option>
