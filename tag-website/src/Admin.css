@@ -4218,88 +4218,32 @@
   margin-top: 1rem;
 }
 
-.marketing-sources-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
+/* Month input styling to match DatePicker */
+.marketing-month-input {
+  background: #2a2a2a !important;
+  border: 1px solid #444 !important;
+  color: #fff !important;
+  padding: 0.6rem 1rem !important;
+  border-radius: 8px !important;
+  font-size: 0.875rem !important;
+  width: 150px !important;
+  transition: all 0.2s ease;
 }
 
-.marketing-sources-header h3 {
-  margin: 0;
+.marketing-month-input:hover {
+  border-color: #666 !important;
 }
 
-.admin-export-btn {
-  background: #f7b32b;
-  color: #1a1a2e;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-weight: 500;
+.marketing-month-input:focus {
+  outline: none !important;
+  border-color: #D9FF00 !important;
+  box-shadow: 0 0 0 2px rgba(217, 255, 0, 0.2) !important;
+}
+
+/* Fix webkit date input styling */
+.marketing-month-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
   cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.admin-export-btn:hover {
-  background: #e5a326;
-}
-
-.marketing-sources-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.admin-refresh-btn {
-  background: #4a4a6a;
-  color: #ffffff;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-weight: 500;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.admin-refresh-btn:hover {
-  background: #5a5a7a;
-}
-
-.admin-refresh-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.marketing-date-filters {
-  display: flex;
-  gap: 15px;
-  align-items: center;
-  margin: 1rem 0;
-  padding: 12px 16px;
-  background: #2a2a4a;
-  border-radius: 8px;
-}
-
-.marketing-date-filters label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #b0b0d0;
-  font-size: 0.9rem;
-}
-
-.marketing-date-filters input[type="month"] {
-  background: #1a1a2e;
-  border: 1px solid #4a4a6a;
-  color: #ffffff;
-  padding: 6px 10px;
-  border-radius: 4px;
-  font-size: 0.85rem;
-}
-
-.marketing-date-filters input[type="month"]:focus {
-  outline: none;
-  border-color: #f7b32b;
 }
 
 .marketing-total-summary {

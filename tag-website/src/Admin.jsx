@@ -5591,50 +5591,60 @@ function Admin() {
             {/* Marketing Sources */}
             {reportsSubTab === 'marketing' && (
               <div className="marketing-sources-section">
-                <div className="marketing-sources-header">
-                  <h3>Marketing Sources</h3>
-                  <div className="marketing-sources-actions">
+                <div className="admin-section-header">
+                  <h2>Marketing Sources</h2>
+                  <div className="flights-header-actions">
                     <button
-                      className="admin-refresh-btn"
+                      className="btn-secondary"
                       onClick={fetchMarketingSources}
                       disabled={loadingMarketingSources}
                     >
-                      {loadingMarketingSources ? 'Loading...' : 'Refresh'}
+                      ↻ Refresh
                     </button>
                     <button
-                      className="admin-export-btn"
+                      className="btn-primary"
                       onClick={exportMarketingSourcesCSV}
                     >
-                      Export CSV
+                      ↓ Download CSV
                     </button>
                   </div>
                 </div>
-                <p className="reports-description">
-                  Where customers heard about TAG Parking (based on Page 4 attribution question).
+                <p className="admin-subtitle">
+                  Where customers heard about TAG Parking (based on Page 4 attribution question)
                 </p>
 
-                <div className="marketing-date-filters">
-                  <label>
-                    From:
+                <div className="flights-filters">
+                  <div className="flight-filter-group leads-date-picker">
+                    <label>From:</label>
                     <input
                       type="month"
                       value={marketingExportFromDate}
                       onChange={(e) => setMarketingExportFromDate(e.target.value)}
-                      placeholder="Start month"
+                      className="flight-date-input marketing-month-input"
                     />
-                  </label>
-                  <label>
-                    To:
+                  </div>
+                  <div className="flight-filter-group leads-date-picker">
+                    <label>To:</label>
                     <input
                       type="month"
                       value={marketingExportToDate}
                       onChange={(e) => setMarketingExportToDate(e.target.value)}
-                      placeholder="End month"
+                      className="flight-date-input marketing-month-input"
                     />
-                  </label>
-                  <span style={{ color: '#8080a0', fontSize: '0.85rem' }}>
-                    (Optional: filter CSV export by date range)
-                  </span>
+                  </div>
+                  {(marketingExportFromDate || marketingExportToDate) && (
+                    <button
+                      className="btn-secondary clear-dates-btn"
+                      onClick={() => { setMarketingExportFromDate(''); setMarketingExportToDate(''); }}
+                    >
+                      × Clear
+                    </button>
+                  )}
+                  {marketingSourcesData && (
+                    <div className="leads-filter-count">
+                      Showing {marketingSourcesData.total_responses} responses
+                    </div>
+                  )}
                 </div>
 
                 {loadingMarketingSources ? (
