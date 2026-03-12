@@ -5705,7 +5705,7 @@ function Admin() {
                               const total = Object.values(month.sources).reduce((a, b) => a + b, 0)
                               return (
                                 <tr key={idx}>
-                                  <td>{month.year_month}</td>
+                                  <td>{month.year_month.split('-').reverse().join('/')}</td>
                                   {['newspaper', 'google', 'facebook', 'instagram', 'linkedin', 'afc_bournemouth', 'other'].map(source => (
                                     <td key={source}>
                                       {month.sources[source] || 0}
