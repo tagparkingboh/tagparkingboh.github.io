@@ -3535,8 +3535,8 @@ async def get_marketing_sources_other(
 
 @app.get("/api/admin/marketing-sources/export")
 async def export_marketing_sources_csv(
-    from_date: Optional[str] = Query(None, description="Start month in YYYY-MM format"),
-    to_date: Optional[str] = Query(None, description="End month in YYYY-MM format"),
+    from_date: Optional[str] = Query(None, description="Start date in DD/MM/YYYY format"),
+    to_date: Optional[str] = Query(None, description="End date in DD/MM/YYYY format"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -3544,12 +3544,11 @@ async def export_marketing_sources_csv(
     Export marketing source data as CSV, optionally filtered by date range.
 
     Args:
-        from_date: Start month in YYYY-MM format (inclusive)
-        to_date: End month in YYYY-MM format (inclusive)
+        from_date: Start date in DD/MM/YYYY format (inclusive)
+        to_date: End date in DD/MM/YYYY format (inclusive)
     """
     from db_models import MarketingSource, Customer
     from fastapi.responses import StreamingResponse
-    from sqlalchemy import extract
     import io
     import csv
 
@@ -3557,29 +3556,21 @@ async def export_marketing_sources_csv(
         Customer, MarketingSource.customer_id == Customer.id
     )
 
-    # Apply date filters if provided
+    # Apply date filters if provided (DD/MM/YYYY format)
     if from_date:
         try:
-            from_year, from_month = map(int, from_date.split('-'))
-            # Filter: created_at >= first day of from_month
-            query = query.filter(
-                (extract('year', MarketingSource.created_at) > from_year) |
-                ((extract('year', MarketingSource.created_at) == from_year) &
-                 (extract('month', MarketingSource.created_at) >= from_month))
-            )
-        except ValueError:
+            parts = from_date.split('/')
+            from_dt = datetime(int(parts[2]), int(parts[1]), int(parts[0]))
+            query = query.filter(MarketingSource.created_at >= from_dt)
+        except (IndexError, ValueError):
             pass  # Invalid format, skip filter
 
     if to_date:
         try:
-            to_year, to_month = map(int, to_date.split('-'))
-            # Filter: created_at <= last day of to_month
-            query = query.filter(
-                (extract('year', MarketingSource.created_at) < to_year) |
-                ((extract('year', MarketingSource.created_at) == to_year) &
-                 (extract('month', MarketingSource.created_at) <= to_month))
-            )
-        except ValueError:
+            parts = to_date.split('/')
+            to_dt = datetime(int(parts[2]), int(parts[1]), int(parts[0]), 23, 59, 59)
+            query = query.filter(MarketingSource.created_at <= to_dt)
+        except (IndexError, ValueError):
             pass  # Invalid format, skip filter
 
     results = query.order_by(MarketingSource.created_at.desc()).all()

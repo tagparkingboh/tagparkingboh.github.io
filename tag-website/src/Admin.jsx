@@ -242,8 +242,8 @@ function Admin() {
   const [loadingMarketingOther, setLoadingMarketingOther] = useState(false)
   const [showMarketingOtherModal, setShowMarketingOtherModal] = useState(false)
   const [marketingOtherMonth, setMarketingOtherMonth] = useState(null) // Selected month for "Other" details
-  const [marketingExportFromDate, setMarketingExportFromDate] = useState('')
-  const [marketingExportToDate, setMarketingExportToDate] = useState('')
+  const [marketingExportFromDate, setMarketingExportFromDate] = useState(null)
+  const [marketingExportToDate, setMarketingExportToDate] = useState(null)
 
   // QA Dashboard state
   const [testResults, setTestResults] = useState([])
@@ -656,14 +656,23 @@ function Admin() {
     }
   }
 
+  // Helper to format date as DD/MM/YYYY
+  const formatDateDDMMYYYY = (date) => {
+    if (!date) return null
+    const day = String(date.getDate()).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const year = date.getFullYear()
+    return `${day}/${month}/${year}`
+  }
+
   const exportMarketingSourcesCSV = async () => {
     try {
       const params = new URLSearchParams()
       if (marketingExportFromDate) {
-        params.append('from_date', marketingExportFromDate)
+        params.append('from_date', formatDateDDMMYYYY(marketingExportFromDate))
       }
       if (marketingExportToDate) {
-        params.append('to_date', marketingExportToDate)
+        params.append('to_date', formatDateDDMMYYYY(marketingExportToDate))
       }
       const queryString = params.toString()
       const url = `${API_URL}/api/admin/marketing-sources/export${queryString ? `?${queryString}` : ''}`
@@ -681,8 +690,8 @@ function Admin() {
         // Include date range in filename if filters are set
         let filename = 'marketing-sources'
         if (marketingExportFromDate || marketingExportToDate) {
-          if (marketingExportFromDate) filename += `-from-${marketingExportFromDate}`
-          if (marketingExportToDate) filename += `-to-${marketingExportToDate}`
+          if (marketingExportFromDate) filename += `-from-${formatDateDDMMYYYY(marketingExportFromDate).replace(/\//g, '-')}`
+          if (marketingExportToDate) filename += `-to-${formatDateDDMMYYYY(marketingExportToDate).replace(/\//g, '-')}`
         } else {
           filename += `-${new Date().toISOString().split('T')[0]}`
         }
@@ -5619,26 +5628,30 @@ function Admin() {
                 <div className="flights-filters">
                   <div className="flight-filter-group leads-date-picker">
                     <label>From:</label>
-                    <input
-                      type="month"
-                      value={marketingExportFromDate}
-                      onChange={(e) => setMarketingExportFromDate(e.target.value)}
-                      className="flight-date-input marketing-month-input"
+                    <DatePicker
+                      selected={marketingExportFromDate}
+                      onChange={(date) => setMarketingExportFromDate(date)}
+                      dateFormat="dd/MM/yyyy"
+                      placeholderText="DD/MM/YYYY"
+                      className="flight-date-input"
+                      isClearable
                     />
                   </div>
                   <div className="flight-filter-group leads-date-picker">
                     <label>To:</label>
-                    <input
-                      type="month"
-                      value={marketingExportToDate}
-                      onChange={(e) => setMarketingExportToDate(e.target.value)}
-                      className="flight-date-input marketing-month-input"
+                    <DatePicker
+                      selected={marketingExportToDate}
+                      onChange={(date) => setMarketingExportToDate(date)}
+                      dateFormat="dd/MM/yyyy"
+                      placeholderText="DD/MM/YYYY"
+                      className="flight-date-input"
+                      isClearable
                     />
                   </div>
                   {(marketingExportFromDate || marketingExportToDate) && (
                     <button
                       className="btn-secondary clear-dates-btn"
-                      onClick={() => { setMarketingExportFromDate(''); setMarketingExportToDate(''); }}
+                      onClick={() => { setMarketingExportFromDate(null); setMarketingExportToDate(null); }}
                     >
                       × Clear
                     </button>

@@ -4218,34 +4218,6 @@
   margin-top: 1rem;
 }
 
-/* Month input styling to match DatePicker */
-.marketing-month-input {
-  background: #2a2a2a !important;
-  border: 1px solid #444 !important;
-  color: #fff !important;
-  padding: 0.6rem 1rem !important;
-  border-radius: 8px !important;
-  font-size: 0.875rem !important;
-  width: 150px !important;
-  transition: all 0.2s ease;
-}
-
-.marketing-month-input:hover {
-  border-color: #666 !important;
-}
-
-.marketing-month-input:focus {
-  outline: none !important;
-  border-color: #D9FF00 !important;
-  box-shadow: 0 0 0 2px rgba(217, 255, 0, 0.2) !important;
-}
-
-/* Fix webkit date input styling */
-.marketing-month-input::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  cursor: pointer;
-}
-
 .marketing-total-summary {
   margin: 1.5rem 0;
 }
