@@ -4244,6 +4244,64 @@
   background: #e5a326;
 }
 
+.marketing-sources-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.admin-refresh-btn {
+  background: #4a4a6a;
+  color: #ffffff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.admin-refresh-btn:hover {
+  background: #5a5a7a;
+}
+
+.admin-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.marketing-date-filters {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  margin: 1rem 0;
+  padding: 12px 16px;
+  background: #2a2a4a;
+  border-radius: 8px;
+}
+
+.marketing-date-filters label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b0b0d0;
+  font-size: 0.9rem;
+}
+
+.marketing-date-filters input[type="month"] {
+  background: #1a1a2e;
+  border: 1px solid #4a4a6a;
+  color: #ffffff;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.marketing-date-filters input[type="month"]:focus {
+  outline: none;
+  border-color: #f7b32b;
+}
+
 .marketing-total-summary {
   margin: 1.5rem 0;
 }

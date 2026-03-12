@@ -3521,20 +3521,54 @@ async def get_marketing_sources_other(
 
 @app.get("/api/admin/marketing-sources/export")
 async def export_marketing_sources_csv(
+    from_date: Optional[str] = Query(None, description="Start month in YYYY-MM format"),
+    to_date: Optional[str] = Query(None, description="End month in YYYY-MM format"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
-    Export all marketing source data as CSV.
+    Export marketing source data as CSV, optionally filtered by date range.
+
+    Args:
+        from_date: Start month in YYYY-MM format (inclusive)
+        to_date: End month in YYYY-MM format (inclusive)
     """
     from db_models import MarketingSource, Customer
     from fastapi.responses import StreamingResponse
+    from sqlalchemy import extract
     import io
     import csv
 
-    results = db.query(MarketingSource, Customer).join(
+    query = db.query(MarketingSource, Customer).join(
         Customer, MarketingSource.customer_id == Customer.id
-    ).order_by(MarketingSource.created_at.desc()).all()
+    )
+
+    # Apply date filters if provided
+    if from_date:
+        try:
+            from_year, from_month = map(int, from_date.split('-'))
+            # Filter: created_at >= first day of from_month
+            query = query.filter(
+                (extract('year', MarketingSource.created_at) > from_year) |
+                ((extract('year', MarketingSource.created_at) == from_year) &
+                 (extract('month', MarketingSource.created_at) >= from_month))
+            )
+        except ValueError:
+            pass  # Invalid format, skip filter
+
+    if to_date:
+        try:
+            to_year, to_month = map(int, to_date.split('-'))
+            # Filter: created_at <= last day of to_month
+            query = query.filter(
+                (extract('year', MarketingSource.created_at) < to_year) |
+                ((extract('year', MarketingSource.created_at) == to_year) &
+                 (extract('month', MarketingSource.created_at) <= to_month))
+            )
+        except ValueError:
+            pass  # Invalid format, skip filter
+
+    results = query.order_by(MarketingSource.created_at.desc()).all()
 
     # Create CSV in memory
     output = io.StringIO()
@@ -3552,10 +3586,19 @@ async def export_marketing_sources_csv(
         ])
 
     output.seek(0)
+
+    # Generate filename with date range if filters applied
+    filename = "marketing_sources"
+    if from_date:
+        filename += f"_from_{from_date}"
+    if to_date:
+        filename += f"_to_{to_date}"
+    filename += ".csv"
+
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=marketing_sources.csv"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 

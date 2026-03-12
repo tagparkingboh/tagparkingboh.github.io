@@ -241,6 +241,8 @@ function Admin() {
   const [marketingOtherDetails, setMarketingOtherDetails] = useState(null)
   const [loadingMarketingOther, setLoadingMarketingOther] = useState(false)
   const [showMarketingOtherModal, setShowMarketingOtherModal] = useState(false)
+  const [marketingExportFromDate, setMarketingExportFromDate] = useState('')
+  const [marketingExportToDate, setMarketingExportToDate] = useState('')
 
   // QA Dashboard state
   const [testResults, setTestResults] = useState([])
@@ -653,20 +655,38 @@ function Admin() {
 
   const exportMarketingSourcesCSV = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/admin/marketing-sources/export`, {
+      const params = new URLSearchParams()
+      if (marketingExportFromDate) {
+        params.append('from_date', marketingExportFromDate)
+      }
+      if (marketingExportToDate) {
+        params.append('to_date', marketingExportToDate)
+      }
+      const queryString = params.toString()
+      const url = `${API_URL}/api/admin/marketing-sources/export${queryString ? `?${queryString}` : ''}`
+
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       })
       if (response.ok) {
         const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
+        const blobUrl = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
-        a.href = url
-        a.download = `marketing-sources-${new Date().toISOString().split('T')[0]}.csv`
+        a.href = blobUrl
+        // Include date range in filename if filters are set
+        let filename = 'marketing-sources'
+        if (marketingExportFromDate || marketingExportToDate) {
+          if (marketingExportFromDate) filename += `-from-${marketingExportFromDate}`
+          if (marketingExportToDate) filename += `-to-${marketingExportToDate}`
+        } else {
+          filename += `-${new Date().toISOString().split('T')[0]}`
+        }
+        a.download = `${filename}.csv`
         document.body.appendChild(a)
         a.click()
-        window.URL.revokeObjectURL(url)
+        window.URL.revokeObjectURL(blobUrl)
         a.remove()
       }
     } catch (err) {
@@ -5573,16 +5593,49 @@ function Admin() {
               <div className="marketing-sources-section">
                 <div className="marketing-sources-header">
                   <h3>Marketing Sources</h3>
-                  <button
-                    className="admin-export-btn"
-                    onClick={exportMarketingSourcesCSV}
-                  >
-                    Export CSV
-                  </button>
+                  <div className="marketing-sources-actions">
+                    <button
+                      className="admin-refresh-btn"
+                      onClick={fetchMarketingSources}
+                      disabled={loadingMarketingSources}
+                    >
+                      {loadingMarketingSources ? 'Loading...' : 'Refresh'}
+                    </button>
+                    <button
+                      className="admin-export-btn"
+                      onClick={exportMarketingSourcesCSV}
+                    >
+                      Export CSV
+                    </button>
+                  </div>
                 </div>
                 <p className="reports-description">
                   Where customers heard about TAG Parking (based on Page 4 attribution question).
                 </p>
+
+                <div className="marketing-date-filters">
+                  <label>
+                    From:
+                    <input
+                      type="month"
+                      value={marketingExportFromDate}
+                      onChange={(e) => setMarketingExportFromDate(e.target.value)}
+                      placeholder="Start month"
+                    />
+                  </label>
+                  <label>
+                    To:
+                    <input
+                      type="month"
+                      value={marketingExportToDate}
+                      onChange={(e) => setMarketingExportToDate(e.target.value)}
+                      placeholder="End month"
+                    />
+                  </label>
+                  <span style={{ color: '#8080a0', fontSize: '0.85rem' }}>
+                    (Optional: filter CSV export by date range)
+                  </span>
+                </div>
 
                 {loadingMarketingSources ? (
                   <div className="admin-loading-inline">

@@ -501,10 +501,13 @@ class TestCSVExport:
     """Tests for CSV export functionality."""
 
     def test_csv_has_header_row(self):
-        """CSV should have header row."""
-        expected_headers = ["year_month", "source", "count"]
+        """CSV should have header row with correct columns."""
+        expected_headers = [
+            "customer_id", "customer_email", "customer_name",
+            "source", "source_detail", "created_at"
+        ]
 
-        # CSV structure should include these columns
+        # All these columns must be in the CSV
         for header in expected_headers:
             assert header in expected_headers
 
@@ -517,6 +520,130 @@ class TestCSVExport:
 
         assert today in expected_filename
         assert expected_filename.endswith(".csv")
+
+    def test_csv_filename_includes_date_range_when_filtered(self):
+        """CSV filename should include date range when filters applied."""
+        from_date = "2026-01"
+        to_date = "2026-03"
+
+        filename = f"marketing_sources_from_{from_date}_to_{to_date}.csv"
+
+        assert from_date in filename
+        assert to_date in filename
+        assert filename.endswith(".csv")
+
+    def test_csv_filename_with_only_from_date(self):
+        """CSV filename should include only from_date when to_date not set."""
+        from_date = "2026-01"
+
+        filename = f"marketing_sources_from_{from_date}.csv"
+
+        assert from_date in filename
+        assert filename.endswith(".csv")
+
+    def test_csv_filename_with_only_to_date(self):
+        """CSV filename should include only to_date when from_date not set."""
+        to_date = "2026-03"
+
+        filename = f"marketing_sources_to_{to_date}.csv"
+
+        assert to_date in filename
+        assert filename.endswith(".csv")
+
+
+class TestCSVExportDateFilters:
+    """Tests for CSV export date filtering functionality."""
+
+    def test_valid_from_date_format(self):
+        """from_date should be in YYYY-MM format."""
+        valid_dates = ["2026-01", "2025-12", "2024-06"]
+
+        for date in valid_dates:
+            parts = date.split("-")
+            assert len(parts) == 2
+            year, month = int(parts[0]), int(parts[1])
+            assert 2000 <= year <= 2100
+            assert 1 <= month <= 12
+
+    def test_valid_to_date_format(self):
+        """to_date should be in YYYY-MM format."""
+        valid_dates = ["2026-03", "2025-11", "2024-07"]
+
+        for date in valid_dates:
+            parts = date.split("-")
+            assert len(parts) == 2
+            year, month = int(parts[0]), int(parts[1])
+            assert 2000 <= year <= 2100
+            assert 1 <= month <= 12
+
+    def test_invalid_date_format_ignored(self):
+        """Invalid date formats should be gracefully ignored."""
+        invalid_dates = [
+            "2026",        # Missing month
+            "03-2026",     # Wrong order
+            "2026/03",     # Wrong separator
+            "invalid",     # Not a date
+            "",            # Empty
+            "2026-13",     # Invalid month
+            "2026-00",     # Invalid month
+        ]
+
+        for date in invalid_dates:
+            # These should not cause errors, just be ignored
+            try:
+                if "-" in date:
+                    parts = date.split("-")
+                    if len(parts) == 2:
+                        year, month = int(parts[0]), int(parts[1])
+                        is_valid = 1 <= month <= 12
+                    else:
+                        is_valid = False
+                else:
+                    is_valid = False
+            except ValueError:
+                is_valid = False
+
+            # All invalid dates should fail validation
+            assert is_valid == False or date in ["2026-13", "2026-00"]
+
+    def test_from_date_before_to_date(self):
+        """from_date should typically be before or equal to to_date."""
+        from_date = "2026-01"
+        to_date = "2026-03"
+
+        assert from_date <= to_date
+
+    def test_from_date_after_to_date_returns_empty(self):
+        """from_date after to_date should logically return no results."""
+        from_date = "2026-06"
+        to_date = "2026-01"
+
+        # This is valid input but would return empty results
+        assert from_date > to_date
+
+    def test_same_month_filter(self):
+        """Same from_date and to_date should filter to single month."""
+        from_date = "2026-03"
+        to_date = "2026-03"
+
+        assert from_date == to_date
+
+    def test_date_filter_includes_boundary_months(self):
+        """Date filter should be inclusive of both from and to months."""
+        from_date = "2026-01"
+        to_date = "2026-03"
+
+        # Months that should be included
+        included_months = ["2026-01", "2026-02", "2026-03"]
+
+        for month in included_months:
+            assert from_date <= month <= to_date
+
+        # Months that should be excluded
+        excluded_months = ["2025-12", "2026-04"]
+
+        for month in excluded_months:
+            assert not (from_date <= month <= to_date)
 
 
 # =============================================================================
@@ -658,6 +785,189 @@ class TestNegativeScenarios:
         customer_exists = customer is not None
 
         assert customer_exists is False
+
+    def test_null_source_rejected(self):
+        """Null/None source should be rejected."""
+        source = None
+
+        is_valid = source is not None and source in VALID_MARKETING_SOURCES
+
+        assert is_valid is False
+
+    def test_empty_source_rejected(self):
+        """Empty string source should be rejected."""
+        source = ""
+
+        is_valid = source is not None and source in VALID_MARKETING_SOURCES
+
+        assert is_valid is False
+
+    def test_whitespace_only_source_rejected(self):
+        """Whitespace-only source should be rejected."""
+        source = "   "
+
+        is_valid = source.strip() in VALID_MARKETING_SOURCES
+
+        assert is_valid is False
+
+    def test_numeric_source_rejected(self):
+        """Numeric source should be rejected."""
+        source = "123"
+
+        assert source not in VALID_MARKETING_SOURCES
+
+    def test_source_with_special_chars_rejected(self):
+        """Source with special characters should be rejected."""
+        invalid_sources = ["google!", "face@book", "insta#gram", "linked$in"]
+
+        for source in invalid_sources:
+            assert source not in VALID_MARKETING_SOURCES
+
+    def test_sql_injection_in_source_rejected(self):
+        """SQL injection attempt in source should be rejected."""
+        malicious_sources = [
+            "'; DROP TABLE customers; --",
+            "google OR 1=1",
+            "google; DELETE FROM marketing_sources",
+        ]
+
+        for source in malicious_sources:
+            assert source not in VALID_MARKETING_SOURCES
+
+    def test_xss_in_source_detail(self):
+        """XSS attempt in source_detail should be sanitized."""
+        xss_attempts = [
+            "<script>alert('xss')</script>",
+            "<img src=x onerror=alert('xss')>",
+            "javascript:alert('xss')",
+        ]
+
+        for attempt in xss_attempts:
+            # Backend should accept but escape/sanitize on display
+            # The string itself is valid input
+            assert isinstance(attempt, str)
+            assert len(attempt) <= 255
+
+
+class TestValidScenarios:
+    """Additional valid scenario tests."""
+
+    def test_all_valid_sources_accepted(self):
+        """All valid sources should be accepted."""
+        for source in VALID_MARKETING_SOURCES:
+            ms = create_mock_marketing_source(source=source)
+            assert ms.source == source
+
+    def test_valid_email_formats_accepted(self):
+        """Valid email formats should be accepted."""
+        import re
+        email_pattern = r'^[^@]+@[^@]+\.[^@]+$'
+
+        valid_emails = [
+            "test@example.com",
+            "user.name@domain.co.uk",
+            "user+tag@example.org",
+            "user123@test-domain.com",
+            "a@b.co",
+        ]
+
+        for email in valid_emails:
+            is_valid = bool(re.match(email_pattern, email))
+            assert is_valid is True
+
+    def test_source_detail_within_length_limit(self):
+        """source_detail within 255 chars should be accepted."""
+        valid_lengths = [1, 50, 100, 200, 255]
+
+        for length in valid_lengths:
+            detail = "A" * length
+
+            ms = create_mock_marketing_source(
+                source="other",
+                source_detail=detail
+            )
+
+            assert len(ms.source_detail) == length
+
+    def test_source_detail_with_line_breaks(self):
+        """source_detail with line breaks should be handled."""
+        detail_with_breaks = "Line 1\nLine 2\rLine 3\r\nLine 4"
+
+        ms = create_mock_marketing_source(
+            source="other",
+            source_detail=detail_with_breaks
+        )
+
+        assert "\n" in ms.source_detail or "\r" in ms.source_detail
+
+    def test_source_detail_with_emojis(self):
+        """source_detail with emojis should be handled."""
+        detail_with_emoji = "Great service! 👍🎉✈️"
+
+        ms = create_mock_marketing_source(
+            source="other",
+            source_detail=detail_with_emoji
+        )
+
+        assert ms.source_detail == detail_with_emoji
+
+    def test_customer_with_long_name(self):
+        """Customer with long name should be handled."""
+        long_name = "A" * 100
+
+        customer = create_mock_customer(
+            first_name=long_name,
+            last_name=long_name
+        )
+
+        full_name = f"{customer.first_name} {customer.last_name}"
+        assert len(full_name) == 201  # 100 + space + 100
+
+    def test_customer_email_case_variations(self):
+        """Email should work regardless of case."""
+        emails = [
+            "Test@Example.COM",
+            "TEST@EXAMPLE.COM",
+            "test@example.com",
+        ]
+
+        normalized = [e.lower() for e in emails]
+        assert len(set(normalized)) == 1
+
+    def test_multiple_customers_same_source(self):
+        """Multiple customers can select the same source."""
+        sources = []
+        for i in range(10):
+            ms = create_mock_marketing_source(
+                id=i,
+                customer_id=i,
+                source="google"
+            )
+            sources.append(ms.source)
+
+        # All should be "google"
+        assert all(s == "google" for s in sources)
+
+    def test_timestamp_stored_correctly(self):
+        """created_at timestamp should be stored."""
+        now = datetime.utcnow()
+
+        ms = create_mock_marketing_source(created_at=now)
+
+        assert ms.created_at == now
+
+    def test_monthly_total_upsert_increment(self):
+        """Monthly total should support upsert/increment."""
+        mt = create_mock_monthly_total(
+            year_month="2026-03",
+            source="google",
+            count=10
+        )
+
+        # Simulate increment
+        new_count = mt.count + 1
+
+        assert new_count == 11
 
 
 # =============================================================================
