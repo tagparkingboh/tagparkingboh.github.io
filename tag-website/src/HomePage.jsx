@@ -250,7 +250,7 @@ function HomePage() {
                 <>Save up to 60% off<br />official airport parking</>
               )}
               {heroBannerIndex === 1 && (
-                <>Secure payments<br />powered by Stripe</>
+                <>Read our story in the<br /><a href="https://www.bournemouthecho.co.uk/news/25707007.new-parking-business-launches-near-bournemouth-airport/" target="_blank" rel="noopener noreferrer" className="hero-link">Daily Echo</a></>
               )}
               {heroBannerIndex === 2 && (
                 <>It's time to Tag it.<br />Book your parking now</>
