@@ -213,6 +213,33 @@
   box-shadow: 0 0 12px rgba(204, 255, 0, 0.5);
 }
 
+/* Press/Story link */
+.testimonials-press {
+  margin-top: 2rem;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.testimonials-press .press-icon {
+  font-size: 1.2rem;
+}
+
+.testimonials-press .press-link {
+  color: var(--lime-green);
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.testimonials-press .press-link:hover {
+  text-decoration: underline;
+  color: #fff;
+}
+
 /* ===== RESPONSIVE DESIGN ===== */
 
 /* Tablet */

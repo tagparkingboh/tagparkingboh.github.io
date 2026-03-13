@@ -190,6 +190,19 @@ function TestimonialsCarousel() {
           />
         ))}
       </div>
+
+      <div className="testimonials-press">
+        <span className="press-icon">📰</span>
+        <span>Read our story in the </span>
+        <a
+          href="https://www.bournemouthecho.co.uk/news/25707007.new-parking-business-launches-near-bournemouth-airport/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="press-link"
+        >
+          Daily Echo
+        </a>
+      </div>
     </section>
   )
 }
