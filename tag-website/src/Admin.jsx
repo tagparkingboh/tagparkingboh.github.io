@@ -3688,8 +3688,8 @@ function Admin() {
                                     <div style={{ display: 'flex', gap: '8px' }}>
                                       {!subscriber.unsubscribed && !subscriber.promo_10_used && (
                                         <button
-                                          className={`action-btn promo-btn ${subscriber.promo_10_sent ? 'sent' : ''}`}
-                                          onClick={(e) => { e.stopPropagation(); if (!subscriber.promo_10_sent) openPromoModal(subscriber, 10); }}
+                                          className={`action-btn promo-btn ${subscriber.promo_10_sent ? 'sent' : 'disabled'}`}
+                                          onClick={(e) => { e.stopPropagation(); if (!subscriber.promo_10_sent) alert('This promo has ended.'); }}
                                           disabled={subscriber.promo_10_sent}
                                         >
                                           {subscriber.promo_10_sent ? 'Sent ✓' : 'Send 10% Off'}
@@ -3765,8 +3765,8 @@ function Admin() {
                                     <h4>FREE Parking Promo</h4>
                                     {!subscriber.unsubscribed && !subscriber.promo_free_used && (
                                       <button
-                                        className={`action-btn promo-btn free ${subscriber.promo_free_sent ? 'sent' : ''}`}
-                                        onClick={(e) => { e.stopPropagation(); if (!subscriber.promo_free_sent) openPromoModal(subscriber, 100); }}
+                                        className={`action-btn promo-btn free ${subscriber.promo_free_sent ? 'sent' : 'disabled'}`}
+                                        onClick={(e) => { e.stopPropagation(); if (!subscriber.promo_free_sent) alert('This promo has ended.'); }}
                                         disabled={subscriber.promo_free_sent}
                                       >
                                         {subscriber.promo_free_sent ? 'Sent ✓' : 'Send FREE'}
