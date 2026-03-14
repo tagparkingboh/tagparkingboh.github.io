@@ -41,7 +41,7 @@ function FAQ() {
     {
       title: "1. Booking and Payment",
       questions: [
-        { q: "How do I make a booking?", a: "You can make a booking through our website at www.tagparking.co.uk, by phone on 07586092361, or by email at info@tagparking.co.uk. You will need to provide your name, contact details, vehicle registration, flight information, and payment details." },
+        { q: "How do I make a booking?", a: "You can make a booking through our website at www.tagparking.co.uk, by phone on 07586 092361, or by email at info@tagparking.co.uk. You will need to provide your name, contact details, vehicle registration, flight information, and payment details." },
         { q: "When do I need to pay?", a: "Payment is required in full at the time of booking. We accept all major credit and debit cards." },
         { q: "Will I receive a booking confirmation?", a: "Yes! Once your payment is processed, you will receive a booking confirmation email within minutes. This will include your booking reference number, meeting point details, and contact numbers for the day of travel." },
         { q: "How far in advance should I book?", a: "We recommend booking as early as possible to guarantee availability, especially during peak travel periods. The sooner you book the cheaper your parking will be!" },
@@ -111,7 +111,7 @@ function FAQ() {
         { q: "Which airports do you serve?", a: "We currently serve Bournemouth Airport." },
         { q: "Can I get a receipt or invoice?", a: "Yes, a receipt is automatically sent with your booking confirmation email. If you need a VAT invoice for business expenses, just let us know." },
         { q: "Do you offer long-term parking?", a: "Yes, we can accommodate long-term parking. Contact us for special rates for stays longer than 2 weeks." },
-        { q: "How can I contact you?", a: "Phone: 07586092361 (24/7 for emergencies on day of travel), Email: info@tagparking.co.uk, Website: www.tagparking.co.uk. Office hours: Monday-Friday, 9:00 AM - 5:00 PM." }
+        { q: "How can I contact you?", a: "Phone: 07586 092361 (24/7 for emergencies on day of travel), Email: info@tagparking.co.uk, Website: www.tagparking.co.uk. Office hours: Monday-Friday, 9:00 AM - 5:00 PM." }
       ]
     }
   ]
@@ -135,7 +135,7 @@ function FAQ() {
         <div className="legal-content faq-content">
           <p className="faq-intro">Welcome to Tag Parking Ltd! Below you will find answers to the most common questions about our meet and greet parking service. If you cannot find the answer you are looking for, please do not hesitate to contact us.</p>
 
-          <p className="faq-contact"><strong>Quick Contact:</strong> Phone: 07586092361 | Email: info@tagparking.co.uk</p>
+          <p className="faq-contact"><strong>Quick Contact:</strong> Phone: 07586 092361 | Email: info@tagparking.co.uk</p>
 
           <div className="faq-sections">
             {faqData.map((section, sectionIndex) => (
@@ -171,7 +171,7 @@ function FAQ() {
             <h2>Still Have Questions?</h2>
             <p>If you could not find the answer to your question, we are here to help!</p>
             <div className="faq-contact-details">
-              <p><strong>Phone:</strong> 07586092361 (Available 24/7 for emergencies on day of travel)</p>
+              <p><strong>Phone:</strong> 07586 092361 (Available 24/7 for emergencies on day of travel)</p>
               <p><strong>Email:</strong> info@tagparking.co.uk</p>
               <p><strong>Website:</strong> www.tagparking.co.uk</p>
               <p><strong>Address:</strong> 5 Ivegate, Yeadon, Leeds, England, LS19 7RE</p>

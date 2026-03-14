@@ -69,7 +69,7 @@ function RefundPolicy() {
           <h2>3. How to Cancel Your Booking</h2>
           <p>To cancel your booking, you must contact us using one of the following methods:</p>
           <ul>
-            <li><strong>Phone:</strong> 07586092361 (available 24/7)</li>
+            <li><strong>Phone:</strong> 07586 092361 (available 24/7)</li>
             <li><strong>Email:</strong> support@tagparking.co.uk</li>
             <li><strong>Through your online account</strong> (if applicable)</li>
           </ul>
@@ -163,7 +163,7 @@ function RefundPolicy() {
           <p>For questions about cancellations or refunds, please contact us:</p>
           <p><strong>Tag Parking Ltd</strong></p>
           <p><strong>Address:</strong> 5 Ivegate, Yeadon, Leeds, England, LS19 7RE</p>
-          <p><strong>Phone:</strong> 07586092361 (24/7)</p>
+          <p><strong>Phone:</strong> 07586 092361 (24/7)</p>
           <p><strong>Email:</strong> info@tagparking.co.uk</p>
           <p><strong>Office Hours:</strong> Monday to Friday, 9:00 AM - 5:00 PM</p>
 
