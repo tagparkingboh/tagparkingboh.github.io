@@ -148,7 +148,7 @@ function VehicleInspectionTerms() {
           <p>If you have any questions about these Vehicle Inspection Terms & Conditions, please contact us:</p>
           <p><strong>Company:</strong> Tag Parking Ltd</p>
           <p><strong>Address:</strong> 5 Ivegate, Yeadon, Leeds, England, LS19 7RE</p>
-          <p><strong>Phone:</strong> 07739106145</p>
+          <p><strong>Phone:</strong> 07586092361</p>
           <p><strong>Email:</strong> support@tagparking.co.uk</p>
 
           <div className="legal-footer">

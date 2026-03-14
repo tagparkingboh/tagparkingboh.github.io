@@ -43,7 +43,7 @@ function TermsConditions() {
           <h2>2. Company Information</h2>
           <p><strong>Company Name:</strong> Tag Parking Ltd</p>
           <p><strong>Registered Address:</strong> 5 Ivegate, Yeadon, Leeds, England, LS19 7RE</p>
-          <p><strong>Phone:</strong> 07739106145</p>
+          <p><strong>Phone:</strong> 07586092361</p>
           <p><strong>Email:</strong> info@tagparking.co.uk</p>
           <p><strong>Website:</strong> www.tagparking.co.uk</p>
 
@@ -204,7 +204,7 @@ function TermsConditions() {
           <p>For questions about these Terms or our services, please contact us:</p>
           <p><strong>Tag Parking Ltd</strong></p>
           <p><strong>Address:</strong> 5 Ivegate, Yeadon, Leeds, England, LS19 7RE</p>
-          <p><strong>Phone:</strong> 07739106145</p>
+          <p><strong>Phone:</strong> 07586092361</p>
           <p><strong>Email:</strong> info@tagparking.co.uk</p>
 
           <div className="legal-footer">

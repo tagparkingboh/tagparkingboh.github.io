@@ -203,7 +203,7 @@ function CookiePolicy() {
           <p>If you have any questions about our use of cookies or this Cookie Policy, please contact us:</p>
           <p><strong>Tag Parking Ltd</strong></p>
           <p><strong>Address:</strong> 5 Ivegate, Yeadon, Leeds, England, LS19 7RE</p>
-          <p><strong>Phone:</strong> 07739106145</p>
+          <p><strong>Phone:</strong> 07586092361</p>
           <p><strong>Email:</strong> info@tagparking.co.uk</p>
 
           <div className="legal-footer">

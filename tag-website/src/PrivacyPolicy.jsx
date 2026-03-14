@@ -43,7 +43,7 @@ function PrivacyPolicy() {
           <h2>2. Data Controller</h2>
           <p><strong>Data Controller:</strong> Tag Parking Ltd</p>
           <p><strong>Registered Address:</strong> 5 Ivegate, Yeadon, Leeds, England, LS19 7RE</p>
-          <p><strong>Phone:</strong> 07739106145</p>
+          <p><strong>Phone:</strong> 07586092361</p>
           <p><strong>Email:</strong> privacy@tagparking.co.uk</p>
 
           <h2>3. What Personal Data We Collect</h2>
@@ -154,7 +154,7 @@ function PrivacyPolicy() {
           <p>If you have any questions, concerns, or requests regarding this Privacy Policy or how we handle your personal data, please contact us:</p>
           <p><strong>Company:</strong> Tag Parking Ltd</p>
           <p><strong>Address:</strong> 5 Ivegate, Yeadon, Leeds, England, LS19 7RE</p>
-          <p><strong>Phone:</strong> 07739106145</p>
+          <p><strong>Phone:</strong> 07586092361</p>
           <p><strong>Email:</strong> info@tagparking.co.uk</p>
 
           <div className="legal-footer">
