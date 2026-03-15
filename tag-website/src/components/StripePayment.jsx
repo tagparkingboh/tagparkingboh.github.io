@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import {
   Elements,
@@ -349,10 +349,18 @@ function StripePayment({
   }
 
   // Track the promo code that was used to create the current payment intent
-  const [initializedWithPromo, setInitializedWithPromo] = useState(undefined)
+  // Use a ref to track without triggering re-renders
+  const initializedWithPromoRef = useRef(undefined)
 
   useEffect(() => {
-    console.log('[StripePayment] useEffect - promoCode:', promoCode, 'discount:', promoCodeDiscount, 'initializedWithPromo:', initializedWithPromo)
+    // Normalize promo code: treat empty string and null as equivalent (no promo)
+    const currentPromo = promoCode && promoCode.trim() !== '' ? promoCode : null
+    const previousPromo = initializedWithPromoRef.current
+
+    console.log('[StripePayment] useEffect triggered')
+    console.log('[StripePayment] promoCode prop:', promoCode, '-> normalized:', currentPromo)
+    console.log('[StripePayment] promoCodeDiscount:', promoCodeDiscount)
+    console.log('[StripePayment] previousPromo (ref):', previousPromo)
 
     const isFree = promoCodeDiscount === 100 && formData.package === 'quick'
 
@@ -364,17 +372,17 @@ function StripePayment({
       setIsFreeBooking(true)
       setLoading(false)
       setClientSecret('') // Clear any existing payment intent
+      initializedWithPromoRef.current = currentPromo
       return
     }
 
     // Skip if we already created a payment intent with the same promo code
-    const currentPromo = promoCode || null
-    if (initializedWithPromo !== undefined && initializedWithPromo === currentPromo) {
+    if (previousPromo !== undefined && previousPromo === currentPromo) {
       console.log('[StripePayment] Skipping - already initialized with:', currentPromo)
       return
     }
 
-    console.log('[StripePayment] Creating payment intent - old:', initializedWithPromo, 'new:', currentPromo)
+    console.log('[StripePayment] Creating NEW payment intent - previous:', previousPromo, '-> new:', currentPromo)
 
     // For PAID bookings, load Stripe and create payment intent
     const initPayment = async () => {
@@ -393,8 +401,9 @@ function StripePayment({
         setStripeLoaded(stripe)
 
         const data = await createPaymentIntent()
-        console.log('[StripePayment] Payment intent response:', data.amount_display, 'promo:', promoCode)
-        setInitializedWithPromo(promoCode || null) // Track which promo was used
+        console.log('[StripePayment] Payment intent response:', data.amount_display, 'promo:', currentPromo)
+        console.log('[StripePayment] Full response:', JSON.stringify(data))
+        initializedWithPromoRef.current = currentPromo // Track which promo was used
 
         // Handle response
         if (data.is_free_booking) {
