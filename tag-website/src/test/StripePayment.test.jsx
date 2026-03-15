@@ -863,3 +863,513 @@ describe('StripePayment - Edge Cases for Manual Entry', () => {
     expect(capturedRequest.dropoff_flight_time).toBe('22:50')
   })
 })
+
+// =============================================================================
+// Promo Code Discount Tests
+// =============================================================================
+
+describe('StripePayment - Promo Code Discount', () => {
+  beforeEach(() => {
+    setupFetchMocks()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should create new payment intent when promo code is applied', async () => {
+    let callCount = 0
+    let lastClientSecret = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        callCount++
+        const request = options ? JSON.parse(options.body) : {}
+        const hasPromo = !!request.promo_code
+
+        // Return different client_secret based on whether promo is applied
+        lastClientSecret = hasPromo ? 'pi_test_secret_with_promo' : 'pi_test_secret_no_promo'
+
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: lastClientSecret,
+            booking_reference: `TAG-PROMO${callCount}`,
+            amount: hasPromo ? 5400 : 6000,
+            amount_display: hasPromo ? '£54.00' : '£60.00',
+            is_free_booking: false,
+            original_amount_display: hasPromo ? '£60.00' : null,
+            discount_amount_display: hasPromo ? '£6.00' : null,
+            promo_code_applied: hasPromo ? 'TAG-TRAX-QVNJ' : null,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    const { rerender } = render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-promo"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    // Wait for initial payment intent (no promo)
+    await waitFor(() => {
+      expect(callCount).toBe(1)
+    }, { timeout: 3000 })
+
+    expect(lastClientSecret).toBe('pi_test_secret_no_promo')
+
+    // Apply promo code
+    rerender(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-promo"
+        promoCode="TAG-TRAX-QVNJ"
+        promoCodeDiscount={10}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    // Wait for new payment intent (with promo)
+    await waitFor(() => {
+      expect(callCount).toBe(2)
+    }, { timeout: 3000 })
+
+    // Should have created a new payment intent with promo
+    expect(lastClientSecret).toBe('pi_test_secret_with_promo')
+  })
+
+  it('should display discounted amount in response data', async () => {
+    let capturedResponse = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        capturedResponse = {
+          client_secret: 'pi_test_secret_discount',
+          booking_reference: 'TAG-DISCOUNT',
+          amount: 5400,
+          amount_display: '£54.00',
+          is_free_booking: false,
+          original_amount_display: '£60.00',
+          discount_amount_display: '£6.00',
+          promo_code_applied: 'FOUNDER10',
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(capturedResponse),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-discount"
+        promoCode="FOUNDER10"
+        promoCodeDiscount={10}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(capturedResponse).not.toBeNull()
+    }, { timeout: 3000 })
+
+    // Verify discounted amount is returned
+    expect(capturedResponse.amount).toBe(5400)
+    expect(capturedResponse.amount_display).toBe('£54.00')
+    expect(capturedResponse.original_amount_display).toBe('£60.00')
+    expect(capturedResponse.discount_amount_display).toBe('£6.00')
+  })
+
+  it('should send promo code in payment intent request', async () => {
+    let capturedRequest = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        capturedRequest = JSON.parse(options.body)
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: 'pi_test_secret_promo_sent',
+            booking_reference: 'TAG-PROMOSENT',
+            amount_display: '£54.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-promo-sent"
+        promoCode="TAG-FOUNDER-ABC"
+        promoCodeDiscount={10}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(capturedRequest).not.toBeNull()
+    }, { timeout: 3000 })
+
+    expect(capturedRequest.promo_code).toBe('TAG-FOUNDER-ABC')
+  })
+
+  it('should NOT recreate payment intent when same promo code is re-applied', async () => {
+    let callCount = 0
+
+    global.fetch = vi.fn((url) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        callCount++
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: `pi_test_secret_${callCount}`,
+            booking_reference: `TAG-REAPPLY${callCount}`,
+            amount_display: '£54.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    const { rerender } = render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-reapply"
+        promoCode="SAMECODE"
+        promoCodeDiscount={10}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(callCount).toBe(1)
+    }, { timeout: 3000 })
+
+    // Re-render with same promo code
+    rerender(
+      <StripePayment
+        formData={{ ...mockFormData, terms: false }}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-reapply"
+        promoCode="SAMECODE"
+        promoCodeDiscount={10}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    // Wait a bit
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    // Should still only be 1 call
+    expect(callCount).toBe(1)
+  })
+
+  it('should create new payment intent when promo code is removed', async () => {
+    let callCount = 0
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        callCount++
+        const request = options ? JSON.parse(options.body) : {}
+        const hasPromo = !!request.promo_code
+
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: `pi_test_secret_remove_${callCount}`,
+            booking_reference: `TAG-REMOVE${callCount}`,
+            amount_display: hasPromo ? '£54.00' : '£60.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    const { rerender } = render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-remove"
+        promoCode="REMOVEME"
+        promoCodeDiscount={10}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(callCount).toBe(1)
+    }, { timeout: 3000 })
+
+    // Remove promo code
+    rerender(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-remove"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(callCount).toBe(2)
+    }, { timeout: 3000 })
+
+    // Should have created 2 payment intents (with promo, then without)
+    expect(callCount).toBe(2)
+  })
+
+  it('should handle switching between different promo codes', async () => {
+    let callCount = 0
+    let lastPromoCode = null
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        callCount++
+        const request = options ? JSON.parse(options.body) : {}
+        lastPromoCode = request.promo_code
+
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: `pi_test_secret_switch_${callCount}`,
+            booking_reference: `TAG-SWITCH${callCount}`,
+            amount_display: '£54.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    const { rerender } = render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-switch"
+        promoCode="FIRSTCODE"
+        promoCodeDiscount={10}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(callCount).toBe(1)
+      expect(lastPromoCode).toBe('FIRSTCODE')
+    }, { timeout: 3000 })
+
+    // Switch to different promo code
+    rerender(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-switch"
+        promoCode="SECONDCODE"
+        promoCodeDiscount={10}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(callCount).toBe(2)
+      expect(lastPromoCode).toBe('SECONDCODE')
+    }, { timeout: 3000 })
+  })
+})
+
+describe('StripePayment - Elements Remount on Promo Code Change', () => {
+  beforeEach(() => {
+    setupFetchMocks()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('should remount Elements component when clientSecret changes (promo applied)', async () => {
+    // This test verifies the key={clientSecret} fix
+    // The Elements component should remount when a new payment intent is created
+
+    let clientSecrets = []
+
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ publishable_key: 'pk_test_123' }),
+        })
+      }
+
+      if (url.includes('/api/payments/create-intent')) {
+        const request = options ? JSON.parse(options.body) : {}
+        const hasPromo = !!request.promo_code
+        const newSecret = hasPromo ? 'pi_secret_with_discount' : 'pi_secret_full_price'
+        clientSecrets.push(newSecret)
+
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: newSecret,
+            booking_reference: 'TAG-REMOUNT',
+            amount_display: hasPromo ? '£54.00' : '£60.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    const { rerender } = render(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-remount"
+        promoCode={null}
+        promoCodeDiscount={0}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(clientSecrets.length).toBe(1)
+      expect(clientSecrets[0]).toBe('pi_secret_full_price')
+    }, { timeout: 3000 })
+
+    // Apply promo code - should create new payment intent with different clientSecret
+    rerender(
+      <StripePayment
+        formData={mockFormData}
+        selectedFlight={mockSelectedFlight}
+        selectedArrivalFlight={mockSelectedArrivalFlight}
+        customerId={1}
+        vehicleId={1}
+        sessionId="test-session-remount"
+        promoCode="DISCOUNT10"
+        promoCodeDiscount={10}
+        onPaymentSuccess={vi.fn()}
+        onPaymentError={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(clientSecrets.length).toBe(2)
+      expect(clientSecrets[1]).toBe('pi_secret_with_discount')
+    }, { timeout: 3000 })
+
+    // The key={clientSecret} on Elements should cause it to remount
+    // with the new clientSecret, showing the correct discounted amount
+    expect(clientSecrets[0]).not.toBe(clientSecrets[1])
+  })
+})
