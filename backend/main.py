@@ -658,11 +658,12 @@ async def validate_promo_code(
             message="Please enter a promo code",
         )
 
-    # Look up the promo code across all code fields (legacy, 10%, and free)
+    # Look up the promo code across all code fields (legacy, 10%, free, and founder)
     subscriber = db.query(MarketingSubscriber).filter(
         (MarketingSubscriber.promo_code == code) |
         (MarketingSubscriber.promo_10_code == code) |
-        (MarketingSubscriber.promo_free_code == code)
+        (MarketingSubscriber.promo_free_code == code) |
+        (MarketingSubscriber.founder_promo_code == code)
     ).first()
 
     if not subscriber:
@@ -672,7 +673,14 @@ async def validate_promo_code(
         )
 
     # Determine which promo type this code belongs to and check if used
-    if subscriber.promo_10_code and subscriber.promo_10_code == code:
+    if subscriber.founder_promo_code and subscriber.founder_promo_code == code:
+        if subscriber.founder_promo_used:
+            return PromoCodeValidateResponse(
+                valid=False,
+                message="This promo code has already been used",
+            )
+        discount = 10
+    elif subscriber.promo_10_code and subscriber.promo_10_code == code:
         if subscriber.promo_10_used:
             return PromoCodeValidateResponse(
                 valid=False,
@@ -5592,11 +5600,16 @@ async def create_payment(
                 subscriber = db.query(MarketingSubscriber).filter(
                     (MarketingSubscriber.promo_code == promo_code_applied) |
                     (MarketingSubscriber.promo_10_code == promo_code_applied) |
-                    (MarketingSubscriber.promo_free_code == promo_code_applied)
+                    (MarketingSubscriber.promo_free_code == promo_code_applied) |
+                    (MarketingSubscriber.founder_promo_code == promo_code_applied)
                 ).first()
                 if subscriber:
                     now = datetime.utcnow()
-                    if subscriber.promo_10_code and subscriber.promo_10_code == promo_code_applied:
+                    if subscriber.founder_promo_code and subscriber.founder_promo_code == promo_code_applied:
+                        subscriber.founder_promo_used = True
+                        subscriber.founder_promo_used_at = now
+                        subscriber.founder_promo_used_booking_id = booking_id
+                    elif subscriber.promo_10_code and subscriber.promo_10_code == promo_code_applied:
                         subscriber.promo_10_used = True
                         subscriber.promo_10_used_at = now
                         subscriber.promo_10_used_booking_id = booking_id
@@ -6022,11 +6035,16 @@ async def stripe_webhook(
                 subscriber = db.query(MarketingSubscriber).filter(
                     (MarketingSubscriber.promo_code == promo_code) |
                     (MarketingSubscriber.promo_10_code == promo_code) |
-                    (MarketingSubscriber.promo_free_code == promo_code)
+                    (MarketingSubscriber.promo_free_code == promo_code) |
+                    (MarketingSubscriber.founder_promo_code == promo_code)
                 ).first()
                 if subscriber:
                     now = datetime.utcnow()
-                    if subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
+                    if subscriber.founder_promo_code and subscriber.founder_promo_code == promo_code:
+                        subscriber.founder_promo_used = True
+                        subscriber.founder_promo_used_at = now
+                        subscriber.founder_promo_used_booking_id = bid
+                    elif subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
                         subscriber.promo_10_used = True
                         subscriber.promo_10_used_at = now
                         subscriber.promo_10_used_booking_id = bid
