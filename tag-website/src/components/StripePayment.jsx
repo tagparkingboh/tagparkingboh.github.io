@@ -352,6 +352,8 @@ function StripePayment({
   const [initializedWithPromo, setInitializedWithPromo] = useState(undefined)
 
   useEffect(() => {
+    console.log('[StripePayment] useEffect - promoCode:', promoCode, 'discount:', promoCodeDiscount, 'initializedWithPromo:', initializedWithPromo)
+
     const isFree = promoCodeDiscount === 100 && formData.package === 'quick'
 
     // For FREE bookings (1-week + 100% promo), show free booking UI
@@ -366,9 +368,13 @@ function StripePayment({
     }
 
     // Skip if we already created a payment intent with the same promo code
-    if (initializedWithPromo !== undefined && initializedWithPromo === (promoCode || null)) {
+    const currentPromo = promoCode || null
+    if (initializedWithPromo !== undefined && initializedWithPromo === currentPromo) {
+      console.log('[StripePayment] Skipping - already initialized with:', currentPromo)
       return
     }
+
+    console.log('[StripePayment] Creating payment intent - old:', initializedWithPromo, 'new:', currentPromo)
 
     // For PAID bookings, load Stripe and create payment intent
     const initPayment = async () => {
@@ -387,6 +393,7 @@ function StripePayment({
         setStripeLoaded(stripe)
 
         const data = await createPaymentIntent()
+        console.log('[StripePayment] Payment intent response:', data.amount_display, 'promo:', promoCode)
         setInitializedWithPromo(promoCode || null) // Track which promo was used
 
         // Handle response
