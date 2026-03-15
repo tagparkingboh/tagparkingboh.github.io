@@ -5193,45 +5193,45 @@ async def create_payment(
                 # Check if there's an existing payment record with a valid PaymentIntent
                 existing_payment = existing_booking.payment
                 if existing_payment and existing_payment.stripe_payment_intent_id:
-                    # Get the promo code used for the existing booking
-                    existing_promo = existing_booking.promo_code
-                    new_promo = request.promo_code.strip().upper() if request.promo_code else None
-                    promo_changed = existing_promo != new_promo
-                    print(f"[DEDUP] Existing promo: {existing_promo}, New promo: {new_promo}, Changed: {promo_changed}")
+                    try:
+                        # Retrieve the existing PaymentIntent from Stripe to check promo and status
+                        intent = stripe.PaymentIntent.retrieve(existing_payment.stripe_payment_intent_id)
 
-                    if promo_changed:
-                        # Promo code changed - cancel old PaymentIntent and delete old payment record
-                        print(f"[DEDUP] Promo code changed - canceling old PaymentIntent and creating new one")
-                        try:
-                            stripe.PaymentIntent.cancel(existing_payment.stripe_payment_intent_id)
-                            print(f"[DEDUP] Canceled old PaymentIntent: {existing_payment.stripe_payment_intent_id}")
-                        except stripe.error.StripeError as e:
-                            print(f"[DEDUP] Could not cancel old PaymentIntent (may already be canceled): {e}")
-                        # Delete the old payment record so we can create a fresh one
-                        db.delete(existing_payment)
-                        db.commit()
-                        print(f"[DEDUP] Deleted old payment record")
-                        # Continue to create new payment intent below, will reuse existing booking
-                    else:
-                        try:
-                            # Retrieve the existing PaymentIntent from Stripe
-                            intent = stripe.PaymentIntent.retrieve(existing_payment.stripe_payment_intent_id)
-                            if intent.status in ['requires_payment_method', 'requires_confirmation', 'requires_action']:
-                                # PaymentIntent is still usable - return it
-                                print(f"[DEDUP] Reusing existing PaymentIntent {intent.id} (status: {intent.status})")
-                                settings = get_settings()
-                                return CreatePaymentResponse(
-                                    client_secret=intent.client_secret,
-                                    payment_intent_id=intent.id,
-                                    booking_reference=existing_booking.reference,
-                                    amount=intent.amount,
-                                    amount_display=f"£{intent.amount / 100:.2f}",
-                                    publishable_key=settings.stripe_publishable_key,
-                                )
-                            else:
-                                print(f"[DEDUP] Existing PaymentIntent {intent.id} not usable (status: {intent.status})")
-                        except stripe.error.StripeError as e:
-                            print(f"[DEDUP] Could not retrieve PaymentIntent: {e}")
+                        # Get the promo code from PaymentIntent metadata
+                        existing_promo = intent.metadata.get('promo_code') if intent.metadata else None
+                        new_promo = request.promo_code.strip().upper() if request.promo_code else None
+                        promo_changed = existing_promo != new_promo
+                        print(f"[DEDUP] Existing promo: {existing_promo}, New promo: {new_promo}, Changed: {promo_changed}")
+
+                        if promo_changed:
+                            # Promo code changed - cancel old PaymentIntent and delete old payment record
+                            print(f"[DEDUP] Promo code changed - canceling old PaymentIntent and creating new one")
+                            try:
+                                stripe.PaymentIntent.cancel(existing_payment.stripe_payment_intent_id)
+                                print(f"[DEDUP] Canceled old PaymentIntent: {existing_payment.stripe_payment_intent_id}")
+                            except stripe.error.StripeError as e:
+                                print(f"[DEDUP] Could not cancel old PaymentIntent (may already be canceled): {e}")
+                            # Delete the old payment record so we can create a fresh one
+                            db.delete(existing_payment)
+                            db.commit()
+                            print(f"[DEDUP] Deleted old payment record")
+                            # Continue to create new payment intent below, will reuse existing booking
+                        elif intent.status in ['requires_payment_method', 'requires_confirmation', 'requires_action']:
+                            # PaymentIntent is still usable and promo hasn't changed - return it
+                            print(f"[DEDUP] Reusing existing PaymentIntent {intent.id} (status: {intent.status})")
+                            settings = get_settings()
+                            return CreatePaymentResponse(
+                                client_secret=intent.client_secret,
+                                payment_intent_id=intent.id,
+                                booking_reference=existing_booking.reference,
+                                amount=intent.amount,
+                                amount_display=f"£{intent.amount / 100:.2f}",
+                                publishable_key=settings.stripe_publishable_key,
+                            )
+                        else:
+                            print(f"[DEDUP] Existing PaymentIntent {intent.id} not usable (status: {intent.status})")
+                    except stripe.error.StripeError as e:
+                        print(f"[DEDUP] Could not retrieve PaymentIntent: {e}")
                 # If we get here, existing payment isn't usable - continue to create new one
                 # But we'll still use the existing booking reference
 
@@ -5367,12 +5367,8 @@ async def create_payment(
 
         # Check if we can reuse an existing booking (promo changed case)
         if existing_booking and promo_changed:
-            # Reuse the existing booking, just update the promo-related fields
-            print(f"[DEDUP] Reusing existing booking {existing_booking.reference}, updating promo fields")
-            existing_booking.promo_code = promo_code_applied
-            existing_booking.original_amount = original_amount if promo_code_applied else None
-            existing_booking.discount_amount = discount_amount if promo_code_applied else None
-            existing_booking.amount = amount
+            # Reuse the existing booking reference - promo info will be stored in new PaymentIntent metadata
+            print(f"[DEDUP] Reusing existing booking {existing_booking.reference} for new promo")
             existing_booking.updated_at = datetime.utcnow()
             db.commit()
             db.refresh(existing_booking)
