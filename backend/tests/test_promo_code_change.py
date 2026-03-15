@@ -9,6 +9,10 @@ Covers:
 - Integration tests: Full flow with mocked Stripe and database
 
 All tests use mocked data to avoid database and Stripe API conflicts.
+
+NOTE: Promo codes are stored in Stripe PaymentIntent metadata, NOT in the
+Booking database table. The promo change detection retrieves the existing
+promo from intent.metadata.get('promo_code').
 """
 import pytest
 from unittest.mock import MagicMock, patch, Mock
@@ -31,7 +35,11 @@ FUTURE_DATE_END = TODAY + timedelta(days=97)
 # =============================================================================
 
 class TestPromoCodeChangeDetection:
-    """Tests for detecting when promo code has changed."""
+    """Tests for detecting when promo code has changed.
+
+    Promo codes are stored in Stripe PaymentIntent metadata, retrieved via:
+    existing_promo = intent.metadata.get('promo_code')
+    """
 
     def test_promo_added_detected_as_change(self):
         """Adding a promo code (None -> 'CODE') should be detected as change."""
@@ -109,6 +117,33 @@ class TestPromoCodeChangeDetection:
         promo_changed = existing_promo != new_promo
 
         assert promo_changed is False
+
+    def test_promo_from_payment_intent_metadata(self):
+        """Promo code should be retrieved from PaymentIntent metadata."""
+        mock_intent = MagicMock()
+        mock_intent.metadata = {'promo_code': 'FOUNDER-ABC123', 'booking_reference': 'TAG-TEST01'}
+
+        existing_promo = mock_intent.metadata.get('promo_code') if mock_intent.metadata else None
+
+        assert existing_promo == 'FOUNDER-ABC123'
+
+    def test_promo_from_payment_intent_metadata_none(self):
+        """Should return None when no promo_code in metadata."""
+        mock_intent = MagicMock()
+        mock_intent.metadata = {'booking_reference': 'TAG-TEST01'}  # No promo_code
+
+        existing_promo = mock_intent.metadata.get('promo_code') if mock_intent.metadata else None
+
+        assert existing_promo is None
+
+    def test_promo_from_payment_intent_empty_metadata(self):
+        """Should return None when metadata is empty or None."""
+        mock_intent = MagicMock()
+        mock_intent.metadata = None
+
+        existing_promo = mock_intent.metadata.get('promo_code') if mock_intent.metadata else None
+
+        assert existing_promo is None
 
 
 # =============================================================================
@@ -194,60 +229,62 @@ class TestPaymentRecordDeletion:
 
 
 # =============================================================================
-# UNIT TESTS: Booking Update on Promo Change
+# UNIT TESTS: PaymentIntent Update on Promo Change
 # =============================================================================
 
-class TestBookingUpdateOnPromoChange:
-    """Tests for booking field updates when promo changes."""
+class TestPaymentIntentUpdateOnPromoChange:
+    """Tests for PaymentIntent updates when promo changes.
 
-    def test_booking_promo_code_updated(self):
-        """Booking's promo_code field should be updated."""
-        mock_booking = MagicMock(spec=Booking)
-        mock_booking.promo_code = "OLD-PROMO"
+    NOTE: Promo info is stored in PaymentIntent metadata, NOT in Booking table.
+    When promo changes, old PaymentIntent is canceled and new one is created.
+    """
 
-        new_promo_code = "NEW-PROMO"
-        mock_booking.promo_code = new_promo_code
+    def test_new_payment_intent_has_promo_in_metadata(self):
+        """New PaymentIntent should have promo_code in metadata."""
+        mock_intent = MagicMock()
+        mock_intent.metadata = {
+            'promo_code': 'FOUNDER-ABC123',
+            'booking_reference': 'TAG-TEST01',
+            'original_amount': '27500',
+            'discount_amount': '2750'
+        }
 
-        assert mock_booking.promo_code == "NEW-PROMO"
+        assert mock_intent.metadata['promo_code'] == 'FOUNDER-ABC123'
+        assert mock_intent.metadata['original_amount'] == '27500'
+        assert mock_intent.metadata['discount_amount'] == '2750'
 
-    def test_booking_promo_code_set_to_none_when_removed(self):
-        """Booking's promo_code should be None when promo is removed."""
-        mock_booking = MagicMock(spec=Booking)
-        mock_booking.promo_code = "OLD-PROMO"
+    def test_new_payment_intent_no_promo_when_removed(self):
+        """New PaymentIntent should not have promo_code when promo removed."""
+        mock_intent = MagicMock()
+        mock_intent.metadata = {
+            'booking_reference': 'TAG-TEST01'
+            # No promo_code key
+        }
 
-        mock_booking.promo_code = None
+        promo_code = mock_intent.metadata.get('promo_code')
 
-        assert mock_booking.promo_code is None
+        assert promo_code is None
 
-    def test_booking_amount_updated_with_discount(self):
-        """Booking's amount should reflect the discounted price."""
-        mock_booking = MagicMock(spec=Booking)
+    def test_payment_intent_amount_with_discount(self):
+        """PaymentIntent amount should reflect discounted price."""
         original_amount = 27500  # £275.00 in pence
         discount_percent = 10
         discount_amount = int(original_amount * discount_percent / 100)
         final_amount = original_amount - discount_amount
 
-        mock_booking.amount = final_amount
-        mock_booking.original_amount = original_amount
-        mock_booking.discount_amount = discount_amount
+        mock_intent = MagicMock()
+        mock_intent.amount = final_amount
 
-        assert mock_booking.amount == 24750  # £247.50
-        assert mock_booking.original_amount == 27500
-        assert mock_booking.discount_amount == 2750
+        assert mock_intent.amount == 24750  # £247.50
 
-    def test_booking_amount_updated_to_full_when_promo_removed(self):
-        """Booking's amount should be full price when promo is removed."""
-        mock_booking = MagicMock(spec=Booking)
+    def test_payment_intent_amount_full_when_no_promo(self):
+        """PaymentIntent amount should be full price when no promo."""
         full_amount = 27500  # £275.00 in pence
 
-        mock_booking.amount = full_amount
-        mock_booking.original_amount = None
-        mock_booking.discount_amount = None
-        mock_booking.promo_code = None
+        mock_intent = MagicMock()
+        mock_intent.amount = full_amount
 
-        assert mock_booking.amount == 27500
-        assert mock_booking.original_amount is None
-        assert mock_booking.discount_amount is None
+        assert mock_intent.amount == 27500
 
     def test_booking_updated_at_timestamp_set(self):
         """Booking's updated_at should be set when promo changes."""
@@ -555,160 +592,202 @@ class TestPromoCodeNegativeCases:
 # =============================================================================
 
 class TestPromoChangeIntegration:
-    """Integration tests for the full promo change flow."""
+    """Integration tests for the full promo change flow.
+
+    The actual flow:
+    1. Retrieve existing PaymentIntent from Stripe
+    2. Get promo from intent.metadata.get('promo_code')
+    3. Compare with new request promo
+    4. If changed: cancel old intent, delete payment record, create new intent
+    5. If unchanged: reuse existing intent
+    """
 
     def test_full_flow_promo_added(self):
         """Full flow: No promo -> Promo applied."""
-        # Setup
-        session_id = "test-session-123"
+        import stripe
 
-        # Existing booking without promo
-        mock_booking = MagicMock(spec=Booking)
-        mock_booking.reference = "TAG-TEST01"
-        mock_booking.promo_code = None
-        mock_booking.amount = 27500  # Full price
-        mock_booking.original_amount = None
-        mock_booking.discount_amount = None
-
-        mock_payment = MagicMock(spec=Payment)
-        mock_payment.stripe_payment_intent_id = "pi_old123"
-        mock_booking.payment = mock_payment
+        # Mock existing PaymentIntent without promo
+        mock_existing_intent = MagicMock()
+        mock_existing_intent.id = "pi_old123"
+        mock_existing_intent.status = "requires_payment_method"
+        mock_existing_intent.amount = 27500  # Full price
+        mock_existing_intent.metadata = {}  # No promo
 
         # New request with promo
         new_promo = "FOUNDER-ABC123"
 
-        # Detection
-        promo_changed = mock_booking.promo_code != new_promo
+        # Detection from metadata
+        existing_promo = mock_existing_intent.metadata.get('promo_code')
+        promo_changed = existing_promo != new_promo
+
+        assert existing_promo is None
         assert promo_changed is True
 
-        # After update
-        mock_booking.promo_code = new_promo
-        mock_booking.amount = 24750  # 10% off
-        mock_booking.original_amount = 27500
-        mock_booking.discount_amount = 2750
+        # New intent should have discounted amount
+        mock_new_intent = MagicMock()
+        mock_new_intent.amount = 24750  # 10% off
+        mock_new_intent.metadata = {'promo_code': 'FOUNDER-ABC123'}
 
-        assert mock_booking.promo_code == "FOUNDER-ABC123"
-        assert mock_booking.amount == 24750
+        assert mock_new_intent.amount == 24750
+        assert mock_new_intent.metadata['promo_code'] == "FOUNDER-ABC123"
 
     def test_full_flow_promo_removed(self):
         """Full flow: Promo applied -> Promo removed."""
-        # Setup
-        session_id = "test-session-456"
+        import stripe
 
-        # Existing booking WITH promo
-        mock_booking = MagicMock(spec=Booking)
-        mock_booking.reference = "TAG-TEST02"
-        mock_booking.promo_code = "FOUNDER-ABC123"
-        mock_booking.amount = 24750  # Discounted
-        mock_booking.original_amount = 27500
-        mock_booking.discount_amount = 2750
-
-        mock_payment = MagicMock(spec=Payment)
-        mock_payment.stripe_payment_intent_id = "pi_discounted123"
-        mock_booking.payment = mock_payment
+        # Mock existing PaymentIntent WITH promo
+        mock_existing_intent = MagicMock()
+        mock_existing_intent.id = "pi_discounted123"
+        mock_existing_intent.status = "requires_payment_method"
+        mock_existing_intent.amount = 24750  # Discounted
+        mock_existing_intent.metadata = {'promo_code': 'FOUNDER-ABC123'}
 
         # New request WITHOUT promo
         new_promo = None
 
-        # Detection
-        promo_changed = mock_booking.promo_code != new_promo
+        # Detection from metadata
+        existing_promo = mock_existing_intent.metadata.get('promo_code')
+        promo_changed = existing_promo != new_promo
+
+        assert existing_promo == "FOUNDER-ABC123"
         assert promo_changed is True
 
-        # After update
-        mock_booking.promo_code = None
-        mock_booking.amount = 27500  # Full price
-        mock_booking.original_amount = None
-        mock_booking.discount_amount = None
+        # New intent should have full amount
+        mock_new_intent = MagicMock()
+        mock_new_intent.amount = 27500  # Full price
+        mock_new_intent.metadata = {}  # No promo
 
-        assert mock_booking.promo_code is None
-        assert mock_booking.amount == 27500
+        assert mock_new_intent.amount == 27500
+        assert mock_new_intent.metadata.get('promo_code') is None
 
     def test_full_flow_promo_changed(self):
-        """Full flow: Promo A -> Promo B (different discount)."""
-        # Setup - existing booking with 10% promo
-        mock_booking = MagicMock(spec=Booking)
-        mock_booking.reference = "TAG-TEST03"
-        mock_booking.promo_code = "PROMO-10-OLD"
-        mock_booking.amount = 24750
+        """Full flow: Promo A -> Promo B."""
+        # Mock existing PaymentIntent with promo A
+        mock_existing_intent = MagicMock()
+        mock_existing_intent.id = "pi_promoA"
+        mock_existing_intent.status = "requires_payment_method"
+        mock_existing_intent.metadata = {'promo_code': 'PROMO-10-OLD'}
 
-        mock_payment = MagicMock(spec=Payment)
-        mock_payment.stripe_payment_intent_id = "pi_old_promo"
-        mock_booking.payment = mock_payment
-
-        # New promo (also 10% but different code)
+        # New promo B
         new_promo = "FOUNDER-NEW123"
 
-        # Detection
-        promo_changed = mock_booking.promo_code != new_promo
+        # Detection from metadata
+        existing_promo = mock_existing_intent.metadata.get('promo_code')
+        promo_changed = existing_promo != new_promo
+
+        assert existing_promo == "PROMO-10-OLD"
         assert promo_changed is True
 
-        # After update (same discount, different code)
-        mock_booking.promo_code = new_promo
-        # Amount stays same if discount % is same
-
-        assert mock_booking.promo_code == "FOUNDER-NEW123"
-
-    def test_full_flow_with_stripe_cancel(self):
-        """Full flow including Stripe PaymentIntent cancellation."""
+    def test_full_flow_with_stripe_cancel_and_retrieve(self):
+        """Full flow: Retrieve intent, check promo, cancel if changed."""
         import stripe
 
-        with patch.object(stripe.PaymentIntent, 'cancel') as mock_cancel:
-            with patch.object(stripe.PaymentIntent, 'create') as mock_create:
-                mock_cancel.return_value = MagicMock(status='canceled')
-                mock_create.return_value = MagicMock(
-                    id='pi_new123',
-                    client_secret='pi_new123_secret',
-                    status='requires_payment_method'
-                )
+        with patch.object(stripe.PaymentIntent, 'retrieve') as mock_retrieve:
+            with patch.object(stripe.PaymentIntent, 'cancel') as mock_cancel:
+                with patch.object(stripe.PaymentIntent, 'create') as mock_create:
+                    # Setup: existing intent with promo
+                    mock_existing = MagicMock()
+                    mock_existing.id = "pi_old123"
+                    mock_existing.status = "requires_payment_method"
+                    mock_existing.metadata = {'promo_code': 'OLD-PROMO'}
+                    mock_retrieve.return_value = mock_existing
 
-                # Simulate the flow
-                old_intent_id = "pi_old123"
+                    mock_cancel.return_value = MagicMock(status='canceled')
+                    mock_create.return_value = MagicMock(
+                        id='pi_new123',
+                        client_secret='pi_new123_secret',
+                        status='requires_payment_method',
+                        amount=27500
+                    )
 
-                # Step 1: Cancel old intent
-                result = stripe.PaymentIntent.cancel(old_intent_id)
-                assert result.status == 'canceled'
+                    # Step 1: Retrieve existing intent
+                    intent = stripe.PaymentIntent.retrieve("pi_old123")
+                    existing_promo = intent.metadata.get('promo_code')
 
-                # Step 2: Create new intent
-                new_intent = stripe.PaymentIntent.create(
-                    amount=27500,
-                    currency='gbp'
-                )
-                assert new_intent.id == 'pi_new123'
+                    # Step 2: Check if promo changed (removing promo)
+                    new_promo = None
+                    promo_changed = existing_promo != new_promo
+                    assert promo_changed is True
 
-                mock_cancel.assert_called_once_with(old_intent_id)
-                mock_create.assert_called_once()
+                    # Step 3: Cancel old intent
+                    result = stripe.PaymentIntent.cancel("pi_old123")
+                    assert result.status == 'canceled'
+
+                    # Step 4: Create new intent
+                    new_intent = stripe.PaymentIntent.create(
+                        amount=27500,
+                        currency='gbp'
+                    )
+                    assert new_intent.id == 'pi_new123'
+                    assert new_intent.amount == 27500
+
+                    mock_retrieve.assert_called_once_with("pi_old123")
+                    mock_cancel.assert_called_once_with("pi_old123")
+                    mock_create.assert_called_once()
 
     def test_full_flow_no_existing_booking(self):
         """Full flow: No existing booking (first payment attempt)."""
         session_id = "new-session-789"
         existing_booking = None
 
-        # No promo change detection needed
-        promo_changed = False  # Can't compare if no existing booking
+        # No promo change detection needed - just create new booking
+        should_create_new = existing_booking is None
 
-        if existing_booking and existing_booking.promo_code:
-            promo_changed = existing_booking.promo_code != "NEW-PROMO"
-
-        assert promo_changed is False
-        # Code should proceed to create new booking
+        assert should_create_new is True
 
     def test_full_flow_same_promo_reused(self):
         """Full flow: Same promo code -> PaymentIntent reused."""
-        # Existing booking with promo
-        mock_booking = MagicMock(spec=Booking)
-        mock_booking.promo_code = "FOUNDER-ABC123"
+        import stripe
 
+        with patch.object(stripe.PaymentIntent, 'retrieve') as mock_retrieve:
+            # Setup: existing intent with promo
+            mock_existing = MagicMock()
+            mock_existing.id = "pi_existing123"
+            mock_existing.status = "requires_payment_method"
+            mock_existing.amount = 24750
+            mock_existing.client_secret = "pi_existing123_secret"
+            mock_existing.metadata = {'promo_code': 'FOUNDER-ABC123'}
+            mock_retrieve.return_value = mock_existing
+
+            # Retrieve intent
+            intent = stripe.PaymentIntent.retrieve("pi_existing123")
+            existing_promo = intent.metadata.get('promo_code')
+
+            # Same promo in new request
+            new_promo = "FOUNDER-ABC123"
+            promo_changed = existing_promo != new_promo
+
+            assert promo_changed is False
+            # Should reuse existing PaymentIntent (not cancel)
+            assert intent.status == "requires_payment_method"
+
+    def test_full_flow_payment_record_deleted_on_promo_change(self):
+        """Payment record should be deleted when promo changes."""
+        mock_db = MagicMock()
         mock_payment = MagicMock(spec=Payment)
-        mock_payment.stripe_payment_intent_id = "pi_existing123"
-        mock_booking.payment = mock_payment
+        mock_payment.stripe_payment_intent_id = "pi_old123"
 
-        # Same promo in new request
-        new_promo = "FOUNDER-ABC123"
+        promo_changed = True
 
-        promo_changed = mock_booking.promo_code != new_promo
-        assert promo_changed is False
+        if promo_changed:
+            # Simulate: cancel intent, delete payment record
+            mock_db.delete(mock_payment)
+            mock_db.commit()
 
-        # Should reuse existing PaymentIntent (not cancel)
+        mock_db.delete.assert_called_once_with(mock_payment)
+        mock_db.commit.assert_called_once()
+
+    def test_full_flow_booking_reference_preserved(self):
+        """Booking reference should be preserved when promo changes."""
+        mock_booking = MagicMock(spec=Booking)
+        mock_booking.reference = "TAG-PRESERVE01"
+
+        promo_changed = True
+
+        # After promo change, same booking reference should be used
+        booking_reference = mock_booking.reference
+
+        assert booking_reference == "TAG-PRESERVE01"
 
 
 # =============================================================================
