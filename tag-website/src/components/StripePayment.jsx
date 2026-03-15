@@ -603,7 +603,7 @@ function StripePayment({
 
   return (
     <div className="stripe-payment-container">
-      <Elements stripe={stripeLoaded} options={options}>
+      <Elements key={clientSecret} stripe={stripeLoaded} options={options}>
         <CheckoutForm
           onSuccess={handleSuccess}
           onError={handleError}
