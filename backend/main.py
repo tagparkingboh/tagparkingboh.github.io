@@ -5244,12 +5244,16 @@ async def create_payment(
             subscriber = db.query(MarketingSubscriber).filter(
                 (MarketingSubscriber.promo_code == promo_code) |
                 (MarketingSubscriber.promo_10_code == promo_code) |
-                (MarketingSubscriber.promo_free_code == promo_code)
+                (MarketingSubscriber.promo_free_code == promo_code) |
+                (MarketingSubscriber.founder_promo_code == promo_code)
             ).first()
             if subscriber:
                 # Determine which promo type this code belongs to
                 promo_used = False
-                if subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
+                if subscriber.founder_promo_code and subscriber.founder_promo_code == promo_code:
+                    promo_used = subscriber.founder_promo_used
+                    discount_percent = 10
+                elif subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
                     promo_used = subscriber.promo_10_used
                     discount_percent = 10
                 elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code:
