@@ -864,7 +864,7 @@ function Admin() {
       })
       if (response.ok) {
         const data = await response.json()
-        // Update the local state
+        // Update the local state for codes table
         setPromotionDetails(prev => ({
           ...prev,
           [promotionId]: {
@@ -876,6 +876,8 @@ function Admin() {
             )
           }
         }))
+        // Auto-refresh promotions list to update codes_available count
+        fetchPromotions()
       }
     } catch (err) {
       console.error('Failed to toggle shared on socials:', err)
