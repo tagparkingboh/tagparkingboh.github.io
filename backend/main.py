@@ -83,6 +83,9 @@ from email_scheduler import start_scheduler, stop_scheduler
 # Email service
 from email_service import send_booking_confirmation_email, send_login_code_email
 
+# Routers
+from routers.roster import router as roster_router
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -110,6 +113,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(roster_router)
 
 
 def run_migrations():

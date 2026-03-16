@@ -20,6 +20,25 @@ class BookingStatus(enum.Enum):
     REFUNDED = "refunded"         # Payment refunded
 
 
+class ShiftType(enum.Enum):
+    """Type of roster shift."""
+    DEPARTURE = "departure"       # Customer drop-off
+    ARRIVAL = "arrival"           # Customer pick-up
+    STORAGE = "storage"           # Storage facility tasks
+    ADMIN = "admin"               # Administrative tasks
+    OTHER = "other"               # Miscellaneous
+
+
+class ShiftStatus(enum.Enum):
+    """Status of a roster shift."""
+    SCHEDULED = "scheduled"       # Shift created, not yet confirmed
+    CONFIRMED = "confirmed"       # Staff confirmed availability
+    IN_PROGRESS = "in_progress"   # Shift currently active
+    COMPLETED = "completed"       # Shift finished
+    CANCELLED = "cancelled"       # Shift cancelled
+    NO_SHOW = "no_show"           # Staff did not show up
+
+
 class PaymentStatus(enum.Enum):
     """Status of a payment."""
     PENDING = "pending"           # Payment intent created
@@ -879,3 +898,70 @@ class PromoCode(Base):
     def __repr__(self):
         status = "used" if self.is_used else ("sent" if self.email_sent else "unsent")
         return f"<PromoCode {self.code} - {status}>"
+
+
+class RosterShift(Base):
+    """Roster shift for staff scheduling."""
+    __tablename__ = "roster_shifts"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Staff assignment (nullable = unassigned shift)
+    staff_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    # Optional booking link (nullable for admin/storage tasks)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True, index=True)
+
+    # Shift timing
+    date = Column(Date, nullable=False, index=True)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+
+    # Shift classification
+    shift_type = Column(
+        Enum(ShiftType, values_callable=lambda x: [e.value for e in x]),
+        nullable=False
+    )
+    status = Column(
+        Enum(ShiftStatus, values_callable=lambda x: [e.value for e in x]),
+        default=ShiftStatus.SCHEDULED,
+        nullable=False
+    )
+
+    # Notes
+    notes = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    staff = relationship("User", foreign_keys=[staff_id])
+    booking = relationship("Booking", foreign_keys=[booking_id])
+
+    def __repr__(self):
+        staff_name = f"{self.staff.first_name} {self.staff.last_name}" if self.staff else "Unassigned"
+        return f"<RosterShift {self.id} - {self.shift_type.value} on {self.date} ({staff_name})>"
+
+    @property
+    def staff_initials(self):
+        """Get staff initials (e.g., 'JC' for James Carter)."""
+        if self.staff:
+            return f"{self.staff.first_name[0]}{self.staff.last_name[0]}".upper()
+        return None
+
+    @property
+    def is_overnight(self):
+        """Check if shift crosses midnight (end_time < start_time)."""
+        return self.end_time < self.start_time
+
+    @property
+    def duration_minutes(self):
+        """Calculate shift duration in minutes."""
+        start_mins = self.start_time.hour * 60 + self.start_time.minute
+        end_mins = self.end_time.hour * 60 + self.end_time.minute
+
+        if self.is_overnight:
+            # Add 24 hours worth of minutes for overnight shifts
+            return (24 * 60 - start_mins) + end_mins
+        return end_mins - start_mins

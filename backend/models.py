@@ -433,3 +433,128 @@ class SendPromoEmailsResponse(BaseModel):
     total_sent: int
     total_failed: int
     errors: List[str] = []
+
+
+# ============================================================================
+# Roster & Staff Management Models
+# ============================================================================
+
+class ShiftTypeEnum(str, Enum):
+    """Type of roster shift."""
+    DEPARTURE = "departure"
+    ARRIVAL = "arrival"
+    STORAGE = "storage"
+    ADMIN = "admin"
+    OTHER = "other"
+
+
+class ShiftStatusEnum(str, Enum):
+    """Status of a roster shift."""
+    SCHEDULED = "scheduled"
+    CONFIRMED = "confirmed"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    NO_SHOW = "no_show"
+
+
+class EmployeeCreate(BaseModel):
+    """Request to create a new employee."""
+    first_name: str = Field(..., min_length=1, max_length=50)
+    last_name: str = Field(..., min_length=1, max_length=50)
+    email: str
+    phone: str
+
+
+class EmployeeUpdate(BaseModel):
+    """Request to update an employee."""
+    first_name: Optional[str] = Field(None, min_length=1, max_length=50)
+    last_name: Optional[str] = Field(None, min_length=1, max_length=50)
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class EmployeeResponse(BaseModel):
+    """Response model for an employee."""
+    id: int
+    first_name: str
+    last_name: str
+    email: str
+    phone: Optional[str] = None
+    is_admin: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class RosterShiftCreate(BaseModel):
+    """Request to create a roster shift."""
+    staff_id: Optional[int] = None  # Nullable = unassigned
+    booking_id: Optional[int] = None
+    date: date
+    start_time: str  # "HH:MM"
+    end_time: str  # "HH:MM"
+    shift_type: ShiftTypeEnum
+    status: ShiftStatusEnum = ShiftStatusEnum.SCHEDULED
+    notes: Optional[str] = None
+
+
+class RosterShiftUpdate(BaseModel):
+    """Request to update a roster shift."""
+    staff_id: Optional[int] = None
+    booking_id: Optional[int] = None
+    date: Optional[date] = None
+    start_time: Optional[str] = None  # "HH:MM"
+    end_time: Optional[str] = None  # "HH:MM"
+    shift_type: Optional[ShiftTypeEnum] = None
+    status: Optional[ShiftStatusEnum] = None
+    notes: Optional[str] = None
+
+
+class RosterShiftResponse(BaseModel):
+    """Response model for a roster shift."""
+    id: int
+    staff_id: Optional[int] = None
+    staff_first_name: Optional[str] = None
+    staff_last_name: Optional[str] = None
+    staff_initials: Optional[str] = None
+    booking_id: Optional[int] = None
+    booking_reference: Optional[str] = None
+    date: date
+    start_time: str  # "HH:MM"
+    end_time: str  # "HH:MM"
+    shift_type: str
+    status: str
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AutoAssignRequest(BaseModel):
+    """Request to auto-generate shifts from bookings."""
+    date_from: date
+    date_to: date
+    clear_existing: bool = False  # If True, delete scheduled shifts first
+
+
+class AutoAssignResponse(BaseModel):
+    """Response after auto-generating shifts."""
+    success: bool
+    shifts_created: int
+    shifts_deleted: int = 0
+    shifts: List[RosterShiftResponse] = []
+
+
+class OperationalWarning(BaseModel):
+    """Warning for operational rule violations."""
+    shift_id: Optional[int] = None
+    rule: str
+    message: str
+    severity: str = "warning"  # "warning" or "error"
