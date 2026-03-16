@@ -1229,6 +1229,62 @@ class TestStatisticsAndCounters:
         available = _mock_store.get_available_codes(promo.id)
         assert len(available) == 7
 
+    def test_codes_available_excludes_shared_on_socials(self, mock_db):
+        """Test that codes_available excludes codes shared on socials."""
+        promo = _mock_store.add_promotion("Social Test", 10, 5)
+        codes = [_mock_store.add_promo_code(promo.id) for _ in range(5)]
+
+        # Mark 2 codes as shared on socials
+        codes[0].shared_on_socials = True
+        codes[0].shared_on_socials_at = get_uk_now()
+        codes[1].shared_on_socials = True
+        codes[1].shared_on_socials_at = get_uk_now()
+
+        # Calculate available (not sent, not used, not shared on socials)
+        available = [c for c in codes if not c.email_sent and not c.is_used and not c.shared_on_socials]
+        assert len(available) == 3
+
+    def test_codes_available_excludes_used_codes(self, mock_db):
+        """Test that codes_available excludes used codes even if not sent."""
+        promo = _mock_store.add_promotion("Used Test", 10, 5)
+        codes = [_mock_store.add_promo_code(promo.id) for _ in range(5)]
+
+        # Mark 1 code as used (via social media, not emailed)
+        codes[0].is_used = True
+        codes[0].used_at = get_uk_now()
+        codes[0].booking_id = 123
+
+        # Calculate available
+        available = [c for c in codes if not c.email_sent and not c.is_used and not c.shared_on_socials]
+        assert len(available) == 4
+
+    def test_codes_available_full_scenario(self, mock_db):
+        """Test codes_available with mix of sent, used, and shared codes."""
+        promo = _mock_store.add_promotion("Full Scenario", 10, 10)
+        codes = [_mock_store.add_promo_code(promo.id) for _ in range(10)]
+
+        # 2 codes emailed
+        codes[0].email_sent = True
+        codes[1].email_sent = True
+
+        # 2 codes shared on socials (not emailed)
+        codes[2].shared_on_socials = True
+        codes[3].shared_on_socials = True
+
+        # 1 code used (was shared on socials)
+        codes[4].shared_on_socials = True
+        codes[4].is_used = True
+        codes[4].booking_id = 100
+
+        # 1 code used (was emailed)
+        codes[5].email_sent = True
+        codes[5].is_used = True
+        codes[5].booking_id = 101
+
+        # Remaining 4 codes are available
+        available = [c for c in codes if not c.email_sent and not c.is_used and not c.shared_on_socials]
+        assert len(available) == 4
+
     def test_promotion_fully_utilized(self, mock_db):
         """Test when all codes are sent and used."""
         promo = _mock_store.add_promotion("Full", 10, 3)
