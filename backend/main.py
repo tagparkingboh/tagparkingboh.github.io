@@ -3807,6 +3807,18 @@ async def list_promotions(
         .all()
     )
 
+    # Get truly available codes count (not sent, not used, not shared on socials)
+    available_counts = dict(
+        db.query(PromoCode.promotion_id, func.count(PromoCode.id))
+        .filter(
+            PromoCode.email_sent == False,
+            PromoCode.is_used == False,
+            PromoCode.shared_on_socials == False
+        )
+        .group_by(PromoCode.promotion_id)
+        .all()
+    )
+
     return {
         "promotions": [
             {
@@ -3818,7 +3830,7 @@ async def list_promotions(
                 "codes_sent": p.codes_sent,
                 "codes_used": p.codes_used,
                 "codes_shared_on_socials": shared_counts.get(p.id, 0),
-                "codes_available": p.total_codes - p.codes_sent,
+                "codes_available": available_counts.get(p.id, 0),
                 "created_by": p.created_by,
                 "created_at": p.created_at,
             }
@@ -3870,6 +3882,20 @@ async def get_promotion(
             "created_at": c.created_at,
         })
 
+    # Count truly available codes (not sent, not used, not shared on socials)
+    codes_available = db.query(PromoCode).filter(
+        PromoCode.promotion_id == promotion_id,
+        PromoCode.email_sent == False,
+        PromoCode.is_used == False,
+        PromoCode.shared_on_socials == False
+    ).count()
+
+    # Count codes shared on socials
+    codes_shared_on_socials = db.query(PromoCode).filter(
+        PromoCode.promotion_id == promotion_id,
+        PromoCode.shared_on_socials == True
+    ).count()
+
     return {
         "id": promotion.id,
         "name": promotion.name,
@@ -3878,7 +3904,8 @@ async def get_promotion(
         "total_codes": promotion.total_codes,
         "codes_sent": promotion.codes_sent,
         "codes_used": promotion.codes_used,
-        "codes_available": promotion.total_codes - promotion.codes_sent,
+        "codes_shared_on_socials": codes_shared_on_socials,
+        "codes_available": codes_available,
         "created_by": promotion.created_by,
         "created_at": promotion.created_at,
         "codes": codes_data,
@@ -3916,6 +3943,20 @@ async def update_promotion(
 
     log_promo(f"Promotion updated: {promotion.name}", {"promotion_id": promotion_id})
 
+    # Count truly available codes
+    from db_models import PromoCode
+    codes_available = db.query(PromoCode).filter(
+        PromoCode.promotion_id == promotion_id,
+        PromoCode.email_sent == False,
+        PromoCode.is_used == False,
+        PromoCode.shared_on_socials == False
+    ).count()
+
+    codes_shared_on_socials = db.query(PromoCode).filter(
+        PromoCode.promotion_id == promotion_id,
+        PromoCode.shared_on_socials == True
+    ).count()
+
     return {
         "id": promotion.id,
         "name": promotion.name,
@@ -3924,7 +3965,8 @@ async def update_promotion(
         "total_codes": promotion.total_codes,
         "codes_sent": promotion.codes_sent,
         "codes_used": promotion.codes_used,
-        "codes_available": promotion.total_codes - promotion.codes_sent,
+        "codes_shared_on_socials": codes_shared_on_socials,
+        "codes_available": codes_available,
         "created_by": promotion.created_by,
         "created_at": promotion.created_at,
     }
