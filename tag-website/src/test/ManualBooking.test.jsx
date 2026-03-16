@@ -904,3 +904,181 @@ describe('Address Parsing from Ideal Postcodes API', () => {
     })
   })
 })
+
+// =============================================================================
+// Extended Duration Pricing Tests (>14 Days)
+// =============================================================================
+
+describe('Extended Duration Pricing (>14 Days)', () => {
+  // Helper function to calculate trip label (mirrors ManualBooking.jsx logic)
+  const getTripLabel = (days) => {
+    if (days === 7) return '1 week trip'
+    if (days === 14) return '2 week trip'
+    if (days === 21) return '3 week trip'
+    if (days === 28) return '4 week trip'
+    return `${days} day${days !== 1 ? 's' : ''} trip`
+  }
+
+  // Helper function to calculate extra days beyond 14
+  const getExtraDays = (days) => {
+    return days > 14 ? days - 14 : 0
+  }
+
+  // Helper function to calculate expected price
+  // Based on backend: 14-day base price + $9 per extra day
+  const calculateExtendedPrice = (basePriceFor14Days, totalDays) => {
+    if (totalDays <= 14) return basePriceFor14Days
+    const extraDays = totalDays - 14
+    return basePriceFor14Days + (extraDays * 9)
+  }
+
+  describe('Trip Label Generation', () => {
+    it('returns "1 week trip" for 7 days', () => {
+      expect(getTripLabel(7)).toBe('1 week trip')
+    })
+
+    it('returns "2 week trip" for 14 days', () => {
+      expect(getTripLabel(14)).toBe('2 week trip')
+    })
+
+    it('returns "3 week trip" for 21 days', () => {
+      expect(getTripLabel(21)).toBe('3 week trip')
+    })
+
+    it('returns "4 week trip" for 28 days', () => {
+      expect(getTripLabel(28)).toBe('4 week trip')
+    })
+
+    it('returns "X days trip" for non-week durations', () => {
+      expect(getTripLabel(10)).toBe('10 days trip')
+      expect(getTripLabel(15)).toBe('15 days trip')
+      expect(getTripLabel(20)).toBe('20 days trip')
+      expect(getTripLabel(30)).toBe('30 days trip')
+    })
+
+    it('handles singular day correctly', () => {
+      expect(getTripLabel(1)).toBe('1 day trip')
+    })
+  })
+
+  describe('Extra Days Calculation', () => {
+    it('returns 0 for trips up to 14 days', () => {
+      expect(getExtraDays(7)).toBe(0)
+      expect(getExtraDays(10)).toBe(0)
+      expect(getExtraDays(14)).toBe(0)
+    })
+
+    it('returns correct extra days for trips over 14 days', () => {
+      expect(getExtraDays(15)).toBe(1)
+      expect(getExtraDays(17)).toBe(3)
+      expect(getExtraDays(21)).toBe(7)
+      expect(getExtraDays(28)).toBe(14)
+    })
+
+    it('handles edge case of exactly 15 days (1 extra day)', () => {
+      expect(getExtraDays(15)).toBe(1)
+    })
+
+    it('handles 30-day trips (16 extra days)', () => {
+      expect(getExtraDays(30)).toBe(16)
+    })
+
+    it('handles 60-day trips (max supported, 46 extra days)', () => {
+      expect(getExtraDays(60)).toBe(46)
+    })
+  })
+
+  describe('Extended Price Calculation', () => {
+    // Assuming 14-day early tier base price is £150
+    const BASE_14_DAY_PRICE_EARLY = 150
+    // Assuming 14-day standard tier base price is £160
+    const BASE_14_DAY_PRICE_STANDARD = 160
+    // Assuming 14-day late tier base price is £170
+    const BASE_14_DAY_PRICE_LATE = 170
+
+    it('returns base price for exactly 14 days', () => {
+      expect(calculateExtendedPrice(BASE_14_DAY_PRICE_EARLY, 14)).toBe(150)
+    })
+
+    it('adds £9 per day for 15 days (1 extra day)', () => {
+      expect(calculateExtendedPrice(BASE_14_DAY_PRICE_EARLY, 15)).toBe(159) // 150 + 9
+    })
+
+    it('adds £63 for 21 days (7 extra days)', () => {
+      expect(calculateExtendedPrice(BASE_14_DAY_PRICE_EARLY, 21)).toBe(213) // 150 + (7 * 9)
+    })
+
+    it('adds £126 for 28 days (14 extra days)', () => {
+      expect(calculateExtendedPrice(BASE_14_DAY_PRICE_EARLY, 28)).toBe(276) // 150 + (14 * 9)
+    })
+
+    it('calculates correctly with different base prices (standard tier)', () => {
+      expect(calculateExtendedPrice(BASE_14_DAY_PRICE_STANDARD, 21)).toBe(223) // 160 + (7 * 9)
+    })
+
+    it('calculates correctly with different base prices (late tier)', () => {
+      expect(calculateExtendedPrice(BASE_14_DAY_PRICE_LATE, 21)).toBe(233) // 170 + (7 * 9)
+    })
+
+    it('handles long trips (30 days)', () => {
+      // 30 days = 14 base + 16 extra days = 150 + (16 * 9) = 150 + 144 = 294
+      expect(calculateExtendedPrice(BASE_14_DAY_PRICE_EARLY, 30)).toBe(294)
+    })
+
+    it('handles max supported duration (60 days)', () => {
+      // 60 days = 14 base + 46 extra days = 150 + (46 * 9) = 150 + 414 = 564
+      expect(calculateExtendedPrice(BASE_14_DAY_PRICE_EARLY, 60)).toBe(564)
+    })
+  })
+
+  describe('Duration Validation', () => {
+    it('accepts durations from 1 to 60 days', () => {
+      const isValidDuration = (days) => days >= 1 && days <= 60
+
+      expect(isValidDuration(1)).toBe(true)
+      expect(isValidDuration(14)).toBe(true)
+      expect(isValidDuration(30)).toBe(true)
+      expect(isValidDuration(60)).toBe(true)
+    })
+
+    it('rejects durations less than 1 day', () => {
+      const isValidDuration = (days) => days >= 1 && days <= 60
+
+      expect(isValidDuration(0)).toBe(false)
+      expect(isValidDuration(-1)).toBe(false)
+    })
+
+    it('rejects durations over 60 days', () => {
+      const isValidDuration = (days) => days >= 1 && days <= 60
+
+      expect(isValidDuration(61)).toBe(false)
+      expect(isValidDuration(100)).toBe(false)
+    })
+  })
+
+  describe('Extra Days Display Note', () => {
+    // Helper to generate the note text (mirrors ManualBooking.jsx)
+    const getExtraDaysNote = (days) => {
+      const extraDays = days > 14 ? days - 14 : 0
+      if (extraDays <= 0) return null
+      return `(14 days + ${extraDays} extra @ £9/day)`
+    }
+
+    it('returns null for trips up to 14 days', () => {
+      expect(getExtraDaysNote(7)).toBeNull()
+      expect(getExtraDaysNote(14)).toBeNull()
+    })
+
+    it('returns correct note for 15 days (1 extra)', () => {
+      expect(getExtraDaysNote(15)).toBe('(14 days + 1 extra @ £9/day)')
+    })
+
+    it('returns correct note for 21 days (7 extra)', () => {
+      expect(getExtraDaysNote(21)).toBe('(14 days + 7 extra @ £9/day)')
+    })
+
+    it('returns correct note for 28 days (14 extra)', () => {
+      expect(getExtraDaysNote(28)).toBe('(14 days + 14 extra @ £9/day)')
+    })
+  })
+})

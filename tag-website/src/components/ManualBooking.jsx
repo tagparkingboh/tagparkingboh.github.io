@@ -151,7 +151,7 @@ function ManualBooking({ token }) {
       }
 
       const duration = Math.round((formData.pickupDate - formData.dropoffDate) / (1000 * 60 * 60 * 24))
-      if (duration < 1 || duration > 14) {
+      if (duration < 1 || duration > 60) {
         setCalculatedPrice(null)
         return
       }
@@ -1283,10 +1283,27 @@ function ManualBooking({ token }) {
             <div className="pricing-info-banner">
               {(() => {
                 const days = Math.round((formData.pickupDate - formData.dropoffDate) / (1000 * 60 * 60 * 24))
-                const tripLabel = days === 7 ? '1 week trip' : days === 14 ? '2 week trip' : `${days} day${days !== 1 ? 's' : ''} trip`
+                let tripLabel
+                if (days === 7) {
+                  tripLabel = '1 week trip'
+                } else if (days === 14) {
+                  tripLabel = '2 week trip'
+                } else if (days === 21) {
+                  tripLabel = '3 week trip'
+                } else if (days === 28) {
+                  tripLabel = '4 week trip'
+                } else {
+                  tripLabel = `${days} day${days !== 1 ? 's' : ''} trip`
+                }
+                const extraDays = days > 14 ? days - 14 : 0
                 return (
                   <>
                     <span className="trip-duration"><strong>{tripLabel}</strong></span>
+                    {extraDays > 0 && (
+                      <span className="extra-days-note" style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
+                        (14 days + {extraDays} extra @ £9/day)
+                      </span>
+                    )}
                     {pricingLoading && <span className="calculated-price">Calculating...</span>}
                     {!pricingLoading && calculatedPrice && (
                       <span className="calculated-price">
