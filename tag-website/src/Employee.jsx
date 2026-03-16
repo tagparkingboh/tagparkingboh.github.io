@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import BookingCalendar from './components/BookingCalendar'
+import RosterCalendar from './components/RosterCalendar'
 import SignaturePad from './components/SignaturePad'
 import './Employee.css'
 
@@ -67,6 +68,7 @@ function Employee() {
   const { user, token, loading, isAuthenticated, logout } = useAuth()
   const navigate = useNavigate()
 
+  const [activeTab, setActiveTab] = useState('bookings') // 'bookings' or 'roster'
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [inspections, setInspections] = useState({}) // { bookingId: [inspections] }
   const [error, setError] = useState('')
@@ -597,16 +599,37 @@ function Employee() {
         </div>
       </header>
 
+      <nav className="employee-nav">
+        <button
+          className={`employee-nav-item ${activeTab === 'bookings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('bookings')}
+        >
+          Bookings
+        </button>
+        <button
+          className={`employee-nav-item ${activeTab === 'roster' ? 'active' : ''}`}
+          onClick={() => setActiveTab('roster')}
+        >
+          My Roster
+        </button>
+      </nav>
+
       <main className="employee-content">
         {successMessage && <div className="employee-success">{successMessage}</div>}
         {error && <div className="employee-error">{error}</div>}
 
-        <BookingCalendar
-          token={token}
-          renderBookingActions={renderBookingActions}
-          refreshTrigger={refreshTrigger}
-          apiEndpoint="/api/employee/bookings"
-        />
+        {activeTab === 'bookings' && (
+          <BookingCalendar
+            token={token}
+            renderBookingActions={renderBookingActions}
+            refreshTrigger={refreshTrigger}
+            apiEndpoint="/api/employee/bookings"
+          />
+        )}
+
+        {activeTab === 'roster' && (
+          <RosterCalendar token={token} isAdmin={false} employeeId={user?.id} />
+        )}
       </main>
 
       {/* Inspection Modal */}

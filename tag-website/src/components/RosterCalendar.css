@@ -1,0 +1,729 @@
+/* Roster Calendar - Dark theme to match Admin */
+
+.roster-calendar {
+  background: #1e1e1e;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+/* Calendar Header */
+.roster-calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.roster-calendar .calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.roster-calendar .calendar-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #D9FF00;
+  margin: 0;
+  min-width: 220px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.roster-calendar .calendar-nav-btn {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #fff;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.roster-calendar .calendar-nav-btn:hover {
+  background: #3a3a3a;
+  border-color: #D9FF00;
+}
+
+.roster-calendar .calendar-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.roster-calendar .calendar-today-btn,
+.roster-calendar .calendar-refresh-btn {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.roster-calendar .calendar-today-btn:hover,
+.roster-calendar .calendar-refresh-btn:hover {
+  background: #3a3a3a;
+  border-color: #D9FF00;
+}
+
+.roster-calendar .calendar-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.roster-add-btn {
+  background: #D9FF00;
+  border: none;
+  color: #1a1a2e;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.roster-add-btn:hover {
+  background: #c4e600;
+}
+
+.roster-add-btn-small {
+  background: #D9FF00;
+  border: none;
+  color: #1a1a2e;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.roster-add-btn-small:hover {
+  background: #c4e600;
+}
+
+/* Messages */
+.roster-error {
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid #ff6b6b;
+  color: #ff6b6b;
+  padding: 10px 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.roster-success {
+  background: rgba(80, 200, 120, 0.1);
+  border: 1px solid #50c878;
+  color: #50c878;
+  padding: 10px 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+/* Calendar Grid */
+.roster-calendar .calendar-grid {
+  background: #252525;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.roster-calendar .calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: #1a1a2e;
+  border-bottom: 1px solid #333;
+}
+
+.roster-calendar .calendar-weekday {
+  padding: 12px;
+  text-align: center;
+  font-weight: 600;
+  color: #D9FF00;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.roster-calendar .calendar-weeks {
+  display: flex;
+  flex-direction: column;
+}
+
+.roster-calendar .calendar-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid #333;
+}
+
+.roster-calendar .calendar-week:last-child {
+  border-bottom: none;
+}
+
+.roster-calendar .calendar-day {
+  min-height: 100px;
+  padding: 8px;
+  border-right: 1px solid #333;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.roster-calendar .calendar-day:last-child {
+  border-right: none;
+}
+
+.roster-calendar .calendar-day:hover:not(.empty) {
+  background: #2a2a2a;
+}
+
+.roster-calendar .calendar-day.empty {
+  background: #1a1a1a;
+  cursor: default;
+}
+
+.roster-calendar .calendar-day.today {
+  background: rgba(217, 255, 0, 0.1);
+}
+
+.roster-calendar .calendar-day.today .day-number {
+  background: #D9FF00;
+  color: #1a1a2e;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.roster-calendar .calendar-day.selected {
+  background: rgba(217, 255, 0, 0.15);
+  box-shadow: inset 0 0 0 2px #D9FF00;
+}
+
+.roster-calendar .calendar-day.has-shifts {
+  background: rgba(217, 255, 0, 0.05);
+}
+
+.roster-calendar .day-number {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.roster-calendar .day-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: auto;
+}
+
+/* Shift badges in calendar cells */
+.shift-badge {
+  background: #2a2a2a;
+  border-left: 3px solid #D9FF00;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shift-badge-time {
+  color: #D9FF00;
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.shift-badge-staff {
+  color: #fff;
+  background: #444;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.shift-badge-more {
+  color: #888;
+  font-size: 0.75rem;
+  padding: 3px 6px;
+}
+
+/* Detail Panel */
+.roster-detail-panel {
+  margin-top: 20px;
+  background: #252525;
+  border-radius: 10px;
+  border: 1px solid #444;
+  overflow: hidden;
+}
+
+.roster-detail-panel .detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background: #1a1a2e;
+  border-bottom: 1px solid #444;
+}
+
+.roster-detail-panel .detail-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.roster-detail-panel .detail-close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.roster-detail-panel .detail-close:hover {
+  color: #fff;
+}
+
+.roster-detail-panel .detail-content {
+  padding: 20px;
+}
+
+.no-shifts {
+  color: #666;
+  text-align: center;
+  padding: 30px;
+  font-style: italic;
+}
+
+/* Shift List */
+.shift-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shift-card {
+  background: #2a2a2a;
+  border-radius: 10px;
+  padding: 15px;
+  border-left: 4px solid #D9FF00;
+}
+
+.shift-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.shift-time-range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #1a1a2e;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.shift-time {
+  font-family: monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #D9FF00;
+}
+
+.shift-time-separator {
+  color: #666;
+}
+
+.shift-type-badge {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.shift-status-badge {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid;
+}
+
+.shift-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shift-staff {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shift-staff-initials {
+  background: #D9FF00;
+  color: #1a1a2e;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.shift-staff-name {
+  color: #fff;
+  font-weight: 500;
+}
+
+.shift-unassigned {
+  color: #888;
+  font-style: italic;
+}
+
+.shift-booking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.shift-booking-label {
+  color: #888;
+}
+
+.shift-booking-ref {
+  font-family: monospace;
+  color: #D9FF00;
+  font-weight: 600;
+}
+
+.shift-notes {
+  color: #aaa;
+  font-size: 0.9rem;
+  padding: 8px;
+  background: #1a1a2e;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+.shift-card-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #3a3a3a;
+}
+
+.shift-edit-btn {
+  background: #2a2a2a;
+  border: 1px solid #4a90e2;
+  color: #4a90e2;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.shift-edit-btn:hover {
+  background: #4a90e2;
+  color: #fff;
+}
+
+.shift-delete-btn {
+  background: #2a2a2a;
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.shift-delete-btn:hover {
+  background: #e74c3c;
+  color: #fff;
+}
+
+/* Modal Styles */
+.roster-calendar .modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.roster-calendar .modal-content {
+  background: #1e1e1e;
+  border-radius: 12px;
+  border: 1px solid #444;
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.roster-calendar .modal-content h3 {
+  margin: 0;
+  padding: 20px;
+  background: #1a1a2e;
+  color: #fff;
+  font-size: 1.2rem;
+  border-bottom: 1px solid #444;
+}
+
+/* Shift Form */
+.shift-form {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-row label {
+  color: #aaa;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.form-row input,
+.form-row select,
+.form-row textarea {
+  background: #252525;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #fff;
+  font-size: 0.95rem;
+  transition: border-color 0.2s;
+}
+
+.form-row input:focus,
+.form-row select:focus,
+.form-row textarea:focus {
+  outline: none;
+  border-color: #D9FF00;
+}
+
+.form-row textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-row-double {
+  flex-direction: row;
+  gap: 15px;
+}
+
+.form-row-double .form-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Modal Actions */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 20px;
+  border-top: 1px solid #333;
+}
+
+.modal-cancel-btn {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.modal-cancel-btn:hover:not(:disabled) {
+  background: #3a3a3a;
+}
+
+.modal-cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal-save-btn {
+  background: #D9FF00;
+  border: none;
+  color: #1a1a2e;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.modal-save-btn:hover:not(:disabled) {
+  background: #c4e600;
+}
+
+.modal-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal-delete-btn {
+  background: #e74c3c;
+  border: none;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.modal-delete-btn:hover:not(:disabled) {
+  background: #c0392b;
+}
+
+.modal-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Delete Modal */
+.delete-modal {
+  max-width: 400px;
+}
+
+.delete-modal p {
+  padding: 20px;
+  margin: 0;
+  color: #ccc;
+  line-height: 1.5;
+}
+
+.delete-modal strong {
+  color: #fff;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .roster-calendar-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .roster-calendar .calendar-nav {
+    justify-content: center;
+  }
+
+  .roster-calendar .calendar-actions {
+    justify-content: center;
+  }
+
+  .roster-calendar .calendar-day {
+    min-height: 80px;
+    padding: 5px;
+  }
+
+  .roster-calendar .day-number {
+    font-size: 0.85rem;
+  }
+
+  .shift-badge {
+    font-size: 0.65rem;
+    padding: 2px 4px;
+  }
+
+  .shift-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .form-row-double {
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .roster-calendar .calendar-weekday {
+    padding: 8px 4px;
+    font-size: 0.7rem;
+  }
+
+  .roster-calendar .calendar-day {
+    min-height: 60px;
+  }
+
+  .shift-badge {
+    display: none;
+  }
+
+  .roster-calendar .calendar-day.has-shifts::after {
+    content: '';
+    position: absolute;
+    bottom: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 8px;
+    height: 8px;
+    background: #D9FF00;
+    border-radius: 50%;
+  }
+}

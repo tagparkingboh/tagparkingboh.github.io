@@ -6,6 +6,7 @@ import 'react-datepicker/dist/react-datepicker.css'
 import ManualBooking from './components/ManualBooking'
 import BookingCalendar from './components/BookingCalendar'
 import BookingLocationMap from './components/BookingLocationMap'
+import RosterCalendar from './components/RosterCalendar'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -2624,6 +2625,12 @@ function Admin() {
           onClick={() => setActiveTab('testimonials')}
         >
           Testimonials
+        </button>
+        <button
+          className={`admin-nav-item ${activeTab === 'roster' ? 'active' : ''}`}
+          onClick={() => setActiveTab('roster')}
+        >
+          Roster
         </button>
       </nav>
 
@@ -6986,6 +6993,16 @@ function Admin() {
                 </tbody>
               </table>
             )}
+          </div>
+        )}
+
+        {/* Roster Section */}
+        {activeTab === 'roster' && (
+          <div className="admin-section">
+            <div className="admin-section-header">
+              <h2>Staff Roster</h2>
+            </div>
+            <RosterCalendar token={token} isAdmin={true} />
           </div>
         )}
       </main>
