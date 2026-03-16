@@ -3875,6 +3875,8 @@ async def get_promotion(
             "subscriber_id": c.subscriber_id,
             "email_sent": c.email_sent,
             "email_sent_at": c.email_sent_at,
+            "shared_on_socials": c.shared_on_socials,
+            "shared_on_socials_at": c.shared_on_socials_at,
             "is_used": c.is_used,
             "used_at": c.used_at,
             "booking_id": c.booking_id,
