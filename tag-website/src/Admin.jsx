@@ -819,7 +819,7 @@ function Admin() {
       })
       if (response.ok) {
         const data = await response.json()
-        setPromotionMessage(`Created promotion "${data.promotion.name}" with ${data.promotion.total_codes} codes`)
+        setPromotionMessage(`Created promotion "${data.name}" with ${data.total_codes} codes`)
         setShowCreatePromotion(false)
         setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10 })
         fetchPromotions()
@@ -828,6 +828,7 @@ function Admin() {
         setPromotionMessage(`Error: ${error.detail || 'Failed to create promotion'}`)
       }
     } catch (err) {
+      console.error('Error creating promotion:', err)
       setPromotionMessage('Network error creating promotion')
     } finally {
       setCreatingPromotion(false)

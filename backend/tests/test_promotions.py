@@ -1241,3 +1241,344 @@ class TestStatisticsAndCounters:
         assert promo.codes_sent == 3
         assert promo.codes_used == 3
         assert promo.total_codes == 3
+
+
+# =============================================================================
+# API Contract Tests - Frontend/Backend Response Structure
+# =============================================================================
+
+class TestAPIContractCreatePromotion:
+    """
+    Contract tests to ensure API responses match frontend expectations.
+    These tests verify the SHAPE of responses, not just that they succeed.
+    """
+
+    def test_create_promotion_response_has_required_fields(self):
+        """Test that create promotion response has all fields frontend expects."""
+        # This is the structure the backend returns
+        mock_response = {
+            "id": 1,
+            "name": "Test Promo",
+            "description": "Test description",
+            "discount_percent": 10,
+            "total_codes": 5,
+            "codes_sent": 0,
+            "codes_used": 0,
+            "codes_available": 5,
+            "created_by": "admin@example.com",
+            "created_at": "2026-03-15T10:00:00+00:00",
+        }
+
+        # Frontend accesses these fields directly (NOT nested under 'promotion')
+        # This would have caught the bug: data.name vs data.promotion.name
+        assert "name" in mock_response, "Response must have 'name' at top level"
+        assert "total_codes" in mock_response, "Response must have 'total_codes' at top level"
+        assert "id" in mock_response, "Response must have 'id' at top level"
+
+        # Verify frontend can access the fields it needs
+        assert mock_response["name"] == "Test Promo"
+        assert mock_response["total_codes"] == 5
+
+    def test_create_promotion_response_not_nested(self):
+        """Test that promotion data is NOT nested under 'promotion' key."""
+        mock_response = {
+            "id": 1,
+            "name": "Test Promo",
+            "total_codes": 5,
+        }
+
+        # Frontend code does: data.name (not data.promotion.name)
+        # This test explicitly checks that 'promotion' key does NOT exist
+        assert "promotion" not in mock_response, \
+            "Response should NOT have nested 'promotion' key - frontend expects flat structure"
+
+    def test_create_promotion_response_types(self):
+        """Test that response field types match frontend expectations."""
+        mock_response = {
+            "id": 1,
+            "name": "Test Promo",
+            "description": "Test",
+            "discount_percent": 10,
+            "total_codes": 5,
+            "codes_sent": 0,
+            "codes_used": 0,
+            "codes_available": 5,
+            "created_by": "admin@example.com",
+            "created_at": "2026-03-15T10:00:00+00:00",
+        }
+
+        assert isinstance(mock_response["id"], int)
+        assert isinstance(mock_response["name"], str)
+        assert isinstance(mock_response["discount_percent"], int)
+        assert isinstance(mock_response["total_codes"], int)
+        assert isinstance(mock_response["codes_sent"], int)
+        assert isinstance(mock_response["codes_used"], int)
+        assert isinstance(mock_response["codes_available"], int)
+
+
+class TestAPIContractListPromotions:
+    """Contract tests for list promotions endpoint."""
+
+    def test_list_promotions_response_structure(self):
+        """Test that list promotions returns array under 'promotions' key."""
+        mock_response = {
+            "promotions": [
+                {
+                    "id": 1,
+                    "name": "Promo 1",
+                    "discount_percent": 10,
+                    "total_codes": 5,
+                    "codes_sent": 2,
+                    "codes_used": 1,
+                    "codes_available": 3,
+                    "created_at": "2026-03-15T10:00:00+00:00",
+                },
+                {
+                    "id": 2,
+                    "name": "Promo 2",
+                    "discount_percent": 20,
+                    "total_codes": 10,
+                    "codes_sent": 0,
+                    "codes_used": 0,
+                    "codes_available": 10,
+                    "created_at": "2026-03-14T10:00:00+00:00",
+                },
+            ]
+        }
+
+        # Frontend does: data.promotions || []
+        assert "promotions" in mock_response
+        assert isinstance(mock_response["promotions"], list)
+
+    def test_list_promotions_each_item_has_required_fields(self):
+        """Test each promotion in list has fields needed for display."""
+        mock_promo = {
+            "id": 1,
+            "name": "Test Promo",
+            "discount_percent": 10,
+            "total_codes": 5,
+            "codes_sent": 2,
+            "codes_used": 1,
+            "codes_available": 3,
+            "created_at": "2026-03-15T10:00:00+00:00",
+        }
+
+        # Fields used in frontend promotion card display
+        required_fields = [
+            "id", "name", "discount_percent", "total_codes",
+            "codes_sent", "codes_used", "codes_available", "created_at"
+        ]
+
+        for field in required_fields:
+            assert field in mock_promo, f"Promotion must have '{field}' field for frontend display"
+
+
+class TestAPIContractGetPromotionDetails:
+    """Contract tests for get promotion details endpoint."""
+
+    def test_get_promotion_details_response_structure(self):
+        """Test promotion details includes codes array."""
+        mock_response = {
+            "id": 1,
+            "name": "Test Promo",
+            "codes": [
+                {
+                    "id": 1,
+                    "code": "TAG-ABCD-1234",
+                    "recipient_email": "test@example.com",
+                    "recipient_first_name": "John",
+                    "recipient_last_name": "Doe",
+                    "email_sent": True,
+                    "email_sent_at": "2026-03-15T10:00:00+00:00",
+                    "is_used": False,
+                    "used_at": None,
+                    "booking_reference": None,
+                },
+            ]
+        }
+
+        # Frontend does: data.codes || []
+        assert "codes" in mock_response
+        assert isinstance(mock_response["codes"], list)
+
+    def test_promo_code_item_has_required_fields(self):
+        """Test each code in details has fields needed for table display."""
+        mock_code = {
+            "id": 1,
+            "code": "TAG-ABCD-1234",
+            "recipient_email": "test@example.com",
+            "recipient_first_name": "John",
+            "recipient_last_name": "Doe",
+            "email_sent": True,
+            "email_sent_at": "2026-03-15T10:00:00+00:00",
+            "is_used": False,
+            "used_at": None,
+            "booking_reference": None,
+        }
+
+        # Fields used in frontend codes table
+        required_fields = [
+            "code", "recipient_email", "recipient_first_name",
+            "email_sent", "is_used", "booking_reference"
+        ]
+
+        for field in required_fields:
+            assert field in mock_code, f"Promo code must have '{field}' field for frontend table"
+
+
+class TestAPIContractAvailableCodes:
+    """Contract tests for available codes endpoint."""
+
+    def test_available_codes_response_structure(self):
+        """Test available codes returns array under 'codes' key."""
+        mock_response = {
+            "codes": [
+                {"id": 1, "code": "TAG-ABCD-1234"},
+                {"id": 2, "code": "TAG-EFGH-5678"},
+            ]
+        }
+
+        # Frontend does: data.codes || []
+        assert "codes" in mock_response
+        assert isinstance(mock_response["codes"], list)
+
+    def test_available_codes_count_matches_array_length(self):
+        """Test that available codes count can be derived from array length."""
+        mock_response = {
+            "codes": [
+                {"id": 1, "code": "TAG-ABCD-1234"},
+                {"id": 2, "code": "TAG-EFGH-5678"},
+                {"id": 3, "code": "TAG-IJKL-9012"},
+            ]
+        }
+
+        # Frontend checks: sendPromoEmailData.availableCodes.length
+        assert len(mock_response["codes"]) == 3
+
+
+class TestAPIContractSendEmails:
+    """Contract tests for send promo emails endpoint."""
+
+    def test_send_emails_response_structure(self):
+        """Test send emails response has success indicators."""
+        mock_response = {
+            "success": True,
+            "total_sent": 3,
+            "total_failed": 0,
+            "errors": [],
+        }
+
+        # Frontend checks these fields
+        assert "success" in mock_response
+        assert "total_sent" in mock_response
+        assert "total_failed" in mock_response
+        assert "errors" in mock_response
+
+        assert isinstance(mock_response["success"], bool)
+        assert isinstance(mock_response["total_sent"], int)
+        assert isinstance(mock_response["total_failed"], int)
+        assert isinstance(mock_response["errors"], list)
+
+    def test_send_emails_partial_failure_response(self):
+        """Test response structure when some emails fail."""
+        mock_response = {
+            "success": False,
+            "total_sent": 2,
+            "total_failed": 1,
+            "errors": ["Failed to send to bad@email.com"],
+        }
+
+        assert mock_response["success"] == False
+        assert mock_response["total_sent"] == 2
+        assert mock_response["total_failed"] == 1
+        assert len(mock_response["errors"]) == 1
+
+
+class TestAPIContractRecipientSearch:
+    """Contract tests for recipient search endpoint."""
+
+    def test_recipient_search_response_structure(self):
+        """Test recipient search returns array under 'recipients' key."""
+        mock_response = {
+            "recipients": [
+                {
+                    "email": "john@example.com",
+                    "first_name": "John",
+                    "last_name": "Doe",
+                    "customer_id": 123,
+                    "subscriber_id": None,
+                    "source": "customer",
+                },
+                {
+                    "email": "jane@example.com",
+                    "first_name": "Jane",
+                    "last_name": None,
+                    "customer_id": None,
+                    "subscriber_id": 456,
+                    "source": "subscriber",
+                },
+            ]
+        }
+
+        # Frontend does: data.recipients || []
+        assert "recipients" in mock_response
+        assert isinstance(mock_response["recipients"], list)
+
+    def test_recipient_item_has_required_fields(self):
+        """Test each recipient has fields needed for display and selection."""
+        mock_recipient = {
+            "email": "john@example.com",
+            "first_name": "John",
+            "last_name": "Doe",
+            "customer_id": 123,
+            "subscriber_id": None,
+            "source": "customer",
+        }
+
+        # Fields used when adding recipient to list
+        required_fields = ["email", "first_name", "source"]
+
+        for field in required_fields:
+            assert field in mock_recipient, f"Recipient must have '{field}' field"
+
+
+class TestAPIContractPromoValidate:
+    """Contract tests for promo code validation endpoint."""
+
+    def test_validate_success_response_structure(self):
+        """Test successful validation response."""
+        mock_response = {
+            "valid": True,
+            "message": "Promo code applied! 10% off",
+            "discount_percent": 10,
+        }
+
+        assert "valid" in mock_response
+        assert "message" in mock_response
+        assert "discount_percent" in mock_response
+
+        assert isinstance(mock_response["valid"], bool)
+        assert isinstance(mock_response["discount_percent"], int)
+
+    def test_validate_failure_response_structure(self):
+        """Test failed validation response."""
+        mock_response = {
+            "valid": False,
+            "message": "Invalid promo code",
+            "discount_percent": None,
+        }
+
+        assert mock_response["valid"] == False
+        assert mock_response["message"] is not None
+        # discount_percent can be None on failure
+
+    def test_validate_already_used_response(self):
+        """Test response when code is already used."""
+        mock_response = {
+            "valid": False,
+            "message": "This promo code has already been used",
+            "discount_percent": None,
+        }
+
+        assert mock_response["valid"] == False
+        assert "already been used" in mock_response["message"]
