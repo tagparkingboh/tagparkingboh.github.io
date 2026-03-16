@@ -6758,6 +6758,11 @@ async def stripe_webhook(
 
         # Mark promo code as used (if one was applied)
         # Skip if this webhook was already processed
+        log_promo("WEBHOOK promo_code check", {
+            "promo_code": promo_code,
+            "was_already_processed": was_already_processed,
+            "booking_reference": booking_reference
+        })
         if promo_code and not was_already_processed:
             log_promo("WEBHOOK MARK_USED starting", {"code": promo_code, "booking_reference": booking_reference})
             try:
@@ -6772,6 +6777,12 @@ async def stripe_webhook(
                     DbPromoCode.code == promo_code_upper,
                     DbPromoCode.is_used == False
                 ).first() if promo_code_upper else None
+
+                log_promo("WEBHOOK MARK_USED lookup result", {
+                    "promo_code_upper": promo_code_upper,
+                    "found_in_new_system": promo_code_record is not None,
+                    "booking_id": bid
+                })
 
                 if promo_code_record:
                     log_promo("WEBHOOK MARK_USED found in new system", {
