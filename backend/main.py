@@ -6766,10 +6766,12 @@ async def stripe_webhook(
                 bid = booking.id if booking else None
 
                 # First, check if it's from the new promo_codes table
+                # Use case-insensitive comparison and normalize to uppercase
+                promo_code_upper = promo_code.strip().upper() if promo_code else None
                 promo_code_record = db.query(DbPromoCode).filter(
-                    DbPromoCode.code == promo_code,
+                    DbPromoCode.code == promo_code_upper,
                     DbPromoCode.is_used == False
-                ).first()
+                ).first() if promo_code_upper else None
 
                 if promo_code_record:
                     log_promo("WEBHOOK MARK_USED found in new system", {
