@@ -80,6 +80,8 @@ class MockPromotionStore:
         pc.email_subject = None
         pc.shared_on_socials = False
         pc.shared_on_socials_at = None
+        pc.shared_privately = False
+        pc.shared_privately_at = None
         pc.is_used = False
         pc.used_at = None
         pc.booking_id = None
@@ -2270,3 +2272,699 @@ class TestSharedOnSocialsAPI:
 
         assert exc_info.value.status_code == 404
         assert "not found" in exc_info.value.detail.lower()
+
+
+# =============================================================================
+# Shared Privately Tests
+# =============================================================================
+
+class TestSharedPrivately:
+    """Tests for the shared privately feature - marking promo codes as shared via text/friends."""
+
+    def test_mark_code_as_shared_privately(self):
+        """Test marking a promo code as shared privately."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Private Share Campaign", 15, 10)
+        code = store.add_promo_code(promo.id)
+
+        # Initially not shared
+        assert code.shared_privately is False
+        assert code.shared_privately_at is None
+
+        # Mark as shared
+        code.shared_privately = True
+        code.shared_privately_at = get_uk_now()
+
+        assert code.shared_privately is True
+        assert code.shared_privately_at is not None
+
+    def test_toggle_shared_privately_off(self):
+        """Test unmarking a promo code as shared privately (toggle off)."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Private Share Campaign", 15, 10)
+        code = store.add_promo_code(promo.id)
+
+        # Mark as shared
+        code.shared_privately = True
+        code.shared_privately_at = get_uk_now()
+
+        # Toggle off
+        code.shared_privately = False
+        code.shared_privately_at = None
+
+        assert code.shared_privately is False
+        assert code.shared_privately_at is None
+
+    def test_shared_privately_does_not_affect_is_used(self):
+        """Test that marking as shared privately doesn't affect the is_used status."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Private Share Campaign", 15, 10)
+        code = store.add_promo_code(promo.id)
+
+        # Mark as shared
+        code.shared_privately = True
+        code.shared_privately_at = get_uk_now()
+
+        # Code should still be available for use
+        assert code.is_used is False
+        assert code.used_at is None
+
+    def test_code_can_be_shared_privately_and_then_used(self):
+        """Test that a code can be shared privately and then later used for a booking."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Private Share Campaign", 20, 5)
+        code = store.add_promo_code(promo.id)
+
+        # First: share privately
+        code.shared_privately = True
+        code.shared_privately_at = get_uk_now()
+
+        assert code.shared_privately is True
+        assert code.is_used is False
+
+        # Later: use for booking
+        code.is_used = True
+        code.used_at = get_uk_now()
+        code.booking_id = 789
+        promo.codes_used += 1
+
+        # Both shared and used should be true
+        assert code.shared_privately is True
+        assert code.is_used is True
+        assert code.booking_id == 789
+        assert promo.codes_used == 1
+
+    def test_private_share_code_has_no_recipient(self):
+        """Test that privately shared codes typically have no recipient email."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Private Share Campaign", 10, 3)
+        code = store.add_promo_code(promo.id)
+
+        # Private share codes don't have recipients
+        assert code.recipient_email is None
+        assert code.email_sent is False
+
+        # Mark as shared
+        code.shared_privately = True
+        code.shared_privately_at = get_uk_now()
+
+        # Still no recipient
+        assert code.recipient_email is None
+
+    def test_code_can_be_both_shared_on_socials_and_privately(self):
+        """Test that a code can technically be marked as both (edge case)."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Multi-share Campaign", 10, 5)
+        code = store.add_promo_code(promo.id)
+
+        # Mark as shared on socials
+        code.shared_on_socials = True
+        code.shared_on_socials_at = get_uk_now()
+
+        # Also mark as shared privately
+        code.shared_privately = True
+        code.shared_privately_at = get_uk_now()
+
+        # Both should be true
+        assert code.shared_on_socials is True
+        assert code.shared_privately is True
+
+
+@pytest.mark.asyncio
+class TestSharedPrivatelyAPI:
+    """API tests for the shared privately endpoint."""
+
+    @pytest.fixture
+    def mock_admin_user(self):
+        """Create a mock admin user."""
+        user = MagicMock()
+        user.id = 1
+        user.email = "admin@example.com"
+        user.is_admin = True
+        return user
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock database session."""
+        return MagicMock()
+
+    async def test_mark_code_shared_privately_success(self, mock_admin_user, mock_db):
+        """Test successfully marking a code as shared privately via API."""
+        from main import mark_code_shared_privately, get_uk_now
+        from db_models import PromoCode
+
+        # Create mock promo code
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-PRIV-1234"
+        mock_code.shared_privately = False
+        mock_code.shared_privately_at = None
+        mock_code.is_used = False
+
+        # Mock the query
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        # Call the endpoint
+        result = await mark_code_shared_privately(
+            code_id=1,
+            db=mock_db,
+            current_user=mock_admin_user
+        )
+
+        assert result["success"] is True
+        assert result["code_id"] == 1
+        assert result["shared_privately"] is True
+        assert mock_code.shared_privately is True
+
+    async def test_toggle_off_shared_privately_status(self, mock_admin_user, mock_db):
+        """Test toggling off the shared privately status."""
+        from main import mark_code_shared_privately
+        from db_models import PromoCode
+
+        # Create mock promo code that is already shared
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-PRIV-5678"
+        mock_code.shared_privately = True
+        mock_code.shared_privately_at = get_uk_now()
+        mock_code.is_used = False
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        # Call the endpoint (should toggle off)
+        result = await mark_code_shared_privately(
+            code_id=1,
+            db=mock_db,
+            current_user=mock_admin_user
+        )
+
+        assert result["success"] is True
+        assert result["shared_privately"] is False
+        assert mock_code.shared_privately is False
+        assert mock_code.shared_privately_at is None
+
+    async def test_mark_nonexistent_code_privately_returns_404(self, mock_admin_user, mock_db):
+        """Test that marking a non-existent code returns 404."""
+        from main import mark_code_shared_privately
+        from fastapi import HTTPException
+
+        # Mock query returns None
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        with pytest.raises(HTTPException) as exc_info:
+            await mark_code_shared_privately(
+                code_id=9999,
+                db=mock_db,
+                current_user=mock_admin_user
+            )
+
+        assert exc_info.value.status_code == 404
+        assert "not found" in exc_info.value.detail.lower()
+
+    async def test_cannot_mark_used_code_as_shared_privately(self, mock_admin_user, mock_db):
+        """Test that used codes cannot be marked as shared privately."""
+        from main import mark_code_shared_privately
+        from fastapi import HTTPException
+        from db_models import PromoCode
+
+        # Create mock promo code that is already used
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-USED-PRIV"
+        mock_code.shared_privately = False
+        mock_code.is_used = True
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        with pytest.raises(HTTPException) as exc_info:
+            await mark_code_shared_privately(
+                code_id=1,
+                db=mock_db,
+                current_user=mock_admin_user
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "used" in exc_info.value.detail.lower()
+
+
+# =============================================================================
+# Precise Codes Available Math Tests
+# =============================================================================
+
+class TestCodesAvailableMath:
+    """
+    Precise mathematical tests for codes_available calculation.
+
+    Formula: codes_available = total_codes - codes_sent - codes_used - codes_shared_on_socials - codes_shared_privately
+
+    BUT avoiding double counting - a code that was sent AND used should only be subtracted once.
+
+    Actually, the correct formula counts codes where:
+    - email_sent = False
+    - is_used = False
+    - shared_on_socials = False
+    - shared_privately = False
+    """
+
+    def test_all_codes_available_initially(self):
+        """Test: 10 total, none distributed = 10 available."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+        assert len(available) == 10
+
+    def test_one_code_sent_reduces_available(self):
+        """Test: 10 total, 1 sent = 9 available."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        # Send 1 code
+        codes[0].email_sent = True
+        codes[0].recipient_email = "test@example.com"
+
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+        assert len(available) == 9
+
+    def test_one_code_used_reduces_available(self):
+        """Test: 10 total, 1 used (not sent) = 9 available."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        # Use 1 code directly (e.g., from social media post)
+        codes[0].is_used = True
+        codes[0].booking_id = 100
+
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+        assert len(available) == 9
+
+    def test_one_code_shared_on_socials_reduces_available(self):
+        """Test: 10 total, 1 shared on socials = 9 available."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        # Share 1 code on socials
+        codes[0].shared_on_socials = True
+        codes[0].shared_on_socials_at = get_uk_now()
+
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+        assert len(available) == 9
+
+    def test_one_code_shared_privately_reduces_available(self):
+        """Test: 10 total, 1 shared privately = 9 available."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        # Share 1 code privately
+        codes[0].shared_privately = True
+        codes[0].shared_privately_at = get_uk_now()
+
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+        assert len(available) == 9
+
+    def test_sent_and_used_code_counts_once(self):
+        """Test: 10 total, 1 sent AND used = 9 available (not 8)."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        # Send and use the same code
+        codes[0].email_sent = True
+        codes[0].recipient_email = "test@example.com"
+        codes[0].is_used = True
+        codes[0].booking_id = 100
+
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+        assert len(available) == 9
+
+    def test_shared_on_socials_and_used_counts_once(self):
+        """Test: 10 total, 1 shared on socials AND used = 9 available (not 8)."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        # Share on socials and then use
+        codes[0].shared_on_socials = True
+        codes[0].shared_on_socials_at = get_uk_now()
+        codes[0].is_used = True
+        codes[0].booking_id = 100
+
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+        assert len(available) == 9
+
+    def test_shared_privately_and_used_counts_once(self):
+        """Test: 10 total, 1 shared privately AND used = 9 available (not 8)."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        # Share privately and then use
+        codes[0].shared_privately = True
+        codes[0].shared_privately_at = get_uk_now()
+        codes[0].is_used = True
+        codes[0].booking_id = 100
+
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+        assert len(available) == 9
+
+    def test_complex_scenario_exact_math(self):
+        """
+        Test precise math with complex scenario:
+        - 10 total codes
+        - 2 sent via email (1 used, 1 not used)
+        - 1 shared on socials (not used)
+        - 1 shared privately (not used)
+        - 1 shared on socials AND used
+        - 5 remaining available
+
+        Available = 10 - 2 (sent) - 1 (shared socials) - 1 (shared privately) - 1 (shared socials + used) = 5
+        """
+        store = MockPromotionStore()
+        promo = store.add_promotion("Complex Test", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        # Code 0: Sent and used
+        codes[0].email_sent = True
+        codes[0].recipient_email = "user1@example.com"
+        codes[0].is_used = True
+        codes[0].booking_id = 100
+
+        # Code 1: Sent but not used
+        codes[1].email_sent = True
+        codes[1].recipient_email = "user2@example.com"
+
+        # Code 2: Shared on socials (not used)
+        codes[2].shared_on_socials = True
+        codes[2].shared_on_socials_at = get_uk_now()
+
+        # Code 3: Shared privately (not used)
+        codes[3].shared_privately = True
+        codes[3].shared_privately_at = get_uk_now()
+
+        # Code 4: Shared on socials AND used
+        codes[4].shared_on_socials = True
+        codes[4].shared_on_socials_at = get_uk_now()
+        codes[4].is_used = True
+        codes[4].booking_id = 101
+
+        # Codes 5-9: Available (not sent, not shared, not used)
+
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+
+        assert len(available) == 5, f"Expected 5 available, got {len(available)}"
+
+    def test_all_distribution_methods_used(self):
+        """
+        Test when all distribution methods are used on different codes:
+        - 10 total
+        - 3 sent via email
+        - 2 shared on socials
+        - 2 shared privately
+        - 3 remaining available
+        """
+        store = MockPromotionStore()
+        promo = store.add_promotion("All Methods", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        # 3 sent via email
+        for i in range(3):
+            codes[i].email_sent = True
+            codes[i].recipient_email = f"user{i}@example.com"
+
+        # 2 shared on socials
+        for i in range(3, 5):
+            codes[i].shared_on_socials = True
+            codes[i].shared_on_socials_at = get_uk_now()
+
+        # 2 shared privately
+        for i in range(5, 7):
+            codes[i].shared_privately = True
+            codes[i].shared_privately_at = get_uk_now()
+
+        # Codes 7-9 remain available
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+
+        assert len(available) == 3
+
+    def test_zero_codes_available_all_distributed(self):
+        """Test when all codes are distributed (none available)."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("All Gone", 10, 5)
+        codes = [store.add_promo_code(promo.id) for _ in range(5)]
+
+        # Distribute all codes
+        codes[0].email_sent = True
+        codes[1].email_sent = True
+        codes[2].shared_on_socials = True
+        codes[3].shared_privately = True
+        codes[4].is_used = True  # Used directly
+
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+
+        assert len(available) == 0
+
+    def test_real_world_scenario(self):
+        """
+        Real-world scenario matching user's case:
+        - 10 total codes
+        - 1 sent via email
+        - 2 used (via social media posts)
+        - Expected: 7 available
+        """
+        store = MockPromotionStore()
+        promo = store.add_promotion("Real World", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        # 1 sent via email
+        codes[0].email_sent = True
+        codes[0].recipient_email = "qa.orca.contact@gmail.com"
+
+        # 2 used (from social media, so marked as shared + used)
+        codes[1].is_used = True
+        codes[1].booking_id = 347
+
+        codes[2].is_used = True
+        codes[2].booking_id = 348
+
+        available = [c for c in codes if not c.email_sent and not c.is_used
+                     and not c.shared_on_socials and not c.shared_privately]
+
+        assert len(available) == 7, f"Expected 7 available, got {len(available)}"
+
+
+# =============================================================================
+# Used Codes Cannot Be Marked As Shared Tests
+# =============================================================================
+
+class TestUsedCodesCannotBeMarkedAsShared:
+    """Tests for the restriction that used codes cannot be marked as shared."""
+
+    @pytest.fixture
+    def mock_admin_user(self):
+        user = MagicMock()
+        user.id = 1
+        user.email = "admin@example.com"
+        user.is_admin = True
+        return user
+
+    @pytest.fixture
+    def mock_db(self):
+        return MagicMock()
+
+    @pytest.mark.asyncio
+    async def test_used_code_cannot_be_marked_shared_on_socials(self, mock_admin_user, mock_db):
+        """Test that a used code cannot be newly marked as shared on socials."""
+        from main import mark_code_shared_on_socials
+        from fastapi import HTTPException
+        from db_models import PromoCode
+
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-USED-CODE"
+        mock_code.is_used = True
+        mock_code.shared_on_socials = False  # Not already shared
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        with pytest.raises(HTTPException) as exc_info:
+            await mark_code_shared_on_socials(
+                code_id=1,
+                db=mock_db,
+                current_user=mock_admin_user
+            )
+
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_used_code_cannot_be_marked_shared_privately(self, mock_admin_user, mock_db):
+        """Test that a used code cannot be newly marked as shared privately."""
+        from main import mark_code_shared_privately
+        from fastapi import HTTPException
+        from db_models import PromoCode
+
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-USED-CODE"
+        mock_code.is_used = True
+        mock_code.shared_privately = False  # Not already shared
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        with pytest.raises(HTTPException) as exc_info:
+            await mark_code_shared_privately(
+                code_id=1,
+                db=mock_db,
+                current_user=mock_admin_user
+            )
+
+        assert exc_info.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_used_code_that_was_already_shared_can_be_toggled(self, mock_admin_user, mock_db):
+        """Test that a code that was shared BEFORE being used can still toggle shared status."""
+        from main import mark_code_shared_on_socials
+        from db_models import PromoCode
+
+        # Code was shared on socials, then used
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-SHARED-THEN-USED"
+        mock_code.is_used = True
+        mock_code.shared_on_socials = True  # Already shared before being used
+        mock_code.shared_on_socials_at = get_uk_now()
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        # Should be able to toggle off (unmark)
+        result = await mark_code_shared_on_socials(
+            code_id=1,
+            db=mock_db,
+            current_user=mock_admin_user
+        )
+
+        assert result["success"] is True
+        assert result["shared_on_socials"] is False
+
+
+# =============================================================================
+# Delete Restrictions Complete Tests
+# =============================================================================
+
+class TestDeleteRestrictionsComplete:
+    """Complete tests for all delete restriction scenarios."""
+
+    def test_can_delete_fresh_promotion(self):
+        """Test that a fresh promotion with no activity can be deleted."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Fresh Promo", 10, 5)
+        for _ in range(5):
+            store.add_promo_code(promo.id)
+
+        codes_sent = promo.codes_sent
+        codes_used = promo.codes_used
+        codes_shared_socials = sum(1 for c in store.promo_codes.values()
+                                    if c.promotion_id == promo.id and c.shared_on_socials)
+        codes_shared_privately = sum(1 for c in store.promo_codes.values()
+                                      if c.promotion_id == promo.id and c.shared_privately)
+
+        can_delete = (codes_sent == 0 and codes_used == 0 and
+                     codes_shared_socials == 0 and codes_shared_privately == 0)
+
+        assert can_delete is True
+
+    def test_cannot_delete_if_emails_sent(self):
+        """Test that promotion cannot be deleted if emails have been sent."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Sent Promo", 10, 5)
+        code = store.add_promo_code(promo.id)
+
+        code.email_sent = True
+        code.recipient_email = "test@example.com"
+        promo.codes_sent = 1
+
+        can_delete = promo.codes_sent == 0
+        assert can_delete is False
+
+    def test_cannot_delete_if_codes_used(self):
+        """Test that promotion cannot be deleted if codes have been used."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Used Promo", 10, 5)
+        code = store.add_promo_code(promo.id)
+
+        code.is_used = True
+        code.booking_id = 123
+        promo.codes_used = 1
+
+        can_delete = promo.codes_used == 0
+        assert can_delete is False
+
+    def test_cannot_delete_if_shared_on_socials(self):
+        """Test that promotion cannot be deleted if codes shared on socials."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Social Promo", 10, 5)
+        code = store.add_promo_code(promo.id)
+
+        code.shared_on_socials = True
+        code.shared_on_socials_at = get_uk_now()
+
+        codes_shared = sum(1 for c in store.promo_codes.values()
+                          if c.promotion_id == promo.id and c.shared_on_socials)
+
+        can_delete = codes_shared == 0
+        assert can_delete is False
+
+    def test_cannot_delete_if_shared_privately(self):
+        """Test that promotion cannot be deleted if codes shared privately."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Private Promo", 10, 5)
+        code = store.add_promo_code(promo.id)
+
+        code.shared_privately = True
+        code.shared_privately_at = get_uk_now()
+
+        codes_shared_privately = sum(1 for c in store.promo_codes.values()
+                                      if c.promotion_id == promo.id and c.shared_privately)
+
+        can_delete = codes_shared_privately == 0
+        assert can_delete is False
+
+    def test_all_restrictions_checked(self):
+        """Test that all restrictions must pass for deletion."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Multi-activity Promo", 10, 10)
+        codes = [store.add_promo_code(promo.id) for _ in range(10)]
+
+        # Add one of each type
+        codes[0].email_sent = True
+        promo.codes_sent = 1
+
+        codes[1].is_used = True
+        promo.codes_used = 1
+
+        codes[2].shared_on_socials = True
+
+        codes[3].shared_privately = True
+
+        codes_shared_socials = sum(1 for c in codes if c.shared_on_socials)
+        codes_shared_privately = sum(1 for c in codes if c.shared_privately)
+
+        can_delete = (promo.codes_sent == 0 and promo.codes_used == 0 and
+                     codes_shared_socials == 0 and codes_shared_privately == 0)
+
+        assert can_delete is False
