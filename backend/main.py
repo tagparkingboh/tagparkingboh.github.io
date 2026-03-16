@@ -4125,14 +4125,14 @@ async def send_promo_emails(
 
 
 def send_generic_promo_email(to_email: str, subject: str, html_body: str) -> bool:
-    """Send a generic promo email with custom subject and body."""
+    """Send a generic promo email with custom subject and body. Sent from founder."""
     import os
     from sendgrid import SendGridAPIClient
     from sendgrid.helpers.mail import Mail, Email, To, Content
 
     sendgrid_api_key = os.getenv("SENDGRID_API_KEY")
-    from_email = os.getenv("FROM_EMAIL", "no-reply@tagparking.co.uk")
-    from_name = os.getenv("FROM_NAME", "TAG Parking")
+    from_email = os.getenv("FOUNDER_EMAIL", "kristian@tagparking.co.uk")
+    from_name = os.getenv("FOUNDER_NAME", "Kristian")
 
     if not sendgrid_api_key:
         print("[EMAIL] SendGrid API key not configured")
