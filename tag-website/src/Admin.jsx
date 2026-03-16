@@ -4533,8 +4533,11 @@ function Admin() {
                                           )}
                                         </td>
                                         <td>
-                                          {/* Shared on Socials: toggle button for social codes, dash for emailed codes */}
+                                          {/* Shared on Socials: toggle button for social codes, dash for emailed/privately shared codes */}
                                           {code.recipient_email ? (
+                                            <span style={{ color: '#999' }}>-</span>
+                                          ) : code.shared_privately && !code.shared_on_socials ? (
+                                            /* Cannot share on socials if already shared privately (mutually exclusive) */
                                             <span style={{ color: '#999' }}>-</span>
                                           ) : code.is_used && !code.shared_on_socials ? (
                                             /* Used codes cannot be marked as shared (but can show shared status if already was) */
@@ -4570,8 +4573,11 @@ function Admin() {
                                           )}
                                         </td>
                                         <td>
-                                          {/* Shared Privately: toggle button for private sharing, dash for emailed codes */}
+                                          {/* Shared Privately: toggle button for private sharing, dash for emailed/socially shared codes */}
                                           {code.recipient_email ? (
+                                            <span style={{ color: '#999' }}>-</span>
+                                          ) : code.shared_on_socials && !code.shared_privately ? (
+                                            /* Cannot share privately if already shared on socials (mutually exclusive) */
                                             <span style={{ color: '#999' }}>-</span>
                                           ) : code.is_used && !code.shared_privately ? (
                                             /* Used codes cannot be marked as shared (but can show shared status if already was) */

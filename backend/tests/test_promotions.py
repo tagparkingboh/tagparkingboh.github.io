@@ -2211,6 +2211,8 @@ class TestSharedOnSocialsAPI:
         mock_code.code = "TAG-TEST-1234"
         mock_code.shared_on_socials = False
         mock_code.shared_on_socials_at = None
+        mock_code.is_used = False
+        mock_code.shared_privately = False  # Required for mutual exclusivity check
 
         # Mock the query
         mock_db.query.return_value.filter.return_value.first.return_value = mock_code
@@ -2371,23 +2373,135 @@ class TestSharedPrivately:
         # Still no recipient
         assert code.recipient_email is None
 
-    def test_code_can_be_both_shared_on_socials_and_privately(self):
-        """Test that a code can technically be marked as both (edge case)."""
+    def test_sharing_methods_are_mutually_exclusive(self):
+        """Test that a code can only be shared ONE way - socials OR privately, not both."""
+        # This is a business rule: promo codes are unique and can only be distributed
+        # through one channel: email, socials, or privately
         store = MockPromotionStore()
-        promo = store.add_promotion("Multi-share Campaign", 10, 5)
+        promo = store.add_promotion("Single-share Campaign", 10, 5)
         code = store.add_promo_code(promo.id)
 
         # Mark as shared on socials
         code.shared_on_socials = True
         code.shared_on_socials_at = get_uk_now()
 
-        # Also mark as shared privately
-        code.shared_privately = True
-        code.shared_privately_at = get_uk_now()
-
-        # Both should be true
+        # Verify shared on socials
         assert code.shared_on_socials is True
-        assert code.shared_privately is True
+        assert code.shared_privately is False
+
+        # In the real system, trying to share privately would fail
+        # (This is enforced at the API level, not the model level)
+
+
+@pytest.mark.asyncio
+class TestMutualExclusivityAPI:
+    """API tests for mutual exclusivity of sharing methods."""
+
+    @pytest.fixture
+    def mock_admin_user(self):
+        """Create a mock admin user."""
+        user = MagicMock()
+        user.id = 1
+        user.email = "admin@example.com"
+        user.is_admin = True
+        return user
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock database session."""
+        return MagicMock()
+
+    async def test_cannot_share_on_socials_if_already_shared_privately(self, mock_admin_user, mock_db):
+        """Test that a code already shared privately cannot be shared on socials."""
+        from main import mark_code_shared_on_socials
+        from db_models import PromoCode
+        from fastapi import HTTPException
+
+        # Create mock promo code that is already shared privately
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-PRIV-1234"
+        mock_code.is_used = False
+        mock_code.shared_privately = True
+        mock_code.shared_privately_at = get_uk_now()
+        mock_code.shared_on_socials = False
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        # Attempt to share on socials should fail
+        with pytest.raises(HTTPException) as exc_info:
+            await mark_code_shared_on_socials(code_id=1, db=mock_db, current_user=mock_admin_user)
+
+        assert exc_info.value.status_code == 400
+        assert "already shared privately" in exc_info.value.detail
+
+    async def test_cannot_share_privately_if_already_shared_on_socials(self, mock_admin_user, mock_db):
+        """Test that a code already shared on socials cannot be shared privately."""
+        from main import mark_code_shared_privately
+        from db_models import PromoCode
+        from fastapi import HTTPException
+
+        # Create mock promo code that is already shared on socials
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-SOC-1234"
+        mock_code.is_used = False
+        mock_code.shared_on_socials = True
+        mock_code.shared_on_socials_at = get_uk_now()
+        mock_code.shared_privately = False
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        # Attempt to share privately should fail
+        with pytest.raises(HTTPException) as exc_info:
+            await mark_code_shared_privately(code_id=1, db=mock_db, current_user=mock_admin_user)
+
+        assert exc_info.value.status_code == 400
+        assert "already shared on socials" in exc_info.value.detail
+
+    async def test_can_toggle_off_shared_on_socials(self, mock_admin_user, mock_db):
+        """Test that a code already shared on socials can be toggled OFF."""
+        from main import mark_code_shared_on_socials
+        from db_models import PromoCode
+
+        # Create mock promo code that is shared on socials
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-SOC-1234"
+        mock_code.is_used = False
+        mock_code.shared_on_socials = True
+        mock_code.shared_on_socials_at = get_uk_now()
+        mock_code.shared_privately = False
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        # Should be able to toggle off
+        result = await mark_code_shared_on_socials(code_id=1, db=mock_db, current_user=mock_admin_user)
+
+        assert result["success"] is True
+        assert mock_code.shared_on_socials is False
+
+    async def test_can_toggle_off_shared_privately(self, mock_admin_user, mock_db):
+        """Test that a code already shared privately can be toggled OFF."""
+        from main import mark_code_shared_privately
+        from db_models import PromoCode
+
+        # Create mock promo code that is shared privately
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-PRIV-1234"
+        mock_code.is_used = False
+        mock_code.shared_privately = True
+        mock_code.shared_privately_at = get_uk_now()
+        mock_code.shared_on_socials = False
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        # Should be able to toggle off
+        result = await mark_code_shared_privately(code_id=1, db=mock_db, current_user=mock_admin_user)
+
+        assert result["success"] is True
+        assert mock_code.shared_privately is False
 
 
 @pytest.mark.asyncio
@@ -2420,6 +2534,7 @@ class TestSharedPrivatelyAPI:
         mock_code.shared_privately = False
         mock_code.shared_privately_at = None
         mock_code.is_used = False
+        mock_code.shared_on_socials = False  # Required for mutual exclusivity check
 
         # Mock the query
         mock_db.query.return_value.filter.return_value.first.return_value = mock_code

@@ -4124,6 +4124,10 @@ async def mark_code_shared_on_socials(
     if promo_code.is_used and not promo_code.shared_on_socials:
         raise HTTPException(status_code=400, detail="Cannot mark a used code as shared on socials")
 
+    # Cannot mark as shared on socials if already shared privately (mutually exclusive)
+    if promo_code.shared_privately and not promo_code.shared_on_socials:
+        raise HTTPException(status_code=400, detail="Code is already shared privately - cannot also share on socials")
+
     # Toggle the shared status
     if promo_code.shared_on_socials:
         promo_code.shared_on_socials = False
@@ -4172,6 +4176,10 @@ async def mark_code_shared_privately(
     # Cannot mark a used code as shared privately
     if promo_code.is_used and not promo_code.shared_privately:
         raise HTTPException(status_code=400, detail="Cannot mark a used code as shared privately")
+
+    # Cannot mark as shared privately if already shared on socials (mutually exclusive)
+    if promo_code.shared_on_socials and not promo_code.shared_privately:
+        raise HTTPException(status_code=400, detail="Code is already shared on socials - cannot also share privately")
 
     # Toggle the shared status
     if promo_code.shared_privately:
