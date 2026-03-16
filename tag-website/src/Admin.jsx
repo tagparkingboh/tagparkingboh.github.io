@@ -856,6 +856,32 @@ function Admin() {
     }
   }
 
+  const toggleSharedOnSocials = async (promotionId, codeId) => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promo-codes/${codeId}/share-socials`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        // Update the local state
+        setPromotionDetails(prev => ({
+          ...prev,
+          [promotionId]: {
+            ...prev[promotionId],
+            codes: prev[promotionId].codes.map(code =>
+              code.id === codeId
+                ? { ...code, shared_on_socials: data.shared_on_socials, shared_on_socials_at: data.shared_on_socials_at }
+                : code
+            )
+          }
+        }))
+      }
+    } catch (err) {
+      console.error('Failed to toggle shared on socials:', err)
+    }
+  }
+
   const openSendPromoEmailModal = async (promotion) => {
     // Fetch available (unsent) codes for this promotion
     try {
@@ -4410,7 +4436,7 @@ function Admin() {
                                     <tr>
                                       <th>Code</th>
                                       <th>Recipient</th>
-                                      <th>Email Sent</th>
+                                      <th>Shared</th>
                                       <th>Status</th>
                                       <th>Booking</th>
                                     </tr>
@@ -4442,17 +4468,46 @@ function Admin() {
                                           )}
                                         </td>
                                         <td>
-                                          {code.email_sent ? (
-                                            <span style={{ color: '#28a745' }}>
-                                              ✓ {new Date(code.email_sent_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}
-                                            </span>
+                                          {/* Show clickable checkbox for social media codes, email sent date for emailed codes */}
+                                          {code.recipient_email ? (
+                                            code.email_sent ? (
+                                              <span style={{ color: '#28a745' }}>
+                                                ✓ {new Date(code.email_sent_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}
+                                              </span>
+                                            ) : (
+                                              <span style={{ color: '#999' }}>-</span>
+                                            )
                                           ) : (
-                                            <span style={{ color: '#999' }}>-</span>
+                                            <button
+                                              onClick={() => toggleSharedOnSocials(promo.id, code.id)}
+                                              style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                padding: '4px 10px',
+                                                borderRadius: '12px',
+                                                fontSize: '11px',
+                                                fontWeight: '600',
+                                                border: 'none',
+                                                cursor: 'pointer',
+                                                background: code.shared_on_socials
+                                                  ? 'linear-gradient(135deg, #28a745 0%, #20c997 100%)'
+                                                  : '#e9ecef',
+                                                color: code.shared_on_socials ? 'white' : '#666',
+                                                transition: 'all 0.2s ease'
+                                              }}
+                                              title={code.shared_on_socials
+                                                ? `Shared on ${new Date(code.shared_on_socials_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}`
+                                                : 'Click to mark as shared on socials'
+                                              }
+                                            >
+                                              {code.shared_on_socials ? '✓ Shared' : 'Mark Shared'}
+                                            </button>
                                           )}
                                         </td>
                                         <td>
-                                          <span className={`status-badge ${code.is_used ? 'used' : code.email_sent ? 'sent' : 'pending'}`}>
-                                            {code.is_used ? 'Used' : code.email_sent ? 'Sent' : 'Available'}
+                                          <span className={`status-badge ${code.is_used ? 'used' : (code.email_sent || code.shared_on_socials) ? 'sent' : 'pending'}`}>
+                                            {code.is_used ? 'Used' : (code.email_sent || code.shared_on_socials) ? 'Shared' : 'Available'}
                                           </span>
                                         </td>
                                         <td>

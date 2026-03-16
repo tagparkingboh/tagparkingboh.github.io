@@ -399,6 +399,10 @@ class PromoCodeResponse(BaseModel):
     booking_id: Optional[int] = None
     booking_reference: Optional[str] = None  # For display
 
+    # Social media tracking
+    shared_on_socials: bool = False
+    shared_on_socials_at: Optional[datetime] = None
+
     created_at: datetime
 
     class Config:

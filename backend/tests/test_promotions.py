@@ -78,6 +78,8 @@ class MockPromotionStore:
         pc.email_sent = False
         pc.email_sent_at = None
         pc.email_subject = None
+        pc.shared_on_socials = False
+        pc.shared_on_socials_at = None
         pc.is_used = False
         pc.used_at = None
         pc.booking_id = None
@@ -1978,3 +1980,189 @@ class TestWebhookPromoCodeMarking:
         for test_code in test_cases:
             normalized = test_code.strip().upper() if test_code else None
             assert normalized == "TAG-TEST-CODE", f"Failed for input: {test_code!r}"
+
+
+class TestSharedOnSocials:
+    """Tests for the shared on socials feature - marking promo codes as shared on social media."""
+
+    def test_mark_code_as_shared_on_socials(self):
+        """Test marking a promo code as shared on socials."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Social Media Campaign", 15, 10)
+        code = store.add_promo_code(promo.id)
+
+        # Initially not shared
+        assert code.shared_on_socials is False
+        assert code.shared_on_socials_at is None
+
+        # Mark as shared
+        code.shared_on_socials = True
+        code.shared_on_socials_at = get_uk_now()
+
+        assert code.shared_on_socials is True
+        assert code.shared_on_socials_at is not None
+
+    def test_toggle_shared_on_socials_off(self):
+        """Test unmarking a promo code as shared on socials (toggle off)."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Social Media Campaign", 15, 10)
+        code = store.add_promo_code(promo.id)
+
+        # Mark as shared
+        code.shared_on_socials = True
+        code.shared_on_socials_at = get_uk_now()
+
+        # Toggle off
+        code.shared_on_socials = False
+        code.shared_on_socials_at = None
+
+        assert code.shared_on_socials is False
+        assert code.shared_on_socials_at is None
+
+    def test_shared_on_socials_does_not_affect_is_used(self):
+        """Test that marking as shared doesn't affect the is_used status."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Social Media Campaign", 15, 10)
+        code = store.add_promo_code(promo.id)
+
+        # Mark as shared
+        code.shared_on_socials = True
+        code.shared_on_socials_at = get_uk_now()
+
+        # Code should still be available for use
+        assert code.is_used is False
+        assert code.used_at is None
+
+    def test_code_can_be_shared_and_then_used(self):
+        """Test that a code can be shared on socials and then later used for a booking."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Social Media Campaign", 20, 5)
+        code = store.add_promo_code(promo.id)
+
+        # First: share on socials
+        code.shared_on_socials = True
+        code.shared_on_socials_at = get_uk_now()
+
+        assert code.shared_on_socials is True
+        assert code.is_used is False
+
+        # Later: use for booking
+        code.is_used = True
+        code.used_at = get_uk_now()
+        code.booking_id = 456
+        promo.codes_used += 1
+
+        # Both shared and used should be true
+        assert code.shared_on_socials is True
+        assert code.is_used is True
+        assert code.booking_id == 456
+        assert promo.codes_used == 1
+
+    def test_social_media_code_has_no_recipient(self):
+        """Test that social media codes typically have no recipient email."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Social Media Campaign", 10, 3)
+        code = store.add_promo_code(promo.id)
+
+        # Social media codes don't have recipients
+        assert code.recipient_email is None
+        assert code.email_sent is False
+
+        # Mark as shared
+        code.shared_on_socials = True
+        code.shared_on_socials_at = get_uk_now()
+
+        # Still no recipient
+        assert code.recipient_email is None
+
+
+@pytest.mark.asyncio
+class TestSharedOnSocialsAPI:
+    """API tests for the shared on socials endpoint."""
+
+    @pytest.fixture
+    def mock_admin_user(self):
+        """Create a mock admin user."""
+        user = MagicMock()
+        user.id = 1
+        user.email = "admin@example.com"
+        user.is_admin = True
+        return user
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock database session."""
+        return MagicMock()
+
+    async def test_mark_code_shared_success(self, mock_admin_user, mock_db):
+        """Test successfully marking a code as shared on socials via API."""
+        from main import mark_code_shared_on_socials, get_uk_now
+        from db_models import PromoCode
+
+        # Create mock promo code
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-TEST-1234"
+        mock_code.shared_on_socials = False
+        mock_code.shared_on_socials_at = None
+
+        # Mock the query
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        # Call the endpoint
+        with patch('main.get_db', return_value=iter([mock_db])):
+            with patch('main.require_admin', return_value=mock_admin_user):
+                result = await mark_code_shared_on_socials(
+                    code_id=1,
+                    db=mock_db,
+                    current_user=mock_admin_user
+                )
+
+        assert result["success"] is True
+        assert result["code_id"] == 1
+        assert result["shared_on_socials"] is True
+        assert mock_code.shared_on_socials is True
+
+    async def test_toggle_off_shared_status(self, mock_admin_user, mock_db):
+        """Test toggling off the shared on socials status."""
+        from main import mark_code_shared_on_socials
+        from db_models import PromoCode
+
+        # Create mock promo code that is already shared
+        mock_code = MagicMock(spec=PromoCode)
+        mock_code.id = 1
+        mock_code.code = "TAG-TEST-5678"
+        mock_code.shared_on_socials = True
+        mock_code.shared_on_socials_at = get_uk_now()
+
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_code
+
+        # Call the endpoint (should toggle off)
+        result = await mark_code_shared_on_socials(
+            code_id=1,
+            db=mock_db,
+            current_user=mock_admin_user
+        )
+
+        assert result["success"] is True
+        assert result["shared_on_socials"] is False
+        assert mock_code.shared_on_socials is False
+        assert mock_code.shared_on_socials_at is None
+
+    async def test_mark_nonexistent_code_returns_404(self, mock_admin_user, mock_db):
+        """Test that marking a non-existent code returns 404."""
+        from main import mark_code_shared_on_socials
+        from fastapi import HTTPException
+
+        # Mock query returns None
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        with pytest.raises(HTTPException) as exc_info:
+            await mark_code_shared_on_socials(
+                code_id=9999,
+                db=mock_db,
+                current_user=mock_admin_user
+            )
+
+        assert exc_info.value.status_code == 404
+        assert "not found" in exc_info.value.detail.lower()

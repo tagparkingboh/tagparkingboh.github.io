@@ -854,6 +854,10 @@ class PromoCode(Base):
     email_sent_at = Column(DateTime(timezone=True), nullable=True)
     email_subject = Column(String(255), nullable=True)
 
+    # Social media tracking (for codes shared on socials without email)
+    shared_on_socials = Column(Boolean, default=False)
+    shared_on_socials_at = Column(DateTime(timezone=True), nullable=True)
+
     # Usage tracking
     is_used = Column(Boolean, default=False, index=True)
     used_at = Column(DateTime(timezone=True), nullable=True)

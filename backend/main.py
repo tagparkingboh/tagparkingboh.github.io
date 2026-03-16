@@ -3985,6 +3985,51 @@ async def get_available_codes(
     }
 
 
+@app.patch("/api/admin/promo-codes/{code_id}/share-socials")
+async def mark_code_shared_on_socials(
+    code_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Mark a promo code as shared on social media.
+
+    This is used for codes that are posted on socials rather than emailed
+    to specific recipients.
+    """
+    from db_models import PromoCode
+
+    promo_code = db.query(PromoCode).filter(PromoCode.id == code_id).first()
+    if not promo_code:
+        raise HTTPException(status_code=404, detail="Promo code not found")
+
+    # Toggle the shared status
+    if promo_code.shared_on_socials:
+        promo_code.shared_on_socials = False
+        promo_code.shared_on_socials_at = None
+        action = "unmarked"
+    else:
+        promo_code.shared_on_socials = True
+        promo_code.shared_on_socials_at = get_uk_now()
+        action = "marked"
+
+    db.commit()
+
+    log_promo(f"Promo code {action} as shared on socials", {
+        "code_id": code_id,
+        "code": promo_code.code,
+        "shared_on_socials": promo_code.shared_on_socials,
+        "user": current_user.email
+    })
+
+    return {
+        "success": True,
+        "code_id": code_id,
+        "shared_on_socials": promo_code.shared_on_socials,
+        "shared_on_socials_at": promo_code.shared_on_socials_at.isoformat() if promo_code.shared_on_socials_at else None
+    }
+
+
 @app.post("/api/admin/promotions/send-emails")
 async def send_promo_emails(
     request: dict,
