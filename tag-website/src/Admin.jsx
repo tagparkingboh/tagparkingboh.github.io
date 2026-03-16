@@ -122,7 +122,7 @@ function Admin() {
   const [subscriberDateTo, setSubscriberDateTo] = useState(null)
 
   // Marketing sub-tab state
-  const [marketingSubTab, setMarketingSubTab] = useState('subscribers') // 'subscribers' or 'promotions'
+  const [marketingSubTab, setMarketingSubTab] = useState('subscribers') // 'subscribers', 'promotions', or 'sources'
 
   // Promotions state
   const [promotions, setPromotions] = useState([])
@@ -339,6 +339,13 @@ function Admin() {
     }
   }, [activeTab, token, marketingSubTab])
 
+  // Fetch marketing sources when marketing tab is active with sources sub-tab
+  useEffect(() => {
+    if (activeTab === 'marketing' && token && marketingSubTab === 'sources') {
+      fetchMarketingSources()
+    }
+  }, [activeTab, token, marketingSubTab])
+
   // Fetch leads when leads tab is active
   useEffect(() => {
     if (activeTab === 'leads' && token) {
@@ -393,8 +400,6 @@ function Admin() {
         fetchOccupancyReport(occupancyView)
       } else if (reportsSubTab === 'popular') {
         fetchPopularReport()
-      } else if (reportsSubTab === 'marketing') {
-        fetchMarketingSources()
       }
     }
   }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularTop])
@@ -3777,6 +3782,12 @@ function Admin() {
               >
                 Promotions
               </button>
+              <button
+                className={`reports-subtab ${marketingSubTab === 'sources' ? 'active' : ''}`}
+                onClick={() => setMarketingSubTab('sources')}
+              >
+                Sources
+              </button>
             </div>
 
             {/* Promotions Success/Error Message */}
@@ -4621,6 +4632,220 @@ function Admin() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Sources Sub-tab (Marketing Sources) */}
+            {marketingSubTab === 'sources' && (
+              <div className="marketing-sources-section">
+                <div className="admin-section-header">
+                  <h2>Marketing Sources</h2>
+                  <div className="flights-header-actions">
+                    <button
+                      className="btn-secondary"
+                      onClick={fetchMarketingSources}
+                      disabled={loadingMarketingSources}
+                    >
+                      ↻ Refresh
+                    </button>
+                    <button
+                      className="btn-primary"
+                      onClick={exportMarketingSourcesCSV}
+                    >
+                      ↓ Download CSV
+                    </button>
+                  </div>
+                </div>
+                <p className="admin-subtitle">
+                  Where customers heard about TAG Parking (based on Page 4 attribution question)
+                </p>
+
+                <div className="flights-filters">
+                  <div className="flight-filter-group leads-date-picker">
+                    <label>From:</label>
+                    <DatePicker
+                      selected={marketingExportFromDate}
+                      onChange={(date) => setMarketingExportFromDate(date)}
+                      dateFormat="dd/MM/yyyy"
+                      placeholderText="DD/MM/YYYY"
+                      className="flight-date-input"
+                      isClearable
+                    />
+                  </div>
+                  <div className="flight-filter-group leads-date-picker">
+                    <label>To:</label>
+                    <DatePicker
+                      selected={marketingExportToDate}
+                      onChange={(date) => setMarketingExportToDate(date)}
+                      dateFormat="dd/MM/yyyy"
+                      placeholderText="DD/MM/YYYY"
+                      className="flight-date-input"
+                      isClearable
+                    />
+                  </div>
+                  {(marketingExportFromDate || marketingExportToDate) && (
+                    <button
+                      className="btn-secondary clear-dates-btn"
+                      onClick={() => { setMarketingExportFromDate(null); setMarketingExportToDate(null); }}
+                    >
+                      × Clear
+                    </button>
+                  )}
+                  {marketingSourcesData && (
+                    <div className="leads-filter-count">
+                      Showing {marketingSourcesData.total_responses} responses
+                    </div>
+                  )}
+                </div>
+
+                {loadingMarketingSources ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading marketing sources...</span>
+                  </div>
+                ) : marketingSourcesData ? (
+                  <>
+                    {/* Total Summary */}
+                    <div className="marketing-total-summary">
+                      <div className="stats-card">
+                        <div className="stats-card-value">{marketingSourcesData.total_responses}</div>
+                        <div className="stats-card-label">Total Responses</div>
+                      </div>
+                    </div>
+
+                    {/* Monthly Breakdown */}
+                    <h4>Monthly Breakdown</h4>
+                    {marketingSourcesData.monthly_data && marketingSourcesData.monthly_data.length > 0 ? (
+                      <div className="marketing-monthly-table">
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Month</th>
+                              {[
+                                { key: 'google', label: 'Google' },
+                                { key: 'facebook', label: 'Facebook' },
+                                { key: 'instagram', label: 'Instagram' },
+                                { key: 'word_of_mouth', label: 'Word of Mouth' },
+                                { key: 'leaflet', label: 'Leaflet' },
+                                { key: 'tv', label: 'TV' },
+                                { key: 'radio', label: 'Radio' },
+                                { key: 'newspaper', label: 'Newspaper' },
+                                { key: 'linkedin', label: 'LinkedIn' },
+                                { key: 'afc_bournemouth', label: 'AFC Bournemouth' },
+                                { key: 'other', label: 'Other' }
+                              ].map(source => (
+                                <th key={source.key}>{source.label}</th>
+                              ))}
+                              <th>Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {marketingSourcesData.monthly_data.map((month, idx) => {
+                              const total = Object.values(month.sources).reduce((a, b) => a + b, 0)
+                              return (
+                                <tr key={idx}>
+                                  <td>{month.year_month.split('-').reverse().join('/')}</td>
+                                  {['google', 'facebook', 'instagram', 'word_of_mouth', 'leaflet', 'tv', 'radio', 'newspaper', 'linkedin', 'afc_bournemouth', 'other'].map(source => (
+                                    <td key={source}>
+                                      {month.sources[source] || 0}
+                                      {source === 'other' && month.sources.other > 0 && (
+                                        <button
+                                          className="view-other-details"
+                                          onClick={() => fetchMarketingOtherDetails(month.year_month)}
+                                          title={`View 'Other' details for ${month.year_month}`}
+                                        >
+                                          ?
+                                        </button>
+                                      )}
+                                    </td>
+                                  ))}
+                                  <td><strong>{total}</strong></td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="no-data">No marketing source data yet.</p>
+                    )}
+
+                    {/* Source Totals */}
+                    <h4>All-Time Totals by Source</h4>
+                    <div className="marketing-source-totals">
+                      {marketingSourcesData.source_totals && Object.entries(marketingSourcesData.source_totals)
+                        .sort(([, a], [, b]) => b - a)
+                        .map(([source, count]) => {
+                          const sourceLabels = {
+                            google: 'Google',
+                            facebook: 'Facebook',
+                            instagram: 'Instagram',
+                            word_of_mouth: 'Word of Mouth',
+                            leaflet: 'Leaflet',
+                            tv: 'TV',
+                            radio: 'Radio',
+                            newspaper: 'Newspaper',
+                            linkedin: 'LinkedIn',
+                            afc_bournemouth: 'AFC Bournemouth',
+                            other: 'Other'
+                          }
+                          return (
+                            <div key={source} className="source-total-item">
+                              <span className="source-name">{sourceLabels[source] || source}</span>
+                              <span className="source-count">{count}</span>
+                              <div className="source-bar" style={{ width: `${(count / marketingSourcesData.total_responses) * 100}%` }}></div>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  </>
+                ) : (
+                  <p className="no-data">No marketing source data available.</p>
+                )}
+              </div>
+            )}
+
+            {/* Marketing "Other" Details Modal */}
+            {showMarketingOtherModal && (
+              <div className="modal-overlay" onClick={() => setShowMarketingOtherModal(false)}>
+                <div className="modal-content marketing-other-modal" onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h3>"Other" Source Details {marketingOtherMonth && `- ${(() => {
+                        const [year, month] = marketingOtherMonth.split('-')
+                        return new Date(year, month - 1, 15).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+                      })()}`}</h3>
+                    <button className="modal-close" onClick={() => setShowMarketingOtherModal(false)}>&times;</button>
+                  </div>
+                  <div className="modal-body marketing-other-modal-body">
+                    {loadingMarketingOther ? (
+                      <div className="admin-loading-inline">
+                        <div className="spinner-small"></div>
+                        <span>Loading...</span>
+                      </div>
+                    ) : marketingOtherDetails && marketingOtherDetails.length > 0 ? (
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Customer</th>
+                            <th>Detail</th>
+                            <th>Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {marketingOtherDetails.map((item, idx) => (
+                            <tr key={idx}>
+                              <td>{item.customer_name || item.customer_email}</td>
+                              <td>{item.source_detail}</td>
+                              <td>{new Date(item.created_at).toLocaleDateString('en-GB')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <p>No "Other" details recorded.</p>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -5657,12 +5882,6 @@ function Admin() {
               >
                 Location Maps
               </button>
-              <button
-                className={`reports-subtab ${reportsSubTab === 'marketing' ? 'active' : ''}`}
-                onClick={() => setReportsSubTab('marketing')}
-              >
-                Marketing Sources
-              </button>
             </div>
 
             {/* Booking Growth Charts */}
@@ -6492,220 +6711,6 @@ function Admin() {
                   </>
                 )}
               </>
-            )}
-
-            {/* Marketing Sources */}
-            {reportsSubTab === 'marketing' && (
-              <div className="marketing-sources-section">
-                <div className="admin-section-header">
-                  <h2>Marketing Sources</h2>
-                  <div className="flights-header-actions">
-                    <button
-                      className="btn-secondary"
-                      onClick={fetchMarketingSources}
-                      disabled={loadingMarketingSources}
-                    >
-                      ↻ Refresh
-                    </button>
-                    <button
-                      className="btn-primary"
-                      onClick={exportMarketingSourcesCSV}
-                    >
-                      ↓ Download CSV
-                    </button>
-                  </div>
-                </div>
-                <p className="admin-subtitle">
-                  Where customers heard about TAG Parking (based on Page 4 attribution question)
-                </p>
-
-                <div className="flights-filters">
-                  <div className="flight-filter-group leads-date-picker">
-                    <label>From:</label>
-                    <DatePicker
-                      selected={marketingExportFromDate}
-                      onChange={(date) => setMarketingExportFromDate(date)}
-                      dateFormat="dd/MM/yyyy"
-                      placeholderText="DD/MM/YYYY"
-                      className="flight-date-input"
-                      isClearable
-                    />
-                  </div>
-                  <div className="flight-filter-group leads-date-picker">
-                    <label>To:</label>
-                    <DatePicker
-                      selected={marketingExportToDate}
-                      onChange={(date) => setMarketingExportToDate(date)}
-                      dateFormat="dd/MM/yyyy"
-                      placeholderText="DD/MM/YYYY"
-                      className="flight-date-input"
-                      isClearable
-                    />
-                  </div>
-                  {(marketingExportFromDate || marketingExportToDate) && (
-                    <button
-                      className="btn-secondary clear-dates-btn"
-                      onClick={() => { setMarketingExportFromDate(null); setMarketingExportToDate(null); }}
-                    >
-                      × Clear
-                    </button>
-                  )}
-                  {marketingSourcesData && (
-                    <div className="leads-filter-count">
-                      Showing {marketingSourcesData.total_responses} responses
-                    </div>
-                  )}
-                </div>
-
-                {loadingMarketingSources ? (
-                  <div className="admin-loading-inline">
-                    <div className="spinner-small"></div>
-                    <span>Loading marketing sources...</span>
-                  </div>
-                ) : marketingSourcesData ? (
-                  <>
-                    {/* Total Summary */}
-                    <div className="marketing-total-summary">
-                      <div className="stats-card">
-                        <div className="stats-card-value">{marketingSourcesData.total_responses}</div>
-                        <div className="stats-card-label">Total Responses</div>
-                      </div>
-                    </div>
-
-                    {/* Monthly Breakdown */}
-                    <h4>Monthly Breakdown</h4>
-                    {marketingSourcesData.monthly_data && marketingSourcesData.monthly_data.length > 0 ? (
-                      <div className="marketing-monthly-table">
-                        <table className="admin-table">
-                          <thead>
-                            <tr>
-                              <th>Month</th>
-                              {[
-                                { key: 'google', label: 'Google' },
-                                { key: 'facebook', label: 'Facebook' },
-                                { key: 'instagram', label: 'Instagram' },
-                                { key: 'word_of_mouth', label: 'Word of Mouth' },
-                                { key: 'leaflet', label: 'Leaflet' },
-                                { key: 'tv', label: 'TV' },
-                                { key: 'radio', label: 'Radio' },
-                                { key: 'newspaper', label: 'Newspaper' },
-                                { key: 'linkedin', label: 'LinkedIn' },
-                                { key: 'afc_bournemouth', label: 'AFC Bournemouth' },
-                                { key: 'other', label: 'Other' }
-                              ].map(source => (
-                                <th key={source.key}>{source.label}</th>
-                              ))}
-                              <th>Total</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {marketingSourcesData.monthly_data.map((month, idx) => {
-                              const total = Object.values(month.sources).reduce((a, b) => a + b, 0)
-                              return (
-                                <tr key={idx}>
-                                  <td>{month.year_month.split('-').reverse().join('/')}</td>
-                                  {['google', 'facebook', 'instagram', 'word_of_mouth', 'leaflet', 'tv', 'radio', 'newspaper', 'linkedin', 'afc_bournemouth', 'other'].map(source => (
-                                    <td key={source}>
-                                      {month.sources[source] || 0}
-                                      {source === 'other' && month.sources.other > 0 && (
-                                        <button
-                                          className="view-other-details"
-                                          onClick={() => fetchMarketingOtherDetails(month.year_month)}
-                                          title={`View 'Other' details for ${month.year_month}`}
-                                        >
-                                          ?
-                                        </button>
-                                      )}
-                                    </td>
-                                  ))}
-                                  <td><strong>{total}</strong></td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="no-data">No marketing source data yet.</p>
-                    )}
-
-                    {/* Source Totals */}
-                    <h4>All-Time Totals by Source</h4>
-                    <div className="marketing-source-totals">
-                      {marketingSourcesData.source_totals && Object.entries(marketingSourcesData.source_totals)
-                        .sort(([, a], [, b]) => b - a)
-                        .map(([source, count]) => {
-                          const sourceLabels = {
-                            google: 'Google',
-                            facebook: 'Facebook',
-                            instagram: 'Instagram',
-                            word_of_mouth: 'Word of Mouth',
-                            leaflet: 'Leaflet',
-                            tv: 'TV',
-                            radio: 'Radio',
-                            newspaper: 'Newspaper',
-                            linkedin: 'LinkedIn',
-                            afc_bournemouth: 'AFC Bournemouth',
-                            other: 'Other'
-                          }
-                          return (
-                            <div key={source} className="source-total-item">
-                              <span className="source-name">{sourceLabels[source] || source}</span>
-                              <span className="source-count">{count}</span>
-                              <div className="source-bar" style={{ width: `${(count / marketingSourcesData.total_responses) * 100}%` }}></div>
-                            </div>
-                          )
-                        })}
-                    </div>
-                  </>
-                ) : (
-                  <p className="no-data">No marketing source data available.</p>
-                )}
-              </div>
-            )}
-
-            {/* Marketing "Other" Details Modal */}
-            {showMarketingOtherModal && (
-              <div className="modal-overlay" onClick={() => setShowMarketingOtherModal(false)}>
-                <div className="modal-content marketing-other-modal" onClick={(e) => e.stopPropagation()}>
-                  <div className="modal-header">
-                    <h3>"Other" Source Details {marketingOtherMonth && `- ${(() => {
-                        const [year, month] = marketingOtherMonth.split('-')
-                        return new Date(year, month - 1, 15).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
-                      })()}`}</h3>
-                    <button className="modal-close" onClick={() => setShowMarketingOtherModal(false)}>&times;</button>
-                  </div>
-                  <div className="modal-body marketing-other-modal-body">
-                    {loadingMarketingOther ? (
-                      <div className="admin-loading-inline">
-                        <div className="spinner-small"></div>
-                        <span>Loading...</span>
-                      </div>
-                    ) : marketingOtherDetails && marketingOtherDetails.length > 0 ? (
-                      <table className="admin-table">
-                        <thead>
-                          <tr>
-                            <th>Customer</th>
-                            <th>Detail</th>
-                            <th>Date</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {marketingOtherDetails.map((item, idx) => (
-                            <tr key={idx}>
-                              <td>{item.customer_name || item.customer_email}</td>
-                              <td>{item.source_detail}</td>
-                              <td>{new Date(item.created_at).toLocaleDateString('en-GB')}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <p>No "Other" details recorded.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
             )}
           </div>
         )}
