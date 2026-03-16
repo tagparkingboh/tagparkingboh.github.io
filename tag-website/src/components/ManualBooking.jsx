@@ -196,6 +196,19 @@ function ManualBooking({ token }) {
     return { hours, minutes }
   }
 
+  // Helper to format minutes to time, handling overnight (negative) values
+  const formatMinutesToTime = (totalMinutes) => {
+    let mins = totalMinutes
+    const isOvernight = mins < 0
+    if (isOvernight) mins += 24 * 60 // Add 24 hours for previous day
+    const hours = Math.floor(mins / 60) % 24
+    const minutes = mins % 60
+    return {
+      time: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
+      isOvernight
+    }
+  }
+
   // Calculate drop-off slots based on departure time
   const dropoffSlots = useMemo(() => {
     const parsed = parseTimeString(formData.departureTime)
@@ -205,28 +218,22 @@ function ManualBooking({ token }) {
     const slots = []
 
     // Early slot (2.75 hours = 165 minutes before departure)
-    const earlyMinutes = depTotalMinutes - 165
-    if (earlyMinutes >= 0) {
-      const earlyHours = Math.floor(earlyMinutes / 60)
-      const earlyMins = earlyMinutes % 60
-      slots.push({
-        id: 'early',
-        time: `${String(earlyHours).padStart(2, '0')}:${String(earlyMins).padStart(2, '0')}`,
-        label: `Early - ${String(earlyHours).padStart(2, '0')}:${String(earlyMins).padStart(2, '0')} (2¾ hours before)`,
-      })
-    }
+    const earlyResult = formatMinutesToTime(depTotalMinutes - 165)
+    slots.push({
+      id: 'early',
+      time: earlyResult.time,
+      label: `Early - ${earlyResult.time} (2¾ hours before)${earlyResult.isOvernight ? ' *' : ''}`,
+      isOvernight: earlyResult.isOvernight
+    })
 
     // Late slot (2 hours = 120 minutes before departure)
-    const lateMinutes = depTotalMinutes - 120
-    if (lateMinutes >= 0) {
-      const lateHours = Math.floor(lateMinutes / 60)
-      const lateMins = lateMinutes % 60
-      slots.push({
-        id: 'late',
-        time: `${String(lateHours).padStart(2, '0')}:${String(lateMins).padStart(2, '0')}`,
-        label: `Late - ${String(lateHours).padStart(2, '0')}:${String(lateMins).padStart(2, '0')} (2 hours before)`,
-      })
-    }
+    const lateResult = formatMinutesToTime(depTotalMinutes - 120)
+    slots.push({
+      id: 'late',
+      time: lateResult.time,
+      label: `Late - ${lateResult.time} (2 hours before)${lateResult.isOvernight ? ' *' : ''}`,
+      isOvernight: lateResult.isOvernight
+    })
 
     return slots
   }, [formData.departureTime])
@@ -1133,6 +1140,11 @@ function ManualBooking({ token }) {
                   </option>
                 ))}
               </select>
+              {dropoffSlots.some(s => s.isOvernight) && (
+                <p className="overnight-note" style={{ color: '#e67e22', fontSize: '13px', marginTop: '6px' }}>
+                  * Drop-off is on the <strong>day before</strong> the flight (early morning departure)
+                </p>
+              )}
               {formData.dropoffSlot && (
                 <p className="slot-info">
                   Customer will drop off at <strong>{getDropoffTime()}</strong>
