@@ -515,6 +515,18 @@ function ManualBooking({ token }) {
     }
   }
 
+  // Remove promo code and reset price to original
+  const removePromoCode = () => {
+    setFormData(prev => ({
+      ...prev,
+      promoCode: '',
+      amount: calculatedPrice ? String(calculatedPrice) : ''
+    }))
+    setPromoValid(null)
+    setPromoMessage('')
+    setPromoDiscount(null)
+  }
+
   // Handle address selection
   const handleAddressSelect = (e) => {
     const selectedUprn = e.target.value
@@ -1395,15 +1407,27 @@ function ManualBooking({ token }) {
                     setPromoDiscount(null)
                   }}
                   placeholder="Enter promo code"
+                  disabled={promoValid === true}
                 />
-                <button
-                  type="button"
-                  className="lookup-btn"
-                  onClick={validatePromoCode}
-                  disabled={promoValidating || !formData.promoCode.trim() || !calculatedPrice}
-                >
-                  {promoValidating ? 'Validating...' : 'Apply'}
-                </button>
+                {promoValid === true ? (
+                  <button
+                    type="button"
+                    className="lookup-btn remove-btn"
+                    onClick={removePromoCode}
+                    style={{ backgroundColor: '#dc3545', borderColor: '#dc3545' }}
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="lookup-btn"
+                    onClick={validatePromoCode}
+                    disabled={promoValidating || !formData.promoCode.trim() || !calculatedPrice}
+                  >
+                    {promoValidating ? 'Validating...' : 'Apply'}
+                  </button>
+                )}
               </div>
               {promoValid === true && (
                 <p className="promo-success">
