@@ -812,6 +812,18 @@ function Admin() {
     }
   }
 
+  // Full refresh: clears cache and re-fetches everything including expanded promotion details
+  const refreshPromotions = async () => {
+    // Clear the promotion details cache to force fresh data
+    setPromotionDetails({})
+    // Fetch the promotions list
+    await fetchPromotions()
+    // If a promotion is expanded, re-fetch its details
+    if (expandedPromotionId) {
+      fetchPromotionDetails(expandedPromotionId)
+    }
+  }
+
   const createPromotion = async () => {
     setCreatingPromotion(true)
     setPromotionMessage('')
@@ -4265,7 +4277,7 @@ function Admin() {
                   <div className="flights-header-actions">
                     <button
                       className="btn-secondary"
-                      onClick={fetchPromotions}
+                      onClick={refreshPromotions}
                       disabled={loadingPromotions}
                     >
                       {loadingPromotions ? 'Loading...' : '↻ Refresh'}
