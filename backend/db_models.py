@@ -858,6 +858,10 @@ class PromoCode(Base):
     shared_on_socials = Column(Boolean, default=False)
     shared_on_socials_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Private sharing tracking (for codes shared privately via text/friends)
+    shared_privately = Column(Boolean, default=False)
+    shared_privately_at = Column(DateTime(timezone=True), nullable=True)
+
     # Usage tracking
     is_used = Column(Boolean, default=False, index=True)
     used_at = Column(DateTime(timezone=True), nullable=True)

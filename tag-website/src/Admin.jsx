@@ -884,6 +884,34 @@ function Admin() {
     }
   }
 
+  const toggleSharedPrivately = async (promotionId, codeId) => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promo-codes/${codeId}/share-privately`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        // Update the local state for codes table
+        setPromotionDetails(prev => ({
+          ...prev,
+          [promotionId]: {
+            ...prev[promotionId],
+            codes: prev[promotionId].codes.map(code =>
+              code.id === codeId
+                ? { ...code, shared_privately: data.shared_privately, shared_privately_at: data.shared_privately_at }
+                : code
+            )
+          }
+        }))
+        // Auto-refresh promotions list to update codes_available count
+        fetchPromotions()
+      }
+    } catch (err) {
+      console.error('Failed to toggle shared privately:', err)
+    }
+  }
+
   const openSendPromoEmailModal = async (promotion) => {
     // Fetch available (unsent) codes for this promotion
     try {
@@ -4399,12 +4427,13 @@ function Admin() {
                             <button
                               className="btn-secondary"
                               onClick={(e) => { e.stopPropagation(); deletePromotion(promo.id); }}
-                              disabled={promo.codes_sent > 0 || promo.codes_used > 0 || promo.codes_shared_on_socials > 0 || deletingPromotionId === promo.id}
-                              style={{ fontSize: '12px', padding: '6px 12px', opacity: (promo.codes_sent > 0 || promo.codes_used > 0 || promo.codes_shared_on_socials > 0) ? 0.5 : 1 }}
+                              disabled={promo.codes_sent > 0 || promo.codes_used > 0 || promo.codes_shared_on_socials > 0 || promo.codes_shared_privately > 0 || deletingPromotionId === promo.id}
+                              style={{ fontSize: '12px', padding: '6px 12px', opacity: (promo.codes_sent > 0 || promo.codes_used > 0 || promo.codes_shared_on_socials > 0 || promo.codes_shared_privately > 0) ? 0.5 : 1 }}
                               title={
                                 promo.codes_sent > 0 ? 'Cannot delete - emails have been sent' :
                                 promo.codes_used > 0 ? 'Cannot delete - codes have been used' :
                                 promo.codes_shared_on_socials > 0 ? 'Cannot delete - codes have been shared on socials' :
+                                promo.codes_shared_privately > 0 ? 'Cannot delete - codes have been shared privately' :
                                 'Delete promotion'
                               }
                             >
@@ -4444,6 +4473,7 @@ function Admin() {
                                       <th>Code</th>
                                       <th>Recipient</th>
                                       <th>Shared on Socials</th>
+                                      <th>Shared Privately</th>
                                       <th>Status</th>
                                       <th>Booking</th>
                                     </tr>
@@ -4453,7 +4483,7 @@ function Admin() {
                                       <tr key={code.id}>
                                         <td><code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px' }}>{code.code}</code></td>
                                         <td>
-                                          {/* Recipient: show email if sent, Social Media badge if shared on socials, otherwise blank */}
+                                          {/* Recipient: show email if sent, Social Media badge if shared on socials, Private badge if shared privately, otherwise blank */}
                                           {code.recipient_email ? (
                                             <span>
                                               {code.recipient_first_name} {code.recipient_last_name || ''}<br />
@@ -4472,6 +4502,20 @@ function Admin() {
                                               fontWeight: '600'
                                             }}>
                                               <span style={{ fontSize: '13px' }}>📱</span> Social Media
+                                            </span>
+                                          ) : code.shared_privately ? (
+                                            <span style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '6px',
+                                              background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                                              color: 'white',
+                                              padding: '4px 10px',
+                                              borderRadius: '12px',
+                                              fontSize: '11px',
+                                              fontWeight: '600'
+                                            }}>
+                                              <span style={{ fontSize: '13px' }}>💬</span> Private Share
                                             </span>
                                           ) : (
                                             <span style={{ color: '#999' }}>-</span>
@@ -4515,8 +4559,45 @@ function Admin() {
                                           )}
                                         </td>
                                         <td>
-                                          <span className={`status-badge ${code.is_used ? 'used' : (code.email_sent || code.shared_on_socials) ? 'sent' : 'pending'}`}>
-                                            {code.is_used ? 'Used' : (code.email_sent || code.shared_on_socials) ? 'Shared' : 'Available'}
+                                          {/* Shared Privately: toggle button for private sharing, dash for emailed codes */}
+                                          {code.recipient_email ? (
+                                            <span style={{ color: '#999' }}>-</span>
+                                          ) : code.is_used && !code.shared_privately ? (
+                                            /* Used codes cannot be marked as shared (but can show shared status if already was) */
+                                            <span style={{ color: '#999' }}>-</span>
+                                          ) : (
+                                            <button
+                                              onClick={() => toggleSharedPrivately(promo.id, code.id)}
+                                              disabled={code.is_used && !code.shared_privately}
+                                              style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                padding: '4px 10px',
+                                                borderRadius: '12px',
+                                                fontSize: '11px',
+                                                fontWeight: '600',
+                                                border: 'none',
+                                                cursor: code.is_used && !code.shared_privately ? 'not-allowed' : 'pointer',
+                                                background: code.shared_privately
+                                                  ? 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
+                                                  : '#e9ecef',
+                                                color: code.shared_privately ? 'white' : '#666',
+                                                opacity: code.is_used && !code.shared_privately ? 0.5 : 1,
+                                                transition: 'all 0.2s ease'
+                                              }}
+                                              title={code.shared_privately
+                                                ? `Shared on ${new Date(code.shared_privately_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}`
+                                                : code.is_used ? 'Cannot mark used code as shared' : 'Click to mark as shared privately'
+                                              }
+                                            >
+                                              {code.shared_privately ? '✓ Shared' : 'Mark Shared'}
+                                            </button>
+                                          )}
+                                        </td>
+                                        <td>
+                                          <span className={`status-badge ${code.is_used ? 'used' : (code.email_sent || code.shared_on_socials || code.shared_privately) ? 'sent' : 'pending'}`}>
+                                            {code.is_used ? 'Used' : (code.email_sent || code.shared_on_socials || code.shared_privately) ? 'Shared' : 'Available'}
                                           </span>
                                         </td>
                                         <td>

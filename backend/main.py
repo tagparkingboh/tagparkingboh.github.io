@@ -3781,7 +3781,7 @@ async def create_promotion(
         "total_codes": promotion.total_codes,
         "codes_sent": promotion.codes_sent,
         "codes_used": promotion.codes_used,
-        "codes_available": promotion.total_codes - promotion.codes_sent,
+        "codes_available": promotion.total_codes,  # All codes available on creation
         "created_by": promotion.created_by,
         "created_at": promotion.created_at,
     }
@@ -3800,20 +3800,29 @@ async def list_promotions(
     log_promo("LIST_PROMOTIONS", {"count": len(promotions)})
 
     # Get shared on socials counts for each promotion
-    shared_counts = dict(
+    shared_on_socials_counts = dict(
         db.query(PromoCode.promotion_id, func.count(PromoCode.id))
         .filter(PromoCode.shared_on_socials == True)
         .group_by(PromoCode.promotion_id)
         .all()
     )
 
-    # Get truly available codes count (not sent, not used, not shared on socials)
+    # Get shared privately counts for each promotion
+    shared_privately_counts = dict(
+        db.query(PromoCode.promotion_id, func.count(PromoCode.id))
+        .filter(PromoCode.shared_privately == True)
+        .group_by(PromoCode.promotion_id)
+        .all()
+    )
+
+    # Get truly available codes count (not sent, not used, not shared on socials, not shared privately)
     available_counts = dict(
         db.query(PromoCode.promotion_id, func.count(PromoCode.id))
         .filter(
             PromoCode.email_sent == False,
             PromoCode.is_used == False,
-            PromoCode.shared_on_socials == False
+            PromoCode.shared_on_socials == False,
+            PromoCode.shared_privately == False
         )
         .group_by(PromoCode.promotion_id)
         .all()
@@ -3829,7 +3838,8 @@ async def list_promotions(
                 "total_codes": p.total_codes,
                 "codes_sent": p.codes_sent,
                 "codes_used": p.codes_used,
-                "codes_shared_on_socials": shared_counts.get(p.id, 0),
+                "codes_shared_on_socials": shared_on_socials_counts.get(p.id, 0),
+                "codes_shared_privately": shared_privately_counts.get(p.id, 0),
                 "codes_available": available_counts.get(p.id, 0),
                 "created_by": p.created_by,
                 "created_at": p.created_at,
@@ -3877,6 +3887,8 @@ async def get_promotion(
             "email_sent_at": c.email_sent_at,
             "shared_on_socials": c.shared_on_socials,
             "shared_on_socials_at": c.shared_on_socials_at,
+            "shared_privately": c.shared_privately,
+            "shared_privately_at": c.shared_privately_at,
             "is_used": c.is_used,
             "used_at": c.used_at,
             "booking_id": c.booking_id,
@@ -3884,18 +3896,25 @@ async def get_promotion(
             "created_at": c.created_at,
         })
 
-    # Count truly available codes (not sent, not used, not shared on socials)
+    # Count truly available codes (not sent, not used, not shared on socials, not shared privately)
     codes_available = db.query(PromoCode).filter(
         PromoCode.promotion_id == promotion_id,
         PromoCode.email_sent == False,
         PromoCode.is_used == False,
-        PromoCode.shared_on_socials == False
+        PromoCode.shared_on_socials == False,
+        PromoCode.shared_privately == False
     ).count()
 
     # Count codes shared on socials
     codes_shared_on_socials = db.query(PromoCode).filter(
         PromoCode.promotion_id == promotion_id,
         PromoCode.shared_on_socials == True
+    ).count()
+
+    # Count codes shared privately
+    codes_shared_privately = db.query(PromoCode).filter(
+        PromoCode.promotion_id == promotion_id,
+        PromoCode.shared_privately == True
     ).count()
 
     return {
@@ -3907,6 +3926,7 @@ async def get_promotion(
         "codes_sent": promotion.codes_sent,
         "codes_used": promotion.codes_used,
         "codes_shared_on_socials": codes_shared_on_socials,
+        "codes_shared_privately": codes_shared_privately,
         "codes_available": codes_available,
         "created_by": promotion.created_by,
         "created_at": promotion.created_at,
@@ -3951,12 +3971,18 @@ async def update_promotion(
         PromoCode.promotion_id == promotion_id,
         PromoCode.email_sent == False,
         PromoCode.is_used == False,
-        PromoCode.shared_on_socials == False
+        PromoCode.shared_on_socials == False,
+        PromoCode.shared_privately == False
     ).count()
 
     codes_shared_on_socials = db.query(PromoCode).filter(
         PromoCode.promotion_id == promotion_id,
         PromoCode.shared_on_socials == True
+    ).count()
+
+    codes_shared_privately = db.query(PromoCode).filter(
+        PromoCode.promotion_id == promotion_id,
+        PromoCode.shared_privately == True
     ).count()
 
     return {
@@ -3968,6 +3994,7 @@ async def update_promotion(
         "codes_sent": promotion.codes_sent,
         "codes_used": promotion.codes_used,
         "codes_shared_on_socials": codes_shared_on_socials,
+        "codes_shared_privately": codes_shared_privately,
         "codes_available": codes_available,
         "created_by": promotion.created_by,
         "created_at": promotion.created_at,
@@ -4009,14 +4036,25 @@ async def delete_promotion(
         )
 
     # Check if any codes have been shared on socials
-    shared_count = db.query(PromoCode).filter(
+    shared_on_socials_count = db.query(PromoCode).filter(
         PromoCode.promotion_id == promotion_id,
         PromoCode.shared_on_socials == True
     ).count()
-    if shared_count > 0:
+    if shared_on_socials_count > 0:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot delete promotion - {shared_count} code(s) have been shared on socials"
+            detail=f"Cannot delete promotion - {shared_on_socials_count} code(s) have been shared on socials"
+        )
+
+    # Check if any codes have been shared privately
+    shared_privately_count = db.query(PromoCode).filter(
+        PromoCode.promotion_id == promotion_id,
+        PromoCode.shared_privately == True
+    ).count()
+    if shared_privately_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete promotion - {shared_privately_count} code(s) have been shared privately"
         )
 
     # Delete all associated promo codes first
@@ -4046,12 +4084,13 @@ async def get_available_codes(
     if not promotion:
         raise HTTPException(status_code=404, detail="Promotion not found")
 
-    # Available codes are those not sent, not used, and not shared on socials
+    # Available codes are those not sent, not used, not shared on socials, and not shared privately
     codes = db.query(PromoCode).filter(
         PromoCode.promotion_id == promotion_id,
         PromoCode.email_sent == False,
         PromoCode.is_used == False,
-        PromoCode.shared_on_socials == False
+        PromoCode.shared_on_socials == False,
+        PromoCode.shared_privately == False
     ).limit(limit).all()
 
     return {
@@ -4109,6 +4148,55 @@ async def mark_code_shared_on_socials(
         "code_id": code_id,
         "shared_on_socials": promo_code.shared_on_socials,
         "shared_on_socials_at": promo_code.shared_on_socials_at.isoformat() if promo_code.shared_on_socials_at else None
+    }
+
+
+@app.patch("/api/admin/promo-codes/{code_id}/share-privately")
+async def mark_code_shared_privately(
+    code_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Mark a promo code as shared privately (via text, to friends, etc.).
+
+    This is used for codes that are shared privately rather than posted
+    on social media or emailed to specific recipients.
+    """
+    from db_models import PromoCode
+
+    promo_code = db.query(PromoCode).filter(PromoCode.id == code_id).first()
+    if not promo_code:
+        raise HTTPException(status_code=404, detail="Promo code not found")
+
+    # Cannot mark a used code as shared privately
+    if promo_code.is_used and not promo_code.shared_privately:
+        raise HTTPException(status_code=400, detail="Cannot mark a used code as shared privately")
+
+    # Toggle the shared status
+    if promo_code.shared_privately:
+        promo_code.shared_privately = False
+        promo_code.shared_privately_at = None
+        action = "unmarked"
+    else:
+        promo_code.shared_privately = True
+        promo_code.shared_privately_at = get_uk_now()
+        action = "marked"
+
+    db.commit()
+
+    log_promo(f"Promo code {action} as shared privately", {
+        "code_id": code_id,
+        "code": promo_code.code,
+        "shared_privately": promo_code.shared_privately,
+        "user": current_user.email
+    })
+
+    return {
+        "success": True,
+        "code_id": code_id,
+        "shared_privately": promo_code.shared_privately,
+        "shared_privately_at": promo_code.shared_privately_at.isoformat() if promo_code.shared_privately_at else None
     }
 
 
