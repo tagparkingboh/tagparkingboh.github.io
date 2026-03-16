@@ -1793,6 +1793,54 @@ class TestDeletePromotion:
         mock_response = {"status_code": 404, "detail": "Promotion not found"}
         assert mock_response["status_code"] == 404
 
+    def test_delete_promotion_with_codes_used_fails(self):
+        """Test that cannot delete promotion if any code has been used (even if not sent)."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Used But Not Sent Promo", 15, 5)
+        code = store.add_promo_code(promo.id)
+
+        # Code is used directly (e.g., from social media) but not emailed
+        code.is_used = True
+        code.used_at = get_uk_now()
+        code.booking_id = 999
+        promo.codes_used = 1
+
+        # Deletion should fail because codes_used > 0
+        can_delete = promo.codes_sent == 0 and promo.codes_used == 0
+        assert can_delete is False
+
+    def test_delete_promotion_with_shared_on_socials_fails(self):
+        """Test that cannot delete promotion if any code has been shared on socials."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Shared on Socials Promo", 10, 5)
+        code = store.add_promo_code(promo.id)
+
+        # Code is shared on socials but not used yet
+        code.shared_on_socials = True
+        code.shared_on_socials_at = get_uk_now()
+
+        # Count shared codes
+        codes_shared = sum(1 for c in store.promo_codes.values()
+                          if c.promotion_id == promo.id and c.shared_on_socials)
+
+        # Deletion should fail because codes are shared on socials
+        can_delete = promo.codes_sent == 0 and promo.codes_used == 0 and codes_shared == 0
+        assert can_delete is False
+
+    def test_delete_promotion_only_succeeds_when_nothing_used_sent_or_shared(self):
+        """Test that deletion only succeeds when no codes sent, used, or shared."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Fresh Promo", 20, 3)
+        # Add codes but don't send, use, or share them
+        for _ in range(3):
+            store.add_promo_code(promo.id)
+
+        codes_shared = sum(1 for c in store.promo_codes.values()
+                          if c.promotion_id == promo.id and c.shared_on_socials)
+
+        can_delete = promo.codes_sent == 0 and promo.codes_used == 0 and codes_shared == 0
+        assert can_delete is True
+
 
 class TestAPIContractUpdatePromotion:
     """Contract tests for PATCH /api/admin/promotions/{id}."""

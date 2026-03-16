@@ -4397,9 +4397,14 @@ function Admin() {
                             <button
                               className="btn-secondary"
                               onClick={(e) => { e.stopPropagation(); deletePromotion(promo.id); }}
-                              disabled={promo.codes_sent > 0 || deletingPromotionId === promo.id}
-                              style={{ fontSize: '12px', padding: '6px 12px', opacity: promo.codes_sent > 0 ? 0.5 : 1 }}
-                              title={promo.codes_sent > 0 ? 'Cannot delete - emails have been sent' : 'Delete promotion'}
+                              disabled={promo.codes_sent > 0 || promo.codes_used > 0 || promo.codes_shared_on_socials > 0 || deletingPromotionId === promo.id}
+                              style={{ fontSize: '12px', padding: '6px 12px', opacity: (promo.codes_sent > 0 || promo.codes_used > 0 || promo.codes_shared_on_socials > 0) ? 0.5 : 1 }}
+                              title={
+                                promo.codes_sent > 0 ? 'Cannot delete - emails have been sent' :
+                                promo.codes_used > 0 ? 'Cannot delete - codes have been used' :
+                                promo.codes_shared_on_socials > 0 ? 'Cannot delete - codes have been shared on socials' :
+                                'Delete promotion'
+                              }
                             >
                               {deletingPromotionId === promo.id ? '...' : '🗑️'}
                             </button>

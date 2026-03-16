@@ -3793,10 +3793,19 @@ async def list_promotions(
     current_user: User = Depends(require_admin),
 ):
     """List all promotions with stats."""
-    from db_models import Promotion
+    from db_models import Promotion, PromoCode
+    from sqlalchemy import func
 
     promotions = db.query(Promotion).order_by(Promotion.created_at.desc()).all()
     log_promo("LIST_PROMOTIONS", {"count": len(promotions)})
+
+    # Get shared on socials counts for each promotion
+    shared_counts = dict(
+        db.query(PromoCode.promotion_id, func.count(PromoCode.id))
+        .filter(PromoCode.shared_on_socials == True)
+        .group_by(PromoCode.promotion_id)
+        .all()
+    )
 
     return {
         "promotions": [
@@ -3808,6 +3817,7 @@ async def list_promotions(
                 "total_codes": p.total_codes,
                 "codes_sent": p.codes_sent,
                 "codes_used": p.codes_used,
+                "codes_shared_on_socials": shared_counts.get(p.id, 0),
                 "codes_available": p.total_codes - p.codes_sent,
                 "created_by": p.created_by,
                 "created_at": p.created_at,
@@ -3929,7 +3939,10 @@ async def delete_promotion(
     """
     Delete a promotion.
 
-    Can only delete if no emails have been sent (codes_sent == 0).
+    Can only delete if:
+    - No emails have been sent (codes_sent == 0)
+    - No codes have been used (codes_used == 0)
+    - No codes have been shared on socials
     """
     from db_models import Promotion, PromoCode
 
@@ -3942,6 +3955,24 @@ async def delete_promotion(
         raise HTTPException(
             status_code=400,
             detail=f"Cannot delete promotion - {promotion.codes_sent} email(s) have already been sent"
+        )
+
+    # Check if any codes have been used
+    if promotion.codes_used > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete promotion - {promotion.codes_used} code(s) have been used"
+        )
+
+    # Check if any codes have been shared on socials
+    shared_count = db.query(PromoCode).filter(
+        PromoCode.promotion_id == promotion_id,
+        PromoCode.shared_on_socials == True
+    ).count()
+    if shared_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete promotion - {shared_count} code(s) have been shared on socials"
         )
 
     # Delete all associated promo codes first
