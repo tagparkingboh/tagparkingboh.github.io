@@ -445,6 +445,176 @@ describe('Slot Time Calculation', () => {
   })
 })
 
+// =============================================================================
+// Overnight Drop-off Slot Calculation Tests
+// =============================================================================
+
+describe('Overnight Drop-off Slot Calculation', () => {
+  // Helper function that mirrors the ManualBooking.jsx formatMinutesToTime logic
+  const formatMinutesToTime = (totalMinutes) => {
+    let mins = totalMinutes
+    const isOvernight = mins < 0
+    if (isOvernight) mins += 24 * 60 // Add 24 hours for previous day
+    const hours = Math.floor(mins / 60) % 24
+    const minutes = mins % 60
+    return {
+      time: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
+      isOvernight
+    }
+  }
+
+  // Helper to calculate dropoff slots (mirrors ManualBooking.jsx logic)
+  const calculateDropoffSlots = (departureTime) => {
+    const [hours, minutes] = departureTime.split(':').map(Number)
+    const depTotalMinutes = hours * 60 + minutes
+
+    return {
+      early: formatMinutesToTime(depTotalMinutes - 165), // 2hr 45min before
+      late: formatMinutesToTime(depTotalMinutes - 120)   // 2hr before
+    }
+  }
+
+  describe('formatMinutesToTime helper', () => {
+    it('handles positive minutes (same day)', () => {
+      const result = formatMinutesToTime(630) // 10:30
+      expect(result.time).toBe('10:30')
+      expect(result.isOvernight).toBe(false)
+    })
+
+    it('handles zero minutes (midnight)', () => {
+      const result = formatMinutesToTime(0)
+      expect(result.time).toBe('00:00')
+      expect(result.isOvernight).toBe(false)
+    })
+
+    it('handles negative minutes (previous day)', () => {
+      const result = formatMinutesToTime(-60) // -1 hour = 23:00 previous day
+      expect(result.time).toBe('23:00')
+      expect(result.isOvernight).toBe(true)
+    })
+
+    it('handles large negative minutes (previous day evening)', () => {
+      const result = formatMinutesToTime(-164) // 1 - 165 = 21:16 previous day
+      expect(result.time).toBe('21:16')
+      expect(result.isOvernight).toBe(true)
+    })
+  })
+
+  describe('00:01 departure (just after midnight)', () => {
+    it('calculates early slot as 21:16 previous day', () => {
+      const slots = calculateDropoffSlots('00:01')
+      // 00:01 (1 min) - 165 min = -164 min = 21:16 previous day
+      expect(slots.early.time).toBe('21:16')
+      expect(slots.early.isOvernight).toBe(true)
+    })
+
+    it('calculates late slot as 22:01 previous day', () => {
+      const slots = calculateDropoffSlots('00:01')
+      // 00:01 (1 min) - 120 min = -119 min = 22:01 previous day
+      expect(slots.late.time).toBe('22:01')
+      expect(slots.late.isOvernight).toBe(true)
+    })
+  })
+
+  describe('01:30 departure', () => {
+    it('calculates early slot as 22:45 previous day', () => {
+      const slots = calculateDropoffSlots('01:30')
+      // 01:30 (90 min) - 165 min = -75 min = 22:45 previous day
+      expect(slots.early.time).toBe('22:45')
+      expect(slots.early.isOvernight).toBe(true)
+    })
+
+    it('calculates late slot as 23:30 previous day', () => {
+      const slots = calculateDropoffSlots('01:30')
+      // 01:30 (90 min) - 120 min = -30 min = 23:30 previous day
+      expect(slots.late.time).toBe('23:30')
+      expect(slots.late.isOvernight).toBe(true)
+    })
+  })
+
+  describe('02:00 departure (edge case - late slot at midnight)', () => {
+    it('calculates early slot as 23:15 previous day', () => {
+      const slots = calculateDropoffSlots('02:00')
+      // 02:00 (120 min) - 165 min = -45 min = 23:15 previous day
+      expect(slots.early.time).toBe('23:15')
+      expect(slots.early.isOvernight).toBe(true)
+    })
+
+    it('calculates late slot as 00:00 same day', () => {
+      const slots = calculateDropoffSlots('02:00')
+      // 02:00 (120 min) - 120 min = 0 min = 00:00 same day
+      expect(slots.late.time).toBe('00:00')
+      expect(slots.late.isOvernight).toBe(false)
+    })
+  })
+
+  describe('02:45 departure (edge case - early slot at midnight)', () => {
+    it('calculates early slot as 00:00 same day', () => {
+      const slots = calculateDropoffSlots('02:45')
+      // 02:45 (165 min) - 165 min = 0 min = 00:00 same day
+      expect(slots.early.time).toBe('00:00')
+      expect(slots.early.isOvernight).toBe(false)
+    })
+
+    it('calculates late slot as 00:45 same day', () => {
+      const slots = calculateDropoffSlots('02:45')
+      // 02:45 (165 min) - 120 min = 45 min = 00:45 same day
+      expect(slots.late.time).toBe('00:45')
+      expect(slots.late.isOvernight).toBe(false)
+    })
+  })
+
+  describe('03:00 departure (all slots same day)', () => {
+    it('calculates early slot as 00:15 same day', () => {
+      const slots = calculateDropoffSlots('03:00')
+      // 03:00 (180 min) - 165 min = 15 min = 00:15 same day
+      expect(slots.early.time).toBe('00:15')
+      expect(slots.early.isOvernight).toBe(false)
+    })
+
+    it('calculates late slot as 01:00 same day', () => {
+      const slots = calculateDropoffSlots('03:00')
+      // 03:00 (180 min) - 120 min = 60 min = 01:00 same day
+      expect(slots.late.time).toBe('01:00')
+      expect(slots.late.isOvernight).toBe(false)
+    })
+  })
+
+  describe('10:30 departure (normal daytime flight)', () => {
+    it('calculates early slot as 07:45 same day', () => {
+      const slots = calculateDropoffSlots('10:30')
+      expect(slots.early.time).toBe('07:45')
+      expect(slots.early.isOvernight).toBe(false)
+    })
+
+    it('calculates late slot as 08:30 same day', () => {
+      const slots = calculateDropoffSlots('10:30')
+      expect(slots.late.time).toBe('08:30')
+      expect(slots.late.isOvernight).toBe(false)
+    })
+  })
+
+  describe('both slots overnight vs mixed', () => {
+    it('returns both slots as overnight for 00:01 departure', () => {
+      const slots = calculateDropoffSlots('00:01')
+      expect(slots.early.isOvernight).toBe(true)
+      expect(slots.late.isOvernight).toBe(true)
+    })
+
+    it('returns mixed overnight status for 02:00 departure', () => {
+      const slots = calculateDropoffSlots('02:00')
+      expect(slots.early.isOvernight).toBe(true)  // 23:15 previous day
+      expect(slots.late.isOvernight).toBe(false)  // 00:00 same day
+    })
+
+    it('returns no overnight for 10:30 departure', () => {
+      const slots = calculateDropoffSlots('10:30')
+      expect(slots.early.isOvernight).toBe(false)
+      expect(slots.late.isOvernight).toBe(false)
+    })
+  })
+})
+
 describe('Package Duration Calculation', () => {
   it('assigns "daily" package for trips less than 7 days', () => {
     const getPackage = (days) => {
