@@ -740,10 +740,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       {showShiftModal && isAdmin && (
         <div className="modal-overlay" onClick={closeShiftModal}>
           <div className="modal-content shift-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>{editingShift ? 'Edit Shift' : 'New Shift'}</h3>
-              <button className="modal-close-btn" onClick={closeShiftModal}>×</button>
-            </div>
+            <h3>{editingShift ? 'Edit Shift' : 'New Shift'}</h3>
 
             <div className="shift-form">
               <div className="form-row">
