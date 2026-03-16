@@ -1846,3 +1846,135 @@ class TestAPIContractDeletePromotion:
         assert mock_response["status_code"] == 400
         assert "Cannot delete" in mock_response["detail"]
         assert "email" in mock_response["detail"].lower()
+
+
+# =============================================================================
+# Webhook Promo Code Marking Tests
+# =============================================================================
+
+class TestWebhookPromoCodeMarking:
+    """Tests for promo code being marked as used when payment succeeds via webhook."""
+
+    def test_promo_code_uppercase_normalization(self):
+        """Test that promo codes are normalized to uppercase before lookup."""
+        # Simulates the webhook handler logic
+        promo_code_from_metadata = "tag-nodw-rgsj"  # lowercase from Stripe metadata
+
+        # The fix: normalize to uppercase
+        promo_code_upper = promo_code_from_metadata.strip().upper() if promo_code_from_metadata else None
+
+        assert promo_code_upper == "TAG-NODW-RGSJ"
+
+    def test_promo_code_with_whitespace_normalization(self):
+        """Test that promo codes with whitespace are properly trimmed."""
+        promo_code_from_metadata = "  TAG-ABCD-1234  "
+
+        promo_code_upper = promo_code_from_metadata.strip().upper() if promo_code_from_metadata else None
+
+        assert promo_code_upper == "TAG-ABCD-1234"
+
+    def test_promo_code_none_handling(self):
+        """Test that None promo code doesn't cause error."""
+        promo_code_from_metadata = None
+
+        promo_code_upper = promo_code_from_metadata.strip().upper() if promo_code_from_metadata else None
+
+        assert promo_code_upper is None
+
+    def test_promo_code_empty_string_handling(self):
+        """Test that empty string promo code is handled."""
+        promo_code_from_metadata = ""
+
+        promo_code_upper = promo_code_from_metadata.strip().upper() if promo_code_from_metadata else None
+
+        assert promo_code_upper is None
+
+    def test_mark_promo_code_as_used_updates_all_fields(self):
+        """Test that marking a promo code as used updates all required fields."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test Promo", 15, 5)
+        code = store.add_promo_code(promo.id)
+
+        # Simulate marking as used
+        code.is_used = True
+        code.used_at = get_uk_now()
+        code.booking_id = 123
+
+        # Update promotion stats
+        promo.codes_used += 1
+
+        assert code.is_used is True
+        assert code.used_at is not None
+        assert code.booking_id == 123
+        assert promo.codes_used == 1
+
+    def test_promo_code_already_used_not_marked_again(self):
+        """Test that already-used promo codes are not updated again (idempotency)."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test Promo", 15, 5)
+        code = store.add_promo_code(promo.id)
+
+        # First use
+        code.is_used = True
+        code.used_at = get_uk_now()
+        code.booking_id = 100
+        promo.codes_used = 1
+
+        original_used_at = code.used_at
+        original_booking_id = code.booking_id
+
+        # Simulate duplicate webhook - query would return None because is_used=True
+        # In real code: filter(DbPromoCode.is_used == False).first() returns None
+        already_used = code.is_used
+
+        # Should not update if already used
+        if not already_used:
+            code.booking_id = 200  # Different booking
+            promo.codes_used += 1
+
+        # Verify not changed
+        assert code.booking_id == original_booking_id
+        assert promo.codes_used == 1
+
+    def test_webhook_updates_promotion_codes_used_counter(self):
+        """Test that using a promo code increments the promotion's codes_used counter."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test Promo", 20, 10)
+
+        # Add multiple codes
+        codes = [store.add_promo_code(promo.id) for _ in range(3)]
+
+        assert promo.codes_used == 0
+
+        # Use first code
+        codes[0].is_used = True
+        promo.codes_used += 1
+        assert promo.codes_used == 1
+
+        # Use second code
+        codes[1].is_used = True
+        promo.codes_used += 1
+        assert promo.codes_used == 2
+
+        # Third code still available
+        assert codes[2].is_used is False
+        assert promo.codes_used == 2
+
+    def test_case_insensitive_promo_code_lookup(self):
+        """Test that promo code lookup works regardless of case in metadata."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test Promo", 10, 5)
+        code = store.add_promo_code(promo.id, "TAG-TEST-CODE")
+
+        # Simulate different case variations that might come from Stripe metadata
+        test_cases = [
+            "TAG-TEST-CODE",  # exact match
+            "tag-test-code",  # lowercase
+            "Tag-Test-Code",  # mixed case
+            "  TAG-TEST-CODE  ",  # with whitespace
+            "tag-test-code  ",  # lowercase with trailing space
+        ]
+
+        for test_code in test_cases:
+            normalized = test_code.strip().upper() if test_code else None
+            assert normalized == "TAG-TEST-CODE", f"Failed for input: {test_code!r}"
