@@ -22,7 +22,7 @@ const SHIFT_STATUS_CONFIG = {
   no_show: { label: 'No Show', color: '#e74c3c' },
 }
 
-// UK date format helpers
+// Date format helpers
 const formatDateUK = (isoDate) => {
   if (!isoDate) return ''
   const parts = isoDate.split('-')
@@ -35,6 +35,14 @@ const formatDateISO = (date) => {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+// Convert UK date (DD/MM/YYYY) to ISO (YYYY-MM-DD)
+const ukToISO = (ukDate) => {
+  if (!ukDate) return ''
+  const parts = ukDate.split('/')
+  if (parts.length !== 3) return ukDate
+  return `${parts[2]}-${parts[1]}-${parts[0]}`
 }
 
 // Format time for display (HH:MM)
@@ -150,7 +158,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
       if (response.ok) {
         const data = await response.json()
-        setEmployees(data.employees || [])
+        // API returns array directly, not { employees: [...] }
+        setEmployees(Array.isArray(data) ? data : (data.employees || []))
       }
     } catch (err) {
       console.error('Failed to load employees:', err)
@@ -348,9 +357,12 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     setError('')
 
     try {
+      // Convert UK date format to ISO for backend
+      const isoDate = ukToISO(shiftForm.date)
+
       const payload = {
         staff_id: shiftForm.staff_id ? parseInt(shiftForm.staff_id) : null,
-        date: shiftForm.date,
+        date: isoDate,
         start_time: shiftForm.start_time,
         end_time: shiftForm.end_time,
         shift_type: shiftForm.shift_type,

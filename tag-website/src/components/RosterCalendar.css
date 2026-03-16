@@ -697,6 +697,16 @@
   transition: all 0.2s ease;
 }
 
+/* Force 24-hour time format */
+.form-row input[type="time"] {
+  font-family: monospace;
+}
+
+/* Hide AM/PM in WebKit browsers */
+.form-row input[type="time"]::-webkit-datetime-edit-ampm-field {
+  display: none;
+}
+
 .form-row input:hover,
 .form-row select:hover,
 .form-row textarea:hover {
