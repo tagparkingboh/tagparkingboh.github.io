@@ -870,7 +870,7 @@ function Admin() {
         setPromoEmailBody(`<p>Hi {{FIRST_NAME}},</p>
 <p>Thank you for your interest in TAG Parking!</p>
 <p>Here is your exclusive promo code for <strong>${promotion.discount_percent}% off</strong> your first booking:</p>
-<p style="font-size: 24px; font-weight: bold; color: #007bff; text-align: center;">{{PROMO_CODE}}</p>
+<p style="font-size: 24px; font-weight: bold; color: #007bff;">{{PROMO_CODE}}</p>
 <p>Simply enter this code at checkout to apply your discount.</p>
 <p>Best regards,<br>The TAG Parking Team</p>`)
         setShowSendPromoEmailModal(true)
