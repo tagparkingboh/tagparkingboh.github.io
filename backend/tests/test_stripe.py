@@ -286,6 +286,171 @@ class TestStripeWebhook:
                 assert data["status"] == "failed"
                 assert data["error"] == "Card declined"
 
+    @pytest.mark.asyncio
+    async def test_webhook_marks_promo_code_as_used(self, client):
+        """
+        CRITICAL TEST: Webhook should mark promo code as used when payment succeeds.
+
+        This test verifies that:
+        1. Promo code from metadata is normalized to uppercase
+        2. Promo code is found in promo_codes table
+        3. is_used is set to True
+        4. booking_id is set
+        5. promotion.codes_used is incremented
+
+        Note: This test uses the staging database to test real integration.
+        It creates test data, runs the webhook, and verifies the result.
+        """
+        from db_models import Promotion as DbPromotion, PromoCode as DbPromoCode
+        from database import SessionLocal
+        from sqlalchemy.orm import Session
+        import os
+
+        # Use a unique code to avoid conflicts
+        import uuid
+        unique_id = str(uuid.uuid4())[:8].upper()
+        test_code_value = f"TAG-WHTEST-{unique_id}"
+
+        # Create test promo data in database using SessionLocal directly
+        # This ensures we're using the same connection pool as the webhook
+        db: Session = SessionLocal()
+        try:
+            # Create a test promotion
+            test_promotion = DbPromotion(
+                name=f"Webhook Test Promo {unique_id}",
+                discount_percent=10,
+                total_codes=1,
+                codes_sent=1,
+                codes_used=0,
+            )
+            db.add(test_promotion)
+            db.flush()
+
+            # Create a test promo code - note: stored as UPPERCASE
+            test_code = DbPromoCode(
+                promotion_id=test_promotion.id,
+                code=test_code_value,
+                email_sent=True,
+                is_used=False,
+            )
+            db.add(test_code)
+            db.commit()
+
+            promo_code_id = test_code.id
+            promotion_id = test_promotion.id
+
+            # Close this session so the webhook can see the committed data
+            db.close()
+
+            # Simulate webhook event with promo code in metadata (lowercase to test normalization)
+            mock_event = {
+                "type": "payment_intent.succeeded",
+                "data": {
+                    "object": {
+                        "id": f"pi_webhook_test_{unique_id}",
+                        "amount": 9000,
+                        "metadata": {
+                            "booking_reference": f"TAG-WHTEST-{unique_id}",
+                            "promo_code": test_code_value.lower(),  # lowercase to test normalization!
+                        }
+                    }
+                }
+            }
+
+            # Create a real test booking in the database to avoid foreign key issues
+            from db_models import Booking, Customer, Vehicle, BookingStatus
+            from datetime import date, time
+
+            db = SessionLocal()
+
+            # First create a customer for the booking
+            test_customer = Customer(
+                email=f"webhook_test_{unique_id}@example.com",
+                first_name="Webhook",
+                last_name="Test",
+                phone="07777777777"
+            )
+            db.add(test_customer)
+            db.flush()
+            customer_id = test_customer.id
+
+            # Create a vehicle (required by booking)
+            test_vehicle = Vehicle(
+                customer_id=customer_id,
+                registration="TEST123",
+                make="Test",
+                model="Car",
+                colour="Black"
+            )
+            db.add(test_vehicle)
+            db.flush()
+            vehicle_id = test_vehicle.id
+
+            # Create a test booking with all required fields
+            test_booking = Booking(
+                reference=f"TAG-WHTEST-{unique_id}",
+                customer_id=customer_id,
+                vehicle_id=vehicle_id,
+                status=BookingStatus.PENDING,
+                dropoff_date=date(2026, 4, 1),
+                dropoff_time=time(10, 0),
+                pickup_date=date(2026, 4, 8),
+            )
+            db.add(test_booking)
+            db.commit()
+            test_booking_id = test_booking.id
+            db.close()
+
+            # Mock db_service to avoid needing real payment records
+            with patch('main.is_stripe_configured', return_value=True):
+                with patch('main.verify_webhook_signature', return_value=mock_event):
+                    with patch('main.db_service.update_payment_status', return_value=(MagicMock(), False)):
+                        with patch('main.db_service.get_booking_by_reference') as mock_get_booking:
+                            mock_booking = MagicMock()
+                            mock_booking.id = test_booking_id  # Use real booking ID
+                            mock_get_booking.return_value = mock_booking
+
+                            response = await client.post(
+                                "/api/webhooks/stripe",
+                                content=b'{}',
+                                headers={"Stripe-Signature": "test_sig"},
+                            )
+
+                            assert response.status_code == 200
+
+            # Open a new session to verify the changes
+            from sqlalchemy import text
+            verify_db: Session = SessionLocal()
+            try:
+                # Force fresh read from database (bypass any caching)
+                verify_db.execute(text("SELECT 1"))  # Force connection
+                updated_code = verify_db.query(DbPromoCode).filter(DbPromoCode.id == promo_code_id).first()
+                verify_db.refresh(updated_code)  # Force refresh from DB
+                updated_promotion = verify_db.query(DbPromotion).filter(DbPromotion.id == promotion_id).first()
+                verify_db.refresh(updated_promotion)
+
+                assert updated_code is not None, "Promo code should exist"
+                assert updated_code.is_used is True, f"Promo code should be marked as used, got is_used={updated_code.is_used}"
+                assert updated_code.booking_id == test_booking_id, f"Promo code should have booking_id={test_booking_id}, got {updated_code.booking_id}"
+                assert updated_code.used_at is not None, "Promo code should have used_at timestamp"
+                assert updated_promotion.codes_used == 1, f"Promotion codes_used should be 1, got {updated_promotion.codes_used}"
+            finally:
+                verify_db.close()
+
+        finally:
+            # Cleanup test data
+            cleanup_db: Session = SessionLocal()
+            try:
+                # Delete in correct order to respect foreign keys
+                cleanup_db.query(DbPromoCode).filter(DbPromoCode.code == test_code_value).delete()
+                cleanup_db.query(DbPromotion).filter(DbPromotion.name == f"Webhook Test Promo {unique_id}").delete()
+                cleanup_db.query(Booking).filter(Booking.reference == f"TAG-WHTEST-{unique_id}").delete()
+                cleanup_db.query(Vehicle).filter(Vehicle.registration == "TEST123").delete()
+                cleanup_db.query(Customer).filter(Customer.email == f"webhook_test_{unique_id}@example.com").delete()
+                cleanup_db.commit()
+            finally:
+                cleanup_db.close()
+
 
 class TestAdminRefund:
     """Tests for admin refund endpoint."""

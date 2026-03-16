@@ -6766,6 +6766,8 @@ async def stripe_webhook(
         if promo_code and not was_already_processed:
             log_promo("WEBHOOK MARK_USED starting", {"code": promo_code, "booking_reference": booking_reference})
             try:
+                from db_models import PromoCode as DbPromoCode, Promotion as DbPromotion
+
                 # Get booking ID from reference
                 booking = db_service.get_booking_by_reference(db, booking_reference)
                 bid = booking.id if booking else None
