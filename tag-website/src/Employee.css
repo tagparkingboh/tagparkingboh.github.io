@@ -56,37 +56,6 @@
   background: #e5a320;
 }
 
-/* Navigation Tabs */
-.employee-nav {
-  background: #1a1a2e;
-  padding: 0 24px;
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid #333;
-}
-
-.employee-nav-item {
-  padding: 14px 24px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #888;
-  background: transparent;
-  border: none;
-  border-bottom: 3px solid transparent;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.employee-nav-item:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.employee-nav-item.active {
-  color: #D9FF00;
-  border-bottom-color: #D9FF00;
-}
-
 /* Content */
 .employee-content {
   padding: 24px;

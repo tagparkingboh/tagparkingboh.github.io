@@ -2626,12 +2626,6 @@ function Admin() {
         >
           Testimonials
         </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'roster' ? 'active' : ''}`}
-          onClick={() => setActiveTab('roster')}
-        >
-          Roster
-        </button>
       </nav>
 
       <main className="admin-content">
@@ -3130,7 +3124,7 @@ function Admin() {
 
         {activeTab === 'calendar' && (
           <div className="admin-section">
-            <BookingCalendar token={token} />
+            <RosterCalendar token={token} isAdmin={true} />
           </div>
         )}
 
@@ -6996,15 +6990,6 @@ function Admin() {
           </div>
         )}
 
-        {/* Roster Section */}
-        {activeTab === 'roster' && (
-          <div className="admin-section">
-            <div className="admin-section-header">
-              <h2>Staff Roster</h2>
-            </div>
-            <RosterCalendar token={token} isAdmin={true} />
-          </div>
-        )}
       </main>
 
       {/* Testimonial Add/Edit Modal */}
