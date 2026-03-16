@@ -4039,23 +4039,26 @@ async def get_available_codes(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Get available (unsent) codes for a promotion."""
+    """Get available (unsent, unused, not shared) codes for a promotion."""
     from db_models import Promotion, PromoCode
 
     promotion = db.query(Promotion).filter(Promotion.id == promotion_id).first()
     if not promotion:
         raise HTTPException(status_code=404, detail="Promotion not found")
 
+    # Available codes are those not sent, not used, and not shared on socials
     codes = db.query(PromoCode).filter(
         PromoCode.promotion_id == promotion_id,
-        PromoCode.email_sent == False
+        PromoCode.email_sent == False,
+        PromoCode.is_used == False,
+        PromoCode.shared_on_socials == False
     ).limit(limit).all()
 
     return {
         "promotion_id": promotion_id,
         "promotion_name": promotion.name,
         "discount_percent": promotion.discount_percent,
-        "available_count": promotion.total_codes - promotion.codes_sent,
+        "available_count": len(codes),
         "codes": [{"id": c.id, "code": c.code} for c in codes],
     }
 
