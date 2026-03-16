@@ -15,6 +15,29 @@ import secrets
 from datetime import date, time, datetime, timedelta
 from pathlib import Path
 from typing import Optional, List
+from zoneinfo import ZoneInfo
+
+
+def get_uk_now() -> datetime:
+    """Get current datetime in UK timezone (handles BST/GMT automatically)."""
+    return datetime.now(ZoneInfo("Europe/London"))
+
+
+def log_promo(message: str, data: dict = None):
+    """
+    Log promotion-related messages to console.
+    Only logs in staging environment for debugging.
+    """
+    import os
+    # Check environment - log in staging and development, not production
+    env = os.environ.get("ENVIRONMENT", "development").lower()
+    if env in ("staging", "development"):
+        timestamp = get_uk_now().strftime("%Y-%m-%d %H:%M:%S")
+        if data:
+            print(f"[PROMO {timestamp}] {message} | {data}")
+        else:
+            print(f"[PROMO {timestamp}] {message}")
+
 
 from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -647,18 +670,64 @@ async def validate_promo_code(
     """
     Validate a promo code and return discount information.
 
-    Promo codes are generated for marketing subscribers and can be used once.
-    Currently offers 10% off any booking.
+    Checks both:
+    1. New promo_codes table (generated promo system)
+    2. Legacy MarketingSubscriber promo fields
+
+    Promo codes are single-use.
     """
+    from db_models import PromoCode as DbPromoCode, Promotion
+
     code = request.code.strip().upper()
+    log_promo("VALIDATE request", {"code": code})
 
     if not code:
+        log_promo("VALIDATE failed - empty code")
         return PromoCodeValidateResponse(
             valid=False,
             message="Please enter a promo code",
         )
 
-    # Look up the promo code across all code fields (legacy, 10%, free, and founder)
+    # First, check the new promo_codes table
+    promo_code = db.query(DbPromoCode).filter(DbPromoCode.code == code).first()
+    if promo_code:
+        log_promo("VALIDATE found in promo_codes table", {
+            "code": code,
+            "promotion_id": promo_code.promotion_id,
+            "is_used": promo_code.is_used,
+            "email_sent": promo_code.email_sent,
+            "recipient_email": promo_code.recipient_email
+        })
+
+        if promo_code.is_used:
+            log_promo("VALIDATE failed - code already used", {"code": code, "used_at": str(promo_code.used_at)})
+            return PromoCodeValidateResponse(
+                valid=False,
+                message="This promo code has already been used",
+            )
+
+        # Get discount from parent promotion
+        promotion = db.query(Promotion).filter(Promotion.id == promo_code.promotion_id).first()
+        if promotion:
+            discount = promotion.discount_percent
+            log_promo("VALIDATE success (new system)", {
+                "code": code,
+                "promotion_name": promotion.name,
+                "discount_percent": discount
+            })
+            if discount == 100:
+                message = "Promo code applied! 100% off your booking!"
+            else:
+                message = f"Promo code applied! {discount}% off"
+            return PromoCodeValidateResponse(
+                valid=True,
+                message=message,
+                discount_percent=discount,
+            )
+    else:
+        log_promo("VALIDATE not found in promo_codes table, checking legacy", {"code": code})
+
+    # Fallback: Look up in legacy MarketingSubscriber promo fields
     subscriber = db.query(MarketingSubscriber).filter(
         (MarketingSubscriber.promo_code == code) |
         (MarketingSubscriber.promo_10_code == code) |
@@ -3615,6 +3684,476 @@ async def export_marketing_sources_csv(
     )
 
 
+# =============================================================================
+# Promotions API (Promo Code Generation System)
+# =============================================================================
+
+def generate_promo_code() -> str:
+    """Generate a unique promo code in format TAG-XXXX-XXXX."""
+    import random
+    import string
+    chars = string.ascii_uppercase + string.digits
+    part1 = ''.join(random.choices(chars, k=4))
+    part2 = ''.join(random.choices(chars, k=4))
+    return f"TAG-{part1}-{part2}"
+
+
+@app.post("/api/admin/promotions")
+async def create_promotion(
+    request: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Create a new promotion and generate promo codes.
+
+    Request body:
+    - name: Campaign name (e.g., "Spring 2024 Friends & Family")
+    - description: Optional description
+    - discount_percent: Discount percentage (10, 20, 100)
+    - total_codes: Number of codes to generate
+    """
+    from db_models import Promotion, PromoCode
+
+    name = request.get("name")
+    description = request.get("description")
+    discount_percent = request.get("discount_percent")
+    total_codes = request.get("total_codes")
+
+    log_promo("CREATE_PROMOTION request", {"name": name, "discount_percent": discount_percent, "total_codes": total_codes, "user": current_user.email})
+
+    if not name or not discount_percent or not total_codes:
+        log_promo("CREATE_PROMOTION failed - missing required fields")
+        raise HTTPException(status_code=400, detail="name, discount_percent, and total_codes are required")
+
+    if discount_percent not in [10, 15, 20, 25, 50, 100]:
+        log_promo("CREATE_PROMOTION failed - invalid discount_percent", {"discount_percent": discount_percent})
+        raise HTTPException(status_code=400, detail="discount_percent must be 10, 15, 20, 25, 50, or 100")
+
+    if total_codes < 1 or total_codes > 1000:
+        log_promo("CREATE_PROMOTION failed - invalid total_codes", {"total_codes": total_codes})
+        raise HTTPException(status_code=400, detail="total_codes must be between 1 and 1000")
+
+    # Create promotion
+    promotion = Promotion(
+        name=name,
+        description=description,
+        discount_percent=discount_percent,
+        total_codes=total_codes,
+        created_by=current_user.email,
+    )
+    db.add(promotion)
+    db.flush()  # Get the ID
+    log_promo("CREATE_PROMOTION created", {"promotion_id": promotion.id, "name": name})
+
+    # Generate unique promo codes
+    codes_created = 0
+    max_attempts = total_codes * 10  # Prevent infinite loop
+    attempts = 0
+
+    while codes_created < total_codes and attempts < max_attempts:
+        code = generate_promo_code()
+        attempts += 1
+
+        # Check if code already exists
+        existing = db.query(PromoCode).filter(PromoCode.code == code).first()
+        if existing:
+            log_promo("CREATE_PROMOTION code collision, retrying", {"code": code})
+            continue
+
+        promo_code = PromoCode(
+            promotion_id=promotion.id,
+            code=code,
+        )
+        db.add(promo_code)
+        codes_created += 1
+
+    db.commit()
+    db.refresh(promotion)
+
+    log_promo("CREATE_PROMOTION success", {"promotion_id": promotion.id, "codes_created": codes_created, "attempts": attempts})
+
+    return {
+        "id": promotion.id,
+        "name": promotion.name,
+        "description": promotion.description,
+        "discount_percent": promotion.discount_percent,
+        "total_codes": promotion.total_codes,
+        "codes_sent": promotion.codes_sent,
+        "codes_used": promotion.codes_used,
+        "codes_available": promotion.total_codes - promotion.codes_sent,
+        "created_by": promotion.created_by,
+        "created_at": promotion.created_at,
+    }
+
+
+@app.get("/api/admin/promotions")
+async def list_promotions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """List all promotions with stats."""
+    from db_models import Promotion
+
+    promotions = db.query(Promotion).order_by(Promotion.created_at.desc()).all()
+
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "description": p.description,
+            "discount_percent": p.discount_percent,
+            "total_codes": p.total_codes,
+            "codes_sent": p.codes_sent,
+            "codes_used": p.codes_used,
+            "codes_available": p.total_codes - p.codes_sent,
+            "created_by": p.created_by,
+            "created_at": p.created_at,
+        }
+        for p in promotions
+    ]
+
+
+@app.get("/api/admin/promotions/{promotion_id}")
+async def get_promotion(
+    promotion_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Get promotion details with codes."""
+    from db_models import Promotion, PromoCode, Booking
+
+    promotion = db.query(Promotion).filter(Promotion.id == promotion_id).first()
+    if not promotion:
+        raise HTTPException(status_code=404, detail="Promotion not found")
+
+    # Get codes with booking references
+    codes = db.query(PromoCode).filter(PromoCode.promotion_id == promotion_id).order_by(PromoCode.created_at.asc()).all()
+
+    codes_data = []
+    for c in codes:
+        booking_ref = None
+        if c.booking_id:
+            booking = db.query(Booking).filter(Booking.id == c.booking_id).first()
+            if booking:
+                booking_ref = booking.reference
+
+        codes_data.append({
+            "id": c.id,
+            "code": c.code,
+            "promotion_id": c.promotion_id,
+            "discount_percent": promotion.discount_percent,
+            "recipient_email": c.recipient_email,
+            "recipient_first_name": c.recipient_first_name,
+            "recipient_last_name": c.recipient_last_name,
+            "customer_id": c.customer_id,
+            "subscriber_id": c.subscriber_id,
+            "email_sent": c.email_sent,
+            "email_sent_at": c.email_sent_at,
+            "is_used": c.is_used,
+            "used_at": c.used_at,
+            "booking_id": c.booking_id,
+            "booking_reference": booking_ref,
+            "created_at": c.created_at,
+        })
+
+    return {
+        "id": promotion.id,
+        "name": promotion.name,
+        "description": promotion.description,
+        "discount_percent": promotion.discount_percent,
+        "total_codes": promotion.total_codes,
+        "codes_sent": promotion.codes_sent,
+        "codes_used": promotion.codes_used,
+        "codes_available": promotion.total_codes - promotion.codes_sent,
+        "created_by": promotion.created_by,
+        "created_at": promotion.created_at,
+        "codes": codes_data,
+    }
+
+
+@app.get("/api/admin/promotions/{promotion_id}/available-codes")
+async def get_available_codes(
+    promotion_id: int,
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Get available (unsent) codes for a promotion."""
+    from db_models import Promotion, PromoCode
+
+    promotion = db.query(Promotion).filter(Promotion.id == promotion_id).first()
+    if not promotion:
+        raise HTTPException(status_code=404, detail="Promotion not found")
+
+    codes = db.query(PromoCode).filter(
+        PromoCode.promotion_id == promotion_id,
+        PromoCode.email_sent == False
+    ).limit(limit).all()
+
+    return {
+        "promotion_id": promotion_id,
+        "promotion_name": promotion.name,
+        "discount_percent": promotion.discount_percent,
+        "available_count": promotion.total_codes - promotion.codes_sent,
+        "codes": [{"id": c.id, "code": c.code} for c in codes],
+    }
+
+
+@app.post("/api/admin/promotions/send-emails")
+async def send_promo_emails(
+    request: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Send promo code emails to selected recipients.
+
+    Request body:
+    - promotion_id: ID of the promotion
+    - recipients: List of {email, first_name, last_name?, customer_id?, subscriber_id?, source}
+    - email_subject: Subject with optional {{FIRST_NAME}} placeholder
+    - email_body: HTML body with {{FIRST_NAME}}, {{PROMO_CODE}} placeholders
+    """
+    from db_models import Promotion, PromoCode, Customer
+
+    promotion_id = request.get("promotion_id")
+    recipients = request.get("recipients", [])
+    email_subject = request.get("email_subject", "")
+    email_body = request.get("email_body", "")
+
+    log_promo("SEND_EMAILS request", {
+        "promotion_id": promotion_id,
+        "recipient_count": len(recipients),
+        "user": current_user.email,
+        "recipients": [r.get("email") for r in recipients]
+    })
+
+    if not promotion_id or not recipients or not email_subject or not email_body:
+        log_promo("SEND_EMAILS failed - missing required fields")
+        raise HTTPException(status_code=400, detail="promotion_id, recipients, email_subject, and email_body are required")
+
+    promotion = db.query(Promotion).filter(Promotion.id == promotion_id).first()
+    if not promotion:
+        log_promo("SEND_EMAILS failed - promotion not found", {"promotion_id": promotion_id})
+        raise HTTPException(status_code=404, detail="Promotion not found")
+
+    log_promo("SEND_EMAILS found promotion", {"promotion_id": promotion.id, "name": promotion.name, "discount_percent": promotion.discount_percent})
+
+    # Get available codes
+    available_codes = db.query(PromoCode).filter(
+        PromoCode.promotion_id == promotion_id,
+        PromoCode.email_sent == False
+    ).limit(len(recipients)).all()
+
+    log_promo("SEND_EMAILS available codes", {"available": len(available_codes), "needed": len(recipients)})
+
+    if len(available_codes) < len(recipients):
+        log_promo("SEND_EMAILS failed - not enough codes", {"available": len(available_codes), "needed": len(recipients)})
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough codes available. Need {len(recipients)}, have {len(available_codes)}"
+        )
+
+    total_sent = 0
+    total_failed = 0
+    errors = []
+
+    for i, recipient in enumerate(recipients):
+        email = recipient.get("email")
+        first_name = recipient.get("first_name", "")
+        last_name = recipient.get("last_name", "")
+        customer_id = recipient.get("customer_id")
+        subscriber_id = recipient.get("subscriber_id")
+        source = recipient.get("source", "new")
+
+        promo_code = available_codes[i]
+
+        # If new contact, create customer record
+        if source == "new" and not customer_id:
+            existing_customer = db.query(Customer).filter(Customer.email == email).first()
+            if existing_customer:
+                customer_id = existing_customer.id
+            else:
+                new_customer = Customer(
+                    first_name=first_name,
+                    last_name=last_name or "",
+                    email=email,
+                    phone="",  # Will be added when they book
+                )
+                db.add(new_customer)
+                db.flush()
+                customer_id = new_customer.id
+
+        # Build email with placeholders replaced
+        # Style promo code with black background and yellow text
+        styled_promo_code = f'<strong style="color: #CCFF00; background-color: #343434; padding: 4px 10px; border-radius: 4px; font-family: monospace; letter-spacing: 1px;">{promo_code.code}</strong>'
+
+        personalized_subject = email_subject.replace("{{FIRST_NAME}}", first_name)
+        personalized_body = email_body.replace("{{FIRST_NAME}}", first_name).replace("{{PROMO_CODE}}", styled_promo_code)
+
+        # Send email
+        try:
+            log_promo("SEND_EMAILS sending", {"email": email, "code": promo_code.code, "first_name": first_name})
+
+            email_sent = send_generic_promo_email(
+                to_email=email,
+                subject=personalized_subject,
+                html_body=personalized_body,
+            )
+
+            if email_sent:
+                # Update promo code record
+                promo_code.customer_id = customer_id
+                promo_code.subscriber_id = subscriber_id
+                promo_code.recipient_email = email
+                promo_code.recipient_first_name = first_name
+                promo_code.recipient_last_name = last_name
+                promo_code.email_sent = True
+                promo_code.email_sent_at = get_uk_now()
+                promo_code.email_subject = personalized_subject
+
+                total_sent += 1
+                log_promo("SEND_EMAILS sent successfully", {"email": email, "code": promo_code.code})
+            else:
+                total_failed += 1
+                errors.append(f"Failed to send to {email}")
+                log_promo("SEND_EMAILS send failed", {"email": email, "code": promo_code.code})
+
+        except Exception as e:
+            total_failed += 1
+            errors.append(f"Error sending to {email}: {str(e)}")
+            log_promo("SEND_EMAILS exception", {"email": email, "error": str(e)})
+
+    # Update promotion stats
+    promotion.codes_sent += total_sent
+    db.commit()
+
+    log_promo("SEND_EMAILS complete", {"total_sent": total_sent, "total_failed": total_failed, "promotion_id": promotion.id})
+
+    return {
+        "success": total_failed == 0,
+        "total_sent": total_sent,
+        "total_failed": total_failed,
+        "errors": errors,
+    }
+
+
+def send_generic_promo_email(to_email: str, subject: str, html_body: str) -> bool:
+    """Send a generic promo email with custom subject and body."""
+    from sendgrid import SendGridAPIClient
+    from sendgrid.helpers.mail import Mail, Email, To, Content
+
+    settings = get_settings()
+    if not settings.sendgrid_api_key:
+        print("[EMAIL] SendGrid API key not configured")
+        return False
+
+    # Wrap body in basic email template
+    full_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{subject}</title>
+</head>
+<body style="margin: 0; padding: 20px; font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.6; color: #333333;">
+    {html_body}
+</body>
+</html>"""
+
+    try:
+        message = Mail(
+            from_email=Email(settings.from_email, settings.from_name),
+            to_emails=To(to_email),
+            subject=subject,
+            html_content=Content("text/html", full_html),
+        )
+
+        sg = SendGridAPIClient(settings.sendgrid_api_key)
+        response = sg.send(message)
+
+        if response.status_code in [200, 201, 202]:
+            print(f"[EMAIL] Promo email sent to {to_email}")
+            return True
+        else:
+            print(f"[EMAIL] Failed to send promo email: {response.status_code}")
+            return False
+
+    except Exception as e:
+        print(f"[EMAIL] Error sending promo email: {e}")
+        return False
+
+
+@app.get("/api/admin/promotions/recipients/search")
+async def search_recipients(
+    q: str = Query("", min_length=0),
+    source: str = Query("all", description="Filter by source: all, customers, subscribers"),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Search for potential recipients from customers and marketing subscribers.
+
+    Returns a combined list of potential recipients with their source.
+    """
+    from db_models import Customer, MarketingSubscriber
+
+    results = []
+
+    # Search customers
+    if source in ["all", "customers"]:
+        query = db.query(Customer)
+        if q:
+            search_term = f"%{q}%"
+            query = query.filter(
+                (Customer.email.ilike(search_term)) |
+                (Customer.first_name.ilike(search_term)) |
+                (Customer.last_name.ilike(search_term))
+            )
+        customers = query.order_by(Customer.created_at.desc()).limit(limit).all()
+
+        for c in customers:
+            results.append({
+                "email": c.email,
+                "first_name": c.first_name,
+                "last_name": c.last_name,
+                "customer_id": c.id,
+                "subscriber_id": None,
+                "source": "customer",
+            })
+
+    # Search marketing subscribers
+    if source in ["all", "subscribers"]:
+        query = db.query(MarketingSubscriber)
+        if q:
+            search_term = f"%{q}%"
+            query = query.filter(
+                (MarketingSubscriber.email.ilike(search_term)) |
+                (MarketingSubscriber.first_name.ilike(search_term))
+            )
+        subscribers = query.order_by(MarketingSubscriber.created_at.desc()).limit(limit).all()
+
+        for s in subscribers:
+            # Check if already added as customer (avoid duplicates)
+            existing = next((r for r in results if r["email"] == s.email), None)
+            if existing:
+                existing["subscriber_id"] = s.id
+                continue
+
+            results.append({
+                "email": s.email,
+                "first_name": s.first_name,
+                "last_name": "",
+                "customer_id": None,
+                "subscriber_id": s.id,
+                "source": "subscriber",
+            })
+
+    return results
+
+
 def send_free_parking_promo_email(first_name: str, email: str, promo_code: str) -> bool:
     """Send 100% off (FREE parking) promo code email."""
     from email_service import send_email
@@ -5260,55 +5799,101 @@ async def create_payment(
         discount_percent = 0
         promo_code_applied = None
         is_free_booking = False
-        if request.promo_code:
-            promo_code = request.promo_code.strip().upper()
-            print(f"[PROMO] Looking up promo code: {promo_code}")
-            subscriber = db.query(MarketingSubscriber).filter(
-                (MarketingSubscriber.promo_code == promo_code) |
-                (MarketingSubscriber.promo_10_code == promo_code) |
-                (MarketingSubscriber.promo_free_code == promo_code) |
-                (MarketingSubscriber.founder_promo_code == promo_code)
-            ).first()
-            if subscriber:
-                # Determine which promo type this code belongs to
-                promo_used = False
-                if subscriber.founder_promo_code and subscriber.founder_promo_code == promo_code:
-                    promo_used = subscriber.founder_promo_used
-                    discount_percent = 10
-                elif subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
-                    promo_used = subscriber.promo_10_used
-                    discount_percent = 10
-                elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code:
-                    promo_used = subscriber.promo_free_used
-                    discount_percent = 100
-                elif subscriber.promo_code and subscriber.promo_code == promo_code:
-                    promo_used = subscriber.promo_code_used
-                    discount_percent = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
+        promo_code_record = None  # Track if this is from new promo_codes table
 
-                print(f"[PROMO] Found subscriber: {subscriber.email}, used: {promo_used}")
-                if not promo_used:
-                    if discount_percent == 100:
-                        # FREE promo: based on trip duration (not package)
-                        if duration_days <= 7:
-                            # Trips up to 7 days: completely free
+        if request.promo_code:
+            from db_models import PromoCode as DbPromoCode, Promotion as DbPromotion
+
+            promo_code = request.promo_code.strip().upper()
+            log_promo("PAYMENT looking up code", {"code": promo_code, "original_amount": original_amount})
+
+            # First, check the new promo_codes table
+            promo_code_record = db.query(DbPromoCode).filter(DbPromoCode.code == promo_code).first()
+            if promo_code_record:
+                log_promo("PAYMENT found in promo_codes table", {
+                    "code": promo_code,
+                    "promotion_id": promo_code_record.promotion_id,
+                    "is_used": promo_code_record.is_used,
+                    "recipient_email": promo_code_record.recipient_email
+                })
+                if promo_code_record.is_used:
+                    log_promo("PAYMENT code already used", {"code": promo_code, "used_at": str(promo_code_record.used_at)})
+                else:
+                    # Get discount from parent promotion
+                    promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
+                    if promotion:
+                        discount_percent = promotion.discount_percent
+                        log_promo("PAYMENT applying discount (new system)", {
+                            "code": promo_code,
+                            "promotion_name": promotion.name,
+                            "discount_percent": discount_percent,
+                            "original_amount": original_amount
+                        })
+
+                        if discount_percent == 100:
+                            # 100% off - full discount on any trip length
                             discount_amount = original_amount
                             is_free_booking = True
                         else:
-                            # Trips 8-14 days: deduct the 1-week base rate (7-day early tier)
-                            # e.g. 10-day trip £119 - 7-day base £79 = customer pays £40
-                            week1_base_pence = int(get_base_price_for_duration(7) * 100)
-                            discount_amount = min(week1_base_pence, original_amount)
+                            # Percentage-based discount
+                            discount_amount = int(original_amount * discount_percent / 100)
                             is_free_booking = False
-                    else:
-                        # Percentage-based discount (10% or custom)
-                        discount_amount = int(original_amount * discount_percent / 100)
-                        is_free_booking = False
-                    promo_code_applied = promo_code
-                    print(f"[PROMO] Discount applied: {discount_percent}% = {discount_amount} pence, duration: {duration_days} days (free: {is_free_booking})")
-                else:
-                    print(f"[PROMO] Code already used!")
+
+                        promo_code_applied = promo_code
+                        log_promo("PAYMENT discount calculated", {
+                            "code": promo_code,
+                            "discount_amount": discount_amount,
+                            "final_amount": original_amount - discount_amount,
+                            "is_free_booking": is_free_booking
+                        })
             else:
-                print(f"[PROMO] No subscriber found with this code")
+                # Fallback: Check legacy MarketingSubscriber promo fields
+                subscriber = db.query(MarketingSubscriber).filter(
+                    (MarketingSubscriber.promo_code == promo_code) |
+                    (MarketingSubscriber.promo_10_code == promo_code) |
+                    (MarketingSubscriber.promo_free_code == promo_code) |
+                    (MarketingSubscriber.founder_promo_code == promo_code)
+                ).first()
+                if subscriber:
+                    # Determine which promo type this code belongs to
+                    promo_used = False
+                    if subscriber.founder_promo_code and subscriber.founder_promo_code == promo_code:
+                        promo_used = subscriber.founder_promo_used
+                        discount_percent = 10
+                    elif subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
+                        promo_used = subscriber.promo_10_used
+                        discount_percent = 10
+                    elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code:
+                        promo_used = subscriber.promo_free_used
+                        discount_percent = 100
+                    elif subscriber.promo_code and subscriber.promo_code == promo_code:
+                        promo_used = subscriber.promo_code_used
+                        discount_percent = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
+
+                    print(f"[PROMO] Found subscriber: {subscriber.email}, used: {promo_used}")
+                    if not promo_used:
+                        if discount_percent == 100:
+                            # FREE promo: based on trip duration (not package)
+                            if duration_days <= 7:
+                                # Trips up to 7 days: completely free
+                                discount_amount = original_amount
+                                is_free_booking = True
+                            else:
+                                # Trips 8-14 days: deduct the 1-week base rate (7-day early tier)
+                                # e.g. 10-day trip £119 - 7-day base £79 = customer pays £40
+                                week1_base_pence = int(get_base_price_for_duration(7) * 100)
+                                discount_amount = min(week1_base_pence, original_amount)
+                                is_free_booking = False
+                        else:
+                            # Percentage-based discount (10% or custom)
+                            discount_amount = int(original_amount * discount_percent / 100)
+                            is_free_booking = False
+                        promo_code_applied = promo_code
+                        print(f"[PROMO] Discount applied: {discount_percent}% = {discount_amount} pence, duration: {duration_days} days (free: {is_free_booking})")
+                    else:
+                        print(f"[PROMO] Code already used!")
+                else:
+                    print(f"[PROMO] No code found in either table")
 
         # Final amount after discount
         amount = original_amount - discount_amount
@@ -5630,33 +6215,55 @@ async def create_payment(
             payment.paid_at = datetime.utcnow()
             db.commit()
 
-            # Mark promo code as used (search across all code fields)
+            # Mark promo code as used (check new promo_codes table first, then legacy)
             if promo_code_applied:
-                subscriber = db.query(MarketingSubscriber).filter(
-                    (MarketingSubscriber.promo_code == promo_code_applied) |
-                    (MarketingSubscriber.promo_10_code == promo_code_applied) |
-                    (MarketingSubscriber.promo_free_code == promo_code_applied) |
-                    (MarketingSubscriber.founder_promo_code == promo_code_applied)
-                ).first()
-                if subscriber:
-                    now = datetime.utcnow()
-                    if subscriber.founder_promo_code and subscriber.founder_promo_code == promo_code_applied:
-                        subscriber.founder_promo_used = True
-                        subscriber.founder_promo_used_at = now
-                        subscriber.founder_promo_used_booking_id = booking_id
-                    elif subscriber.promo_10_code and subscriber.promo_10_code == promo_code_applied:
-                        subscriber.promo_10_used = True
-                        subscriber.promo_10_used_at = now
-                        subscriber.promo_10_used_booking_id = booking_id
-                    elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code_applied:
-                        subscriber.promo_free_used = True
-                        subscriber.promo_free_used_at = now
-                        subscriber.promo_free_used_booking_id = booking_id
-                    elif subscriber.promo_code and subscriber.promo_code == promo_code_applied:
-                        subscriber.promo_code_used = True
-                        subscriber.promo_code_used_at = now
-                        subscriber.promo_code_used_booking_id = booking_id
+                log_promo("MARK_USED (free booking) starting", {"code": promo_code_applied, "booking_id": booking_id})
+                # First, check if it's from the new promo_codes table
+                if promo_code_record:
+                    promo_code_record.is_used = True
+                    promo_code_record.used_at = get_uk_now()
+                    promo_code_record.booking_id = booking_id
+                    # Update promotion stats
+                    promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
+                    if promotion:
+                        promotion.codes_used += 1
+                        log_promo("MARK_USED (free booking) updated promotion stats", {
+                            "promotion_id": promotion.id,
+                            "codes_used": promotion.codes_used
+                        })
                     db.commit()
+                    log_promo("MARK_USED (free booking) success (new system)", {
+                        "code": promo_code_applied,
+                        "booking_id": booking_id,
+                        "promotion_id": promo_code_record.promotion_id
+                    })
+                else:
+                    # Fallback: Legacy MarketingSubscriber promo fields
+                    subscriber = db.query(MarketingSubscriber).filter(
+                        (MarketingSubscriber.promo_code == promo_code_applied) |
+                        (MarketingSubscriber.promo_10_code == promo_code_applied) |
+                        (MarketingSubscriber.promo_free_code == promo_code_applied) |
+                        (MarketingSubscriber.founder_promo_code == promo_code_applied)
+                    ).first()
+                    if subscriber:
+                        now = get_uk_now()
+                        if subscriber.founder_promo_code and subscriber.founder_promo_code == promo_code_applied:
+                            subscriber.founder_promo_used = True
+                            subscriber.founder_promo_used_at = now
+                            subscriber.founder_promo_used_booking_id = booking_id
+                        elif subscriber.promo_10_code and subscriber.promo_10_code == promo_code_applied:
+                            subscriber.promo_10_used = True
+                            subscriber.promo_10_used_at = now
+                            subscriber.promo_10_used_booking_id = booking_id
+                        elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code_applied:
+                            subscriber.promo_free_used = True
+                            subscriber.promo_free_used_at = now
+                            subscriber.promo_free_used_booking_id = booking_id
+                        elif subscriber.promo_code and subscriber.promo_code == promo_code_applied:
+                            subscriber.promo_code_used = True
+                            subscriber.promo_code_used_at = now
+                            subscriber.promo_code_used_booking_id = booking_id
+                        db.commit()
 
             # Book the slot immediately for free bookings
             if request.departure_id and request.drop_off_slot:
@@ -6063,35 +6670,66 @@ async def stripe_webhook(
         # Mark promo code as used (if one was applied)
         # Skip if this webhook was already processed
         if promo_code and not was_already_processed:
+            log_promo("WEBHOOK MARK_USED starting", {"code": promo_code, "booking_reference": booking_reference})
             try:
                 # Get booking ID from reference
                 booking = db_service.get_booking_by_reference(db, booking_reference)
                 bid = booking.id if booking else None
-                subscriber = db.query(MarketingSubscriber).filter(
-                    (MarketingSubscriber.promo_code == promo_code) |
-                    (MarketingSubscriber.promo_10_code == promo_code) |
-                    (MarketingSubscriber.promo_free_code == promo_code) |
-                    (MarketingSubscriber.founder_promo_code == promo_code)
+
+                # First, check if it's from the new promo_codes table
+                promo_code_record = db.query(DbPromoCode).filter(
+                    DbPromoCode.code == promo_code,
+                    DbPromoCode.is_used == False
                 ).first()
-                if subscriber:
-                    now = datetime.utcnow()
-                    if subscriber.founder_promo_code and subscriber.founder_promo_code == promo_code:
-                        subscriber.founder_promo_used = True
-                        subscriber.founder_promo_used_at = now
-                        subscriber.founder_promo_used_booking_id = bid
-                    elif subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
-                        subscriber.promo_10_used = True
-                        subscriber.promo_10_used_at = now
-                        subscriber.promo_10_used_booking_id = bid
-                    elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code:
-                        subscriber.promo_free_used = True
-                        subscriber.promo_free_used_at = now
-                        subscriber.promo_free_used_booking_id = bid
-                    elif subscriber.promo_code and subscriber.promo_code == promo_code:
-                        subscriber.promo_code_used = True
-                        subscriber.promo_code_used_at = now
-                        subscriber.promo_code_used_booking_id = bid
+
+                if promo_code_record:
+                    log_promo("WEBHOOK MARK_USED found in new system", {
+                        "code": promo_code,
+                        "promotion_id": promo_code_record.promotion_id,
+                        "booking_id": bid
+                    })
+                    # New promo_codes table
+                    promo_code_record.is_used = True
+                    promo_code_record.used_at = get_uk_now()
+                    promo_code_record.booking_id = bid
+                    # Update promotion stats
+                    promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
+                    if promotion:
+                        promotion.codes_used += 1
+                        log_promo("WEBHOOK MARK_USED updated promotion stats", {
+                            "promotion_id": promotion.id,
+                            "promotion_name": promotion.name,
+                            "codes_used": promotion.codes_used
+                        })
                     db.commit()
+                    log_promo("WEBHOOK MARK_USED success (new system)", {"code": promo_code, "booking_id": bid})
+                else:
+                    # Fallback: Legacy MarketingSubscriber promo fields
+                    subscriber = db.query(MarketingSubscriber).filter(
+                        (MarketingSubscriber.promo_code == promo_code) |
+                        (MarketingSubscriber.promo_10_code == promo_code) |
+                        (MarketingSubscriber.promo_free_code == promo_code) |
+                        (MarketingSubscriber.founder_promo_code == promo_code)
+                    ).first()
+                    if subscriber:
+                        now = get_uk_now()
+                        if subscriber.founder_promo_code and subscriber.founder_promo_code == promo_code:
+                            subscriber.founder_promo_used = True
+                            subscriber.founder_promo_used_at = now
+                            subscriber.founder_promo_used_booking_id = bid
+                        elif subscriber.promo_10_code and subscriber.promo_10_code == promo_code:
+                            subscriber.promo_10_used = True
+                            subscriber.promo_10_used_at = now
+                            subscriber.promo_10_used_booking_id = bid
+                        elif subscriber.promo_free_code and subscriber.promo_free_code == promo_code:
+                            subscriber.promo_free_used = True
+                            subscriber.promo_free_used_at = now
+                            subscriber.promo_free_used_booking_id = bid
+                        elif subscriber.promo_code and subscriber.promo_code == promo_code:
+                            subscriber.promo_code_used = True
+                            subscriber.promo_code_used_at = now
+                            subscriber.promo_code_used_booking_id = bid
+                        db.commit()
             except Exception as e:
                 log_error(
                     db=db,

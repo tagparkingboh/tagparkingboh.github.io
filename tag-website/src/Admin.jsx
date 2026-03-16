@@ -121,6 +121,29 @@ function Admin() {
   const [subscriberDateFrom, setSubscriberDateFrom] = useState(null)
   const [subscriberDateTo, setSubscriberDateTo] = useState(null)
 
+  // Marketing sub-tab state
+  const [marketingSubTab, setMarketingSubTab] = useState('subscribers') // 'subscribers' or 'promotions'
+
+  // Promotions state
+  const [promotions, setPromotions] = useState([])
+  const [loadingPromotions, setLoadingPromotions] = useState(false)
+  const [showCreatePromotion, setShowCreatePromotion] = useState(false)
+  const [newPromotion, setNewPromotion] = useState({ name: '', description: '', discount_percent: 10, total_codes: 10 })
+  const [creatingPromotion, setCreatingPromotion] = useState(false)
+  const [expandedPromotionId, setExpandedPromotionId] = useState(null)
+  const [promotionDetails, setPromotionDetails] = useState({}) // { [id]: { codes, loading } }
+  const [showSendPromoEmailModal, setShowSendPromoEmailModal] = useState(false)
+  const [sendPromoEmailData, setSendPromoEmailData] = useState(null) // { promotion, availableCodes }
+  const [promoEmailRecipients, setPromoEmailRecipients] = useState([])
+  const [promoEmailSubject, setPromoEmailSubject] = useState('')
+  const [promoEmailBody, setPromoEmailBody] = useState('')
+  const [sendingPromoEmails, setSendingPromoEmails] = useState(false)
+  const [recipientSearchTerm, setRecipientSearchTerm] = useState('')
+  const [recipientSearchResults, setRecipientSearchResults] = useState([])
+  const [searchingRecipients, setSearchingRecipients] = useState(false)
+  const [manualRecipient, setManualRecipient] = useState({ email: '', first_name: '', last_name: '' })
+  const [promotionMessage, setPromotionMessage] = useState('')
+
   // Abandoned leads state
   const [leads, setLeads] = useState([])
   const [loadingLeads, setLoadingLeads] = useState(false)
@@ -300,12 +323,19 @@ function Admin() {
   }, [activeTab, token])
 
 
-  // Fetch subscribers when marketing tab is active
+  // Fetch subscribers when marketing tab is active with subscribers sub-tab
   useEffect(() => {
-    if (activeTab === 'marketing' && token) {
+    if (activeTab === 'marketing' && token && marketingSubTab === 'subscribers') {
       fetchSubscribers()
     }
-  }, [activeTab, token])
+  }, [activeTab, token, marketingSubTab])
+
+  // Fetch promotions when marketing tab is active with promotions sub-tab
+  useEffect(() => {
+    if (activeTab === 'marketing' && token && marketingSubTab === 'promotions') {
+      fetchPromotions()
+    }
+  }, [activeTab, token, marketingSubTab])
 
   // Fetch leads when leads tab is active
   useEffect(() => {
@@ -754,6 +784,192 @@ function Admin() {
       setError('Network error loading subscribers')
     } finally {
       setLoadingSubscribers(false)
+    }
+  }
+
+  // Promotions functions
+  const fetchPromotions = async () => {
+    setLoadingPromotions(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promotions`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPromotions(data.promotions || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch promotions:', err)
+    } finally {
+      setLoadingPromotions(false)
+    }
+  }
+
+  const createPromotion = async () => {
+    setCreatingPromotion(true)
+    setPromotionMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promotions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newPromotion),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPromotionMessage(`Created promotion "${data.promotion.name}" with ${data.promotion.total_codes} codes`)
+        setShowCreatePromotion(false)
+        setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10 })
+        fetchPromotions()
+      } else {
+        const error = await response.json()
+        setPromotionMessage(`Error: ${error.detail || 'Failed to create promotion'}`)
+      }
+    } catch (err) {
+      setPromotionMessage('Network error creating promotion')
+    } finally {
+      setCreatingPromotion(false)
+    }
+  }
+
+  const fetchPromotionDetails = async (promotionId) => {
+    setPromotionDetails(prev => ({ ...prev, [promotionId]: { ...prev[promotionId], loading: true } }))
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promotions/${promotionId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPromotionDetails(prev => ({
+          ...prev,
+          [promotionId]: { codes: data.codes || [], loading: false }
+        }))
+      }
+    } catch (err) {
+      console.error('Failed to fetch promotion details:', err)
+      setPromotionDetails(prev => ({ ...prev, [promotionId]: { ...prev[promotionId], loading: false } }))
+    }
+  }
+
+  const openSendPromoEmailModal = async (promotion) => {
+    // Fetch available (unsent) codes for this promotion
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promotions/${promotion.id}/available-codes`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSendPromoEmailData({ promotion, availableCodes: data.codes || [] })
+        setPromoEmailRecipients([])
+        setPromoEmailSubject(`{{FIRST_NAME}}, here is your ${promotion.discount_percent}% off promo code`)
+        setPromoEmailBody(`<p>Hi {{FIRST_NAME}},</p>
+<p>Thank you for your interest in TAG Parking!</p>
+<p>Here is your exclusive promo code for <strong>${promotion.discount_percent}% off</strong> your first booking:</p>
+<p style="font-size: 24px; font-weight: bold; color: #007bff; text-align: center;">{{PROMO_CODE}}</p>
+<p>Simply enter this code at checkout to apply your discount.</p>
+<p>Best regards,<br>The TAG Parking Team</p>`)
+        setShowSendPromoEmailModal(true)
+      }
+    } catch (err) {
+      console.error('Failed to fetch available codes:', err)
+    }
+  }
+
+  const searchRecipients = async (searchTerm) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setRecipientSearchResults([])
+      return
+    }
+    setSearchingRecipients(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promotions/recipients/search?q=${encodeURIComponent(searchTerm)}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setRecipientSearchResults(data.recipients || [])
+      }
+    } catch (err) {
+      console.error('Failed to search recipients:', err)
+    } finally {
+      setSearchingRecipients(false)
+    }
+  }
+
+  const addRecipient = (recipient) => {
+    // Check if already added
+    if (promoEmailRecipients.some(r => r.email === recipient.email)) {
+      return
+    }
+    setPromoEmailRecipients(prev => [...prev, recipient])
+    setRecipientSearchTerm('')
+    setRecipientSearchResults([])
+  }
+
+  const addManualRecipient = () => {
+    if (!manualRecipient.email || !manualRecipient.first_name) {
+      return
+    }
+    // Check if already added
+    if (promoEmailRecipients.some(r => r.email === manualRecipient.email)) {
+      setManualRecipient({ email: '', first_name: '', last_name: '' })
+      return
+    }
+    setPromoEmailRecipients(prev => [...prev, {
+      ...manualRecipient,
+      source: 'new'
+    }])
+    setManualRecipient({ email: '', first_name: '', last_name: '' })
+  }
+
+  const removeRecipient = (email) => {
+    setPromoEmailRecipients(prev => prev.filter(r => r.email !== email))
+  }
+
+  const sendPromoEmails = async () => {
+    if (!sendPromoEmailData || promoEmailRecipients.length === 0) return
+
+    // Check we have enough codes
+    if (promoEmailRecipients.length > sendPromoEmailData.availableCodes.length) {
+      setPromotionMessage(`Error: Not enough available codes (${sendPromoEmailData.availableCodes.length} available, ${promoEmailRecipients.length} needed)`)
+      return
+    }
+
+    setSendingPromoEmails(true)
+    setPromotionMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promotions/send-emails`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          promotion_id: sendPromoEmailData.promotion.id,
+          recipients: promoEmailRecipients,
+          email_subject: promoEmailSubject,
+          email_body: promoEmailBody,
+        }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPromotionMessage(`Successfully sent ${data.total_sent} promo emails`)
+        setShowSendPromoEmailModal(false)
+        fetchPromotions()
+        // Refresh promotion details if expanded
+        if (expandedPromotionId === sendPromoEmailData.promotion.id) {
+          fetchPromotionDetails(sendPromoEmailData.promotion.id)
+        }
+      } else {
+        const error = await response.json()
+        setPromotionMessage(`Error: ${error.detail || 'Failed to send emails'}`)
+      }
+    } catch (err) {
+      setPromotionMessage('Network error sending emails')
+    } finally {
+      setSendingPromoEmails(false)
     }
   }
 
@@ -3441,6 +3657,33 @@ function Admin() {
 
         {activeTab === 'marketing' && (
           <div className="admin-section">
+            {/* Marketing Sub-tabs */}
+            <div className="reports-subtabs" style={{ marginBottom: '20px' }}>
+              <button
+                className={`reports-subtab ${marketingSubTab === 'subscribers' ? 'active' : ''}`}
+                onClick={() => setMarketingSubTab('subscribers')}
+              >
+                Subscribers
+              </button>
+              <button
+                className={`reports-subtab ${marketingSubTab === 'promotions' ? 'active' : ''}`}
+                onClick={() => setMarketingSubTab('promotions')}
+              >
+                Promotions
+              </button>
+            </div>
+
+            {/* Promotions Success/Error Message */}
+            {promotionMessage && (
+              <div className={`success-banner ${promotionMessage.startsWith('Error') ? 'error-banner' : ''}`}>
+                {promotionMessage}
+                <button onClick={() => setPromotionMessage('')} style={{ marginLeft: '10px', background: 'none', border: 'none', cursor: 'pointer' }}>&times;</button>
+              </div>
+            )}
+
+            {/* Subscribers Sub-tab */}
+            {marketingSubTab === 'subscribers' && (
+              <>
             <div className="admin-section-header">
               <h2>Marketing Subscribers</h2>
               <div className="flights-header-actions">
@@ -3894,6 +4137,407 @@ function Admin() {
                 )
               })
             })()}
+              </>
+            )}
+
+            {/* Promotions Sub-tab */}
+            {marketingSubTab === 'promotions' && (
+              <div className="promotions-section">
+                <div className="admin-section-header">
+                  <h2>Promotions</h2>
+                  <div className="flights-header-actions">
+                    <button
+                      className="btn-secondary"
+                      onClick={fetchPromotions}
+                      disabled={loadingPromotions}
+                    >
+                      {loadingPromotions ? 'Loading...' : '↻ Refresh'}
+                    </button>
+                    <button
+                      className="btn-primary"
+                      onClick={() => setShowCreatePromotion(true)}
+                    >
+                      + New Promotion
+                    </button>
+                  </div>
+                </div>
+
+                {/* Create Promotion Form */}
+                {showCreatePromotion && (
+                  <div className="create-promotion-form" style={{ background: '#f5f5f5', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+                    <h3>Create New Promotion</h3>
+                    <div className="form-row" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '15px' }}>
+                      <div className="form-group" style={{ flex: '2', minWidth: '200px' }}>
+                        <label>Promotion Name</label>
+                        <input
+                          type="text"
+                          value={newPromotion.name}
+                          onChange={(e) => setNewPromotion(prev => ({ ...prev, name: e.target.value }))}
+                          placeholder="e.g., Spring Sale 2026"
+                          className="admin-input"
+                        />
+                      </div>
+                      <div className="form-group" style={{ flex: '1', minWidth: '120px' }}>
+                        <label>Discount %</label>
+                        <select
+                          value={newPromotion.discount_percent}
+                          onChange={(e) => setNewPromotion(prev => ({ ...prev, discount_percent: parseInt(e.target.value) }))}
+                          className="admin-select"
+                        >
+                          <option value={10}>10%</option>
+                          <option value={15}>15%</option>
+                          <option value={20}>20%</option>
+                          <option value={25}>25%</option>
+                          <option value={50}>50%</option>
+                          <option value={100}>100% (Free)</option>
+                        </select>
+                      </div>
+                      <div className="form-group" style={{ flex: '1', minWidth: '120px' }}>
+                        <label>Number of Codes</label>
+                        <input
+                          type="number"
+                          value={newPromotion.total_codes}
+                          onChange={(e) => setNewPromotion(prev => ({ ...prev, total_codes: parseInt(e.target.value) || 1 }))}
+                          min="1"
+                          max="1000"
+                          className="admin-input"
+                        />
+                      </div>
+                    </div>
+                    <div className="form-group" style={{ marginBottom: '15px' }}>
+                      <label>Description (optional)</label>
+                      <textarea
+                        value={newPromotion.description}
+                        onChange={(e) => setNewPromotion(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="Internal notes about this promotion"
+                        className="admin-input"
+                        rows="2"
+                        style={{ width: '100%', resize: 'vertical' }}
+                      />
+                    </div>
+                    <div className="form-actions" style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        className="btn-secondary"
+                        onClick={() => { setShowCreatePromotion(false); setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10 }); }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="btn-primary"
+                        onClick={createPromotion}
+                        disabled={creatingPromotion || !newPromotion.name || !newPromotion.total_codes}
+                      >
+                        {creatingPromotion ? 'Creating...' : 'Create Promotion'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Promotions List */}
+                {loadingPromotions ? (
+                  <div className="loading-spinner">
+                    <span>Loading promotions...</span>
+                  </div>
+                ) : promotions.length === 0 ? (
+                  <div className="no-data">
+                    <p>No promotions yet. Create your first promotion to generate promo codes.</p>
+                  </div>
+                ) : (
+                  <div className="promotions-list">
+                    {promotions.map(promo => (
+                      <div key={promo.id} className="promotion-card" style={{ border: '1px solid #ddd', borderRadius: '8px', marginBottom: '15px', overflow: 'hidden' }}>
+                        <div
+                          className="promotion-header"
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '15px 20px',
+                            background: '#f9f9f9',
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => {
+                            if (expandedPromotionId === promo.id) {
+                              setExpandedPromotionId(null)
+                            } else {
+                              setExpandedPromotionId(promo.id)
+                              if (!promotionDetails[promo.id]) {
+                                fetchPromotionDetails(promo.id)
+                              }
+                            }
+                          }}
+                        >
+                          <div className="promotion-info">
+                            <h3 style={{ margin: 0, marginBottom: '5px' }}>{promo.name}</h3>
+                            <div style={{ display: 'flex', gap: '15px', fontSize: '14px', color: '#666' }}>
+                              <span><strong>{promo.discount_percent}%</strong> off</span>
+                              <span>|</span>
+                              <span>{promo.total_codes} codes</span>
+                              <span>|</span>
+                              <span>{promo.codes_sent} sent</span>
+                              <span>|</span>
+                              <span>{promo.codes_used} used</span>
+                              <span>|</span>
+                              <span style={{ color: promo.codes_available > 0 ? '#28a745' : '#dc3545' }}>
+                                {promo.codes_available} available
+                              </span>
+                            </div>
+                          </div>
+                          <div className="promotion-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <button
+                              className="btn-primary"
+                              onClick={(e) => { e.stopPropagation(); openSendPromoEmailModal(promo); }}
+                              disabled={promo.codes_available === 0}
+                              style={{ fontSize: '14px', padding: '8px 15px' }}
+                            >
+                              📧 Send Codes
+                            </button>
+                            <span style={{ fontSize: '20px', color: '#666' }}>
+                              {expandedPromotionId === promo.id ? '▼' : '▶'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Expanded Details */}
+                        {expandedPromotionId === promo.id && (
+                          <div className="promotion-details" style={{ padding: '20px', borderTop: '1px solid #eee' }}>
+                            {promo.description && (
+                              <p style={{ color: '#666', marginBottom: '15px', fontStyle: 'italic' }}>{promo.description}</p>
+                            )}
+                            <p style={{ fontSize: '12px', color: '#999', marginBottom: '15px' }}>
+                              Created: {new Date(promo.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}
+                            </p>
+
+                            {promotionDetails[promo.id]?.loading ? (
+                              <div className="loading-spinner"><span>Loading codes...</span></div>
+                            ) : promotionDetails[promo.id]?.codes?.length > 0 ? (
+                              <div className="promo-codes-table" style={{ overflowX: 'auto' }}>
+                                <table className="admin-table" style={{ width: '100%', fontSize: '13px' }}>
+                                  <thead>
+                                    <tr>
+                                      <th>Code</th>
+                                      <th>Recipient</th>
+                                      <th>Email Sent</th>
+                                      <th>Status</th>
+                                      <th>Booking</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {promotionDetails[promo.id].codes.map(code => (
+                                      <tr key={code.id}>
+                                        <td><code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px' }}>{code.code}</code></td>
+                                        <td>
+                                          {code.recipient_email ? (
+                                            <span>
+                                              {code.recipient_first_name} {code.recipient_last_name || ''}<br />
+                                              <small style={{ color: '#666' }}>{code.recipient_email}</small>
+                                            </span>
+                                          ) : (
+                                            <span style={{ color: '#999' }}>Not assigned</span>
+                                          )}
+                                        </td>
+                                        <td>
+                                          {code.email_sent ? (
+                                            <span style={{ color: '#28a745' }}>
+                                              ✓ {new Date(code.email_sent_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}
+                                            </span>
+                                          ) : (
+                                            <span style={{ color: '#999' }}>-</span>
+                                          )}
+                                        </td>
+                                        <td>
+                                          <span className={`status-badge ${code.is_used ? 'used' : code.email_sent ? 'sent' : 'pending'}`}>
+                                            {code.is_used ? 'Used' : code.email_sent ? 'Sent' : 'Available'}
+                                          </span>
+                                        </td>
+                                        <td>
+                                          {code.booking_reference ? (
+                                            <code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px' }}>{code.booking_reference}</code>
+                                          ) : (
+                                            <span style={{ color: '#999' }}>-</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              <p style={{ color: '#666' }}>No codes to display.</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Send Promo Email Modal */}
+            {showSendPromoEmailModal && sendPromoEmailData && (
+              <div className="modal-overlay" onClick={() => setShowSendPromoEmailModal(false)}>
+                <div className="modal-content" style={{ maxWidth: '700px', maxHeight: '90vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h3>Send Promo Emails - {sendPromoEmailData.promotion.name}</h3>
+                    <button className="modal-close" onClick={() => setShowSendPromoEmailModal(false)}>&times;</button>
+                  </div>
+                  <div className="modal-body">
+                    <p style={{ marginBottom: '15px', color: '#666' }}>
+                      <strong>{sendPromoEmailData.availableCodes.length}</strong> codes available to send
+                    </p>
+
+                    {/* Recipient Search */}
+                    <div className="form-group" style={{ marginBottom: '20px' }}>
+                      <label>Search Customers & Subscribers</label>
+                      <input
+                        type="text"
+                        value={recipientSearchTerm}
+                        onChange={(e) => {
+                          setRecipientSearchTerm(e.target.value)
+                          searchRecipients(e.target.value)
+                        }}
+                        placeholder="Search by name or email..."
+                        className="admin-input"
+                        style={{ width: '100%' }}
+                      />
+                      {searchingRecipients && <small>Searching...</small>}
+                      {recipientSearchResults.length > 0 && (
+                        <div className="search-results" style={{ border: '1px solid #ddd', borderRadius: '4px', marginTop: '5px', maxHeight: '150px', overflowY: 'auto' }}>
+                          {recipientSearchResults.map((r, idx) => (
+                            <div
+                              key={idx}
+                              style={{ padding: '8px 12px', borderBottom: '1px solid #eee', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}
+                              onClick={() => addRecipient(r)}
+                            >
+                              <span>{r.first_name} {r.last_name || ''} - {r.email}</span>
+                              <small style={{ color: '#666' }}>{r.source}</small>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Manual Entry */}
+                    <div className="form-group" style={{ marginBottom: '20px' }}>
+                      <label>Or Add Manually (family/friends)</label>
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <input
+                          type="email"
+                          value={manualRecipient.email}
+                          onChange={(e) => setManualRecipient(prev => ({ ...prev, email: e.target.value }))}
+                          placeholder="Email"
+                          className="admin-input"
+                          style={{ flex: '2', minWidth: '180px' }}
+                        />
+                        <input
+                          type="text"
+                          value={manualRecipient.first_name}
+                          onChange={(e) => setManualRecipient(prev => ({ ...prev, first_name: e.target.value }))}
+                          placeholder="First Name"
+                          className="admin-input"
+                          style={{ flex: '1', minWidth: '100px' }}
+                        />
+                        <input
+                          type="text"
+                          value={manualRecipient.last_name}
+                          onChange={(e) => setManualRecipient(prev => ({ ...prev, last_name: e.target.value }))}
+                          placeholder="Last Name"
+                          className="admin-input"
+                          style={{ flex: '1', minWidth: '100px' }}
+                        />
+                        <button
+                          className="btn-secondary"
+                          onClick={addManualRecipient}
+                          disabled={!manualRecipient.email || !manualRecipient.first_name}
+                          style={{ padding: '8px 15px' }}
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Selected Recipients */}
+                    <div className="form-group" style={{ marginBottom: '20px' }}>
+                      <label>Recipients ({promoEmailRecipients.length})</label>
+                      {promoEmailRecipients.length === 0 ? (
+                        <p style={{ color: '#999', fontStyle: 'italic' }}>No recipients selected</p>
+                      ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {promoEmailRecipients.map((r, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                background: '#e9ecef',
+                                padding: '5px 10px',
+                                borderRadius: '15px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                fontSize: '13px',
+                              }}
+                            >
+                              {r.first_name} ({r.email})
+                              <button
+                                onClick={() => removeRecipient(r.email)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc3545', fontWeight: 'bold' }}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {promoEmailRecipients.length > sendPromoEmailData.availableCodes.length && (
+                        <p style={{ color: '#dc3545', marginTop: '10px' }}>
+                          ⚠️ More recipients than available codes!
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Email Subject */}
+                    <div className="form-group" style={{ marginBottom: '15px' }}>
+                      <label>Email Subject</label>
+                      <input
+                        type="text"
+                        value={promoEmailSubject}
+                        onChange={(e) => setPromoEmailSubject(e.target.value)}
+                        className="admin-input"
+                        style={{ width: '100%' }}
+                      />
+                      <small style={{ color: '#666' }}>Use {'{{FIRST_NAME}}'} for personalization</small>
+                    </div>
+
+                    {/* Email Body */}
+                    <div className="form-group" style={{ marginBottom: '15px' }}>
+                      <label>Email Body (HTML)</label>
+                      <textarea
+                        value={promoEmailBody}
+                        onChange={(e) => setPromoEmailBody(e.target.value)}
+                        className="admin-input"
+                        rows="10"
+                        style={{ width: '100%', fontFamily: 'monospace', fontSize: '12px' }}
+                      />
+                      <small style={{ color: '#666' }}>
+                        Use {'{{FIRST_NAME}}'} and {'{{PROMO_CODE}}'} placeholders
+                      </small>
+                    </div>
+                  </div>
+                  <div className="modal-actions">
+                    <button className="modal-btn modal-btn-secondary" onClick={() => setShowSendPromoEmailModal(false)}>
+                      Cancel
+                    </button>
+                    <button
+                      className="modal-btn modal-btn-primary"
+                      onClick={sendPromoEmails}
+                      disabled={sendingPromoEmails || promoEmailRecipients.length === 0 || promoEmailRecipients.length > sendPromoEmailData.availableCodes.length}
+                    >
+                      {sendingPromoEmails ? 'Sending...' : `Send ${promoEmailRecipients.length} Email${promoEmailRecipients.length !== 1 ? 's' : ''}`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

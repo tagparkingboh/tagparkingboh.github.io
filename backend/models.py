@@ -2,7 +2,7 @@
 Data models for the TAG booking system.
 """
 from datetime import date, time, datetime
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
@@ -346,3 +346,86 @@ class TestRunResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ============================================================================
+# Promotion Models (Promo Code Generation System)
+# ============================================================================
+
+class PromotionCreate(BaseModel):
+    """Request to create a new promotion campaign."""
+    name: str
+    description: Optional[str] = None
+    discount_percent: int  # 10, 20, 100
+    total_codes: int  # Number of codes to generate
+
+
+class PromotionResponse(BaseModel):
+    """Response model for a promotion."""
+    id: int
+    name: str
+    description: Optional[str] = None
+    discount_percent: int
+    total_codes: int
+    codes_sent: int
+    codes_used: int
+    codes_available: int  # Computed: total_codes - codes_sent
+    created_by: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PromoCodeResponse(BaseModel):
+    """Response model for an individual promo code."""
+    id: int
+    code: str
+    promotion_id: int
+    discount_percent: int  # From parent promotion
+
+    # Recipient info
+    recipient_email: Optional[str] = None
+    recipient_first_name: Optional[str] = None
+    recipient_last_name: Optional[str] = None
+    customer_id: Optional[int] = None
+    subscriber_id: Optional[int] = None
+
+    # Status
+    email_sent: bool
+    email_sent_at: Optional[datetime] = None
+    is_used: bool
+    used_at: Optional[datetime] = None
+    booking_id: Optional[int] = None
+    booking_reference: Optional[str] = None  # For display
+
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PromoRecipient(BaseModel):
+    """A recipient for promo code email."""
+    email: str
+    first_name: str
+    last_name: Optional[str] = None
+    customer_id: Optional[int] = None
+    subscriber_id: Optional[int] = None
+    source: str = "new"  # "customer", "subscriber", "new"
+
+
+class SendPromoEmailsRequest(BaseModel):
+    """Request to send promo emails to selected recipients."""
+    promotion_id: int
+    recipients: List[PromoRecipient]
+    email_subject: str  # Can contain {{FIRST_NAME}}
+    email_body: str  # HTML body with {{FIRST_NAME}}, {{PROMO_CODE}} placeholders
+
+
+class SendPromoEmailsResponse(BaseModel):
+    """Response after sending promo emails."""
+    success: bool
+    total_sent: int
+    total_failed: int
+    errors: List[str] = []

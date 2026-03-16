@@ -804,3 +804,70 @@ class MarketingSourceMonthlyTotal(Base):
 
     def __repr__(self):
         return f"<MarketingSourceMonthlyTotal {self.year_month} - {self.source}: {self.count}>"
+
+
+class Promotion(Base):
+    """Promo code campaign - a batch of codes with the same discount."""
+    __tablename__ = "promotions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)  # e.g., "Spring 2024 Friends & Family"
+    description = Column(Text, nullable=True)
+
+    # Discount settings
+    discount_percent = Column(Integer, nullable=False)  # 10, 20, 100
+
+    # Code generation stats
+    total_codes = Column(Integer, nullable=False, default=0)
+    codes_sent = Column(Integer, nullable=False, default=0)
+    codes_used = Column(Integer, nullable=False, default=0)
+
+    # Admin tracking
+    created_by = Column(String(255), nullable=True)  # Admin email
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    promo_codes = relationship("PromoCode", back_populates="promotion")
+
+    def __repr__(self):
+        return f"<Promotion {self.id} - {self.name} ({self.discount_percent}% off)>"
+
+
+class PromoCode(Base):
+    """Individual promo code - single use, unique."""
+    __tablename__ = "promo_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    promotion_id = Column(Integer, ForeignKey("promotions.id"), nullable=False)
+    code = Column(String(20), unique=True, nullable=False, index=True)  # TAG-XXXX-XXXX
+
+    # Recipient - can be customer, subscriber, or just an email for new contacts
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
+    subscriber_id = Column(Integer, ForeignKey("marketing_subscribers.id"), nullable=True)
+    recipient_email = Column(String(255), nullable=True)  # Always store the email sent to
+    recipient_first_name = Column(String(100), nullable=True)
+    recipient_last_name = Column(String(100), nullable=True)
+
+    # Email tracking
+    email_sent = Column(Boolean, default=False)
+    email_sent_at = Column(DateTime(timezone=True), nullable=True)
+    email_subject = Column(String(255), nullable=True)
+
+    # Usage tracking
+    is_used = Column(Boolean, default=False, index=True)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    promotion = relationship("Promotion", back_populates="promo_codes")
+    customer = relationship("Customer", foreign_keys=[customer_id])
+    subscriber = relationship("MarketingSubscriber", foreign_keys=[subscriber_id])
+    booking = relationship("Booking", foreign_keys=[booking_id])
+
+    def __repr__(self):
+        status = "used" if self.is_used else ("sent" if self.email_sent else "unsent")
+        return f"<PromoCode {self.code} - {status}>"
