@@ -4136,7 +4136,7 @@ async def search_recipients(
                 (MarketingSubscriber.email.ilike(search_term)) |
                 (MarketingSubscriber.first_name.ilike(search_term))
             )
-        subscribers = query.order_by(MarketingSubscriber.created_at.desc()).limit(limit).all()
+        subscribers = query.order_by(MarketingSubscriber.subscribed_at.desc()).limit(limit).all()
 
         for s in subscribers:
             # Check if already added as customer (avoid duplicates)
