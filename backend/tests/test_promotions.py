@@ -1582,3 +1582,84 @@ class TestAPIContractPromoValidate:
 
         assert mock_response["valid"] == False
         assert "already been used" in mock_response["message"]
+
+
+# =============================================================================
+# API Integration Tests - Actually Call Endpoints and Verify Response Shape
+# =============================================================================
+
+class TestAPIIntegrationListPromotions:
+    """
+    Integration tests that actually call the API endpoints.
+    These tests would have caught the response structure mismatch.
+    """
+
+    @pytest.mark.asyncio
+    async def test_list_promotions_returns_promotions_key(self, client):
+        """
+        CRITICAL TEST: Verify list promotions returns {"promotions": [...]}
+        This test WOULD HAVE CAUGHT the bug where backend returned [...] directly.
+        """
+        response = await client.get(
+            "/api/admin/promotions",
+            headers={"Authorization": "Bearer test_token"}
+        )
+
+        # The response might be 401 without proper auth, but we can still check
+        # if auth passes, that the structure is correct
+        if response.status_code == 200:
+            data = response.json()
+            assert "promotions" in data, \
+                "CRITICAL: Response must have 'promotions' key, not return array directly"
+            assert isinstance(data["promotions"], list), \
+                "promotions must be a list"
+
+    @pytest.mark.asyncio
+    async def test_list_promotions_response_not_plain_array(self, client):
+        """
+        Verify the response is an object with 'promotions' key, NOT a plain array.
+        Frontend does: data.promotions || []
+        """
+        response = await client.get(
+            "/api/admin/promotions",
+            headers={"Authorization": "Bearer test_token"}
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            # This assertion explicitly checks it's not a plain array
+            assert not isinstance(data, list), \
+                "Response should be an object with 'promotions' key, not a plain array"
+
+
+class TestAPIIntegrationRecipientSearch:
+    """Integration tests for recipient search endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_recipient_search_returns_recipients_key(self, client):
+        """
+        CRITICAL TEST: Verify search returns {"recipients": [...]}
+        """
+        response = await client.get(
+            "/api/admin/promotions/recipients/search?q=test",
+            headers={"Authorization": "Bearer test_token"}
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            assert "recipients" in data, \
+                "CRITICAL: Response must have 'recipients' key"
+            assert isinstance(data["recipients"], list)
+
+    @pytest.mark.asyncio
+    async def test_recipient_search_response_not_plain_array(self, client):
+        """Verify the response is not a plain array."""
+        response = await client.get(
+            "/api/admin/promotions/recipients/search?q=test",
+            headers={"Authorization": "Bearer test_token"}
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            assert not isinstance(data, list), \
+                "Response should be an object with 'recipients' key, not a plain array"

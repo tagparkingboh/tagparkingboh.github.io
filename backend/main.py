@@ -3796,22 +3796,25 @@ async def list_promotions(
     from db_models import Promotion
 
     promotions = db.query(Promotion).order_by(Promotion.created_at.desc()).all()
+    log_promo("LIST_PROMOTIONS", {"count": len(promotions)})
 
-    return [
-        {
-            "id": p.id,
-            "name": p.name,
-            "description": p.description,
-            "discount_percent": p.discount_percent,
-            "total_codes": p.total_codes,
-            "codes_sent": p.codes_sent,
-            "codes_used": p.codes_used,
-            "codes_available": p.total_codes - p.codes_sent,
-            "created_by": p.created_by,
-            "created_at": p.created_at,
-        }
-        for p in promotions
-    ]
+    return {
+        "promotions": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "description": p.description,
+                "discount_percent": p.discount_percent,
+                "total_codes": p.total_codes,
+                "codes_sent": p.codes_sent,
+                "codes_used": p.codes_used,
+                "codes_available": p.total_codes - p.codes_sent,
+                "created_by": p.created_by,
+                "created_at": p.created_at,
+            }
+            for p in promotions
+        ]
+    }
 
 
 @app.get("/api/admin/promotions/{promotion_id}")
@@ -4151,7 +4154,7 @@ async def search_recipients(
                 "source": "subscriber",
             })
 
-    return results
+    return {"recipients": results}
 
 
 def send_free_parking_promo_email(first_name: str, email: str, promo_code: str) -> bool:
