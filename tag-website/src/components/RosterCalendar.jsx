@@ -47,6 +47,7 @@ const formatTime = (timeStr) => {
 function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrigger = 0 }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [shifts, setShifts] = useState([])
+  const [bookings, setBookings] = useState([])
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -71,14 +72,32 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const [shiftToDelete, setShiftToDelete] = useState(null)
   const [deletingShift, setDeletingShift] = useState(false)
 
+  // Fetch bookings
+  const fetchBookings = useCallback(async () => {
+    if (!token) return
+
+    try {
+      const endpoint = isAdmin ? '/api/admin/bookings' : '/api/employee/bookings'
+      const response = await fetch(`${API_URL}${endpoint}?include_cancelled=false`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setBookings(data.bookings || [])
+      }
+    } catch (err) {
+      console.error('Failed to load bookings:', err)
+    }
+  }, [token, isAdmin])
+
   // Fetch shifts
   const fetchShifts = useCallback(async () => {
     if (!token) return
 
-    setLoading(true)
-    setError('')
     try {
-      // Build query params based on current month view
       const year = currentDate.getFullYear()
       const month = currentDate.getMonth()
       const startDate = new Date(year, month, 1)
@@ -99,16 +118,24 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       if (response.ok) {
         const data = await response.json()
         setShifts(data.shifts || [])
-      } else {
-        const errorData = await response.json().catch(() => ({}))
-        setError(errorData.detail || 'Failed to load shifts')
       }
     } catch (err) {
-      setError('Network error loading shifts')
+      console.error('Failed to load shifts:', err)
+    }
+  }, [token, currentDate, isAdmin])
+
+  // Fetch all data
+  const fetchData = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      await Promise.all([fetchBookings(), fetchShifts()])
+    } catch (err) {
+      setError('Failed to load data')
     } finally {
       setLoading(false)
     }
-  }, [token, currentDate, isAdmin])
+  }, [fetchBookings, fetchShifts])
 
   // Fetch employees (admin only)
   const fetchEmployees = useCallback(async () => {
@@ -131,8 +158,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   }, [token, isAdmin])
 
   useEffect(() => {
-    fetchShifts()
-  }, [fetchShifts, refreshTrigger])
+    fetchData()
+  }, [fetchData, refreshTrigger])
 
   useEffect(() => {
     fetchEmployees()
@@ -163,10 +190,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     const lastDay = new Date(year, month + 1, 0)
     const daysInMonth = lastDay.getDate()
 
-    // What day of week does the month start on (0 = Sunday)
     const startDayOfWeek = firstDay.getDay()
 
-    // Build calendar grid
     const weeks = []
     let currentDay = 1 - startDayOfWeek
 
@@ -188,6 +213,32 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return { year, month, weeks, daysInMonth }
   }, [currentDate])
 
+  // Group bookings by date
+  const bookingsByDate = useMemo(() => {
+    const grouped = {}
+    const confirmedBookings = bookings.filter((b) => b.status === 'confirmed')
+
+    confirmedBookings.forEach((booking) => {
+      if (booking.dropoff_date) {
+        const dropoffKey = booking.dropoff_date
+        if (!grouped[dropoffKey]) {
+          grouped[dropoffKey] = { dropoffs: [], pickups: [] }
+        }
+        grouped[dropoffKey].dropoffs.push(booking)
+      }
+
+      if (booking.pickup_date) {
+        const pickupKey = booking.pickup_date
+        if (!grouped[pickupKey]) {
+          grouped[pickupKey] = { dropoffs: [], pickups: [] }
+        }
+        grouped[pickupKey].pickups.push(booking)
+      }
+    })
+
+    return grouped
+  }, [bookings])
+
   // Group shifts by date
   const shiftsByDate = useMemo(() => {
     const grouped = {}
@@ -200,7 +251,6 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       grouped[dateKey].push(shift)
     })
 
-    // Sort shifts within each date by start time
     Object.keys(grouped).forEach((date) => {
       grouped[date].sort((a, b) => a.start_time.localeCompare(b.start_time))
     })
@@ -208,29 +258,23 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return grouped
   }, [shifts])
 
-  // Get shifts for a specific date
-  const getShiftsForDay = (day) => {
-    if (!day) return []
+  // Get data for a specific date
+  const getDateKey = (day) => {
+    if (!day) return null
     const year = calendarData.year
     const month = String(calendarData.month + 1).padStart(2, '0')
     const dayStr = String(day).padStart(2, '0')
-    const dateKey = `${year}-${month}-${dayStr}`
-    return shiftsByDate[dateKey] || []
+    return `${year}-${month}-${dayStr}`
   }
 
-  // Handle date selection
-  const handleDateClick = (day) => {
-    if (!day) return
-    const year = calendarData.year
-    const month = String(calendarData.month + 1).padStart(2, '0')
-    const dayStr = String(day).padStart(2, '0')
-    const dateKey = `${year}-${month}-${dayStr}`
+  const getBookingsForDay = (day) => {
+    const dateKey = getDateKey(day)
+    return bookingsByDate[dateKey] || { dropoffs: [], pickups: [] }
+  }
 
-    if (selectedDate === dateKey) {
-      setSelectedDate(null)
-    } else {
-      setSelectedDate(dateKey)
-    }
+  const getShiftsForDay = (day) => {
+    const dateKey = getDateKey(day)
+    return shiftsByDate[dateKey] || []
   }
 
   // Is today?
@@ -242,6 +286,17 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       calendarData.month === today.getMonth() &&
       calendarData.year === today.getFullYear()
     )
+  }
+
+  // Handle date selection
+  const handleDateClick = (day) => {
+    if (!day) return
+    const dateKey = getDateKey(day)
+    if (selectedDate === dateKey) {
+      setSelectedDate(null)
+    } else {
+      setSelectedDate(dateKey)
+    }
   }
 
   // Modal handlers
@@ -373,7 +428,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     'July', 'August', 'September', 'October', 'November', 'December',
   ]
 
-  // Selected date shifts
+  // Selected date data
+  const selectedDateBookings = selectedDate ? (bookingsByDate[selectedDate] || { dropoffs: [], pickups: [] }) : { dropoffs: [], pickups: [] }
   const selectedDateShifts = selectedDate ? (shiftsByDate[selectedDate] || []) : []
 
   return (
@@ -396,7 +452,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
           <button className="calendar-today-btn" onClick={goToToday}>
             Today
           </button>
-          <button className="calendar-refresh-btn" onClick={fetchShifts} disabled={loading}>
+          <button className="calendar-refresh-btn" onClick={fetchData} disabled={loading}>
             {loading ? 'Loading...' : 'Refresh'}
           </button>
           {isAdmin && (
@@ -425,41 +481,42 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
           {calendarData.weeks.map((week, weekIndex) => (
             <div key={weekIndex} className="calendar-week">
               {week.map((day, dayIndex) => {
+                const dayBookings = getBookingsForDay(day)
                 const dayShifts = getShiftsForDay(day)
-                const year = calendarData.year
-                const month = String(calendarData.month + 1).padStart(2, '0')
-                const dayStr = day ? String(day).padStart(2, '0') : ''
-                const dateKey = day ? `${year}-${month}-${dayStr}` : ''
+                const dateKey = getDateKey(day)
+                const hasDropoffs = dayBookings.dropoffs.length > 0
+                const hasPickups = dayBookings.pickups.length > 0
+                const hasShifts = dayShifts.length > 0
+                const hasContent = hasDropoffs || hasPickups || hasShifts
 
                 return (
                   <div
                     key={dayIndex}
                     className={`calendar-day ${day ? '' : 'empty'} ${isToday(day) ? 'today' : ''} ${
                       selectedDate === dateKey ? 'selected' : ''
-                    } ${dayShifts.length > 0 ? 'has-shifts' : ''}`}
+                    } ${hasContent ? 'has-content' : ''}`}
                     onClick={() => handleDateClick(day)}
                   >
                     {day && (
                       <>
                         <span className="day-number">{day}</span>
-                        <div className="day-badges">
-                          {dayShifts.slice(0, 3).map((shift, idx) => {
-                            const typeConfig = SHIFT_TYPE_CONFIG[shift.shift_type] || SHIFT_TYPE_CONFIG.other
-                            return (
-                              <div
-                                key={idx}
-                                className="shift-badge"
-                                style={{ borderLeftColor: typeConfig.color }}
-                              >
-                                <span className="shift-badge-time">{formatTime(shift.start_time)}</span>
-                                {shift.staff_initials && (
-                                  <span className="shift-badge-staff">{shift.staff_initials}</span>
-                                )}
-                              </div>
-                            )
-                          })}
-                          {dayShifts.length > 3 && (
-                            <div className="shift-badge-more">+{dayShifts.length - 3} more</div>
+                        <div className="day-content">
+                          {/* Booking badges */}
+                          {hasDropoffs && (
+                            <div className="day-badge badge-dropoff">
+                              🚗 {dayBookings.dropoffs.length}
+                            </div>
+                          )}
+                          {hasPickups && (
+                            <div className="day-badge badge-pickup">
+                              🛬 {dayBookings.pickups.length}
+                            </div>
+                          )}
+                          {/* Shift indicators */}
+                          {hasShifts && (
+                            <div className="day-shifts-indicator">
+                              <span className="shifts-count">{dayShifts.length} shift{dayShifts.length > 1 ? 's' : ''}</span>
+                            </div>
                           )}
                         </div>
                       </>
@@ -472,18 +529,25 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         </div>
       </div>
 
-      {/* Detail Panel */}
+      {/* Detail Panel - Shows both bookings and shifts */}
       {selectedDate && (
         <div className="roster-detail-panel">
           <div className="detail-header">
-            <h3>{formatDateUK(selectedDate)}</h3>
+            <h3>
+              {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })}
+            </h3>
             <div className="detail-header-actions">
               {isAdmin && (
                 <button
                   className="roster-add-btn-small"
                   onClick={() => openNewShiftModal(formatDateUK(selectedDate))}
                 >
-                  + Add
+                  + Add Shift
                 </button>
               )}
               <button className="detail-close" onClick={() => setSelectedDate(null)}>
@@ -493,77 +557,181 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
           </div>
 
           <div className="detail-content">
-            {selectedDateShifts.length === 0 ? (
-              <p className="no-shifts">No shifts scheduled for this date.</p>
-            ) : (
-              <div className="shift-list">
-                {selectedDateShifts.map((shift) => {
-                  const typeConfig = SHIFT_TYPE_CONFIG[shift.shift_type] || SHIFT_TYPE_CONFIG.other
-                  const statusConfig = SHIFT_STATUS_CONFIG[shift.status] || SHIFT_STATUS_CONFIG.scheduled
-
-                  return (
-                    <div key={shift.id} className="shift-card">
-                      <div className="shift-card-header">
-                        <div className="shift-time-range">
-                          <span className="shift-time">{formatTime(shift.start_time)}</span>
-                          <span className="shift-time-separator">-</span>
-                          <span className="shift-time">{formatTime(shift.end_time)}</span>
+            {/* Drop-offs Section */}
+            {selectedDateBookings.dropoffs.length > 0 && (
+              <div className="detail-section">
+                <h4 className="detail-section-title dropoff">
+                  🚗 Drop-offs ({selectedDateBookings.dropoffs.length})
+                </h4>
+                <div className="detail-bookings">
+                  {selectedDateBookings.dropoffs
+                    .sort((a, b) => (a.dropoff_time || '').localeCompare(b.dropoff_time || ''))
+                    .map((booking) => (
+                      <div key={booking.id} className="detail-booking-card">
+                        <div className="booking-header-row">
+                          <div className="booking-time">{formatTime(booking.dropoff_time)}</div>
+                          <div className="booking-flight">
+                            {booking.dropoff_airline_name && (
+                              <span className="airline-name">{booking.dropoff_airline_name}</span>
+                            )}
+                            {booking.dropoff_flight_number && booking.dropoff_flight_number !== 'Unknown' && (
+                              <span className="flight-number">{booking.dropoff_flight_number}</span>
+                            )}
+                          </div>
+                          <div className="booking-destination">
+                            → {booking.dropoff_destination || 'Unknown'}
+                            {booking.flight_departure_time && (
+                              <span className="flight-time-info">
+                                Departs: {formatTime(booking.flight_departure_time)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="booking-ref">{booking.reference}</div>
                         </div>
-                        <div
-                          className="shift-type-badge"
-                          style={{ background: typeConfig.color }}
-                        >
-                          {typeConfig.icon} {typeConfig.label}
-                        </div>
-                        <div
-                          className="shift-status-badge"
-                          style={{ borderColor: statusConfig.color, color: statusConfig.color }}
-                        >
-                          {statusConfig.label}
+                        <div className="booking-details-row">
+                          {booking.customer?.first_name || booking.customer_first_name}{' '}
+                          {booking.customer?.last_name || booking.customer_last_name}
+                          <span>|</span>
+                          <a href={`tel:${booking.customer?.phone}`} className="phone-link">
+                            {booking.customer?.phone || 'N/A'}
+                          </a>
+                          <span>|</span>
+                          {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
+                          <span>|</span>
+                          <span className="reg-plate">
+                            {booking.vehicle?.registration || booking.vehicle_registration}
+                          </span>
                         </div>
                       </div>
-
-                      <div className="shift-card-body">
-                        {shift.staff_name ? (
-                          <div className="shift-staff">
-                            <span className="shift-staff-initials">{shift.staff_initials}</span>
-                            <span className="shift-staff-name">{shift.staff_name}</span>
-                          </div>
-                        ) : (
-                          <div className="shift-unassigned">Unassigned</div>
-                        )}
-
-                        {shift.booking_reference && (
-                          <div className="shift-booking">
-                            <span className="shift-booking-label">Booking:</span>
-                            <span className="shift-booking-ref">{shift.booking_reference}</span>
-                          </div>
-                        )}
-
-                        {shift.notes && <div className="shift-notes">{shift.notes}</div>}
-                      </div>
-
-                      {isAdmin && (
-                        <div className="shift-card-actions">
-                          <button
-                            className="shift-edit-btn"
-                            onClick={() => openEditShiftModal(shift)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="shift-delete-btn"
-                            onClick={() => confirmDeleteShift(shift)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+                    ))}
+                </div>
               </div>
             )}
+
+            {/* Pick-ups Section */}
+            {selectedDateBookings.pickups.length > 0 && (
+              <div className="detail-section">
+                <h4 className="detail-section-title pickup">
+                  🛬 Pick-ups ({selectedDateBookings.pickups.length})
+                </h4>
+                <div className="detail-bookings">
+                  {selectedDateBookings.pickups
+                    .sort((a, b) => (a.pickup_time || '').localeCompare(b.pickup_time || ''))
+                    .map((booking) => (
+                      <div key={booking.id} className="detail-booking-card">
+                        <div className="booking-header-row">
+                          <div className="booking-time">{formatTime(booking.pickup_time)}</div>
+                          <div className="booking-flight">
+                            {booking.pickup_airline_name && (
+                              <span className="airline-name">{booking.pickup_airline_name}</span>
+                            )}
+                            {booking.pickup_flight_number && booking.pickup_flight_number !== 'Unknown' && (
+                              <span className="flight-number">{booking.pickup_flight_number}</span>
+                            )}
+                          </div>
+                          <div className="booking-destination">
+                            ← {booking.pickup_origin || 'Unknown'}
+                            {booking.flight_arrival_time && (
+                              <span className="flight-time-info">
+                                Arrives: {formatTime(booking.flight_arrival_time)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="booking-ref">{booking.reference}</div>
+                        </div>
+                        <div className="booking-details-row">
+                          {booking.customer?.first_name || booking.customer_first_name}{' '}
+                          {booking.customer?.last_name || booking.customer_last_name}
+                          <span>|</span>
+                          <a href={`tel:${booking.customer?.phone}`} className="phone-link">
+                            {booking.customer?.phone || 'N/A'}
+                          </a>
+                          <span>|</span>
+                          {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
+                          <span>|</span>
+                          <span className="reg-plate">
+                            {booking.vehicle?.registration || booking.vehicle_registration}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Shifts Section */}
+            {selectedDateShifts.length > 0 && (
+              <div className="detail-section">
+                <h4 className="detail-section-title shifts">
+                  📅 Shifts ({selectedDateShifts.length})
+                </h4>
+                <div className="shift-list">
+                  {selectedDateShifts.map((shift) => {
+                    const typeConfig = SHIFT_TYPE_CONFIG[shift.shift_type] || SHIFT_TYPE_CONFIG.other
+                    const statusConfig = SHIFT_STATUS_CONFIG[shift.status] || SHIFT_STATUS_CONFIG.scheduled
+
+                    return (
+                      <div key={shift.id} className="shift-card">
+                        <div className="shift-card-header">
+                          <div className="shift-time-range">
+                            <span className="shift-time">{formatTime(shift.start_time)}</span>
+                            <span className="shift-time-separator">-</span>
+                            <span className="shift-time">{formatTime(shift.end_time)}</span>
+                          </div>
+                          <div className="shift-type-badge" style={{ background: typeConfig.color }}>
+                            {typeConfig.icon} {typeConfig.label}
+                          </div>
+                          <div
+                            className="shift-status-badge"
+                            style={{ borderColor: statusConfig.color, color: statusConfig.color }}
+                          >
+                            {statusConfig.label}
+                          </div>
+                        </div>
+
+                        <div className="shift-card-body">
+                          {shift.staff_name ? (
+                            <div className="shift-staff">
+                              <span className="shift-staff-initials">{shift.staff_initials}</span>
+                              <span className="shift-staff-name">{shift.staff_name}</span>
+                            </div>
+                          ) : (
+                            <div className="shift-unassigned">Unassigned</div>
+                          )}
+
+                          {shift.booking_reference && (
+                            <div className="shift-booking">
+                              <span className="shift-booking-label">Booking:</span>
+                              <span className="shift-booking-ref">{shift.booking_reference}</span>
+                            </div>
+                          )}
+
+                          {shift.notes && <div className="shift-notes">{shift.notes}</div>}
+                        </div>
+
+                        {isAdmin && (
+                          <div className="shift-card-actions">
+                            <button className="shift-edit-btn" onClick={() => openEditShiftModal(shift)}>
+                              Edit
+                            </button>
+                            <button className="shift-delete-btn" onClick={() => confirmDeleteShift(shift)}>
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* No content message */}
+            {selectedDateBookings.dropoffs.length === 0 &&
+              selectedDateBookings.pickups.length === 0 &&
+              selectedDateShifts.length === 0 && (
+                <p className="no-content">No bookings or shifts scheduled for this date.</p>
+              )}
           </div>
         </div>
       )}
@@ -572,11 +740,14 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       {showShiftModal && isAdmin && (
         <div className="modal-overlay" onClick={closeShiftModal}>
           <div className="modal-content shift-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>{editingShift ? 'Edit Shift' : 'New Shift'}</h3>
+            <div className="modal-header">
+              <h3>{editingShift ? 'Edit Shift' : 'New Shift'}</h3>
+              <button className="modal-close-btn" onClick={closeShiftModal}>×</button>
+            </div>
 
             <div className="shift-form">
               <div className="form-row">
-                <label>Date</label>
+                <label>Date <span className="required">*</span></label>
                 <input
                   type="text"
                   value={shiftForm.date}
@@ -587,7 +758,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
               <div className="form-row form-row-double">
                 <div className="form-field">
-                  <label>Start Time</label>
+                  <label>Start Time <span className="required">*</span></label>
                   <input
                     type="time"
                     value={shiftForm.start_time}
@@ -595,7 +766,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   />
                 </div>
                 <div className="form-field">
-                  <label>End Time</label>
+                  <label>End Time <span className="required">*</span></label>
                   <input
                     type="time"
                     value={shiftForm.end_time}
@@ -605,7 +776,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
               </div>
 
               <div className="form-row">
-                <label>Shift Type</label>
+                <label>Shift Type <span className="required">*</span></label>
                 <select
                   value={shiftForm.shift_type}
                   onChange={(e) => handleShiftFormChange('shift_type', e.target.value)}
@@ -639,7 +810,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   value={shiftForm.notes}
                   onChange={(e) => handleShiftFormChange('notes', e.target.value)}
                   placeholder="Optional notes..."
-                  rows={3}
+                  rows={4}
                 />
               </div>
             </div>
