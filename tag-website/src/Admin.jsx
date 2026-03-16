@@ -4436,7 +4436,7 @@ function Admin() {
                                     <tr>
                                       <th>Code</th>
                                       <th>Recipient</th>
-                                      <th>Shared</th>
+                                      <th>Shared on Socials</th>
                                       <th>Status</th>
                                       <th>Booking</th>
                                     </tr>
@@ -4446,12 +4446,13 @@ function Admin() {
                                       <tr key={code.id}>
                                         <td><code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px' }}>{code.code}</code></td>
                                         <td>
+                                          {/* Recipient: show email if sent, Social Media badge if shared on socials, otherwise blank */}
                                           {code.recipient_email ? (
                                             <span>
                                               {code.recipient_first_name} {code.recipient_last_name || ''}<br />
                                               <small style={{ color: '#666' }}>{code.recipient_email}</small>
                                             </span>
-                                          ) : (
+                                          ) : code.shared_on_socials ? (
                                             <span style={{
                                               display: 'inline-flex',
                                               alignItems: 'center',
@@ -4465,18 +4466,14 @@ function Admin() {
                                             }}>
                                               <span style={{ fontSize: '13px' }}>📱</span> Social Media
                                             </span>
+                                          ) : (
+                                            <span style={{ color: '#999' }}>-</span>
                                           )}
                                         </td>
                                         <td>
-                                          {/* Show clickable checkbox for social media codes, email sent date for emailed codes */}
+                                          {/* Shared on Socials: toggle button for social codes, dash for emailed codes */}
                                           {code.recipient_email ? (
-                                            code.email_sent ? (
-                                              <span style={{ color: '#28a745' }}>
-                                                ✓ {new Date(code.email_sent_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}
-                                              </span>
-                                            ) : (
-                                              <span style={{ color: '#999' }}>-</span>
-                                            )
+                                            <span style={{ color: '#999' }}>-</span>
                                           ) : (
                                             <button
                                               onClick={() => toggleSharedOnSocials(promo.id, code.id)}
