@@ -4344,6 +4344,47 @@
   padding: 0;
 }
 
+.promotions-section .btn-primary,
+.create-promotion-form .btn-primary {
+  background: #D9FF00;
+  border: none;
+  color: #000;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.promotions-section .btn-primary:hover,
+.create-promotion-form .btn-primary:hover {
+  background: #c4e600;
+}
+
+.promotions-section .btn-primary:disabled,
+.create-promotion-form .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.promotions-section .btn-secondary,
+.create-promotion-form .btn-secondary {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.promotions-section .btn-secondary:hover,
+.create-promotion-form .btn-secondary:hover {
+  background: #3a3a3a;
+  border-color: #555;
+}
+
 .promotion-card {
   transition: box-shadow 0.2s ease;
 }
