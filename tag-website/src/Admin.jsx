@@ -4481,9 +4481,13 @@ function Admin() {
                                           {/* Shared on Socials: toggle button for social codes, dash for emailed codes */}
                                           {code.recipient_email ? (
                                             <span style={{ color: '#999' }}>-</span>
+                                          ) : code.is_used && !code.shared_on_socials ? (
+                                            /* Used codes cannot be marked as shared (but can show shared status if already was) */
+                                            <span style={{ color: '#999' }}>-</span>
                                           ) : (
                                             <button
                                               onClick={() => toggleSharedOnSocials(promo.id, code.id)}
+                                              disabled={code.is_used && !code.shared_on_socials}
                                               style={{
                                                 display: 'inline-flex',
                                                 alignItems: 'center',
@@ -4493,16 +4497,17 @@ function Admin() {
                                                 fontSize: '11px',
                                                 fontWeight: '600',
                                                 border: 'none',
-                                                cursor: 'pointer',
+                                                cursor: code.is_used && !code.shared_on_socials ? 'not-allowed' : 'pointer',
                                                 background: code.shared_on_socials
                                                   ? 'linear-gradient(135deg, #28a745 0%, #20c997 100%)'
                                                   : '#e9ecef',
                                                 color: code.shared_on_socials ? 'white' : '#666',
+                                                opacity: code.is_used && !code.shared_on_socials ? 0.5 : 1,
                                                 transition: 'all 0.2s ease'
                                               }}
                                               title={code.shared_on_socials
                                                 ? `Shared on ${new Date(code.shared_on_socials_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}`
-                                                : 'Click to mark as shared on socials'
+                                                : code.is_used ? 'Cannot mark used code as shared' : 'Click to mark as shared on socials'
                                               }
                                             >
                                               {code.shared_on_socials ? '✓ Shared' : 'Mark Shared'}

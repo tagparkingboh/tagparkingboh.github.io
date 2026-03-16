@@ -4078,6 +4078,10 @@ async def mark_code_shared_on_socials(
     if not promo_code:
         raise HTTPException(status_code=404, detail="Promo code not found")
 
+    # Cannot mark a used code as shared on socials
+    if promo_code.is_used and not promo_code.shared_on_socials:
+        raise HTTPException(status_code=400, detail="Cannot mark a used code as shared on socials")
+
     # Toggle the shared status
     if promo_code.shared_on_socials:
         promo_code.shared_on_socials = False
