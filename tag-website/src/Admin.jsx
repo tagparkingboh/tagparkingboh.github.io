@@ -4426,7 +4426,19 @@ function Admin() {
                                               <small style={{ color: '#666' }}>{code.recipient_email}</small>
                                             </span>
                                           ) : (
-                                            <span style={{ color: '#999' }}>Not assigned</span>
+                                            <span style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '6px',
+                                              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                              color: 'white',
+                                              padding: '4px 10px',
+                                              borderRadius: '12px',
+                                              fontSize: '11px',
+                                              fontWeight: '600'
+                                            }}>
+                                              <span style={{ fontSize: '13px' }}>📱</span> Social Media
+                                            </span>
                                           )}
                                         </td>
                                         <td>
