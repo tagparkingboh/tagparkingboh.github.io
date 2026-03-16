@@ -81,28 +81,83 @@ function ManualBooking({ token }) {
   const [promoDiscount, setPromoDiscount] = useState(null)
   const [promoMessage, setPromoMessage] = useState('')
 
-  // Fetch airlines and destinations on mount
-  useEffect(() => {
-    const fetchAirlinesAndDestinations = async () => {
-      try {
-        const [airlinesRes, destinationsRes] = await Promise.all([
-          fetch(`${API_URL}/api/booking/airlines`),
-          fetch(`${API_URL}/api/booking/destinations`)
-        ])
-        if (airlinesRes.ok) {
-          const data = await airlinesRes.json()
-          setAvailableAirlines(data.airlines || [])
-        }
-        if (destinationsRes.ok) {
-          const data = await destinationsRes.json()
-          setAvailableDestinations(data.destinations || [])
-        }
-      } catch (error) {
-        console.error('Error fetching airlines/destinations:', error)
+  // Fetch airlines and destinations
+  const fetchAirlinesAndDestinations = async () => {
+    try {
+      const [airlinesRes, destinationsRes] = await Promise.all([
+        fetch(`${API_URL}/api/booking/airlines`),
+        fetch(`${API_URL}/api/booking/destinations`)
+      ])
+      if (airlinesRes.ok) {
+        const data = await airlinesRes.json()
+        setAvailableAirlines(data.airlines || [])
       }
+      if (destinationsRes.ok) {
+        const data = await destinationsRes.json()
+        setAvailableDestinations(data.destinations || [])
+      }
+    } catch (error) {
+      console.error('Error fetching airlines/destinations:', error)
     }
+  }
+
+  // Fetch on mount
+  useEffect(() => {
     fetchAirlinesAndDestinations()
   }, [])
+
+  // Refresh form - reset all fields and re-fetch data
+  const handleRefresh = async () => {
+    setFormData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      billingPostcode: '',
+      billingAddress1: '',
+      billingAddress2: '',
+      billingCity: '',
+      billingCounty: '',
+      billingCountry: 'United Kingdom',
+      registration: '',
+      make: '',
+      customMake: '',
+      model: '',
+      customModel: '',
+      colour: '',
+      dropoffDate: null,
+      dropoffAirline: '',
+      customDropoffAirline: '',
+      dropoffDestination: '',
+      customDropoffDestination: '',
+      dropoffFlightNumber: '',
+      departureTime: '',
+      dropoffSlot: '',
+      pickupDate: null,
+      pickupAirline: '',
+      customPickupAirline: '',
+      pickupOrigin: '',
+      customPickupOrigin: '',
+      pickupFlightNumber: '',
+      arrivalTime: '',
+      promoCode: '',
+      stripePaymentLink: '',
+      amount: '',
+      notes: '',
+    })
+    setSuccess(false)
+    setError('')
+    setDvlaVerified(false)
+    setDvlaError('')
+    setAddressList([])
+    setShowAddressSelect(false)
+    setAddressError('')
+    setPromoValid(null)
+    setPromoMessage('')
+    setPromoDiscount(null)
+    setCalculatedPrice(null)
+    await fetchAirlinesAndDestinations()
+  }
 
   // Auto-sync departure destination to pickup origin
   useEffect(() => {
@@ -706,10 +761,17 @@ function ManualBooking({ token }) {
 
   return (
     <div className="manual-booking">
-      <h2>Create Manual Booking</h2>
-      <p className="manual-booking-description">
-        Create a booking and send a payment link to the customer via email.
-      </p>
+      <div className="manual-booking-header">
+        <div>
+          <h2>Create Manual Booking</h2>
+          <p className="manual-booking-description">
+            Create a booking and send a payment link to the customer via email.
+          </p>
+        </div>
+        <button onClick={handleRefresh} className="admin-refresh" type="button">
+          Refresh
+        </button>
+      </div>
 
       {success && (
         <div className="manual-booking-success">

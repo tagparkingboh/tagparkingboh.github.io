@@ -2,6 +2,24 @@
   max-width: 800px;
 }
 
+.manual-booking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+
+.manual-booking-header h2 {
+  font-size: 1.5rem;
+  color: #1a1a2e;
+  margin: 0 0 0.5rem 0;
+}
+
+.manual-booking-header .manual-booking-description {
+  color: #666;
+  margin-bottom: 0;
+}
+
 .manual-booking h2 {
   font-size: 1.5rem;
   color: #1a1a2e;
