@@ -1096,3 +1096,295 @@ class TestEdgeCases:
         display_time = time(display_hour, display_minute)
 
         assert display_time == time(0, 15)  # Correctly crosses midnight
+
+
+# =============================================================================
+# Integration Tests - Promo Code Recording
+# =============================================================================
+
+class TestManualBookingPromoCodeRecording:
+    """
+    Tests for promo code recording in manual bookings.
+
+    When a manual booking is created with a promo code, the system should:
+    1. Find the promo code in the PromoCode table
+    2. Mark it as used (is_used=True)
+    3. Record the timestamp (used_at)
+    4. Link it to the booking (booking_id)
+    5. Increment the promotion's codes_used counter
+    """
+
+    @pytest.fixture
+    def mock_app_dependencies(self, mock_db, mock_admin_user):
+        """Set up mock dependencies."""
+        from main import app, require_admin
+        from database import get_db
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[require_admin] = lambda: mock_admin_user
+
+        yield
+
+        app.dependency_overrides.clear()
+
+    @pytest.fixture
+    def valid_request_with_promo(self, valid_manual_booking_request):
+        """Create a valid manual booking request with a promo code."""
+        request = valid_manual_booking_request.copy()
+        request["promo_code"] = "TAG-TEST-1234"
+        return request
+
+    @patch("email_service.send_manual_booking_payment_email")
+    def test_promo_code_marked_as_used(
+        self, mock_email, mock_app_dependencies, mock_db, valid_request_with_promo
+    ):
+        """Should mark promo code as used when manual booking is created."""
+        from main import app
+
+        # Create mock promo code
+        mock_promo_code = MagicMock()
+        mock_promo_code.id = 1
+        mock_promo_code.code = "TAG-TEST-1234"
+        mock_promo_code.is_used = False
+        mock_promo_code.promotion_id = 1
+
+        # Create mock promotion
+        mock_promotion = MagicMock()
+        mock_promotion.id = 1
+        mock_promotion.codes_used = 0
+
+        # Set up query responses
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+
+            if 'PromoCode' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_promo_code
+            elif 'Promotion' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_promotion
+            else:
+                mock_query.filter.return_value.first.return_value = None
+
+            return mock_query
+
+        mock_db.query.side_effect = query_side_effect
+        mock_email.return_value = True
+
+        client = TestClient(app)
+        response = client.post(
+            "/api/admin/manual-booking",
+            json=valid_request_with_promo,
+        )
+
+        assert response.status_code == 200
+        # Verify promo code was marked as used
+        assert mock_promo_code.is_used is True
+        assert mock_promo_code.used_at is not None
+        assert mock_promo_code.booking_id is not None
+
+    @patch("email_service.send_manual_booking_payment_email")
+    def test_promotion_codes_used_counter_incremented(
+        self, mock_email, mock_app_dependencies, mock_db, valid_request_with_promo
+    ):
+        """Should increment promotion's codes_used counter when promo code is used."""
+        from main import app
+
+        mock_promo_code = MagicMock()
+        mock_promo_code.id = 1
+        mock_promo_code.code = "TAG-TEST-1234"
+        mock_promo_code.is_used = False
+        mock_promo_code.promotion_id = 1
+
+        mock_promotion = MagicMock()
+        mock_promotion.id = 1
+        mock_promotion.codes_used = 5  # Already 5 codes used
+
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+
+            if 'PromoCode' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_promo_code
+            elif 'Promotion' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_promotion
+            else:
+                mock_query.filter.return_value.first.return_value = None
+
+            return mock_query
+
+        mock_db.query.side_effect = query_side_effect
+        mock_email.return_value = True
+
+        client = TestClient(app)
+        response = client.post(
+            "/api/admin/manual-booking",
+            json=valid_request_with_promo,
+        )
+
+        assert response.status_code == 200
+        # Verify promotion counter was incremented
+        assert mock_promotion.codes_used == 6
+
+    @patch("email_service.send_manual_booking_payment_email")
+    def test_already_used_promo_code_not_reused(
+        self, mock_email, mock_app_dependencies, mock_db, valid_request_with_promo
+    ):
+        """Should not re-mark already used promo code."""
+        from main import app
+
+        mock_promo_code = MagicMock()
+        mock_promo_code.id = 1
+        mock_promo_code.code = "TAG-TEST-1234"
+        mock_promo_code.is_used = True  # Already used
+        mock_promo_code.promotion_id = 1
+        mock_promo_code.booking_id = 999  # Already linked to another booking
+
+        mock_promotion = MagicMock()
+        mock_promotion.id = 1
+        mock_promotion.codes_used = 5
+
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+
+            if 'PromoCode' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_promo_code
+            elif 'Promotion' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_promotion
+            else:
+                mock_query.filter.return_value.first.return_value = None
+
+            return mock_query
+
+        mock_db.query.side_effect = query_side_effect
+        mock_email.return_value = True
+
+        client = TestClient(app)
+        response = client.post(
+            "/api/admin/manual-booking",
+            json=valid_request_with_promo,
+        )
+
+        # Booking should still succeed (promo was validated earlier)
+        assert response.status_code == 200
+        # Verify booking_id was NOT changed (still linked to original booking)
+        assert mock_promo_code.booking_id == 999
+        # Counter should NOT be incremented again
+        assert mock_promotion.codes_used == 5
+
+    @patch("email_service.send_manual_booking_payment_email")
+    def test_promo_code_case_insensitive(
+        self, mock_email, mock_app_dependencies, mock_db, valid_manual_booking_request
+    ):
+        """Should find promo code regardless of case (converted to uppercase)."""
+        from main import app
+
+        request = valid_manual_booking_request.copy()
+        request["promo_code"] = "tag-test-1234"  # lowercase
+
+        mock_promo_code = MagicMock()
+        mock_promo_code.id = 1
+        mock_promo_code.code = "TAG-TEST-1234"  # stored uppercase
+        mock_promo_code.is_used = False
+        mock_promo_code.promotion_id = 1
+
+        mock_promotion = MagicMock()
+        mock_promotion.id = 1
+        mock_promotion.codes_used = 0
+
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+
+            if 'PromoCode' in model_name:
+                # The code should be converted to uppercase before querying
+                mock_query.filter.return_value.first.return_value = mock_promo_code
+            elif 'Promotion' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_promotion
+            else:
+                mock_query.filter.return_value.first.return_value = None
+
+            return mock_query
+
+        mock_db.query.side_effect = query_side_effect
+        mock_email.return_value = True
+
+        client = TestClient(app)
+        response = client.post(
+            "/api/admin/manual-booking",
+            json=request,
+        )
+
+        assert response.status_code == 200
+        # Verify promo code was found and marked as used
+        assert mock_promo_code.is_used is True
+
+    @patch("email_service.send_manual_booking_payment_email")
+    def test_booking_without_promo_code_succeeds(
+        self, mock_email, mock_app_dependencies, mock_db, valid_manual_booking_request
+    ):
+        """Should successfully create booking without promo code."""
+        from main import app
+
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_email.return_value = True
+
+        client = TestClient(app)
+        response = client.post(
+            "/api/admin/manual-booking",
+            json=valid_manual_booking_request,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "reference" in data
+
+    @patch("email_service.send_manual_booking_confirmation_email")
+    def test_free_booking_with_promo_records_code(
+        self, mock_email, mock_app_dependencies, mock_db, valid_manual_booking_request
+    ):
+        """Should record promo code for free bookings (100% off)."""
+        from main import app
+
+        request = valid_manual_booking_request.copy()
+        request["promo_code"] = "TAG-FREE-100"
+        request["is_free_booking"] = True
+        request["amount_pence"] = 0
+        request["stripe_payment_link"] = ""
+
+        mock_promo_code = MagicMock()
+        mock_promo_code.id = 1
+        mock_promo_code.code = "TAG-FREE-100"
+        mock_promo_code.is_used = False
+        mock_promo_code.promotion_id = 1
+
+        mock_promotion = MagicMock()
+        mock_promotion.id = 1
+        mock_promotion.codes_used = 0
+
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+
+            if 'PromoCode' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_promo_code
+            elif 'Promotion' in model_name:
+                mock_query.filter.return_value.first.return_value = mock_promotion
+            else:
+                mock_query.filter.return_value.first.return_value = None
+
+            return mock_query
+
+        mock_db.query.side_effect = query_side_effect
+        mock_email.return_value = True
+
+        client = TestClient(app)
+        response = client.post(
+            "/api/admin/manual-booking",
+            json=request,
+        )
+
+        assert response.status_code == 200
+        # Verify promo code was marked as used even for free booking
+        assert mock_promo_code.is_used is True
+        assert mock_promo_code.booking_id is not None

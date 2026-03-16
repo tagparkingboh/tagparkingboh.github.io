@@ -537,6 +537,16 @@
   margin-top: 0.25rem;
 }
 
+.manual-booking .promo-warning {
+  font-size: 0.85rem;
+  color: #856404 !important;
+  background-color: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+}
+
 .free-booking-note {
   font-size: 0.85rem;
   color: #155724;

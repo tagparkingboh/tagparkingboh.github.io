@@ -607,6 +607,8 @@ function ManualBooking({ token }) {
   // Form validation
   const isFormValid = () => {
     const isFreeBooking = promoDiscount?.isFree
+    // If promo code is entered, it must be validated (promoValid must be true or false, not null)
+    const promoCodeValid = !formData.promoCode.trim() || promoValid === true
     const baseValid = (
       formData.firstName &&
       formData.lastName &&
@@ -631,7 +633,9 @@ function ManualBooking({ token }) {
       formData.arrivalTime &&
       // Payment
       (isFreeBooking || formData.stripePaymentLink) &&
-      formData.amount
+      formData.amount &&
+      // Promo code must be validated if entered
+      promoCodeValid
     )
 
     return baseValid
@@ -695,6 +699,11 @@ function ManualBooking({ token }) {
       flight_departure_time: formData.departureTime || null,
       flight_arrival_time: formData.arrivalTime || null,
     }
+
+    // Debug logging for promo code
+    console.log('Submit - promoValid:', promoValid)
+    console.log('Submit - formData.promoCode:', formData.promoCode)
+    console.log('Submit - promo_code being sent:', requestBody.promo_code)
 
     try {
       const response = await fetch(`${API_URL}/api/admin/manual-booking`, {
@@ -1443,6 +1452,9 @@ function ManualBooking({ token }) {
               )}
               {promoValid === false && (
                 <p className="promo-error">{promoMessage}</p>
+              )}
+              {formData.promoCode.trim() && promoValid === null && (
+                <p className="promo-warning">Please click "Apply" to validate the promo code before submitting</p>
               )}
             </div>
           </div>

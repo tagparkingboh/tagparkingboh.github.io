@@ -1409,16 +1409,50 @@ async def create_manual_booking(
         )
         db.add(payment)
 
-        # For free bookings with promo code, mark promo as used
-        if is_free and request.promo_code:
-            promo_code = request.promo_code.strip().upper()
-            subscriber = db.query(MarketingSubscriber).filter(
-                (MarketingSubscriber.promo_free_code == promo_code)
+        # Mark promo code as used for ALL bookings with promo codes (free or paid)
+        if request.promo_code:
+            promo_code_str = request.promo_code.strip().upper()
+            from db_models import PromoCode as DbPromoCode, Promotion as DbPromotion
+
+            # First, check the new promo_codes table
+            promo_code_record = db.query(DbPromoCode).filter(
+                DbPromoCode.code == promo_code_str
             ).first()
-            if subscriber and not subscriber.promo_free_used:
-                subscriber.promo_free_used = True
-                subscriber.promo_free_used_at = datetime.utcnow()
-                subscriber.promo_free_used_booking_id = booking.id
+
+            if promo_code_record and not promo_code_record.is_used:
+                promo_code_record.is_used = True
+                promo_code_record.used_at = datetime.utcnow()
+                promo_code_record.booking_id = booking.id
+                # Update promotion stats
+                promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
+                if promotion:
+                    promotion.codes_used = (promotion.codes_used or 0) + 1
+            else:
+                # Fallback: Legacy MarketingSubscriber promo fields
+                subscriber = db.query(MarketingSubscriber).filter(
+                    (MarketingSubscriber.promo_code == promo_code_str) |
+                    (MarketingSubscriber.promo_10_code == promo_code_str) |
+                    (MarketingSubscriber.promo_free_code == promo_code_str) |
+                    (MarketingSubscriber.founder_promo_code == promo_code_str)
+                ).first()
+
+                if subscriber:
+                    now = datetime.utcnow()
+                    if subscriber.founder_promo_code == promo_code_str and not subscriber.founder_promo_used:
+                        subscriber.founder_promo_used = True
+                        subscriber.founder_promo_used_at = now
+                    elif subscriber.promo_free_code == promo_code_str and not subscriber.promo_free_used:
+                        subscriber.promo_free_used = True
+                        subscriber.promo_free_used_at = now
+                        subscriber.promo_free_used_booking_id = booking.id
+                    elif subscriber.promo_10_code == promo_code_str and not subscriber.promo_10_used:
+                        subscriber.promo_10_used = True
+                        subscriber.promo_10_used_at = now
+                        subscriber.promo_10_used_booking_id = booking.id
+                    elif subscriber.promo_code == promo_code_str and not subscriber.promo_code_used:
+                        subscriber.promo_code_used = True
+                        subscriber.promo_code_used_at = now
+                        subscriber.promo_code_used_booking_id = booking.id
 
         # For free bookings with flight selection, increment slot counts
         if is_free and request.departure_id and request.dropoff_slot:
