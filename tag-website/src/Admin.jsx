@@ -143,6 +143,8 @@ function Admin() {
   const [searchingRecipients, setSearchingRecipients] = useState(false)
   const [manualRecipient, setManualRecipient] = useState({ email: '', first_name: '', last_name: '' })
   const [promotionMessage, setPromotionMessage] = useState('')
+  const [editingPromotion, setEditingPromotion] = useState(null) // { id, name }
+  const [deletingPromotionId, setDeletingPromotionId] = useState(null)
 
   // Abandoned leads state
   const [leads, setLeads] = useState([])
@@ -875,6 +877,53 @@ function Admin() {
       }
     } catch (err) {
       console.error('Failed to fetch available codes:', err)
+    }
+  }
+
+  const updatePromotion = async (promotionId, newName) => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promotions/${promotionId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name: newName }),
+      })
+      if (response.ok) {
+        setPromotionMessage('Promotion updated successfully')
+        setEditingPromotion(null)
+        fetchPromotions()
+      } else {
+        const data = await response.json()
+        setPromotionMessage(`Error: ${data.detail || 'Failed to update promotion'}`)
+      }
+    } catch (err) {
+      setPromotionMessage('Network error updating promotion')
+    }
+  }
+
+  const deletePromotion = async (promotionId) => {
+    if (!window.confirm('Are you sure you want to delete this promotion? This cannot be undone.')) {
+      return
+    }
+    setDeletingPromotionId(promotionId)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promotions/${promotionId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setPromotionMessage('Promotion deleted successfully')
+        fetchPromotions()
+      } else {
+        const data = await response.json()
+        setPromotionMessage(`Error: ${data.detail || 'Failed to delete promotion'}`)
+      }
+    } catch (err) {
+      setPromotionMessage('Network error deleting promotion')
+    } finally {
+      setDeletingPromotionId(null)
     }
   }
 
@@ -4269,7 +4318,33 @@ function Admin() {
                           }}
                         >
                           <div className="promotion-info">
-                            <h3 style={{ margin: 0, marginBottom: '5px' }}>{promo.name}</h3>
+                            {editingPromotion?.id === promo.id ? (
+                              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '5px' }} onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="text"
+                                  value={editingPromotion.name}
+                                  onChange={(e) => setEditingPromotion({ ...editingPromotion, name: e.target.value })}
+                                  style={{ padding: '5px 10px', fontSize: '16px', fontWeight: 'bold', border: '1px solid #ccc', borderRadius: '4px' }}
+                                  autoFocus
+                                />
+                                <button
+                                  className="btn-primary"
+                                  onClick={() => updatePromotion(promo.id, editingPromotion.name)}
+                                  style={{ fontSize: '12px', padding: '5px 10px' }}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  className="btn-secondary"
+                                  onClick={() => setEditingPromotion(null)}
+                                  style={{ fontSize: '12px', padding: '5px 10px' }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <h3 style={{ margin: 0, marginBottom: '5px' }}>{promo.name}</h3>
+                            )}
                             <div style={{ display: 'flex', gap: '15px', fontSize: '14px', color: '#666' }}>
                               <span><strong>{promo.discount_percent}%</strong> off</span>
                               <span>|</span>
@@ -4285,6 +4360,23 @@ function Admin() {
                             </div>
                           </div>
                           <div className="promotion-actions" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <button
+                              className="btn-secondary"
+                              onClick={(e) => { e.stopPropagation(); setEditingPromotion({ id: promo.id, name: promo.name }); }}
+                              style={{ fontSize: '12px', padding: '6px 12px' }}
+                              title="Edit promotion name"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              className="btn-secondary"
+                              onClick={(e) => { e.stopPropagation(); deletePromotion(promo.id); }}
+                              disabled={promo.codes_sent > 0 || deletingPromotionId === promo.id}
+                              style={{ fontSize: '12px', padding: '6px 12px', opacity: promo.codes_sent > 0 ? 0.5 : 1 }}
+                              title={promo.codes_sent > 0 ? 'Cannot delete - emails have been sent' : 'Delete promotion'}
+                            >
+                              {deletingPromotionId === promo.id ? '...' : '🗑️'}
+                            </button>
                             <button
                               className="btn-primary"
                               onClick={(e) => { e.stopPropagation(); openSendPromoEmailModal(promo); }}

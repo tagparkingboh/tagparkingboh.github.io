@@ -3875,6 +3875,88 @@ async def get_promotion(
     }
 
 
+class PromotionUpdate(BaseModel):
+    """Request to update a promotion (name only)."""
+    name: str
+
+
+@app.patch("/api/admin/promotions/{promotion_id}")
+async def update_promotion(
+    promotion_id: int,
+    update_data: PromotionUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Update a promotion's name.
+
+    Note: Discount percent cannot be changed after creation.
+    """
+    from db_models import Promotion
+
+    promotion = db.query(Promotion).filter(Promotion.id == promotion_id).first()
+    if not promotion:
+        raise HTTPException(status_code=404, detail="Promotion not found")
+
+    # Update name
+    promotion.name = update_data.name
+    promotion.updated_at = get_uk_now()
+    db.commit()
+    db.refresh(promotion)
+
+    log_promo(f"Promotion updated: {promotion.name}", {"promotion_id": promotion_id})
+
+    return {
+        "id": promotion.id,
+        "name": promotion.name,
+        "description": promotion.description,
+        "discount_percent": promotion.discount_percent,
+        "total_codes": promotion.total_codes,
+        "codes_sent": promotion.codes_sent,
+        "codes_used": promotion.codes_used,
+        "codes_available": promotion.total_codes - promotion.codes_sent,
+        "created_by": promotion.created_by,
+        "created_at": promotion.created_at,
+    }
+
+
+@app.delete("/api/admin/promotions/{promotion_id}")
+async def delete_promotion(
+    promotion_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Delete a promotion.
+
+    Can only delete if no emails have been sent (codes_sent == 0).
+    """
+    from db_models import Promotion, PromoCode
+
+    promotion = db.query(Promotion).filter(Promotion.id == promotion_id).first()
+    if not promotion:
+        raise HTTPException(status_code=404, detail="Promotion not found")
+
+    # Check if any emails have been sent
+    if promotion.codes_sent > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete promotion - {promotion.codes_sent} email(s) have already been sent"
+        )
+
+    # Delete all associated promo codes first
+    db.query(PromoCode).filter(PromoCode.promotion_id == promotion_id).delete()
+
+    # Delete the promotion
+    promotion_name = promotion.name
+    db.delete(promotion)
+    db.commit()
+
+    log_promo(f"Promotion deleted: {promotion_name}", {"promotion_id": promotion_id})
+
+    return {"success": True, "message": f"Promotion '{promotion_name}' deleted"}
+
+
 @app.get("/api/admin/promotions/{promotion_id}/available-codes")
 async def get_available_codes(
     promotion_id: int,

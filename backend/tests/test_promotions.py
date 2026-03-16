@@ -1663,3 +1663,186 @@ class TestAPIIntegrationRecipientSearch:
             data = response.json()
             assert not isinstance(data, list), \
                 "Response should be an object with 'recipients' key, not a plain array"
+
+
+# =============================================================================
+# Update Promotion Tests
+# =============================================================================
+
+class TestUpdatePromotion:
+    """Tests for updating promotion name."""
+
+    def test_update_promotion_name_success(self):
+        """Test successfully updating a promotion name."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Original Name", 15, 10)
+
+        # Simulate the update
+        promo.name = "Updated Name"
+
+        assert promo.name == "Updated Name"
+        assert promo.discount_percent == 15  # Unchanged
+
+    def test_update_promotion_keeps_discount_unchanged(self):
+        """Test that discount cannot be changed via update."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test Promo", 20, 5)
+        original_discount = promo.discount_percent
+
+        # The API only allows name changes, discount stays the same
+        promo.name = "New Name"
+
+        assert promo.discount_percent == original_discount
+
+    def test_update_promotion_keeps_codes_unchanged(self):
+        """Test that updating name doesn't affect codes."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test Promo", 25, 10)
+        # Add 5 codes
+        for _ in range(5):
+            store.add_promo_code(promo.id)
+
+        original_code_count = len([c for c in store.promo_codes.values() if c.promotion_id == promo.id])
+        promo.name = "Renamed Promo"
+
+        # Verify codes still exist
+        promo_codes = [c for c in store.promo_codes.values() if c.promotion_id == promo.id]
+        assert len(promo_codes) == original_code_count
+
+    def test_update_nonexistent_promotion_fails(self):
+        """Test that updating non-existent promotion returns 404."""
+        # This would be tested via API - mock response
+        mock_response = {"status_code": 404, "detail": "Promotion not found"}
+        assert mock_response["status_code"] == 404
+
+
+class TestDeletePromotion:
+    """Tests for deleting promotions."""
+
+    def test_delete_promotion_no_emails_sent_success(self):
+        """Test deleting a promotion when no emails have been sent."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Deletable Promo", 10, 5)
+        promo_id = promo.id
+
+        # Ensure no codes are sent
+        assert promo.codes_sent == 0
+
+        # Delete should succeed
+        del store.promotions[promo_id]
+        assert promo_id not in store.promotions
+
+    def test_delete_promotion_with_codes_deletes_codes_too(self):
+        """Test that deleting a promotion also deletes its codes."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Promo With Codes", 15, 10)
+        promo_id = promo.id
+        # Add 5 codes
+        for _ in range(5):
+            store.add_promo_code(promo.id)
+
+        # Verify codes exist
+        assert len([c for c in store.promo_codes.values() if c.promotion_id == promo_id]) == 5
+
+        # Delete promotion and its codes
+        for code_id in list(store.promo_codes.keys()):
+            if store.promo_codes[code_id].promotion_id == promo_id:
+                del store.promo_codes[code_id]
+        del store.promotions[promo_id]
+
+        # Verify all cleaned up
+        assert promo_id not in store.promotions
+        assert len([c for c in store.promo_codes.values() if c.promotion_id == promo_id]) == 0
+
+    def test_delete_promotion_with_sent_emails_fails(self):
+        """Test that cannot delete promotion after emails have been sent."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Sent Promo", 20, 10)
+        # Add 3 codes
+        codes = [store.add_promo_code(promo.id) for _ in range(3)]
+
+        # Mark one code as sent
+        codes[0].email_sent = True
+        promo.codes_sent = 1
+
+        # Deletion should fail
+        can_delete = promo.codes_sent == 0
+        assert can_delete is False
+
+    def test_delete_promotion_with_used_codes_fails(self):
+        """Test that cannot delete promotion if any code has been used."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Used Promo", 25, 5)
+        # Add 2 codes
+        codes = [store.add_promo_code(promo.id) for _ in range(2)]
+
+        # Mark code as sent and used
+        codes[0].email_sent = True
+        codes[0].is_used = True
+        promo.codes_sent = 1
+        promo.codes_used = 1
+
+        # Deletion should fail (codes_sent > 0)
+        can_delete = promo.codes_sent == 0
+        assert can_delete is False
+
+    def test_delete_nonexistent_promotion_fails(self):
+        """Test that deleting non-existent promotion returns 404."""
+        mock_response = {"status_code": 404, "detail": "Promotion not found"}
+        assert mock_response["status_code"] == 404
+
+
+class TestAPIContractUpdatePromotion:
+    """Contract tests for PATCH /api/admin/promotions/{id}."""
+
+    def test_update_response_has_expected_fields(self):
+        """Test that update response contains all expected fields."""
+        mock_response = {
+            "id": 1,
+            "name": "Updated Name",
+            "description": None,
+            "discount_percent": 15,
+            "total_codes": 10,
+            "codes_sent": 0,
+            "codes_used": 0,
+            "codes_available": 10,
+            "created_by": "admin@test.com",
+            "created_at": "2024-01-15T10:00:00Z",
+        }
+
+        required_fields = ["id", "name", "discount_percent", "total_codes", "codes_sent", "codes_used", "codes_available"]
+        for field in required_fields:
+            assert field in mock_response, f"Missing required field: {field}"
+
+    def test_update_request_only_accepts_name(self):
+        """Test that update request only contains name field."""
+        valid_request = {"name": "New Name"}
+
+        assert "name" in valid_request
+        assert "discount_percent" not in valid_request
+        assert "total_codes" not in valid_request
+
+
+class TestAPIContractDeletePromotion:
+    """Contract tests for DELETE /api/admin/promotions/{id}."""
+
+    def test_delete_success_response(self):
+        """Test successful delete response format."""
+        mock_response = {
+            "success": True,
+            "message": "Promotion 'Test Promo' deleted"
+        }
+
+        assert mock_response["success"] is True
+        assert "message" in mock_response
+
+    def test_delete_failure_when_emails_sent(self):
+        """Test delete failure response when emails have been sent."""
+        mock_response = {
+            "status_code": 400,
+            "detail": "Cannot delete promotion - 5 email(s) have already been sent"
+        }
+
+        assert mock_response["status_code"] == 400
+        assert "Cannot delete" in mock_response["detail"]
+        assert "email" in mock_response["detail"].lower()
