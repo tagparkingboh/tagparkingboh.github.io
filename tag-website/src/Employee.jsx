@@ -608,7 +608,6 @@ function Employee() {
           refreshTrigger={refreshTrigger}
         />
 
-        <h2 style={{ marginTop: '2rem', marginBottom: '1rem' }}>Your Assigned Bookings</h2>
         <BookingCalendar
           token={token}
           renderBookingActions={renderBookingActions}
