@@ -1,8 +1,8 @@
 """
 Data models for the TAG booking system.
 """
-from datetime import date, time, datetime
-from typing import Optional, Literal, List
+from datetime import date as date_type, time, datetime
+from typing import Optional, Literal, List, Union
 from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
@@ -23,9 +23,9 @@ class TimeSlot(BaseModel):
     """Represents a bookable time slot for drop-off."""
     slot_id: str
     slot_type: SlotType
-    drop_off_date: date
+    drop_off_date: date_type
     drop_off_time: time
-    flight_date: date
+    flight_date: date_type
     flight_time: time
     flight_number: str
     airline_code: str
@@ -36,7 +36,7 @@ class TimeSlot(BaseModel):
 
 class Flight(BaseModel):
     """Represents a flight from the schedule."""
-    date: date
+    date: date_type
     type: FlightType
     time: time
     airline_code: str = Field(alias="airlineCode")
@@ -84,9 +84,9 @@ class BookingRequest(BaseModel):
     phone: str
 
     # Trip details
-    drop_off_date: date
+    drop_off_date: date_type
     drop_off_slot_type: SlotType
-    flight_date: date
+    flight_date: date_type
     flight_time: str  # "HH:MM"
     flight_number: str
     airline_code: str
@@ -95,7 +95,7 @@ class BookingRequest(BaseModel):
     destination_name: str
 
     # Return trip
-    pickup_date: date
+    pickup_date: date_type
     return_flight_time: str
     return_flight_number: str
 
@@ -147,10 +147,10 @@ class Booking(BaseModel):
     email: str
     phone: str
 
-    drop_off_date: date
+    drop_off_date: date_type
     drop_off_time: time  # Calculated from slot
     drop_off_slot_type: SlotType
-    flight_date: date
+    flight_date: date_type
     flight_time: time
     flight_number: str
     airline_code: str
@@ -158,7 +158,7 @@ class Booking(BaseModel):
     destination_code: str
     destination_name: str
 
-    pickup_date: date
+    pickup_date: date_type
     return_flight_time: time
     return_flight_number: str
 
@@ -180,7 +180,7 @@ class Booking(BaseModel):
 
 class AvailableSlotsResponse(BaseModel):
     """Response containing available time slots for a flight."""
-    flight_date: date
+    flight_date: date_type
     flight_time: str
     flight_number: str
     slots: list[TimeSlot]
@@ -200,9 +200,9 @@ class AdminBookingRequest(BaseModel):
     phone: str
 
     # Trip details - admin specifies exact drop-off time
-    drop_off_date: date
+    drop_off_date: date_type
     drop_off_time: str  # "HH:MM" - admin can set any time
-    flight_date: date
+    flight_date: date_type
     flight_time: str  # "HH:MM"
     flight_number: str
     airline_code: str
@@ -211,7 +211,7 @@ class AdminBookingRequest(BaseModel):
     destination_name: str
 
     # Return trip
-    pickup_date: date
+    pickup_date: date_type
     return_flight_time: str
     return_flight_number: str
 
@@ -263,9 +263,9 @@ class ManualBookingRequest(BaseModel):
     colour: str
 
     # Trip details
-    dropoff_date: date
+    dropoff_date: date_type
     dropoff_time: str  # "HH:MM"
-    pickup_date: date
+    pickup_date: date_type
     pickup_time: str  # "HH:MM"
 
     # Flight/slot details (optional - for slot availability tracking)
@@ -501,7 +501,7 @@ class RosterShiftCreate(BaseModel):
     """Request to create a roster shift."""
     staff_id: Optional[int] = None  # Nullable = unassigned
     booking_id: Optional[int] = None
-    date: date
+    date: date_type
     start_time: str  # "HH:MM"
     end_time: str  # "HH:MM"
     shift_type: ShiftTypeEnum
@@ -513,7 +513,7 @@ class RosterShiftUpdate(BaseModel):
     """Request to update a roster shift."""
     staff_id: Optional[int] = None
     booking_id: Optional[int] = None
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     start_time: Optional[str] = None  # "HH:MM"
     end_time: Optional[str] = None  # "HH:MM"
     shift_type: Optional[ShiftTypeEnum] = None
@@ -536,7 +536,7 @@ class RosterShiftResponse(BaseModel):
     booking_time: Optional[str] = None  # The dropoff/pickup time
     booking_flight_number: Optional[str] = None
     booking_destination: Optional[str] = None  # destination for dropoff, origin for pickup
-    date: date
+    date: date_type
     start_time: str  # "HH:MM"
     end_time: str  # "HH:MM"
     shift_type: str
@@ -551,8 +551,8 @@ class RosterShiftResponse(BaseModel):
 
 class AutoAssignRequest(BaseModel):
     """Request to auto-generate shifts from bookings."""
-    date_from: date
-    date_to: date
+    date_from: date_type
+    date_to: date_type
     clear_existing: bool = False  # If True, delete scheduled shifts first
 
 
