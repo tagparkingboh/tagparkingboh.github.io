@@ -8,7 +8,7 @@ This module provides endpoints for:
 - Employee-facing read-only shift view
 """
 
-from datetime import date, time, datetime, timedelta
+from datetime import date as date_type, time, datetime, timedelta
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
@@ -52,7 +52,7 @@ def get_staff_initials(user: User) -> str:
 def check_shift_overlap(
     db: Session,
     staff_id: int,
-    date: date,
+    date: date_type,
     start_time: time,
     end_time: time,
     exclude_shift_id: Optional[int] = None
@@ -377,11 +377,11 @@ async def reactivate_employee(
 
 @router.get("/roster", response_model=List[RosterShiftResponse])
 async def list_shifts(
-    date: Optional[date] = Query(None, description="Filter by specific date (YYYY-MM-DD)"),
-    date_from: Optional[date] = Query(None, description="Filter from date (YYYY-MM-DD)"),
-    date_to: Optional[date] = Query(None, description="Filter to date (YYYY-MM-DD)"),
+    date: Optional[date_type] = Query(None, description="Filter by specific date (YYYY-MM-DD)"),
+    date_from: Optional[date_type] = Query(None, description="Filter from date (YYYY-MM-DD)"),
+    date_to: Optional[date_type] = Query(None, description="Filter to date (YYYY-MM-DD)"),
     staff_id: Optional[int] = Query(None, description="Filter by staff member"),
-    week_start: Optional[date] = Query(None, description="Filter by week starting date (Mon-Sun)"),
+    week_start: Optional[date_type] = Query(None, description="Filter by week starting date (Mon-Sun)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -421,7 +421,7 @@ async def list_shifts(
 
 @router.get("/roster/bookings-for-date")
 async def get_bookings_for_date(
-    date: date = Query(..., description="Date to fetch bookings for (YYYY-MM-DD)"),
+    date: date_type = Query(..., description="Date to fetch bookings for (YYYY-MM-DD)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -794,9 +794,9 @@ async def auto_assign_shifts(
 
 @router.get("/employee/shifts", response_model=List[RosterShiftResponse])
 async def get_employee_shifts(
-    date_from: Optional[date] = Query(None, description="Filter from date (YYYY-MM-DD)"),
-    date_to: Optional[date] = Query(None, description="Filter to date (YYYY-MM-DD)"),
-    week_start: Optional[date] = Query(None, description="Filter by week starting date"),
+    date_from: Optional[date_type] = Query(None, description="Filter from date (YYYY-MM-DD)"),
+    date_to: Optional[date_type] = Query(None, description="Filter to date (YYYY-MM-DD)"),
+    week_start: Optional[date_type] = Query(None, description="Filter by week starting date"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -831,7 +831,7 @@ async def get_employee_shifts(
 
 @router.get("/roster/export")
 async def export_roster_csv(
-    week_start: date = Query(..., description="Start date for export"),
+    week_start: date_type = Query(..., description="Start date for export"),
     db: Session = Depends(get_db)
 ):
     """
