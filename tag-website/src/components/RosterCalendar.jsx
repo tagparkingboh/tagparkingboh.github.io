@@ -188,7 +188,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   }, [fetchStaff])
 
   // Fetch bookings for a specific date (for shift assignment)
-  const fetchBookingsForDate = useCallback(async (dateStr) => {
+  const fetchBookingsForDate = useCallback(async (dateStr, additionalDateStr = null) => {
     if (!token || !dateStr) {
       setDateBookings([])
       return
@@ -203,18 +203,43 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         return
       }
 
+      // Fetch bookings for start date
       const response = await fetch(`${API_URL}/api/roster/bookings-for-date?date=${isoDate}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       })
 
+      let allBookings = []
       if (response.ok) {
         const data = await response.json()
-        setDateBookings(Array.isArray(data) ? data : [])
-      } else {
-        setDateBookings([])
+        allBookings = Array.isArray(data) ? data : []
       }
+
+      // If there's an additional date (end_date for overnight shifts), fetch those too
+      if (additionalDateStr) {
+        const isoAdditionalDate = ukToISO(additionalDateStr)
+        if (isoAdditionalDate && isoAdditionalDate.length === 10 && isoAdditionalDate !== isoDate) {
+          const response2 = await fetch(`${API_URL}/api/roster/bookings-for-date?date=${isoAdditionalDate}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          })
+          if (response2.ok) {
+            const data2 = await response2.json()
+            const additionalBookings = Array.isArray(data2) ? data2 : []
+            // Merge and deduplicate by id
+            const existingIds = new Set(allBookings.map(b => b.id))
+            additionalBookings.forEach(b => {
+              if (!existingIds.has(b.id)) {
+                allBookings.push(b)
+              }
+            })
+          }
+        }
+      }
+
+      setDateBookings(allBookings)
     } catch (err) {
       console.error('Failed to load bookings for date:', err)
       setDateBookings([])
@@ -403,7 +428,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       shift_type: shift.shift_type,
       notes: shift.notes || '',
     })
-    fetchBookingsForDate(dateUK)
+    // Fetch bookings for both dates if overnight shift
+    fetchBookingsForDate(dateUK, endDateUK !== dateUK ? endDateUK : null)
     setShowShiftModal(true)
   }
 
@@ -424,12 +450,20 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   }
 
   const handleShiftFormChange = (field, value) => {
-    setShiftForm((prev) => ({ ...prev, [field]: value }))
+    setShiftForm((prev) => {
+      const newForm = { ...prev, [field]: value }
 
-    // When date changes, fetch bookings for that date
-    if (field === 'date' && value && value.length === 10) {
-      fetchBookingsForDate(value)
-    }
+      // When date or end_date changes, fetch bookings for both dates
+      if ((field === 'date' || field === 'end_date') && value && value.length === 10) {
+        const startDate = field === 'date' ? value : prev.date
+        const endDate = field === 'end_date' ? value : prev.end_date
+        if (startDate && startDate.length === 10) {
+          fetchBookingsForDate(startDate, endDate && endDate.length === 10 ? endDate : null)
+        }
+      }
+
+      return newForm
+    })
   }
 
   const saveShift = async () => {
