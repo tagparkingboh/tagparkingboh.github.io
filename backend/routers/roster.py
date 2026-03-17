@@ -415,6 +415,72 @@ async def list_shifts(
     return [shift_to_response(shift, db) for shift in shifts]
 
 
+# ============================================================================
+# Bookings for Shift Assignment (must be before /roster/{shift_id})
+# ============================================================================
+
+@router.get("/roster/bookings-for-date")
+async def get_bookings_for_date(
+    date: date = Query(..., description="Date to fetch bookings for (YYYY-MM-DD)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get bookings that have a drop-off or pickup on the specified date.
+    Used for linking shifts to specific bookings.
+
+    Returns bookings with:
+    - id, reference
+    - type: 'dropoff' or 'pickup'
+    - time: the dropoff_time or pickup_time
+    - customer name
+    - flight details
+    """
+    results = []
+
+    # Find bookings with dropoff on this date
+    dropoff_bookings = db.query(Booking).filter(
+        Booking.dropoff_date == date,
+        Booking.status.in_(["confirmed", "pending"])
+    ).all()
+
+    for b in dropoff_bookings:
+        results.append({
+            "id": b.id,
+            "reference": b.reference,
+            "type": "dropoff",
+            "time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
+            "flight_time": b.flight_departure_time.strftime("%H:%M") if b.flight_departure_time else None,
+            "customer_name": f"{b.customer_first_name} {b.customer_last_name}",
+            "flight_number": b.dropoff_flight_number,
+            "airline": b.dropoff_airline_name,
+            "destination": b.dropoff_destination
+        })
+
+    # Find bookings with pickup on this date
+    pickup_bookings = db.query(Booking).filter(
+        Booking.pickup_date == date,
+        Booking.status.in_(["confirmed", "pending"])
+    ).all()
+
+    for b in pickup_bookings:
+        results.append({
+            "id": b.id,
+            "reference": b.reference,
+            "type": "pickup",
+            "time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
+            "flight_time": b.flight_arrival_time.strftime("%H:%M") if b.flight_arrival_time else None,
+            "customer_name": f"{b.customer_first_name} {b.customer_last_name}",
+            "flight_number": b.pickup_flight_number,
+            "airline": b.pickup_airline_name,
+            "origin": b.pickup_origin
+        })
+
+    # Sort by time
+    results.sort(key=lambda x: x["time"] or "99:99")
+
+    return results
+
+
 @router.get("/roster/{shift_id}", response_model=RosterShiftResponse)
 async def get_shift(
     shift_id: int,
@@ -720,72 +786,6 @@ async def auto_assign_shifts(
         shifts_deleted=shifts_deleted,
         shifts=[shift_to_response(s, db) for s in created_shifts]
     )
-
-
-# ============================================================================
-# Bookings for Shift Assignment
-# ============================================================================
-
-@router.get("/roster/bookings-for-date")
-async def get_bookings_for_date(
-    date: date = Query(..., description="Date to fetch bookings for (YYYY-MM-DD)"),
-    db: Session = Depends(get_db)
-):
-    """
-    Get bookings that have a drop-off or pickup on the specified date.
-    Used for linking shifts to specific bookings.
-
-    Returns bookings with:
-    - id, reference
-    - type: 'dropoff' or 'pickup'
-    - time: the dropoff_time or pickup_time
-    - customer name
-    - flight details
-    """
-    results = []
-
-    # Find bookings with dropoff on this date
-    dropoff_bookings = db.query(Booking).filter(
-        Booking.dropoff_date == date,
-        Booking.status.in_(["confirmed", "pending"])
-    ).all()
-
-    for b in dropoff_bookings:
-        results.append({
-            "id": b.id,
-            "reference": b.reference,
-            "type": "dropoff",
-            "time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
-            "flight_time": b.flight_departure_time.strftime("%H:%M") if b.flight_departure_time else None,
-            "customer_name": f"{b.customer_first_name} {b.customer_last_name}",
-            "flight_number": b.dropoff_flight_number,
-            "airline": b.dropoff_airline_name,
-            "destination": b.dropoff_destination
-        })
-
-    # Find bookings with pickup on this date
-    pickup_bookings = db.query(Booking).filter(
-        Booking.pickup_date == date,
-        Booking.status.in_(["confirmed", "pending"])
-    ).all()
-
-    for b in pickup_bookings:
-        results.append({
-            "id": b.id,
-            "reference": b.reference,
-            "type": "pickup",
-            "time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
-            "flight_time": b.flight_arrival_time.strftime("%H:%M") if b.flight_arrival_time else None,
-            "customer_name": f"{b.customer_first_name} {b.customer_last_name}",
-            "flight_number": b.pickup_flight_number,
-            "airline": b.pickup_airline_name,
-            "origin": b.pickup_origin
-        })
-
-    # Sort by time
-    results.sort(key=lambda x: x["time"] or "99:99")
-
-    return results
 
 
 # ============================================================================
