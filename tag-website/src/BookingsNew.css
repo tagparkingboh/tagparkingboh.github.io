@@ -2377,3 +2377,33 @@
   color: #999999;
   margin: 0;
 }
+
+/* Same-day booking notice */
+.same-day-notice {
+  background: #3a2a1a;
+  border: 1px solid #d4a03a;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  color: #f0d080;
+}
+
+.same-day-notice strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #f0d080;
+}
+
+.same-day-notice p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #ccaa60;
+}
+
+.same-day-notice a {
+  color: #D9FF00;
+  text-decoration: none;
+}
+
+.same-day-notice a:hover {
+  text-decoration: underline;
+}

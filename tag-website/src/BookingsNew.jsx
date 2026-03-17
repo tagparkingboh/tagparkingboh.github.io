@@ -855,6 +855,32 @@ function Bookings() {
     return slots
   }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate])
 
+  // Check if same-day slots were filtered due to 4-hour notice requirement
+  const sameDaySlotsFiltered = useMemo(() => {
+    if (!showManualDeparture) return false
+    if (!isValidTimeFormat(manualDepartureData.flightTime)) return false
+
+    const isToday = formData.dropoffDate &&
+      format(formData.dropoffDate, 'yyyy-MM-dd') === format(getTodayUK(), 'yyyy-MM-dd')
+    if (!isToday) return false
+
+    const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
+    const departureMinutes = hours * 60 + minutes
+    const currentUKMinutes = getCurrentUKTimeMinutes()
+    const minNoticeMinutes = MIN_HOURS_NOTICE * 60
+
+    // Check if any slot would exist without the 4-hour filter
+    const earlySlotMinutes = departureMinutes - 165
+    const lateSlotMinutes = departureMinutes - 120
+
+    const earlyWouldExist = earlySlotMinutes > 0
+    const lateWouldExist = lateSlotMinutes > 0
+    const earlyFiltered = earlyWouldExist && earlySlotMinutes < currentUKMinutes + minNoticeMinutes
+    const lateFiltered = lateWouldExist && lateSlotMinutes < currentUKMinutes + minNoticeMinutes
+
+    return earlyFiltered || lateFiltered
+  }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate])
+
   // Normalize time to HH:MM format
   const normalizeTime = (timeStr) => {
     if (!timeStr) return ''
@@ -2349,6 +2375,19 @@ function Bookings() {
                             </div>
                           </label>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {sameDaySlotsFiltered && isValidTimeFormat(manualDepartureData.flightTime) && (
+                    <div className="form-group">
+                      <div className="same-day-notice">
+                        <strong>Same-day bookings require at least 4 hours notice.</strong>
+                        {manualDropoffSlots.length === 0 ? (
+                          <p>Please select a later flight or call us on <a href="tel:+447586092361">+44 (0)7586 092361</a> to arrange a last-minute booking.</p>
+                        ) : (
+                          <p>Some drop-off times are unavailable. Call us on <a href="tel:+447586092361">+44 (0)7586 092361</a> for last-minute bookings.</p>
+                        )}
                       </div>
                     </div>
                   )}

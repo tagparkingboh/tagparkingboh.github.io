@@ -6081,14 +6081,18 @@ async def create_payment(
         now_uk = datetime.now(uk_tz)
         today_uk = now_uk.date()
 
-        if request.drop_off_date == today_uk:
+        # Parse drop_off_date from string to date for comparison
+        request_dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
+
+        if request_dropoff_date == today_uk:
             # Parse the flight time (or dropoff time)
-            flight_time_str = request.flight_time
+            flight_time_str = request.flight_departure_time
             if flight_time_str:
                 flight_hours, flight_mins = map(int, flight_time_str.split(':'))
                 flight_minutes_from_midnight = flight_hours * 60 + flight_mins
                 # Calculate dropoff slot time (either 165 or 120 mins before flight)
-                slot_offset = 165 if request.drop_off_slot_type == SlotType.EARLY else 120
+                # drop_off_slot contains "165" or "120" as string
+                slot_offset = int(request.drop_off_slot) if request.drop_off_slot else 165
                 dropoff_minutes = flight_minutes_from_midnight - slot_offset
                 # Current UK time in minutes from midnight
                 current_minutes = now_uk.hour * 60 + now_uk.minute
