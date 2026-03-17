@@ -711,10 +711,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                         </div>
 
                         <div className="shift-card-body">
-                          {shift.staff_name ? (
+                          {shift.staff_first_name ? (
                             <div className="shift-staff">
                               <span className="shift-staff-initials">{shift.staff_initials}</span>
-                              <span className="shift-staff-name">{shift.staff_name}</span>
+                              <span className="shift-staff-name">{shift.staff_first_name} {shift.staff_last_name}</span>
                             </div>
                           ) : (
                             <div className="shift-unassigned">Unassigned</div>
