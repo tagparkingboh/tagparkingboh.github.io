@@ -21,12 +21,23 @@ class BookingStatus(enum.Enum):
 
 
 class ShiftType(enum.Enum):
-    """Type of roster shift."""
-    DEPARTURE = "departure"       # Customer drop-off
-    ARRIVAL = "arrival"           # Customer pick-up
-    STORAGE = "storage"           # Storage facility tasks
-    ADMIN = "admin"               # Administrative tasks
-    OTHER = "other"               # Miscellaneous
+    """Type of roster shift - based on time slots throughout the day.
+
+    Operating hours: 03:50 - 01:20 (21.5 hours)
+    Part-time: ~3-4 hour blocks
+    Full-time: ~7 hour blocks
+    """
+    # Part-time shift slots
+    EARLY_MORNING = "early_morning"    # ~03:50 - 07:00
+    MORNING = "morning"                 # ~07:00 - 11:00
+    MIDDAY = "midday"                   # ~11:00 - 14:00
+    AFTERNOON = "afternoon"             # ~14:00 - 17:30
+    LATE_AFTERNOON = "late_afternoon"   # ~17:30 - 21:00
+    EVENING = "evening"                 # ~21:00 - 01:20
+    # Full-time shift slots
+    FULL_MORNING = "full_morning"       # ~03:50 - 14:00
+    FULL_AFTERNOON = "full_afternoon"   # ~11:00 - 21:00
+    FULL_EVENING = "full_evening"       # ~17:30 - 01:20
 
 
 class ShiftStatus(enum.Enum):

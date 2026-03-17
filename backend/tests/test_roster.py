@@ -56,7 +56,7 @@ def create_mock_shift(**kwargs):
         "date": date(2026, 3, 20),
         "start_time": time(6, 0),
         "end_time": time(6, 45),
-        "shift_type": ShiftType.DEPARTURE,
+        "shift_type": ShiftType.MORNING,
         "status": ShiftStatus.SCHEDULED,
         "notes": "Test shift",
         "created_at": datetime.now(),
@@ -195,7 +195,7 @@ class TestShiftValidator:
             date=date(2026, 3, 20),
             start_time="06:00",
             end_time="06:45",
-            shift_type=ShiftTypeEnum.DEPARTURE,
+            shift_type=ShiftTypeEnum.MORNING,
             status=ShiftStatusEnum.SCHEDULED
         )
 
@@ -211,7 +211,7 @@ class TestShiftValidator:
             date=date(2026, 3, 20),
             start_time="06:00",
             end_time="06:45",
-            shift_type=ShiftTypeEnum.DEPARTURE
+            shift_type=ShiftTypeEnum.MORNING
         )
 
         assert shift.staff_id is None
@@ -761,7 +761,7 @@ class TestRosterAPI:
             obj.date = date(2026, 3, 20)
             obj.start_time = time(6, 0)
             obj.end_time = time(6, 45)
-            obj.shift_type = ShiftType.DEPARTURE
+            obj.shift_type = ShiftType.MORNING
             obj.status = ShiftStatus.SCHEDULED
             obj.notes = None
             obj.created_at = datetime.now()
@@ -776,13 +776,13 @@ class TestRosterAPI:
             "date": "2026-03-20",
             "start_time": "06:00",
             "end_time": "06:45",
-            "shift_type": "departure",
+            "shift_type": "morning",
             "status": "scheduled"
         })
 
         assert response.status_code == 201
         data = response.json()
-        assert data["shift_type"] == "departure"
+        assert data["shift_type"] == "morning"
         assert data["start_time"] == "06:00"
 
     def test_create_shift_overlap_conflict(self, mock_app_dependencies, mock_db):
@@ -806,7 +806,7 @@ class TestRosterAPI:
             "date": "2026-03-20",
             "start_time": "06:30",
             "end_time": "07:15",
-            "shift_type": "departure"
+            "shift_type": "morning"
         })
 
         assert response.status_code == 409
@@ -939,7 +939,7 @@ class TestDateFormatConversion:
             date=date(2026, 3, 17),
             start_time="15:30",
             end_time="16:30",
-            shift_type=ShiftTypeEnum.DEPARTURE
+            shift_type=ShiftTypeEnum.MORNING
         )
         assert shift.date == date(2026, 3, 17)
 
@@ -952,7 +952,7 @@ class TestDateFormatConversion:
             date="2026-03-17",
             start_time="15:30",
             end_time="16:30",
-            shift_type=ShiftTypeEnum.DEPARTURE
+            shift_type=ShiftTypeEnum.MORNING
         )
         assert shift.date == date(2026, 3, 17)
 
@@ -966,7 +966,7 @@ class TestDateFormatConversion:
                 date="17/03/2026",  # UK format - should fail
                 start_time="15:30",
                 end_time="16:30",
-                shift_type=ShiftTypeEnum.DEPARTURE
+                shift_type=ShiftTypeEnum.MORNING
             )
 
         assert "date" in str(exc_info.value).lower()
@@ -1001,7 +1001,7 @@ class TestTimeFormat:
             date=date(2026, 3, 17),
             start_time="15:30",  # 3:30 PM in 24hr
             end_time="16:30",
-            shift_type=ShiftTypeEnum.DEPARTURE
+            shift_type=ShiftTypeEnum.MORNING
         )
         assert shift.start_time == "15:30"
         assert shift.end_time == "16:30"
@@ -1133,7 +1133,7 @@ class TestShiftEdgeCases:
             date=date(2026, 3, 17),
             start_time="06:00",
             end_time="06:45",
-            shift_type=ShiftTypeEnum.DEPARTURE
+            shift_type=ShiftTypeEnum.MORNING
         )
 
         assert shift.staff_id is None
@@ -1146,7 +1146,7 @@ class TestShiftEdgeCases:
             date=date(2026, 3, 17),
             start_time="06:00",
             end_time="06:45",
-            shift_type=ShiftTypeEnum.DEPARTURE,
+            shift_type=ShiftTypeEnum.MORNING,
             notes="Testing notes"
         )
 
@@ -1160,7 +1160,7 @@ class TestShiftEdgeCases:
             date=date(2026, 3, 17),
             start_time="06:00",
             end_time="06:45",
-            shift_type=ShiftTypeEnum.DEPARTURE
+            shift_type=ShiftTypeEnum.MORNING
         )
 
         assert shift.status == ShiftStatusEnum.SCHEDULED
@@ -1187,7 +1187,7 @@ class TestShiftEdgeCases:
                 date=date(2026, 3, 17),
                 start_time="06:00",
                 end_time="06:45",
-                shift_type=ShiftTypeEnum.DEPARTURE,
+                shift_type=ShiftTypeEnum.MORNING,
                 status=status
             )
             assert shift.status == status
@@ -1202,7 +1202,7 @@ class TestShiftEdgeCases:
             date=date(2026, 3, 17),
             start_time="23:30",
             end_time="00:30",
-            shift_type=ShiftTypeEnum.ARRIVAL
+            shift_type=ShiftTypeEnum.EVENING  # Evening shift crosses midnight
         )
 
         assert shift.start_time == "23:30"

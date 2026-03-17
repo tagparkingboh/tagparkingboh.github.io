@@ -149,6 +149,28 @@ async def require_employee(db: Session = Depends(get_db)):
 
 
 # ============================================================================
+# Staff/User Endpoints (Admin Only)
+# ============================================================================
+
+@router.get("/staff", response_model=List[EmployeeResponse])
+async def list_all_staff(
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    db: Session = Depends(get_db)
+):
+    """
+    List ALL users (both admins and employees) for shift assignment.
+    Optionally filter by is_active status.
+    """
+    query = db.query(User)
+
+    if is_active is not None:
+        query = query.filter(User.is_active == is_active)
+
+    users = query.order_by(User.first_name, User.last_name).all()
+    return [EmployeeResponse.model_validate(user) for user in users]
+
+
+# ============================================================================
 # Employee Management Endpoints (Admin Only)
 # ============================================================================
 
@@ -314,7 +336,9 @@ async def reactivate_employee(
 
 @router.get("/roster", response_model=List[RosterShiftResponse])
 async def list_shifts(
-    date: Optional[date] = Query(None, description="Filter by specific date"),
+    date: Optional[date] = Query(None, description="Filter by specific date (YYYY-MM-DD)"),
+    date_from: Optional[date] = Query(None, description="Filter from date (YYYY-MM-DD)"),
+    date_to: Optional[date] = Query(None, description="Filter to date (YYYY-MM-DD)"),
     staff_id: Optional[int] = Query(None, description="Filter by staff member"),
     week_start: Optional[date] = Query(None, description="Filter by week starting date (Mon-Sun)"),
     db: Session = Depends(get_db)
@@ -322,6 +346,7 @@ async def list_shifts(
     """
     List roster shifts with optional filters.
     - date: Filter by specific date
+    - date_from/date_to: Filter by date range
     - staff_id: Filter by staff member
     - week_start: Filter by week (Mon-Sun starting from this date)
     """
@@ -329,6 +354,11 @@ async def list_shifts(
 
     if date:
         query = query.filter(RosterShift.date == date)
+    elif date_from and date_to:
+        query = query.filter(
+            RosterShift.date >= date_from,
+            RosterShift.date <= date_to
+        )
     elif week_start:
         week_end = week_start + timedelta(days=6)
         query = query.filter(
@@ -558,13 +588,28 @@ async def auto_assign_shifts(
                 if booking.dropoff_airline_name and booking.dropoff_destination:
                     notes_parts.append(f"{booking.dropoff_airline_name} to {booking.dropoff_destination}")
 
+                # Determine shift type based on start time
+                shift_hour = start_time.hour
+                if shift_hour < 7:
+                    shift_type = ShiftType.EARLY_MORNING
+                elif shift_hour < 11:
+                    shift_type = ShiftType.MORNING
+                elif shift_hour < 14:
+                    shift_type = ShiftType.MIDDAY
+                elif shift_hour < 17 or (shift_hour == 17 and start_time.minute < 30):
+                    shift_type = ShiftType.AFTERNOON
+                elif shift_hour < 21:
+                    shift_type = ShiftType.LATE_AFTERNOON
+                else:
+                    shift_type = ShiftType.EVENING
+
                 dep_shift = RosterShift(
                     staff_id=None,
                     booking_id=booking.id,
                     date=booking.dropoff_date,
                     start_time=start_time,
                     end_time=end_time,
-                    shift_type=ShiftType.DEPARTURE,
+                    shift_type=shift_type,
                     status=ShiftStatus.SCHEDULED,
                     notes=" — ".join(notes_parts) if notes_parts else None
                 )
@@ -593,13 +638,28 @@ async def auto_assign_shifts(
                     notes_parts.append(f"{booking.customer_first_name} {booking.customer_last_name}")
                 notes_parts.append("return")
 
+                # Determine shift type based on start time
+                shift_hour = start_time.hour
+                if shift_hour < 7:
+                    shift_type = ShiftType.EARLY_MORNING
+                elif shift_hour < 11:
+                    shift_type = ShiftType.MORNING
+                elif shift_hour < 14:
+                    shift_type = ShiftType.MIDDAY
+                elif shift_hour < 17 or (shift_hour == 17 and start_time.minute < 30):
+                    shift_type = ShiftType.AFTERNOON
+                elif shift_hour < 21:
+                    shift_type = ShiftType.LATE_AFTERNOON
+                else:
+                    shift_type = ShiftType.EVENING
+
                 arr_shift = RosterShift(
                     staff_id=None,
                     booking_id=booking.id,
                     date=booking.pickup_date,
                     start_time=start_time,
                     end_time=end_time,
-                    shift_type=ShiftType.ARRIVAL,
+                    shift_type=shift_type,
                     status=ShiftStatus.SCHEDULED,
                     notes=" — ".join(notes_parts) if notes_parts else None
                 )

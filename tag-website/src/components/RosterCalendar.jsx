@@ -3,13 +3,19 @@ import './RosterCalendar.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-// Shift type display config
+// Shift type display config - Part-time and Full-time slots
 const SHIFT_TYPE_CONFIG = {
-  departure: { label: 'Departure', color: '#4a90e2', icon: '✈️' },
-  arrival: { label: 'Arrival', color: '#50c878', icon: '🛬' },
-  storage: { label: 'Storage', color: '#f5a623', icon: '🅿️' },
-  admin: { label: 'Admin', color: '#9b59b6', icon: '📋' },
-  other: { label: 'Other', color: '#888', icon: '📌' },
+  // Part-time slots (~3-4 hours each)
+  early_morning: { label: 'Early Morning', color: '#1e3a5f', icon: '🌙', time: '03:50 - 07:00' },
+  morning: { label: 'Morning', color: '#4a90e2', icon: '🌅', time: '07:00 - 11:00' },
+  midday: { label: 'Midday', color: '#f5a623', icon: '☀️', time: '11:00 - 14:00' },
+  afternoon: { label: 'Afternoon', color: '#e67e22', icon: '🌤️', time: '14:00 - 17:30' },
+  late_afternoon: { label: 'Late Afternoon', color: '#9b59b6', icon: '🌇', time: '17:30 - 21:00' },
+  evening: { label: 'Evening', color: '#2c3e50', icon: '🌃', time: '21:00 - 01:20' },
+  // Full-time slots (~7 hours each)
+  full_morning: { label: 'Full Morning', color: '#27ae60', icon: '🌄', time: '03:50 - 14:00' },
+  full_afternoon: { label: 'Full Afternoon', color: '#e74c3c', icon: '🏙️', time: '11:00 - 21:00' },
+  full_evening: { label: 'Full Evening', color: '#34495e', icon: '🌆', time: '17:30 - 01:20' },
 }
 
 // Shift status display config
@@ -70,7 +76,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     date: '',
     start_time: '',
     end_time: '',
-    shift_type: 'departure',
+    shift_type: 'morning',
     notes: '',
   })
   const [savingShift, setSavingShift] = useState(false)
@@ -111,9 +117,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       const startDate = new Date(year, month, 1)
       const endDate = new Date(year, month + 1, 0)
 
+      // Send ISO format dates (YYYY-MM-DD) to backend
       const params = new URLSearchParams({
-        date_from: formatDateUK(formatDateISO(startDate)),
-        date_to: formatDateUK(formatDateISO(endDate)),
+        date_from: formatDateISO(startDate),
+        date_to: formatDateISO(endDate),
       })
 
       const endpoint = isAdmin ? '/api/roster' : '/api/employee/shifts'
@@ -125,7 +132,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
       if (response.ok) {
         const data = await response.json()
-        setShifts(data.shifts || [])
+        // API returns array directly, not { shifts: [...] }
+        setShifts(Array.isArray(data) ? data : (data.shifts || []))
       }
     } catch (err) {
       console.error('Failed to load shifts:', err)
@@ -145,12 +153,13 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }, [fetchBookings, fetchShifts])
 
-  // Fetch employees (admin only)
-  const fetchEmployees = useCallback(async () => {
+  // Fetch all staff (admin only) - includes both admins and employees
+  const fetchStaff = useCallback(async () => {
     if (!token || !isAdmin) return
 
     try {
-      const response = await fetch(`${API_URL}/api/employees`, {
+      // Use /api/staff to get ALL users (admins + employees)
+      const response = await fetch(`${API_URL}/api/staff?is_active=true`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -158,11 +167,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
       if (response.ok) {
         const data = await response.json()
-        // API returns array directly, not { employees: [...] }
-        setEmployees(Array.isArray(data) ? data : (data.employees || []))
+        // API returns array directly
+        setEmployees(Array.isArray(data) ? data : [])
       }
     } catch (err) {
-      console.error('Failed to load employees:', err)
+      console.error('Failed to load staff:', err)
     }
   }, [token, isAdmin])
 
@@ -171,8 +180,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   }, [fetchData, refreshTrigger])
 
   useEffect(() => {
-    fetchEmployees()
-  }, [fetchEmployees])
+    fetchStaff()
+  }, [fetchStaff])
 
   // Calendar navigation
   const goToPrevMonth = () => {
@@ -316,7 +325,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       date: date || '',
       start_time: '',
       end_time: '',
-      shift_type: 'departure',
+      shift_type: 'morning',
       notes: '',
     })
     setShowShiftModal(true)
@@ -343,7 +352,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       date: '',
       start_time: '',
       end_time: '',
-      shift_type: 'departure',
+      shift_type: 'morning',
       notes: '',
     })
   }
@@ -769,17 +778,23 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 <div className="form-field">
                   <label>Start Time <span className="required">*</span></label>
                   <input
-                    type="time"
+                    type="text"
                     value={shiftForm.start_time}
                     onChange={(e) => handleShiftFormChange('start_time', e.target.value)}
+                    placeholder="HH:MM (e.g. 07:00)"
+                    maxLength={5}
+                    className="time-input-24hr"
                   />
                 </div>
                 <div className="form-field">
                   <label>End Time <span className="required">*</span></label>
                   <input
-                    type="time"
+                    type="text"
                     value={shiftForm.end_time}
                     onChange={(e) => handleShiftFormChange('end_time', e.target.value)}
+                    placeholder="HH:MM (e.g. 14:00)"
+                    maxLength={5}
+                    className="time-input-24hr"
                   />
                 </div>
               </div>
@@ -790,11 +805,19 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   value={shiftForm.shift_type}
                   onChange={(e) => handleShiftFormChange('shift_type', e.target.value)}
                 >
-                  {Object.entries(SHIFT_TYPE_CONFIG).map(([key, config]) => (
-                    <option key={key} value={key}>
-                      {config.icon} {config.label}
-                    </option>
-                  ))}
+                  <optgroup label="Part-Time Shifts">
+                    <option value="early_morning">🌙 Early Morning (03:50 - 07:00)</option>
+                    <option value="morning">🌅 Morning (07:00 - 11:00)</option>
+                    <option value="midday">☀️ Midday (11:00 - 14:00)</option>
+                    <option value="afternoon">🌤️ Afternoon (14:00 - 17:30)</option>
+                    <option value="late_afternoon">🌇 Late Afternoon (17:30 - 21:00)</option>
+                    <option value="evening">🌃 Evening (21:00 - 01:20)</option>
+                  </optgroup>
+                  <optgroup label="Full-Time Shifts">
+                    <option value="full_morning">🌄 Full Morning (03:50 - 14:00)</option>
+                    <option value="full_afternoon">🏙️ Full Afternoon (11:00 - 21:00)</option>
+                    <option value="full_evening">🌆 Full Evening (17:30 - 01:20)</option>
+                  </optgroup>
                 </select>
               </div>
 

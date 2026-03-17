@@ -697,14 +697,12 @@
   transition: all 0.2s ease;
 }
 
-/* Force 24-hour time format */
-.form-row input[type="time"] {
-  font-family: monospace;
-}
-
-/* Hide AM/PM in WebKit browsers */
-.form-row input[type="time"]::-webkit-datetime-edit-ampm-field {
-  display: none;
+/* 24-hour time input styling */
+.form-row input.time-input-24hr {
+  font-family: 'Courier New', monospace;
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+  text-align: center;
 }
 
 .form-row input:hover,
