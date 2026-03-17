@@ -62,8 +62,26 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
   const fetchShifts = async () => {
     try {
       const year = currentDate.getFullYear()
-      const month = currentDate.getMonth() + 1
-      const response = await fetch(`${API_URL}/api/roster/shifts?year=${year}&month=${month}`, {
+      const month = currentDate.getMonth()
+
+      // Calculate date range for the current month view
+      const startDate = new Date(year, month, 1)
+      const endDate = new Date(year, month + 1, 0)
+
+      const formatDateISO = (date) => {
+        const y = date.getFullYear()
+        const m = String(date.getMonth() + 1).padStart(2, '0')
+        const d = String(date.getDate()).padStart(2, '0')
+        return `${y}-${m}-${d}`
+      }
+
+      const params = new URLSearchParams({
+        date_from: formatDateISO(startDate),
+        date_to: formatDateISO(endDate),
+      })
+
+      // Use employee endpoint for shifts
+      const response = await fetch(`${API_URL}/api/employee/shifts?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
