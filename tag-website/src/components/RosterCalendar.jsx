@@ -641,12 +641,20 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                               🛬 {dayBookings.pickups.length}
                             </div>
                           )}
-                          {/* Shift indicators */}
-                          {hasShifts && (
-                            <div className="day-shifts-indicator">
-                              <span className="shifts-count">{dayShifts.length} shift{dayShifts.length > 1 ? 's' : ''}</span>
+                          {/* Shift indicators with details */}
+                          {hasShifts && dayShifts.map((shift, idx) => (
+                            <div
+                              key={shift.id || idx}
+                              className={`day-shift-badge ${shift.isOvernight ? 'overnight' : ''} ${shift.shiftPart === 'end' ? 'overnight-end' : ''}`}
+                              title={shift.staff_first_name ? `${shift.staff_first_name} ${shift.staff_last_name}` : 'Unassigned'}
+                            >
+                              <span className="shift-time-mini">
+                                {shift.shiftPart === 'end' ? '→' : ''}{formatTime(shift.start_time)}-{formatTime(shift.end_time)}{shift.shiftPart === 'start' && shift.isOvernight ? '→' : ''}
+                              </span>
+                              {shift.staff_initials && <span className="shift-initials">{shift.staff_initials}</span>}
+                              {!shift.staff_initials && <span className="shift-unassigned-mini">?</span>}
                             </div>
-                          )}
+                          ))}
                         </div>
                       </>
                     )}

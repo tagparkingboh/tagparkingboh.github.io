@@ -1122,3 +1122,49 @@
   font-size: 0.75rem;
   border: 1px solid #4a4a3a;
 }
+
+/* Day shift badges with details */
+.day-shift-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #3a3a5a;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.7rem;
+  color: #fff;
+  margin-top: 2px;
+}
+
+.day-shift-badge.overnight {
+  background: linear-gradient(90deg, #3a3a5a 0%, #2c3e50 100%);
+  border: 1px solid #f0d080;
+}
+
+.day-shift-badge.overnight-end {
+  background: linear-gradient(90deg, #2c3e50 0%, #3a3a5a 100%);
+  border: 1px solid #f0d080;
+}
+
+.shift-time-mini {
+  font-family: monospace;
+  font-size: 0.65rem;
+  color: #D9FF00;
+}
+
+.shift-initials {
+  background: #D9FF00;
+  color: #1a1a2e;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 0.6rem;
+}
+
+.shift-unassigned-mini {
+  background: #666;
+  color: #fff;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.6rem;
+}
