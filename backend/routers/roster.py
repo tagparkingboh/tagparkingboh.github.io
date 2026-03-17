@@ -170,6 +170,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
         # New: all linked bookings
         bookings=linked_bookings,
         date=shift.date,
+        end_date=shift.end_date or shift.date,  # Default to date if not set
         start_time=format_time(shift.start_time),
         end_time=format_time(shift.end_time),
         shift_type=shift.shift_type.value,
@@ -577,6 +578,7 @@ async def create_shift(
         staff_id=shift_data.staff_id,
         booking_id=None,  # No longer using single booking_id
         date=shift_data.date,
+        end_date=shift_data.end_date or shift_data.date,  # Default to same day
         start_time=start_time,
         end_time=end_time,
         shift_type=ShiftType(shift_data.shift_type.value),
@@ -636,6 +638,8 @@ async def update_shift(
         shift.staff_id = updates.staff_id
     if updates.date is not None:
         shift.date = updates.date
+    if updates.end_date is not None:
+        shift.end_date = updates.end_date
     if updates.start_time is not None:
         shift.start_time = new_start
     if updates.end_time is not None:

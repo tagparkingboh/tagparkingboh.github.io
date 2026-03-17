@@ -75,6 +75,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     staff_id: '',
     booking_ids: [],  // Multiple bookings per shift
     date: '',
+    end_date: '',  // For overnight shifts
     start_time: '',
     end_time: '',
     shift_type: 'morning',
@@ -296,16 +297,26 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return grouped
   }, [bookings])
 
-  // Group shifts by date
+  // Group shifts by date (including overnight shifts on both dates)
   const shiftsByDate = useMemo(() => {
     const grouped = {}
 
     shifts.forEach((shift) => {
-      const dateKey = shift.date
-      if (!grouped[dateKey]) {
-        grouped[dateKey] = []
+      // Add to start date
+      const startDateKey = shift.date
+      if (!grouped[startDateKey]) {
+        grouped[startDateKey] = []
       }
-      grouped[dateKey].push(shift)
+      grouped[startDateKey].push({ ...shift, isOvernight: shift.end_date && shift.end_date !== shift.date, shiftPart: 'start' })
+
+      // If overnight shift, also add to end date
+      if (shift.end_date && shift.end_date !== shift.date) {
+        const endDateKey = shift.end_date
+        if (!grouped[endDateKey]) {
+          grouped[endDateKey] = []
+        }
+        grouped[endDateKey].push({ ...shift, isOvernight: true, shiftPart: 'end' })
+      }
     })
 
     Object.keys(grouped).forEach((date) => {
@@ -363,6 +374,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       staff_id: '',
       booking_ids: [],
       date: date || '',
+      end_date: '',
       start_time: '',
       end_time: '',
       shift_type: 'morning',
@@ -378,12 +390,14 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const openEditShiftModal = (shift) => {
     setEditingShift(shift)
     const dateUK = formatDateUK(shift.date)
+    const endDateUK = shift.end_date ? formatDateUK(shift.end_date) : ''
     // Get booking IDs from the bookings array
     const bookingIds = shift.bookings ? shift.bookings.map(b => b.id) : []
     setShiftForm({
       staff_id: shift.staff_id || '',
       booking_ids: bookingIds,
       date: dateUK,
+      end_date: endDateUK !== dateUK ? endDateUK : '',  // Only show if different from start date
       start_time: formatTime(shift.start_time),
       end_time: formatTime(shift.end_time),
       shift_type: shift.shift_type,
@@ -400,6 +414,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       staff_id: '',
       booking_ids: [],
       date: '',
+      end_date: '',
       start_time: '',
       end_time: '',
       shift_type: 'morning',
@@ -424,11 +439,13 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     try {
       // Convert UK date format to ISO for backend
       const isoDate = ukToISO(shiftForm.date)
+      const isoEndDate = shiftForm.end_date ? ukToISO(shiftForm.end_date) : null
 
       const payload = {
         staff_id: shiftForm.staff_id ? parseInt(shiftForm.staff_id) : null,
         booking_ids: shiftForm.booking_ids.map(id => parseInt(id)),
         date: isoDate,
+        end_date: isoEndDate,  // For overnight shifts
         start_time: shiftForm.start_time,
         end_time: shiftForm.end_time,
         shift_type: shiftForm.shift_type,
@@ -767,6 +784,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                           >
                             {statusConfig.label}
                           </div>
+                          {shift.isOvernight && (
+                            <div className="shift-overnight-badge" title={shift.shiftPart === 'start' ? 'Continues next day' : 'Started previous day'}>
+                              🌙 {shift.shiftPart === 'start' ? 'Overnight →' : '← Overnight'}
+                            </div>
+                          )}
                         </div>
 
                         <div className="shift-card-body">
@@ -878,6 +900,16 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     placeholder="HH:MM"
                     maxLength={5}
                   />
+                </div>
+                <div className="modal-form-group">
+                  <label>End Date (overnight)</label>
+                  <input
+                    type="text"
+                    value={shiftForm.end_date}
+                    onChange={(e) => handleShiftFormChange('end_date', e.target.value)}
+                    placeholder="DD/MM/YYYY"
+                  />
+                  <small style={{ color: '#888', fontSize: '0.75rem' }}>Leave blank for same-day shifts</small>
                 </div>
               </div>
 

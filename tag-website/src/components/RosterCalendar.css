@@ -1112,3 +1112,13 @@
   color: #fff;
   flex: 1;
 }
+
+/* Overnight shift badge */
+.shift-overnight-badge {
+  background: #2c3e50;
+  color: #f0d080;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  border: 1px solid #4a4a3a;
+}

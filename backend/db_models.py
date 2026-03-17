@@ -940,7 +940,8 @@ class RosterShift(Base):
     booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True, index=True)
 
     # Shift timing
-    date = Column(Date, nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)  # Start date
+    end_date = Column(Date, nullable=True, index=True)  # End date (for overnight shifts, defaults to date)
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
 
