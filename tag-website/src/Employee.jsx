@@ -608,7 +608,6 @@ function Employee() {
           refreshTrigger={refreshTrigger}
         />
 
-        {/* Booking calendar for vehicle inspections - temporarily hidden
         <h2 style={{ marginTop: '2rem', marginBottom: '1rem' }}>Your Assigned Bookings</h2>
         <BookingCalendar
           token={token}
@@ -616,7 +615,6 @@ function Employee() {
           refreshTrigger={refreshTrigger}
           apiEndpoint="/api/employee/bookings"
         />
-        */}
       </main>
 
       {/* Inspection Modal */}
