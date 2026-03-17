@@ -833,13 +833,14 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       {/* Shift Modal (Admin only) */}
       {showShiftModal && isAdmin && (
         <div className="modal-overlay" onClick={closeShiftModal}>
-          <div className="modal-content shift-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
             <h3>{editingShift ? 'Edit Shift' : 'New Shift'}</h3>
 
-            <div className="shift-form">
-              <div className="form-grid">
-                <div className="form-row">
-                  <label>Date <span className="required">*</span></label>
+            <div className="modal-form">
+              <h4 className="modal-section-title">Shift Details</h4>
+              <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Date (DD/MM/YYYY)</label>
                   <input
                     type="text"
                     value={shiftForm.date}
@@ -847,54 +848,51 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     placeholder="DD/MM/YYYY"
                   />
                 </div>
+                <div className="modal-form-group">
+                  <label>Start Time (24hr)</label>
+                  <input
+                    type="text"
+                    value={shiftForm.start_time}
+                    onChange={(e) => handleShiftFormChange('start_time', e.target.value)}
+                    placeholder="HH:MM"
+                    maxLength={5}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>End Time (24hr)</label>
+                  <input
+                    type="text"
+                    value={shiftForm.end_time}
+                    onChange={(e) => handleShiftFormChange('end_time', e.target.value)}
+                    placeholder="HH:MM"
+                    maxLength={5}
+                  />
+                </div>
+              </div>
 
-                <div className="form-row">
-                  <label>Shift Type <span className="required">*</span></label>
+              <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Shift Type</label>
                   <select
                     value={shiftForm.shift_type}
                     onChange={(e) => handleShiftFormChange('shift_type', e.target.value)}
                   >
                     <optgroup label="Part-Time Shifts">
-                      <option value="early_morning">🌙 Early Morning (03:50 - 07:00)</option>
-                      <option value="morning">🌅 Morning (07:00 - 11:00)</option>
-                      <option value="midday">☀️ Midday (11:00 - 14:00)</option>
-                      <option value="afternoon">🌤️ Afternoon (14:00 - 17:30)</option>
-                      <option value="late_afternoon">🌇 Late Afternoon (17:30 - 21:00)</option>
-                      <option value="evening">🌃 Evening (21:00 - 01:20)</option>
+                      <option value="early_morning">Early Morning (03:50 - 07:00)</option>
+                      <option value="morning">Morning (07:00 - 11:00)</option>
+                      <option value="midday">Midday (11:00 - 14:00)</option>
+                      <option value="afternoon">Afternoon (14:00 - 17:30)</option>
+                      <option value="late_afternoon">Late Afternoon (17:30 - 21:00)</option>
+                      <option value="evening">Evening (21:00 - 01:20)</option>
                     </optgroup>
                     <optgroup label="Full-Time Shifts">
-                      <option value="full_morning">🌄 Full Morning (03:50 - 14:00)</option>
-                      <option value="full_afternoon">🏙️ Full Afternoon (11:00 - 21:00)</option>
-                      <option value="full_evening">🌆 Full Evening (17:30 - 01:20)</option>
+                      <option value="full_morning">Full Morning (03:50 - 14:00)</option>
+                      <option value="full_afternoon">Full Afternoon (11:00 - 21:00)</option>
+                      <option value="full_evening">Full Evening (17:30 - 01:20)</option>
                     </optgroup>
                   </select>
                 </div>
-
-                <div className="form-row">
-                  <label>Start Time <span className="required">*</span></label>
-                  <input
-                    type="text"
-                    value={shiftForm.start_time}
-                    onChange={(e) => handleShiftFormChange('start_time', e.target.value)}
-                    placeholder="HH:MM (e.g. 07:00)"
-                    maxLength={5}
-                    className="time-input-24hr"
-                  />
-                </div>
-
-                <div className="form-row">
-                  <label>End Time <span className="required">*</span></label>
-                  <input
-                    type="text"
-                    value={shiftForm.end_time}
-                    onChange={(e) => handleShiftFormChange('end_time', e.target.value)}
-                    placeholder="HH:MM (e.g. 14:00)"
-                    maxLength={5}
-                    className="time-input-24hr"
-                  />
-                </div>
-
-                <div className="form-row">
+                <div className="modal-form-group">
                   <label>Assign Staff</label>
                   <select
                     value={shiftForm.staff_id}
@@ -908,8 +906,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     ))}
                   </select>
                 </div>
-
-                <div className="form-row">
+                <div className="modal-form-group">
                   <label>Link to Booking</label>
                   <select
                     value={shiftForm.booking_id}
@@ -927,7 +924,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                           <optgroup label="Drop-offs">
                             {dateBookings.filter(b => b.type === 'dropoff').map((b) => (
                               <option key={`dropoff-${b.id}`} value={b.id}>
-                                {b.time} - {b.reference} - {b.customer_name} ({b.airline} → {b.destination})
+                                {b.time} - {b.reference} - {b.customer_name}
                               </option>
                             ))}
                           </optgroup>
@@ -936,7 +933,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                           <optgroup label="Pick-ups">
                             {dateBookings.filter(b => b.type === 'pickup').map((b) => (
                               <option key={`pickup-${b.id}`} value={b.id}>
-                                {b.time} - {b.reference} - {b.customer_name} ({b.airline} ← {b.origin})
+                                {b.time} - {b.reference} - {b.customer_name}
                               </option>
                             ))}
                           </optgroup>
@@ -947,7 +944,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 </div>
               </div>
 
-              <div className="form-row form-row-full">
+              <div className="modal-form-group">
                 <label>Notes</label>
                 <textarea
                   value={shiftForm.notes}
@@ -959,11 +956,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
             </div>
 
             <div className="modal-actions">
-              <button className="modal-cancel-btn" onClick={closeShiftModal} disabled={savingShift}>
+              <button className="modal-btn modal-btn-secondary" onClick={closeShiftModal} disabled={savingShift}>
                 Cancel
               </button>
-              <button className="modal-save-btn" onClick={saveShift} disabled={savingShift}>
-                {savingShift ? 'Saving...' : editingShift ? 'Update Shift' : 'Create Shift'}
+              <button className="modal-btn modal-btn-primary" onClick={saveShift} disabled={savingShift}>
+                {savingShift ? 'Saving...' : editingShift ? 'Save Changes' : 'Create Shift'}
               </button>
             </div>
           </div>

@@ -670,7 +670,7 @@
   color: #fff;
 }
 
-/* Modal Styles - Light theme like Admin Edit Booking */
+/* Modal Styles - Matching Admin Edit Booking modal */
 .roster-calendar .modal-overlay {
   position: fixed;
   top: 0;
@@ -692,126 +692,99 @@
   max-height: 90vh;
   overflow-y: auto;
   color: #333;
+  max-width: 500px;
+  width: 100%;
 }
 
-/* Shift Modal - Wide */
-.roster-calendar .shift-modal {
-  width: 900px;
-  max-width: 95vw;
+.roster-calendar .modal-content-wide {
+  max-width: 700px;
 }
 
-.roster-calendar .shift-modal h3 {
-  margin: 0 0 12px 0;
-  padding: 24px 24px 0 24px;
-  font-size: 22px;
+.roster-calendar .modal-content h3 {
+  margin: 0;
+  padding: 24px 24px 16px 24px;
+  font-size: 20px;
   font-weight: 600;
   color: #1a1a2e;
+  border-bottom: 1px solid #eee;
 }
 
-/* Shift Form */
-.shift-form {
+/* Modal Form - Matching Admin style */
+.roster-calendar .modal-form {
   padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
 }
 
-.form-grid {
+.roster-calendar .modal-section-title {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.roster-calendar .modal-form-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
-.form-row {
+.roster-calendar .modal-form-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
-.form-row-full {
-  grid-column: 1 / -1;
-}
-
-.form-row label {
+.roster-calendar .modal-form-group label {
   display: block;
   font-weight: 500;
+  margin-bottom: 8px;
   color: #333;
-  font-size: 0.95rem;
+  font-size: 14px;
 }
 
-.form-row label .required {
-  color: #e74c3c;
-}
-
-.form-row input,
-.form-row select,
-.form-row textarea {
+.roster-calendar .modal-form-group input,
+.roster-calendar .modal-form-group select,
+.roster-calendar .modal-form-group textarea {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
-  font-size: 1rem;
+  font-size: 15px;
   background: #f8f9fa;
   color: #333;
   transition: all 0.2s ease;
 }
 
-/* 24-hour time input styling */
-.form-row input.time-input-24hr {
-  font-family: 'Courier New', monospace;
-  font-size: 1.1rem;
-  letter-spacing: 1px;
-  text-align: center;
-}
-
-.form-row input:hover,
-.form-row select:hover,
-.form-row textarea:hover {
-  border-color: #ccc;
-  background: #fff;
-}
-
-.form-row input:focus,
-.form-row select:focus,
-.form-row textarea:focus {
-  outline: none;
-  border-color: #f7b32b;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(247, 179, 43, 0.15);
-}
-
-.form-row textarea {
-  resize: vertical;
-  min-height: 100px;
-}
-
-.form-row select {
-  cursor: pointer;
+.roster-calendar .modal-form-group select {
   appearance: none;
   -webkit-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23666' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 14px center;
   padding-right: 36px;
+  cursor: pointer;
 }
 
-.form-row-double {
-  flex-direction: row;
-  gap: 16px;
+.roster-calendar .modal-form-group input:hover,
+.roster-calendar .modal-form-group select:hover,
+.roster-calendar .modal-form-group textarea:hover {
+  border-color: #ccc;
+  background: #fff;
 }
 
-.form-row-double .form-field {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.roster-calendar .modal-form-group input:focus,
+.roster-calendar .modal-form-group select:focus,
+.roster-calendar .modal-form-group textarea:focus {
+  outline: none;
+  border-color: #f7b32b;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(247, 179, 43, 0.15);
 }
 
-.form-row-double .form-field label {
-  display: block;
-  font-weight: 500;
-  color: #333;
-  font-size: 0.95rem;
+.roster-calendar .modal-form-group textarea {
+  resize: vertical;
+  min-height: 80px;
 }
 
 /* Modal Actions */
@@ -819,51 +792,44 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 20px 24px;
+  padding: 16px 24px;
   border-top: 1px solid #eee;
   background: #fafafa;
   border-radius: 0 0 12px 12px;
 }
 
-.roster-calendar .modal-cancel-btn {
-  background: #fff;
-  border: 1px solid #ddd;
-  color: #666;
+.roster-calendar .modal-btn {
   padding: 12px 24px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 15px;
   font-weight: 500;
   transition: all 0.2s;
+  border: none;
 }
 
-.roster-calendar .modal-cancel-btn:hover:not(:disabled) {
+.roster-calendar .modal-btn-secondary {
+  background: #fff;
+  border: 1px solid #ddd;
+  color: #666;
+}
+
+.roster-calendar .modal-btn-secondary:hover:not(:disabled) {
   background: #f5f5f5;
   border-color: #ccc;
 }
 
-.roster-calendar .modal-cancel-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.roster-calendar .modal-save-btn {
+.roster-calendar .modal-btn-primary {
   background: #f7b32b;
-  border: none;
   color: #1a1a2e;
-  padding: 12px 28px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 1rem;
   font-weight: 600;
-  transition: all 0.2s;
 }
 
-.roster-calendar .modal-save-btn:hover:not(:disabled) {
+.roster-calendar .modal-btn-primary:hover:not(:disabled) {
   background: #e5a320;
 }
 
-.roster-calendar .modal-save-btn:disabled {
+.roster-calendar .modal-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -917,9 +883,8 @@
 
 /* Responsive - Tablet (iPad) */
 @media (max-width: 1024px) {
-  .roster-calendar .shift-modal {
-    width: 90vw;
-    max-width: 700px;
+  .roster-calendar .modal-content-wide {
+    max-width: 90vw;
   }
 }
 
@@ -964,38 +929,30 @@
     gap: 8px;
   }
 
-  .form-row-double {
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .form-grid {
+  .roster-calendar .modal-form-row {
     grid-template-columns: 1fr;
   }
 
-  .roster-calendar .shift-modal {
-    width: 95vw;
-    max-width: none;
-    margin: 10px;
+  .roster-calendar .modal-content-wide {
+    max-width: 95vw;
   }
 
   .roster-calendar .modal-overlay {
     padding: 10px;
   }
 
-  .shift-form {
+  .roster-calendar .modal-form {
     padding: 16px;
-    gap: 16px;
   }
 
-  .roster-calendar .shift-modal h3 {
-    padding: 16px 16px 0 16px;
+  .roster-calendar .modal-content h3 {
+    padding: 16px;
     font-size: 18px;
   }
 
-  .form-row input,
-  .form-row select,
-  .form-row textarea {
+  .roster-calendar .modal-form-group input,
+  .roster-calendar .modal-form-group select,
+  .roster-calendar .modal-form-group textarea {
     padding: 14px 12px;
     font-size: 16px; /* Prevents zoom on iOS */
   }
@@ -1005,8 +962,7 @@
     gap: 10px;
   }
 
-  .roster-calendar .modal-cancel-btn,
-  .roster-calendar .modal-save-btn {
+  .roster-calendar .modal-btn {
     padding: 14px 20px;
     font-size: 16px;
   }
@@ -1029,9 +985,8 @@
     padding: 2px 3px;
   }
 
-  .shift-form {
+  .roster-calendar .modal-form {
     padding: 12px;
-    gap: 14px;
   }
 
   .roster-calendar .modal-actions {
@@ -1039,18 +994,12 @@
     flex-direction: column;
   }
 
-  .roster-calendar .modal-cancel-btn,
-  .roster-calendar .modal-save-btn {
+  .roster-calendar .modal-btn {
     width: 100%;
     justify-content: center;
   }
 
-  .roster-calendar .shift-modal h3 {
-    padding: 12px 12px 0 12px;
-  }
-
-  .modal-cancel-btn,
-  .modal-save-btn {
-    width: 100%;
+  .roster-calendar .modal-content h3 {
+    padding: 12px;
   }
 }
