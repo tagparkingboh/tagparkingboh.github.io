@@ -805,7 +805,15 @@ async def get_employee_shifts(
     Returns only the logged-in user's shifts.
     Works for both employees and admins viewing their own shifts.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Employee shifts request: user_id={current_user.id}, email={current_user.email}")
+
     query = db.query(RosterShift).filter(RosterShift.staff_id == current_user.id)
+
+    # Debug: count all shifts for this user
+    all_user_shifts = query.count()
+    logger.info(f"Total shifts for user {current_user.id}: {all_user_shifts}")
 
     # Apply date filters
     if date_from and date_to:
