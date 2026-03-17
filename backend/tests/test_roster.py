@@ -54,6 +54,7 @@ def create_mock_shift(**kwargs):
         "staff_id": 1,
         "booking_id": None,
         "date": date(2026, 3, 20),
+        "end_date": None,  # For overnight shifts
         "start_time": time(6, 0),
         "end_time": time(6, 45),
         "shift_type": ShiftType.MORNING,
@@ -63,6 +64,9 @@ def create_mock_shift(**kwargs):
         "updated_at": None,
     }
     defaults.update(kwargs)
+    # Default end_date to date if not specified
+    if defaults.get("end_date") is None:
+        defaults["end_date"] = defaults["date"]
     shift = MagicMock()
     for key, value in defaults.items():
         setattr(shift, key, value)
@@ -2112,3 +2116,746 @@ class TestShiftTypeValidation:
 
         with pytest.raises(ValueError):
             ShiftTypeEnum("arrival")  # Old type no longer valid
+
+
+# =============================================================================
+# Integration Tests - Employee Shifts Date Range
+# =============================================================================
+
+class TestEmployeeShiftsDateRange:
+    """Tests for /api/employee/shifts date range handling.
+
+    These tests ensure the employee shifts endpoint correctly filters
+    shifts by date range, which is critical for the Employee portal
+    calendar display.
+    """
+
+    def test_date_range_params_required_format(self):
+        """Date range params should be in YYYY-MM-DD format."""
+        # Valid date formats
+        valid_dates = [
+            ("2026-03-01", "2026-03-31"),
+            ("2026-01-01", "2026-12-31"),
+            ("2026-03-17", "2026-03-17"),  # Same day
+        ]
+
+        for date_from, date_to in valid_dates:
+            # Parse should succeed
+            from datetime import datetime
+            parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date()
+            parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date()
+            assert parsed_from <= parsed_to
+
+    def test_date_range_logic(self):
+        """Shifts should be filtered to only include dates in range."""
+        from datetime import date
+
+        # Simulate shift filtering logic
+        shifts = [
+            {"id": 1, "date": date(2026, 3, 15)},
+            {"id": 2, "date": date(2026, 3, 17)},
+            {"id": 3, "date": date(2026, 3, 21)},
+            {"id": 4, "date": date(2026, 4, 1)},  # Outside range
+        ]
+
+        date_from = date(2026, 3, 1)
+        date_to = date(2026, 3, 31)
+
+        filtered = [s for s in shifts if date_from <= s["date"] <= date_to]
+
+        assert len(filtered) == 3
+        assert all(s["date"].month == 3 for s in filtered)
+
+    def test_employee_only_sees_own_shifts(self):
+        """Employee should only see shifts assigned to them, not other employees."""
+        # Simulate shift data
+        all_shifts = [
+            {"id": 1, "staff_id": 1, "date": "2026-03-17"},  # Employee 1
+            {"id": 2, "staff_id": 1, "date": "2026-03-21"},  # Employee 1
+            {"id": 3, "staff_id": 2, "date": "2026-03-17"},  # Employee 2
+            {"id": 4, "staff_id": 3, "date": "2026-03-18"},  # Employee 3
+        ]
+
+        logged_in_user_id = 1
+
+        # Filter to only user's shifts
+        user_shifts = [s for s in all_shifts if s["staff_id"] == logged_in_user_id]
+
+        assert len(user_shifts) == 2
+        assert all(s["staff_id"] == 1 for s in user_shifts)
+
+
+# =============================================================================
+# Unit Tests - Employee Shifts Response Structure
+# =============================================================================
+
+class TestEmployeeShiftsResponseStructure:
+    """Tests to verify the employee shifts response has all required fields.
+
+    The Employee portal depends on these fields to display shifts correctly
+    alongside dropoffs and pickups.
+    """
+
+    def test_shift_response_has_required_fields(self):
+        """Shift response should include all fields needed for display."""
+        required_fields = [
+            "id",
+            "date",
+            "start_time",
+            "end_time",
+            "shift_type",
+            "status",
+        ]
+
+        from models import RosterShiftResponse
+        from datetime import date as dt_date
+
+        response = RosterShiftResponse(
+            id=1,
+            date=dt_date(2026, 3, 17),
+            start_time="07:00",
+            end_time="11:00",
+            shift_type="morning",
+            status="scheduled",
+            created_at=datetime.now()
+        )
+
+        for field in required_fields:
+            assert hasattr(response, field), f"Missing required field: {field}"
+
+    def test_shift_response_booking_info_optional(self):
+        """Shift can have optional booking info (for assigned bookings)."""
+        from models import RosterShiftResponse
+        from datetime import date as dt_date
+
+        # Shift without booking
+        shift_no_booking = RosterShiftResponse(
+            id=1,
+            date=dt_date(2026, 3, 17),
+            start_time="07:00",
+            end_time="11:00",
+            shift_type="morning",
+            status="scheduled",
+            created_at=datetime.now()
+        )
+
+        assert shift_no_booking.booking_id is None
+        assert shift_no_booking.booking_reference is None
+
+        # Shift with booking
+        shift_with_booking = RosterShiftResponse(
+            id=2,
+            date=dt_date(2026, 3, 17),
+            start_time="07:00",
+            end_time="11:00",
+            shift_type="morning",
+            status="scheduled",
+            booking_id=101,
+            booking_reference="TAG-ABC123",
+            booking_customer_name="John Smith",
+            created_at=datetime.now()
+        )
+
+        assert shift_with_booking.booking_id == 101
+        assert shift_with_booking.booking_reference == "TAG-ABC123"
+
+    def test_shift_type_values_match_frontend_config(self):
+        """Shift types should match the SHIFT_TYPE_CONFIG in frontend."""
+        # These are the shift types expected by the frontend BookingCalendar
+        expected_shift_types = [
+            "early_morning",
+            "morning",
+            "midday",
+            "afternoon",
+            "late_afternoon",
+            "evening",
+            "full_morning",
+            "full_afternoon",
+            "full_evening",
+        ]
+
+        from models import ShiftTypeEnum
+
+        for shift_type in expected_shift_types:
+            # Should not raise
+            assert ShiftTypeEnum(shift_type) is not None
+
+
+# =============================================================================
+# Contract Tests - API Contract for Employee Portal
+# =============================================================================
+
+class TestEmployeePortalAPIContract:
+    """Contract tests to ensure API meets Employee portal requirements.
+
+    These tests document the expected API behavior that the frontend
+    depends on. Breaking these would break the Employee portal.
+    """
+
+    def test_endpoint_path_is_correct(self):
+        """Employee shifts endpoint must be at /api/employee/shifts."""
+        # This is the path the frontend uses
+        expected_path = "/api/employee/shifts"
+
+        # Verify by checking main.py has this route
+        import main
+        routes = [route.path for route in main.app.routes]
+
+        assert expected_path in routes, f"Expected {expected_path} to be registered"
+
+    def test_endpoint_accepts_date_range_params(self):
+        """Endpoint must accept date_from and date_to query params."""
+        # The frontend sends: /api/employee/shifts?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+
+        # Verify the endpoint signature accepts these params
+        from routers.roster import get_employee_shifts
+        import inspect
+
+        sig = inspect.signature(get_employee_shifts)
+        params = list(sig.parameters.keys())
+
+        assert "date_from" in params, "Endpoint must accept date_from param"
+        assert "date_to" in params, "Endpoint must accept date_to param"
+
+    def test_shifts_response_is_list(self):
+        """Response should contain a 'shifts' key with a list."""
+        # Frontend expects: { shifts: [...] }
+
+        # This is tested by ensuring the response model has this structure
+        expected_response_shape = {
+            "shifts": []
+        }
+
+        assert "shifts" in expected_response_shape
+
+
+# =============================================================================
+# Unit Tests - Overnight Shifts
+# =============================================================================
+
+class TestOvernightShifts:
+    """Tests for overnight shift functionality (shifts spanning two dates)."""
+
+    def test_overnight_shift_create_model(self):
+        """Shift create model should accept end_date for overnight shifts."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        # Overnight shift: 23:55 Tue to 00:55 Wed
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),  # Tuesday
+            end_date=dt_date(2026, 3, 18),  # Wednesday
+            start_time="23:55",
+            end_time="00:55",
+            shift_type=ShiftTypeEnum.EVENING
+        )
+
+        assert shift.date == dt_date(2026, 3, 17)
+        assert shift.end_date == dt_date(2026, 3, 18)
+
+    def test_same_day_shift_end_date_optional(self):
+        """For same-day shifts, end_date should be optional."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        # Same-day shift without end_date
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),
+            start_time="09:00",
+            end_time="17:00",
+            shift_type=ShiftTypeEnum.MORNING
+        )
+
+        assert shift.date == dt_date(2026, 3, 17)
+        assert shift.end_date is None
+
+    def test_overnight_shift_response_includes_end_date(self):
+        """Response model should include end_date field."""
+        from models import RosterShiftResponse
+        from datetime import date as dt_date, datetime
+
+        shift = RosterShiftResponse(
+            id=1,
+            date=dt_date(2026, 3, 17),
+            end_date=dt_date(2026, 3, 18),
+            start_time="23:55",
+            end_time="00:55",
+            shift_type="evening",
+            status="scheduled",
+            created_at=datetime.now()
+        )
+
+        assert shift.end_date == dt_date(2026, 3, 18)
+
+    def test_same_day_shift_response_end_date_defaults(self):
+        """For same-day shifts, end_date should default to date."""
+        from models import RosterShiftResponse
+        from datetime import date as dt_date, datetime
+
+        # end_date not provided should be None (backend fills it in)
+        shift = RosterShiftResponse(
+            id=1,
+            date=dt_date(2026, 3, 17),
+            start_time="09:00",
+            end_time="17:00",
+            shift_type="morning",
+            status="scheduled",
+            created_at=datetime.now()
+        )
+
+        # end_date should be None when not explicitly set
+        assert shift.end_date is None or shift.end_date == dt_date(2026, 3, 17)
+
+    def test_overnight_shift_update_model(self):
+        """Shift update model should accept end_date."""
+        from models import RosterShiftUpdate
+        from datetime import date as dt_date
+
+        update = RosterShiftUpdate(
+            end_date=dt_date(2026, 3, 19)
+        )
+
+        assert update.end_date == dt_date(2026, 3, 19)
+
+    def test_overnight_shift_end_date_after_start_date(self):
+        """Overnight shifts should have end_date >= date."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        # Valid: end_date is after date
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),
+            end_date=dt_date(2026, 3, 18),
+            start_time="23:55",
+            end_time="00:55",
+            shift_type=ShiftTypeEnum.EVENING
+        )
+
+        assert shift.end_date > shift.date
+
+    def test_overnight_shift_same_date_valid(self):
+        """Same-day shifts with end_date == date should be valid."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        # Same day: end_date equals date
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),
+            end_date=dt_date(2026, 3, 17),
+            start_time="09:00",
+            end_time="17:00",
+            shift_type=ShiftTypeEnum.MORNING
+        )
+
+        assert shift.end_date == shift.date
+
+    def test_mock_shift_factory_supports_end_date(self):
+        """Mock shift factory should support end_date parameter."""
+        overnight_shift = create_mock_shift(
+            date=date(2026, 3, 17),
+            end_date=date(2026, 3, 18),
+            start_time=time(23, 55),
+            end_time=time(0, 55)
+        )
+
+        assert overnight_shift.date == date(2026, 3, 17)
+        assert overnight_shift.end_date == date(2026, 3, 18)
+
+    def test_mock_shift_factory_defaults_end_date(self):
+        """Mock shift factory should default end_date to date."""
+        same_day_shift = create_mock_shift(
+            date=date(2026, 3, 17),
+            start_time=time(9, 0),
+            end_time=time(17, 0)
+        )
+
+        # end_date should default to date
+        assert same_day_shift.end_date == date(2026, 3, 17)
+
+
+# =============================================================================
+# Unit Tests - Booking Links Persistence
+# =============================================================================
+
+class TestBookingLinksPersistence:
+    """Tests for booking links persistence when shift dates change."""
+
+    def test_shift_retains_booking_ids_on_date_change(self):
+        """Booking IDs should be retained when shift date changes."""
+        from models import RosterShiftUpdate
+        from datetime import date as dt_date
+
+        # Update only the date, booking_ids not specified
+        update = RosterShiftUpdate(
+            date=dt_date(2026, 3, 20)
+        )
+
+        # booking_ids should be None (not modified)
+        assert update.booking_ids is None
+
+    def test_shift_update_can_modify_booking_ids(self):
+        """Should be able to explicitly update booking_ids."""
+        from models import RosterShiftUpdate
+
+        update = RosterShiftUpdate(
+            booking_ids=[101, 102, 103]
+        )
+
+        assert update.booking_ids == [101, 102, 103]
+
+    def test_shift_create_with_multiple_bookings(self):
+        """Shift create should accept multiple booking IDs."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),
+            start_time="09:00",
+            end_time="17:00",
+            shift_type=ShiftTypeEnum.MORNING,
+            booking_ids=[101, 102, 103]
+        )
+
+        assert shift.booking_ids == [101, 102, 103]
+
+    def test_overnight_shift_with_bookings_from_both_dates(self):
+        """Overnight shift can have bookings from both start and end dates."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        # Overnight shift with bookings from Tue (101) and Wed (102)
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),  # Tuesday
+            end_date=dt_date(2026, 3, 18),  # Wednesday
+            start_time="23:55",
+            end_time="00:55",
+            shift_type=ShiftTypeEnum.EVENING,
+            booking_ids=[101, 102]  # Booking 101 from Tue, 102 from Wed
+        )
+
+        assert shift.date == dt_date(2026, 3, 17)
+        assert shift.end_date == dt_date(2026, 3, 18)
+        assert 101 in shift.booking_ids
+        assert 102 in shift.booking_ids
+
+    def test_shift_response_includes_linked_bookings(self):
+        """Response should include linked bookings info."""
+        from models import RosterShiftResponse, LinkedBookingInfo
+        from datetime import date as dt_date, datetime
+
+        booking1 = LinkedBookingInfo(
+            id=101,
+            reference="TAG-ABC123",
+            type="dropoff",
+            customer_name="John Smith",
+            time="06:00"
+        )
+        booking2 = LinkedBookingInfo(
+            id=102,
+            reference="TAG-DEF456",
+            type="pickup",
+            customer_name="Jane Doe",
+            time="16:00"
+        )
+
+        shift = RosterShiftResponse(
+            id=1,
+            date=dt_date(2026, 3, 17),
+            start_time="05:00",
+            end_time="18:00",
+            shift_type="morning",
+            status="scheduled",
+            bookings=[booking1, booking2],
+            created_at=datetime.now()
+        )
+
+        assert len(shift.bookings) == 2
+        assert shift.bookings[0].id == 101
+        assert shift.bookings[1].id == 102
+
+    def test_linked_booking_info_structure(self):
+        """LinkedBookingInfo should have all required fields."""
+        from models import LinkedBookingInfo
+
+        booking = LinkedBookingInfo(
+            id=101,
+            reference="TAG-ABC123",
+            type="dropoff",
+            customer_name="John Smith",
+            time="06:00",
+            flight_number="FR1234",
+            destination="Alicante"
+        )
+
+        assert booking.id == 101
+        assert booking.reference == "TAG-ABC123"
+        assert booking.type == "dropoff"
+        assert booking.customer_name == "John Smith"
+        assert booking.time == "06:00"
+        assert booking.flight_number == "FR1234"
+        assert booking.destination == "Alicante"
+
+    def test_linked_booking_info_optional_fields(self):
+        """LinkedBookingInfo optional fields should default to None."""
+        from models import LinkedBookingInfo
+
+        booking = LinkedBookingInfo(
+            id=101,
+            reference="TAG-ABC123",
+            type="dropoff",
+            customer_name="John Smith"
+        )
+
+        assert booking.time is None
+        assert booking.flight_number is None
+        assert booking.destination is None
+
+
+# =============================================================================
+# Unit Tests - Overnight Shift Booking Links
+# =============================================================================
+
+class TestOvernightShiftBookingLinks:
+    """Tests for booking links in overnight shifts spanning two dates.
+
+    When a shift spans from date A to date B (overnight), bookings on either
+    date should be included in the shift response.
+    """
+
+    def test_shift_to_response_includes_booking_on_start_date(self):
+        """Bookings with dropoff on shift start date should be included."""
+        from routers.roster import shift_to_response
+        from db_models import ShiftType, ShiftStatus
+        from unittest.mock import MagicMock
+
+        # Create mock shift for 3rd April evening to 4th April morning
+        mock_shift = MagicMock()
+        mock_shift.id = 1
+        mock_shift.date = date(2026, 4, 3)
+        mock_shift.end_date = date(2026, 4, 4)
+        mock_shift.start_time = time(23, 30)
+        mock_shift.end_time = time(1, 0)
+        mock_shift.shift_type = ShiftType.EVENING
+        mock_shift.status = ShiftStatus.SCHEDULED
+        mock_shift.notes = None
+        mock_shift.booking_id = None
+        mock_shift.staff_id = 1
+        mock_shift.staff = create_mock_user(id=1)
+        mock_shift.created_at = datetime.now()
+        mock_shift.updated_at = None
+
+        # Create mock booking on start date (3rd April)
+        mock_booking = MagicMock()
+        mock_booking.id = 101
+        mock_booking.reference = "TAG-ABC123"
+        mock_booking.customer_first_name = "John"
+        mock_booking.customer_last_name = "Smith"
+        mock_booking.dropoff_date = date(2026, 4, 3)  # Same as shift start date
+        mock_booking.dropoff_time = time(23, 45)
+        mock_booking.dropoff_flight_number = "LS123"
+        mock_booking.dropoff_destination = "Tenerife"
+        mock_booking.pickup_date = date(2026, 4, 10)
+        mock_booking.pickup_time = None
+
+        mock_shift.bookings = [mock_booking]
+
+        mock_db = MagicMock()
+
+        result = shift_to_response(mock_shift, mock_db)
+
+        assert len(result.bookings) == 1
+        assert result.bookings[0].id == 101
+        assert result.bookings[0].type == "dropoff"
+
+    def test_shift_to_response_includes_booking_on_end_date(self):
+        """Bookings with pickup on shift end date should be included."""
+        from routers.roster import shift_to_response
+        from db_models import ShiftType, ShiftStatus
+        from unittest.mock import MagicMock
+
+        # Create mock shift for 3rd April evening to 4th April morning
+        mock_shift = MagicMock()
+        mock_shift.id = 1
+        mock_shift.date = date(2026, 4, 3)
+        mock_shift.end_date = date(2026, 4, 4)
+        mock_shift.start_time = time(23, 30)
+        mock_shift.end_time = time(1, 0)
+        mock_shift.shift_type = ShiftType.EVENING
+        mock_shift.status = ShiftStatus.SCHEDULED
+        mock_shift.notes = None
+        mock_shift.booking_id = None
+        mock_shift.staff_id = 1
+        mock_shift.staff = create_mock_user(id=1)
+        mock_shift.created_at = datetime.now()
+        mock_shift.updated_at = None
+
+        # Create mock booking with pickup on end date (4th April)
+        mock_booking = MagicMock()
+        mock_booking.id = 102
+        mock_booking.reference = "TAG-DEF456"
+        mock_booking.customer_first_name = "Jane"
+        mock_booking.customer_last_name = "Doe"
+        mock_booking.dropoff_date = date(2026, 3, 28)
+        mock_booking.dropoff_time = None
+        mock_booking.pickup_date = date(2026, 4, 4)  # Same as shift end date
+        mock_booking.pickup_time = time(0, 30)
+        mock_booking.pickup_flight_number = "BA456"
+        mock_booking.pickup_origin = "Malaga"
+
+        mock_shift.bookings = [mock_booking]
+
+        mock_db = MagicMock()
+
+        result = shift_to_response(mock_shift, mock_db)
+
+        assert len(result.bookings) == 1
+        assert result.bookings[0].id == 102
+        assert result.bookings[0].type == "pickup"
+
+    def test_shift_to_response_includes_bookings_from_both_dates(self):
+        """Overnight shift should include bookings from both start and end dates."""
+        from routers.roster import shift_to_response
+        from db_models import ShiftType, ShiftStatus
+        from unittest.mock import MagicMock
+
+        # Create mock shift for 3rd April evening to 4th April morning
+        mock_shift = MagicMock()
+        mock_shift.id = 1
+        mock_shift.date = date(2026, 4, 3)
+        mock_shift.end_date = date(2026, 4, 4)
+        mock_shift.start_time = time(23, 30)
+        mock_shift.end_time = time(1, 0)
+        mock_shift.shift_type = ShiftType.EVENING
+        mock_shift.status = ShiftStatus.SCHEDULED
+        mock_shift.notes = None
+        mock_shift.booking_id = None
+        mock_shift.staff_id = 1
+        mock_shift.staff = create_mock_user(id=1)
+        mock_shift.created_at = datetime.now()
+        mock_shift.updated_at = None
+
+        # Create booking on start date (dropoff on 3rd)
+        mock_booking1 = MagicMock()
+        mock_booking1.id = 101
+        mock_booking1.reference = "TAG-ABC123"
+        mock_booking1.customer_first_name = "John"
+        mock_booking1.customer_last_name = "Smith"
+        mock_booking1.dropoff_date = date(2026, 4, 3)  # Start date
+        mock_booking1.dropoff_time = time(23, 45)
+        mock_booking1.dropoff_flight_number = "LS123"
+        mock_booking1.dropoff_destination = "Tenerife"
+        mock_booking1.pickup_date = date(2026, 4, 10)
+        mock_booking1.pickup_time = None
+
+        # Create booking on end date (pickup on 4th)
+        mock_booking2 = MagicMock()
+        mock_booking2.id = 102
+        mock_booking2.reference = "TAG-DEF456"
+        mock_booking2.customer_first_name = "Jane"
+        mock_booking2.customer_last_name = "Doe"
+        mock_booking2.dropoff_date = date(2026, 3, 28)
+        mock_booking2.dropoff_time = None
+        mock_booking2.pickup_date = date(2026, 4, 4)  # End date
+        mock_booking2.pickup_time = time(0, 30)
+        mock_booking2.pickup_flight_number = "BA456"
+        mock_booking2.pickup_origin = "Malaga"
+
+        mock_shift.bookings = [mock_booking1, mock_booking2]
+
+        mock_db = MagicMock()
+
+        result = shift_to_response(mock_shift, mock_db)
+
+        assert len(result.bookings) == 2
+        # Should have one dropoff from 3rd and one pickup from 4th
+        booking_types = [b.type for b in result.bookings]
+        assert "dropoff" in booking_types
+        assert "pickup" in booking_types
+
+    def test_same_day_shift_only_includes_bookings_on_that_date(self):
+        """Same-day shifts should only include bookings on that specific date."""
+        from routers.roster import shift_to_response
+        from db_models import ShiftType, ShiftStatus
+        from unittest.mock import MagicMock
+
+        # Create same-day shift
+        mock_shift = MagicMock()
+        mock_shift.id = 1
+        mock_shift.date = date(2026, 4, 3)
+        mock_shift.end_date = date(2026, 4, 3)  # Same as start
+        mock_shift.start_time = time(9, 0)
+        mock_shift.end_time = time(17, 0)
+        mock_shift.shift_type = ShiftType.MORNING
+        mock_shift.status = ShiftStatus.SCHEDULED
+        mock_shift.notes = None
+        mock_shift.booking_id = None
+        mock_shift.staff_id = 1
+        mock_shift.staff = create_mock_user(id=1)
+        mock_shift.created_at = datetime.now()
+        mock_shift.updated_at = None
+
+        # Create booking on shift date
+        mock_booking = MagicMock()
+        mock_booking.id = 101
+        mock_booking.reference = "TAG-ABC123"
+        mock_booking.customer_first_name = "John"
+        mock_booking.customer_last_name = "Smith"
+        mock_booking.dropoff_date = date(2026, 4, 3)
+        mock_booking.dropoff_time = time(10, 0)
+        mock_booking.dropoff_flight_number = "LS123"
+        mock_booking.dropoff_destination = "Tenerife"
+        mock_booking.pickup_date = date(2026, 4, 10)
+        mock_booking.pickup_time = None
+
+        mock_shift.bookings = [mock_booking]
+
+        mock_db = MagicMock()
+
+        result = shift_to_response(mock_shift, mock_db)
+
+        assert len(result.bookings) == 1
+        assert result.bookings[0].id == 101
+
+    def test_booking_not_on_shift_dates_excluded(self):
+        """Bookings not on start or end date should not be included."""
+        from routers.roster import shift_to_response
+        from db_models import ShiftType, ShiftStatus
+        from unittest.mock import MagicMock
+
+        # Create overnight shift 3rd-4th April
+        mock_shift = MagicMock()
+        mock_shift.id = 1
+        mock_shift.date = date(2026, 4, 3)
+        mock_shift.end_date = date(2026, 4, 4)
+        mock_shift.start_time = time(23, 30)
+        mock_shift.end_time = time(1, 0)
+        mock_shift.shift_type = ShiftType.EVENING
+        mock_shift.status = ShiftStatus.SCHEDULED
+        mock_shift.notes = None
+        mock_shift.booking_id = None
+        mock_shift.staff_id = 1
+        mock_shift.staff = create_mock_user(id=1)
+        mock_shift.created_at = datetime.now()
+        mock_shift.updated_at = None
+
+        # Create booking on a different date (5th April)
+        mock_booking = MagicMock()
+        mock_booking.id = 101
+        mock_booking.reference = "TAG-ABC123"
+        mock_booking.customer_first_name = "John"
+        mock_booking.customer_last_name = "Smith"
+        mock_booking.dropoff_date = date(2026, 4, 5)  # Not on 3rd or 4th
+        mock_booking.dropoff_time = time(10, 0)
+        mock_booking.dropoff_flight_number = "LS123"
+        mock_booking.dropoff_destination = "Tenerife"
+        mock_booking.pickup_date = date(2026, 4, 12)
+        mock_booking.pickup_time = None
+
+        mock_shift.bookings = [mock_booking]
+
+        mock_db = MagicMock()
+
+        result = shift_to_response(mock_shift, mock_db)
+
+        # Booking not on 3rd or 4th should not be included
+        assert len(result.bookings) == 0

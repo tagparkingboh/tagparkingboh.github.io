@@ -75,6 +75,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     staff_id: '',
     booking_ids: [],  // Multiple bookings per shift
     date: '',
+    end_date: '',  // For overnight shifts
     start_time: '',
     end_time: '',
     shift_type: 'morning',
@@ -187,7 +188,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   }, [fetchStaff])
 
   // Fetch bookings for a specific date (for shift assignment)
-  const fetchBookingsForDate = useCallback(async (dateStr) => {
+  const fetchBookingsForDate = useCallback(async (dateStr, additionalDateStr = null) => {
     if (!token || !dateStr) {
       setDateBookings([])
       return
@@ -202,18 +203,43 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         return
       }
 
+      // Fetch bookings for start date
       const response = await fetch(`${API_URL}/api/roster/bookings-for-date?date=${isoDate}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       })
 
+      let allBookings = []
       if (response.ok) {
         const data = await response.json()
-        setDateBookings(Array.isArray(data) ? data : [])
-      } else {
-        setDateBookings([])
+        allBookings = Array.isArray(data) ? data : []
       }
+
+      // If there's an additional date (end_date for overnight shifts), fetch those too
+      if (additionalDateStr) {
+        const isoAdditionalDate = ukToISO(additionalDateStr)
+        if (isoAdditionalDate && isoAdditionalDate.length === 10 && isoAdditionalDate !== isoDate) {
+          const response2 = await fetch(`${API_URL}/api/roster/bookings-for-date?date=${isoAdditionalDate}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          })
+          if (response2.ok) {
+            const data2 = await response2.json()
+            const additionalBookings = Array.isArray(data2) ? data2 : []
+            // Merge and deduplicate by id
+            const existingIds = new Set(allBookings.map(b => b.id))
+            additionalBookings.forEach(b => {
+              if (!existingIds.has(b.id)) {
+                allBookings.push(b)
+              }
+            })
+          }
+        }
+      }
+
+      setDateBookings(allBookings)
     } catch (err) {
       console.error('Failed to load bookings for date:', err)
       setDateBookings([])
@@ -296,20 +322,44 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return grouped
   }, [bookings])
 
-  // Group shifts by date
+  // Group shifts by date (overnight shifts appear on both dates with split times)
   const shiftsByDate = useMemo(() => {
     const grouped = {}
 
     shifts.forEach((shift) => {
-      const dateKey = shift.date
-      if (!grouped[dateKey]) {
-        grouped[dateKey] = []
+      const isOvernight = shift.end_date && shift.end_date !== shift.date
+
+      // Add to start date
+      const startDateKey = shift.date
+      if (!grouped[startDateKey]) {
+        grouped[startDateKey] = []
       }
-      grouped[dateKey].push(shift)
+      grouped[startDateKey].push({
+        ...shift,
+        isOvernight,
+        shiftPart: isOvernight ? 'start' : null,
+        displayStartTime: shift.start_time,
+        displayEndTime: isOvernight ? '23:59' : shift.end_time
+      })
+
+      // If overnight, also add to end date with the remaining time
+      if (isOvernight) {
+        const endDateKey = shift.end_date
+        if (!grouped[endDateKey]) {
+          grouped[endDateKey] = []
+        }
+        grouped[endDateKey].push({
+          ...shift,
+          isOvernight: true,
+          shiftPart: 'end',
+          displayStartTime: '00:00',
+          displayEndTime: shift.end_time
+        })
+      }
     })
 
     Object.keys(grouped).forEach((date) => {
-      grouped[date].sort((a, b) => a.start_time.localeCompare(b.start_time))
+      grouped[date].sort((a, b) => (a.displayStartTime || a.start_time).localeCompare(b.displayStartTime || b.start_time))
     })
 
     return grouped
@@ -363,6 +413,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       staff_id: '',
       booking_ids: [],
       date: date || '',
+      end_date: '',
       start_time: '',
       end_time: '',
       shift_type: 'morning',
@@ -378,18 +429,21 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const openEditShiftModal = (shift) => {
     setEditingShift(shift)
     const dateUK = formatDateUK(shift.date)
+    const endDateUK = shift.end_date ? formatDateUK(shift.end_date) : ''
     // Get booking IDs from the bookings array
     const bookingIds = shift.bookings ? shift.bookings.map(b => b.id) : []
     setShiftForm({
       staff_id: shift.staff_id || '',
       booking_ids: bookingIds,
       date: dateUK,
+      end_date: endDateUK !== dateUK ? endDateUK : '',  // Only show if different from start date
       start_time: formatTime(shift.start_time),
       end_time: formatTime(shift.end_time),
       shift_type: shift.shift_type,
       notes: shift.notes || '',
     })
-    fetchBookingsForDate(dateUK)
+    // Fetch bookings for both dates if overnight shift
+    fetchBookingsForDate(dateUK, endDateUK !== dateUK ? endDateUK : null)
     setShowShiftModal(true)
   }
 
@@ -400,6 +454,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       staff_id: '',
       booking_ids: [],
       date: '',
+      end_date: '',
       start_time: '',
       end_time: '',
       shift_type: 'morning',
@@ -409,12 +464,20 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   }
 
   const handleShiftFormChange = (field, value) => {
-    setShiftForm((prev) => ({ ...prev, [field]: value }))
+    setShiftForm((prev) => {
+      const newForm = { ...prev, [field]: value }
 
-    // When date changes, fetch bookings for that date
-    if (field === 'date' && value && value.length === 10) {
-      fetchBookingsForDate(value)
-    }
+      // When date or end_date changes, fetch bookings for both dates
+      if ((field === 'date' || field === 'end_date') && value && value.length === 10) {
+        const startDate = field === 'date' ? value : prev.date
+        const endDate = field === 'end_date' ? value : prev.end_date
+        if (startDate && startDate.length === 10) {
+          fetchBookingsForDate(startDate, endDate && endDate.length === 10 ? endDate : null)
+        }
+      }
+
+      return newForm
+    })
   }
 
   const saveShift = async () => {
@@ -424,11 +487,13 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     try {
       // Convert UK date format to ISO for backend
       const isoDate = ukToISO(shiftForm.date)
+      const isoEndDate = shiftForm.end_date ? ukToISO(shiftForm.end_date) : null
 
       const payload = {
         staff_id: shiftForm.staff_id ? parseInt(shiftForm.staff_id) : null,
         booking_ids: shiftForm.booking_ids.map(id => parseInt(id)),
         date: isoDate,
+        end_date: isoEndDate,  // For overnight shifts
         start_time: shiftForm.start_time,
         end_time: shiftForm.end_time,
         shift_type: shiftForm.shift_type,
@@ -590,12 +655,20 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                               🛬 {dayBookings.pickups.length}
                             </div>
                           )}
-                          {/* Shift indicators */}
-                          {hasShifts && (
-                            <div className="day-shifts-indicator">
-                              <span className="shifts-count">{dayShifts.length} shift{dayShifts.length > 1 ? 's' : ''}</span>
+                          {/* Shift indicators with details */}
+                          {hasShifts && dayShifts.map((shift, idx) => (
+                            <div
+                              key={`${shift.id}-${shift.shiftPart || 'full'}`}
+                              className={`day-shift-badge ${shift.isOvernight ? 'overnight' : ''} ${shift.shiftPart === 'end' ? 'overnight-end' : ''}`}
+                              title={shift.staff_first_name ? `${shift.staff_first_name} ${shift.staff_last_name}` : 'Unassigned'}
+                            >
+                              <span className="shift-time-mini">
+                                {formatTime(shift.displayStartTime)}-{formatTime(shift.displayEndTime)}
+                              </span>
+                              {shift.staff_initials && <span className="shift-initials">{shift.staff_initials}</span>}
+                              {!shift.staff_initials && <span className="shift-unassigned-mini">?</span>}
                             </div>
-                          )}
+                          ))}
                         </div>
                       </>
                     )}
@@ -767,6 +840,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                           >
                             {statusConfig.label}
                           </div>
+                          {shift.isOvernight && (
+                            <div className="shift-overnight-badge" title="Overnight shift">
+                              🌙 {new Date(shift.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} → {new Date(shift.end_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            </div>
+                          )}
                         </div>
 
                         <div className="shift-card-body">
@@ -878,6 +956,16 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     placeholder="HH:MM"
                     maxLength={5}
                   />
+                </div>
+                <div className="modal-form-group">
+                  <label>End Date (overnight)</label>
+                  <input
+                    type="text"
+                    value={shiftForm.end_date}
+                    onChange={(e) => handleShiftFormChange('end_date', e.target.value)}
+                    placeholder="DD/MM/YYYY"
+                  />
+                  <small style={{ color: '#888', fontSize: '0.75rem' }}>Leave blank for same-day shifts</small>
                 </div>
               </div>
 

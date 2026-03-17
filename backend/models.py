@@ -502,7 +502,8 @@ class RosterShiftCreate(BaseModel):
     staff_id: Optional[int] = None  # Nullable = unassigned
     booking_id: Optional[int] = None  # DEPRECATED - use booking_ids
     booking_ids: Optional[List[int]] = None  # Multiple bookings per shift
-    date: date_type
+    date: date_type  # Start date
+    end_date: Optional[date_type] = None  # End date (for overnight shifts, defaults to date)
     start_time: str  # "HH:MM"
     end_time: str  # "HH:MM"
     shift_type: ShiftTypeEnum
@@ -515,7 +516,8 @@ class RosterShiftUpdate(BaseModel):
     staff_id: Optional[int] = None
     booking_id: Optional[int] = None  # DEPRECATED - use booking_ids
     booking_ids: Optional[List[int]] = None  # Multiple bookings per shift
-    date: Optional[date_type] = None
+    date: Optional[date_type] = None  # Start date
+    end_date: Optional[date_type] = None  # End date (for overnight shifts)
     start_time: Optional[str] = None  # "HH:MM"
     end_time: Optional[str] = None  # "HH:MM"
     shift_type: Optional[ShiftTypeEnum] = None
@@ -551,7 +553,8 @@ class RosterShiftResponse(BaseModel):
     booking_destination: Optional[str] = None  # destination for dropoff, origin for pickup
     # New: multiple bookings per shift
     bookings: List[LinkedBookingInfo] = []
-    date: date_type
+    date: date_type  # Start date
+    end_date: Optional[date_type] = None  # End date (for overnight shifts)
     start_time: str  # "HH:MM"
     end_time: str  # "HH:MM"
     shift_type: str
