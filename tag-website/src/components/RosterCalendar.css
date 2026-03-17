@@ -459,7 +459,7 @@
   font-family: monospace;
   font-weight: 600;
   letter-spacing: 1px;
-  color: #fff;
+  color: #fff !important;
 }
 
 /* Shift List */
