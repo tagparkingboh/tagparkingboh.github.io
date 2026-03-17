@@ -54,6 +54,7 @@ def create_mock_shift(**kwargs):
         "staff_id": 1,
         "booking_id": None,
         "date": date(2026, 3, 20),
+        "end_date": None,  # For overnight shifts
         "start_time": time(6, 0),
         "end_time": time(6, 45),
         "shift_type": ShiftType.MORNING,
@@ -63,6 +64,9 @@ def create_mock_shift(**kwargs):
         "updated_at": None,
     }
     defaults.update(kwargs)
+    # Default end_date to date if not specified
+    if defaults.get("end_date") is None:
+        defaults["end_date"] = defaults["date"]
     shift = MagicMock()
     for key, value in defaults.items():
         setattr(shift, key, value)
@@ -2323,3 +2327,147 @@ class TestEmployeePortalAPIContract:
         }
 
         assert "shifts" in expected_response_shape
+
+
+# =============================================================================
+# Unit Tests - Overnight Shifts
+# =============================================================================
+
+class TestOvernightShifts:
+    """Tests for overnight shift functionality (shifts spanning two dates)."""
+
+    def test_overnight_shift_create_model(self):
+        """Shift create model should accept end_date for overnight shifts."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        # Overnight shift: 23:55 Tue to 00:55 Wed
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),  # Tuesday
+            end_date=dt_date(2026, 3, 18),  # Wednesday
+            start_time="23:55",
+            end_time="00:55",
+            shift_type=ShiftTypeEnum.EVENING
+        )
+
+        assert shift.date == dt_date(2026, 3, 17)
+        assert shift.end_date == dt_date(2026, 3, 18)
+
+    def test_same_day_shift_end_date_optional(self):
+        """For same-day shifts, end_date should be optional."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        # Same-day shift without end_date
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),
+            start_time="09:00",
+            end_time="17:00",
+            shift_type=ShiftTypeEnum.MORNING
+        )
+
+        assert shift.date == dt_date(2026, 3, 17)
+        assert shift.end_date is None
+
+    def test_overnight_shift_response_includes_end_date(self):
+        """Response model should include end_date field."""
+        from models import RosterShiftResponse
+        from datetime import date as dt_date, datetime
+
+        shift = RosterShiftResponse(
+            id=1,
+            date=dt_date(2026, 3, 17),
+            end_date=dt_date(2026, 3, 18),
+            start_time="23:55",
+            end_time="00:55",
+            shift_type="evening",
+            status="scheduled",
+            created_at=datetime.now()
+        )
+
+        assert shift.end_date == dt_date(2026, 3, 18)
+
+    def test_same_day_shift_response_end_date_defaults(self):
+        """For same-day shifts, end_date should default to date."""
+        from models import RosterShiftResponse
+        from datetime import date as dt_date, datetime
+
+        # end_date not provided should be None (backend fills it in)
+        shift = RosterShiftResponse(
+            id=1,
+            date=dt_date(2026, 3, 17),
+            start_time="09:00",
+            end_time="17:00",
+            shift_type="morning",
+            status="scheduled",
+            created_at=datetime.now()
+        )
+
+        # end_date should be None when not explicitly set
+        assert shift.end_date is None or shift.end_date == dt_date(2026, 3, 17)
+
+    def test_overnight_shift_update_model(self):
+        """Shift update model should accept end_date."""
+        from models import RosterShiftUpdate
+        from datetime import date as dt_date
+
+        update = RosterShiftUpdate(
+            end_date=dt_date(2026, 3, 19)
+        )
+
+        assert update.end_date == dt_date(2026, 3, 19)
+
+    def test_overnight_shift_end_date_after_start_date(self):
+        """Overnight shifts should have end_date >= date."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        # Valid: end_date is after date
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),
+            end_date=dt_date(2026, 3, 18),
+            start_time="23:55",
+            end_time="00:55",
+            shift_type=ShiftTypeEnum.EVENING
+        )
+
+        assert shift.end_date > shift.date
+
+    def test_overnight_shift_same_date_valid(self):
+        """Same-day shifts with end_date == date should be valid."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        # Same day: end_date equals date
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),
+            end_date=dt_date(2026, 3, 17),
+            start_time="09:00",
+            end_time="17:00",
+            shift_type=ShiftTypeEnum.MORNING
+        )
+
+        assert shift.end_date == shift.date
+
+    def test_mock_shift_factory_supports_end_date(self):
+        """Mock shift factory should support end_date parameter."""
+        overnight_shift = create_mock_shift(
+            date=date(2026, 3, 17),
+            end_date=date(2026, 3, 18),
+            start_time=time(23, 55),
+            end_time=time(0, 55)
+        )
+
+        assert overnight_shift.date == date(2026, 3, 17)
+        assert overnight_shift.end_date == date(2026, 3, 18)
+
+    def test_mock_shift_factory_defaults_end_date(self):
+        """Mock shift factory should default end_date to date."""
+        same_day_shift = create_mock_shift(
+            date=date(2026, 3, 17),
+            start_time=time(9, 0),
+            end_time=time(17, 0)
+        )
+
+        # end_date should default to date
+        assert same_day_shift.end_date == date(2026, 3, 17)
