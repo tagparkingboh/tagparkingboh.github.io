@@ -3,23 +3,9 @@ import './BookingCalendar.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-// Shift type display config
-const SHIFT_TYPE_CONFIG = {
-  early_morning: { label: 'Early Morning', color: '#1e3a5f', icon: '🌙', time: '03:50 - 07:00' },
-  morning: { label: 'Morning', color: '#4a90e2', icon: '🌅', time: '07:00 - 11:00' },
-  midday: { label: 'Midday', color: '#f5a623', icon: '☀️', time: '11:00 - 14:00' },
-  afternoon: { label: 'Afternoon', color: '#e67e22', icon: '🌤️', time: '14:00 - 17:30' },
-  late_afternoon: { label: 'Late Afternoon', color: '#9b59b6', icon: '🌇', time: '17:30 - 21:00' },
-  evening: { label: 'Evening', color: '#2c3e50', icon: '🌃', time: '21:00 - 01:20' },
-  full_morning: { label: 'Full Morning', color: '#27ae60', icon: '🌄', time: '03:50 - 14:00' },
-  full_afternoon: { label: 'Full Afternoon', color: '#e74c3c', icon: '🏙️', time: '11:00 - 21:00' },
-  full_evening: { label: 'Full Evening', color: '#34495e', icon: '🌆', time: '17:30 - 01:20' },
-}
-
-function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpoint, showShifts = false }) {
+function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpoint }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [bookings, setBookings] = useState([])
-  const [shifts, setShifts] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedDate, setSelectedDate] = useState(null)
@@ -29,11 +15,8 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
   useEffect(() => {
     if (token) {
       fetchBookings()
-      if (showShifts) {
-        fetchShifts()
-      }
     }
-  }, [token, currentDate, refreshTrigger, showShifts])
+  }, [token, currentDate, refreshTrigger])
 
   const fetchBookings = async () => {
     setLoading(true)
@@ -56,42 +39,6 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
       setError('Network error loading bookings')
     } finally {
       setLoading(false)
-    }
-  }
-
-  const fetchShifts = async () => {
-    try {
-      const year = currentDate.getFullYear()
-      const month = currentDate.getMonth()
-
-      // Calculate date range for the current month view
-      const startDate = new Date(year, month, 1)
-      const endDate = new Date(year, month + 1, 0)
-
-      const formatDateISO = (date) => {
-        const y = date.getFullYear()
-        const m = String(date.getMonth() + 1).padStart(2, '0')
-        const d = String(date.getDate()).padStart(2, '0')
-        return `${y}-${m}-${d}`
-      }
-
-      const params = new URLSearchParams({
-        date_from: formatDateISO(startDate),
-        date_to: formatDateISO(endDate),
-      })
-
-      // Use employee endpoint for shifts
-      const response = await fetch(`${API_URL}/api/employee/shifts?${params}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setShifts(data.shifts || [])
-      }
-    } catch (err) {
-      console.error('Error fetching shifts:', err)
     }
   }
 
@@ -159,7 +106,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
       if (booking.dropoff_date) {
         const dropoffKey = booking.dropoff_date
         if (!grouped[dropoffKey]) {
-          grouped[dropoffKey] = { dropoffs: [], pickups: [], shifts: [] }
+          grouped[dropoffKey] = { dropoffs: [], pickups: [] }
         }
         grouped[dropoffKey].dropoffs.push(booking)
       }
@@ -168,26 +115,14 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
       if (booking.pickup_date) {
         const pickupKey = booking.pickup_date
         if (!grouped[pickupKey]) {
-          grouped[pickupKey] = { dropoffs: [], pickups: [], shifts: [] }
+          grouped[pickupKey] = { dropoffs: [], pickups: [] }
         }
         grouped[pickupKey].pickups.push(booking)
       }
     })
 
-    // Add shifts to grouped data
-    if (showShifts) {
-      shifts.forEach(shift => {
-        if (shift.date) {
-          if (!grouped[shift.date]) {
-            grouped[shift.date] = { dropoffs: [], pickups: [], shifts: [] }
-          }
-          grouped[shift.date].shifts.push(shift)
-        }
-      })
-    }
-
     return grouped
-  }, [bookings, shifts, showShifts])
+  }, [bookings])
 
   // Format date key for lookup
   const getDateKey = (day) => {
@@ -201,7 +136,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
   // Get bookings for a specific day
   const getBookingsForDay = (day) => {
     const dateKey = getDateKey(day)
-    return bookingsByDate[dateKey] || { dropoffs: [], pickups: [], shifts: [] }
+    return bookingsByDate[dateKey] || { dropoffs: [], pickups: [] }
   }
 
   // Check if date is today
@@ -287,19 +222,18 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                 const dayBookings = getBookingsForDay(day)
                 const hasDropoffs = dayBookings.dropoffs.length > 0
                 const hasPickups = dayBookings.pickups.length > 0
-                const hasShifts = dayBookings.shifts?.length > 0
-                const hasContent = hasDropoffs || hasPickups || hasShifts
+                const hasBookings = hasDropoffs || hasPickups
 
                 return (
                   <div
                     key={dayIndex}
-                    className={`calendar-day ${!day ? 'empty' : ''} ${isToday(day) ? 'today' : ''} ${isSelected(day) ? 'selected' : ''} ${hasContent ? 'has-bookings' : ''}`}
+                    className={`calendar-day ${!day ? 'empty' : ''} ${isToday(day) ? 'today' : ''} ${isSelected(day) ? 'selected' : ''} ${hasBookings ? 'has-bookings' : ''}`}
                     onClick={() => day && setSelectedDate(getDateKey(day))}
                   >
                     {day && (
                       <>
                         <span className="day-number">{day}</span>
-                        {hasContent && (
+                        {hasBookings && (
                           <div className="day-badges">
                             {hasDropoffs && (
                               <span className="badge dropoff" title="Drop-offs">
@@ -309,11 +243,6 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                             {hasPickups && (
                               <span className="badge pickup" title="Pick-ups">
                                 🛬 {dayBookings.pickups.length}
-                              </span>
-                            )}
-                            {hasShifts && (
-                              <span className="badge shift" title="Shifts">
-                                👷 {dayBookings.shifts.length}
                               </span>
                             )}
                           </div>
@@ -439,50 +368,9 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
               </div>
             )}
 
-            {/* Shifts */}
-            {showShifts && selectedDayBookings.shifts?.length > 0 && (
-              <div className="detail-section">
-                <h4 className="detail-section-title shift">
-                  👷 Shifts ({selectedDayBookings.shifts.length})
-                </h4>
-                <div className="detail-bookings">
-                  {selectedDayBookings.shifts
-                    .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
-                    .map(shift => {
-                      const shiftConfig = SHIFT_TYPE_CONFIG[shift.shift_type] || { label: shift.shift_type, icon: '📋' }
-                      return (
-                        <div key={shift.id} className="detail-booking-card shift-card" style={{ borderLeftColor: shiftConfig.color }}>
-                          <div className="booking-header-row">
-                            <div className="booking-time">
-                              {shiftConfig.icon} {shiftConfig.label}
-                            </div>
-                            <div className="booking-flight">
-                              {formatTime(shift.start_time)} - {formatTime(shift.end_time)}
-                            </div>
-                            <div className="booking-destination">
-                              {shift.status && <span className="shift-status">{shift.status}</span>}
-                            </div>
-                          </div>
-                          {shift.bookings && shift.bookings.length > 0 && (
-                            <div className="booking-details-row">
-                              Assigned: {shift.bookings.map(b => b.reference).join(', ')}
-                            </div>
-                          )}
-                          {shift.notes && (
-                            <div className="booking-details-row shift-notes">
-                              {shift.notes}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                </div>
-              </div>
-            )}
-
-            {/* No content message */}
-            {selectedDayBookings.dropoffs.length === 0 && selectedDayBookings.pickups.length === 0 && (!showShifts || selectedDayBookings.shifts?.length === 0) && (
-              <p className="no-bookings">No bookings or shifts for this day</p>
+            {/* No bookings message */}
+            {selectedDayBookings.dropoffs.length === 0 && selectedDayBookings.pickups.length === 0 && (
+              <p className="no-bookings">No bookings for this day</p>
             )}
           </div>
         </div>
