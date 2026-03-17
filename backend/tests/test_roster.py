@@ -2609,3 +2609,253 @@ class TestBookingLinksPersistence:
         assert booking.time is None
         assert booking.flight_number is None
         assert booking.destination is None
+
+
+# =============================================================================
+# Unit Tests - Overnight Shift Booking Links
+# =============================================================================
+
+class TestOvernightShiftBookingLinks:
+    """Tests for booking links in overnight shifts spanning two dates.
+
+    When a shift spans from date A to date B (overnight), bookings on either
+    date should be included in the shift response.
+    """
+
+    def test_shift_to_response_includes_booking_on_start_date(self):
+        """Bookings with dropoff on shift start date should be included."""
+        from routers.roster import shift_to_response
+        from db_models import ShiftType, ShiftStatus
+        from unittest.mock import MagicMock
+
+        # Create mock shift for 3rd April evening to 4th April morning
+        mock_shift = MagicMock()
+        mock_shift.id = 1
+        mock_shift.date = date(2026, 4, 3)
+        mock_shift.end_date = date(2026, 4, 4)
+        mock_shift.start_time = time(23, 30)
+        mock_shift.end_time = time(1, 0)
+        mock_shift.shift_type = ShiftType.EVENING
+        mock_shift.status = ShiftStatus.SCHEDULED
+        mock_shift.notes = None
+        mock_shift.booking_id = None
+        mock_shift.staff_id = 1
+        mock_shift.staff = create_mock_user(id=1)
+        mock_shift.created_at = datetime.now()
+        mock_shift.updated_at = None
+
+        # Create mock booking on start date (3rd April)
+        mock_booking = MagicMock()
+        mock_booking.id = 101
+        mock_booking.reference = "TAG-ABC123"
+        mock_booking.customer_first_name = "John"
+        mock_booking.customer_last_name = "Smith"
+        mock_booking.dropoff_date = date(2026, 4, 3)  # Same as shift start date
+        mock_booking.dropoff_time = time(23, 45)
+        mock_booking.dropoff_flight_number = "LS123"
+        mock_booking.dropoff_destination = "Tenerife"
+        mock_booking.pickup_date = date(2026, 4, 10)
+        mock_booking.pickup_time = None
+
+        mock_shift.bookings = [mock_booking]
+
+        mock_db = MagicMock()
+
+        result = shift_to_response(mock_shift, mock_db)
+
+        assert len(result.bookings) == 1
+        assert result.bookings[0].id == 101
+        assert result.bookings[0].type == "dropoff"
+
+    def test_shift_to_response_includes_booking_on_end_date(self):
+        """Bookings with pickup on shift end date should be included."""
+        from routers.roster import shift_to_response
+        from db_models import ShiftType, ShiftStatus
+        from unittest.mock import MagicMock
+
+        # Create mock shift for 3rd April evening to 4th April morning
+        mock_shift = MagicMock()
+        mock_shift.id = 1
+        mock_shift.date = date(2026, 4, 3)
+        mock_shift.end_date = date(2026, 4, 4)
+        mock_shift.start_time = time(23, 30)
+        mock_shift.end_time = time(1, 0)
+        mock_shift.shift_type = ShiftType.EVENING
+        mock_shift.status = ShiftStatus.SCHEDULED
+        mock_shift.notes = None
+        mock_shift.booking_id = None
+        mock_shift.staff_id = 1
+        mock_shift.staff = create_mock_user(id=1)
+        mock_shift.created_at = datetime.now()
+        mock_shift.updated_at = None
+
+        # Create mock booking with pickup on end date (4th April)
+        mock_booking = MagicMock()
+        mock_booking.id = 102
+        mock_booking.reference = "TAG-DEF456"
+        mock_booking.customer_first_name = "Jane"
+        mock_booking.customer_last_name = "Doe"
+        mock_booking.dropoff_date = date(2026, 3, 28)
+        mock_booking.dropoff_time = None
+        mock_booking.pickup_date = date(2026, 4, 4)  # Same as shift end date
+        mock_booking.pickup_time = time(0, 30)
+        mock_booking.pickup_flight_number = "BA456"
+        mock_booking.pickup_origin = "Malaga"
+
+        mock_shift.bookings = [mock_booking]
+
+        mock_db = MagicMock()
+
+        result = shift_to_response(mock_shift, mock_db)
+
+        assert len(result.bookings) == 1
+        assert result.bookings[0].id == 102
+        assert result.bookings[0].type == "pickup"
+
+    def test_shift_to_response_includes_bookings_from_both_dates(self):
+        """Overnight shift should include bookings from both start and end dates."""
+        from routers.roster import shift_to_response
+        from db_models import ShiftType, ShiftStatus
+        from unittest.mock import MagicMock
+
+        # Create mock shift for 3rd April evening to 4th April morning
+        mock_shift = MagicMock()
+        mock_shift.id = 1
+        mock_shift.date = date(2026, 4, 3)
+        mock_shift.end_date = date(2026, 4, 4)
+        mock_shift.start_time = time(23, 30)
+        mock_shift.end_time = time(1, 0)
+        mock_shift.shift_type = ShiftType.EVENING
+        mock_shift.status = ShiftStatus.SCHEDULED
+        mock_shift.notes = None
+        mock_shift.booking_id = None
+        mock_shift.staff_id = 1
+        mock_shift.staff = create_mock_user(id=1)
+        mock_shift.created_at = datetime.now()
+        mock_shift.updated_at = None
+
+        # Create booking on start date (dropoff on 3rd)
+        mock_booking1 = MagicMock()
+        mock_booking1.id = 101
+        mock_booking1.reference = "TAG-ABC123"
+        mock_booking1.customer_first_name = "John"
+        mock_booking1.customer_last_name = "Smith"
+        mock_booking1.dropoff_date = date(2026, 4, 3)  # Start date
+        mock_booking1.dropoff_time = time(23, 45)
+        mock_booking1.dropoff_flight_number = "LS123"
+        mock_booking1.dropoff_destination = "Tenerife"
+        mock_booking1.pickup_date = date(2026, 4, 10)
+        mock_booking1.pickup_time = None
+
+        # Create booking on end date (pickup on 4th)
+        mock_booking2 = MagicMock()
+        mock_booking2.id = 102
+        mock_booking2.reference = "TAG-DEF456"
+        mock_booking2.customer_first_name = "Jane"
+        mock_booking2.customer_last_name = "Doe"
+        mock_booking2.dropoff_date = date(2026, 3, 28)
+        mock_booking2.dropoff_time = None
+        mock_booking2.pickup_date = date(2026, 4, 4)  # End date
+        mock_booking2.pickup_time = time(0, 30)
+        mock_booking2.pickup_flight_number = "BA456"
+        mock_booking2.pickup_origin = "Malaga"
+
+        mock_shift.bookings = [mock_booking1, mock_booking2]
+
+        mock_db = MagicMock()
+
+        result = shift_to_response(mock_shift, mock_db)
+
+        assert len(result.bookings) == 2
+        # Should have one dropoff from 3rd and one pickup from 4th
+        booking_types = [b.type for b in result.bookings]
+        assert "dropoff" in booking_types
+        assert "pickup" in booking_types
+
+    def test_same_day_shift_only_includes_bookings_on_that_date(self):
+        """Same-day shifts should only include bookings on that specific date."""
+        from routers.roster import shift_to_response
+        from db_models import ShiftType, ShiftStatus
+        from unittest.mock import MagicMock
+
+        # Create same-day shift
+        mock_shift = MagicMock()
+        mock_shift.id = 1
+        mock_shift.date = date(2026, 4, 3)
+        mock_shift.end_date = date(2026, 4, 3)  # Same as start
+        mock_shift.start_time = time(9, 0)
+        mock_shift.end_time = time(17, 0)
+        mock_shift.shift_type = ShiftType.MORNING
+        mock_shift.status = ShiftStatus.SCHEDULED
+        mock_shift.notes = None
+        mock_shift.booking_id = None
+        mock_shift.staff_id = 1
+        mock_shift.staff = create_mock_user(id=1)
+        mock_shift.created_at = datetime.now()
+        mock_shift.updated_at = None
+
+        # Create booking on shift date
+        mock_booking = MagicMock()
+        mock_booking.id = 101
+        mock_booking.reference = "TAG-ABC123"
+        mock_booking.customer_first_name = "John"
+        mock_booking.customer_last_name = "Smith"
+        mock_booking.dropoff_date = date(2026, 4, 3)
+        mock_booking.dropoff_time = time(10, 0)
+        mock_booking.dropoff_flight_number = "LS123"
+        mock_booking.dropoff_destination = "Tenerife"
+        mock_booking.pickup_date = date(2026, 4, 10)
+        mock_booking.pickup_time = None
+
+        mock_shift.bookings = [mock_booking]
+
+        mock_db = MagicMock()
+
+        result = shift_to_response(mock_shift, mock_db)
+
+        assert len(result.bookings) == 1
+        assert result.bookings[0].id == 101
+
+    def test_booking_not_on_shift_dates_excluded(self):
+        """Bookings not on start or end date should not be included."""
+        from routers.roster import shift_to_response
+        from db_models import ShiftType, ShiftStatus
+        from unittest.mock import MagicMock
+
+        # Create overnight shift 3rd-4th April
+        mock_shift = MagicMock()
+        mock_shift.id = 1
+        mock_shift.date = date(2026, 4, 3)
+        mock_shift.end_date = date(2026, 4, 4)
+        mock_shift.start_time = time(23, 30)
+        mock_shift.end_time = time(1, 0)
+        mock_shift.shift_type = ShiftType.EVENING
+        mock_shift.status = ShiftStatus.SCHEDULED
+        mock_shift.notes = None
+        mock_shift.booking_id = None
+        mock_shift.staff_id = 1
+        mock_shift.staff = create_mock_user(id=1)
+        mock_shift.created_at = datetime.now()
+        mock_shift.updated_at = None
+
+        # Create booking on a different date (5th April)
+        mock_booking = MagicMock()
+        mock_booking.id = 101
+        mock_booking.reference = "TAG-ABC123"
+        mock_booking.customer_first_name = "John"
+        mock_booking.customer_last_name = "Smith"
+        mock_booking.dropoff_date = date(2026, 4, 5)  # Not on 3rd or 4th
+        mock_booking.dropoff_time = time(10, 0)
+        mock_booking.dropoff_flight_number = "LS123"
+        mock_booking.dropoff_destination = "Tenerife"
+        mock_booking.pickup_date = date(2026, 4, 12)
+        mock_booking.pickup_time = None
+
+        mock_shift.bookings = [mock_booking]
+
+        mock_db = MagicMock()
+
+        result = shift_to_response(mock_shift, mock_db)
+
+        # Booking not on 3rd or 4th should not be included
+        assert len(result.bookings) == 0
