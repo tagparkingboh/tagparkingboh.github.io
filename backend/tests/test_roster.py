@@ -1725,6 +1725,186 @@ class TestShiftBookingLink:
 
 
 # =============================================================================
+# Unit Tests - Multiple Bookings Per Shift
+# =============================================================================
+
+class TestMultipleBookingsPerShift:
+    """Tests for linking multiple bookings to a single shift."""
+
+    def test_shift_create_model_accepts_booking_ids_array(self):
+        """RosterShiftCreate should accept booking_ids array."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+
+        shift = RosterShiftCreate(
+            staff_id=1,
+            booking_ids=[101, 102, 103],
+            date=date(2026, 3, 20),
+            start_time="06:00",
+            end_time="10:00",
+            shift_type=ShiftTypeEnum.MORNING
+        )
+
+        assert shift.booking_ids == [101, 102, 103]
+        assert len(shift.booking_ids) == 3
+
+    def test_shift_create_model_booking_ids_optional(self):
+        """booking_ids should be optional."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+
+        shift = RosterShiftCreate(
+            staff_id=1,
+            date=date(2026, 3, 20),
+            start_time="06:00",
+            end_time="10:00",
+            shift_type=ShiftTypeEnum.MORNING
+        )
+
+        assert shift.booking_ids is None
+
+    def test_shift_update_model_accepts_booking_ids_array(self):
+        """RosterShiftUpdate should accept booking_ids array."""
+        from models import RosterShiftUpdate
+
+        update = RosterShiftUpdate(booking_ids=[201, 202])
+
+        assert update.booking_ids == [201, 202]
+
+    def test_shift_response_includes_bookings_array(self):
+        """RosterShiftResponse should include bookings array."""
+        from models import RosterShiftResponse, LinkedBookingInfo
+
+        bookings = [
+            LinkedBookingInfo(
+                id=101,
+                reference="TAG-ABC123",
+                type="dropoff",
+                customer_name="Sarah Thompson",
+                time="06:00",
+                flight_number="EZY123",
+                destination="Tenerife"
+            ),
+            LinkedBookingInfo(
+                id=102,
+                reference="TAG-DEF456",
+                type="dropoff",
+                customer_name="John Smith",
+                time="06:30",
+                flight_number="EZY124",
+                destination="Malaga"
+            )
+        ]
+
+        response = RosterShiftResponse(
+            id=1,
+            staff_id=1,
+            staff_first_name="James",
+            staff_last_name="Carter",
+            staff_initials="JC",
+            bookings=bookings,
+            date=date(2026, 3, 20),
+            start_time="06:00",
+            end_time="10:00",
+            shift_type="morning",
+            status="scheduled",
+            created_at=datetime.now()
+        )
+
+        assert len(response.bookings) == 2
+        assert response.bookings[0].reference == "TAG-ABC123"
+        assert response.bookings[1].reference == "TAG-DEF456"
+
+    def test_linked_booking_info_model(self):
+        """LinkedBookingInfo should have all required fields."""
+        from models import LinkedBookingInfo
+
+        booking = LinkedBookingInfo(
+            id=101,
+            reference="TAG-ABC123",
+            type="dropoff",
+            customer_name="Sarah Thompson",
+            time="06:00",
+            flight_number="EZY123",
+            destination="Tenerife"
+        )
+
+        assert booking.id == 101
+        assert booking.reference == "TAG-ABC123"
+        assert booking.type == "dropoff"
+        assert booking.customer_name == "Sarah Thompson"
+        assert booking.time == "06:00"
+        assert booking.flight_number == "EZY123"
+        assert booking.destination == "Tenerife"
+
+    def test_linked_booking_info_optional_fields(self):
+        """LinkedBookingInfo optional fields should default to None."""
+        from models import LinkedBookingInfo
+
+        booking = LinkedBookingInfo(
+            id=101,
+            reference="TAG-ABC123",
+            type="pickup",
+            customer_name="Sarah Thompson"
+        )
+
+        assert booking.time is None
+        assert booking.flight_number is None
+        assert booking.destination is None
+
+    def test_shift_response_backwards_compatible(self):
+        """RosterShiftResponse should still have single booking fields for backwards compatibility."""
+        from models import RosterShiftResponse, LinkedBookingInfo
+
+        # First booking should populate the legacy single booking fields
+        bookings = [
+            LinkedBookingInfo(
+                id=101,
+                reference="TAG-ABC123",
+                type="dropoff",
+                customer_name="Sarah Thompson",
+                time="06:00"
+            )
+        ]
+
+        response = RosterShiftResponse(
+            id=1,
+            booking_id=101,
+            booking_reference="TAG-ABC123",
+            booking_type="dropoff",
+            booking_customer_name="Sarah Thompson",
+            booking_time="06:00",
+            bookings=bookings,
+            date=date(2026, 3, 20),
+            start_time="06:00",
+            end_time="10:00",
+            shift_type="morning",
+            status="scheduled",
+            created_at=datetime.now()
+        )
+
+        # Both formats should work
+        assert response.booking_id == 101
+        assert response.bookings[0].id == 101
+
+    def test_shift_response_empty_bookings_list(self):
+        """Shift with no bookings should have empty bookings array."""
+        from models import RosterShiftResponse
+
+        response = RosterShiftResponse(
+            id=1,
+            staff_id=1,
+            date=date(2026, 3, 20),
+            start_time="06:00",
+            end_time="10:00",
+            shift_type="morning",
+            status="scheduled",
+            created_at=datetime.now()
+        )
+
+        assert response.bookings == []
+        assert response.booking_id is None
+
+
+# =============================================================================
 # Integration Tests - Employee Shifts Endpoint
 # =============================================================================
 
