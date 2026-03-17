@@ -2383,11 +2383,7 @@ function Bookings() {
                     <div className="form-group">
                       <div className="same-day-notice">
                         <strong>Same-day bookings require at least 4 hours notice.</strong>
-                        {manualDropoffSlots.length === 0 ? (
-                          <p>Please select a later flight or call us on <a href="tel:+447586092361">+44 (0)7586 092361</a> to arrange a last-minute booking.</p>
-                        ) : (
-                          <p>Some drop-off times are unavailable. Call us on <a href="tel:+447586092361">+44 (0)7586 092361</a> for last-minute bookings.</p>
-                        )}
+                        <p>Please call us on <a href="tel:+447586092361">+44 (0)7586 092361</a> to arrange a last-minute booking.</p>
                       </div>
                     </div>
                   )}
