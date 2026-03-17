@@ -322,26 +322,17 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return grouped
   }, [bookings])
 
-  // Group shifts by date (including overnight shifts on both dates)
+  // Group shifts by date (only show on start date, details panel shows full duration)
   const shiftsByDate = useMemo(() => {
     const grouped = {}
 
     shifts.forEach((shift) => {
-      // Add to start date
+      // Only add to start date
       const startDateKey = shift.date
       if (!grouped[startDateKey]) {
         grouped[startDateKey] = []
       }
-      grouped[startDateKey].push({ ...shift, isOvernight: shift.end_date && shift.end_date !== shift.date, shiftPart: 'start' })
-
-      // If overnight shift, also add to end date
-      if (shift.end_date && shift.end_date !== shift.date) {
-        const endDateKey = shift.end_date
-        if (!grouped[endDateKey]) {
-          grouped[endDateKey] = []
-        }
-        grouped[endDateKey].push({ ...shift, isOvernight: true, shiftPart: 'end' })
-      }
+      grouped[startDateKey].push({ ...shift, isOvernight: shift.end_date && shift.end_date !== shift.date })
     })
 
     Object.keys(grouped).forEach((date) => {
@@ -645,11 +636,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                           {hasShifts && dayShifts.map((shift, idx) => (
                             <div
                               key={shift.id || idx}
-                              className={`day-shift-badge ${shift.isOvernight ? 'overnight' : ''} ${shift.shiftPart === 'end' ? 'overnight-end' : ''}`}
+                              className={`day-shift-badge ${shift.isOvernight ? 'overnight' : ''}`}
                               title={shift.staff_first_name ? `${shift.staff_first_name} ${shift.staff_last_name}` : 'Unassigned'}
                             >
                               <span className="shift-time-mini">
-                                {shift.shiftPart === 'end' ? '→' : ''}{formatTime(shift.start_time)}-{formatTime(shift.end_time)}{shift.shiftPart === 'start' && shift.isOvernight ? '→' : ''}
+                                {formatTime(shift.start_time)}-{formatTime(shift.end_time)}{shift.isOvernight ? '→' : ''}
                               </span>
                               {shift.staff_initials && <span className="shift-initials">{shift.staff_initials}</span>}
                               {!shift.staff_initials && <span className="shift-unassigned-mini">?</span>}
@@ -827,7 +818,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                             {statusConfig.label}
                           </div>
                           {shift.isOvernight && (
-                            <div className="shift-overnight-badge" title={shift.shiftPart === 'start' ? 'Continues next day' : 'Started previous day'}>
+                            <div className="shift-overnight-badge" title="Overnight shift">
                               🌙 {new Date(shift.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} → {new Date(shift.end_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                             </div>
                           )}
