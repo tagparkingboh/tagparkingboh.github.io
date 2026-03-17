@@ -446,11 +446,11 @@ async def get_bookings_for_date(
     for b in dropoff_bookings:
         results.append({
             "id": b.id,
-            "reference": b.reference,
+            "reference": b.reference or "",
             "type": "dropoff",
             "time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
             "flight_time": b.flight_departure_time.strftime("%H:%M") if b.flight_departure_time else None,
-            "customer_name": f"{b.customer_first_name} {b.customer_last_name}",
+            "customer_name": f"{b.customer_first_name or ''} {b.customer_last_name or ''}".strip(),
             "flight_number": b.dropoff_flight_number,
             "airline": b.dropoff_airline_name,
             "destination": b.dropoff_destination
@@ -465,11 +465,11 @@ async def get_bookings_for_date(
     for b in pickup_bookings:
         results.append({
             "id": b.id,
-            "reference": b.reference,
+            "reference": b.reference or "",
             "type": "pickup",
             "time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
             "flight_time": b.flight_arrival_time.strftime("%H:%M") if b.flight_arrival_time else None,
-            "customer_name": f"{b.customer_first_name} {b.customer_last_name}",
+            "customer_name": f"{b.customer_first_name or ''} {b.customer_last_name or ''}".strip(),
             "flight_number": b.pickup_flight_number,
             "airline": b.pickup_airline_name,
             "origin": b.pickup_origin
