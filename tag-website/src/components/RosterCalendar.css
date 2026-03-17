@@ -555,10 +555,32 @@
   font-style: italic;
 }
 
+.shift-bookings-list {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .shift-booking-info {
   background: #1a1a2e;
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  border-left: 3px solid #444;
+}
+
+.shift-booking-info:nth-child(odd) {
+  border-left-color: #4a90e2;
+}
+
+.shift-booking-info:nth-child(even) {
+  border-left-color: #50c878;
+}
+
+.shift-no-bookings {
+  font-size: 0.8rem;
+  color: #666;
+  font-style: italic;
   margin-top: 4px;
 }
 
@@ -1002,4 +1024,90 @@
   .roster-calendar .modal-content h3 {
     padding: 12px;
   }
+}
+
+/* ============================================
+   Multi-Select Booking Checkboxes
+   ============================================ */
+
+.booking-checkboxes {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.booking-checkboxes.loading,
+.booking-checkboxes.empty {
+  color: #888;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+.booking-group {
+  margin-bottom: 12px;
+}
+
+.booking-group:last-child {
+  margin-bottom: 0;
+}
+
+.booking-group-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #D9FF00;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #333;
+}
+
+.booking-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin: 4px 0;
+  background: #252525;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.booking-checkbox:hover {
+  background: #333;
+}
+
+.booking-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #D9FF00;
+  cursor: pointer;
+}
+
+.booking-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.booking-time {
+  font-weight: 600;
+  color: #D9FF00;
+  min-width: 50px;
+}
+
+.booking-ref {
+  color: #aaa;
+  font-family: monospace;
+  font-size: 0.85rem;
+}
+
+.booking-customer {
+  color: #fff;
+  flex: 1;
 }

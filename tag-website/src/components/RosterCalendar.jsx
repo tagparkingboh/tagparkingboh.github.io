@@ -73,7 +73,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const [editingShift, setEditingShift] = useState(null)
   const [shiftForm, setShiftForm] = useState({
     staff_id: '',
-    booking_id: '',
+    booking_ids: [],  // Multiple bookings per shift
     date: '',
     start_time: '',
     end_time: '',
@@ -361,7 +361,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     setEditingShift(null)
     setShiftForm({
       staff_id: '',
-      booking_id: '',
+      booking_ids: [],
       date: date || '',
       start_time: '',
       end_time: '',
@@ -378,9 +378,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const openEditShiftModal = (shift) => {
     setEditingShift(shift)
     const dateUK = formatDateUK(shift.date)
+    // Get booking IDs from the bookings array
+    const bookingIds = shift.bookings ? shift.bookings.map(b => b.id) : []
     setShiftForm({
       staff_id: shift.staff_id || '',
-      booking_id: shift.booking_id || '',
+      booking_ids: bookingIds,
       date: dateUK,
       start_time: formatTime(shift.start_time),
       end_time: formatTime(shift.end_time),
@@ -396,7 +398,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     setEditingShift(null)
     setShiftForm({
       staff_id: '',
-      booking_id: '',
+      booking_ids: [],
       date: '',
       start_time: '',
       end_time: '',
@@ -425,7 +427,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
       const payload = {
         staff_id: shiftForm.staff_id ? parseInt(shiftForm.staff_id) : null,
-        booking_id: shiftForm.booking_id ? parseInt(shiftForm.booking_id) : null,
+        booking_ids: shiftForm.booking_ids.map(id => parseInt(id)),
         date: isoDate,
         start_time: shiftForm.start_time,
         end_time: shiftForm.end_time,
@@ -775,29 +777,36 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                             <div className="shift-unassigned">Unassigned</div>
                           )}
 
-                          {shift.booking_reference && (
-                            <div className="shift-booking-info">
-                              <div className="shift-booking-header">
-                                <span className={`shift-booking-type ${shift.booking_type}`}>
-                                  {shift.booking_type === 'dropoff' ? '🚗 Drop-off' : '🛬 Pick-up'}
-                                </span>
-                                <span className="shift-booking-ref">{shift.booking_reference}</span>
-                              </div>
-                              <div className="shift-booking-details">
-                                <span className="shift-booking-customer">{shift.booking_customer_name}</span>
-                                {shift.booking_time && (
-                                  <span className="shift-booking-time">@ {shift.booking_time}</span>
-                                )}
-                                {shift.booking_flight_number && (
-                                  <span className="shift-booking-flight">{shift.booking_flight_number}</span>
-                                )}
-                                {shift.booking_destination && (
-                                  <span className="shift-booking-dest">
-                                    {shift.booking_type === 'dropoff' ? '→' : '←'} {shift.booking_destination}
-                                  </span>
-                                )}
-                              </div>
+                          {/* Show linked bookings */}
+                          {shift.bookings && shift.bookings.length > 0 ? (
+                            <div className="shift-bookings-list">
+                              {shift.bookings.map((booking, idx) => (
+                                <div key={booking.id} className="shift-booking-info">
+                                  <div className="shift-booking-header">
+                                    <span className={`shift-booking-type ${booking.type}`}>
+                                      {booking.type === 'dropoff' ? '🚗' : '🛬'}
+                                    </span>
+                                    <span className="shift-booking-ref">{booking.reference}</span>
+                                    <span className="shift-booking-customer">{booking.customer_name}</span>
+                                  </div>
+                                  <div className="shift-booking-details">
+                                    {booking.time && (
+                                      <span className="shift-booking-time">@ {booking.time}</span>
+                                    )}
+                                    {booking.flight_number && (
+                                      <span className="shift-booking-flight">{booking.flight_number}</span>
+                                    )}
+                                    {booking.destination && (
+                                      <span className="shift-booking-dest">
+                                        {booking.type === 'dropoff' ? '→' : '←'} {booking.destination}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
+                          ) : (
+                            <div className="shift-no-bookings">No bookings linked</div>
                           )}
 
                           {shift.notes && <div className="shift-notes">{shift.notes}</div>}
@@ -906,42 +915,69 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     ))}
                   </select>
                 </div>
-                <div className="modal-form-group">
-                  <label>Link to Booking</label>
-                  <select
-                    value={shiftForm.booking_id}
-                    onChange={(e) => handleShiftFormChange('booking_id', e.target.value)}
-                    disabled={loadingDateBookings}
-                  >
-                    <option value="">No booking linked</option>
-                    {loadingDateBookings ? (
-                      <option disabled>Loading bookings...</option>
-                    ) : dateBookings.length === 0 ? (
-                      <option disabled>No bookings on this date</option>
-                    ) : (
-                      <>
-                        {dateBookings.filter(b => b.type === 'dropoff').length > 0 && (
-                          <optgroup label="Drop-offs">
-                            {dateBookings.filter(b => b.type === 'dropoff').map((b) => (
-                              <option key={`dropoff-${b.id}`} value={b.id}>
-                                {b.time} - {b.reference} - {b.customer_name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                        {dateBookings.filter(b => b.type === 'pickup').length > 0 && (
-                          <optgroup label="Pick-ups">
-                            {dateBookings.filter(b => b.type === 'pickup').map((b) => (
-                              <option key={`pickup-${b.id}`} value={b.id}>
-                                {b.time} - {b.reference} - {b.customer_name}
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                      </>
+              </div>
+
+              {/* Link to Bookings - full width multi-select */}
+              <div className="modal-form-group">
+                <label>Link to Bookings {shiftForm.booking_ids.length > 0 && `(${shiftForm.booking_ids.length} selected)`}</label>
+                {loadingDateBookings ? (
+                  <div className="booking-checkboxes loading">Loading bookings...</div>
+                ) : dateBookings.length === 0 ? (
+                  <div className="booking-checkboxes empty">No bookings on this date</div>
+                ) : (
+                  <div className="booking-checkboxes">
+                    {dateBookings.filter(b => b.type === 'dropoff').length > 0 && (
+                      <div className="booking-group">
+                        <div className="booking-group-label">🚗 Drop-offs</div>
+                        {dateBookings.filter(b => b.type === 'dropoff').map((b) => (
+                          <label key={`dropoff-${b.id}`} className="booking-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={shiftForm.booking_ids.includes(b.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  handleShiftFormChange('booking_ids', [...shiftForm.booking_ids, b.id])
+                                } else {
+                                  handleShiftFormChange('booking_ids', shiftForm.booking_ids.filter(id => id !== b.id))
+                                }
+                              }}
+                            />
+                            <span className="booking-info">
+                              <span className="booking-time">{b.time}</span>
+                              <span className="booking-ref">{b.reference}</span>
+                              <span className="booking-customer">{b.customer_name}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
                     )}
-                  </select>
-                </div>
+                    {dateBookings.filter(b => b.type === 'pickup').length > 0 && (
+                      <div className="booking-group">
+                        <div className="booking-group-label">✈️ Pick-ups</div>
+                        {dateBookings.filter(b => b.type === 'pickup').map((b) => (
+                          <label key={`pickup-${b.id}`} className="booking-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={shiftForm.booking_ids.includes(b.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  handleShiftFormChange('booking_ids', [...shiftForm.booking_ids, b.id])
+                                } else {
+                                  handleShiftFormChange('booking_ids', shiftForm.booking_ids.filter(id => id !== b.id))
+                                }
+                              }}
+                            />
+                            <span className="booking-info">
+                              <span className="booking-time">{b.time}</span>
+                              <span className="booking-ref">{b.reference}</span>
+                              <span className="booking-customer">{b.customer_name}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="modal-form-group">
