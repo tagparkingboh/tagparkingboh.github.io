@@ -2471,3 +2471,141 @@ class TestOvernightShifts:
 
         # end_date should default to date
         assert same_day_shift.end_date == date(2026, 3, 17)
+
+
+# =============================================================================
+# Unit Tests - Booking Links Persistence
+# =============================================================================
+
+class TestBookingLinksPersistence:
+    """Tests for booking links persistence when shift dates change."""
+
+    def test_shift_retains_booking_ids_on_date_change(self):
+        """Booking IDs should be retained when shift date changes."""
+        from models import RosterShiftUpdate
+        from datetime import date as dt_date
+
+        # Update only the date, booking_ids not specified
+        update = RosterShiftUpdate(
+            date=dt_date(2026, 3, 20)
+        )
+
+        # booking_ids should be None (not modified)
+        assert update.booking_ids is None
+
+    def test_shift_update_can_modify_booking_ids(self):
+        """Should be able to explicitly update booking_ids."""
+        from models import RosterShiftUpdate
+
+        update = RosterShiftUpdate(
+            booking_ids=[101, 102, 103]
+        )
+
+        assert update.booking_ids == [101, 102, 103]
+
+    def test_shift_create_with_multiple_bookings(self):
+        """Shift create should accept multiple booking IDs."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),
+            start_time="09:00",
+            end_time="17:00",
+            shift_type=ShiftTypeEnum.MORNING,
+            booking_ids=[101, 102, 103]
+        )
+
+        assert shift.booking_ids == [101, 102, 103]
+
+    def test_overnight_shift_with_bookings_from_both_dates(self):
+        """Overnight shift can have bookings from both start and end dates."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from datetime import date as dt_date
+
+        # Overnight shift with bookings from Tue (101) and Wed (102)
+        shift = RosterShiftCreate(
+            date=dt_date(2026, 3, 17),  # Tuesday
+            end_date=dt_date(2026, 3, 18),  # Wednesday
+            start_time="23:55",
+            end_time="00:55",
+            shift_type=ShiftTypeEnum.EVENING,
+            booking_ids=[101, 102]  # Booking 101 from Tue, 102 from Wed
+        )
+
+        assert shift.date == dt_date(2026, 3, 17)
+        assert shift.end_date == dt_date(2026, 3, 18)
+        assert 101 in shift.booking_ids
+        assert 102 in shift.booking_ids
+
+    def test_shift_response_includes_linked_bookings(self):
+        """Response should include linked bookings info."""
+        from models import RosterShiftResponse, LinkedBookingInfo
+        from datetime import date as dt_date, datetime
+
+        booking1 = LinkedBookingInfo(
+            id=101,
+            reference="TAG-ABC123",
+            type="dropoff",
+            customer_name="John Smith",
+            time="06:00"
+        )
+        booking2 = LinkedBookingInfo(
+            id=102,
+            reference="TAG-DEF456",
+            type="pickup",
+            customer_name="Jane Doe",
+            time="16:00"
+        )
+
+        shift = RosterShiftResponse(
+            id=1,
+            date=dt_date(2026, 3, 17),
+            start_time="05:00",
+            end_time="18:00",
+            shift_type="morning",
+            status="scheduled",
+            bookings=[booking1, booking2],
+            created_at=datetime.now()
+        )
+
+        assert len(shift.bookings) == 2
+        assert shift.bookings[0].id == 101
+        assert shift.bookings[1].id == 102
+
+    def test_linked_booking_info_structure(self):
+        """LinkedBookingInfo should have all required fields."""
+        from models import LinkedBookingInfo
+
+        booking = LinkedBookingInfo(
+            id=101,
+            reference="TAG-ABC123",
+            type="dropoff",
+            customer_name="John Smith",
+            time="06:00",
+            flight_number="FR1234",
+            destination="Alicante"
+        )
+
+        assert booking.id == 101
+        assert booking.reference == "TAG-ABC123"
+        assert booking.type == "dropoff"
+        assert booking.customer_name == "John Smith"
+        assert booking.time == "06:00"
+        assert booking.flight_number == "FR1234"
+        assert booking.destination == "Alicante"
+
+    def test_linked_booking_info_optional_fields(self):
+        """LinkedBookingInfo optional fields should default to None."""
+        from models import LinkedBookingInfo
+
+        booking = LinkedBookingInfo(
+            id=101,
+            reference="TAG-ABC123",
+            type="dropoff",
+            customer_name="John Smith"
+        )
+
+        assert booking.time is None
+        assert booking.flight_number is None
+        assert booking.destination is None
