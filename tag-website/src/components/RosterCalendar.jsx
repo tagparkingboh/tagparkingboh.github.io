@@ -322,21 +322,44 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return grouped
   }, [bookings])
 
-  // Group shifts by date (only show on start date, details panel shows full duration)
+  // Group shifts by date (overnight shifts appear on both dates with split times)
   const shiftsByDate = useMemo(() => {
     const grouped = {}
 
     shifts.forEach((shift) => {
-      // Only add to start date
+      const isOvernight = shift.end_date && shift.end_date !== shift.date
+
+      // Add to start date
       const startDateKey = shift.date
       if (!grouped[startDateKey]) {
         grouped[startDateKey] = []
       }
-      grouped[startDateKey].push({ ...shift, isOvernight: shift.end_date && shift.end_date !== shift.date })
+      grouped[startDateKey].push({
+        ...shift,
+        isOvernight,
+        shiftPart: isOvernight ? 'start' : null,
+        displayStartTime: shift.start_time,
+        displayEndTime: isOvernight ? '23:59' : shift.end_time
+      })
+
+      // If overnight, also add to end date with the remaining time
+      if (isOvernight) {
+        const endDateKey = shift.end_date
+        if (!grouped[endDateKey]) {
+          grouped[endDateKey] = []
+        }
+        grouped[endDateKey].push({
+          ...shift,
+          isOvernight: true,
+          shiftPart: 'end',
+          displayStartTime: '00:00',
+          displayEndTime: shift.end_time
+        })
+      }
     })
 
     Object.keys(grouped).forEach((date) => {
-      grouped[date].sort((a, b) => a.start_time.localeCompare(b.start_time))
+      grouped[date].sort((a, b) => (a.displayStartTime || a.start_time).localeCompare(b.displayStartTime || b.start_time))
     })
 
     return grouped
@@ -635,12 +658,12 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                           {/* Shift indicators with details */}
                           {hasShifts && dayShifts.map((shift, idx) => (
                             <div
-                              key={shift.id || idx}
-                              className={`day-shift-badge ${shift.isOvernight ? 'overnight' : ''}`}
+                              key={`${shift.id}-${shift.shiftPart || 'full'}`}
+                              className={`day-shift-badge ${shift.isOvernight ? 'overnight' : ''} ${shift.shiftPart === 'end' ? 'overnight-end' : ''}`}
                               title={shift.staff_first_name ? `${shift.staff_first_name} ${shift.staff_last_name}` : 'Unassigned'}
                             >
                               <span className="shift-time-mini">
-                                {formatTime(shift.start_time)}-{formatTime(shift.end_time)}{shift.isOvernight ? '→' : ''}
+                                {formatTime(shift.displayStartTime)}-{formatTime(shift.displayEndTime)}
                               </span>
                               {shift.staff_initials && <span className="shift-initials">{shift.staff_initials}</span>}
                               {!shift.staff_initials && <span className="shift-unassigned-mini">?</span>}
