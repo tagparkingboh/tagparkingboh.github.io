@@ -696,7 +696,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                         <div className="shift-card-header">
                           <div className="shift-time-range">
                             <span className="shift-time">{formatTime(shift.start_time)}</span>
-                            <span className="shift-time-separator">-</span>
+                            <span className="shift-time-separator">to</span>
                             <span className="shift-time">{formatTime(shift.end_time)}</span>
                           </div>
                           <div className="shift-type-badge" style={{ background: typeConfig.color }}>
