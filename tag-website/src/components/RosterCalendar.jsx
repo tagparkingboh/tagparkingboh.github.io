@@ -828,7 +828,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                           </div>
                           {shift.isOvernight && (
                             <div className="shift-overnight-badge" title={shift.shiftPart === 'start' ? 'Continues next day' : 'Started previous day'}>
-                              🌙 {shift.shiftPart === 'start' ? 'Overnight →' : '← Overnight'}
+                              🌙 {new Date(shift.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} → {new Date(shift.end_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                             </div>
                           )}
                         </div>
