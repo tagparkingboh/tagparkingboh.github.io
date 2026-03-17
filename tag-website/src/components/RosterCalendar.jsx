@@ -764,18 +764,40 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
             <h3>{editingShift ? 'Edit Shift' : 'New Shift'}</h3>
 
             <div className="shift-form">
-              <div className="form-row">
-                <label>Date <span className="required">*</span></label>
-                <input
-                  type="text"
-                  value={shiftForm.date}
-                  onChange={(e) => handleShiftFormChange('date', e.target.value)}
-                  placeholder="DD/MM/YYYY"
-                />
-              </div>
+              <div className="form-grid">
+                <div className="form-row">
+                  <label>Date <span className="required">*</span></label>
+                  <input
+                    type="text"
+                    value={shiftForm.date}
+                    onChange={(e) => handleShiftFormChange('date', e.target.value)}
+                    placeholder="DD/MM/YYYY"
+                  />
+                </div>
 
-              <div className="form-row form-row-double">
-                <div className="form-field">
+                <div className="form-row">
+                  <label>Shift Type <span className="required">*</span></label>
+                  <select
+                    value={shiftForm.shift_type}
+                    onChange={(e) => handleShiftFormChange('shift_type', e.target.value)}
+                  >
+                    <optgroup label="Part-Time Shifts">
+                      <option value="early_morning">🌙 Early Morning (03:50 - 07:00)</option>
+                      <option value="morning">🌅 Morning (07:00 - 11:00)</option>
+                      <option value="midday">☀️ Midday (11:00 - 14:00)</option>
+                      <option value="afternoon">🌤️ Afternoon (14:00 - 17:30)</option>
+                      <option value="late_afternoon">🌇 Late Afternoon (17:30 - 21:00)</option>
+                      <option value="evening">🌃 Evening (21:00 - 01:20)</option>
+                    </optgroup>
+                    <optgroup label="Full-Time Shifts">
+                      <option value="full_morning">🌄 Full Morning (03:50 - 14:00)</option>
+                      <option value="full_afternoon">🏙️ Full Afternoon (11:00 - 21:00)</option>
+                      <option value="full_evening">🌆 Full Evening (17:30 - 01:20)</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div className="form-row">
                   <label>Start Time <span className="required">*</span></label>
                   <input
                     type="text"
@@ -786,7 +808,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     className="time-input-24hr"
                   />
                 </div>
-                <div className="form-field">
+
+                <div className="form-row">
                   <label>End Time <span className="required">*</span></label>
                   <input
                     type="text"
@@ -797,52 +820,30 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     className="time-input-24hr"
                   />
                 </div>
-              </div>
 
-              <div className="form-row">
-                <label>Shift Type <span className="required">*</span></label>
-                <select
-                  value={shiftForm.shift_type}
-                  onChange={(e) => handleShiftFormChange('shift_type', e.target.value)}
-                >
-                  <optgroup label="Part-Time Shifts">
-                    <option value="early_morning">🌙 Early Morning (03:50 - 07:00)</option>
-                    <option value="morning">🌅 Morning (07:00 - 11:00)</option>
-                    <option value="midday">☀️ Midday (11:00 - 14:00)</option>
-                    <option value="afternoon">🌤️ Afternoon (14:00 - 17:30)</option>
-                    <option value="late_afternoon">🌇 Late Afternoon (17:30 - 21:00)</option>
-                    <option value="evening">🌃 Evening (21:00 - 01:20)</option>
-                  </optgroup>
-                  <optgroup label="Full-Time Shifts">
-                    <option value="full_morning">🌄 Full Morning (03:50 - 14:00)</option>
-                    <option value="full_afternoon">🏙️ Full Afternoon (11:00 - 21:00)</option>
-                    <option value="full_evening">🌆 Full Evening (17:30 - 01:20)</option>
-                  </optgroup>
-                </select>
-              </div>
-
-              <div className="form-row">
-                <label>Assign Staff</label>
-                <select
-                  value={shiftForm.staff_id}
-                  onChange={(e) => handleShiftFormChange('staff_id', e.target.value)}
-                >
-                  <option value="">Unassigned</option>
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.first_name} {emp.last_name}
-                    </option>
+                <div className="form-row">
+                  <label>Assign Staff</label>
+                  <select
+                    value={shiftForm.staff_id}
+                    onChange={(e) => handleShiftFormChange('staff_id', e.target.value)}
+                  >
+                    <option value="">Unassigned</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.first_name} {emp.last_name}
+                      </option>
                   ))}
                 </select>
               </div>
+              </div>
 
-              <div className="form-row">
+              <div className="form-row form-row-full">
                 <label>Notes</label>
                 <textarea
                   value={shiftForm.notes}
                   onChange={(e) => handleShiftFormChange('notes', e.target.value)}
                   placeholder="Optional notes..."
-                  rows={4}
+                  rows={3}
                 />
               </div>
             </div>
