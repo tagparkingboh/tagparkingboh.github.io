@@ -645,9 +645,9 @@
   color: #333;
 }
 
-/* Shift Modal - Big square */
+/* Shift Modal - Wide */
 .roster-calendar .shift-modal {
-  width: 700px;
+  width: 900px;
   max-width: 95vw;
 }
 
