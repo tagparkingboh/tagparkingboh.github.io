@@ -38,7 +38,7 @@ function HomePage() {
     const interval = setInterval(() => {
       setBannerFading(true)
       setTimeout(() => {
-        setHeroBannerIndex(prev => (prev + 1) % 6)
+        setHeroBannerIndex(prev => (prev + 1) % 7)
         setBannerFading(false)
       }, 300) // Fade out duration
     }, 5000)
@@ -263,6 +263,9 @@ function HomePage() {
               )}
               {heroBannerIndex === 5 && (
                 <>Free cancellation up to<br />24 hours before</>
+              )}
+              {heroBannerIndex === 6 && (
+                <>Secure payments<br />powered by Stripe</>
               )}
             </h1>
           </div>
