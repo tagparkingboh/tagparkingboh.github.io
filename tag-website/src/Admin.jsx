@@ -3149,7 +3149,7 @@ function Admin() {
                           {(statusKey === 'confirmed' || statusKey === 'completed') ? (
                             (() => {
                               const monthlyGroups = groupBookingsByMonth(statusBookings)
-                              const sortedMonths = Object.keys(monthlyGroups).sort().reverse()
+                              const sortedMonths = Object.keys(monthlyGroups).sort() // ASC order (oldest first)
 
                               return sortedMonths.map(monthKey => {
                                 const { label, bookings: monthBookings } = monthlyGroups[monthKey]
