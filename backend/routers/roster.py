@@ -82,18 +82,16 @@ def check_shift_overlap(
     return None
 
 
-def validate_employee_assignment(db: Session, staff_id: int) -> User:
+def validate_staff_assignment(db: Session, staff_id: int) -> User:
     """
-    Validate that staff_id refers to a valid employee (not admin, is active).
+    Validate that staff_id refers to a valid active user (admin or employee).
     Raises HTTPException if invalid.
     """
     user = db.query(User).filter(User.id == staff_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    if user.is_admin:
-        raise HTTPException(status_code=400, detail="Cannot assign shift to admin user")
+        raise HTTPException(status_code=404, detail="Staff member not found")
     if not user.is_active:
-        raise HTTPException(status_code=400, detail="Cannot assign shift to inactive employee")
+        raise HTTPException(status_code=400, detail="Cannot assign shift to inactive user")
     return user
 
 
@@ -405,7 +403,7 @@ async def create_shift(
 
     # Validate staff assignment
     if shift_data.staff_id:
-        validate_employee_assignment(db, shift_data.staff_id)
+        validate_staff_assignment(db, shift_data.staff_id)
 
         # Check for overlap
         conflicting = check_shift_overlap(
@@ -462,7 +460,7 @@ async def update_shift(
 
     # Validate staff assignment if changing
     if new_staff_id and new_staff_id != shift.staff_id:
-        validate_employee_assignment(db, new_staff_id)
+        validate_staff_assignment(db, new_staff_id)
 
     # Check for overlap if staff, date, or times are changing
     if new_staff_id:
