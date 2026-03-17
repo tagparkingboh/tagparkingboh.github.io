@@ -500,7 +500,8 @@ class EmployeeResponse(BaseModel):
 class RosterShiftCreate(BaseModel):
     """Request to create a roster shift."""
     staff_id: Optional[int] = None  # Nullable = unassigned
-    booking_id: Optional[int] = None
+    booking_id: Optional[int] = None  # DEPRECATED - use booking_ids
+    booking_ids: Optional[List[int]] = None  # Multiple bookings per shift
     date: date_type
     start_time: str  # "HH:MM"
     end_time: str  # "HH:MM"
@@ -512,13 +513,25 @@ class RosterShiftCreate(BaseModel):
 class RosterShiftUpdate(BaseModel):
     """Request to update a roster shift."""
     staff_id: Optional[int] = None
-    booking_id: Optional[int] = None
+    booking_id: Optional[int] = None  # DEPRECATED - use booking_ids
+    booking_ids: Optional[List[int]] = None  # Multiple bookings per shift
     date: Optional[date_type] = None
     start_time: Optional[str] = None  # "HH:MM"
     end_time: Optional[str] = None  # "HH:MM"
     shift_type: Optional[ShiftTypeEnum] = None
     status: Optional[ShiftStatusEnum] = None
     notes: Optional[str] = None
+
+
+class LinkedBookingInfo(BaseModel):
+    """Info about a booking linked to a shift."""
+    id: int
+    reference: str
+    type: str  # "dropoff" or "pickup"
+    customer_name: str
+    time: Optional[str] = None  # The dropoff/pickup time
+    flight_number: Optional[str] = None
+    destination: Optional[str] = None  # destination for dropoff, origin for pickup
 
 
 class RosterShiftResponse(BaseModel):
@@ -528,14 +541,16 @@ class RosterShiftResponse(BaseModel):
     staff_first_name: Optional[str] = None
     staff_last_name: Optional[str] = None
     staff_initials: Optional[str] = None
+    # DEPRECATED single booking fields - kept for backwards compatibility
     booking_id: Optional[int] = None
     booking_reference: Optional[str] = None
-    # Extended booking info for display
     booking_type: Optional[str] = None  # "dropoff" or "pickup"
     booking_customer_name: Optional[str] = None
     booking_time: Optional[str] = None  # The dropoff/pickup time
     booking_flight_number: Optional[str] = None
     booking_destination: Optional[str] = None  # destination for dropoff, origin for pickup
+    # New: multiple bookings per shift
+    bookings: List[LinkedBookingInfo] = []
     date: date_type
     start_time: str  # "HH:MM"
     end_time: str  # "HH:MM"

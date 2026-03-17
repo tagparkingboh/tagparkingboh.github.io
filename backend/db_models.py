@@ -911,6 +911,21 @@ class PromoCode(Base):
         return f"<PromoCode {self.code} - {status}>"
 
 
+class ShiftBookingLink(Base):
+    """Association table for many-to-many relationship between shifts and bookings."""
+    __tablename__ = "shift_booking_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    shift_id = Column(Integer, ForeignKey("roster_shifts.id", ondelete="CASCADE"), nullable=False, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Unique constraint to prevent duplicate links
+    __table_args__ = (
+        UniqueConstraint('shift_id', 'booking_id', name='uq_shift_booking'),
+    )
+
+
 class RosterShift(Base):
     """Roster shift for staff scheduling."""
     __tablename__ = "roster_shifts"
@@ -920,7 +935,8 @@ class RosterShift(Base):
     # Staff assignment (nullable = unassigned shift)
     staff_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
-    # Optional booking link (nullable for admin/storage tasks)
+    # DEPRECATED: Single booking link - use bookings relationship instead
+    # Kept for backwards compatibility during migration
     booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True, index=True)
 
     # Shift timing
@@ -948,7 +964,15 @@ class RosterShift(Base):
 
     # Relationships
     staff = relationship("User", foreign_keys=[staff_id])
-    booking = relationship("Booking", foreign_keys=[booking_id])
+    booking = relationship("Booking", foreign_keys=[booking_id])  # DEPRECATED - use bookings
+
+    # Many-to-many relationship with bookings
+    bookings = relationship(
+        "Booking",
+        secondary="shift_booking_links",
+        backref="shifts",
+        lazy="selectin"
+    )
 
     def __repr__(self):
         staff_name = f"{self.staff.first_name} {self.staff.last_name}" if self.staff else "Unassigned"

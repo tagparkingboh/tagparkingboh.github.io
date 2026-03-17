@@ -15,12 +15,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from database import get_db
-from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession, BookingStatus
+from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession, BookingStatus, ShiftBookingLink
 from models import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     RosterShiftCreate, RosterShiftUpdate, RosterShiftResponse,
     AutoAssignRequest, AutoAssignResponse, OperationalWarning,
-    ShiftTypeEnum, ShiftStatusEnum
+    ShiftTypeEnum, ShiftStatusEnum, LinkedBookingInfo
 )
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -98,30 +98,60 @@ def validate_staff_assignment(db: Session, staff_id: int) -> User:
 
 def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
     """Convert RosterShift model to response."""
-    booking_ref = None
-    booking_type = None
-    booking_customer_name = None
-    booking_time = None
-    booking_flight_number = None
-    booking_destination = None
+    # Build list of linked bookings
+    linked_bookings = []
 
-    if shift.booking_id:
+    # Get bookings from many-to-many relationship
+    for booking in shift.bookings:
+        # Determine if this is a dropoff or pickup based on the shift date
+        if booking.dropoff_date == shift.date:
+            linked_bookings.append(LinkedBookingInfo(
+                id=booking.id,
+                reference=booking.reference or "",
+                type="dropoff",
+                customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
+                time=booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None,
+                flight_number=booking.dropoff_flight_number,
+                destination=booking.dropoff_destination
+            ))
+        elif booking.pickup_date == shift.date:
+            linked_bookings.append(LinkedBookingInfo(
+                id=booking.id,
+                reference=booking.reference or "",
+                type="pickup",
+                customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
+                time=booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None,
+                flight_number=booking.pickup_flight_number,
+                destination=booking.pickup_origin
+            ))
+
+    # Also check legacy single booking_id (for backwards compatibility)
+    if shift.booking_id and not any(b.id == shift.booking_id for b in shift.bookings):
         booking = db.query(Booking).filter(Booking.id == shift.booking_id).first()
         if booking:
-            booking_ref = booking.reference
-            booking_customer_name = f"{booking.customer_first_name} {booking.customer_last_name}"
-
-            # Determine if this is a dropoff or pickup based on the shift date
             if booking.dropoff_date == shift.date:
-                booking_type = "dropoff"
-                booking_time = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None
-                booking_flight_number = booking.dropoff_flight_number
-                booking_destination = booking.dropoff_destination
+                linked_bookings.append(LinkedBookingInfo(
+                    id=booking.id,
+                    reference=booking.reference or "",
+                    type="dropoff",
+                    customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
+                    time=booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None,
+                    flight_number=booking.dropoff_flight_number,
+                    destination=booking.dropoff_destination
+                ))
             elif booking.pickup_date == shift.date:
-                booking_type = "pickup"
-                booking_time = booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None
-                booking_flight_number = booking.pickup_flight_number
-                booking_destination = booking.pickup_origin
+                linked_bookings.append(LinkedBookingInfo(
+                    id=booking.id,
+                    reference=booking.reference or "",
+                    type="pickup",
+                    customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
+                    time=booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None,
+                    flight_number=booking.pickup_flight_number,
+                    destination=booking.pickup_origin
+                ))
+
+    # For backwards compatibility, populate the single booking fields with first booking
+    first_booking = linked_bookings[0] if linked_bookings else None
 
     return RosterShiftResponse(
         id=shift.id,
@@ -129,13 +159,16 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
         staff_first_name=shift.staff.first_name if shift.staff else None,
         staff_last_name=shift.staff.last_name if shift.staff else None,
         staff_initials=get_staff_initials(shift.staff) if shift.staff else None,
-        booking_id=shift.booking_id,
-        booking_reference=booking_ref,
-        booking_type=booking_type,
-        booking_customer_name=booking_customer_name,
-        booking_time=booking_time,
-        booking_flight_number=booking_flight_number,
-        booking_destination=booking_destination,
+        # Legacy single booking fields (backwards compatibility)
+        booking_id=first_booking.id if first_booking else None,
+        booking_reference=first_booking.reference if first_booking else None,
+        booking_type=first_booking.type if first_booking else None,
+        booking_customer_name=first_booking.customer_name if first_booking else None,
+        booking_time=first_booking.time if first_booking else None,
+        booking_flight_number=first_booking.flight_number if first_booking else None,
+        booking_destination=first_booking.destination if first_booking else None,
+        # New: all linked bookings
+        bookings=linked_bookings,
         date=shift.date,
         start_time=format_time(shift.start_time),
         end_time=format_time(shift.end_time),
@@ -524,16 +557,25 @@ async def create_shift(
                 detail=f"Shift overlaps with existing shift ({format_time(conflicting.start_time)}-{format_time(conflicting.end_time)})"
             )
 
-    # Validate booking exists if provided
-    if shift_data.booking_id:
+    # Validate bookings exist if provided
+    booking_ids_to_link = []
+    if shift_data.booking_ids:
+        for bid in shift_data.booking_ids:
+            booking = db.query(Booking).filter(Booking.id == bid).first()
+            if not booking:
+                raise HTTPException(status_code=400, detail=f"Booking {bid} not found")
+            booking_ids_to_link.append(bid)
+    elif shift_data.booking_id:
+        # Legacy single booking_id support
         booking = db.query(Booking).filter(Booking.id == shift_data.booking_id).first()
         if not booking:
             raise HTTPException(status_code=400, detail="Booking not found")
+        booking_ids_to_link.append(shift_data.booking_id)
 
     # Create shift
     new_shift = RosterShift(
         staff_id=shift_data.staff_id,
-        booking_id=shift_data.booking_id,
+        booking_id=None,  # No longer using single booking_id
         date=shift_data.date,
         start_time=start_time,
         end_time=end_time,
@@ -543,6 +585,13 @@ async def create_shift(
     )
 
     db.add(new_shift)
+    db.flush()  # Get the shift ID before adding links
+
+    # Create booking links
+    for bid in booking_ids_to_link:
+        link = ShiftBookingLink(shift_id=new_shift.id, booking_id=bid)
+        db.add(link)
+
     db.commit()
     db.refresh(new_shift)
 
@@ -585,8 +634,6 @@ async def update_shift(
     # Apply updates
     if updates.staff_id is not None:
         shift.staff_id = updates.staff_id
-    if updates.booking_id is not None:
-        shift.booking_id = updates.booking_id
     if updates.date is not None:
         shift.date = updates.date
     if updates.start_time is not None:
@@ -599,6 +646,35 @@ async def update_shift(
         shift.status = ShiftStatus(updates.status.value)
     if updates.notes is not None:
         shift.notes = updates.notes
+
+    # Handle booking links update
+    if updates.booking_ids is not None:
+        # Validate all booking IDs exist
+        for bid in updates.booking_ids:
+            booking = db.query(Booking).filter(Booking.id == bid).first()
+            if not booking:
+                raise HTTPException(status_code=400, detail=f"Booking {bid} not found")
+
+        # Remove existing links
+        db.query(ShiftBookingLink).filter(ShiftBookingLink.shift_id == shift_id).delete()
+
+        # Add new links
+        for bid in updates.booking_ids:
+            link = ShiftBookingLink(shift_id=shift_id, booking_id=bid)
+            db.add(link)
+
+        # Clear legacy booking_id
+        shift.booking_id = None
+    elif updates.booking_id is not None:
+        # Legacy single booking support - convert to link
+        db.query(ShiftBookingLink).filter(ShiftBookingLink.shift_id == shift_id).delete()
+        if updates.booking_id:
+            booking = db.query(Booking).filter(Booking.id == updates.booking_id).first()
+            if not booking:
+                raise HTTPException(status_code=400, detail="Booking not found")
+            link = ShiftBookingLink(shift_id=shift_id, booking_id=updates.booking_id)
+            db.add(link)
+        shift.booking_id = None
 
     db.commit()
     db.refresh(shift)
