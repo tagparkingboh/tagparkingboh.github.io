@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
-import BookingCalendar from './components/BookingCalendar'
 import RosterCalendar from './components/RosterCalendar'
 import SignaturePad from './components/SignaturePad'
 import './Employee.css'
@@ -606,13 +605,7 @@ function Employee() {
           token={token}
           isAdmin={false}
           refreshTrigger={refreshTrigger}
-        />
-
-        <BookingCalendar
-          token={token}
           renderBookingActions={renderBookingActions}
-          refreshTrigger={refreshTrigger}
-          apiEndpoint="/api/employee/bookings"
         />
       </main>
 

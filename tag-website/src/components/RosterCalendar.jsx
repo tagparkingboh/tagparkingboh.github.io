@@ -58,7 +58,7 @@ const formatTime = (timeStr) => {
   return timeStr.substring(0, 5)
 }
 
-function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrigger = 0 }) {
+function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrigger = 0, renderBookingActions = null }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [shifts, setShifts] = useState([])
   const [bookings, setBookings] = useState([])
@@ -680,6 +680,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                             {booking.vehicle?.registration || booking.vehicle_registration}
                           </span>
                         </div>
+                        {renderBookingActions && renderBookingActions(booking, 'dropoff')}
                       </div>
                     ))}
                 </div>
@@ -731,6 +732,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                             {booking.vehicle?.registration || booking.vehicle_registration}
                           </span>
                         </div>
+                        {renderBookingActions && renderBookingActions(booking, 'pickup')}
                       </div>
                     ))}
                 </div>
