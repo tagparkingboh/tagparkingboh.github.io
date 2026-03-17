@@ -634,6 +634,17 @@ class TestEmployeeAPI:
         # No existing user with this email
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
+        # Mock the refresh to set values on the employee object
+        def mock_refresh(obj):
+            obj.id = 1
+            obj.created_at = datetime.now()
+            obj.updated_at = None
+            obj.last_login = None
+            obj.is_admin = False
+            obj.is_active = True
+
+        mock_db.refresh.side_effect = mock_refresh
+
         client = TestClient(app)
         response = client.post("/api/employees", json={
             "first_name": "James",
@@ -643,6 +654,10 @@ class TestEmployeeAPI:
         })
 
         assert response.status_code == 201
+        data = response.json()
+        assert data["first_name"] == "James"
+        assert data["last_name"] == "Carter"
+        assert data["is_admin"] is False
 
     def test_create_employee_duplicate_email(self, mock_app_dependencies, mock_db):
         """Should reject duplicate email."""
@@ -727,13 +742,33 @@ class TestRosterAPI:
     def test_create_shift_success(self, mock_app_dependencies, mock_db):
         """Should create a new shift."""
         from main import app
+        from db_models import ShiftType, ShiftStatus
+
+        mock_employee = create_mock_user(id=1)
 
         # Mock employee exists and is active
         mock_db.query.return_value.filter.return_value.first.side_effect = [
-            create_mock_user(id=1),  # Employee lookup
+            mock_employee,  # Employee lookup
             None,  # No booking
         ]
         mock_db.query.return_value.filter.return_value.all.return_value = []  # No existing shifts
+
+        # Mock the refresh to set values on the shift object
+        def mock_refresh(obj):
+            obj.id = 1
+            obj.staff_id = 1
+            obj.booking_id = None
+            obj.date = date(2026, 3, 20)
+            obj.start_time = time(6, 0)
+            obj.end_time = time(6, 45)
+            obj.shift_type = ShiftType.DEPARTURE
+            obj.status = ShiftStatus.SCHEDULED
+            obj.notes = None
+            obj.created_at = datetime.now()
+            obj.updated_at = None
+            obj.staff = mock_employee
+
+        mock_db.refresh.side_effect = mock_refresh
 
         client = TestClient(app)
         response = client.post("/api/roster", json={
@@ -746,6 +781,9 @@ class TestRosterAPI:
         })
 
         assert response.status_code == 201
+        data = response.json()
+        assert data["shift_type"] == "departure"
+        assert data["start_time"] == "06:00"
 
     def test_create_shift_overlap_conflict(self, mock_app_dependencies, mock_db):
         """Should reject overlapping shift."""
@@ -826,20 +864,46 @@ class TestAutoAssign:
     def test_auto_assign_creates_shifts(self, mock_app_dependencies, mock_db):
         """Should generate shifts from bookings."""
         from main import app
+        from db_models import ShiftType, ShiftStatus
 
         mock_booking = create_mock_booking()
-        mock_db.query.return_value.filter.return_value.all.return_value = [mock_booking]
+
+        # Set up query mock to return booking for the filter query
+        # and None for booking lookup in shift_to_response
+        filter_mock = MagicMock()
+        filter_mock.all.return_value = [mock_booking]
+        filter_mock.first.return_value = mock_booking  # For booking lookup
+        mock_db.query.return_value.filter.return_value = filter_mock
+
+        # Track created shifts for refresh
+        shift_counter = [0]
+
+        def mock_add(obj):
+            shift_counter[0] += 1
+            obj.id = shift_counter[0]
+            obj.created_at = datetime.now()
+            obj.updated_at = None
+            obj.staff = None
+
+        def mock_refresh(obj):
+            # Object already has values set from add
+            pass
+
+        mock_db.add.side_effect = mock_add
+        mock_db.refresh.side_effect = mock_refresh
 
         client = TestClient(app)
         response = client.post("/api/roster/auto-assign", json={
             "date_from": "2026-03-20",
-            "date_to": "2026-03-20",
+            "date_to": "2026-03-27",
             "clear_existing": False
         })
 
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
+        # Should create departure shift for dropoff and arrival shift for pickup
+        assert data["shifts_created"] >= 1
 
     def test_auto_assign_no_bookings(self, mock_app_dependencies, mock_db):
         """Should handle date range with no bookings."""
@@ -857,3 +921,410 @@ class TestAutoAssign:
         assert response.status_code == 200
         data = response.json()
         assert data["shifts_created"] == 0
+
+
+# =============================================================================
+# Unit Tests - Date Format Conversion
+# =============================================================================
+
+class TestDateFormatConversion:
+    """Tests for date format conversion between UK (DD/MM/YYYY) and ISO (YYYY-MM-DD)."""
+
+    def test_iso_date_accepted_by_api(self):
+        """API should accept ISO format dates (YYYY-MM-DD)."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+
+        # This should not raise
+        shift = RosterShiftCreate(
+            date=date(2026, 3, 17),
+            start_time="15:30",
+            end_time="16:30",
+            shift_type=ShiftTypeEnum.DEPARTURE
+        )
+        assert shift.date == date(2026, 3, 17)
+
+    def test_date_string_iso_format(self):
+        """Date should be parsed from ISO string format."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+
+        # Pydantic should parse "2026-03-17" as date(2026, 3, 17)
+        shift = RosterShiftCreate(
+            date="2026-03-17",
+            start_time="15:30",
+            end_time="16:30",
+            shift_type=ShiftTypeEnum.DEPARTURE
+        )
+        assert shift.date == date(2026, 3, 17)
+
+    def test_uk_date_format_rejected(self):
+        """UK format dates (DD/MM/YYYY) should be rejected by Pydantic."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError) as exc_info:
+            RosterShiftCreate(
+                date="17/03/2026",  # UK format - should fail
+                start_time="15:30",
+                end_time="16:30",
+                shift_type=ShiftTypeEnum.DEPARTURE
+            )
+
+        assert "date" in str(exc_info.value).lower()
+
+    def test_march_date_not_confused_with_us_format(self):
+        """Date like 2026-03-17 should be March 17, not 17th day of 3rd month."""
+        d = date(2026, 3, 17)
+        assert d.month == 3  # March
+        assert d.day == 17
+
+    def test_uk_display_format(self):
+        """Dates should display as DD/MM/YYYY for UK users."""
+        d = date(2026, 3, 17)
+        uk_format = d.strftime("%d/%m/%Y")
+        assert uk_format == "17/03/2026"
+        # Must NOT be US format
+        assert uk_format != "03/17/2026"
+
+
+# =============================================================================
+# Unit Tests - Time Format
+# =============================================================================
+
+class TestTimeFormat:
+    """Tests for 24-hour time format."""
+
+    def test_time_input_24hr_format(self):
+        """Time should be stored in 24-hour format."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+
+        shift = RosterShiftCreate(
+            date=date(2026, 3, 17),
+            start_time="15:30",  # 3:30 PM in 24hr
+            end_time="16:30",
+            shift_type=ShiftTypeEnum.DEPARTURE
+        )
+        assert shift.start_time == "15:30"
+        assert shift.end_time == "16:30"
+
+    def test_early_morning_time(self):
+        """Early morning times should be zero-padded."""
+        t = time(6, 0)
+        formatted = t.strftime("%H:%M")
+        assert formatted == "06:00"
+
+    def test_noon_time(self):
+        """Noon should be 12:00, not 00:00."""
+        t = time(12, 0)
+        formatted = t.strftime("%H:%M")
+        assert formatted == "12:00"
+
+    def test_afternoon_time_no_pm(self):
+        """3:30 PM should display as 15:30."""
+        t = time(15, 30)
+        formatted = t.strftime("%H:%M")
+        assert formatted == "15:30"
+        assert "PM" not in formatted
+
+    def test_late_evening_time(self):
+        """Late evening times should use 24hr format."""
+        t = time(22, 45)
+        formatted = t.strftime("%H:%M")
+        assert formatted == "22:45"
+
+
+# =============================================================================
+# Integration Tests - Employee List Format
+# =============================================================================
+
+class TestEmployeeListFormat:
+    """Tests for employee list endpoint response format."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock database session."""
+        db = MagicMock(spec=Session)
+        return db
+
+    @pytest.fixture
+    def mock_app_dependencies(self, mock_db):
+        """Set up mock dependencies."""
+        from main import app
+        from database import get_db
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        yield
+
+        app.dependency_overrides.clear()
+
+    def test_employee_list_returns_array(self, mock_app_dependencies, mock_db):
+        """Employee list should return array directly, not wrapped in object."""
+        from main import app
+
+        mock_employees = [
+            create_mock_user(id=1, first_name="James", last_name="Carter"),
+            create_mock_user(id=2, first_name="Sophie", last_name="Mills"),
+        ]
+
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = mock_employees
+
+        client = TestClient(app)
+        response = client.get("/api/employees")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should be an array, not { employees: [...] }
+        assert isinstance(data, list)
+        assert len(data) == 2
+
+    def test_employee_list_has_required_fields(self, mock_app_dependencies, mock_db):
+        """Each employee in list should have required fields."""
+        from main import app
+
+        mock_employees = [
+            create_mock_user(id=1, first_name="James", last_name="Carter"),
+        ]
+
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = mock_employees
+
+        client = TestClient(app)
+        response = client.get("/api/employees")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        employee = data[0]
+        assert "id" in employee
+        assert "first_name" in employee
+        assert "last_name" in employee
+        assert "email" in employee
+        assert "is_active" in employee
+
+    def test_employee_list_empty(self, mock_app_dependencies, mock_db):
+        """Empty employee list should return empty array."""
+        from main import app
+
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+
+        client = TestClient(app)
+        response = client.get("/api/employees")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert isinstance(data, list)
+        assert len(data) == 0
+
+
+# =============================================================================
+# Unit Tests - Shift Edge Cases
+# =============================================================================
+
+class TestShiftEdgeCases:
+    """Tests for edge cases in shift handling."""
+
+    def test_shift_with_null_staff_id(self):
+        """Unassigned shifts (staff_id=null) should be valid."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+
+        shift = RosterShiftCreate(
+            staff_id=None,
+            date=date(2026, 3, 17),
+            start_time="06:00",
+            end_time="06:45",
+            shift_type=ShiftTypeEnum.DEPARTURE
+        )
+
+        assert shift.staff_id is None
+
+    def test_shift_with_notes(self):
+        """Shifts can have optional notes."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+
+        shift = RosterShiftCreate(
+            date=date(2026, 3, 17),
+            start_time="06:00",
+            end_time="06:45",
+            shift_type=ShiftTypeEnum.DEPARTURE,
+            notes="Testing notes"
+        )
+
+        assert shift.notes == "Testing notes"
+
+    def test_shift_default_status(self):
+        """Shifts should default to 'scheduled' status."""
+        from models import RosterShiftCreate, ShiftTypeEnum, ShiftStatusEnum
+
+        shift = RosterShiftCreate(
+            date=date(2026, 3, 17),
+            start_time="06:00",
+            end_time="06:45",
+            shift_type=ShiftTypeEnum.DEPARTURE
+        )
+
+        assert shift.status == ShiftStatusEnum.SCHEDULED
+
+    def test_shift_all_types_valid(self):
+        """All shift types should be valid."""
+        from models import RosterShiftCreate, ShiftTypeEnum
+
+        for shift_type in ShiftTypeEnum:
+            shift = RosterShiftCreate(
+                date=date(2026, 3, 17),
+                start_time="06:00",
+                end_time="06:45",
+                shift_type=shift_type
+            )
+            assert shift.shift_type == shift_type
+
+    def test_shift_all_statuses_valid(self):
+        """All shift statuses should be valid."""
+        from models import RosterShiftCreate, ShiftTypeEnum, ShiftStatusEnum
+
+        for status in ShiftStatusEnum:
+            shift = RosterShiftCreate(
+                date=date(2026, 3, 17),
+                start_time="06:00",
+                end_time="06:45",
+                shift_type=ShiftTypeEnum.DEPARTURE,
+                status=status
+            )
+            assert shift.status == status
+
+    def test_shift_midnight_crossing(self):
+        """Shift that crosses midnight should be valid (end < start in time)."""
+        # This is a data model test - actual business logic for overnight shifts
+        # would need additional validation
+        from models import RosterShiftCreate, ShiftTypeEnum
+
+        shift = RosterShiftCreate(
+            date=date(2026, 3, 17),
+            start_time="23:30",
+            end_time="00:30",
+            shift_type=ShiftTypeEnum.ARRIVAL
+        )
+
+        assert shift.start_time == "23:30"
+        assert shift.end_time == "00:30"
+
+
+# =============================================================================
+# Unit Tests - Phone Number Validation
+# =============================================================================
+
+class TestPhoneNumberValidation:
+    """Tests for UK phone number validation in employee creation."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Create a mock database session."""
+        db = MagicMock(spec=Session)
+        return db
+
+    @pytest.fixture
+    def mock_app_dependencies(self, mock_db):
+        """Set up mock dependencies."""
+        from main import app
+        from database import get_db
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        yield
+
+        app.dependency_overrides.clear()
+
+    def test_uk_mobile_with_plus44(self, mock_app_dependencies, mock_db):
+        """UK mobile with +44 prefix should be valid."""
+        from main import app
+
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        def mock_refresh(obj):
+            obj.id = 1
+            obj.created_at = datetime.now()
+            obj.updated_at = None
+            obj.last_login = None
+            obj.is_admin = False
+            obj.is_active = True
+
+        mock_db.refresh.side_effect = mock_refresh
+
+        client = TestClient(app)
+        response = client.post("/api/employees", json={
+            "first_name": "James",
+            "last_name": "Carter",
+            "email": "james@tagparking.co.uk",
+            "phone": "+447700900123"
+        })
+
+        assert response.status_code == 201
+
+    def test_uk_mobile_starting_07(self, mock_app_dependencies, mock_db):
+        """UK mobile starting with 07 should be valid."""
+        from main import app
+
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        def mock_refresh(obj):
+            obj.id = 1
+            obj.created_at = datetime.now()
+            obj.updated_at = None
+            obj.last_login = None
+            obj.is_admin = False
+            obj.is_active = True
+
+        mock_db.refresh.side_effect = mock_refresh
+
+        client = TestClient(app)
+        response = client.post("/api/employees", json={
+            "first_name": "James",
+            "last_name": "Carter",
+            "email": "james@tagparking.co.uk",
+            "phone": "07700900123"
+        })
+
+        assert response.status_code == 201
+
+    def test_uk_landline_starting_01(self, mock_app_dependencies, mock_db):
+        """UK landline starting with 01 should be valid."""
+        from main import app
+
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        def mock_refresh(obj):
+            obj.id = 1
+            obj.created_at = datetime.now()
+            obj.updated_at = None
+            obj.last_login = None
+            obj.is_admin = False
+            obj.is_active = True
+
+        mock_db.refresh.side_effect = mock_refresh
+
+        client = TestClient(app)
+        response = client.post("/api/employees", json={
+            "first_name": "James",
+            "last_name": "Carter",
+            "email": "james@tagparking.co.uk",
+            "phone": "01onal234567"
+        })
+
+        assert response.status_code == 201
+
+    def test_invalid_phone_rejected(self, mock_app_dependencies, mock_db):
+        """Non-UK phone number should be rejected."""
+        from main import app
+
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        client = TestClient(app)
+        response = client.post("/api/employees", json={
+            "first_name": "James",
+            "last_name": "Carter",
+            "email": "james@tagparking.co.uk",
+            "phone": "12025551234"  # US number
+        })
+
+        assert response.status_code == 400
+        assert "phone" in response.json()["detail"].lower()
