@@ -10,18 +10,19 @@ This module provides endpoints for:
 
 from datetime import date, time, datetime, timedelta
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from database import get_db
-from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus
+from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession
 from models import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     RosterShiftCreate, RosterShiftUpdate, RosterShiftResponse,
     AutoAssignRequest, AutoAssignResponse, OperationalWarning,
     ShiftTypeEnum, ShiftStatusEnum
 )
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 router = APIRouter(prefix="/api", tags=["roster"])
 
@@ -147,27 +148,45 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
 
 
 # ============================================================================
-# Dependency: Admin Authentication
+# Dependency: Authentication
 # ============================================================================
 
-async def require_admin(db: Session = Depends(get_db)):
+async def get_current_user(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+) -> User:
     """
-    Dependency to require admin authentication.
-    This is a placeholder - integrate with your existing auth system.
+    Dependency to get the current authenticated user from session token.
+    Expects header: Authorization: Bearer <token>
     """
-    # TODO: Integrate with existing require_admin from main.py
-    # For now, this is a stub that should be replaced
-    pass
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
 
-async def require_employee(db: Session = Depends(get_db)):
-    """
-    Dependency to require employee authentication.
-    Returns the authenticated employee user.
-    """
-    # TODO: Integrate with existing employee auth from main.py
-    # For now, this is a stub that should be replaced
-    pass
+    token = parts[1]
+
+    # Find valid session
+    session = db.query(DbSession).filter(
+        DbSession.token == token,
+        DbSession.expires_at > datetime.utcnow()
+    ).first()
+
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    # Get user
+    user = db.query(User).filter(
+        User.id == session.user_id,
+        User.is_active == True
+    ).first()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+
+    return user
 
 
 # ============================================================================
@@ -775,25 +794,35 @@ async def get_bookings_for_date(
 
 @router.get("/employee/shifts", response_model=List[RosterShiftResponse])
 async def get_employee_shifts(
+    date_from: Optional[date] = Query(None, description="Filter from date (YYYY-MM-DD)"),
+    date_to: Optional[date] = Query(None, description="Filter to date (YYYY-MM-DD)"),
     week_start: Optional[date] = Query(None, description="Filter by week starting date"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-    # TODO: Add employee auth dependency to get current user
 ):
     """
-    Get shifts for the authenticated employee (read-only).
-    Returns only the logged-in employee's shifts.
-
-    Note: The staff_id filter is ignored - server always filters by authenticated user.
+    Get shifts for the authenticated user (read-only).
+    Returns only the logged-in user's shifts.
+    Works for both employees and admins viewing their own shifts.
     """
-    # TODO: Get authenticated employee ID from session
-    # For now, return empty - this needs integration with existing auth
-    # employee_id = get_current_employee_id()
+    query = db.query(RosterShift).filter(RosterShift.staff_id == current_user.id)
 
-    # Placeholder - needs auth integration
-    raise HTTPException(
-        status_code=501,
-        detail="Employee shift view requires authentication integration"
-    )
+    # Apply date filters
+    if date_from and date_to:
+        query = query.filter(
+            RosterShift.date >= date_from,
+            RosterShift.date <= date_to
+        )
+    elif week_start:
+        week_end = week_start + timedelta(days=6)
+        query = query.filter(
+            RosterShift.date >= week_start,
+            RosterShift.date <= week_end
+        )
+
+    shifts = query.order_by(RosterShift.date, RosterShift.start_time).all()
+
+    return [shift_to_response(shift, db) for shift in shifts]
 
 
 # ============================================================================
