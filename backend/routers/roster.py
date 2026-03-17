@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from database import get_db
-from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession
+from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession, BookingStatus
 from models import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     RosterShiftCreate, RosterShiftUpdate, RosterShiftResponse,
@@ -440,7 +440,7 @@ async def get_bookings_for_date(
     # Find bookings with dropoff on this date
     dropoff_bookings = db.query(Booking).filter(
         Booking.dropoff_date == date,
-        Booking.status.in_(["confirmed", "pending"])
+        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.PENDING])
     ).all()
 
     for b in dropoff_bookings:
@@ -459,7 +459,7 @@ async def get_bookings_for_date(
     # Find bookings with pickup on this date
     pickup_bookings = db.query(Booking).filter(
         Booking.pickup_date == date,
-        Booking.status.in_(["confirmed", "pending"])
+        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.PENDING])
     ).all()
 
     for b in pickup_bookings:
