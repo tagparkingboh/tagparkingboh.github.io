@@ -60,6 +60,17 @@ const getTodayUK = () => {
   return new Date(year, month - 1, day)
 }
 
+// Get current UK time in minutes since midnight
+const getCurrentUKTimeMinutes = () => {
+  const now = new Date()
+  const ukTimeStr = now.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hour12: false })
+  const [hours, minutes] = ukTimeStr.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+// Minimum hours notice required for same-day bookings
+const MIN_HOURS_NOTICE = 4
+
 // Normalize airline names (merge Ryanair UK into Ryanair)
 const normalizeAirlineName = (name) => {
   if (name === 'Ryanair UK') return 'Ryanair'
@@ -523,16 +534,25 @@ function Bookings() {
     const [hours, minutes] = flightTime.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
+    // Check if this is a same-day booking and enforce 4-hour minimum notice
+    const isToday = formData.dropoffDate &&
+      format(formData.dropoffDate, 'yyyy-MM-dd') === format(getTodayUK(), 'yyyy-MM-dd')
+    const currentUKMinutes = isToday ? getCurrentUKTimeMinutes() : 0
+    const minNoticeMinutes = MIN_HOURS_NOTICE * 60 // 4 hours = 240 minutes
+
     const slots = []
 
     // Early slot: 2¾ hours before (165 minutes) - show if slots available
     const earlyAvailable = selectedDropoffFlight.early_slots_available ??
       (selectedDropoffFlight.is_slot_1_booked === false ? 1 : 0)
-    if (earlyAvailable > 0) {
+    const earlySlotMinutes = departureMinutes - 165
+    // For same-day: only show if slot time is at least 4 hours from now
+    const earlySlotAllowed = !isToday || (earlySlotMinutes >= currentUKMinutes + minNoticeMinutes)
+    if (earlyAvailable > 0 && earlySlotAllowed) {
       slots.push({
         id: '165',
         label: '2¾ hours before',
-        time: formatMinutesToTime(departureMinutes - 165),
+        time: formatMinutesToTime(earlySlotMinutes),
         available: earlyAvailable,
         isLastSlot: selectedDropoffFlight.early_is_last_slot || selectedDropoffFlight.is_last_slot
       })
@@ -541,18 +561,21 @@ function Bookings() {
     // Late slot: 2 hours before (120 minutes) - show if slots available
     const lateAvailable = selectedDropoffFlight.late_slots_available ??
       (selectedDropoffFlight.is_slot_2_booked === false ? 1 : 0)
-    if (lateAvailable > 0) {
+    const lateSlotMinutes = departureMinutes - 120
+    // For same-day: only show if slot time is at least 4 hours from now
+    const lateSlotAllowed = !isToday || (lateSlotMinutes >= currentUKMinutes + minNoticeMinutes)
+    if (lateAvailable > 0 && lateSlotAllowed) {
       slots.push({
         id: '120',
         label: '2 hours before',
-        time: formatMinutesToTime(departureMinutes - 120),
+        time: formatMinutesToTime(lateSlotMinutes),
         available: lateAvailable,
         isLastSlot: selectedDropoffFlight.late_is_last_slot || selectedDropoffFlight.is_last_slot
       })
     }
 
     return slots
-  }, [selectedDropoffFlight, isCallUsOnly, departureTimeOverride])
+  }, [selectedDropoffFlight, isCallUsOnly, departureTimeOverride, formData.dropoffDate])
 
   // Check if flight is fully booked (all slots taken) or Call Us only
   const isFlightFullyBooked = useMemo(() => {
@@ -803,19 +826,60 @@ function Bookings() {
     const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
-    return [
-      {
+    // Check if this is a same-day booking and enforce 4-hour minimum notice
+    const isToday = formData.dropoffDate &&
+      format(formData.dropoffDate, 'yyyy-MM-dd') === format(getTodayUK(), 'yyyy-MM-dd')
+    const currentUKMinutes = isToday ? getCurrentUKTimeMinutes() : 0
+    const minNoticeMinutes = MIN_HOURS_NOTICE * 60 // 4 hours = 240 minutes
+
+    const slots = []
+
+    const earlySlotMinutes = departureMinutes - 165
+    if (!isToday || (earlySlotMinutes >= currentUKMinutes + minNoticeMinutes)) {
+      slots.push({
         id: '165',
         label: '2¾ hours before',
-        time: formatMinutesToTime(departureMinutes - 165)
-      },
-      {
+        time: formatMinutesToTime(earlySlotMinutes)
+      })
+    }
+
+    const lateSlotMinutes = departureMinutes - 120
+    if (!isToday || (lateSlotMinutes >= currentUKMinutes + minNoticeMinutes)) {
+      slots.push({
         id: '120',
         label: '2 hours before',
-        time: formatMinutesToTime(departureMinutes - 120)
-      }
-    ]
-  }, [showManualDeparture, manualDepartureData.flightTime])
+        time: formatMinutesToTime(lateSlotMinutes)
+      })
+    }
+
+    return slots
+  }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate])
+
+  // Check if same-day slots were filtered due to 4-hour notice requirement
+  const sameDaySlotsFiltered = useMemo(() => {
+    if (!showManualDeparture) return false
+    if (!isValidTimeFormat(manualDepartureData.flightTime)) return false
+
+    const isToday = formData.dropoffDate &&
+      format(formData.dropoffDate, 'yyyy-MM-dd') === format(getTodayUK(), 'yyyy-MM-dd')
+    if (!isToday) return false
+
+    const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
+    const departureMinutes = hours * 60 + minutes
+    const currentUKMinutes = getCurrentUKTimeMinutes()
+    const minNoticeMinutes = MIN_HOURS_NOTICE * 60
+
+    // Check if any slot would exist without the 4-hour filter
+    const earlySlotMinutes = departureMinutes - 165
+    const lateSlotMinutes = departureMinutes - 120
+
+    const earlyWouldExist = earlySlotMinutes > 0
+    const lateWouldExist = lateSlotMinutes > 0
+    const earlyFiltered = earlyWouldExist && earlySlotMinutes < currentUKMinutes + minNoticeMinutes
+    const lateFiltered = lateWouldExist && lateSlotMinutes < currentUKMinutes + minNoticeMinutes
+
+    return earlyFiltered || lateFiltered
+  }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate])
 
   // Normalize time to HH:MM format
   const normalizeTime = (timeStr) => {
@@ -2311,6 +2375,15 @@ function Bookings() {
                             </div>
                           </label>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {sameDaySlotsFiltered && isValidTimeFormat(manualDepartureData.flightTime) && (
+                    <div className="form-group">
+                      <div className="same-day-notice">
+                        <strong>Same-day bookings require at least 4 hours notice.</strong>
+                        <p>Please call us on <a href="tel:+447586092361">+44 (0)7586 092361</a> to arrange a last-minute booking.</p>
                       </div>
                     </div>
                   )}
