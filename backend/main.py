@@ -6073,6 +6073,33 @@ async def create_payment(
         if not request.billing_postcode or not request.billing_postcode.strip():
             raise HTTPException(status_code=400, detail="Billing postcode is required")
 
+        # Validate same-day bookings have at least 4 hours notice
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        MIN_HOURS_NOTICE = 4
+        uk_tz = ZoneInfo("Europe/London")
+        now_uk = datetime.now(uk_tz)
+        today_uk = now_uk.date()
+
+        if request.drop_off_date == today_uk:
+            # Parse the flight time (or dropoff time)
+            flight_time_str = request.flight_time
+            if flight_time_str:
+                flight_hours, flight_mins = map(int, flight_time_str.split(':'))
+                flight_minutes_from_midnight = flight_hours * 60 + flight_mins
+                # Calculate dropoff slot time (either 165 or 120 mins before flight)
+                slot_offset = 165 if request.drop_off_slot_type == SlotType.EARLY else 120
+                dropoff_minutes = flight_minutes_from_midnight - slot_offset
+                # Current UK time in minutes from midnight
+                current_minutes = now_uk.hour * 60 + now_uk.minute
+                # Check if dropoff is at least 4 hours away
+                min_notice_minutes = MIN_HOURS_NOTICE * 60
+                if dropoff_minutes < current_minutes + min_notice_minutes:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Same-day bookings require at least {MIN_HOURS_NOTICE} hours notice. Please call us to arrange a last-minute booking."
+                    )
+
         # Check for existing PENDING booking with same session_id (prevent duplicates from Terms toggle)
         existing_booking = None
         promo_changed = False
