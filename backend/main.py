@@ -3147,6 +3147,8 @@ async def get_popular_airlines_destinations(
         })
 
     # Count route combinations (airline + destination)
+    # Note: We use airline_name + destination as the key (not airline_code)
+    # to avoid duplicates from varying codes (e.g., UNK vs actual code)
     route_counter = Counter()
     for booking in bookings:
         # Collect unique routes for this booking (airline + destination pairs)
@@ -3154,7 +3156,6 @@ async def get_popular_airlines_destinations(
         # Outbound: dropoff airline to dropoff destination
         if booking.dropoff_airline_name and booking.dropoff_destination:
             route_key = (
-                booking.dropoff_airline_code or "UNK",
                 booking.dropoff_airline_name,
                 booking.dropoff_destination
             )
@@ -3162,7 +3163,6 @@ async def get_popular_airlines_destinations(
         # Return: pickup airline from pickup origin
         if booking.pickup_airline_name and booking.pickup_origin:
             route_key = (
-                booking.pickup_airline_code or "UNK",
                 booking.pickup_airline_name,
                 booking.pickup_origin
             )
@@ -3174,10 +3174,9 @@ async def get_popular_airlines_destinations(
     # Get top routes
     top_routes = []
     total_route_bookings = sum(route_counter.values())
-    for (code, airline, destination), count in route_counter.most_common(top):
+    for (airline, destination), count in route_counter.most_common(top):
         percent = round((count / total_route_bookings) * 100, 1) if total_route_bookings > 0 else 0
         top_routes.append({
-            "airlineCode": code,
             "airlineName": airline,
             "destination": destination,
             "route": f"{airline} to {destination}",

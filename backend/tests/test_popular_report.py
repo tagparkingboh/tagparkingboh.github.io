@@ -90,9 +90,9 @@ def create_mock_popular_response(
 
     if popular_routes is None:
         popular_routes = [
-            {"airlineCode": "BA", "airlineName": "British Airways", "destination": "Faro Airport", "route": "British Airways to Faro Airport", "count": 5, "percent": 35.0},
-            {"airlineCode": "FR", "airlineName": "Ryanair", "destination": "Malaga Airport", "route": "Ryanair to Malaga Airport", "count": 4, "percent": 28.0},
-            {"airlineCode": "U2", "airlineName": "easyJet", "destination": "Alicante Airport", "route": "easyJet to Alicante Airport", "count": 3, "percent": 21.0},
+            {"airlineName": "British Airways", "destination": "Faro Airport", "route": "British Airways to Faro Airport", "count": 5, "percent": 35.0},
+            {"airlineName": "Ryanair", "destination": "Malaga Airport", "route": "Ryanair to Malaga Airport", "count": 4, "percent": 28.0},
+            {"airlineName": "easyJet", "destination": "Alicante Airport", "route": "easyJet to Alicante Airport", "count": 3, "percent": 21.0},
         ]
 
     return {
@@ -181,7 +181,6 @@ class TestPopularReportResponseStructure:
         response = create_mock_popular_response()
 
         route = response["popularRoutes"][0]
-        assert "airlineCode" in route
         assert "airlineName" in route
         assert "destination" in route
         assert "route" in route
