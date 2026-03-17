@@ -101,10 +101,15 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
     # Build list of linked bookings
     linked_bookings = []
 
+    # For overnight shifts, check both start date and end date
+    shift_dates = {shift.date}
+    if shift.end_date and shift.end_date != shift.date:
+        shift_dates.add(shift.end_date)
+
     # Get bookings from many-to-many relationship
     for booking in shift.bookings:
-        # Determine if this is a dropoff or pickup based on the shift date
-        if booking.dropoff_date == shift.date:
+        # Determine if this is a dropoff or pickup based on shift dates
+        if booking.dropoff_date in shift_dates:
             linked_bookings.append(LinkedBookingInfo(
                 id=booking.id,
                 reference=booking.reference or "",
@@ -114,7 +119,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                 flight_number=booking.dropoff_flight_number,
                 destination=booking.dropoff_destination
             ))
-        elif booking.pickup_date == shift.date:
+        elif booking.pickup_date in shift_dates:
             linked_bookings.append(LinkedBookingInfo(
                 id=booking.id,
                 reference=booking.reference or "",
@@ -129,7 +134,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
     if shift.booking_id and not any(b.id == shift.booking_id for b in shift.bookings):
         booking = db.query(Booking).filter(Booking.id == shift.booking_id).first()
         if booking:
-            if booking.dropoff_date == shift.date:
+            if booking.dropoff_date in shift_dates:
                 linked_bookings.append(LinkedBookingInfo(
                     id=booking.id,
                     reference=booking.reference or "",
@@ -139,7 +144,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                     flight_number=booking.dropoff_flight_number,
                     destination=booking.dropoff_destination
                 ))
-            elif booking.pickup_date == shift.date:
+            elif booking.pickup_date in shift_dates:
                 linked_bookings.append(LinkedBookingInfo(
                     id=booking.id,
                     reference=booking.reference or "",
