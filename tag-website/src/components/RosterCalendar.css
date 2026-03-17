@@ -459,6 +459,7 @@
   font-family: monospace;
   font-weight: 600;
   letter-spacing: 1px;
+  color: #fff;
 }
 
 /* Shift List */
@@ -635,12 +636,12 @@
 }
 
 .shift-booking-flight {
-  color: #aaa;
+  color: #fff;
   font-family: monospace;
 }
 
 .shift-booking-dest {
-  color: #888;
+  color: #fff;
 }
 
 .shift-notes {
