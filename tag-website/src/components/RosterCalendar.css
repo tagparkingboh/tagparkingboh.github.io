@@ -856,7 +856,15 @@
   color: #333;
 }
 
-/* Responsive */
+/* Responsive - Tablet (iPad) */
+@media (max-width: 1024px) {
+  .roster-calendar .shift-modal {
+    width: 90vw;
+    max-width: 700px;
+  }
+}
+
+/* Responsive - Small Tablet / Large Phone */
 @media (max-width: 768px) {
   .roster-calendar-header {
     flex-direction: column;
@@ -899,14 +907,49 @@
 
   .form-row-double {
     flex-direction: column;
-    gap: 22px;
+    gap: 16px;
   }
 
   .roster-calendar .shift-modal {
-    width: 100%;
+    width: 95vw;
+    max-width: none;
+    margin: 10px;
+  }
+
+  .roster-calendar .modal-overlay {
+    padding: 10px;
+  }
+
+  .shift-form {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .roster-calendar .shift-modal h3 {
+    padding: 16px 16px 0 16px;
+    font-size: 18px;
+  }
+
+  .form-row input,
+  .form-row select,
+  .form-row textarea {
+    padding: 14px 12px;
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+
+  .roster-calendar .modal-actions {
+    padding: 16px;
+    gap: 10px;
+  }
+
+  .roster-calendar .modal-cancel-btn,
+  .roster-calendar .modal-save-btn {
+    padding: 14px 20px;
+    font-size: 16px;
   }
 }
 
+/* Responsive - Phone */
 @media (max-width: 480px) {
   .roster-calendar .calendar-weekday {
     padding: 8px 4px;
@@ -924,12 +967,23 @@
   }
 
   .shift-form {
-    padding: 20px;
+    padding: 12px;
+    gap: 14px;
   }
 
-  .modal-actions {
-    padding: 20px;
+  .roster-calendar .modal-actions {
+    padding: 12px;
     flex-direction: column;
+  }
+
+  .roster-calendar .modal-cancel-btn,
+  .roster-calendar .modal-save-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .roster-calendar .shift-modal h3 {
+    padding: 12px 12px 0 12px;
   }
 
   .modal-cancel-btn,
