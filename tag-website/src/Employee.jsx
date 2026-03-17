@@ -111,6 +111,8 @@ function Employee() {
   const [cameraStream, setCameraStream] = useState(null)
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const [fileInputSlotKey, setFileInputSlotKey] = useState(null)
 
   // Helper to get localStorage key for inspection draft
   const getDraftKey = (bookingId, type) => `inspection_draft_${bookingId}_${type}`
@@ -429,6 +431,34 @@ function Employee() {
     setShowCameraModal(false)
     setCameraSlotKey(null)
   }
+
+  // Open file picker for user ID 1 (laptop/desktop use)
+  const openFilePicker = (slotKey) => {
+    setFileInputSlotKey(slotKey)
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
+    }
+  }
+
+  // Handle file selection from local storage
+  const handleFileSelect = (event) => {
+    const file = event.target.files?.[0]
+    if (!file || !fileInputSlotKey) return
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const base64 = e.target.result
+      setInspectionPhotos(prev => ({ ...prev, [fileInputSlotKey]: base64 }))
+      setFileInputSlotKey(null)
+    }
+    reader.readAsDataURL(file)
+
+    // Reset file input so same file can be selected again
+    event.target.value = ''
+  }
+
+  // Check if user can use file upload (user ID 1)
+  const canUseFileUpload = user?.id === 1
 
   // Save inspection
   const handleSaveInspection = async () => {
@@ -773,6 +803,17 @@ function Employee() {
                                 </button>
                               </div>
                             </div>
+                          ) : canUseFileUpload ? (
+                            <div className="photo-slot-options">
+                              <button className="photo-slot-capture" onClick={() => openCamera(slot.key)}>
+                                <span className="photo-slot-icon">&#128247;</span>
+                                <span>Camera</span>
+                              </button>
+                              <button className="photo-slot-capture photo-slot-upload" onClick={() => openFilePicker(slot.key)}>
+                                <span className="photo-slot-icon">&#128193;</span>
+                                <span>Upload</span>
+                              </button>
+                            </div>
                           ) : (
                             <button className="photo-slot-capture" onClick={() => openCamera(slot.key)}>
                               <span className="photo-slot-icon">&#128247;</span>
@@ -1095,6 +1136,15 @@ function Employee() {
           />
         </div>
       )}
+
+      {/* Hidden file input for local storage uploads (user ID 1 only) */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleFileSelect}
+      />
     </div>
   )
 }

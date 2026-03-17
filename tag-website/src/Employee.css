@@ -554,6 +554,21 @@
   color: #D9FF00;
 }
 
+.photo-slot-options {
+  display: flex;
+  gap: 8px;
+  aspect-ratio: 4 / 3;
+}
+
+.photo-slot-options .photo-slot-capture {
+  flex: 1;
+  aspect-ratio: unset;
+}
+
+.photo-slot-upload {
+  background: #2a2a3a;
+}
+
 .photo-slot-icon {
   font-size: 28px;
 }
