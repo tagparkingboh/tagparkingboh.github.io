@@ -470,10 +470,10 @@ async def get_bookings_for_date(
     """
     results = []
 
-    # Find bookings with dropoff on this date
+    # Find bookings with dropoff on this date (only confirmed - pending means unpaid)
     dropoff_bookings = db.query(Booking).filter(
         Booking.dropoff_date == date,
-        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.PENDING])
+        Booking.status == BookingStatus.CONFIRMED
     ).all()
 
     for b in dropoff_bookings:
@@ -489,10 +489,10 @@ async def get_bookings_for_date(
             "destination": b.dropoff_destination
         })
 
-    # Find bookings with pickup on this date
+    # Find bookings with pickup on this date (only confirmed - pending means unpaid)
     pickup_bookings = db.query(Booking).filter(
         Booking.pickup_date == date,
-        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.PENDING])
+        Booking.status == BookingStatus.CONFIRMED
     ).all()
 
     for b in pickup_bookings:
@@ -743,7 +743,7 @@ async def auto_assign_shifts(
                 Booking.pickup_date <= request.date_to
             )
         ),
-        Booking.status.in_(["confirmed", "pending"])
+        Booking.status == BookingStatus.CONFIRMED
     ).all()
 
     for booking in bookings:
