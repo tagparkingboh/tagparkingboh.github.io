@@ -530,6 +530,12 @@ class RosterShiftResponse(BaseModel):
     staff_initials: Optional[str] = None
     booking_id: Optional[int] = None
     booking_reference: Optional[str] = None
+    # Extended booking info for display
+    booking_type: Optional[str] = None  # "dropoff" or "pickup"
+    booking_customer_name: Optional[str] = None
+    booking_time: Optional[str] = None  # The dropoff/pickup time
+    booking_flight_number: Optional[str] = None
+    booking_destination: Optional[str] = None  # destination for dropoff, origin for pickup
     date: date
     start_time: str  # "HH:MM"
     end_time: str  # "HH:MM"

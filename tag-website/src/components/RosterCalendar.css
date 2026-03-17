@@ -555,21 +555,70 @@
   font-style: italic;
 }
 
-.shift-booking {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.9rem;
+.shift-booking-info {
+  background: #1a1a2e;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 4px;
 }
 
-.shift-booking-label {
-  color: #888;
+.shift-booking-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.shift-booking-type {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.shift-booking-type.dropoff {
+  background: rgba(74, 144, 226, 0.2);
+  color: #4a90e2;
+}
+
+.shift-booking-type.pickup {
+  background: rgba(80, 200, 120, 0.2);
+  color: #50c878;
 }
 
 .shift-booking-ref {
   font-family: monospace;
   color: #D9FF00;
   font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.shift-booking-details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #ccc;
+}
+
+.shift-booking-customer {
+  color: #fff;
+  font-weight: 500;
+}
+
+.shift-booking-time {
+  color: #D9FF00;
+  font-family: monospace;
+}
+
+.shift-booking-flight {
+  color: #aaa;
+  font-family: monospace;
+}
+
+.shift-booking-dest {
+  color: #888;
 }
 
 .shift-notes {

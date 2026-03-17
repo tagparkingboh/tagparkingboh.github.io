@@ -73,6 +73,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const [editingShift, setEditingShift] = useState(null)
   const [shiftForm, setShiftForm] = useState({
     staff_id: '',
+    booking_id: '',
     date: '',
     start_time: '',
     end_time: '',
@@ -80,6 +81,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     notes: '',
   })
   const [savingShift, setSavingShift] = useState(false)
+  const [dateBookings, setDateBookings] = useState([])
+  const [loadingDateBookings, setLoadingDateBookings] = useState(false)
 
   // Delete confirmation
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -182,6 +185,42 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   useEffect(() => {
     fetchStaff()
   }, [fetchStaff])
+
+  // Fetch bookings for a specific date (for shift assignment)
+  const fetchBookingsForDate = useCallback(async (dateStr) => {
+    if (!token || !dateStr) {
+      setDateBookings([])
+      return
+    }
+
+    setLoadingDateBookings(true)
+    try {
+      // Convert UK date (DD/MM/YYYY) to ISO (YYYY-MM-DD)
+      const isoDate = ukToISO(dateStr)
+      if (!isoDate || isoDate.length !== 10) {
+        setDateBookings([])
+        return
+      }
+
+      const response = await fetch(`${API_URL}/api/roster/bookings-for-date?date=${isoDate}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setDateBookings(Array.isArray(data) ? data : [])
+      } else {
+        setDateBookings([])
+      }
+    } catch (err) {
+      console.error('Failed to load bookings for date:', err)
+      setDateBookings([])
+    } finally {
+      setLoadingDateBookings(false)
+    }
+  }, [token])
 
   // Calendar navigation
   const goToPrevMonth = () => {
@@ -322,25 +361,33 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     setEditingShift(null)
     setShiftForm({
       staff_id: '',
+      booking_id: '',
       date: date || '',
       start_time: '',
       end_time: '',
       shift_type: 'morning',
       notes: '',
     })
+    setDateBookings([])
+    if (date) {
+      fetchBookingsForDate(date)
+    }
     setShowShiftModal(true)
   }
 
   const openEditShiftModal = (shift) => {
     setEditingShift(shift)
+    const dateUK = formatDateUK(shift.date)
     setShiftForm({
       staff_id: shift.staff_id || '',
-      date: formatDateUK(shift.date),
+      booking_id: shift.booking_id || '',
+      date: dateUK,
       start_time: formatTime(shift.start_time),
       end_time: formatTime(shift.end_time),
       shift_type: shift.shift_type,
       notes: shift.notes || '',
     })
+    fetchBookingsForDate(dateUK)
     setShowShiftModal(true)
   }
 
@@ -349,16 +396,23 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     setEditingShift(null)
     setShiftForm({
       staff_id: '',
+      booking_id: '',
       date: '',
       start_time: '',
       end_time: '',
       shift_type: 'morning',
       notes: '',
     })
+    setDateBookings([])
   }
 
   const handleShiftFormChange = (field, value) => {
     setShiftForm((prev) => ({ ...prev, [field]: value }))
+
+    // When date changes, fetch bookings for that date
+    if (field === 'date' && value && value.length === 10) {
+      fetchBookingsForDate(value)
+    }
   }
 
   const saveShift = async () => {
@@ -371,6 +425,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
       const payload = {
         staff_id: shiftForm.staff_id ? parseInt(shiftForm.staff_id) : null,
+        booking_id: shiftForm.booking_id ? parseInt(shiftForm.booking_id) : null,
         date: isoDate,
         start_time: shiftForm.start_time,
         end_time: shiftForm.end_time,
@@ -721,9 +776,27 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                           )}
 
                           {shift.booking_reference && (
-                            <div className="shift-booking">
-                              <span className="shift-booking-label">Booking:</span>
-                              <span className="shift-booking-ref">{shift.booking_reference}</span>
+                            <div className="shift-booking-info">
+                              <div className="shift-booking-header">
+                                <span className={`shift-booking-type ${shift.booking_type}`}>
+                                  {shift.booking_type === 'dropoff' ? '🚗 Drop-off' : '🛬 Pick-up'}
+                                </span>
+                                <span className="shift-booking-ref">{shift.booking_reference}</span>
+                              </div>
+                              <div className="shift-booking-details">
+                                <span className="shift-booking-customer">{shift.booking_customer_name}</span>
+                                {shift.booking_time && (
+                                  <span className="shift-booking-time">@ {shift.booking_time}</span>
+                                )}
+                                {shift.booking_flight_number && (
+                                  <span className="shift-booking-flight">{shift.booking_flight_number}</span>
+                                )}
+                                {shift.booking_destination && (
+                                  <span className="shift-booking-dest">
+                                    {shift.booking_type === 'dropoff' ? '→' : '←'} {shift.booking_destination}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           )}
 
@@ -832,9 +905,46 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                       <option key={emp.id} value={emp.id}>
                         {emp.first_name} {emp.last_name}
                       </option>
-                  ))}
-                </select>
-              </div>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-row">
+                  <label>Link to Booking</label>
+                  <select
+                    value={shiftForm.booking_id}
+                    onChange={(e) => handleShiftFormChange('booking_id', e.target.value)}
+                    disabled={loadingDateBookings}
+                  >
+                    <option value="">No booking linked</option>
+                    {loadingDateBookings ? (
+                      <option disabled>Loading bookings...</option>
+                    ) : dateBookings.length === 0 ? (
+                      <option disabled>No bookings on this date</option>
+                    ) : (
+                      <>
+                        {dateBookings.filter(b => b.type === 'dropoff').length > 0 && (
+                          <optgroup label="Drop-offs">
+                            {dateBookings.filter(b => b.type === 'dropoff').map((b) => (
+                              <option key={`dropoff-${b.id}`} value={b.id}>
+                                {b.time} - {b.reference} - {b.customer_name} ({b.airline} → {b.destination})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {dateBookings.filter(b => b.type === 'pickup').length > 0 && (
+                          <optgroup label="Pick-ups">
+                            {dateBookings.filter(b => b.type === 'pickup').map((b) => (
+                              <option key={`pickup-${b.id}`} value={b.id}>
+                                {b.time} - {b.reference} - {b.customer_name} ({b.airline} ← {b.origin})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </>
+                    )}
+                  </select>
+                </div>
               </div>
 
               <div className="form-row form-row-full">

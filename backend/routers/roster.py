@@ -98,10 +98,29 @@ def validate_staff_assignment(db: Session, staff_id: int) -> User:
 def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
     """Convert RosterShift model to response."""
     booking_ref = None
+    booking_type = None
+    booking_customer_name = None
+    booking_time = None
+    booking_flight_number = None
+    booking_destination = None
+
     if shift.booking_id:
         booking = db.query(Booking).filter(Booking.id == shift.booking_id).first()
         if booking:
             booking_ref = booking.reference
+            booking_customer_name = f"{booking.customer_first_name} {booking.customer_last_name}"
+
+            # Determine if this is a dropoff or pickup based on the shift date
+            if booking.dropoff_date == shift.date:
+                booking_type = "dropoff"
+                booking_time = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else None
+                booking_flight_number = booking.dropoff_flight_number
+                booking_destination = booking.dropoff_destination
+            elif booking.pickup_date == shift.date:
+                booking_type = "pickup"
+                booking_time = booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None
+                booking_flight_number = booking.pickup_flight_number
+                booking_destination = booking.pickup_origin
 
     return RosterShiftResponse(
         id=shift.id,
@@ -111,6 +130,11 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
         staff_initials=get_staff_initials(shift.staff) if shift.staff else None,
         booking_id=shift.booking_id,
         booking_reference=booking_ref,
+        booking_type=booking_type,
+        booking_customer_name=booking_customer_name,
+        booking_time=booking_time,
+        booking_flight_number=booking_flight_number,
+        booking_destination=booking_destination,
         date=shift.date,
         start_time=format_time(shift.start_time),
         end_time=format_time(shift.end_time),
@@ -677,6 +701,72 @@ async def auto_assign_shifts(
         shifts_deleted=shifts_deleted,
         shifts=[shift_to_response(s, db) for s in created_shifts]
     )
+
+
+# ============================================================================
+# Bookings for Shift Assignment
+# ============================================================================
+
+@router.get("/roster/bookings-for-date")
+async def get_bookings_for_date(
+    date: date = Query(..., description="Date to fetch bookings for (YYYY-MM-DD)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get bookings that have a drop-off or pickup on the specified date.
+    Used for linking shifts to specific bookings.
+
+    Returns bookings with:
+    - id, reference
+    - type: 'dropoff' or 'pickup'
+    - time: the dropoff_time or pickup_time
+    - customer name
+    - flight details
+    """
+    results = []
+
+    # Find bookings with dropoff on this date
+    dropoff_bookings = db.query(Booking).filter(
+        Booking.dropoff_date == date,
+        Booking.status.in_(["confirmed", "pending"])
+    ).all()
+
+    for b in dropoff_bookings:
+        results.append({
+            "id": b.id,
+            "reference": b.reference,
+            "type": "dropoff",
+            "time": b.dropoff_time.strftime("%H:%M") if b.dropoff_time else None,
+            "flight_time": b.flight_departure_time.strftime("%H:%M") if b.flight_departure_time else None,
+            "customer_name": f"{b.customer_first_name} {b.customer_last_name}",
+            "flight_number": b.dropoff_flight_number,
+            "airline": b.dropoff_airline_name,
+            "destination": b.dropoff_destination
+        })
+
+    # Find bookings with pickup on this date
+    pickup_bookings = db.query(Booking).filter(
+        Booking.pickup_date == date,
+        Booking.status.in_(["confirmed", "pending"])
+    ).all()
+
+    for b in pickup_bookings:
+        results.append({
+            "id": b.id,
+            "reference": b.reference,
+            "type": "pickup",
+            "time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
+            "flight_time": b.flight_arrival_time.strftime("%H:%M") if b.flight_arrival_time else None,
+            "customer_name": f"{b.customer_first_name} {b.customer_last_name}",
+            "flight_number": b.pickup_flight_number,
+            "airline": b.pickup_airline_name,
+            "origin": b.pickup_origin
+        })
+
+    # Sort by time
+    results.sort(key=lambda x: x["time"] or "99:99")
+
+    return results
 
 
 # ============================================================================
