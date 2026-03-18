@@ -190,21 +190,14 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     try {
       setLoadingWeeklyHours(true)
 
-      // Calculate the Monday of the current week being viewed
-      const year = currentDate.getFullYear()
-      const month = currentDate.getMonth()
-      const day = currentDate.getDate()
-
-      // Get the first day of the month being viewed
-      const firstOfMonth = new Date(year, month, 1)
-      // Find the Monday of the first week
-      const dayOfWeek = firstOfMonth.getDay()
+      // Calculate the Monday of the current week (based on today's date)
+      const today = new Date()
+      const dayOfWeek = today.getDay()
       // Adjust to Monday (0 = Sunday, 1 = Monday, etc.)
       const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-      const firstMonday = new Date(year, month, 1 + mondayOffset)
+      const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + mondayOffset)
 
-      // Use the first Monday as the default week start
-      const weekStart = formatDateISO(firstMonday)
+      const weekStart = formatDateISO(monday)
 
       const endpoint = isAdmin ? '/api/roster/weekly-hours' : '/api/employee/weekly-hours'
       const response = await fetch(`${API_URL}${endpoint}?week_start=${weekStart}`, {
@@ -222,7 +215,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     } finally {
       setLoadingWeeklyHours(false)
     }
-  }, [token, currentDate, isAdmin])
+  }, [token, isAdmin])
 
   useEffect(() => {
     fetchData()
