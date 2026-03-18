@@ -919,6 +919,137 @@ async def get_employee_shifts(
 
 
 # ============================================================================
+# Weekly Hours (for displaying employee work hours)
+# ============================================================================
+
+def calculate_shift_hours(start_time, end_time, is_overnight: bool = False) -> float:
+    """
+    Calculate hours worked for a shift.
+    Handles overnight shifts that cross midnight.
+    """
+    from datetime import datetime, timedelta as td
+
+    # Create datetime objects for calculation
+    start_dt = datetime.combine(datetime.today(), start_time)
+    end_dt = datetime.combine(datetime.today(), end_time)
+
+    # If overnight shift or end_time is before start_time, add a day to end
+    if is_overnight or end_dt <= start_dt:
+        end_dt += td(days=1)
+
+    duration = end_dt - start_dt
+    hours = duration.total_seconds() / 3600
+    return round(hours, 2)
+
+
+@router.get("/roster/weekly-hours")
+async def get_weekly_hours(
+    week_start: date_type = Query(..., description="Monday of the week (YYYY-MM-DD)"),
+    staff_id: Optional[int] = Query(None, description="Filter by specific staff member (admin only)"),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Get weekly hours worked for all employees (admin view).
+    Returns hours breakdown per employee for the specified week (Mon-Sun).
+    """
+    week_end = week_start + timedelta(days=6)
+
+    # Get all shifts for the week
+    query = db.query(RosterShift).filter(
+        RosterShift.date >= week_start,
+        RosterShift.date <= week_end,
+        RosterShift.staff_id.isnot(None)  # Only assigned shifts
+    )
+
+    if staff_id:
+        query = query.filter(RosterShift.staff_id == staff_id)
+
+    shifts = query.all()
+
+    # Group shifts by employee and calculate hours
+    employee_hours = {}
+    for shift in shifts:
+        if shift.staff_id not in employee_hours:
+            # Get employee info
+            employee = db.query(User).filter(User.id == shift.staff_id).first()
+            if employee:
+                employee_hours[shift.staff_id] = {
+                    "employee_id": shift.staff_id,
+                    "employee_name": f"{employee.first_name or ''} {employee.last_name or ''}".strip() or employee.email,
+                    "total_hours": 0.0,
+                    "shift_count": 0,
+                    "daily_hours": {str(week_start + timedelta(days=i)): 0.0 for i in range(7)}
+                }
+
+        if shift.staff_id in employee_hours:
+            # Calculate hours for this shift
+            is_overnight = shift.end_date and shift.end_date != shift.date
+            hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
+
+            employee_hours[shift.staff_id]["total_hours"] += hours
+            employee_hours[shift.staff_id]["shift_count"] += 1
+
+            # Add to daily breakdown
+            date_key = str(shift.date)
+            if date_key in employee_hours[shift.staff_id]["daily_hours"]:
+                employee_hours[shift.staff_id]["daily_hours"][date_key] += hours
+
+    return {
+        "week_start": str(week_start),
+        "week_end": str(week_end),
+        "employees": list(employee_hours.values())
+    }
+
+
+@router.get("/employee/weekly-hours")
+async def get_employee_weekly_hours(
+    week_start: date_type = Query(..., description="Monday of the week (YYYY-MM-DD)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get weekly hours worked for the authenticated employee.
+    Returns hours breakdown for the specified week (Mon-Sun).
+    Employees can only see their own hours.
+    """
+    week_end = week_start + timedelta(days=6)
+
+    # Get shifts for the current user only
+    shifts = db.query(RosterShift).filter(
+        RosterShift.date >= week_start,
+        RosterShift.date <= week_end,
+        RosterShift.staff_id == current_user.id
+    ).all()
+
+    # Calculate hours
+    total_hours = 0.0
+    shift_count = 0
+    daily_hours = {str(week_start + timedelta(days=i)): 0.0 for i in range(7)}
+
+    for shift in shifts:
+        is_overnight = shift.end_date and shift.end_date != shift.date
+        hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
+
+        total_hours += hours
+        shift_count += 1
+
+        date_key = str(shift.date)
+        if date_key in daily_hours:
+            daily_hours[date_key] += hours
+
+    return {
+        "week_start": str(week_start),
+        "week_end": str(week_end),
+        "employee_id": current_user.id,
+        "employee_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email,
+        "total_hours": round(total_hours, 2),
+        "shift_count": shift_count,
+        "daily_hours": daily_hours
+    }
+
+
+# ============================================================================
 # CSV Export (Admin Only)
 # ============================================================================
 
