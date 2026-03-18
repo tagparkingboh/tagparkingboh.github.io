@@ -4627,7 +4627,7 @@ function Admin() {
                               style={{ fontSize: '14px', padding: '8px 15px' }}
                               title="Generate more promo codes for this promotion"
                             >
-                              ➕ Generate Codes
+                              + Generate Codes
                             </button>
                             <span style={{ fontSize: '20px', color: '#666' }}>
                               {expandedPromotionId === promo.id ? '▼' : '▶'}
