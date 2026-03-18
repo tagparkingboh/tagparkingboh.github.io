@@ -471,17 +471,29 @@ async def list_shifts(
     query = db.query(RosterShift)
 
     if date:
-        query = query.filter(RosterShift.date == date)
-    elif date_from and date_to:
+        # Include shifts that start on this date OR overnight shifts that end on this date
         query = query.filter(
-            RosterShift.date >= date_from,
-            RosterShift.date <= date_to
+            or_(
+                RosterShift.date == date,
+                RosterShift.end_date == date
+            )
+        )
+    elif date_from and date_to:
+        # Include shifts that start in range OR overnight shifts that end in range
+        query = query.filter(
+            or_(
+                and_(RosterShift.date >= date_from, RosterShift.date <= date_to),
+                and_(RosterShift.end_date >= date_from, RosterShift.end_date <= date_to)
+            )
         )
     elif week_start:
         week_end = week_start + timedelta(days=6)
+        # Include shifts that start in week OR overnight shifts that end in week
         query = query.filter(
-            RosterShift.date >= week_start,
-            RosterShift.date <= week_end
+            or_(
+                and_(RosterShift.date >= week_start, RosterShift.date <= week_end),
+                and_(RosterShift.end_date >= week_start, RosterShift.end_date <= week_end)
+            )
         )
 
     if staff_id:
@@ -1194,17 +1206,21 @@ async def get_employee_shifts(
     all_user_shifts = query.count()
     logger.info(f"Total shifts for user {current_user.id}: {all_user_shifts}")
 
-    # Apply date filters
+    # Apply date filters (include overnight shifts that end in range)
     if date_from and date_to:
         query = query.filter(
-            RosterShift.date >= date_from,
-            RosterShift.date <= date_to
+            or_(
+                and_(RosterShift.date >= date_from, RosterShift.date <= date_to),
+                and_(RosterShift.end_date >= date_from, RosterShift.end_date <= date_to)
+            )
         )
     elif week_start:
         week_end = week_start + timedelta(days=6)
         query = query.filter(
-            RosterShift.date >= week_start,
-            RosterShift.date <= week_end
+            or_(
+                and_(RosterShift.date >= week_start, RosterShift.date <= week_end),
+                and_(RosterShift.end_date >= week_start, RosterShift.end_date <= week_end)
+            )
         )
 
     shifts = query.order_by(RosterShift.date, RosterShift.start_time).all()
