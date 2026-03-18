@@ -2529,6 +2529,11 @@ async def get_customers(
 
     customers_data = []
     for customer in customers:
+        # Get marketing source if exists
+        marketing_source = None
+        if customer.marketing_source:
+            marketing_source = customer.marketing_source.source
+
         customers_data.append({
             "id": customer.id,
             "first_name": customer.first_name,
@@ -2537,6 +2542,7 @@ async def get_customers(
             "phone": customer.phone,
             "billing_postcode": customer.billing_postcode,
             "created_at": customer.created_at.isoformat() if customer.created_at else None,
+            "marketing_source": marketing_source,
         })
 
     return {
