@@ -5653,6 +5653,7 @@ function Admin() {
                               <th>Phone</th>
                               <th>Email</th>
                               <th>Post Code</th>
+                              <th>Source</th>
                               <th>Date</th>
                               <th>Actions</th>
                             </tr>
@@ -5682,6 +5683,7 @@ function Admin() {
                                       />
                                     </td>
                                     <td>{customer.billing_postcode || '-'}</td>
+                                    <td>{customer.marketing_source || '-'}</td>
                                     <td>
                                       {customer.created_at
                                         ? new Date(customer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
@@ -5700,6 +5702,7 @@ function Admin() {
                                     <td>{customer.phone || '-'}</td>
                                     <td>{customer.email || '-'}</td>
                                     <td>{customer.billing_postcode || '-'}</td>
+                                    <td>{customer.marketing_source || '-'}</td>
                                     <td>
                                       {customer.created_at
                                         ? new Date(customer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
