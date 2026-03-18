@@ -6037,35 +6037,6 @@ function Admin() {
                       </div>
                     </div>
 
-                    {/* Status Breakdown */}
-                    {bookingStats.status_totals && (
-                      <div className="status-breakdown">
-                        <h3>Status Breakdown</h3>
-                        <div className="status-breakdown-grid">
-                          <div className="status-item status-confirmed">
-                            <span className="status-dot"></span>
-                            <span className="status-label">Confirmed</span>
-                            <span className="status-count">{bookingStats.status_totals.confirmed || 0}</span>
-                          </div>
-                          <div className="status-item status-completed">
-                            <span className="status-dot"></span>
-                            <span className="status-label">Completed</span>
-                            <span className="status-count">{bookingStats.status_totals.completed || 0}</span>
-                          </div>
-                          <div className="status-item status-pending">
-                            <span className="status-dot"></span>
-                            <span className="status-label">Pending</span>
-                            <span className="status-count">{bookingStats.status_totals.pending || 0}</span>
-                          </div>
-                          <div className="status-item status-cancelled">
-                            <span className="status-dot"></span>
-                            <span className="status-label">Cancelled</span>
-                            <span className="status-count">{bookingStats.status_totals.cancelled || 0}</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
                     {/* Fun Facts */}
                     {funFacts && (
                       <div className="fun-facts-section">
@@ -6111,6 +6082,35 @@ function Admin() {
                               </div>
                             </div>
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Status Breakdown */}
+                    {bookingStats.status_totals && (
+                      <div className="status-breakdown">
+                        <h3>Status Breakdown</h3>
+                        <div className="status-breakdown-grid">
+                          <div className="status-item status-confirmed">
+                            <span className="status-dot"></span>
+                            <span className="status-label">Confirmed</span>
+                            <span className="status-count">{bookingStats.status_totals.confirmed || 0}</span>
+                          </div>
+                          <div className="status-item status-completed">
+                            <span className="status-dot"></span>
+                            <span className="status-label">Completed</span>
+                            <span className="status-count">{bookingStats.status_totals.completed || 0}</span>
+                          </div>
+                          <div className="status-item status-pending">
+                            <span className="status-dot"></span>
+                            <span className="status-label">Pending</span>
+                            <span className="status-count">{bookingStats.status_totals.pending || 0}</span>
+                          </div>
+                          <div className="status-item status-cancelled">
+                            <span className="status-dot"></span>
+                            <span className="status-label">Cancelled</span>
+                            <span className="status-count">{bookingStats.status_totals.cancelled || 0}</span>
+                          </div>
                         </div>
                       </div>
                     )}
