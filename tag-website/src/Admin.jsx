@@ -262,6 +262,10 @@ function Admin() {
   const [loadingPopular, setLoadingPopular] = useState(false)
   const [popularTop, setPopularTop] = useState(10) // 5, 10, 20
 
+  // Fun facts state
+  const [funFacts, setFunFacts] = useState(null)
+  const [loadingFunFacts, setLoadingFunFacts] = useState(false)
+
   // Marketing Sources report state
   const [marketingSourcesData, setMarketingSourcesData] = useState(null)
   const [loadingMarketingSources, setLoadingMarketingSources] = useState(false)
@@ -398,6 +402,7 @@ function Admin() {
         fetchBookingLocations(mapType)
       } else if (reportsSubTab === 'growth') {
         fetchBookingStats()
+        fetchFunFacts()
       } else if (reportsSubTab === 'occupancy') {
         fetchOccupancyReport(occupancyView)
       } else if (reportsSubTab === 'popular') {
@@ -610,6 +615,25 @@ function Admin() {
       console.error('Failed to fetch booking stats:', err)
     } finally {
       setLoadingStats(false)
+    }
+  }
+
+  const fetchFunFacts = async () => {
+    setLoadingFunFacts(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/reports/fun-facts`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setFunFacts(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch fun facts:', err)
+    } finally {
+      setLoadingFunFacts(false)
     }
   }
 
@@ -6038,6 +6062,55 @@ function Admin() {
                             <span className="status-label">Cancelled</span>
                             <span className="status-count">{bookingStats.status_totals.cancelled || 0}</span>
                           </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fun Facts */}
+                    {funFacts && (
+                      <div className="fun-facts-section">
+                        <h3>Fun Facts</h3>
+                        <div className="fun-facts-grid">
+                          {funFacts.busiestDay && (
+                            <div className="fun-fact-card">
+                              <span className="fun-fact-icon">📅</span>
+                              <div className="fun-fact-content">
+                                <span className="fun-fact-label">Busiest Day</span>
+                                <span className="fun-fact-value">{funFacts.busiestDay.count} bookings</span>
+                                <span className="fun-fact-detail">{funFacts.busiestDay.date}</span>
+                              </div>
+                            </div>
+                          )}
+                          {funFacts.busiestStreak && (
+                            <div className="fun-fact-card">
+                              <span className="fun-fact-icon">🔥</span>
+                              <div className="fun-fact-content">
+                                <span className="fun-fact-label">Busiest Streak</span>
+                                <span className="fun-fact-value">{funFacts.busiestStreak.days} consecutive days</span>
+                                <span className="fun-fact-detail">{funFacts.busiestStreak.startDate} - {funFacts.busiestStreak.endDate} ({funFacts.busiestStreak.bookings} bookings)</span>
+                              </div>
+                            </div>
+                          )}
+                          {funFacts.longestTrip && (
+                            <div className="fun-fact-card">
+                              <span className="fun-fact-icon">✈️</span>
+                              <div className="fun-fact-content">
+                                <span className="fun-fact-label">Longest Trip</span>
+                                <span className="fun-fact-value">{funFacts.longestTrip.days} days</span>
+                                <span className="fun-fact-detail">{funFacts.longestTrip.destination}</span>
+                              </div>
+                            </div>
+                          )}
+                          {funFacts.highestTransaction && (
+                            <div className="fun-fact-card">
+                              <span className="fun-fact-icon">💰</span>
+                              <div className="fun-fact-content">
+                                <span className="fun-fact-label">Highest Transaction</span>
+                                <span className="fun-fact-value">{funFacts.highestTransaction.amount}</span>
+                                <span className="fun-fact-detail">{funFacts.highestTransaction.days} day trip</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
