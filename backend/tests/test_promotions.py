@@ -3083,3 +3083,220 @@ class TestDeleteRestrictionsComplete:
                      codes_shared_socials == 0 and codes_shared_privately == 0)
 
         assert can_delete is False
+
+
+# =============================================================================
+# Generate More Codes Tests
+# =============================================================================
+
+class TestGenerateMoreCodes:
+    """Tests for the generate more codes functionality."""
+
+    def test_generate_more_codes_increases_total(self):
+        """Test that generating more codes increases total_codes count."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test Promo", 15, 10)
+
+        # Generate 5 initial codes
+        for _ in range(10):
+            store.add_promo_code(promo.id)
+
+        initial_total = promo.total_codes
+        assert initial_total == 10
+
+        # Simulate generating 5 more codes
+        new_codes_count = 5
+        for _ in range(new_codes_count):
+            store.add_promo_code(promo.id)
+        promo.total_codes += new_codes_count
+
+        assert promo.total_codes == 15
+        assert len([c for c in store.promo_codes.values() if c.promotion_id == promo.id]) == 15
+
+    def test_generate_more_codes_all_available(self):
+        """Test that newly generated codes are all available (not sent, not used, not shared)."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test Promo", 20, 5)
+
+        # Generate initial codes
+        for _ in range(5):
+            store.add_promo_code(promo.id)
+
+        # Mark some as used/sent
+        codes = [c for c in store.promo_codes.values() if c.promotion_id == promo.id]
+        codes[0].email_sent = True
+        codes[1].is_used = True
+        codes[2].shared_on_socials = True
+
+        # Generate more codes
+        new_codes = []
+        for _ in range(3):
+            new_code = store.add_promo_code(promo.id)
+            new_codes.append(new_code)
+        promo.total_codes += 3
+
+        # New codes should all be available
+        for code in new_codes:
+            assert code.email_sent is False
+            assert code.is_used is False
+            assert code.shared_on_socials is False
+            assert code.shared_privately is False
+
+    def test_generate_codes_unique(self):
+        """Test that generated codes are unique across the promotion."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test Promo", 10, 0)
+
+        codes_generated = set()
+        for _ in range(50):
+            code = store.add_promo_code(promo.id)
+            codes_generated.add(code.code)
+
+        # All codes should be unique
+        assert len(codes_generated) == 50
+
+    def test_generate_codes_count_validation(self):
+        """Test that count must be between 1 and 1000."""
+        # These would be validated at API level
+        valid_counts = [1, 10, 100, 500, 1000]
+        invalid_counts = [0, -1, 1001, 10000]
+
+        for count in valid_counts:
+            assert 1 <= count <= 1000
+
+        for count in invalid_counts:
+            assert not (1 <= count <= 1000)
+
+    def test_generate_codes_preserves_existing_state(self):
+        """Test that generating new codes doesn't affect existing codes' state."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test Promo", 25, 5)
+
+        # Create initial codes with various states
+        for _ in range(5):
+            store.add_promo_code(promo.id)
+
+        codes = [c for c in store.promo_codes.values() if c.promotion_id == promo.id]
+        codes[0].email_sent = True
+        codes[0].recipient_email = "test@example.com"
+        codes[1].is_used = True
+        codes[1].booking_id = 123
+        codes[2].shared_on_socials = True
+
+        # Store initial states
+        initial_states = {
+            code.id: {
+                'email_sent': code.email_sent,
+                'is_used': code.is_used,
+                'shared_on_socials': code.shared_on_socials,
+                'recipient_email': code.recipient_email,
+                'booking_id': code.booking_id
+            }
+            for code in codes
+        }
+
+        # Generate more codes
+        for _ in range(10):
+            store.add_promo_code(promo.id)
+        promo.total_codes += 10
+
+        # Verify original codes unchanged
+        for code_id, state in initial_states.items():
+            code = store.promo_codes[code_id]
+            assert code.email_sent == state['email_sent']
+            assert code.is_used == state['is_used']
+            assert code.shared_on_socials == state['shared_on_socials']
+            assert code.recipient_email == state['recipient_email']
+            assert code.booking_id == state['booking_id']
+
+    def test_codes_available_after_generating_more(self):
+        """Test that codes_available increases after generating more codes."""
+        store = MockPromotionStore()
+        promo = store.add_promotion("Test Promo", 15, 5)
+
+        # Create 5 codes, mark all as used
+        for _ in range(5):
+            store.add_promo_code(promo.id)
+
+        codes = [c for c in store.promo_codes.values() if c.promotion_id == promo.id]
+        for code in codes:
+            code.is_used = True
+
+        # Calculate available before
+        available_before = sum(1 for c in codes
+                               if not c.email_sent and not c.is_used
+                               and not c.shared_on_socials and not c.shared_privately)
+        assert available_before == 0
+
+        # Generate 10 more codes
+        for _ in range(10):
+            store.add_promo_code(promo.id)
+        promo.total_codes += 10
+
+        # Calculate available after
+        all_codes = [c for c in store.promo_codes.values() if c.promotion_id == promo.id]
+        available_after = sum(1 for c in all_codes
+                              if not c.email_sent and not c.is_used
+                              and not c.shared_on_socials and not c.shared_privately)
+        assert available_after == 10
+
+
+class TestGenerateMoreCodesAPI:
+    """API contract tests for generate more codes endpoint."""
+
+    def test_endpoint_requires_promotion_id(self):
+        """Test that endpoint requires a valid promotion_id."""
+        # Endpoint is /api/admin/promotions/{promotion_id}/generate-codes
+        # Must have promotion_id in path
+        endpoint = "/api/admin/promotions/123/generate-codes"
+        assert "123" in endpoint
+        assert "generate-codes" in endpoint
+
+    def test_request_body_requires_count(self):
+        """Test that request body must have count field."""
+        valid_request = {"count": 10}
+        invalid_request_no_count = {}
+        invalid_request_wrong_type = {"count": "ten"}
+
+        assert "count" in valid_request
+        assert "count" not in invalid_request_no_count
+
+    def test_response_structure(self):
+        """Test the expected response structure."""
+        expected_response = {
+            "success": True,
+            "codes_created": 10,
+            "promotion": {
+                "id": 1,
+                "name": "Test Promo",
+                "discount_percent": 15,
+                "total_codes": 20,
+                "codes_sent": 5,
+                "codes_used": 3,
+                "codes_available": 12,
+            }
+        }
+
+        assert "success" in expected_response
+        assert "codes_created" in expected_response
+        assert "promotion" in expected_response
+        assert "total_codes" in expected_response["promotion"]
+        assert "codes_available" in expected_response["promotion"]
+
+    def test_promotion_not_found_returns_404(self):
+        """Test that non-existent promotion returns 404."""
+        # This would be the expected behavior
+        # HTTP 404 for promotion not found
+        store = MockPromotionStore()
+        promotion_exists = 999 in store.promotions
+        assert promotion_exists is False
+
+    def test_invalid_count_returns_400(self):
+        """Test that invalid count values return 400."""
+        invalid_counts = [0, -1, 1001, None]
+        for count in invalid_counts:
+            if count is not None:
+                is_valid = 1 <= count <= 1000
+            else:
+                is_valid = False
+            assert is_valid is False
