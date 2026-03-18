@@ -243,6 +243,7 @@ class TestGetCustomersEdgeCases:
             "linkedin",
             "newspaper",
             "afc_bournemouth",
+            "word_of_mouth",
             "other",
         ]
 
@@ -832,6 +833,7 @@ class TestCustomerMarketingSource:
             "linkedin",
             "newspaper",
             "afc_bournemouth",
+            "word_of_mouth",
             "other",
         ]
 
@@ -1017,6 +1019,7 @@ class TestCustomerMarketingSourceIntegration:
             "linkedin",
             "newspaper",
             "afc_bournemouth",
+            "word_of_mouth",
             "other",
         ]
 
@@ -1032,3 +1035,91 @@ class TestCustomerMarketingSourceIntegration:
                 marketing_source = mock_customer.marketing_source.source
 
             assert marketing_source == source, f"Source '{source}' not extracted correctly"
+
+
+# =============================================================================
+# Marketing Source Display Formatting Tests
+# =============================================================================
+
+class TestMarketingSourceDisplayFormatting:
+    """Tests for marketing source display formatting (frontend logic)."""
+
+    def format_marketing_source(self, source):
+        """
+        Simulate the frontend formatMarketingSource function.
+        This mirrors the logic in Admin.jsx for testing purposes.
+        """
+        if not source:
+            return '-'
+        source_map = {
+            'google': 'Google',
+            'facebook': 'Facebook',
+            'instagram': 'Instagram',
+            'linkedin': 'LinkedIn',
+            'newspaper': 'Newspaper',
+            'afc_bournemouth': 'AFC Bournemouth',
+            'word_of_mouth': 'Word of mouth',
+            'other': 'Other',
+        }
+        return source_map.get(source, source)
+
+    def test_google_capitalized(self):
+        """'google' should display as 'Google'."""
+        assert self.format_marketing_source('google') == 'Google'
+
+    def test_facebook_capitalized(self):
+        """'facebook' should display as 'Facebook'."""
+        assert self.format_marketing_source('facebook') == 'Facebook'
+
+    def test_instagram_capitalized(self):
+        """'instagram' should display as 'Instagram'."""
+        assert self.format_marketing_source('instagram') == 'Instagram'
+
+    def test_linkedin_capitalized(self):
+        """'linkedin' should display as 'LinkedIn'."""
+        assert self.format_marketing_source('linkedin') == 'LinkedIn'
+
+    def test_newspaper_capitalized(self):
+        """'newspaper' should display as 'Newspaper'."""
+        assert self.format_marketing_source('newspaper') == 'Newspaper'
+
+    def test_afc_bournemouth_formatted(self):
+        """'afc_bournemouth' should display as 'AFC Bournemouth'."""
+        assert self.format_marketing_source('afc_bournemouth') == 'AFC Bournemouth'
+
+    def test_word_of_mouth_formatted(self):
+        """'word_of_mouth' should display as 'Word of mouth'."""
+        assert self.format_marketing_source('word_of_mouth') == 'Word of mouth'
+
+    def test_other_capitalized(self):
+        """'other' should display as 'Other'."""
+        assert self.format_marketing_source('other') == 'Other'
+
+    def test_null_source_shows_dash(self):
+        """Null source should display as '-'."""
+        assert self.format_marketing_source(None) == '-'
+
+    def test_empty_string_shows_dash(self):
+        """Empty string should display as '-'."""
+        assert self.format_marketing_source('') == '-'
+
+    def test_unknown_source_returns_original(self):
+        """Unknown source should return original value."""
+        assert self.format_marketing_source('unknown_source') == 'unknown_source'
+
+    def test_all_sources_formatted_correctly(self):
+        """All marketing sources should format to expected display values."""
+        expected_formats = {
+            'google': 'Google',
+            'facebook': 'Facebook',
+            'instagram': 'Instagram',
+            'linkedin': 'LinkedIn',
+            'newspaper': 'Newspaper',
+            'afc_bournemouth': 'AFC Bournemouth',
+            'word_of_mouth': 'Word of mouth',
+            'other': 'Other',
+        }
+
+        for source, expected in expected_formats.items():
+            result = self.format_marketing_source(source)
+            assert result == expected, f"Source '{source}' should format as '{expected}', got '{result}'"
