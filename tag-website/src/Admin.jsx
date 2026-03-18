@@ -5054,15 +5054,15 @@ function Admin() {
                       />
                     </div>
                   </div>
-                  <div className="modal-footer" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <div className="modal-actions">
                     <button
-                      className="btn-secondary"
+                      className="modal-btn modal-btn-secondary"
                       onClick={() => setShowGenerateCodesModal(false)}
                     >
                       Cancel
                     </button>
                     <button
-                      className="btn-primary"
+                      className="modal-btn modal-btn-primary"
                       onClick={generateMoreCodes}
                       disabled={generatingCodes}
                     >
