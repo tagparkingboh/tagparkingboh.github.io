@@ -13,7 +13,7 @@ All tests use mocked data to avoid database dependencies.
 """
 import pytest
 from datetime import date, time, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from collections import Counter
 
 import sys
@@ -25,13 +25,24 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Mock Data Factories
 # =============================================================================
 
+def create_mock_payment(amount_pence=None, paid_at=None):
+    """Create a mock payment object."""
+    if amount_pence is None and paid_at is None:
+        return None
+    payment = MagicMock()
+    payment.amount_pence = amount_pence
+    payment.paid_at = paid_at
+    return payment
+
+
 def create_mock_booking(
     id=1,
     reference="TAG-TEST001",
     status="confirmed",
     dropoff_date=None,
     pickup_date=None,
-    total_price=None,
+    amount_pence=None,
+    paid_at=None,
     dropoff_destination="Faro Airport",
 ):
     """Create a mock booking object."""
@@ -42,7 +53,7 @@ def create_mock_booking(
     booking.reference = reference
     booking.dropoff_date = dropoff_date or date(2026, 3, 15)
     booking.pickup_date = pickup_date or date(2026, 3, 22)
-    booking.total_price = total_price
+    booking.payment = create_mock_payment(amount_pence, paid_at)
     booking.dropoff_destination = dropoff_destination
 
     if status == "confirmed":
@@ -159,15 +170,17 @@ class TestFunFactsResponseStructure:
 # =============================================================================
 
 class TestBusiestDayLogic:
-    """Unit tests for busiest day calculation."""
+    """Unit tests for busiest day calculation (by payment/confirmation date)."""
 
     def test_single_booking_single_day(self):
         """Single booking should make that day the busiest."""
-        booking = create_mock_booking(dropoff_date=date(2026, 3, 15))
+        paid_at = datetime(2026, 3, 15, 10, 30, 0)
+        booking = create_mock_booking(paid_at=paid_at)
 
         day_counter = Counter()
-        if booking.dropoff_date:
-            day_counter[booking.dropoff_date] += 1
+        if booking.payment and booking.payment.paid_at:
+            paid_date = booking.payment.paid_at.date()
+            day_counter[paid_date] += 1
 
         busiest_date, busiest_count = day_counter.most_common(1)[0]
 
@@ -177,15 +190,16 @@ class TestBusiestDayLogic:
     def test_multiple_bookings_same_day(self):
         """Multiple bookings on same day should accumulate."""
         bookings = [
-            create_mock_booking(id=1, dropoff_date=date(2026, 3, 15)),
-            create_mock_booking(id=2, dropoff_date=date(2026, 3, 15)),
-            create_mock_booking(id=3, dropoff_date=date(2026, 3, 15)),
+            create_mock_booking(id=1, paid_at=datetime(2026, 3, 15, 10, 0, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 3, 15, 12, 0, 0)),
+            create_mock_booking(id=3, paid_at=datetime(2026, 3, 15, 14, 0, 0)),
         ]
 
         day_counter = Counter()
         for booking in bookings:
-            if booking.dropoff_date:
-                day_counter[booking.dropoff_date] += 1
+            if booking.payment and booking.payment.paid_at:
+                paid_date = booking.payment.paid_at.date()
+                day_counter[paid_date] += 1
 
         busiest_date, busiest_count = day_counter.most_common(1)[0]
 
@@ -195,18 +209,19 @@ class TestBusiestDayLogic:
     def test_busiest_day_from_multiple_days(self):
         """Should identify the day with most bookings."""
         bookings = [
-            create_mock_booking(id=1, dropoff_date=date(2026, 3, 15)),
-            create_mock_booking(id=2, dropoff_date=date(2026, 3, 16)),
-            create_mock_booking(id=3, dropoff_date=date(2026, 3, 16)),
-            create_mock_booking(id=4, dropoff_date=date(2026, 3, 16)),
-            create_mock_booking(id=5, dropoff_date=date(2026, 3, 17)),
-            create_mock_booking(id=6, dropoff_date=date(2026, 3, 17)),
+            create_mock_booking(id=1, paid_at=datetime(2026, 3, 15, 10, 0, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 3, 16, 10, 0, 0)),
+            create_mock_booking(id=3, paid_at=datetime(2026, 3, 16, 11, 0, 0)),
+            create_mock_booking(id=4, paid_at=datetime(2026, 3, 16, 12, 0, 0)),
+            create_mock_booking(id=5, paid_at=datetime(2026, 3, 17, 10, 0, 0)),
+            create_mock_booking(id=6, paid_at=datetime(2026, 3, 17, 11, 0, 0)),
         ]
 
         day_counter = Counter()
         for booking in bookings:
-            if booking.dropoff_date:
-                day_counter[booking.dropoff_date] += 1
+            if booking.payment and booking.payment.paid_at:
+                paid_date = booking.payment.paid_at.date()
+                day_counter[paid_date] += 1
 
         busiest_date, busiest_count = day_counter.most_common(1)[0]
 
@@ -216,29 +231,36 @@ class TestBusiestDayLogic:
     def test_busiest_day_tie_returns_first(self):
         """Tie in busiest day should return one of the tied days."""
         bookings = [
-            create_mock_booking(id=1, dropoff_date=date(2026, 3, 15)),
-            create_mock_booking(id=2, dropoff_date=date(2026, 3, 15)),
-            create_mock_booking(id=3, dropoff_date=date(2026, 3, 16)),
-            create_mock_booking(id=4, dropoff_date=date(2026, 3, 16)),
+            create_mock_booking(id=1, paid_at=datetime(2026, 3, 15, 10, 0, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 3, 15, 11, 0, 0)),
+            create_mock_booking(id=3, paid_at=datetime(2026, 3, 16, 10, 0, 0)),
+            create_mock_booking(id=4, paid_at=datetime(2026, 3, 16, 11, 0, 0)),
         ]
 
         day_counter = Counter()
         for booking in bookings:
-            if booking.dropoff_date:
-                day_counter[booking.dropoff_date] += 1
+            if booking.payment and booking.payment.paid_at:
+                paid_date = booking.payment.paid_at.date()
+                day_counter[paid_date] += 1
 
         busiest_date, busiest_count = day_counter.most_common(1)[0]
 
         assert busiest_count == 2
         assert busiest_date in [date(2026, 3, 15), date(2026, 3, 16)]
 
-    def test_busiest_day_skips_null_dates(self):
-        """Should skip bookings with null dropoff_date."""
-        booking = create_mock_booking(dropoff_date=None)
+    def test_busiest_day_skips_null_payment(self):
+        """Should skip bookings with null payment/paid_at."""
+        from db_models import BookingStatus
+
+        # Create booking manually with no payment
+        booking = MagicMock()
+        booking.payment = None
+        booking.status = BookingStatus.CONFIRMED
 
         day_counter = Counter()
-        if booking.dropoff_date:
-            day_counter[booking.dropoff_date] += 1
+        if booking.payment and booking.payment.paid_at:
+            paid_date = booking.payment.paid_at.date()
+            day_counter[paid_date] += 1
 
         assert len(day_counter) == 0
 
@@ -446,11 +468,28 @@ class TestLongestTripLogic:
 
     def test_skip_null_dates(self):
         """Should skip bookings with null dates."""
-        bookings = [
-            create_mock_booking(id=1, dropoff_date=None, pickup_date=date(2026, 3, 22)),
-            create_mock_booking(id=2, dropoff_date=date(2026, 3, 1), pickup_date=None),
-            create_mock_booking(id=3, dropoff_date=date(2026, 3, 1), pickup_date=date(2026, 3, 8)),
-        ]
+        from db_models import BookingStatus
+
+        # Manually create bookings with explicit None values
+        booking1 = MagicMock()
+        booking1.id = 1
+        booking1.dropoff_date = None
+        booking1.pickup_date = date(2026, 3, 22)
+        booking1.status = BookingStatus.CONFIRMED
+
+        booking2 = MagicMock()
+        booking2.id = 2
+        booking2.dropoff_date = date(2026, 3, 1)
+        booking2.pickup_date = None
+        booking2.status = BookingStatus.CONFIRMED
+
+        booking3 = MagicMock()
+        booking3.id = 3
+        booking3.dropoff_date = date(2026, 3, 1)
+        booking3.pickup_date = date(2026, 3, 8)
+        booking3.status = BookingStatus.CONFIRMED
+
+        bookings = [booking1, booking2, booking3]
 
         longest_booking = None
         longest_days = 0
@@ -502,77 +541,79 @@ class TestHighestTransactionLogic:
 
     def test_single_booking_is_highest(self):
         """Single booking should be the highest transaction."""
-        booking = create_mock_booking(total_price=85.00)
+        booking = create_mock_booking(amount_pence=8500)  # £85.00
 
-        highest_amount = booking.total_price
+        highest_amount_pence = booking.payment.amount_pence
 
-        assert highest_amount == 85.00
+        assert highest_amount_pence == 8500
 
     def test_highest_from_multiple(self):
-        """Should identify the booking with highest total_price."""
+        """Should identify the booking with highest amount_pence."""
         bookings = [
-            create_mock_booking(id=1, total_price=85.00),
-            create_mock_booking(id=2, total_price=189.00),
-            create_mock_booking(id=3, total_price=120.00),
+            create_mock_booking(id=1, amount_pence=8500),   # £85.00
+            create_mock_booking(id=2, amount_pence=18900),  # £189.00
+            create_mock_booking(id=3, amount_pence=12000),  # £120.00
         ]
 
         highest_booking = None
-        highest_amount = 0
+        highest_amount_pence = 0
         for booking in bookings:
-            if booking.total_price and booking.total_price > highest_amount:
-                highest_amount = booking.total_price
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > highest_amount_pence:
+                highest_amount_pence = booking.payment.amount_pence
                 highest_booking = booking
 
-        assert highest_amount == 189.00
+        assert highest_amount_pence == 18900
         assert highest_booking.id == 2
 
-    def test_skip_null_price(self):
-        """Should skip bookings with null total_price."""
+    def test_skip_null_payment(self):
+        """Should skip bookings with null payment."""
         bookings = [
-            create_mock_booking(id=1, total_price=None),
-            create_mock_booking(id=2, total_price=85.00),
+            create_mock_booking(id=1, amount_pence=None),
+            create_mock_booking(id=2, amount_pence=8500),  # £85.00
         ]
 
         highest_booking = None
-        highest_amount = 0
+        highest_amount_pence = 0
         for booking in bookings:
-            if booking.total_price and booking.total_price > highest_amount:
-                highest_amount = booking.total_price
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > highest_amount_pence:
+                highest_amount_pence = booking.payment.amount_pence
                 highest_booking = booking
 
-        assert highest_amount == 85.00
+        assert highest_amount_pence == 8500
         assert highest_booking.id == 2
 
     def test_skip_zero_price(self):
-        """Should skip bookings with zero total_price (free bookings)."""
+        """Should skip bookings with zero amount_pence (free bookings)."""
         bookings = [
-            create_mock_booking(id=1, total_price=0),
-            create_mock_booking(id=2, total_price=85.00),
+            create_mock_booking(id=1, amount_pence=0),
+            create_mock_booking(id=2, amount_pence=8500),  # £85.00
         ]
 
         highest_booking = None
-        highest_amount = 0
+        highest_amount_pence = 0
         for booking in bookings:
-            if booking.total_price and booking.total_price > highest_amount:
-                highest_amount = booking.total_price
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > highest_amount_pence:
+                highest_amount_pence = booking.payment.amount_pence
                 highest_booking = booking
 
-        assert highest_amount == 85.00
+        assert highest_amount_pence == 8500
         assert highest_booking.id == 2
 
-    def test_amount_formatting(self):
-        """Amount should be formatted with pound sign and 2 decimal places."""
-        amount = 189.50
+    def test_amount_formatting_from_pence(self):
+        """Amount in pence should be converted and formatted with pound sign and 2 decimal places."""
+        amount_pence = 18950  # £189.50
 
-        formatted = f"£{amount:.2f}"
+        amount_pounds = amount_pence / 100
+        formatted = f"£{amount_pounds:.2f}"
 
         assert formatted == "£189.50"
 
     def test_amount_formatting_whole_number(self):
         """Whole number amount should still have 2 decimal places."""
-        amount = 100.00
+        amount_pence = 10000  # £100.00
 
-        formatted = f"£{amount:.2f}"
+        amount_pounds = amount_pence / 100
+        formatted = f"£{amount_pounds:.2f}"
 
         assert formatted == "£100.00"
 
@@ -581,7 +622,7 @@ class TestHighestTransactionLogic:
         booking = create_mock_booking(
             dropoff_date=date(2026, 3, 1),
             pickup_date=date(2026, 3, 15),
-            total_price=189.00
+            amount_pence=18900  # £189.00
         )
 
         days = (booking.pickup_date - booking.dropoff_date).days if booking.pickup_date and booking.dropoff_date else None
@@ -617,10 +658,20 @@ class TestNegativeScenarios:
 
     def test_all_null_dropoff_dates(self):
         """All bookings with null dropoff dates should return null for busiest day."""
-        bookings = [
-            create_mock_booking(id=1, dropoff_date=None),
-            create_mock_booking(id=2, dropoff_date=None),
-        ]
+        from db_models import BookingStatus
+
+        # Manually create bookings with explicit None for dropoff_date
+        booking1 = MagicMock()
+        booking1.id = 1
+        booking1.dropoff_date = None
+        booking1.status = BookingStatus.CONFIRMED
+
+        booking2 = MagicMock()
+        booking2.id = 2
+        booking2.dropoff_date = None
+        booking2.status = BookingStatus.CONFIRMED
+
+        bookings = [booking1, booking2]
 
         day_counter = Counter()
         for booking in bookings:
@@ -629,34 +680,34 @@ class TestNegativeScenarios:
 
         assert len(day_counter) == 0
 
-    def test_all_null_prices(self):
-        """All bookings with null prices should return null for highest transaction."""
+    def test_all_null_payments(self):
+        """All bookings with null payments should return null for highest transaction."""
         bookings = [
-            create_mock_booking(id=1, total_price=None),
-            create_mock_booking(id=2, total_price=None),
+            create_mock_booking(id=1, amount_pence=None),
+            create_mock_booking(id=2, amount_pence=None),
         ]
 
         highest_booking = None
-        highest_amount = 0
+        highest_amount_pence = 0
         for booking in bookings:
-            if booking.total_price and booking.total_price > highest_amount:
-                highest_amount = booking.total_price
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > highest_amount_pence:
+                highest_amount_pence = booking.payment.amount_pence
                 highest_booking = booking
 
         assert highest_booking is None
 
     def test_all_zero_prices(self):
-        """All bookings with zero prices should return null for highest transaction."""
+        """All bookings with zero amount_pence should return null for highest transaction."""
         bookings = [
-            create_mock_booking(id=1, total_price=0),
-            create_mock_booking(id=2, total_price=0),
+            create_mock_booking(id=1, amount_pence=0),
+            create_mock_booking(id=2, amount_pence=0),
         ]
 
         highest_booking = None
-        highest_amount = 0
+        highest_amount_pence = 0
         for booking in bookings:
-            if booking.total_price and booking.total_price > highest_amount:
-                highest_amount = booking.total_price
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > highest_amount_pence:
+                highest_amount_pence = booking.payment.amount_pence
                 highest_booking = booking
 
         assert highest_booking is None
@@ -674,7 +725,7 @@ class TestEdgeCases:
         booking = create_mock_booking(
             dropoff_date=date(2026, 3, 15),
             pickup_date=date(2026, 3, 22),
-            total_price=85.00,
+            amount_pence=8500,  # £85.00
             dropoff_destination="Faro"
         )
 
@@ -687,11 +738,11 @@ class TestEdgeCases:
         trip_days = (booking.pickup_date - booking.dropoff_date).days
 
         # Highest transaction
-        highest_amount = booking.total_price
+        highest_amount_pence = booking.payment.amount_pence
 
         assert busiest_count == 1
         assert trip_days == 7
-        assert highest_amount == 85.00
+        assert highest_amount_pence == 8500
 
     def test_very_long_trip(self):
         """Very long trip (e.g., 365 days) should be handled."""
@@ -706,17 +757,19 @@ class TestEdgeCases:
 
     def test_very_high_price(self):
         """Very high price should be handled."""
-        booking = create_mock_booking(total_price=9999.99)
+        booking = create_mock_booking(amount_pence=999999)  # £9999.99
 
-        formatted = f"£{booking.total_price:.2f}"
+        amount_pounds = booking.payment.amount_pence / 100
+        formatted = f"£{amount_pounds:.2f}"
 
         assert formatted == "£9999.99"
 
     def test_decimal_price(self):
         """Decimal prices should be formatted correctly."""
-        booking = create_mock_booking(total_price=85.50)
+        booking = create_mock_booking(amount_pence=8550)  # £85.50
 
-        formatted = f"£{booking.total_price:.2f}"
+        amount_pounds = booking.payment.amount_pence / 100
+        formatted = f"£{amount_pounds:.2f}"
 
         assert formatted == "£85.50"
 
@@ -727,7 +780,7 @@ class TestEdgeCases:
                 id=i,
                 dropoff_date=date(2026, 1, 1) + timedelta(days=i % 100),
                 pickup_date=date(2026, 1, 1) + timedelta(days=i % 100 + 7),
-                total_price=50 + (i % 200),
+                amount_pence=5000 + (i % 200) * 100,  # £50 to £249 in pence
             )
             for i in range(1000)
         ]
@@ -738,18 +791,18 @@ class TestEdgeCases:
                 day_counter[booking.dropoff_date] += 1
 
         longest_days = 0
-        highest_amount = 0
+        highest_amount_pence = 0
         for booking in bookings:
             if booking.dropoff_date and booking.pickup_date:
                 trip_days = (booking.pickup_date - booking.dropoff_date).days
                 if trip_days > longest_days:
                     longest_days = trip_days
-            if booking.total_price and booking.total_price > highest_amount:
-                highest_amount = booking.total_price
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > highest_amount_pence:
+                highest_amount_pence = booking.payment.amount_pence
 
         assert len(day_counter) == 100  # 100 unique days
         assert longest_days == 7  # All trips are 7 days
-        assert highest_amount == 249  # 50 + 199
+        assert highest_amount_pence == 24900  # £249.00 in pence
 
     def test_consecutive_streak_at_start(self):
         """Consecutive streak at start of date range should be found."""
@@ -896,18 +949,18 @@ class TestEdgeCases:
     def test_tie_in_highest_transaction_returns_first(self):
         """Tie in highest transaction should return first one found."""
         bookings = [
-            create_mock_booking(id=1, reference="TAG-001", total_price=100.00),
-            create_mock_booking(id=2, reference="TAG-002", total_price=100.00),
+            create_mock_booking(id=1, reference="TAG-001", amount_pence=10000),  # £100.00
+            create_mock_booking(id=2, reference="TAG-002", amount_pence=10000),  # £100.00
         ]
 
         highest_booking = None
-        highest_amount = 0
+        highest_amount_pence = 0
         for booking in bookings:
-            if booking.total_price and booking.total_price > highest_amount:
-                highest_amount = booking.total_price
+            if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > highest_amount_pence:
+                highest_amount_pence = booking.payment.amount_pence
                 highest_booking = booking
 
-        assert highest_amount == 100.00
+        assert highest_amount_pence == 10000
         assert highest_booking.id == 1  # First one found
 
 
