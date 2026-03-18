@@ -36,6 +36,22 @@ const ukToIsoDate = (ukDate) => {
   return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
 }
 
+// Format marketing source for display
+const formatMarketingSource = (source) => {
+  if (!source) return '-'
+  const sourceMap = {
+    'google': 'Google',
+    'facebook': 'Facebook',
+    'instagram': 'Instagram',
+    'linkedin': 'LinkedIn',
+    'newspaper': 'Newspaper',
+    'afc_bournemouth': 'AFC Bournemouth',
+    'word_of_mouth': 'Word of mouth',
+    'other': 'Other',
+  }
+  return sourceMap[source] || source
+}
+
 function Admin() {
   const { user, token, loading, isAuthenticated, isAdmin, logout } = useAuth()
   const navigate = useNavigate()
@@ -5683,7 +5699,7 @@ function Admin() {
                                       />
                                     </td>
                                     <td>{customer.billing_postcode || '-'}</td>
-                                    <td>{customer.marketing_source || '-'}</td>
+                                    <td>{formatMarketingSource(customer.marketing_source)}</td>
                                     <td>
                                       {customer.created_at
                                         ? new Date(customer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
@@ -5702,7 +5718,7 @@ function Admin() {
                                     <td>{customer.phone || '-'}</td>
                                     <td>{customer.email || '-'}</td>
                                     <td>{customer.billing_postcode || '-'}</td>
-                                    <td>{customer.marketing_source || '-'}</td>
+                                    <td>{formatMarketingSource(customer.marketing_source)}</td>
                                     <td>
                                       {customer.created_at
                                         ? new Date(customer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
