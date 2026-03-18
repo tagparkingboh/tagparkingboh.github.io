@@ -561,6 +561,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         setTimeout(() => setSuccessMessage(''), 3000)
         closeShiftModal()
         fetchShifts()
+        fetchMonthlyHours()
       } else {
         const errorData = await response.json().catch(() => ({}))
         setError(errorData.detail || 'Failed to save shift')
@@ -598,6 +599,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         setShowDeleteModal(false)
         setShiftToDelete(null)
         fetchShifts()
+        fetchMonthlyHours()
       } else {
         const errorData = await response.json().catch(() => ({}))
         setError(errorData.detail || 'Failed to delete shift')
