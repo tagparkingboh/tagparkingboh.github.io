@@ -190,12 +190,14 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     try {
       setLoadingWeeklyHours(true)
 
-      // Calculate the Monday of the current week (based on today's date)
-      const today = new Date()
-      const dayOfWeek = today.getDay()
+      // Calculate the Monday of the first week of the viewed month
+      const year = currentDate.getFullYear()
+      const month = currentDate.getMonth()
+      const firstOfMonth = new Date(year, month, 1)
+      const dayOfWeek = firstOfMonth.getDay()
       // Adjust to Monday (0 = Sunday, 1 = Monday, etc.)
       const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-      const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + mondayOffset)
+      const monday = new Date(year, month, 1 + mondayOffset)
 
       const weekStart = formatDateISO(monday)
 
@@ -215,7 +217,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     } finally {
       setLoadingWeeklyHours(false)
     }
-  }, [token, isAdmin])
+  }, [token, currentDate, isAdmin])
 
   useEffect(() => {
     fetchData()
