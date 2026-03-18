@@ -228,6 +228,44 @@ async def get_current_user(
     return user
 
 
+async def require_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """
+    Dependency to require admin privileges.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin privileges required"
+        )
+    return current_user
+
+
+# ============================================================================
+# Weekly Hours Helper Function
+# ============================================================================
+
+def calculate_shift_hours(start_time, end_time, is_overnight: bool = False) -> float:
+    """
+    Calculate hours worked for a shift.
+    Handles overnight shifts that cross midnight.
+    """
+    from datetime import datetime, timedelta as td
+
+    # Create datetime objects for calculation
+    start_dt = datetime.combine(datetime.today(), start_time)
+    end_dt = datetime.combine(datetime.today(), end_time)
+
+    # If overnight shift or end_time is before start_time, add a day to end
+    if is_overnight or end_dt <= start_dt:
+        end_dt += td(days=1)
+
+    duration = end_dt - start_dt
+    hours = duration.total_seconds() / 3600
+    return round(hours, 2)
+
+
 # ============================================================================
 # Staff/User Endpoints (Admin Only)
 # ============================================================================
@@ -518,6 +556,139 @@ async def get_bookings_for_date(
     results.sort(key=lambda x: x["time"] or "99:99")
 
     return results
+
+
+# ============================================================================
+# Weekly Hours Endpoint (must be before /roster/{shift_id})
+# ============================================================================
+
+@router.get("/roster/weekly-hours")
+async def get_weekly_hours(
+    week_start: date_type = Query(..., description="Monday of the week (YYYY-MM-DD)"),
+    staff_id: Optional[int] = Query(None, description="Filter by specific staff member (admin only)"),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Get weekly hours worked for all employees (admin view).
+    Returns hours breakdown per employee for the specified week (Mon-Sun).
+    """
+    week_end = week_start + timedelta(days=6)
+
+    # Get all shifts for the week
+    query = db.query(RosterShift).filter(
+        RosterShift.date >= week_start,
+        RosterShift.date <= week_end,
+        RosterShift.staff_id.isnot(None)  # Only assigned shifts
+    )
+
+    if staff_id:
+        query = query.filter(RosterShift.staff_id == staff_id)
+
+    shifts = query.all()
+
+    # Group shifts by employee and calculate hours
+    employee_hours = {}
+    for shift in shifts:
+        if shift.staff_id not in employee_hours:
+            # Get employee info
+            employee = db.query(User).filter(User.id == shift.staff_id).first()
+            if employee:
+                employee_hours[shift.staff_id] = {
+                    "employee_id": shift.staff_id,
+                    "employee_name": f"{employee.first_name or ''} {employee.last_name or ''}".strip() or employee.email,
+                    "total_hours": 0.0,
+                    "shift_count": 0,
+                    "daily_hours": {str(week_start + timedelta(days=i)): 0.0 for i in range(7)}
+                }
+
+        if shift.staff_id in employee_hours:
+            # Calculate hours for this shift
+            is_overnight = shift.end_date and shift.end_date != shift.date
+            hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
+
+            employee_hours[shift.staff_id]["total_hours"] += hours
+            employee_hours[shift.staff_id]["shift_count"] += 1
+
+            # Add to daily breakdown
+            date_key = str(shift.date)
+            if date_key in employee_hours[shift.staff_id]["daily_hours"]:
+                employee_hours[shift.staff_id]["daily_hours"][date_key] += hours
+
+    return {
+        "week_start": str(week_start),
+        "week_end": str(week_end),
+        "employees": list(employee_hours.values())
+    }
+
+
+# ============================================================================
+# CSV Export (Admin Only) - must be before /roster/{shift_id}
+# ============================================================================
+
+@router.get("/roster/export")
+async def export_roster_csv(
+    week_start: date_type = Query(..., description="Start date for export"),
+    db: Session = Depends(get_db)
+):
+    """
+    Export roster shifts as CSV.
+    Dates formatted as DD/MM/YYYY, times as HH:MM.
+    """
+    from fastapi.responses import StreamingResponse
+    import csv
+    import io
+
+    week_end = week_start + timedelta(days=6)
+
+    shifts = db.query(RosterShift).filter(
+        RosterShift.date >= week_start,
+        RosterShift.date <= week_end
+    ).order_by(RosterShift.date, RosterShift.start_time).all()
+
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header
+    writer.writerow([
+        "Date", "Employee Name", "Shift Type", "Start Time", "End Time",
+        "Booking Ref", "Status", "Notes"
+    ])
+
+    for shift in shifts:
+        # Get booking reference
+        booking_ref = ""
+        if shift.booking_id:
+            booking = db.query(Booking).filter(Booking.id == shift.booking_id).first()
+            if booking:
+                booking_ref = booking.reference
+
+        # Format employee name
+        employee_name = "Unassigned"
+        if shift.staff:
+            employee_name = f"{shift.staff.first_name} {shift.staff.last_name}"
+
+        writer.writerow([
+            shift.date.strftime("%d/%m/%Y"),
+            employee_name,
+            shift.shift_type.value.capitalize(),
+            shift.start_time.strftime("%H:%M"),
+            shift.end_time.strftime("%H:%M"),
+            booking_ref,
+            shift.status.value.capitalize(),
+            shift.notes or ""
+        ])
+
+    output.seek(0)
+
+    filename = f"roster_export_{week_start.strftime('%d%m%Y')}.csv"
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @router.get("/roster/{shift_id}", response_model=RosterShiftResponse)
@@ -918,90 +1089,6 @@ async def get_employee_shifts(
     return [shift_to_response(shift, db) for shift in shifts]
 
 
-# ============================================================================
-# Weekly Hours (for displaying employee work hours)
-# ============================================================================
-
-def calculate_shift_hours(start_time, end_time, is_overnight: bool = False) -> float:
-    """
-    Calculate hours worked for a shift.
-    Handles overnight shifts that cross midnight.
-    """
-    from datetime import datetime, timedelta as td
-
-    # Create datetime objects for calculation
-    start_dt = datetime.combine(datetime.today(), start_time)
-    end_dt = datetime.combine(datetime.today(), end_time)
-
-    # If overnight shift or end_time is before start_time, add a day to end
-    if is_overnight or end_dt <= start_dt:
-        end_dt += td(days=1)
-
-    duration = end_dt - start_dt
-    hours = duration.total_seconds() / 3600
-    return round(hours, 2)
-
-
-@router.get("/roster/weekly-hours")
-async def get_weekly_hours(
-    week_start: date_type = Query(..., description="Monday of the week (YYYY-MM-DD)"),
-    staff_id: Optional[int] = Query(None, description="Filter by specific staff member (admin only)"),
-    current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db)
-):
-    """
-    Get weekly hours worked for all employees (admin view).
-    Returns hours breakdown per employee for the specified week (Mon-Sun).
-    """
-    week_end = week_start + timedelta(days=6)
-
-    # Get all shifts for the week
-    query = db.query(RosterShift).filter(
-        RosterShift.date >= week_start,
-        RosterShift.date <= week_end,
-        RosterShift.staff_id.isnot(None)  # Only assigned shifts
-    )
-
-    if staff_id:
-        query = query.filter(RosterShift.staff_id == staff_id)
-
-    shifts = query.all()
-
-    # Group shifts by employee and calculate hours
-    employee_hours = {}
-    for shift in shifts:
-        if shift.staff_id not in employee_hours:
-            # Get employee info
-            employee = db.query(User).filter(User.id == shift.staff_id).first()
-            if employee:
-                employee_hours[shift.staff_id] = {
-                    "employee_id": shift.staff_id,
-                    "employee_name": f"{employee.first_name or ''} {employee.last_name or ''}".strip() or employee.email,
-                    "total_hours": 0.0,
-                    "shift_count": 0,
-                    "daily_hours": {str(week_start + timedelta(days=i)): 0.0 for i in range(7)}
-                }
-
-        if shift.staff_id in employee_hours:
-            # Calculate hours for this shift
-            is_overnight = shift.end_date and shift.end_date != shift.date
-            hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
-
-            employee_hours[shift.staff_id]["total_hours"] += hours
-            employee_hours[shift.staff_id]["shift_count"] += 1
-
-            # Add to daily breakdown
-            date_key = str(shift.date)
-            if date_key in employee_hours[shift.staff_id]["daily_hours"]:
-                employee_hours[shift.staff_id]["daily_hours"][date_key] += hours
-
-    return {
-        "week_start": str(week_start),
-        "week_end": str(week_end),
-        "employees": list(employee_hours.values())
-    }
-
-
 @router.get("/employee/weekly-hours")
 async def get_employee_weekly_hours(
     week_start: date_type = Query(..., description="Monday of the week (YYYY-MM-DD)"),
@@ -1047,72 +1134,3 @@ async def get_employee_weekly_hours(
         "shift_count": shift_count,
         "daily_hours": daily_hours
     }
-
-
-# ============================================================================
-# CSV Export (Admin Only)
-# ============================================================================
-
-@router.get("/roster/export")
-async def export_roster_csv(
-    week_start: date_type = Query(..., description="Start date for export"),
-    db: Session = Depends(get_db)
-):
-    """
-    Export roster shifts as CSV.
-    Dates formatted as DD/MM/YYYY, times as HH:MM.
-    """
-    from fastapi.responses import StreamingResponse
-    import csv
-    import io
-
-    week_end = week_start + timedelta(days=6)
-
-    shifts = db.query(RosterShift).filter(
-        RosterShift.date >= week_start,
-        RosterShift.date <= week_end
-    ).order_by(RosterShift.date, RosterShift.start_time).all()
-
-    # Create CSV in memory
-    output = io.StringIO()
-    writer = csv.writer(output)
-
-    # Header
-    writer.writerow([
-        "Date", "Employee Name", "Shift Type", "Start Time", "End Time",
-        "Booking Ref", "Status", "Notes"
-    ])
-
-    for shift in shifts:
-        # Get booking reference
-        booking_ref = ""
-        if shift.booking_id:
-            booking = db.query(Booking).filter(Booking.id == shift.booking_id).first()
-            if booking:
-                booking_ref = booking.reference
-
-        # Format employee name
-        employee_name = "Unassigned"
-        if shift.staff:
-            employee_name = f"{shift.staff.first_name} {shift.staff.last_name}"
-
-        writer.writerow([
-            shift.date.strftime("%d/%m/%Y"),
-            employee_name,
-            shift.shift_type.value.capitalize(),
-            shift.start_time.strftime("%H:%M"),
-            shift.end_time.strftime("%H:%M"),
-            booking_ref,
-            shift.status.value.capitalize(),
-            shift.notes or ""
-        ])
-
-    output.seek(0)
-
-    filename = f"roster_export_{week_start.strftime('%d%m%Y')}.csv"
-
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
