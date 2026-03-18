@@ -90,6 +90,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const [shiftToDelete, setShiftToDelete] = useState(null)
   const [deletingShift, setDeletingShift] = useState(false)
 
+  // Weekly hours
+  const [weeklyHours, setWeeklyHours] = useState(null)
+  const [loadingWeeklyHours, setLoadingWeeklyHours] = useState(false)
+
   // Fetch bookings
   const fetchBookings = useCallback(async () => {
     if (!token) return
@@ -179,6 +183,47 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }, [token, isAdmin])
 
+  // Fetch weekly hours
+  const fetchWeeklyHours = useCallback(async () => {
+    if (!token) return
+
+    try {
+      setLoadingWeeklyHours(true)
+
+      // Calculate the Monday of the current week being viewed
+      const year = currentDate.getFullYear()
+      const month = currentDate.getMonth()
+      const day = currentDate.getDate()
+
+      // Get the first day of the month being viewed
+      const firstOfMonth = new Date(year, month, 1)
+      // Find the Monday of the first week
+      const dayOfWeek = firstOfMonth.getDay()
+      // Adjust to Monday (0 = Sunday, 1 = Monday, etc.)
+      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+      const firstMonday = new Date(year, month, 1 + mondayOffset)
+
+      // Use the first Monday as the default week start
+      const weekStart = formatDateISO(firstMonday)
+
+      const endpoint = isAdmin ? '/api/roster/weekly-hours' : '/api/employee/weekly-hours'
+      const response = await fetch(`${API_URL}${endpoint}?week_start=${weekStart}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setWeeklyHours(data)
+      }
+    } catch (err) {
+      console.error('Failed to load weekly hours:', err)
+    } finally {
+      setLoadingWeeklyHours(false)
+    }
+  }, [token, currentDate, isAdmin])
+
   useEffect(() => {
     fetchData()
   }, [fetchData, refreshTrigger])
@@ -186,6 +231,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   useEffect(() => {
     fetchStaff()
   }, [fetchStaff])
+
+  useEffect(() => {
+    fetchWeeklyHours()
+  }, [fetchWeeklyHours])
 
   // Fetch bookings for a specific date (for shift assignment)
   const fetchBookingsForDate = useCallback(async (dateStr, additionalDateStr = null) => {
@@ -679,6 +728,50 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
           ))}
         </div>
       </div>
+
+      {/* Weekly Hours Summary */}
+      {weeklyHours && (
+        <div className="weekly-hours-section">
+          <h3 className="weekly-hours-title">
+            Weekly Hours {weeklyHours.week_start && (
+              <span className="week-range">
+                ({new Date(weeklyHours.week_start + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - {new Date(weeklyHours.week_end + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })})
+              </span>
+            )}
+          </h3>
+          {loadingWeeklyHours ? (
+            <div className="weekly-hours-loading">Loading...</div>
+          ) : isAdmin ? (
+            // Admin view: show all employees
+            <div className="weekly-hours-grid">
+              {weeklyHours.employees && weeklyHours.employees.length > 0 ? (
+                weeklyHours.employees.map((emp) => (
+                  <div key={emp.employee_id} className="weekly-hours-card">
+                    <div className="employee-name">{emp.employee_name}</div>
+                    <div className="hours-summary">
+                      <span className="total-hours">{emp.total_hours.toFixed(1)}h</span>
+                      <span className="shift-count">({emp.shift_count} shifts)</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="no-hours">No shifts scheduled this week</div>
+              )}
+            </div>
+          ) : (
+            // Employee view: show only their own hours
+            <div className="weekly-hours-grid">
+              <div className="weekly-hours-card own-hours">
+                <div className="employee-name">Your Hours</div>
+                <div className="hours-summary">
+                  <span className="total-hours">{weeklyHours.total_hours?.toFixed(1) || 0}h</span>
+                  <span className="shift-count">({weeklyHours.shift_count || 0} shifts)</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Detail Panel - Shows both bookings and shifts */}
       {selectedDate && (
