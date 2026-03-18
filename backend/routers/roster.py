@@ -623,6 +623,129 @@ async def get_weekly_hours(
 
 
 # ============================================================================
+# Monthly Hours Endpoints (for payroll - must be before /roster/{shift_id})
+# ============================================================================
+
+@router.get("/roster/monthly-hours")
+async def get_monthly_hours(
+    year: int = Query(..., description="Year (YYYY)"),
+    month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
+    staff_id: Optional[int] = Query(None, description="Filter by specific staff member"),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Get monthly hours worked for all employees (admin view).
+    Returns total hours per employee for the specified month.
+    Hours are attributed to the shift start date.
+    Used for payroll calculations.
+    """
+    import calendar
+
+    # Calculate month start and end dates
+    month_start = date_type(year, month, 1)
+    last_day = calendar.monthrange(year, month)[1]
+    month_end = date_type(year, month, last_day)
+
+    # Get all shifts for the month
+    query = db.query(RosterShift).filter(
+        RosterShift.date >= month_start,
+        RosterShift.date <= month_end,
+        RosterShift.staff_id.isnot(None)  # Only assigned shifts
+    )
+
+    if staff_id:
+        query = query.filter(RosterShift.staff_id == staff_id)
+
+    shifts = query.all()
+
+    # Group shifts by employee and calculate hours
+    employee_hours = {}
+    for shift in shifts:
+        if shift.staff_id not in employee_hours:
+            # Get employee info
+            employee = db.query(User).filter(User.id == shift.staff_id).first()
+            if employee:
+                employee_hours[shift.staff_id] = {
+                    "employee_id": shift.staff_id,
+                    "employee_name": f"{employee.first_name or ''} {employee.last_name or ''}".strip() or employee.email,
+                    "total_hours": 0.0,
+                    "shift_count": 0,
+                }
+
+        if shift.staff_id in employee_hours:
+            # Calculate hours for this shift
+            is_overnight = shift.end_date and shift.end_date != shift.date
+            hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
+
+            employee_hours[shift.staff_id]["total_hours"] += hours
+            employee_hours[shift.staff_id]["shift_count"] += 1
+
+    # Round total hours for each employee
+    for emp_id in employee_hours:
+        employee_hours[emp_id]["total_hours"] = round(employee_hours[emp_id]["total_hours"], 2)
+
+    return {
+        "year": year,
+        "month": month,
+        "month_name": calendar.month_name[month],
+        "month_start": str(month_start),
+        "month_end": str(month_end),
+        "employees": list(employee_hours.values())
+    }
+
+
+@router.get("/employee/monthly-hours")
+async def get_employee_monthly_hours(
+    year: int = Query(..., description="Year (YYYY)"),
+    month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get monthly hours worked for the authenticated employee.
+    Returns total hours for the specified month.
+    Employees can only see their own hours.
+    """
+    import calendar
+
+    # Calculate month start and end dates
+    month_start = date_type(year, month, 1)
+    last_day = calendar.monthrange(year, month)[1]
+    month_end = date_type(year, month, last_day)
+
+    # Get shifts for the current user only
+    shifts = db.query(RosterShift).filter(
+        RosterShift.date >= month_start,
+        RosterShift.date <= month_end,
+        RosterShift.staff_id == current_user.id
+    ).all()
+
+    # Calculate hours
+    total_hours = 0.0
+    shift_count = 0
+
+    for shift in shifts:
+        is_overnight = shift.end_date and shift.end_date != shift.date
+        hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
+
+        total_hours += hours
+        shift_count += 1
+
+    return {
+        "year": year,
+        "month": month,
+        "month_name": calendar.month_name[month],
+        "month_start": str(month_start),
+        "month_end": str(month_end),
+        "employee_id": current_user.id,
+        "employee_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email,
+        "total_hours": round(total_hours, 2),
+        "shift_count": shift_count
+    }
+
+
+# ============================================================================
 # CSV Export (Admin Only) - must be before /roster/{shift_id}
 # ============================================================================
 

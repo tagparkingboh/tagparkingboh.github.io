@@ -90,9 +90,9 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const [shiftToDelete, setShiftToDelete] = useState(null)
   const [deletingShift, setDeletingShift] = useState(false)
 
-  // Weekly hours
-  const [weeklyHours, setWeeklyHours] = useState(null)
-  const [loadingWeeklyHours, setLoadingWeeklyHours] = useState(false)
+  // Monthly hours (for payroll)
+  const [monthlyHours, setMonthlyHours] = useState(null)
+  const [loadingMonthlyHours, setLoadingMonthlyHours] = useState(false)
 
   // Fetch bookings
   const fetchBookings = useCallback(async () => {
@@ -183,26 +183,18 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }, [token, isAdmin])
 
-  // Fetch weekly hours
-  const fetchWeeklyHours = useCallback(async () => {
+  // Fetch monthly hours (for payroll)
+  const fetchMonthlyHours = useCallback(async () => {
     if (!token) return
 
     try {
-      setLoadingWeeklyHours(true)
+      setLoadingMonthlyHours(true)
 
-      // Calculate the Monday of the first week of the viewed month
       const year = currentDate.getFullYear()
-      const month = currentDate.getMonth()
-      const firstOfMonth = new Date(year, month, 1)
-      const dayOfWeek = firstOfMonth.getDay()
-      // Adjust to Monday (0 = Sunday, 1 = Monday, etc.)
-      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-      const monday = new Date(year, month, 1 + mondayOffset)
+      const month = currentDate.getMonth() + 1  // API expects 1-12, JS uses 0-11
 
-      const weekStart = formatDateISO(monday)
-
-      const endpoint = isAdmin ? '/api/roster/weekly-hours' : '/api/employee/weekly-hours'
-      const response = await fetch(`${API_URL}${endpoint}?week_start=${weekStart}`, {
+      const endpoint = isAdmin ? '/api/roster/monthly-hours' : '/api/employee/monthly-hours'
+      const response = await fetch(`${API_URL}${endpoint}?year=${year}&month=${month}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -210,12 +202,12 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
       if (response.ok) {
         const data = await response.json()
-        setWeeklyHours(data)
+        setMonthlyHours(data)
       }
     } catch (err) {
-      console.error('Failed to load weekly hours:', err)
+      console.error('Failed to load monthly hours:', err)
     } finally {
-      setLoadingWeeklyHours(false)
+      setLoadingMonthlyHours(false)
     }
   }, [token, currentDate, isAdmin])
 
@@ -228,8 +220,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   }, [fetchStaff])
 
   useEffect(() => {
-    fetchWeeklyHours()
-  }, [fetchWeeklyHours])
+    fetchMonthlyHours()
+  }, [fetchMonthlyHours])
 
   // Fetch bookings for a specific date (for shift assignment)
   const fetchBookingsForDate = useCallback(async (dateStr, additionalDateStr = null) => {
@@ -724,23 +716,19 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         </div>
       </div>
 
-      {/* Weekly Hours Summary */}
-      {weeklyHours && (
+      {/* Monthly Hours Summary (for payroll) */}
+      {monthlyHours && (
         <div className="weekly-hours-section">
           <h3 className="weekly-hours-title">
-            Weekly Hours {weeklyHours.week_start && (
-              <span className="week-range">
-                ({new Date(weeklyHours.week_start + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - {new Date(weeklyHours.week_end + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })})
-              </span>
-            )}
+            Monthly Hours <span className="week-range">({monthlyHours.month_name} {monthlyHours.year})</span>
           </h3>
-          {loadingWeeklyHours ? (
+          {loadingMonthlyHours ? (
             <div className="weekly-hours-loading">Loading...</div>
           ) : isAdmin ? (
             // Admin view: show all employees
             <div className="weekly-hours-grid">
-              {weeklyHours.employees && weeklyHours.employees.length > 0 ? (
-                weeklyHours.employees.map((emp) => (
+              {monthlyHours.employees && monthlyHours.employees.length > 0 ? (
+                monthlyHours.employees.map((emp) => (
                   <div key={emp.employee_id} className="weekly-hours-card">
                     <div className="employee-name">{emp.employee_name}</div>
                     <div className="hours-summary">
@@ -750,7 +738,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   </div>
                 ))
               ) : (
-                <div className="no-hours">No shifts scheduled this week</div>
+                <div className="no-hours">No shifts scheduled this month</div>
               )}
             </div>
           ) : (
@@ -759,8 +747,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
               <div className="weekly-hours-card own-hours">
                 <div className="employee-name">Your Hours</div>
                 <div className="hours-summary">
-                  <span className="total-hours">{weeklyHours.total_hours?.toFixed(1) || 0}h</span>
-                  <span className="shift-count">({weeklyHours.shift_count || 0} shifts)</span>
+                  <span className="total-hours">{monthlyHours.total_hours?.toFixed(1) || 0}h</span>
+                  <span className="shift-count">({monthlyHours.shift_count || 0} shifts)</span>
                 </div>
               </div>
             </div>

@@ -1,10 +1,12 @@
 """
-Tests for Weekly Hours functionality.
+Tests for Weekly and Monthly Hours functionality.
 
 Covers:
 - calculate_shift_hours helper function (unit tests)
 - GET /api/roster/weekly-hours - Admin endpoint
 - GET /api/employee/weekly-hours - Employee endpoint
+- GET /api/roster/monthly-hours - Admin monthly endpoint (for payroll)
+- GET /api/employee/monthly-hours - Employee monthly endpoint
 
 Test categories:
 - Unit tests: calculate_shift_hours calculation logic
@@ -610,3 +612,557 @@ class TestWeekBoundaryEdgeCases:
         result = calculate_shift_hours(start, end, is_overnight=True)
 
         assert result == 12.0
+
+
+# =============================================================================
+# Integration Tests - Admin Monthly Hours Endpoint (for payroll)
+# =============================================================================
+
+class TestAdminMonthlyHoursIntegration:
+    """Integration tests for GET /api/roster/monthly-hours (admin endpoint)."""
+
+    @pytest.fixture
+    def mock_admin_user(self):
+        """Create a mock admin user."""
+        user = MagicMock()
+        user.id = 1
+        user.email = "admin@tagparking.co.uk"
+        user.is_admin = True
+        user.first_name = "Admin"
+        user.last_name = "User"
+        return user
+
+    @pytest.fixture
+    def mock_employee_user(self):
+        """Create a mock employee user (non-admin)."""
+        user = MagicMock()
+        user.id = 2
+        user.email = "employee@tagparking.co.uk"
+        user.is_admin = False
+        user.first_name = "Jez"
+        user.last_name = "Taylor"
+        return user
+
+    def create_mock_shift(self, id, staff_id, shift_date, start_time, end_time, end_date=None):
+        """Create a mock shift for database queries."""
+        from db_models import ShiftType, ShiftStatus
+        shift = MagicMock()
+        shift.id = id
+        shift.staff_id = staff_id
+        shift.date = shift_date
+        shift.end_date = end_date or shift_date
+        shift.start_time = start_time
+        shift.end_time = end_time
+        shift.shift_type = ShiftType.MORNING
+        shift.status = ShiftStatus.SCHEDULED
+        return shift
+
+    def create_mock_employee(self, id, first_name, last_name, email):
+        """Create a mock employee user."""
+        user = MagicMock()
+        user.id = id
+        user.first_name = first_name
+        user.last_name = last_name
+        user.email = email
+        return user
+
+    def test_admin_monthly_hours_success(self, mock_admin_user):
+        """Admin should get monthly hours for all employees."""
+        from main import app
+        from database import get_db
+        from routers.roster import require_admin
+
+        # Create mock shifts for April 2026
+        mock_shifts = [
+            self.create_mock_shift(1, 2, date(2026, 4, 7), time(23, 30), time(0, 30), end_date=date(2026, 4, 8)),  # Mark, 1 hour
+            self.create_mock_shift(2, 2, date(2026, 4, 18), time(23, 55), time(0, 55), end_date=date(2026, 4, 19)),  # Mark, 1 hour
+        ]
+
+        mock_employees = {
+            2: self.create_mock_employee(2, "Mark", "Custard", "mark@tagparking.co.uk"),
+        }
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = mock_shifts
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_require_admin():
+            return mock_admin_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/roster/monthly-hours?year=2026&month=4")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["year"] == 2026
+            assert data["month"] == 4
+            assert data["month_name"] == "April"
+            assert data["month_start"] == "2026-04-01"
+            assert data["month_end"] == "2026-04-30"
+            assert "employees" in data
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_admin_monthly_hours_no_shifts(self, mock_admin_user):
+        """Admin should get empty employees list when no shifts exist."""
+        from main import app
+        from database import get_db
+        from routers.roster import require_admin
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_require_admin():
+            return mock_admin_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/roster/monthly-hours?year=2026&month=2")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["employees"] == []
+            assert data["month_name"] == "February"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_admin_monthly_hours_missing_params(self, mock_admin_user):
+        """Missing year or month parameter should return 422."""
+        from main import app
+        from database import get_db
+        from routers.roster import require_admin
+
+        mock_db = MagicMock()
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_require_admin():
+            return mock_admin_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
+
+        try:
+            client = TestClient(app)
+
+            # Missing both
+            response = client.get("/api/roster/monthly-hours")
+            assert response.status_code == 422
+
+            # Missing month
+            response = client.get("/api/roster/monthly-hours?year=2026")
+            assert response.status_code == 422
+
+            # Missing year
+            response = client.get("/api/roster/monthly-hours?month=4")
+            assert response.status_code == 422
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_admin_monthly_hours_invalid_month(self, mock_admin_user):
+        """Invalid month (0 or 13) should return 422."""
+        from main import app
+        from database import get_db
+        from routers.roster import require_admin
+
+        mock_db = MagicMock()
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_require_admin():
+            return mock_admin_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
+
+        try:
+            client = TestClient(app)
+
+            response = client.get("/api/roster/monthly-hours?year=2026&month=0")
+            assert response.status_code == 422
+
+            response = client.get("/api/roster/monthly-hours?year=2026&month=13")
+            assert response.status_code == 422
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_employee_cannot_access_admin_monthly_endpoint(self, mock_employee_user):
+        """Non-admin should get 403 when accessing admin monthly hours endpoint."""
+        from main import app
+        from database import get_db
+        from routers.roster import require_admin
+
+        mock_db = MagicMock()
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_require_admin():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=403, detail="Admin privileges required")
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/roster/monthly-hours?year=2026&month=4")
+
+            assert response.status_code == 403
+        finally:
+            app.dependency_overrides.clear()
+
+
+# =============================================================================
+# Integration Tests - Employee Monthly Hours Endpoint
+# =============================================================================
+
+class TestEmployeeMonthlyHoursIntegration:
+    """Integration tests for GET /api/employee/monthly-hours."""
+
+    @pytest.fixture
+    def mock_employee_user(self):
+        """Create a mock employee user."""
+        user = MagicMock()
+        user.id = 2
+        user.email = "mark@tagparking.co.uk"
+        user.is_admin = False
+        user.first_name = "Mark"
+        user.last_name = "Custard"
+        return user
+
+    def create_mock_shift(self, id, staff_id, shift_date, start_time, end_time, end_date=None):
+        """Create a mock shift for database queries."""
+        from db_models import ShiftType, ShiftStatus
+        shift = MagicMock()
+        shift.id = id
+        shift.staff_id = staff_id
+        shift.date = shift_date
+        shift.end_date = end_date or shift_date
+        shift.start_time = start_time
+        shift.end_time = end_time
+        shift.shift_type = ShiftType.MORNING
+        shift.status = ShiftStatus.SCHEDULED
+        return shift
+
+    def test_employee_sees_own_monthly_hours(self, mock_employee_user):
+        """Employee should see only their own monthly hours."""
+        from main import app
+        from database import get_db
+        from routers.roster import get_current_user
+
+        # Create mock shifts for this employee in April
+        mock_shifts = [
+            self.create_mock_shift(1, 2, date(2026, 4, 7), time(23, 30), time(0, 30), end_date=date(2026, 4, 8)),  # 1 hour
+            self.create_mock_shift(2, 2, date(2026, 4, 18), time(23, 55), time(0, 55), end_date=date(2026, 4, 19)),  # 1 hour
+        ]
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = mock_shifts
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_get_current_user():
+            return mock_employee_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[get_current_user] = mock_get_current_user
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/employee/monthly-hours?year=2026&month=4")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["employee_id"] == 2
+            assert data["employee_name"] == "Mark Custard"
+            assert data["total_hours"] == 2.0
+            assert data["shift_count"] == 2
+            assert data["month_name"] == "April"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_employee_no_shifts_this_month(self, mock_employee_user):
+        """Employee with no shifts should see 0 hours."""
+        from main import app
+        from database import get_db
+        from routers.roster import get_current_user
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_get_current_user():
+            return mock_employee_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[get_current_user] = mock_get_current_user
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/employee/monthly-hours?year=2026&month=2")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["total_hours"] == 0
+            assert data["shift_count"] == 0
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_employee_multiple_shifts_summed_monthly(self, mock_employee_user):
+        """Employee with multiple shifts should see summed hours for the month."""
+        from main import app
+        from database import get_db
+        from routers.roster import get_current_user
+
+        # Create multiple shifts across the month
+        mock_shifts = [
+            self.create_mock_shift(1, 2, date(2026, 4, 1), time(9, 0), time(13, 0)),   # 4 hours
+            self.create_mock_shift(2, 2, date(2026, 4, 7), time(14, 0), time(18, 0)),  # 4 hours
+            self.create_mock_shift(3, 2, date(2026, 4, 15), time(9, 0), time(12, 0)),  # 3 hours
+            self.create_mock_shift(4, 2, date(2026, 4, 22), time(10, 0), time(16, 0)), # 6 hours
+            self.create_mock_shift(5, 2, date(2026, 4, 30), time(8, 0), time(12, 0)),  # 4 hours
+        ]
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = mock_shifts
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_get_current_user():
+            return mock_employee_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[get_current_user] = mock_get_current_user
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/employee/monthly-hours?year=2026&month=4")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["total_hours"] == 21.0  # 4+4+3+6+4
+            assert data["shift_count"] == 5
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_employee_overnight_shift_attributed_to_start_date(self, mock_employee_user):
+        """Overnight shift spanning month boundary should be attributed to start date."""
+        from main import app
+        from database import get_db
+        from routers.roster import get_current_user
+
+        # Shift starts April 30 at 23:00, ends May 1 at 01:00 (2 hours)
+        # Should be counted in April since hours are attributed to start date
+        mock_shifts = [
+            self.create_mock_shift(1, 2, date(2026, 4, 30), time(23, 0), time(1, 0), end_date=date(2026, 5, 1)),
+        ]
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = mock_shifts
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_get_current_user():
+            return mock_employee_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[get_current_user] = mock_get_current_user
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/employee/monthly-hours?year=2026&month=4")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # 23:00 to 01:00 = 2 hours, attributed to April
+            assert data["total_hours"] == 2.0
+            assert data["shift_count"] == 1
+        finally:
+            app.dependency_overrides.clear()
+
+
+# =============================================================================
+# Integration Tests - Month Boundary Cases
+# =============================================================================
+
+class TestMonthBoundaryCases:
+    """Test edge cases around month boundaries for payroll."""
+
+    @pytest.fixture
+    def mock_employee_user(self):
+        """Create a mock employee user."""
+        user = MagicMock()
+        user.id = 2
+        user.email = "mark@tagparking.co.uk"
+        user.is_admin = False
+        user.first_name = "Mark"
+        user.last_name = "Custard"
+        return user
+
+    def create_mock_shift(self, id, staff_id, shift_date, start_time, end_time, end_date=None):
+        """Create a mock shift for database queries."""
+        from db_models import ShiftType, ShiftStatus
+        shift = MagicMock()
+        shift.id = id
+        shift.staff_id = staff_id
+        shift.date = shift_date
+        shift.end_date = end_date or shift_date
+        shift.start_time = start_time
+        shift.end_time = end_time
+        shift.shift_type = ShiftType.MORNING
+        shift.status = ShiftStatus.SCHEDULED
+        return shift
+
+    def test_february_leap_year(self, mock_employee_user):
+        """February in a leap year (2028) should have 29 days."""
+        from main import app
+        from database import get_db
+        from routers.roster import get_current_user
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_get_current_user():
+            return mock_employee_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[get_current_user] = mock_get_current_user
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/employee/monthly-hours?year=2028&month=2")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["month_end"] == "2028-02-29"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_february_non_leap_year(self, mock_employee_user):
+        """February in a non-leap year (2026) should have 28 days."""
+        from main import app
+        from database import get_db
+        from routers.roster import get_current_user
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_get_current_user():
+            return mock_employee_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[get_current_user] = mock_get_current_user
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/employee/monthly-hours?year=2026&month=2")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["month_end"] == "2026-02-28"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_shift_on_last_day_of_month(self, mock_employee_user):
+        """Shift on last day of month should be included."""
+        from main import app
+        from database import get_db
+        from routers.roster import get_current_user
+
+        # Shift on April 30 (last day)
+        mock_shifts = [
+            self.create_mock_shift(1, 2, date(2026, 4, 30), time(9, 0), time(17, 0)),  # 8 hours
+        ]
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = mock_shifts
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_get_current_user():
+            return mock_employee_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[get_current_user] = mock_get_current_user
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/employee/monthly-hours?year=2026&month=4")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["total_hours"] == 8.0
+            assert data["shift_count"] == 1
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_shift_on_first_day_of_month(self, mock_employee_user):
+        """Shift on first day of month should be included."""
+        from main import app
+        from database import get_db
+        from routers.roster import get_current_user
+
+        # Shift on April 1 (first day)
+        mock_shifts = [
+            self.create_mock_shift(1, 2, date(2026, 4, 1), time(6, 0), time(14, 0)),  # 8 hours
+        ]
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = mock_shifts
+
+        def mock_get_db():
+            yield mock_db
+
+        def mock_get_current_user():
+            return mock_employee_user
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[get_current_user] = mock_get_current_user
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/employee/monthly-hours?year=2026&month=4")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["total_hours"] == 8.0
+            assert data["shift_count"] == 1
+        finally:
+            app.dependency_overrides.clear()
