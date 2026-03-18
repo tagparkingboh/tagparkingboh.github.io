@@ -103,6 +103,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       const response = await fetch(`${API_URL}${endpoint}?include_cancelled=false`, {
         headers: {
           Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
         },
       })
 
@@ -135,6 +136,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       const response = await fetch(`${API_URL}${endpoint}?${params}`, {
         headers: {
           Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
         },
       })
 
@@ -170,6 +172,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       const response = await fetch(`${API_URL}/api/staff?is_active=true`, {
         headers: {
           Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
         },
       })
 
@@ -197,6 +200,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       const response = await fetch(`${API_URL}${endpoint}?year=${year}&month=${month}`, {
         headers: {
           Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
         },
       })
 
@@ -243,6 +247,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       const response = await fetch(`${API_URL}/api/roster/bookings-for-date?date=${isoDate}`, {
         headers: {
           Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
         },
       })
 
@@ -259,6 +264,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
           const response2 = await fetch(`${API_URL}/api/roster/bookings-for-date?date=${isoAdditionalDate}`, {
             headers: {
               Authorization: `Bearer ${token}`,
+              'Cache-Control': 'no-cache',
             },
           })
           if (response2.ok) {
@@ -545,6 +551,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
         },
         body: JSON.stringify(payload),
       })
@@ -581,6 +588,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
         },
       })
 
