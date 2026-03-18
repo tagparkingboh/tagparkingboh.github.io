@@ -13,33 +13,42 @@ All tests use mocked database to avoid real database dependencies.
 """
 import pytest
 from datetime import date, datetime, timedelta
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from main import app
+from main import app, require_admin
+from database import get_db
 from db_models import BookingStatus
 
 
 # =============================================================================
-# Test Client Setup
+# Fixtures
 # =============================================================================
 
-client = TestClient(app)
-
-
-def create_mock_user(id=1, email="admin@tagparking.co.uk", role="admin"):
+@pytest.fixture
+def mock_admin_user():
     """Create a mock admin user."""
     user = MagicMock()
-    user.id = id
-    user.email = email
-    user.role = role
+    user.id = 1
+    user.email = "admin@tagparking.co.uk"
+    user.role = "admin"
     user.first_name = "Admin"
     user.last_name = "User"
     return user
+
+
+def create_mock_payment(amount_pence=None, paid_at=None):
+    """Create a mock payment object."""
+    if amount_pence is None and paid_at is None:
+        return None
+    payment = MagicMock()
+    payment.amount_pence = amount_pence
+    payment.paid_at = paid_at
+    return payment
 
 
 def create_mock_booking(
@@ -48,17 +57,21 @@ def create_mock_booking(
     status=BookingStatus.CONFIRMED,
     dropoff_date=None,
     pickup_date=None,
-    total_price=None,
+    amount_pence=None,
+    paid_at=None,
     dropoff_destination="Faro Airport",
 ):
     """Create a mock booking for database queries."""
+    from datetime import datetime
     booking = MagicMock()
     booking.id = id
     booking.reference = reference
     booking.status = status
     booking.dropoff_date = dropoff_date or date(2026, 3, 15)
     booking.pickup_date = pickup_date or date(2026, 3, 22)
-    booking.total_price = total_price
+    # Default paid_at to dropoff_date at noon if not provided
+    default_paid_at = datetime.combine(booking.dropoff_date, datetime.min.time().replace(hour=12))
+    booking.payment = create_mock_payment(amount_pence, paid_at or default_paid_at)
     booking.dropoff_destination = dropoff_destination
     return booking
 
@@ -70,74 +83,78 @@ def create_mock_booking(
 class TestFunFactsIntegrationHappyPath:
     """Integration tests for happy path scenarios."""
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_get_fun_facts_success(self, mock_require_admin, mock_get_db):
+    def test_get_fun_facts_success(self, mock_admin_user):
         """Should return fun facts for confirmed/completed bookings."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
-
         # Create mock bookings
         mock_bookings = [
-            create_mock_booking(id=1, dropoff_date=date(2026, 3, 15), pickup_date=date(2026, 3, 22), total_price=85.00),
-            create_mock_booking(id=2, dropoff_date=date(2026, 3, 15), pickup_date=date(2026, 3, 25), total_price=120.00),
-            create_mock_booking(id=3, dropoff_date=date(2026, 3, 16), pickup_date=date(2026, 3, 30), total_price=189.00),
+            create_mock_booking(id=1, dropoff_date=date(2026, 3, 15), pickup_date=date(2026, 3, 22), amount_pence=8500),   # £85.00
+            create_mock_booking(id=2, dropoff_date=date(2026, 3, 15), pickup_date=date(2026, 3, 25), amount_pence=12000),  # £120.00
+            create_mock_booking(id=3, dropoff_date=date(2026, 3, 16), pickup_date=date(2026, 3, 30), amount_pence=18900),  # £189.00
         ]
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        assert "busiestDay" in data
-        assert "busiestStreak" in data
-        assert "longestTrip" in data
-        assert "highestTransaction" in data
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_busiest_day_calculation(self, mock_require_admin, mock_get_db):
-        """Should correctly identify busiest day."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
 
-        # 3 bookings on Mar 15, 1 on Mar 16
+            assert response.status_code == 200
+            data = response.json()
+
+            assert "busiestDay" in data
+            assert "busiestStreak" in data
+            assert "longestTrip" in data
+            assert "highestTransaction" in data
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_busiest_day_calculation(self, mock_admin_user):
+        """Should correctly identify busiest day by payment/confirmation date."""
+        from datetime import datetime
+        # 3 bookings paid on Mar 15, 1 on Mar 16
         mock_bookings = [
-            create_mock_booking(id=1, dropoff_date=date(2026, 3, 15)),
-            create_mock_booking(id=2, dropoff_date=date(2026, 3, 15)),
-            create_mock_booking(id=3, dropoff_date=date(2026, 3, 15)),
-            create_mock_booking(id=4, dropoff_date=date(2026, 3, 16)),
+            create_mock_booking(id=1, paid_at=datetime(2026, 3, 15, 10, 0, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 3, 15, 11, 0, 0)),
+            create_mock_booking(id=3, paid_at=datetime(2026, 3, 15, 12, 0, 0)),
+            create_mock_booking(id=4, paid_at=datetime(2026, 3, 16, 10, 0, 0)),
         ]
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        assert data["busiestDay"]["count"] == 3
-        assert "15" in data["busiestDay"]["date"]  # Mar 15
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_longest_trip_calculation(self, mock_require_admin, mock_get_db):
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["busiestDay"]["count"] == 3
+            assert "15" in data["busiestDay"]["date"]  # Mar 15
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_longest_trip_calculation(self, mock_admin_user):
         """Should correctly identify longest trip."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
-
         mock_bookings = [
             create_mock_booking(id=1, dropoff_date=date(2026, 3, 1), pickup_date=date(2026, 3, 8), dropoff_destination="Faro"),   # 7 days
             create_mock_booking(id=2, dropoff_date=date(2026, 3, 1), pickup_date=date(2026, 3, 22), dropoff_destination="Tenerife"),  # 21 days
@@ -146,77 +163,95 @@ class TestFunFactsIntegrationHappyPath:
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        assert data["longestTrip"]["days"] == 21
-        assert data["longestTrip"]["destination"] == "Tenerife"
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_highest_transaction_calculation(self, mock_require_admin, mock_get_db):
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["longestTrip"]["days"] == 21
+            assert data["longestTrip"]["destination"] == "Tenerife"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_highest_transaction_calculation(self, mock_admin_user):
         """Should correctly identify highest transaction."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
-
         mock_bookings = [
-            create_mock_booking(id=1, total_price=85.00, dropoff_date=date(2026, 3, 1), pickup_date=date(2026, 3, 8)),
-            create_mock_booking(id=2, total_price=189.00, dropoff_date=date(2026, 3, 1), pickup_date=date(2026, 3, 15)),
-            create_mock_booking(id=3, total_price=120.00, dropoff_date=date(2026, 3, 1), pickup_date=date(2026, 3, 10)),
+            create_mock_booking(id=1, amount_pence=8500, dropoff_date=date(2026, 3, 1), pickup_date=date(2026, 3, 8)),    # £85.00
+            create_mock_booking(id=2, amount_pence=18900, dropoff_date=date(2026, 3, 1), pickup_date=date(2026, 3, 15)),  # £189.00
+            create_mock_booking(id=3, amount_pence=12000, dropoff_date=date(2026, 3, 1), pickup_date=date(2026, 3, 10)),  # £120.00
         ]
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        assert data["highestTransaction"]["amount"] == "£189.00"
-        assert data["highestTransaction"]["days"] == 14
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_busiest_streak_calculation(self, mock_require_admin, mock_get_db):
-        """Should correctly calculate busiest streak."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
 
-        # Create bookings on consecutive days: Mar 15, 16, 17, then gap, then Mar 20
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["highestTransaction"]["amount"] == "£189.00"
+            assert data["highestTransaction"]["days"] == 14
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_busiest_streak_calculation(self, mock_admin_user):
+        """Should correctly calculate busiest streak by payment/confirmation date."""
+        from datetime import datetime
+        # Create bookings paid on consecutive days: Mar 15, 16, 17, then gap, then Mar 20
         mock_bookings = [
-            create_mock_booking(id=1, dropoff_date=date(2026, 3, 15)),
-            create_mock_booking(id=2, dropoff_date=date(2026, 3, 16)),
-            create_mock_booking(id=3, dropoff_date=date(2026, 3, 16)),
-            create_mock_booking(id=4, dropoff_date=date(2026, 3, 17)),
-            create_mock_booking(id=5, dropoff_date=date(2026, 3, 20)),
+            create_mock_booking(id=1, paid_at=datetime(2026, 3, 15, 10, 0, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 3, 16, 10, 0, 0)),
+            create_mock_booking(id=3, paid_at=datetime(2026, 3, 16, 11, 0, 0)),
+            create_mock_booking(id=4, paid_at=datetime(2026, 3, 17, 10, 0, 0)),
+            create_mock_booking(id=5, paid_at=datetime(2026, 3, 20, 10, 0, 0)),
         ]
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        assert data["busiestStreak"]["days"] == 3
-        assert data["busiestStreak"]["bookings"] == 4  # 1 + 2 + 1 bookings
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["busiestStreak"]["days"] == 3
+            assert data["busiestStreak"]["bookings"] == 4  # 1 + 2 + 1 bookings
+        finally:
+            app.dependency_overrides.clear()
 
 
 # =============================================================================
@@ -226,57 +261,65 @@ class TestFunFactsIntegrationHappyPath:
 class TestFunFactsIntegrationEmptyCases:
     """Integration tests for empty and null scenarios."""
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_no_bookings_returns_null_values(self, mock_require_admin, mock_get_db):
+    def test_no_bookings_returns_null_values(self, mock_admin_user):
         """Should return null values when no bookings exist."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
-
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = []
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        assert data["busiestDay"] is None
-        assert data["busiestStreak"] is None
-        assert data["longestTrip"] is None
-        assert data["highestTransaction"] is None
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_bookings_with_null_prices(self, mock_require_admin, mock_get_db):
-        """Should handle bookings with null prices gracefully."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
 
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["busiestDay"] is None
+            assert data["busiestStreak"] is None
+            assert data["longestTrip"] is None
+            assert data["highestTransaction"] is None
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_bookings_with_null_payments(self, mock_admin_user):
+        """Should handle bookings with null payments gracefully."""
         mock_bookings = [
-            create_mock_booking(id=1, total_price=None, dropoff_date=date(2026, 3, 15), pickup_date=date(2026, 3, 22)),
-            create_mock_booking(id=2, total_price=None, dropoff_date=date(2026, 3, 16), pickup_date=date(2026, 3, 23)),
+            create_mock_booking(id=1, amount_pence=None, dropoff_date=date(2026, 3, 15), pickup_date=date(2026, 3, 22)),
+            create_mock_booking(id=2, amount_pence=None, dropoff_date=date(2026, 3, 16), pickup_date=date(2026, 3, 23)),
         ]
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        # Other fields should still work
-        assert data["busiestDay"] is not None
-        assert data["highestTransaction"] is None
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # Other fields should still work
+            assert data["busiestDay"] is not None
+            assert data["highestTransaction"] is None
+        finally:
+            app.dependency_overrides.clear()
 
 
 # =============================================================================
@@ -286,100 +329,113 @@ class TestFunFactsIntegrationEmptyCases:
 class TestFunFactsIntegrationEdgeCases:
     """Integration tests for edge cases."""
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_single_booking(self, mock_require_admin, mock_get_db):
+    def test_single_booking(self, mock_admin_user):
         """Should handle single booking correctly."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
-
         mock_bookings = [
             create_mock_booking(
                 id=1,
                 dropoff_date=date(2026, 3, 15),
                 pickup_date=date(2026, 3, 22),
-                total_price=85.00,
+                amount_pence=8500,  # £85.00
                 dropoff_destination="Faro"
             ),
         ]
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        assert data["busiestDay"]["count"] == 1
-        assert data["busiestStreak"]["days"] == 1
-        assert data["longestTrip"]["days"] == 7
-        assert data["highestTransaction"]["amount"] == "£85.00"
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_missing_destination_shows_unknown(self, mock_require_admin, mock_get_db):
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["busiestDay"]["count"] == 1
+            assert data["busiestStreak"]["days"] == 1
+            assert data["longestTrip"]["days"] == 7
+            assert data["highestTransaction"]["amount"] == "£85.00"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_missing_destination_shows_unknown(self, mock_admin_user):
         """Should show 'Unknown' for missing destination."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
-
         mock_bookings = [
             create_mock_booking(
                 id=1,
                 dropoff_date=date(2026, 3, 1),
                 pickup_date=date(2026, 3, 22),
-                total_price=189.00,
+                amount_pence=18900,  # £189.00
                 dropoff_destination=None
             ),
         ]
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        assert data["longestTrip"]["destination"] == "Unknown"
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_same_day_trip(self, mock_require_admin, mock_get_db):
-        """Should handle same-day trips (0 days)."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
 
+            assert response.status_code == 200
+            data = response.json()
+
+            assert data["longestTrip"]["destination"] == "Unknown"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_same_day_trip(self, mock_admin_user):
+        """Should handle same-day trips (0 days) - returns None since no actual trip duration."""
         mock_bookings = [
             create_mock_booking(
                 id=1,
                 dropoff_date=date(2026, 3, 15),
                 pickup_date=date(2026, 3, 15),  # Same day
-                total_price=50.00,
+                amount_pence=5000,  # £50.00
             ),
         ]
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        assert data["longestTrip"]["days"] == 0
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # 0-day trips don't count as having a "longest trip" since there's no duration
+            assert data["longestTrip"] is None
+        finally:
+            app.dependency_overrides.clear()
 
 
 # =============================================================================
@@ -391,26 +447,38 @@ class TestFunFactsIntegrationAuth:
 
     def test_requires_authentication(self):
         """Should require authentication."""
+        # Clear any overrides to test real auth
+        app.dependency_overrides.clear()
+
+        client = TestClient(app)
         response = client.get("/api/admin/reports/fun-facts")
 
-        # Should return 401 or redirect for unauthenticated requests
-        assert response.status_code in [401, 403, 422]
+        # Should return 401 for unauthenticated requests
+        assert response.status_code == 401
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_requires_admin_role(self, mock_require_admin, mock_get_db):
+    def test_requires_admin_role(self):
         """Should require admin role."""
         from fastapi import HTTPException
 
-        # Simulate non-admin user
-        mock_require_admin.side_effect = HTTPException(status_code=403, detail="Admin access required")
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.all.return_value = []
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 403
+        def mock_require_admin():
+            raise HTTPException(status_code=403, detail="Admin access required")
+
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
+
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
+
+            assert response.status_code == 403
+        finally:
+            app.dependency_overrides.clear()
 
 
 # =============================================================================
@@ -420,65 +488,75 @@ class TestFunFactsIntegrationAuth:
 class TestFunFactsIntegrationDateFormatting:
     """Integration tests for date formatting in response."""
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_busiest_day_date_format(self, mock_require_admin, mock_get_db):
+    def test_busiest_day_date_format(self, mock_admin_user):
         """Busiest day date should be in correct UK format."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
-
+        from datetime import datetime
         mock_bookings = [
-            create_mock_booking(id=1, dropoff_date=date(2026, 2, 24)),
+            create_mock_booking(id=1, paid_at=datetime(2026, 2, 24, 10, 0, 0)),
         ]
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        # Should be like "Tue 24 Feb 2026"
-        assert "Tue" in data["busiestDay"]["date"]
-        assert "24" in data["busiestDay"]["date"]
-        assert "Feb" in data["busiestDay"]["date"]
-        assert "2026" in data["busiestDay"]["date"]
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
 
-    @patch('main.get_db')
-    @patch('main.require_admin')
-    def test_streak_date_format(self, mock_require_admin, mock_get_db):
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # Should be like "Tue 24 Feb 2026"
+            assert "Tue" in data["busiestDay"]["date"]
+            assert "24" in data["busiestDay"]["date"]
+            assert "Feb" in data["busiestDay"]["date"]
+            assert "2026" in data["busiestDay"]["date"]
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_streak_date_format(self, mock_admin_user):
         """Streak dates should be in correct format."""
-        mock_user = create_mock_user()
-        mock_require_admin.return_value = mock_user
-
+        from datetime import datetime
         mock_bookings = [
-            create_mock_booking(id=1, dropoff_date=date(2026, 2, 24)),
-            create_mock_booking(id=2, dropoff_date=date(2026, 2, 25)),
-            create_mock_booking(id=3, dropoff_date=date(2026, 2, 26)),
+            create_mock_booking(id=1, paid_at=datetime(2026, 2, 24, 10, 0, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 2, 25, 10, 0, 0)),
+            create_mock_booking(id=3, paid_at=datetime(2026, 2, 26, 10, 0, 0)),
         ]
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
-        mock_get_db.return_value = iter([mock_db])
 
-        response = client.get(
-            "/api/admin/reports/fun-facts",
-            headers={"Authorization": "Bearer test_token"}
-        )
+        def mock_get_db():
+            yield mock_db
 
-        assert response.status_code == 200
-        data = response.json()
+        def mock_require_admin():
+            return mock_admin_user
 
-        # startDate should be like "24 Feb"
-        assert "24" in data["busiestStreak"]["startDate"]
-        assert "Feb" in data["busiestStreak"]["startDate"]
+        app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = mock_require_admin
 
-        # endDate should include year like "26 Feb 2026"
-        assert "26" in data["busiestStreak"]["endDate"]
-        assert "Feb" in data["busiestStreak"]["endDate"]
-        assert "2026" in data["busiestStreak"]["endDate"]
+        try:
+            client = TestClient(app)
+            response = client.get("/api/admin/reports/fun-facts")
+
+            assert response.status_code == 200
+            data = response.json()
+
+            # startDate should be like "24 Feb"
+            assert "24" in data["busiestStreak"]["startDate"]
+            assert "Feb" in data["busiestStreak"]["startDate"]
+
+            # endDate should include year like "26 Feb 2026"
+            assert "26" in data["busiestStreak"]["endDate"]
+            assert "Feb" in data["busiestStreak"]["endDate"]
+            assert "2026" in data["busiestStreak"]["endDate"]
+        finally:
+            app.dependency_overrides.clear()

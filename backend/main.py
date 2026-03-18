@@ -3209,10 +3209,10 @@ async def get_fun_facts(
     Get fun facts/records for the business.
 
     Returns:
-    - Busiest Day: Day with most bookings (by dropoff_date)
-    - Busiest Streak: Longest consecutive days with bookings
+    - Busiest Day: Day with most confirmed bookings (by payment date)
+    - Busiest Streak: Longest consecutive days with confirmed bookings (by payment date)
     - Longest Trip: Booking with most days between dropoff and pickup
-    - Highest Transaction: Booking with highest total_price
+    - Highest Transaction: Booking with highest payment amount
 
     Only considers confirmed and completed bookings.
     """
@@ -3236,11 +3236,14 @@ async def get_fun_facts(
         return result
 
     # === Busiest Day ===
-    # Count bookings by dropoff_date
+    # Count bookings by payment date (when transaction was confirmed)
     day_counter = Counter()
     for booking in bookings:
-        if booking.dropoff_date:
-            day_counter[booking.dropoff_date] += 1
+        # Use payment.paid_at for the confirmation/transaction date
+        if booking.payment and booking.payment.paid_at:
+            # Extract just the date from the datetime
+            paid_date = booking.payment.paid_at.date()
+            day_counter[paid_date] += 1
 
     if day_counter:
         busiest_date, busiest_count = day_counter.most_common(1)[0]
