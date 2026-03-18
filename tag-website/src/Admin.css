@@ -3115,6 +3115,69 @@
   color: #1a1a2e;
 }
 
+/* Fun Facts Section */
+.fun-facts-section {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e5e7eb;
+}
+
+.fun-facts-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 16px 0;
+}
+
+.fun-facts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.fun-fact-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+}
+
+.fun-fact-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.fun-fact-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fun-fact-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.fun-fact-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.fun-fact-detail {
+  font-size: 13px;
+  color: #6b7280;
+}
+
 /* Chart Controls */
 .chart-controls {
   display: flex;

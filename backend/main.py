@@ -3200,6 +3200,137 @@ async def get_popular_airlines_destinations(
     }
 
 
+@app.get("/api/admin/reports/fun-facts")
+async def get_fun_facts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get fun facts/records for the business.
+
+    Returns:
+    - Busiest Day: Day with most bookings (by dropoff_date)
+    - Busiest Streak: Longest consecutive days with bookings
+    - Longest Trip: Booking with most days between dropoff and pickup
+    - Highest Transaction: Booking with highest total_price
+
+    Only considers confirmed and completed bookings.
+    """
+    from db_models import Booking, BookingStatus
+    from collections import Counter
+    from datetime import timedelta
+
+    # Get all confirmed/completed bookings
+    bookings = db.query(Booking).filter(
+        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED])
+    ).all()
+
+    result = {
+        "busiestDay": None,
+        "busiestStreak": None,
+        "longestTrip": None,
+        "highestTransaction": None,
+    }
+
+    if not bookings:
+        return result
+
+    # === Busiest Day ===
+    # Count bookings by dropoff_date
+    day_counter = Counter()
+    for booking in bookings:
+        if booking.dropoff_date:
+            day_counter[booking.dropoff_date] += 1
+
+    if day_counter:
+        busiest_date, busiest_count = day_counter.most_common(1)[0]
+        result["busiestDay"] = {
+            "date": busiest_date.strftime("%a %d %b %Y"),  # e.g., "Mon 24 Feb 2026"
+            "count": busiest_count,
+        }
+
+    # === Busiest Streak ===
+    # Find longest consecutive days with at least one booking
+    if day_counter:
+        sorted_dates = sorted(day_counter.keys())
+
+        longest_streak = 1
+        longest_streak_start = sorted_dates[0]
+        longest_streak_end = sorted_dates[0]
+
+        current_streak = 1
+        current_streak_start = sorted_dates[0]
+
+        for i in range(1, len(sorted_dates)):
+            if sorted_dates[i] == sorted_dates[i-1] + timedelta(days=1):
+                # Consecutive day
+                current_streak += 1
+            else:
+                # Streak broken, check if it was the longest
+                if current_streak > longest_streak:
+                    longest_streak = current_streak
+                    longest_streak_start = current_streak_start
+                    longest_streak_end = sorted_dates[i-1]
+                # Start new streak
+                current_streak = 1
+                current_streak_start = sorted_dates[i]
+
+        # Check final streak
+        if current_streak > longest_streak:
+            longest_streak = current_streak
+            longest_streak_start = current_streak_start
+            longest_streak_end = sorted_dates[-1]
+
+        # Count total bookings in the streak
+        streak_bookings = sum(
+            day_counter[d] for d in sorted_dates
+            if longest_streak_start <= d <= longest_streak_end
+        )
+
+        result["busiestStreak"] = {
+            "days": longest_streak,
+            "startDate": longest_streak_start.strftime("%d %b"),  # e.g., "24 Feb"
+            "endDate": longest_streak_end.strftime("%d %b %Y"),   # e.g., "28 Feb 2026"
+            "bookings": streak_bookings,
+        }
+
+    # === Longest Trip ===
+    longest_booking = None
+    longest_days = 0
+
+    for booking in bookings:
+        if booking.dropoff_date and booking.pickup_date:
+            trip_days = (booking.pickup_date - booking.dropoff_date).days
+            if trip_days > longest_days:
+                longest_days = trip_days
+                longest_booking = booking
+
+    if longest_booking:
+        result["longestTrip"] = {
+            "days": longest_days,
+            "reference": longest_booking.reference,
+            "destination": longest_booking.dropoff_destination or "Unknown",
+        }
+
+    # === Highest Transaction ===
+    highest_booking = None
+    highest_amount = 0
+
+    for booking in bookings:
+        if booking.total_price and booking.total_price > highest_amount:
+            highest_amount = booking.total_price
+            highest_booking = booking
+
+    if highest_booking:
+        result["highestTransaction"] = {
+            "amount": f"£{highest_amount:.2f}",
+            "reference": highest_booking.reference,
+            "days": (highest_booking.pickup_date - highest_booking.dropoff_date).days if highest_booking.pickup_date and highest_booking.dropoff_date else None,
+        }
+
+    return result
+
+
 @app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
 async def send_promo_email_to_subscriber(
     subscriber_id: int,
