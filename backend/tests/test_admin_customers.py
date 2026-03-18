@@ -24,6 +24,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Mock Data Factories
 # =============================================================================
 
+def create_mock_marketing_source(source="google", source_detail=None):
+    """Create a mock marketing source object."""
+    ms = MagicMock()
+    ms.source = source
+    ms.source_detail = source_detail
+    return ms
+
+
 def create_mock_customer(
     id=1,
     first_name="Test",
@@ -32,6 +40,7 @@ def create_mock_customer(
     phone="07700900001",
     billing_postcode="BH1 1AA",
     created_at=None,
+    marketing_source=None,
 ):
     """Create a mock customer object."""
     customer = MagicMock()
@@ -42,6 +51,7 @@ def create_mock_customer(
     customer.phone = phone
     customer.billing_postcode = billing_postcode
     customer.created_at = created_at or datetime.utcnow()
+    customer.marketing_source = marketing_source
     return customer
 
 
@@ -53,6 +63,7 @@ def create_mock_customer_response(
     phone="07700900001",
     billing_postcode="BH1 1AA",
     created_at=None,
+    marketing_source=None,
 ):
     """Create a mock customer API response object."""
     return {
@@ -63,6 +74,7 @@ def create_mock_customer_response(
         "phone": phone,
         "billing_postcode": billing_postcode,
         "created_at": (created_at or datetime.utcnow()).isoformat(),
+        "marketing_source": marketing_source,
     }
 
 
@@ -116,6 +128,20 @@ class TestGetCustomersHappyPath:
 
         assert customer["created_at"] is not None
         assert "2026-01-15" in customer["created_at"]
+
+    def test_customer_includes_marketing_source(self):
+        """Customers should include marketing_source field."""
+        customer = create_mock_customer_response(marketing_source="google")
+
+        assert "marketing_source" in customer
+        assert customer["marketing_source"] == "google"
+
+    def test_customer_marketing_source_can_be_null(self):
+        """Customers without marketing source should have null value."""
+        customer = create_mock_customer_response(marketing_source=None)
+
+        assert "marketing_source" in customer
+        assert customer["marketing_source"] is None
 
     def test_customers_sorted_by_created_at_asc(self):
         """Customers should be sorted by created_at ascending (oldest first)."""
@@ -200,6 +226,30 @@ class TestGetCustomersEdgeCases:
 
         assert customer["email"] == long_email
 
+    def test_customer_with_other_marketing_source(self):
+        """Should handle customers with 'other' marketing source."""
+        customer = create_mock_customer_response(
+            marketing_source="other",
+        )
+
+        assert customer["marketing_source"] == "other"
+
+    def test_customer_with_various_marketing_sources(self):
+        """Should handle all valid marketing source values."""
+        valid_sources = [
+            "google",
+            "facebook",
+            "instagram",
+            "linkedin",
+            "newspaper",
+            "afc_bournemouth",
+            "other",
+        ]
+
+        for source in valid_sources:
+            customer = create_mock_customer_response(marketing_source=source)
+            assert customer["marketing_source"] == source
+
 
 # =============================================================================
 # Integration Tests - Full Flow
@@ -234,6 +284,7 @@ class TestCustomersIntegration:
                 email="test@example.com",
                 phone="07700900001",
                 billing_postcode="BH1 1AA",
+                marketing_source="google",
             ),
         ]
 
@@ -253,6 +304,7 @@ class TestCustomersIntegration:
         assert "phone" in customer
         assert "billing_postcode" in customer
         assert "created_at" in customer
+        assert "marketing_source" in customer
 
     def test_customers_ordered_chronologically_for_monthly_grouping(self):
         """Customers should be ordered for monthly grouping in UI."""
@@ -741,3 +793,242 @@ class TestCustomerEditDeleteIntegration:
         assert len(customers) == 2
         assert any(c["id"] == 1 for c in customers)
         assert any(c["id"] == 3 for c in customers)
+
+
+# =============================================================================
+# Marketing Source Tests
+# =============================================================================
+
+class TestCustomerMarketingSource:
+    """Tests for marketing_source field in customer response."""
+
+    def test_marketing_source_included_in_response(self):
+        """Marketing source should be included in customer response."""
+        customer = create_mock_customer_response(
+            id=1,
+            first_name="John",
+            last_name="Smith",
+            marketing_source="google",
+        )
+
+        assert "marketing_source" in customer
+        assert customer["marketing_source"] == "google"
+
+    def test_marketing_source_null_when_not_set(self):
+        """Marketing source should be null when customer has no source."""
+        customer = create_mock_customer_response(
+            id=1,
+            marketing_source=None,
+        )
+
+        assert customer["marketing_source"] is None
+
+    def test_all_valid_marketing_sources(self):
+        """All valid marketing source values should be accepted."""
+        valid_sources = [
+            "google",
+            "facebook",
+            "instagram",
+            "linkedin",
+            "newspaper",
+            "afc_bournemouth",
+            "other",
+        ]
+
+        for source in valid_sources:
+            customer = create_mock_customer_response(marketing_source=source)
+            assert customer["marketing_source"] == source
+
+    def test_marketing_source_from_mock_object(self):
+        """Marketing source should be extracted from customer.marketing_source relationship."""
+        # Create mock marketing source
+        mock_ms = create_mock_marketing_source(source="facebook")
+
+        # Create customer with marketing source
+        mock_customer = create_mock_customer(
+            id=1,
+            first_name="Jane",
+            last_name="Doe",
+            marketing_source=mock_ms,
+        )
+
+        # Simulate the API extraction logic
+        marketing_source = None
+        if mock_customer.marketing_source:
+            marketing_source = mock_customer.marketing_source.source
+
+        assert marketing_source == "facebook"
+
+    def test_marketing_source_none_when_relationship_missing(self):
+        """Marketing source should be None when relationship doesn't exist."""
+        mock_customer = create_mock_customer(
+            id=1,
+            first_name="Jane",
+            last_name="Doe",
+            marketing_source=None,
+        )
+
+        # Simulate the API extraction logic
+        marketing_source = None
+        if mock_customer.marketing_source:
+            marketing_source = mock_customer.marketing_source.source
+
+        assert marketing_source is None
+
+    def test_customers_with_mixed_marketing_sources(self):
+        """Should handle list with mix of sources and nulls."""
+        customers = [
+            create_mock_customer_response(id=1, marketing_source="google"),
+            create_mock_customer_response(id=2, marketing_source=None),
+            create_mock_customer_response(id=3, marketing_source="facebook"),
+            create_mock_customer_response(id=4, marketing_source="other"),
+            create_mock_customer_response(id=5, marketing_source=None),
+        ]
+
+        # Count customers with sources
+        with_source = [c for c in customers if c["marketing_source"] is not None]
+        without_source = [c for c in customers if c["marketing_source"] is None]
+
+        assert len(with_source) == 3
+        assert len(without_source) == 2
+
+    def test_marketing_source_preserved_in_update(self):
+        """Marketing source should be preserved when updating email/phone."""
+        original = create_mock_customer_response(
+            id=1,
+            email="old@test.com",
+            phone="07700900001",
+            marketing_source="instagram",
+        )
+
+        # Simulate update (only email changes)
+        updated = {**original, "email": "new@test.com"}
+
+        assert updated["marketing_source"] == "instagram"
+        assert updated["email"] == "new@test.com"
+
+    def test_marketing_source_for_reporting(self):
+        """Should be able to group customers by marketing source."""
+        customers = [
+            create_mock_customer_response(id=1, marketing_source="google"),
+            create_mock_customer_response(id=2, marketing_source="google"),
+            create_mock_customer_response(id=3, marketing_source="facebook"),
+            create_mock_customer_response(id=4, marketing_source="google"),
+            create_mock_customer_response(id=5, marketing_source=None),
+        ]
+
+        # Group by source
+        from collections import Counter
+        sources = [c["marketing_source"] for c in customers if c["marketing_source"]]
+        source_counts = Counter(sources)
+
+        assert source_counts["google"] == 3
+        assert source_counts["facebook"] == 1
+
+
+# =============================================================================
+# Integration Tests - Marketing Source Logic
+# =============================================================================
+
+class TestCustomerMarketingSourceIntegration:
+    """Integration tests for marketing source extraction logic."""
+
+    def test_extract_marketing_source_from_customer_object(self):
+        """Should correctly extract marketing_source from customer relationship."""
+        # Create mock customers with marketing sources
+        mock_customers = [
+            create_mock_customer(id=1, first_name="John", last_name="Doe",
+                               marketing_source=create_mock_marketing_source("google")),
+            create_mock_customer(id=2, first_name="Jane", last_name="Smith",
+                               marketing_source=None),
+        ]
+
+        # Simulate the API extraction logic (from main.py get_customers)
+        customers_data = []
+        for customer in mock_customers:
+            marketing_source = None
+            if customer.marketing_source:
+                marketing_source = customer.marketing_source.source
+
+            customers_data.append({
+                "id": customer.id,
+                "first_name": customer.first_name,
+                "last_name": customer.last_name,
+                "email": customer.email,
+                "phone": customer.phone,
+                "billing_postcode": customer.billing_postcode,
+                "created_at": customer.created_at.isoformat() if customer.created_at else None,
+                "marketing_source": marketing_source,
+            })
+
+        # First customer should have marketing_source
+        assert customers_data[0]["marketing_source"] == "google"
+        assert customers_data[0]["first_name"] == "John"
+
+        # Second customer should have null marketing_source
+        assert customers_data[1]["marketing_source"] is None
+        assert customers_data[1]["first_name"] == "Jane"
+
+    def test_api_response_structure_with_marketing_source(self):
+        """Verify API response structure includes marketing_source."""
+        mock_customer = create_mock_customer(
+            id=1,
+            first_name="Test",
+            last_name="User",
+            email="test@example.com",
+            phone="07700900001",
+            billing_postcode="BH1 1AA",
+            marketing_source=create_mock_marketing_source("facebook"),
+        )
+
+        # Simulate API response building
+        marketing_source = None
+        if mock_customer.marketing_source:
+            marketing_source = mock_customer.marketing_source.source
+
+        response = {
+            "id": mock_customer.id,
+            "first_name": mock_customer.first_name,
+            "last_name": mock_customer.last_name,
+            "email": mock_customer.email,
+            "phone": mock_customer.phone,
+            "billing_postcode": mock_customer.billing_postcode,
+            "created_at": mock_customer.created_at.isoformat() if mock_customer.created_at else None,
+            "marketing_source": marketing_source,
+        }
+
+        # Verify all expected fields are present
+        expected_fields = [
+            "id", "first_name", "last_name", "email", "phone",
+            "billing_postcode", "created_at", "marketing_source"
+        ]
+
+        for field in expected_fields:
+            assert field in response, f"Field '{field}' missing from response"
+
+        assert response["marketing_source"] == "facebook"
+
+    def test_all_marketing_source_types_extracted_correctly(self):
+        """All valid marketing source types should be extracted correctly."""
+        valid_sources = [
+            "google",
+            "facebook",
+            "instagram",
+            "linkedin",
+            "newspaper",
+            "afc_bournemouth",
+            "other",
+        ]
+
+        for source in valid_sources:
+            mock_customer = create_mock_customer(
+                id=1,
+                marketing_source=create_mock_marketing_source(source),
+            )
+
+            # Simulate extraction
+            marketing_source = None
+            if mock_customer.marketing_source:
+                marketing_source = mock_customer.marketing_source.source
+
+            assert marketing_source == source, f"Source '{source}' not extracted correctly"
