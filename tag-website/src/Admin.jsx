@@ -163,6 +163,10 @@ function Admin() {
   const [promotionMessage, setPromotionMessage] = useState('')
   const [editingPromotion, setEditingPromotion] = useState(null) // { id, name }
   const [deletingPromotionId, setDeletingPromotionId] = useState(null)
+  const [showGenerateCodesModal, setShowGenerateCodesModal] = useState(false)
+  const [generateCodesPromotion, setGenerateCodesPromotion] = useState(null)
+  const [generateCodesCount, setGenerateCodesCount] = useState(10)
+  const [generatingCodes, setGeneratingCodes] = useState(false)
 
   // Abandoned leads state
   const [leads, setLeads] = useState([])
@@ -1039,6 +1043,45 @@ function Admin() {
       setPromotionMessage('Network error deleting promotion')
     } finally {
       setDeletingPromotionId(null)
+    }
+  }
+
+  const openGenerateCodesModal = (promotion) => {
+    setGenerateCodesPromotion(promotion)
+    setGenerateCodesCount(10)
+    setShowGenerateCodesModal(true)
+  }
+
+  const generateMoreCodes = async () => {
+    if (!generateCodesPromotion) return
+    setGeneratingCodes(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promotions/${generateCodesPromotion.id}/generate-codes`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ count: generateCodesCount }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPromotionMessage(`Successfully generated ${data.codes_created} new codes`)
+        setShowGenerateCodesModal(false)
+        setGenerateCodesPromotion(null)
+        fetchPromotions()
+        // Refresh details if expanded
+        if (promotionDetails[generateCodesPromotion.id]) {
+          fetchPromotionDetails(generateCodesPromotion.id)
+        }
+      } else {
+        const data = await response.json()
+        setPromotionMessage(`Error: ${data.detail || 'Failed to generate codes'}`)
+      }
+    } catch (err) {
+      setPromotionMessage('Network error generating codes')
+    } finally {
+      setGeneratingCodes(false)
     }
   }
 
@@ -4578,6 +4621,14 @@ function Admin() {
                             >
                               📧 Send Codes
                             </button>
+                            <button
+                              className="btn-secondary"
+                              onClick={(e) => { e.stopPropagation(); openGenerateCodesModal(promo); }}
+                              style={{ fontSize: '14px', padding: '8px 15px' }}
+                              title="Generate more promo codes for this promotion"
+                            >
+                              ➕ Generate Codes
+                            </button>
                             <span style={{ fontSize: '20px', color: '#666' }}>
                               {expandedPromotionId === promo.id ? '▼' : '▶'}
                             </span>
@@ -4970,6 +5021,53 @@ function Admin() {
                     ) : (
                       <p>No "Other" details recorded.</p>
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Generate More Codes Modal */}
+            {showGenerateCodesModal && generateCodesPromotion && (
+              <div className="modal-overlay" onClick={() => setShowGenerateCodesModal(false)}>
+                <div className="modal-content" style={{ maxWidth: '400px' }} onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h3>Generate More Codes</h3>
+                    <button className="modal-close" onClick={() => setShowGenerateCodesModal(false)}>&times;</button>
+                  </div>
+                  <div className="modal-body">
+                    <p style={{ marginBottom: '15px', color: '#666' }}>
+                      Add more codes to <strong>{generateCodesPromotion.name}</strong>
+                    </p>
+                    <p style={{ marginBottom: '15px', fontSize: '14px', color: '#999' }}>
+                      Current: {generateCodesPromotion.total_codes} codes ({generateCodesPromotion.codes_available} available)
+                    </p>
+                    <div className="form-group">
+                      <label>Number of codes to generate</label>
+                      <input
+                        type="number"
+                        value={generateCodesCount}
+                        onChange={(e) => setGenerateCodesCount(Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
+                        min="1"
+                        max="1000"
+                        className="admin-input"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                    <button
+                      className="btn-secondary"
+                      onClick={() => setShowGenerateCodesModal(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn-primary"
+                      onClick={generateMoreCodes}
+                      disabled={generatingCodes}
+                    >
+                      {generatingCodes ? 'Generating...' : `Generate ${generateCodesCount} Codes`}
+                    </button>
                   </div>
                 </div>
               </div>

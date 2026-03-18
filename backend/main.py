@@ -4264,6 +4264,93 @@ async def delete_promotion(
     return {"success": True, "message": f"Promotion '{promotion_name}' deleted"}
 
 
+@app.post("/api/admin/promotions/{promotion_id}/generate-codes")
+async def generate_more_codes(
+    promotion_id: int,
+    request: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Generate additional codes for an existing promotion.
+
+    Request body:
+    - count: Number of additional codes to generate (1-1000)
+    """
+    from db_models import Promotion, PromoCode
+
+    promotion = db.query(Promotion).filter(Promotion.id == promotion_id).first()
+    if not promotion:
+        raise HTTPException(status_code=404, detail="Promotion not found")
+
+    count = request.get("count")
+    if not count or count < 1 or count > 1000:
+        raise HTTPException(status_code=400, detail="count must be between 1 and 1000")
+
+    log_promo("GENERATE_MORE_CODES request", {
+        "promotion_id": promotion_id,
+        "promotion_name": promotion.name,
+        "count": count,
+        "user": current_user.email
+    })
+
+    # Generate unique promo codes
+    codes_created = 0
+    max_attempts = count * 10  # Prevent infinite loop
+    attempts = 0
+
+    while codes_created < count and attempts < max_attempts:
+        code = generate_promo_code()
+        attempts += 1
+
+        # Check if code already exists
+        existing = db.query(PromoCode).filter(PromoCode.code == code).first()
+        if existing:
+            log_promo("GENERATE_MORE_CODES code collision, retrying", {"code": code})
+            continue
+
+        promo_code = PromoCode(
+            promotion_id=promotion.id,
+            code=code,
+        )
+        db.add(promo_code)
+        codes_created += 1
+
+    # Update total_codes count
+    promotion.total_codes += codes_created
+    db.commit()
+    db.refresh(promotion)
+
+    log_promo("GENERATE_MORE_CODES success", {
+        "promotion_id": promotion_id,
+        "codes_created": codes_created,
+        "new_total": promotion.total_codes
+    })
+
+    # Calculate codes_available
+    codes_available = db.query(PromoCode).filter(
+        PromoCode.promotion_id == promotion_id,
+        PromoCode.email_sent == False,
+        PromoCode.is_used == False,
+        PromoCode.shared_on_socials == False,
+        PromoCode.shared_privately == False
+    ).count()
+
+    return {
+        "success": True,
+        "codes_created": codes_created,
+        "promotion": {
+            "id": promotion.id,
+            "name": promotion.name,
+            "discount_percent": promotion.discount_percent,
+            "total_codes": promotion.total_codes,
+            "codes_sent": promotion.codes_sent,
+            "codes_used": promotion.codes_used,
+            "codes_available": codes_available,
+        }
+    }
+
+
 @app.get("/api/admin/promotions/{promotion_id}/available-codes")
 async def get_available_codes(
     promotion_id: int,
