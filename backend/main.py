@@ -3314,16 +3314,18 @@ async def get_fun_facts(
 
     # === Highest Transaction ===
     highest_booking = None
-    highest_amount = 0
+    highest_amount_pence = 0
 
     for booking in bookings:
-        if booking.total_price and booking.total_price > highest_amount:
-            highest_amount = booking.total_price
+        # Get price from payment relationship
+        if booking.payment and booking.payment.amount_pence and booking.payment.amount_pence > highest_amount_pence:
+            highest_amount_pence = booking.payment.amount_pence
             highest_booking = booking
 
     if highest_booking:
+        amount_pounds = highest_amount_pence / 100
         result["highestTransaction"] = {
-            "amount": f"£{highest_amount:.2f}",
+            "amount": f"£{amount_pounds:.2f}",
             "reference": highest_booking.reference,
             "days": (highest_booking.pickup_date - highest_booking.dropoff_date).days if highest_booking.pickup_date and highest_booking.dropoff_date else None,
         }
