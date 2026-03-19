@@ -3325,6 +3325,7 @@ function Admin() {
                       <th>First Name</th>
                       <th>Last Name</th>
                       <th>Email</th>
+                      <th>Phone</th>
                       <th>Admin</th>
                       <th>Active</th>
                       <th>Last Login</th>
@@ -3337,6 +3338,7 @@ function Admin() {
                         <td>{u.first_name}</td>
                         <td>{u.last_name}</td>
                         <td>{u.email}</td>
+                        <td>{u.phone || '-'}</td>
                         <td>
                           <button
                             className={`toggle-btn ${u.is_admin ? 'toggle-on' : 'toggle-off'}`}
