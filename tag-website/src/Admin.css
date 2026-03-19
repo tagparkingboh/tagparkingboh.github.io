@@ -3059,6 +3059,38 @@
   margin-top: 8px;
 }
 
+/* Reports Section Header */
+.reports-section-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.refresh-page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a2e;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.refresh-page-btn:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+.refresh-page-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Status Breakdown */
 .status-breakdown {
   background: white;
