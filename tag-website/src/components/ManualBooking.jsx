@@ -1326,8 +1326,8 @@ function ManualBooking({ token }) {
             )}
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
+          <div className="form-row" style={{ display: 'flex', gap: '12px' }}>
+            <div className="form-group" style={{ flex: '1' }}>
               <label htmlFor="pickupFlightNumber">Flight Number</label>
               <input
                 type="text"
@@ -1339,7 +1339,7 @@ function ManualBooking({ token }) {
                 style={{ textTransform: 'uppercase' }}
               />
             </div>
-            <div className="form-group">
+            <div className="form-group" style={{ flex: '1' }}>
               <label htmlFor="arrivalTime">Arrival Time <span className="required">*</span></label>
               <MobileTimePicker
                 id="arrivalTime"
@@ -1349,12 +1349,19 @@ function ManualBooking({ token }) {
                 label="Arrival Time"
               />
             </div>
+            <div className="form-group" style={{ flex: '1' }}>
+              <label htmlFor="pickupTime">Pick-up Time</label>
+              <input
+                type="text"
+                id="pickupTime"
+                value={calculatedPickupTime || ''}
+                readOnly
+                disabled
+                placeholder="Auto-calculated"
+                style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
+              />
+            </div>
           </div>
-          {calculatedPickupTime && (
-            <p className="slot-info">
-              Pick-up time: <strong>{calculatedPickupTime}</strong> (arrival + 30 mins)
-            </p>
-          )}
           </div>
         </div>
 
