@@ -6265,6 +6265,20 @@ function Admin() {
                               </div>
                             </div>
                           </div>
+                          <div className="booking-target-card">
+                            <span className="booking-target-icon">🏆</span>
+                            <div className="booking-target-content">
+                              <span className="booking-target-label">Total Milestones</span>
+                              <span className="booking-target-value">{bookingStats.total_successful || 0} total bookings</span>
+                              <div className="booking-target-milestones milestones-wrap">
+                                {[1, 10, 25, 50, 75, 100, 150, 250, 500, 1000].map(target => (
+                                  <span key={target} className={`milestone ${(bookingStats.total_successful || 0) >= target ? 'achieved' : ''}`}>
+                                    {target}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}
