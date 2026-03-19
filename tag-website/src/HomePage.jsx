@@ -230,8 +230,8 @@ function HomePage() {
           </button>
           <div className={`menu-overlay ${menuOpen ? 'open' : ''}`} onClick={closeMenu}></div>
           <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
-            <li><a href="#how-it-works" onClick={closeMenu}>Meet & Greet</a></li>
             <li><a href="#pricing" onClick={closeMenu}>Pricing</a></li>
+            <li><a href="#how-it-works" onClick={closeMenu}>Meet & Greet</a></li>
             <li><a href="#testimonials" onClick={closeMenu}>Testimonials</a></li>
             <li><a href="#subscribe" onClick={closeMenu}>Subscribe</a></li>
             <li><a href="#contact" onClick={closeMenu}>Contact</a></li>
