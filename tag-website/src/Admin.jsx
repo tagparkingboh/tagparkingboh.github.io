@@ -6125,6 +6125,17 @@ function Admin() {
                   </div>
                 ) : bookingStats ? (
                   <>
+                    {/* Section Header with Refresh */}
+                    <div className="reports-section-header">
+                      <button
+                        className="refresh-page-btn"
+                        onClick={() => { fetchBookingStats(); fetchFunFacts(); }}
+                        disabled={loadingStats || loadingFunFacts}
+                      >
+                        {loadingStats || loadingFunFacts ? 'Refreshing...' : 'Refresh Page'}
+                      </button>
+                    </div>
+
                     {/* Summary Cards */}
                     <div className="stats-summary-cards">
                       <div className="stats-card">
@@ -6983,6 +6994,16 @@ function Admin() {
             {/* Location Maps */}
             {reportsSubTab === 'map' && (
               <>
+                <div className="reports-section-header">
+                  <button
+                    className="refresh-page-btn"
+                    onClick={() => fetchBookingLocations(mapType)}
+                    disabled={loadingLocations}
+                  >
+                    {loadingLocations ? 'Refreshing...' : 'Refresh Page'}
+                  </button>
+                </div>
+
                 <div className="map-type-tabs">
                   <button
                     className={`map-type-tab ${mapType === 'bookings' ? 'active' : ''}`}
