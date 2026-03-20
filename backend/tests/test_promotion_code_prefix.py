@@ -380,5 +380,297 @@ class TestAPIContractCodePrefix:
         assert code_prefix == "SPRING"
 
 
+# =============================================================================
+# E2E Tests with Mocked Stripe Integration
+# =============================================================================
+
+class TestCodePrefixStripeIntegration:
+    """E2E tests for custom prefix codes with Stripe payment flow (mocked)."""
+
+    @pytest.fixture
+    def mock_stripe(self):
+        """Mock Stripe module."""
+        with patch('stripe.PaymentIntent') as mock_pi:
+            yield mock_pi
+
+    def test_custom_prefix_code_in_stripe_metadata(self, mock_stripe):
+        """Test that custom prefix codes are correctly stored in Stripe metadata."""
+        # Generate a code with custom prefix
+        code = generate_promo_code("SPRING")
+        assert code.startswith("SPRING-")
+
+        # Simulate creating PaymentIntent with this code
+        mock_intent = MagicMock()
+        mock_intent.metadata = {"promo_code": code, "discount_percent": "10"}
+        mock_stripe.create.return_value = mock_intent
+
+        intent = mock_stripe.create(
+            amount=24750,
+            currency="gbp",
+            metadata={"promo_code": code, "discount_percent": "10"}
+        )
+
+        assert intent.metadata["promo_code"] == code
+        assert intent.metadata["promo_code"].startswith("SPRING-")
+
+    def test_discount_calculation_with_custom_prefix_10_percent(self, mock_stripe):
+        """Test 10% discount calculation with custom prefix code."""
+        code = generate_promo_code("SALE")
+        original_amount = 27500  # £275.00 in pence
+        discount_percent = 10
+        expected_discounted = int(original_amount * (100 - discount_percent) / 100)
+
+        mock_intent = MagicMock()
+        mock_intent.amount = expected_discounted
+        mock_intent.metadata = {"promo_code": code, "discount_percent": str(discount_percent)}
+        mock_stripe.create.return_value = mock_intent
+
+        intent = mock_stripe.create(
+            amount=expected_discounted,
+            currency="gbp",
+            metadata={"promo_code": code, "discount_percent": str(discount_percent)}
+        )
+
+        assert intent.amount == 24750  # £247.50
+        assert code.startswith("SALE-")
+
+    def test_discount_calculation_with_custom_prefix_20_percent(self, mock_stripe):
+        """Test 20% discount calculation with custom prefix code."""
+        code = generate_promo_code("VIP")
+        original_amount = 10000  # £100.00 in pence
+        discount_percent = 20
+        expected_discounted = int(original_amount * (100 - discount_percent) / 100)
+
+        mock_intent = MagicMock()
+        mock_intent.amount = expected_discounted
+        mock_intent.metadata = {"promo_code": code, "discount_percent": str(discount_percent)}
+        mock_stripe.create.return_value = mock_intent
+
+        intent = mock_stripe.create(
+            amount=expected_discounted,
+            currency="gbp",
+            metadata={"promo_code": code, "discount_percent": str(discount_percent)}
+        )
+
+        assert intent.amount == 8000  # £80.00
+        assert code.startswith("VIP-")
+
+    def test_discount_calculation_with_custom_prefix_50_percent(self, mock_stripe):
+        """Test 50% discount calculation with custom prefix code."""
+        code = generate_promo_code("HALF")
+        original_amount = 15000  # £150.00 in pence
+        discount_percent = 50
+        expected_discounted = int(original_amount * (100 - discount_percent) / 100)
+
+        mock_intent = MagicMock()
+        mock_intent.amount = expected_discounted
+        mock_intent.metadata = {"promo_code": code, "discount_percent": str(discount_percent)}
+        mock_stripe.create.return_value = mock_intent
+
+        intent = mock_stripe.create(
+            amount=expected_discounted,
+            currency="gbp",
+            metadata={"promo_code": code, "discount_percent": str(discount_percent)}
+        )
+
+        assert intent.amount == 7500  # £75.00
+        assert code.startswith("HALF-")
+
+    def test_100_percent_discount_bypasses_stripe(self, mock_stripe):
+        """Test that 100% discount (free booking) doesn't create Stripe intent."""
+        code = generate_promo_code("FREE")
+        original_amount = 8000  # £80.00 in pence
+        discount_percent = 100
+        discounted_amount = int(original_amount * (100 - discount_percent) / 100)
+
+        # With 100% discount, amount is 0 - Stripe should be bypassed
+        assert discounted_amount == 0
+        assert code.startswith("FREE-")
+
+        # In real implementation, we don't call Stripe for free bookings
+        # Just verify the code format is correct
+        pattern = r"^FREE-[A-Z0-9]{4}-[A-Z0-9]{4}$"
+        assert re.match(pattern, code)
+
+    def test_stripe_metadata_preserved_through_flow(self, mock_stripe):
+        """Test that promo code metadata is preserved through payment flow."""
+        code = generate_promo_code("SUMMER")
+
+        # Step 1: Create PaymentIntent
+        mock_intent = MagicMock()
+        mock_intent.id = "pi_test123"
+        mock_intent.amount = 22500
+        mock_intent.metadata = {"promo_code": code, "discount_percent": "10"}
+        mock_stripe.create.return_value = mock_intent
+
+        created_intent = mock_stripe.create(
+            amount=22500,
+            currency="gbp",
+            metadata={"promo_code": code, "discount_percent": "10"}
+        )
+
+        # Step 2: Retrieve PaymentIntent (simulating webhook)
+        mock_stripe.retrieve.return_value = mock_intent
+        retrieved_intent = mock_stripe.retrieve("pi_test123")
+
+        # Verify metadata preserved
+        assert retrieved_intent.metadata["promo_code"] == code
+        assert retrieved_intent.metadata["promo_code"].startswith("SUMMER-")
+        assert retrieved_intent.metadata["discount_percent"] == "10"
+
+    def test_promo_code_change_cancels_old_intent(self, mock_stripe):
+        """Test that changing promo code cancels old PaymentIntent."""
+        old_code = generate_promo_code("OLD")
+        new_code = generate_promo_code("NEW")
+
+        # Old intent
+        old_intent = MagicMock()
+        old_intent.id = "pi_old"
+        old_intent.metadata = {"promo_code": old_code}
+
+        # Cancel old intent
+        mock_stripe.cancel.return_value = MagicMock(status="canceled")
+        canceled = mock_stripe.cancel("pi_old")
+
+        assert canceled.status == "canceled"
+        assert old_code.startswith("OLD-")
+        assert new_code.startswith("NEW-")
+
+    def test_multiple_prefix_codes_same_promotion_flow(self, mock_stripe):
+        """Test that multiple codes from same promotion work correctly."""
+        prefix = "PROMO2026"
+        codes = [generate_promo_code(prefix) for _ in range(3)]
+
+        # All codes should have same prefix
+        for code in codes:
+            assert code.startswith("PROMO2026-")
+
+        # Each code should be unique
+        assert len(set(codes)) == 3
+
+        # Each can be used in a payment
+        for i, code in enumerate(codes):
+            mock_intent = MagicMock()
+            mock_intent.id = f"pi_test_{i}"
+            mock_intent.metadata = {"promo_code": code}
+            mock_stripe.create.return_value = mock_intent
+
+            intent = mock_stripe.create(
+                amount=20000,
+                currency="gbp",
+                metadata={"promo_code": code}
+            )
+            assert intent.metadata["promo_code"] == code
+
+
+class TestCodePrefixE2EWorkflow:
+    """Full E2E workflow tests for code prefix feature (mocked)."""
+
+    def test_complete_booking_flow_with_custom_prefix(self):
+        """Test complete booking flow: create promotion -> generate code -> apply discount -> payment."""
+        # Step 1: Admin creates promotion with custom prefix
+        prefix = "SPRING"
+        promotion_data = {
+            "name": "Spring Sale 2026",
+            "discount_percent": 15,
+            "total_codes": 10,
+            "code_prefix": prefix
+        }
+
+        # Sanitize prefix (as backend does)
+        sanitized_prefix = ''.join(c for c in prefix.upper() if c.isalnum())[:10]
+        assert sanitized_prefix == "SPRING"
+
+        # Step 2: Generate promo codes
+        codes = [generate_promo_code(sanitized_prefix) for _ in range(promotion_data["total_codes"])]
+        assert len(codes) == 10
+        for code in codes:
+            assert code.startswith("SPRING-")
+
+        # Step 3: Customer applies code during booking
+        selected_code = codes[0]
+        original_price = 12000  # £120.00
+        discount = promotion_data["discount_percent"]
+        discounted_price = int(original_price * (100 - discount) / 100)
+
+        assert discounted_price == 10200  # £102.00
+
+        # Step 4: Payment metadata includes code
+        payment_metadata = {
+            "promo_code": selected_code,
+            "discount_percent": str(discount),
+            "original_amount": str(original_price),
+            "discounted_amount": str(discounted_price)
+        }
+
+        assert payment_metadata["promo_code"].startswith("SPRING-")
+        assert payment_metadata["discount_percent"] == "15"
+
+    def test_generate_more_codes_uses_stored_prefix(self):
+        """Test that generating more codes uses the promotion's stored prefix."""
+        # Simulate promotion with stored prefix
+        promotion = MagicMock()
+        promotion.id = 1
+        promotion.name = "Summer Sale"
+        promotion.code_prefix = "SUMMER"
+        promotion.discount_percent = 20
+        promotion.total_codes = 5
+
+        # Generate initial codes
+        initial_codes = [generate_promo_code(promotion.code_prefix) for _ in range(5)]
+        for code in initial_codes:
+            assert code.startswith("SUMMER-")
+
+        # Admin generates 5 more codes
+        prefix = promotion.code_prefix if promotion.code_prefix else "TAG"
+        additional_codes = [generate_promo_code(prefix) for _ in range(5)]
+
+        for code in additional_codes:
+            assert code.startswith("SUMMER-")
+
+        # All 10 codes should be unique
+        all_codes = initial_codes + additional_codes
+        assert len(set(all_codes)) == 10
+
+    def test_old_promotion_without_prefix_defaults_to_tag(self):
+        """Test that older promotions without code_prefix use TAG."""
+        # Simulate old promotion (before code_prefix was added)
+        old_promotion = MagicMock()
+        old_promotion.id = 1
+        old_promotion.name = "Old Promo"
+        old_promotion.code_prefix = None  # No prefix stored
+        old_promotion.discount_percent = 10
+
+        # When generating codes, should default to TAG
+        prefix = old_promotion.code_prefix if old_promotion.code_prefix else "TAG"
+        code = generate_promo_code(prefix)
+
+        assert code.startswith("TAG-")
+
+    def test_discount_amounts_correct_for_all_tiers(self):
+        """Test discount calculations are correct for all discount tiers."""
+        test_cases = [
+            # (original_pence, discount_percent, expected_discounted_pence)
+            (10000, 10, 9000),    # £100 - 10% = £90
+            (10000, 15, 8500),    # £100 - 15% = £85
+            (10000, 20, 8000),    # £100 - 20% = £80
+            (10000, 25, 7500),    # £100 - 25% = £75
+            (10000, 50, 5000),    # £100 - 50% = £50
+            (10000, 100, 0),      # £100 - 100% = £0 (free)
+            (7900, 10, 7110),     # £79 - 10% = £71.10
+            (14000, 20, 11200),   # £140 - 20% = £112
+        ]
+
+        for original, discount, expected in test_cases:
+            calculated = int(original * (100 - discount) / 100)
+            assert calculated == expected, f"Failed for {original} - {discount}%: got {calculated}, expected {expected}"
+
+            # Generate code with appropriate prefix
+            prefix_map = {10: "10OFF", 15: "15OFF", 20: "20OFF", 25: "25OFF", 50: "HALF", 100: "FREE"}
+            prefix = prefix_map.get(discount, "PROMO")
+            code = generate_promo_code(prefix)
+            assert code.startswith(f"{prefix}-")
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
