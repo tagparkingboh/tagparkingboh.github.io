@@ -4970,11 +4970,47 @@ function Admin() {
                             afc_bournemouth: 'AFC Bournemouth',
                             other: 'Other'
                           }
+                          const percentage = marketingSourcesData.total_responses > 0
+                            ? ((count / marketingSourcesData.total_responses) * 100).toFixed(1)
+                            : 0
                           return (
                             <div key={source} className="source-total-item">
                               <span className="source-name">{sourceLabels[source] || source}</span>
                               <span className="source-count">{count}</span>
-                              <div className="source-bar" style={{ width: `${(count / marketingSourcesData.total_responses) * 100}%` }}></div>
+                              <span className="source-percentage">{percentage}%</span>
+                              <div className="source-bar" style={{ width: `${percentage}%` }}></div>
+                            </div>
+                          )
+                        })}
+                    </div>
+
+                    {/* Percentage Breakdown */}
+                    <h4>Percentage Breakdown</h4>
+                    <div className="marketing-percentage-grid">
+                      {marketingSourcesData.source_totals && Object.entries(marketingSourcesData.source_totals)
+                        .sort(([, a], [, b]) => b - a)
+                        .map(([source, count]) => {
+                          const sourceLabels = {
+                            google: 'Google',
+                            facebook: 'Facebook',
+                            instagram: 'Instagram',
+                            word_of_mouth: 'Word of Mouth',
+                            leaflet: 'Leaflet',
+                            tv: 'TV',
+                            radio: 'Radio',
+                            newspaper: 'Newspaper',
+                            linkedin: 'LinkedIn',
+                            afc_bournemouth: 'AFC Bournemouth',
+                            other: 'Other'
+                          }
+                          const percentage = marketingSourcesData.total_responses > 0
+                            ? ((count / marketingSourcesData.total_responses) * 100).toFixed(1)
+                            : 0
+                          return (
+                            <div key={source} className="percentage-card">
+                              <div className="percentage-value">{percentage}%</div>
+                              <div className="percentage-label">{sourceLabels[source] || source}</div>
+                              <div className="percentage-count">{count} response{count !== 1 ? 's' : ''}</div>
                             </div>
                           )
                         })}
