@@ -846,6 +846,7 @@ class Promotion(Base):
 
     # Discount settings
     discount_percent = Column(Integer, nullable=False)  # 10, 20, 100
+    code_prefix = Column(String(10), nullable=False, default="TAG")  # Prefix for promo codes
 
     # Code generation stats
     total_codes = Column(Integer, nullable=False, default=0)

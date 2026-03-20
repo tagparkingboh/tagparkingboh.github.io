@@ -146,7 +146,7 @@ function Admin() {
   const [promotions, setPromotions] = useState([])
   const [loadingPromotions, setLoadingPromotions] = useState(false)
   const [showCreatePromotion, setShowCreatePromotion] = useState(false)
-  const [newPromotion, setNewPromotion] = useState({ name: '', description: '', discount_percent: 10, total_codes: 10 })
+  const [newPromotion, setNewPromotion] = useState({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '' })
   const [creatingPromotion, setCreatingPromotion] = useState(false)
   const [expandedPromotionId, setExpandedPromotionId] = useState(null)
   const [promotionDetails, setPromotionDetails] = useState({}) // { [id]: { codes, loading } }
@@ -886,7 +886,7 @@ function Admin() {
         const data = await response.json()
         setPromotionMessage(`Created promotion "${data.name}" with ${data.total_codes} codes`)
         setShowCreatePromotion(false)
-        setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10 })
+        setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '' })
         fetchPromotions()
       } else {
         const error = await response.json()
@@ -4486,6 +4486,22 @@ function Admin() {
                         />
                       </div>
                     </div>
+                    <div className="form-row" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '15px' }}>
+                      <div className="form-group" style={{ flex: '1', minWidth: '200px' }}>
+                        <label>Code Prefix (optional)</label>
+                        <input
+                          type="text"
+                          value={newPromotion.code_prefix}
+                          onChange={(e) => setNewPromotion(prev => ({ ...prev, code_prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) }))}
+                          placeholder="e.g., SPRING"
+                          className="admin-input"
+                          maxLength="10"
+                        />
+                        <small style={{ color: '#666', fontSize: '12px' }}>
+                          Codes will be: {newPromotion.code_prefix || 'TAG'}-XXXX-XXXX
+                        </small>
+                      </div>
+                    </div>
                     <div className="form-group" style={{ marginBottom: '15px' }}>
                       <label>Description (optional)</label>
                       <textarea
@@ -4500,7 +4516,7 @@ function Admin() {
                     <div className="form-actions" style={{ display: 'flex', gap: '10px' }}>
                       <button
                         className="btn-secondary"
-                        onClick={() => { setShowCreatePromotion(false); setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10 }); }}
+                        onClick={() => { setShowCreatePromotion(false); setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '' }); }}
                       >
                         Cancel
                       </button>
