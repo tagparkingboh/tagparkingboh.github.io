@@ -3891,14 +3891,14 @@ async def export_marketing_sources_csv(
 # Promotions API (Promo Code Generation System)
 # =============================================================================
 
-def generate_promo_code() -> str:
-    """Generate a unique promo code in format TAG-XXXX-XXXX."""
+def generate_promo_code(prefix: str = "TAG") -> str:
+    """Generate a unique promo code in format PREFIX-XXXX-XXXX."""
     import random
     import string
     chars = string.ascii_uppercase + string.digits
     part1 = ''.join(random.choices(chars, k=4))
     part2 = ''.join(random.choices(chars, k=4))
-    return f"TAG-{part1}-{part2}"
+    return f"{prefix}-{part1}-{part2}"
 
 
 @app.post("/api/admin/promotions")
@@ -3922,8 +3922,15 @@ async def create_promotion(
     description = request.get("description")
     discount_percent = request.get("discount_percent")
     total_codes = request.get("total_codes")
+    code_prefix = request.get("code_prefix", "").strip().upper()
 
-    log_promo("CREATE_PROMOTION request", {"name": name, "discount_percent": discount_percent, "total_codes": total_codes, "user": current_user.email})
+    # Validate and sanitize prefix - only allow alphanumeric, max 10 chars
+    if code_prefix:
+        code_prefix = ''.join(c for c in code_prefix if c.isalnum())[:10]
+    if not code_prefix:
+        code_prefix = "TAG"
+
+    log_promo("CREATE_PROMOTION request", {"name": name, "discount_percent": discount_percent, "total_codes": total_codes, "code_prefix": code_prefix, "user": current_user.email})
 
     if not name or not discount_percent or not total_codes:
         log_promo("CREATE_PROMOTION failed - missing required fields")
@@ -3943,6 +3950,7 @@ async def create_promotion(
         description=description,
         discount_percent=discount_percent,
         total_codes=total_codes,
+        code_prefix=code_prefix,
         created_by=current_user.email,
     )
     db.add(promotion)
@@ -3955,7 +3963,7 @@ async def create_promotion(
     attempts = 0
 
     while codes_created < total_codes and attempts < max_attempts:
-        code = generate_promo_code()
+        code = generate_promo_code(code_prefix)
         attempts += 1
 
         # Check if code already exists
@@ -4308,8 +4316,11 @@ async def generate_more_codes(
     max_attempts = count * 10  # Prevent infinite loop
     attempts = 0
 
+    # Use the stored prefix from the promotion (default to TAG for older promotions)
+    prefix = promotion.code_prefix if promotion.code_prefix else "TAG"
+
     while codes_created < count and attempts < max_attempts:
-        code = generate_promo_code()
+        code = generate_promo_code(prefix)
         attempts += 1
 
         # Check if code already exists
