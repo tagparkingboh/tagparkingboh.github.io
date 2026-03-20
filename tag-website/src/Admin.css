@@ -4497,6 +4497,16 @@
   z-index: 1;
 }
 
+.source-total-item .source-percentage {
+  width: 60px;
+  text-align: right;
+  font-weight: 500;
+  color: #94a3b8;
+  position: relative;
+  z-index: 1;
+  font-size: 0.9em;
+}
+
 .source-total-item .source-bar {
   position: absolute;
   left: 0;
@@ -4511,6 +4521,50 @@
   color: #888;
   font-style: italic;
   padding: 1rem 0;
+}
+
+/* Marketing Percentage Breakdown */
+.marketing-percentage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.percentage-card {
+  background: linear-gradient(135deg, #2a2a4a 0%, #1a1a3a 100%);
+  border-radius: 12px;
+  padding: 1.25rem;
+  text-align: center;
+  border: 1px solid #3a3a5a;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.percentage-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.percentage-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #f7b32b;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.percentage-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 0.25rem;
+  text-transform: capitalize;
+}
+
+.percentage-count {
+  font-size: 0.75rem;
+  color: #94a3b8;
 }
 
 /* Marketing Other Details Modal */
