@@ -3855,6 +3855,56 @@
   font-weight: 600;
 }
 
+.occupancy-chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.occupancy-nav-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.occupancy-nav-btn {
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.occupancy-nav-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #1e293b;
+}
+
+.occupancy-nav-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.occupancy-nav-btn.today-btn {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+.occupancy-nav-btn.today-btn:hover:not(:disabled) {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.occupancy-nav-btn.today-btn:disabled {
+  background: #93c5fd;
+  border-color: #93c5fd;
+}
+
 .occupancy-capacity-badge {
   background: #f1f5f9;
   color: #475569;
