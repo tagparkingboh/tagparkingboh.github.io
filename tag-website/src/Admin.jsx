@@ -6870,7 +6870,20 @@ function Admin() {
                             <div className="gridline" style={{ bottom: '0%' }}></div>
                           </div>
                           <div className="occupancy-chart">
-                            {occupancyData.data && occupancyData.data.slice(-30).map((item, index) => {
+                            {occupancyData.data && occupancyData.data
+                              .filter(item => {
+                                // Filter out dates before January 2026
+                                if (item.display_date) {
+                                  const parts = item.display_date.split('/');
+                                  if (parts.length >= 3) {
+                                    const year = parseInt('20' + parts[2], 10);
+                                    const month = parseInt(parts[1], 10);
+                                    return year > 2026 || (year === 2026 && month >= 1);
+                                  }
+                                }
+                                return true;
+                              })
+                              .slice(-30).map((item, index) => {
                               const percent = item.occupancy_percent || item.avg_occupancy_percent || 0;
                               const occupied = item.occupied || item.avg_occupied || 0;
                               const available = occupancyData.max_capacity - occupied;
@@ -6946,9 +6959,22 @@ function Admin() {
 
                       {/* Daily view: Group by month with collapsible sections */}
                       {occupancyView === 'daily' && occupancyData.data && (() => {
+                        // Filter out dates before January 2026
+                        const filteredData = occupancyData.data.filter(item => {
+                          if (item.display_date) {
+                            const parts = item.display_date.split('/');
+                            if (parts.length >= 3) {
+                              const year = parseInt('20' + parts[2], 10);
+                              const month = parseInt(parts[1], 10);
+                              return year > 2026 || (year === 2026 && month >= 1);
+                            }
+                          }
+                          return true;
+                        });
+
                         // Group data by month
                         const groupedByMonth = {};
-                        occupancyData.data.forEach(item => {
+                        filteredData.forEach(item => {
                           const monthKey = item.display_date?.slice(3) || 'Unknown'; // Get MM/YYYY part
                           if (!groupedByMonth[monthKey]) {
                             groupedByMonth[monthKey] = [];
