@@ -6883,46 +6883,131 @@ function Admin() {
                     {/* Occupancy Table */}
                     <div className="occupancy-table-container">
                       <h4>Detailed Breakdown</h4>
-                      <div className="data-table-wrapper">
-                        <table className="data-table">
-                          <thead>
-                            <tr>
-                              <th>{occupancyView === 'daily' ? 'Date' : occupancyView === 'weekly' ? 'Week' : 'Month'}</th>
-                              <th>Occupied</th>
-                              <th>Available</th>
-                              <th>Utilization</th>
-                              <th>Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {occupancyData.data && occupancyData.data.map((item, index) => {
-                              const occupied = item.occupied ?? item.avg_occupied;
-                              const available = item.available ?? item.avg_available;
-                              const percent = item.occupancy_percent ?? item.avg_occupancy_percent;
-                              const isHighlight = item.is_today || item.is_current_week || item.is_current_month;
-                              const isPast = item.is_past;
 
-                              return (
-                                <tr key={index} className={`${isHighlight ? 'highlight-row' : ''} ${isPast ? 'past-row' : ''}`}>
-                                  <td>{item.display_date || item.display_week || item.display_month}</td>
-                                  <td>{typeof occupied === 'number' ? occupied.toFixed(occupancyView === 'daily' ? 0 : 1) : '-'}</td>
-                                  <td>{typeof available === 'number' ? available.toFixed(occupancyView === 'daily' ? 0 : 1) : '-'}</td>
-                                  <td>
-                                    <span className={`occupancy-percent ${percent >= 90 ? 'high' : percent >= 70 ? 'medium' : 'low'}`}>
-                                      {typeof percent === 'number' ? `${percent.toFixed(1)}%` : '-'}
-                                    </span>
-                                  </td>
-                                  <td>
-                                    {isHighlight && <span className="status-badge current">Current</span>}
-                                    {isPast && !isHighlight && <span className="status-badge past">Past</span>}
-                                    {!isPast && !isHighlight && <span className="status-badge future">Future</span>}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                      {/* Daily view: Group by month with collapsible sections */}
+                      {occupancyView === 'daily' && occupancyData.data && (() => {
+                        // Group data by month
+                        const groupedByMonth = {};
+                        occupancyData.data.forEach(item => {
+                          const monthKey = item.display_date?.slice(3) || 'Unknown'; // Get MM/YYYY part
+                          if (!groupedByMonth[monthKey]) {
+                            groupedByMonth[monthKey] = [];
+                          }
+                          groupedByMonth[monthKey].push(item);
+                        });
+
+                        return Object.entries(groupedByMonth).map(([monthKey, items]) => {
+                          const hasCurrentDay = items.some(item => item.is_today);
+                          const monthLabel = (() => {
+                            const parts = monthKey.split('/');
+                            if (parts.length === 2) {
+                              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                              const monthIndex = parseInt(parts[0], 10) - 1;
+                              return `${monthNames[monthIndex]} ${parts[1]}`;
+                            }
+                            return monthKey;
+                          })();
+                          const avgOccupancy = items.reduce((sum, item) => sum + (item.occupancy_percent || 0), 0) / items.length;
+
+                          return (
+                            <details key={monthKey} className="occupancy-month-group" open={hasCurrentDay}>
+                              <summary className="occupancy-month-header">
+                                <span className="month-title">{monthLabel}</span>
+                                <span className="month-stats">
+                                  <span className="month-days">{items.length} days</span>
+                                  <span className={`month-avg ${avgOccupancy >= 90 ? 'high' : avgOccupancy >= 70 ? 'medium' : 'low'}`}>
+                                    Avg: {avgOccupancy.toFixed(1)}%
+                                  </span>
+                                </span>
+                              </summary>
+                              <div className="occupancy-table-wrapper">
+                                <table className="occupancy-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Date</th>
+                                      <th>Occupied</th>
+                                      <th>Available</th>
+                                      <th>Utilization</th>
+                                      <th>Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {items.map((item, index) => {
+                                      const occupied = item.occupied ?? item.avg_occupied;
+                                      const available = item.available ?? item.avg_available;
+                                      const percent = item.occupancy_percent ?? item.avg_occupancy_percent;
+                                      const isHighlight = item.is_today;
+                                      const isPast = item.is_past;
+
+                                      return (
+                                        <tr key={index} className={`${isHighlight ? 'highlight-row' : ''} ${isPast ? 'past-row' : ''}`}>
+                                          <td className="date-cell">{item.display_date}</td>
+                                          <td className="number-cell">{typeof occupied === 'number' ? occupied.toFixed(0) : '-'}</td>
+                                          <td className="number-cell">{typeof available === 'number' ? available.toFixed(0) : '-'}</td>
+                                          <td className="util-cell">
+                                            <span className={`occupancy-percent ${percent >= 90 ? 'high' : percent >= 70 ? 'medium' : 'low'}`}>
+                                              {typeof percent === 'number' ? `${percent.toFixed(1)}%` : '-'}
+                                            </span>
+                                          </td>
+                                          <td className="status-cell">
+                                            {isHighlight && <span className="status-badge current">Today</span>}
+                                            {isPast && !isHighlight && <span className="status-badge past">Past</span>}
+                                            {!isPast && !isHighlight && <span className="status-badge future">Future</span>}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </details>
+                          );
+                        });
+                      })()}
+
+                      {/* Weekly/Monthly view: Standard table */}
+                      {occupancyView !== 'daily' && (
+                        <div className="occupancy-table-wrapper">
+                          <table className="occupancy-table">
+                            <thead>
+                              <tr>
+                                <th>{occupancyView === 'weekly' ? 'Week' : 'Month'}</th>
+                                <th>Avg Occupied</th>
+                                <th>Avg Available</th>
+                                <th>Utilization</th>
+                                <th>Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {occupancyData.data && occupancyData.data.map((item, index) => {
+                                const occupied = item.avg_occupied;
+                                const available = item.avg_available;
+                                const percent = item.avg_occupancy_percent;
+                                const isHighlight = item.is_current_week || item.is_current_month;
+                                const isPast = item.is_past;
+
+                                return (
+                                  <tr key={index} className={`${isHighlight ? 'highlight-row' : ''} ${isPast ? 'past-row' : ''}`}>
+                                    <td className="date-cell">{item.display_week || item.display_month}</td>
+                                    <td className="number-cell">{typeof occupied === 'number' ? occupied.toFixed(1) : '-'}</td>
+                                    <td className="number-cell">{typeof available === 'number' ? available.toFixed(1) : '-'}</td>
+                                    <td className="util-cell">
+                                      <span className={`occupancy-percent ${percent >= 90 ? 'high' : percent >= 70 ? 'medium' : 'low'}`}>
+                                        {typeof percent === 'number' ? `${percent.toFixed(1)}%` : '-'}
+                                      </span>
+                                    </td>
+                                    <td className="status-cell">
+                                      {isHighlight && <span className="status-badge current">Current</span>}
+                                      {isPast && !isHighlight && <span className="status-badge past">Past</span>}
+                                      {!isPast && !isHighlight && <span className="status-badge future">Future</span>}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : (
