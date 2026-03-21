@@ -276,6 +276,7 @@ function Admin() {
   const [occupancyData, setOccupancyData] = useState(null)
   const [loadingOccupancy, setLoadingOccupancy] = useState(false)
   const [occupancyView, setOccupancyView] = useState('daily') // 'daily', 'weekly', 'monthly'
+  const [occupancyChartOffset, setOccupancyChartOffset] = useState(0) // 0 = centered on today, negative = past, positive = future
 
   // Popular airlines/destinations report state
   const [popularData, setPopularData] = useState(null)
@@ -6847,9 +6848,35 @@ function Admin() {
                           {occupancyView === 'weekly' && 'Weekly Average Occupancy'}
                           {occupancyView === 'monthly' && 'Monthly Average Occupancy'}
                         </h4>
-                        <span className="occupancy-capacity-badge">
-                          Capacity: {occupancyData.max_capacity} spaces
-                        </span>
+                        <div className="occupancy-chart-controls">
+                          <div className="occupancy-nav-buttons">
+                            <button
+                              className="occupancy-nav-btn"
+                              onClick={() => setOccupancyChartOffset(prev => prev - 14)}
+                              title="Previous 2 weeks"
+                            >
+                              ← Past
+                            </button>
+                            <button
+                              className="occupancy-nav-btn today-btn"
+                              onClick={() => setOccupancyChartOffset(0)}
+                              disabled={occupancyChartOffset === 0}
+                              title="Center on today"
+                            >
+                              Today
+                            </button>
+                            <button
+                              className="occupancy-nav-btn"
+                              onClick={() => setOccupancyChartOffset(prev => prev + 14)}
+                              title="Next 2 weeks"
+                            >
+                              Future →
+                            </button>
+                          </div>
+                          <span className="occupancy-capacity-badge">
+                            Capacity: {occupancyData.max_capacity} spaces
+                          </span>
+                        </div>
                       </div>
                       <div className="occupancy-chart-wrapper">
                         {/* Y-axis labels */}
@@ -6870,9 +6897,9 @@ function Admin() {
                             <div className="gridline" style={{ bottom: '0%' }}></div>
                           </div>
                           <div className="occupancy-chart">
-                            {occupancyData.data && occupancyData.data
-                              .filter(item => {
-                                // Filter out dates before January 2026
+                            {occupancyData.data && (() => {
+                              // Filter out dates before January 2026
+                              const filteredData = occupancyData.data.filter(item => {
                                 if (item.display_date) {
                                   const parts = item.display_date.split('/');
                                   if (parts.length >= 3) {
@@ -6882,8 +6909,26 @@ function Admin() {
                                   }
                                 }
                                 return true;
-                              })
-                              .slice(-30).map((item, index) => {
+                              });
+
+                              // Find today's index
+                              const todayIndex = filteredData.findIndex(item => item.is_today);
+                              const daysToShow = 21; // Show 3 weeks at a time
+
+                              // Calculate start index: center on today + offset
+                              let startIndex;
+                              if (todayIndex >= 0) {
+                                // Center today in the view, then apply offset
+                                startIndex = todayIndex - Math.floor(daysToShow / 2) + occupancyChartOffset;
+                              } else {
+                                // No today found, start from end
+                                startIndex = filteredData.length - daysToShow + occupancyChartOffset;
+                              }
+
+                              // Clamp to valid range
+                              startIndex = Math.max(0, Math.min(startIndex, filteredData.length - daysToShow));
+
+                              return filteredData.slice(startIndex, startIndex + daysToShow).map((item, index) => {
                               const percent = item.occupancy_percent || item.avg_occupancy_percent || 0;
                               const occupied = item.occupied || item.avg_occupied || 0;
                               const available = occupancyData.max_capacity - occupied;
@@ -6941,7 +6986,8 @@ function Admin() {
                                   </div>
                                 </div>
                               );
-                            })}
+                            });
+                            })()}
                           </div>
                         </div>
                       </div>
