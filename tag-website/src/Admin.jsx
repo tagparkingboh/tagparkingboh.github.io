@@ -6841,42 +6841,102 @@ function Admin() {
 
                     {/* Occupancy Chart - Visual Bar Chart */}
                     <div className="occupancy-chart-container">
-                      <h4>
-                        {occupancyView === 'daily' && 'Daily Occupancy'}
-                        {occupancyView === 'weekly' && 'Weekly Average Occupancy'}
-                        {occupancyView === 'monthly' && 'Monthly Average Occupancy'}
-                      </h4>
-                      <div className="occupancy-chart">
-                        {occupancyData.data && occupancyData.data.slice(-30).map((item, index) => {
-                          const percent = item.occupancy_percent || item.avg_occupancy_percent || 0;
-                          const isHighlight = item.is_today || item.is_current_week || item.is_current_month;
-                          const isPast = item.is_past;
-                          let barClass = 'occupancy-bar';
-                          if (percent >= 90) barClass += ' high';
-                          else if (percent >= 70) barClass += ' medium';
-                          else barClass += ' low';
-                          if (isHighlight) barClass += ' current';
-                          if (isPast) barClass += ' past';
+                      <div className="occupancy-chart-header">
+                        <h4>
+                          {occupancyView === 'daily' && 'Daily Occupancy'}
+                          {occupancyView === 'weekly' && 'Weekly Average Occupancy'}
+                          {occupancyView === 'monthly' && 'Monthly Average Occupancy'}
+                        </h4>
+                        <span className="occupancy-capacity-badge">
+                          Capacity: {occupancyData.max_capacity} spaces
+                        </span>
+                      </div>
+                      <div className="occupancy-chart-wrapper">
+                        {/* Y-axis labels */}
+                        <div className="occupancy-y-axis">
+                          <span className="y-axis-label">100%</span>
+                          <span className="y-axis-label">75%</span>
+                          <span className="y-axis-label">50%</span>
+                          <span className="y-axis-label">25%</span>
+                          <span className="y-axis-label">0%</span>
+                        </div>
+                        <div className="occupancy-chart-area">
+                          {/* Horizontal gridlines */}
+                          <div className="occupancy-gridlines">
+                            <div className="gridline" style={{ bottom: '100%' }}></div>
+                            <div className="gridline" style={{ bottom: '75%' }}></div>
+                            <div className="gridline" style={{ bottom: '50%' }}></div>
+                            <div className="gridline" style={{ bottom: '25%' }}></div>
+                            <div className="gridline" style={{ bottom: '0%' }}></div>
+                          </div>
+                          <div className="occupancy-chart">
+                            {occupancyData.data && occupancyData.data.slice(-30).map((item, index) => {
+                              const percent = item.occupancy_percent || item.avg_occupancy_percent || 0;
+                              const occupied = item.occupied || item.avg_occupied || 0;
+                              const available = occupancyData.max_capacity - occupied;
+                              const isHighlight = item.is_today || item.is_current_week || item.is_current_month;
+                              const isPast = item.is_past;
+                              let barClass = 'occupancy-bar';
+                              if (percent >= 90) barClass += ' high';
+                              else if (percent >= 70) barClass += ' medium';
+                              else barClass += ' low';
+                              if (isHighlight) barClass += ' current';
+                              if (isPast) barClass += ' past';
 
-                          return (
-                            <div key={index} className="occupancy-bar-wrapper" title={`${item.display_date || item.display_week || item.display_month}: ${percent}% (${item.occupied || item.avg_occupied}/${occupancyData.max_capacity})`}>
-                              <div className={barClass} style={{ height: `${Math.max(percent, 2)}%` }}>
-                                <span className="occupancy-bar-value">{Math.round(percent)}%</span>
-                              </div>
-                              <span className="occupancy-bar-label">
-                                {occupancyView === 'daily' && item.display_date?.slice(0, 5)}
-                                {occupancyView === 'weekly' && item.display_week?.split(' - ')[0]}
-                                {occupancyView === 'monthly' && item.display_month?.slice(0, 3)}
-                              </span>
-                            </div>
-                          );
-                        })}
+                              // Get day name for daily view
+                              const getDayName = (dateStr) => {
+                                if (!dateStr) return '';
+                                const parts = dateStr.split('/');
+                                if (parts.length >= 3) {
+                                  const date = new Date(`20${parts[2]}`, parts[1] - 1, parts[0]);
+                                  return date.toLocaleDateString('en-US', { weekday: 'short' });
+                                }
+                                return '';
+                              };
+
+                              return (
+                                <div key={index} className="occupancy-bar-wrapper">
+                                  <div className="occupancy-tooltip">
+                                    <div className="tooltip-date">
+                                      {item.display_date || item.display_week || item.display_month}
+                                    </div>
+                                    <div className="tooltip-stats">
+                                      <span className="tooltip-occupied">{occupied} cars parked</span>
+                                      <span className="tooltip-available">{available} spaces free</span>
+                                      <span className="tooltip-percent">{Math.round(percent)}% full</span>
+                                    </div>
+                                  </div>
+                                  <div className={barClass} style={{ height: `${Math.max(percent, 3)}%` }}>
+                                    <div className="occupancy-bar-content">
+                                      <span className="occupancy-bar-percent">{Math.round(percent)}%</span>
+                                      <span className="occupancy-bar-cars">{occupied}</span>
+                                    </div>
+                                  </div>
+                                  <div className="occupancy-bar-labels">
+                                    {occupancyView === 'daily' && (
+                                      <>
+                                        <span className="bar-label-day">{getDayName(item.display_date)}</span>
+                                        <span className="bar-label-date">{item.display_date?.slice(0, 5)}</span>
+                                      </>
+                                    )}
+                                    {occupancyView === 'weekly' && (
+                                      <span className="bar-label-date">{item.display_week?.split(' - ')[0]}</span>
+                                    )}
+                                    {occupancyView === 'monthly' && (
+                                      <span className="bar-label-date">{item.display_month?.slice(0, 3)}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
                       <div className="occupancy-legend">
-                        <span className="legend-item"><span className="legend-color low"></span> &lt;70%</span>
-                        <span className="legend-item"><span className="legend-color medium"></span> 70-89%</span>
-                        <span className="legend-item"><span className="legend-color high"></span> 90%+</span>
-                        <span className="legend-item"><span className="legend-color current"></span> Current</span>
+                        <span className="legend-item"><span className="legend-color low"></span> Low (&lt;70%)</span>
+                        <span className="legend-item"><span className="legend-color medium"></span> Medium (70-89%)</span>
+                        <span className="legend-item"><span className="legend-color high"></span> High (90%+)</span>
+                        <span className="legend-item"><span className="legend-color current"></span> Today</span>
                       </div>
                     </div>
 
