@@ -51,7 +51,7 @@ class TestSend2DayReminderEmail:
         # Check the email was sent to the correct address
         call_args = mock_send_email.call_args
         assert call_args[0][0] == "test@example.com"
-        assert "Two Days to Go - TAG-12345678" in call_args[0][1]
+        assert "Information About Your Booking - TAG-12345678" in call_args[0][1]
 
     @patch('email_service.send_email')
     def test_email_contains_booking_reference(self, mock_send_email):
