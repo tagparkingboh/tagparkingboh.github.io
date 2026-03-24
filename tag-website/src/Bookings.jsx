@@ -198,11 +198,26 @@ function Bookings() {
     fetchDepartures()
   }, [formData.dropoffDate, API_BASE_URL])
 
+  // Check if the selected drop-off date is blocked
+  const isDropoffDateBlocked = useMemo(() => {
+    if (departuresForDate.length === 0) return false
+    // If any departure has is_blocked: true, the date is blocked
+    return departuresForDate[0]?.is_blocked === true
+  }, [departuresForDate])
+
+  // Get the blocked reason if available
+  const dropoffBlockedReason = useMemo(() => {
+    if (!isDropoffDateBlocked) return null
+    return departuresForDate[0]?.blocked_reason || null
+  }, [isDropoffDateBlocked, departuresForDate])
+
   // Get unique airlines for selected date (normalized - Ryanair UK merged into Ryanair)
   const airlinesForDropoff = useMemo(() => {
+    // If date is blocked, don't show airlines
+    if (isDropoffDateBlocked) return []
     const airlines = [...new Set(departuresForDate.map(f => normalizeAirlineName(f.airlineName)))]
     return airlines.sort()
-  }, [departuresForDate])
+  }, [departuresForDate, isDropoffDateBlocked])
 
   // Filter flights by selected airline (matches normalized name)
   const flightsForAirline = useMemo(() => {
@@ -297,6 +312,19 @@ function Bookings() {
     // Fallback for old data format
     return selectedDropoffFlight.is_slot_1_booked && selectedDropoffFlight.is_slot_2_booked
   }, [selectedDropoffFlight])
+
+  // Check if the selected pickup date is blocked
+  const isPickupDateBlocked = useMemo(() => {
+    if (arrivalsForDate.length === 0) return false
+    // If any arrival has is_blocked: true, the date is blocked
+    return arrivalsForDate[0]?.is_blocked === true
+  }, [arrivalsForDate])
+
+  // Get the blocked reason for pickup if available
+  const pickupBlockedReason = useMemo(() => {
+    if (!isPickupDateBlocked) return null
+    return arrivalsForDate[0]?.blocked_reason || null
+  }, [isPickupDateBlocked, arrivalsForDate])
 
   // Fetch arrivals when pick-up date changes
   useEffect(() => {
@@ -1133,7 +1161,22 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.dropoffDate && !loadingFlights && airlinesForDropoff.length === 0 && (
+              {formData.dropoffDate && !loadingFlights && isDropoffDateBlocked && (
+                <div className="form-group fade-in">
+                  <div className="fully-booked-banner">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                    <div className="fully-booked-content">
+                      <strong>Sorry, we have no availability for {format(formData.dropoffDate, 'd MMMM yyyy')}</strong>
+                      {dropoffBlockedReason && <p>{dropoffBlockedReason}</p>}
+                      <p>Please select a different date or contact us at <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a></p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {formData.dropoffDate && !loadingFlights && !isDropoffDateBlocked && airlinesForDropoff.length === 0 && (
                 <div className="form-group fade-in">
                   <p className="no-flights-message">No departure flights available on this date.</p>
                 </div>
@@ -1345,7 +1388,22 @@ function Bookings() {
                 </div>
               )}
 
-              {formData.pickupDate && !loadingArrivals && arrivalFlightsForPickup.length === 0 && (
+              {formData.pickupDate && !loadingArrivals && isPickupDateBlocked && (
+                <div className="form-group fade-in">
+                  <div className="fully-booked-banner">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                    <div className="fully-booked-content">
+                      <strong>Sorry, we have no availability for {format(formData.pickupDate, 'd MMMM yyyy')}</strong>
+                      {pickupBlockedReason && <p>{pickupBlockedReason}</p>}
+                      <p>Please select a different return date or contact us at <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a></p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {formData.pickupDate && !loadingArrivals && !isPickupDateBlocked && arrivalFlightsForPickup.length === 0 && (
                 <div className="form-group fade-in">
                   <div className="fully-booked-banner">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">

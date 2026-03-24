@@ -94,6 +94,19 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const [monthlyHours, setMonthlyHours] = useState(null)
   const [loadingMonthlyHours, setLoadingMonthlyHours] = useState(false)
 
+  // Blocked dates state
+  const [blockedDates, setBlockedDates] = useState([])
+  const [showBlockedDateModal, setShowBlockedDateModal] = useState(false)
+  const [editingBlockedDate, setEditingBlockedDate] = useState(null)
+  const [blockedDateForm, setBlockedDateForm] = useState({
+    start_date: '',
+    end_date: '',
+    block_dropoffs: true,
+    block_pickups: true,
+    reason: '',
+  })
+  const [savingBlockedDate, setSavingBlockedDate] = useState(false)
+
   // Fetch bookings
   const fetchBookings = useCallback(async () => {
     if (!token) return
@@ -150,18 +163,49 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }, [token, currentDate, isAdmin])
 
+  // Fetch blocked dates (admin only)
+  const fetchBlockedDates = useCallback(async () => {
+    if (!token || !isAdmin) return
+
+    try {
+      const year = currentDate.getFullYear()
+      const month = currentDate.getMonth()
+      const startDate = new Date(year, month, 1)
+      const endDate = new Date(year, month + 1, 0)
+
+      const params = new URLSearchParams({
+        date_from: formatDateISO(startDate),
+        date_to: formatDateISO(endDate),
+      })
+
+      const response = await fetch(`${API_URL}/api/admin/blocked-dates?${params}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setBlockedDates(data.blocked_dates || [])
+      }
+    } catch (err) {
+      console.error('Failed to load blocked dates:', err)
+    }
+  }, [token, currentDate, isAdmin])
+
   // Fetch all data
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      await Promise.all([fetchBookings(), fetchShifts()])
+      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates()])
     } catch (err) {
       setError('Failed to load data')
     } finally {
       setLoading(false)
     }
-  }, [fetchBookings, fetchShifts])
+  }, [fetchBookings, fetchShifts, fetchBlockedDates])
 
   // Fetch all staff (admin only) - includes both admins and employees
   const fetchStaff = useCallback(async () => {
@@ -426,6 +470,17 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return shiftsByDate[dateKey] || []
   }
 
+  // Check if date is blocked
+  const getBlockedInfoForDay = (day) => {
+    if (!day) return null
+    const dateKey = getDateKey(day)
+    // Find any blocked date that covers this day
+    const blocked = blockedDates.find(bd => {
+      return dateKey >= bd.start_date && dateKey <= bd.end_date
+    })
+    return blocked || null
+  }
+
   // Is today?
   const isToday = (day) => {
     if (!day) return false
@@ -611,6 +666,120 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }
 
+  // ==================== BLOCKED DATES MANAGEMENT ====================
+
+  // Open modal to create a blocked date for a specific date
+  const openBlockedDateModal = (dateKey) => {
+    setEditingBlockedDate(null)
+    setBlockedDateForm({
+      start_date: dateKey,
+      end_date: dateKey,
+      block_dropoffs: true,
+      block_pickups: true,
+      reason: '',
+    })
+    setShowBlockedDateModal(true)
+  }
+
+  // Open modal to edit an existing blocked date
+  const openEditBlockedDateModal = (blockedDate) => {
+    setEditingBlockedDate(blockedDate)
+    setBlockedDateForm({
+      start_date: blockedDate.start_date,
+      end_date: blockedDate.end_date,
+      block_dropoffs: blockedDate.block_dropoffs,
+      block_pickups: blockedDate.block_pickups,
+      reason: blockedDate.reason || '',
+    })
+    setShowBlockedDateModal(true)
+  }
+
+  // Close blocked date modal
+  const closeBlockedDateModal = () => {
+    setShowBlockedDateModal(false)
+    setEditingBlockedDate(null)
+    setBlockedDateForm({
+      start_date: '',
+      end_date: '',
+      block_dropoffs: true,
+      block_pickups: true,
+      reason: '',
+    })
+  }
+
+  // Save blocked date (create or update)
+  const saveBlockedDate = async () => {
+    setSavingBlockedDate(true)
+    setError('')
+
+    try {
+      const payload = {
+        start_date: blockedDateForm.start_date,
+        end_date: blockedDateForm.end_date,
+        block_dropoffs: blockedDateForm.block_dropoffs,
+        block_pickups: blockedDateForm.block_pickups,
+        reason: blockedDateForm.reason || null,
+      }
+
+      const url = editingBlockedDate
+        ? `${API_URL}/api/admin/blocked-dates/${editingBlockedDate.id}`
+        : `${API_URL}/api/admin/blocked-dates`
+
+      const response = await fetch(url, {
+        method: editingBlockedDate ? 'PUT' : 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (response.ok) {
+        setSuccessMessage(editingBlockedDate ? 'Blocked date updated' : 'Date blocked')
+        setTimeout(() => setSuccessMessage(''), 3000)
+        closeBlockedDateModal()
+        fetchBlockedDates()
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.detail || 'Failed to save blocked date')
+      }
+    } catch (err) {
+      setError('Network error saving blocked date')
+    } finally {
+      setSavingBlockedDate(false)
+    }
+  }
+
+  // Delete blocked date
+  const deleteBlockedDate = async (blockedDateId) => {
+    if (!window.confirm('Are you sure you want to unblock this date?')) return
+
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/blocked-dates/${blockedDateId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setSuccessMessage('Date unblocked')
+        setTimeout(() => setSuccessMessage(''), 3000)
+        fetchBlockedDates()
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.detail || 'Failed to unblock date')
+      }
+    } catch (err) {
+      setError('Network error unblocking date')
+    }
+  }
+
+  // Get blocked date info for selected date
+  const selectedDateBlockedInfo = selectedDate ? getBlockedInfoForDay(parseInt(selectedDate.split('-')[2])) : null
+
   // Month names
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -673,23 +842,31 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 const dayBookings = getBookingsForDay(day)
                 const dayShifts = getShiftsForDay(day)
                 const dateKey = getDateKey(day)
+                const blockedInfo = getBlockedInfoForDay(day)
                 const hasDropoffs = dayBookings.dropoffs.length > 0
                 const hasPickups = dayBookings.pickups.length > 0
                 const hasShifts = dayShifts.length > 0
-                const hasContent = hasDropoffs || hasPickups || hasShifts
+                const hasContent = hasDropoffs || hasPickups || hasShifts || blockedInfo
 
                 return (
                   <div
                     key={dayIndex}
                     className={`calendar-day ${day ? '' : 'empty'} ${isToday(day) ? 'today' : ''} ${
                       selectedDate === dateKey ? 'selected' : ''
-                    } ${hasContent ? 'has-content' : ''}`}
+                    } ${hasContent ? 'has-content' : ''} ${blockedInfo ? 'blocked' : ''}`}
                     onClick={() => handleDateClick(day)}
                   >
                     {day && (
                       <>
                         <span className="day-number">{day}</span>
                         <div className="day-content">
+                          {/* Blocked date indicator */}
+                          {blockedInfo && (
+                            <div className="day-badge badge-blocked" title={blockedInfo.reason || 'Blocked'}>
+                              🚫 {blockedInfo.block_dropoffs && blockedInfo.block_pickups ? 'Closed' :
+                                  blockedInfo.block_dropoffs ? 'No Drop-offs' : 'No Pick-ups'}
+                            </div>
+                          )}
                           {/* Booking badges */}
                           {hasDropoffs && (
                             <div className="day-badge badge-dropoff">
@@ -780,12 +957,22 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
             </h3>
             <div className="detail-header-actions">
               {isAdmin && (
-                <button
-                  className="roster-add-btn-small"
-                  onClick={() => openNewShiftModal(formatDateUK(selectedDate))}
-                >
-                  + Add Shift
-                </button>
+                <>
+                  <button
+                    className="roster-add-btn-small"
+                    onClick={() => openNewShiftModal(formatDateUK(selectedDate))}
+                  >
+                    + Add Shift
+                  </button>
+                  {!selectedDateBlockedInfo && (
+                    <button
+                      className="blocked-dates-btn"
+                      onClick={() => openBlockedDateModal(selectedDate)}
+                    >
+                      🚫 Block Date
+                    </button>
+                  )}
+                </>
               )}
               <button className="detail-close" onClick={() => setSelectedDate(null)}>
                 ×
@@ -794,6 +981,42 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
           </div>
 
           <div className="detail-content">
+            {/* Blocked Date Section */}
+            {selectedDateBlockedInfo && isAdmin && (
+              <div className="blocked-dates-section">
+                <h4>🚫 Date Blocked</h4>
+                <div className="blocked-date-info">
+                  <div className="blocked-date-type">
+                    {selectedDateBlockedInfo.block_dropoffs && (
+                      <span className="blocked-type-badge">No Drop-offs</span>
+                    )}
+                    {selectedDateBlockedInfo.block_pickups && (
+                      <span className="blocked-type-badge">No Pick-ups</span>
+                    )}
+                  </div>
+                  {selectedDateBlockedInfo.reason && (
+                    <div className="blocked-date-reason">
+                      Reason: {selectedDateBlockedInfo.reason}
+                    </div>
+                  )}
+                  <div className="blocked-date-actions">
+                    <button
+                      className="blocked-date-edit-btn"
+                      onClick={() => openEditBlockedDateModal(selectedDateBlockedInfo)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="blocked-date-delete-btn"
+                      onClick={() => deleteBlockedDate(selectedDateBlockedInfo.id)}
+                    >
+                      Unblock
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Drop-offs Section */}
             {selectedDateBookings.dropoffs.length > 0 && (
               <div className="detail-section">
@@ -1199,6 +1422,96 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
               </button>
               <button className="modal-delete-btn" onClick={deleteShift} disabled={deletingShift}>
                 {deletingShift ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Blocked Date Modal */}
+      {showBlockedDateModal && isAdmin && (
+        <div className="modal-overlay" onClick={closeBlockedDateModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{editingBlockedDate ? 'Edit Blocked Date' : 'Block Date'}</h3>
+              <button className="modal-close-btn" onClick={closeBlockedDateModal}>
+                ×
+              </button>
+            </div>
+
+            <div className="blocked-date-form">
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Start Date</label>
+                  <input
+                    type="date"
+                    value={blockedDateForm.start_date}
+                    onChange={(e) =>
+                      setBlockedDateForm({ ...blockedDateForm, start_date: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="form-group">
+                  <label>End Date</label>
+                  <input
+                    type="date"
+                    value={blockedDateForm.end_date}
+                    onChange={(e) =>
+                      setBlockedDateForm({ ...blockedDateForm, end_date: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Block Type</label>
+                <div className="checkbox-group">
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={blockedDateForm.block_dropoffs}
+                      onChange={(e) =>
+                        setBlockedDateForm({ ...blockedDateForm, block_dropoffs: e.target.checked })
+                      }
+                    />
+                    Block Drop-offs
+                  </label>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={blockedDateForm.block_pickups}
+                      onChange={(e) =>
+                        setBlockedDateForm({ ...blockedDateForm, block_pickups: e.target.checked })
+                      }
+                    />
+                    Block Pick-ups
+                  </label>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Reason (optional)</label>
+                <input
+                  type="text"
+                  value={blockedDateForm.reason}
+                  onChange={(e) =>
+                    setBlockedDateForm({ ...blockedDateForm, reason: e.target.value })
+                  }
+                  placeholder="e.g., Bank Holiday, Staff Training, etc."
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="modal-cancel-btn" onClick={closeBlockedDateModal}>
+                Cancel
+              </button>
+              <button
+                className="modal-save-btn"
+                onClick={saveBlockedDate}
+                disabled={savingBlockedDate || (!blockedDateForm.block_dropoffs && !blockedDateForm.block_pickups)}
+              >
+                {savingBlockedDate ? 'Saving...' : editingBlockedDate ? 'Update' : 'Block Date'}
               </button>
             </div>
           </div>

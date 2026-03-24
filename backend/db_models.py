@@ -1002,3 +1002,39 @@ class RosterShift(Base):
             # Add 24 hours worth of minutes for overnight shifts
             return (24 * 60 - start_mins) + end_mins
         return end_mins - start_mins
+
+
+class BlockedDate(Base):
+    """Blocked dates - prevents bookings on specific dates.
+
+    Used to block off days when the service is not available
+    (e.g., holidays, maintenance, staff unavailability).
+    All dates are stored and interpreted in UK timezone (Europe/London).
+    """
+    __tablename__ = "blocked_dates"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Date range (inclusive) - stored in UK timezone
+    start_date = Column(Date, nullable=False, index=True)
+    end_date = Column(Date, nullable=False, index=True)
+
+    # What is blocked
+    block_dropoffs = Column(Boolean, default=True, nullable=False)  # Block drop-offs on this date
+    block_pickups = Column(Boolean, default=True, nullable=False)   # Block pick-ups on this date
+
+    # Reason/description (shown to admins)
+    reason = Column(String(255), nullable=True)
+
+    # Admin tracking
+    created_by = Column(String(255), nullable=True)  # Admin email
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def __repr__(self):
+        block_type = []
+        if self.block_dropoffs:
+            block_type.append("dropoffs")
+        if self.block_pickups:
+            block_type.append("pickups")
+        return f"<BlockedDate {self.start_date} to {self.end_date} ({', '.join(block_type)})>"

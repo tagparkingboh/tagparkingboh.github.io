@@ -1250,3 +1250,163 @@
   font-style: italic;
   padding: 10px;
 }
+
+/* ===========================================
+   Blocked Dates Styling
+   =========================================== */
+
+/* Blocked day styling */
+.calendar-day.blocked {
+  background: linear-gradient(135deg, #2a1a1a 0%, #3a2020 100%) !important;
+  border-color: #e74c3c !important;
+}
+
+.calendar-day.blocked:hover {
+  background: linear-gradient(135deg, #3a2020 0%, #4a2a2a 100%) !important;
+}
+
+.calendar-day.blocked .day-number {
+  color: #ff6b6b;
+}
+
+/* Blocked badge */
+.day-badge.badge-blocked {
+  background: #e74c3c;
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* Blocked dates manager button */
+.blocked-dates-btn {
+  background: #e74c3c;
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.blocked-dates-btn:hover {
+  background: #c0392b;
+}
+
+/* Blocked dates section in detail panel */
+.blocked-dates-section {
+  background: #2a1a1a;
+  border: 1px solid #e74c3c;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.blocked-dates-section h4 {
+  color: #e74c3c;
+  margin: 0 0 10px 0;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.blocked-date-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.blocked-date-type {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.blocked-type-badge {
+  background: #3a2020;
+  color: #ff6b6b;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.blocked-date-reason {
+  color: #888;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.blocked-date-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.blocked-date-edit-btn {
+  background: #444;
+  border: none;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.blocked-date-edit-btn:hover {
+  background: #555;
+}
+
+.blocked-date-delete-btn {
+  background: #e74c3c;
+  border: none;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.blocked-date-delete-btn:hover {
+  background: #c0392b;
+}
+
+/* Blocked date modal form */
+.blocked-date-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.blocked-date-form .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.blocked-date-form .checkbox-group {
+  display: flex;
+  gap: 20px;
+}
+
+.blocked-date-form .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.blocked-date-form .checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #D9FF00;
+}

@@ -72,7 +72,7 @@ from stripe_service import (
 
 # Database imports
 from database import get_db, init_db
-from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession, VehicleInspection, InspectionType
+from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession, VehicleInspection, InspectionType, BlockedDate
 import db_service
 import json
 import traceback
@@ -4806,7 +4806,15 @@ async def get_departures_for_date(flight_date: date, db: Session = Depends(get_d
     Returns flights in a format compatible with the frontend:
     - date, type, time, airlineCode, airlineName, destinationCode, destinationName, flightNumber
     - Capacity info: capacity_tier, early_slots_available, late_slots_available, is_call_us_only
+    - Blocked info: is_blocked, blocked_reason (if date is blocked for dropoffs)
     """
+    # Check if date is blocked for dropoffs
+    blocked = db.query(BlockedDate).filter(
+        BlockedDate.start_date <= flight_date,
+        BlockedDate.end_date >= flight_date,
+        BlockedDate.block_dropoffs == True
+    ).first()
+
     departures = db.query(FlightDeparture).filter(
         FlightDeparture.date == flight_date
     ).order_by(FlightDeparture.departure_time).all()
@@ -4834,6 +4842,9 @@ async def get_departures_for_date(flight_date: date, db: Session = Depends(get_d
             "is_last_slot": d.is_last_slot,
             "early_is_last_slot": d.early_is_last_slot,
             "late_is_last_slot": d.late_is_last_slot,
+            # Blocked date indicator
+            "is_blocked": blocked is not None,
+            "blocked_reason": blocked.reason if blocked else None,
         }
         for d in departures
     ]
@@ -4846,7 +4857,15 @@ async def get_arrivals_for_date(flight_date: date, db: Session = Depends(get_db)
 
     Returns flights in a format compatible with the frontend:
     - date, type, time, airlineCode, airlineName, originCode, originName, flightNumber, departureTime
+    - Blocked info: is_blocked, blocked_reason (if date is blocked for pickups)
     """
+    # Check if date is blocked for pickups
+    blocked = db.query(BlockedDate).filter(
+        BlockedDate.start_date <= flight_date,
+        BlockedDate.end_date >= flight_date,
+        BlockedDate.block_pickups == True
+    ).first()
+
     arrivals = db.query(FlightArrival).filter(
         FlightArrival.date == flight_date
     ).order_by(FlightArrival.arrival_time).all()
@@ -4863,6 +4882,9 @@ async def get_arrivals_for_date(flight_date: date, db: Session = Depends(get_db)
             "originName": a.origin_name,
             "flightNumber": a.flight_number,
             "departureTime": a.departure_time.strftime("%H:%M") if a.departure_time else None,
+            # Blocked date indicator
+            "is_blocked": blocked is not None,
+            "blocked_reason": blocked.reason if blocked else None,
         }
         for a in arrivals
     ]
@@ -6365,6 +6387,34 @@ async def create_payment(
                         status_code=400,
                         detail=f"Same-day bookings require at least {MIN_HOURS_NOTICE} hours notice. Please call us to arrange a last-minute booking."
                     )
+
+        # Check for blocked dates (UK timezone)
+        # Parse pickup_date for blocked date check
+        request_pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
+
+        # Check if dropoff date is blocked
+        blocked_dropoff = db.query(BlockedDate).filter(
+            BlockedDate.start_date <= request_dropoff_date,
+            BlockedDate.end_date >= request_dropoff_date,
+            BlockedDate.block_dropoffs == True
+        ).first()
+        if blocked_dropoff:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Sorry, drop-offs are not available on {request_dropoff_date.strftime('%d %B %Y')}. Please select a different date."
+            )
+
+        # Check if pickup date is blocked
+        blocked_pickup = db.query(BlockedDate).filter(
+            BlockedDate.start_date <= request_pickup_date,
+            BlockedDate.end_date >= request_pickup_date,
+            BlockedDate.block_pickups == True
+        ).first()
+        if blocked_pickup:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Sorry, pick-ups are not available on {request_pickup_date.strftime('%d %B %Y')}. Please select a different date."
+            )
 
         # Check for existing PENDING booking with same session_id (prevent duplicates from Terms toggle)
         existing_booking = None
@@ -9835,6 +9885,229 @@ async def get_active_testimonials(
         "testimonials": weighted_pool,
         "total": len(weighted_pool),
     }
+
+
+# =============================================================================
+# BLOCKED DATES ENDPOINTS
+# =============================================================================
+
+class BlockedDateCreate(BaseModel):
+    """Request to create a blocked date."""
+    start_date: str  # YYYY-MM-DD format (UK timezone)
+    end_date: str    # YYYY-MM-DD format (UK timezone)
+    block_dropoffs: bool = True
+    block_pickups: bool = True
+    reason: Optional[str] = None
+
+
+class BlockedDateUpdate(BaseModel):
+    """Request to update a blocked date."""
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    block_dropoffs: Optional[bool] = None
+    block_pickups: Optional[bool] = None
+    reason: Optional[str] = None
+
+
+def parse_blocked_date(date_str: str) -> date:
+    """Parse date string (YYYY-MM-DD) to date object."""
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid date format: {date_str}. Use YYYY-MM-DD")
+
+
+def format_blocked_date(blocked: "BlockedDate") -> dict:
+    """Format a BlockedDate model for API response."""
+    return {
+        "id": blocked.id,
+        "start_date": blocked.start_date.isoformat(),
+        "end_date": blocked.end_date.isoformat(),
+        "block_dropoffs": blocked.block_dropoffs,
+        "block_pickups": blocked.block_pickups,
+        "reason": blocked.reason,
+        "created_by": blocked.created_by,
+        "created_at": blocked.created_at.isoformat() if blocked.created_at else None,
+        "updated_at": blocked.updated_at.isoformat() if blocked.updated_at else None,
+    }
+
+
+@app.get("/api/admin/blocked-dates")
+async def get_blocked_dates(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Get all blocked dates with optional date range filter (admin only)."""
+    from db_models import BlockedDate
+
+    query = db.query(BlockedDate)
+
+    # Apply date range filters
+    if date_from:
+        from_date = parse_blocked_date(date_from)
+        query = query.filter(BlockedDate.end_date >= from_date)
+
+    if date_to:
+        to_date = parse_blocked_date(date_to)
+        query = query.filter(BlockedDate.start_date <= to_date)
+
+    # Order by start date
+    query = query.order_by(BlockedDate.start_date.asc())
+
+    blocked_dates = query.all()
+
+    return {
+        "blocked_dates": [format_blocked_date(bd) for bd in blocked_dates],
+        "total": len(blocked_dates),
+    }
+
+
+@app.post("/api/admin/blocked-dates")
+async def create_blocked_date(
+    request: BlockedDateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Create a new blocked date (admin only)."""
+    from db_models import BlockedDate
+
+    start = parse_blocked_date(request.start_date)
+    end = parse_blocked_date(request.end_date)
+
+    # Validate date range
+    if end < start:
+        raise HTTPException(status_code=422, detail="End date must be on or after start date")
+
+    # Must block at least one type
+    if not request.block_dropoffs and not request.block_pickups:
+        raise HTTPException(status_code=422, detail="Must block at least dropoffs or pickups")
+
+    blocked = BlockedDate(
+        start_date=start,
+        end_date=end,
+        block_dropoffs=request.block_dropoffs,
+        block_pickups=request.block_pickups,
+        reason=request.reason.strip() if request.reason else None,
+        created_by=current_user.email,
+    )
+
+    db.add(blocked)
+    db.commit()
+    db.refresh(blocked)
+
+    return {
+        "success": True,
+        "blocked_date": format_blocked_date(blocked),
+    }
+
+
+@app.put("/api/admin/blocked-dates/{blocked_date_id}")
+async def update_blocked_date(
+    blocked_date_id: int,
+    request: BlockedDateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Update an existing blocked date (admin only)."""
+    from db_models import BlockedDate
+
+    blocked = db.query(BlockedDate).filter(BlockedDate.id == blocked_date_id).first()
+    if not blocked:
+        raise HTTPException(status_code=404, detail="Blocked date not found")
+
+    # Apply updates
+    if request.start_date is not None:
+        blocked.start_date = parse_blocked_date(request.start_date)
+    if request.end_date is not None:
+        blocked.end_date = parse_blocked_date(request.end_date)
+    if request.block_dropoffs is not None:
+        blocked.block_dropoffs = request.block_dropoffs
+    if request.block_pickups is not None:
+        blocked.block_pickups = request.block_pickups
+    if request.reason is not None:
+        blocked.reason = request.reason.strip() if request.reason else None
+
+    # Validate after updates
+    if blocked.end_date < blocked.start_date:
+        raise HTTPException(status_code=422, detail="End date must be on or after start date")
+    if not blocked.block_dropoffs and not blocked.block_pickups:
+        raise HTTPException(status_code=422, detail="Must block at least dropoffs or pickups")
+
+    db.commit()
+    db.refresh(blocked)
+
+    return {
+        "success": True,
+        "blocked_date": format_blocked_date(blocked),
+    }
+
+
+@app.delete("/api/admin/blocked-dates/{blocked_date_id}")
+async def delete_blocked_date(
+    blocked_date_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Delete a blocked date (admin only)."""
+    from db_models import BlockedDate
+
+    blocked = db.query(BlockedDate).filter(BlockedDate.id == blocked_date_id).first()
+    if not blocked:
+        raise HTTPException(status_code=404, detail="Blocked date not found")
+
+    db.delete(blocked)
+    db.commit()
+
+    return {"success": True, "message": "Blocked date deleted"}
+
+
+@app.get("/api/blocked-dates/check")
+async def check_blocked_date(
+    dropoff_date: Optional[str] = None,
+    pickup_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Check if a date is blocked for bookings (public endpoint).
+    Returns blocking info for the specified dates.
+    All dates are in UK timezone.
+    """
+    from db_models import BlockedDate
+
+    result = {
+        "dropoff_blocked": False,
+        "pickup_blocked": False,
+        "dropoff_reason": None,
+        "pickup_reason": None,
+    }
+
+    if dropoff_date:
+        d_date = parse_blocked_date(dropoff_date)
+        # Find any blocked date that covers this date and blocks dropoffs
+        blocked = db.query(BlockedDate).filter(
+            BlockedDate.start_date <= d_date,
+            BlockedDate.end_date >= d_date,
+            BlockedDate.block_dropoffs == True
+        ).first()
+        if blocked:
+            result["dropoff_blocked"] = True
+            result["dropoff_reason"] = blocked.reason
+
+    if pickup_date:
+        p_date = parse_blocked_date(pickup_date)
+        # Find any blocked date that covers this date and blocks pickups
+        blocked = db.query(BlockedDate).filter(
+            BlockedDate.start_date <= p_date,
+            BlockedDate.end_date >= p_date,
+            BlockedDate.block_pickups == True
+        ).first()
+        if blocked:
+            result["pickup_blocked"] = True
+            result["pickup_reason"] = blocked.reason
+
+    return result
 
 
 if __name__ == "__main__":
