@@ -3273,6 +3273,13 @@
   color: #6b7280;
 }
 
+.trip-insight-busiest {
+  font-size: 13px;
+  color: #166534;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
 /* Booking Targets Section */
 .booking-targets-section {
   background: white;

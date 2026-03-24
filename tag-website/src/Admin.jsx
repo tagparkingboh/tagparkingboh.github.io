@@ -6243,6 +6243,11 @@ function Admin() {
                             <span className="trip-insight-detail">
                               00:00-11:59 | 12:00-23:59
                             </span>
+                            {bookingStats.dropoff_range?.busiest_hour && (
+                              <span className="trip-insight-busiest">
+                                Busiest: {bookingStats.dropoff_range.busiest_hour.start} - {bookingStats.dropoff_range.busiest_hour.end} ({bookingStats.dropoff_range.busiest_hour.count} drop-offs)
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="trip-insight-card">
@@ -6255,6 +6260,11 @@ function Admin() {
                             <span className="trip-insight-detail">
                               00:00-11:59 | 12:00-23:59
                             </span>
+                            {bookingStats.pickup_range?.busiest_hour && (
+                              <span className="trip-insight-busiest">
+                                Busiest: {bookingStats.pickup_range.busiest_hour.start} - {bookingStats.pickup_range.busiest_hour.end} ({bookingStats.pickup_range.busiest_hour.count} pick-ups)
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>

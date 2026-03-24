@@ -1231,6 +1231,46 @@ async def get_booking_stats(
     # Calculate averages
     avg_trip_duration = round(sum(trip_durations) / len(trip_durations), 1) if trip_durations else 0
 
+    # Helper function to find busiest 1-hour window using sliding window
+    def find_busiest_hour(times_minutes):
+        if not times_minutes:
+            return None
+
+        sorted_times = sorted(times_minutes)
+        max_count = 0
+        best_start = sorted_times[0]
+
+        # Sliding window: for each time as potential start, count times within 60 minutes
+        for i, start_time in enumerate(sorted_times):
+            end_time = start_time + 60
+            count = 0
+            for t in sorted_times[i:]:
+                if t < end_time:
+                    count += 1
+                else:
+                    break
+
+            if count > max_count:
+                max_count = count
+                best_start = start_time
+
+        # Convert minutes back to HH:MM format
+        start_hour = best_start // 60
+        start_min = best_start % 60
+        end_minutes = best_start + 60
+        end_hour = end_minutes // 60
+        end_min = end_minutes % 60
+
+        # Handle overflow past midnight
+        if end_hour >= 24:
+            end_hour = end_hour % 24
+
+        return {
+            "start": f"{start_hour:02d}:{start_min:02d}",
+            "end": f"{end_hour:02d}:{end_min:02d}",
+            "count": max_count
+        }
+
     # Drop-off time range (AM: 00:00-11:59, PM: 12:00-23:59)
     if dropoff_times_minutes:
         am_dropoffs = [m for m in dropoff_times_minutes if m < 720]  # Before 12:00
@@ -1238,9 +1278,10 @@ async def get_booking_stats(
         dropoff_range = {
             "am": len(am_dropoffs),
             "pm": len(pm_dropoffs),
+            "busiest_hour": find_busiest_hour(dropoff_times_minutes),
         }
     else:
-        dropoff_range = {"am": 0, "pm": 0}
+        dropoff_range = {"am": 0, "pm": 0, "busiest_hour": None}
 
     # Pick-up time range (AM: 00:00-11:59, PM: 12:00-23:59)
     if pickup_times_minutes:
@@ -1249,9 +1290,10 @@ async def get_booking_stats(
         pickup_range = {
             "am": len(am_pickups),
             "pm": len(pm_pickups),
+            "busiest_hour": find_busiest_hour(pickup_times_minutes),
         }
     else:
-        pickup_range = {"am": 0, "pm": 0}
+        pickup_range = {"am": 0, "pm": 0, "busiest_hour": None}
 
     return {
         "total_bookings": len(all_bookings),
