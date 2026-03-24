@@ -467,8 +467,8 @@ function Bookings() {
     if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
       const dropoffTime = getActualDropoffTime
       if (!dropoffTime) {
-        // No time selected yet - check if ANY slot blocks dropoffs
-        return blockedDate.time_slots.some(slot => slot.block_dropoffs)
+        // No time selected yet - don't block, let user select time first
+        return false
       }
       // Check if the selected time falls within a blocked slot
       return blockedDate.time_slots.some(slot =>
@@ -496,8 +496,8 @@ function Bookings() {
     if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
       const pickupTime = manualArrivalData.flightTime
       if (!pickupTime) {
-        // No time selected yet - check if ANY slot blocks pickups
-        return blockedDate.time_slots.some(slot => slot.block_pickups)
+        // No time selected yet - don't block, let user select time first
+        return false
       }
       // Check if the selected time falls within a blocked slot
       return blockedDate.time_slots.some(slot =>
