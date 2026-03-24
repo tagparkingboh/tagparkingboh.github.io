@@ -1231,31 +1231,27 @@ async def get_booking_stats(
     # Calculate averages
     avg_trip_duration = round(sum(trip_durations) / len(trip_durations), 1) if trip_durations else 0
 
-    # Drop-off time range (min, max, avg)
+    # Drop-off time range (AM: 00:00-11:59, PM: 12:00-23:59)
     if dropoff_times_minutes:
-        min_dropoff = min(dropoff_times_minutes)
-        max_dropoff = max(dropoff_times_minutes)
-        avg_dropoff = sum(dropoff_times_minutes) / len(dropoff_times_minutes)
+        am_dropoffs = [m for m in dropoff_times_minutes if m < 720]  # Before 12:00
+        pm_dropoffs = [m for m in dropoff_times_minutes if m >= 720]  # 12:00 and after
         dropoff_range = {
-            "min": f"{min_dropoff // 60:02d}:{min_dropoff % 60:02d}",
-            "max": f"{max_dropoff // 60:02d}:{max_dropoff % 60:02d}",
-            "avg": f"{int(avg_dropoff) // 60:02d}:{int(avg_dropoff) % 60:02d}",
+            "am": len(am_dropoffs),
+            "pm": len(pm_dropoffs),
         }
     else:
-        dropoff_range = {"min": "N/A", "max": "N/A", "avg": "N/A"}
+        dropoff_range = {"am": 0, "pm": 0}
 
-    # Pick-up time range (min, max, avg)
+    # Pick-up time range (AM: 00:00-11:59, PM: 12:00-23:59)
     if pickup_times_minutes:
-        min_pickup = min(pickup_times_minutes)
-        max_pickup = max(pickup_times_minutes)
-        avg_pickup = sum(pickup_times_minutes) / len(pickup_times_minutes)
+        am_pickups = [m for m in pickup_times_minutes if m < 720]  # Before 12:00
+        pm_pickups = [m for m in pickup_times_minutes if m >= 720]  # 12:00 and after
         pickup_range = {
-            "min": f"{min_pickup // 60:02d}:{min_pickup % 60:02d}",
-            "max": f"{max_pickup // 60:02d}:{max_pickup % 60:02d}",
-            "avg": f"{int(avg_pickup) // 60:02d}:{int(avg_pickup) % 60:02d}",
+            "am": len(am_pickups),
+            "pm": len(pm_pickups),
         }
     else:
-        pickup_range = {"min": "N/A", "max": "N/A", "avg": "N/A"}
+        pickup_range = {"am": 0, "pm": 0}
 
     return {
         "total_bookings": len(all_bookings),

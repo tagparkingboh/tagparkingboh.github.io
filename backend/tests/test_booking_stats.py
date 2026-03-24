@@ -1318,24 +1318,24 @@ class TestTripDurationCalculation:
 
 
 class TestDropoffTimeRange:
-    """Tests for drop-off time range calculation."""
+    """Tests for drop-off time AM/PM range calculation."""
 
-    def test_basic_dropoff_range(self):
-        """Test calculating min/max/avg dropoff times."""
+    def test_basic_dropoff_am_pm_counts(self):
+        """Test counting AM vs PM dropoff times."""
         from datetime import time as dt_time
 
         bookings = [
             create_mock_booking(
                 id=1, status="confirmed",
-                dropoff_time=dt_time(6, 0),   # 06:00 = 360 minutes
+                dropoff_time=dt_time(6, 0),   # 06:00 AM
             ),
             create_mock_booking(
                 id=2, status="confirmed",
-                dropoff_time=dt_time(10, 30),  # 10:30 = 630 minutes
+                dropoff_time=dt_time(10, 30),  # 10:30 AM
             ),
             create_mock_booking(
                 id=3, status="completed",
-                dropoff_time=dt_time(14, 0),   # 14:00 = 840 minutes
+                dropoff_time=dt_time(14, 0),   # 14:00 PM
             ),
         ]
 
@@ -1345,31 +1345,20 @@ class TestDropoffTimeRange:
                 minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
                 dropoff_times_minutes.append(minutes)
 
-        assert dropoff_times_minutes == [360, 630, 840]
+        am_dropoffs = [m for m in dropoff_times_minutes if m < 720]  # Before 12:00
+        pm_dropoffs = [m for m in dropoff_times_minutes if m >= 720]  # 12:00 and after
 
-        min_dropoff = min(dropoff_times_minutes)
-        max_dropoff = max(dropoff_times_minutes)
-        avg_dropoff = sum(dropoff_times_minutes) / len(dropoff_times_minutes)
+        assert len(am_dropoffs) == 2  # 06:00 and 10:30
+        assert len(pm_dropoffs) == 1  # 14:00
 
-        assert min_dropoff == 360   # 06:00
-        assert max_dropoff == 840   # 14:00
-        assert avg_dropoff == 610   # (360 + 630 + 840) / 3 = 610
-
-    def test_dropoff_time_formatting(self):
-        """Test formatting times from minutes to HH:MM."""
-        minutes = 630  # 10:30
-
-        formatted = f"{minutes // 60:02d}:{minutes % 60:02d}"
-
-        assert formatted == "10:30"
-
-    def test_early_morning_dropoff(self):
-        """Test early morning dropoff times."""
+    def test_dropoff_all_am(self):
+        """Test when all dropoffs are in AM."""
         from datetime import time as dt_time
 
         bookings = [
             create_mock_booking(id=1, status="confirmed", dropoff_time=dt_time(4, 30)),
-            create_mock_booking(id=2, status="confirmed", dropoff_time=dt_time(5, 0)),
+            create_mock_booking(id=2, status="confirmed", dropoff_time=dt_time(8, 0)),
+            create_mock_booking(id=3, status="confirmed", dropoff_time=dt_time(11, 59)),
         ]
 
         dropoff_times_minutes = []
@@ -1378,10 +1367,58 @@ class TestDropoffTimeRange:
                 minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
                 dropoff_times_minutes.append(minutes)
 
-        min_dropoff = min(dropoff_times_minutes)
-        formatted_min = f"{min_dropoff // 60:02d}:{min_dropoff % 60:02d}"
+        am_dropoffs = [m for m in dropoff_times_minutes if m < 720]
+        pm_dropoffs = [m for m in dropoff_times_minutes if m >= 720]
 
-        assert formatted_min == "04:30"
+        dropoff_range = {"am": len(am_dropoffs), "pm": len(pm_dropoffs)}
+
+        assert dropoff_range["am"] == 3
+        assert dropoff_range["pm"] == 0
+
+    def test_dropoff_all_pm(self):
+        """Test when all dropoffs are in PM."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_booking(id=1, status="confirmed", dropoff_time=dt_time(12, 0)),
+            create_mock_booking(id=2, status="confirmed", dropoff_time=dt_time(15, 30)),
+            create_mock_booking(id=3, status="confirmed", dropoff_time=dt_time(23, 59)),
+        ]
+
+        dropoff_times_minutes = []
+        for booking in bookings:
+            if booking.dropoff_time:
+                minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+                dropoff_times_minutes.append(minutes)
+
+        am_dropoffs = [m for m in dropoff_times_minutes if m < 720]
+        pm_dropoffs = [m for m in dropoff_times_minutes if m >= 720]
+
+        dropoff_range = {"am": len(am_dropoffs), "pm": len(pm_dropoffs)}
+
+        assert dropoff_range["am"] == 0
+        assert dropoff_range["pm"] == 3
+
+    def test_dropoff_boundary_at_noon(self):
+        """Test that 12:00 is counted as PM."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_booking(id=1, status="confirmed", dropoff_time=dt_time(11, 59)),  # AM
+            create_mock_booking(id=2, status="confirmed", dropoff_time=dt_time(12, 0)),   # PM
+        ]
+
+        dropoff_times_minutes = []
+        for booking in bookings:
+            if booking.dropoff_time:
+                minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+                dropoff_times_minutes.append(minutes)
+
+        am_dropoffs = [m for m in dropoff_times_minutes if m < 720]
+        pm_dropoffs = [m for m in dropoff_times_minutes if m >= 720]
+
+        assert len(am_dropoffs) == 1  # 11:59
+        assert len(pm_dropoffs) == 1  # 12:00
 
     def test_missing_dropoff_times(self):
         """Test that missing dropoff times are excluded."""
@@ -1390,7 +1427,7 @@ class TestDropoffTimeRange:
         bookings = [
             create_mock_booking(id=1, status="confirmed", dropoff_time=dt_time(8, 0)),
             create_mock_booking(id=2, status="confirmed", dropoff_time=None),
-            create_mock_booking(id=3, status="confirmed", dropoff_time=dt_time(12, 0)),
+            create_mock_booking(id=3, status="confirmed", dropoff_time=dt_time(14, 0)),
         ]
 
         dropoff_times_minutes = []
@@ -1401,39 +1438,40 @@ class TestDropoffTimeRange:
 
         assert len(dropoff_times_minutes) == 2
 
-    def test_empty_dropoff_returns_na(self):
-        """Test that empty dropoff times return N/A."""
+    def test_empty_dropoff_returns_zero(self):
+        """Test that empty dropoff times return zero counts."""
         dropoff_times_minutes = []
 
         if dropoff_times_minutes:
-            dropoff_range = {"min": "10:00", "max": "14:00", "avg": "12:00"}
+            am_dropoffs = [m for m in dropoff_times_minutes if m < 720]
+            pm_dropoffs = [m for m in dropoff_times_minutes if m >= 720]
+            dropoff_range = {"am": len(am_dropoffs), "pm": len(pm_dropoffs)}
         else:
-            dropoff_range = {"min": "N/A", "max": "N/A", "avg": "N/A"}
+            dropoff_range = {"am": 0, "pm": 0}
 
-        assert dropoff_range["min"] == "N/A"
-        assert dropoff_range["max"] == "N/A"
-        assert dropoff_range["avg"] == "N/A"
+        assert dropoff_range["am"] == 0
+        assert dropoff_range["pm"] == 0
 
 
 class TestPickupTimeRange:
-    """Tests for pick-up time range calculation."""
+    """Tests for pick-up time AM/PM range calculation."""
 
-    def test_basic_pickup_range(self):
-        """Test calculating min/max/avg pickup times."""
+    def test_basic_pickup_am_pm_counts(self):
+        """Test counting AM vs PM pickup times."""
         from datetime import time as dt_time
 
         bookings = [
             create_mock_booking(
                 id=1, status="confirmed",
-                pickup_time=dt_time(15, 0),   # 15:00 = 900 minutes
+                pickup_time=dt_time(9, 0),    # 09:00 AM
             ),
             create_mock_booking(
                 id=2, status="confirmed",
-                pickup_time=dt_time(18, 30),  # 18:30 = 1110 minutes
+                pickup_time=dt_time(15, 0),   # 15:00 PM
             ),
             create_mock_booking(
                 id=3, status="completed",
-                pickup_time=dt_time(21, 0),   # 21:00 = 1260 minutes
+                pickup_time=dt_time(21, 0),   # 21:00 PM
             ),
         ]
 
@@ -1443,23 +1481,20 @@ class TestPickupTimeRange:
                 minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
                 pickup_times_minutes.append(minutes)
 
-        assert pickup_times_minutes == [900, 1110, 1260]
+        am_pickups = [m for m in pickup_times_minutes if m < 720]
+        pm_pickups = [m for m in pickup_times_minutes if m >= 720]
 
-        min_pickup = min(pickup_times_minutes)
-        max_pickup = max(pickup_times_minutes)
-        avg_pickup = sum(pickup_times_minutes) / len(pickup_times_minutes)
+        assert len(am_pickups) == 1   # 09:00
+        assert len(pm_pickups) == 2   # 15:00 and 21:00
 
-        assert min_pickup == 900   # 15:00
-        assert max_pickup == 1260  # 21:00
-        assert avg_pickup == 1090  # (900 + 1110 + 1260) / 3 = 1090
-
-    def test_late_night_pickup(self):
-        """Test late night pickup times."""
+    def test_pickup_all_pm(self):
+        """Test when all pickups are in PM (common for airport returns)."""
         from datetime import time as dt_time
 
         bookings = [
-            create_mock_booking(id=1, status="confirmed", pickup_time=dt_time(23, 30)),
-            create_mock_booking(id=2, status="confirmed", pickup_time=dt_time(22, 45)),
+            create_mock_booking(id=1, status="confirmed", pickup_time=dt_time(14, 0)),
+            create_mock_booking(id=2, status="confirmed", pickup_time=dt_time(18, 30)),
+            create_mock_booking(id=3, status="confirmed", pickup_time=dt_time(23, 30)),
         ]
 
         pickup_times_minutes = []
@@ -1468,10 +1503,34 @@ class TestPickupTimeRange:
                 minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
                 pickup_times_minutes.append(minutes)
 
-        max_pickup = max(pickup_times_minutes)
-        formatted_max = f"{max_pickup // 60:02d}:{max_pickup % 60:02d}"
+        am_pickups = [m for m in pickup_times_minutes if m < 720]
+        pm_pickups = [m for m in pickup_times_minutes if m >= 720]
 
-        assert formatted_max == "23:30"
+        pickup_range = {"am": len(am_pickups), "pm": len(pm_pickups)}
+
+        assert pickup_range["am"] == 0
+        assert pickup_range["pm"] == 3
+
+    def test_pickup_boundary_at_noon(self):
+        """Test that 12:00 is counted as PM."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_booking(id=1, status="confirmed", pickup_time=dt_time(11, 59)),  # AM
+            create_mock_booking(id=2, status="confirmed", pickup_time=dt_time(12, 0)),   # PM
+        ]
+
+        pickup_times_minutes = []
+        for booking in bookings:
+            if booking.pickup_time:
+                minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+                pickup_times_minutes.append(minutes)
+
+        am_pickups = [m for m in pickup_times_minutes if m < 720]
+        pm_pickups = [m for m in pickup_times_minutes if m >= 720]
+
+        assert len(am_pickups) == 1   # 11:59
+        assert len(pm_pickups) == 1   # 12:00
 
     def test_missing_pickup_times(self):
         """Test that missing pickup times are excluded."""
@@ -1490,6 +1549,20 @@ class TestPickupTimeRange:
 
         assert len(pickup_times_minutes) == 1
 
+    def test_empty_pickup_returns_zero(self):
+        """Test that empty pickup times return zero counts."""
+        pickup_times_minutes = []
+
+        if pickup_times_minutes:
+            am_pickups = [m for m in pickup_times_minutes if m < 720]
+            pm_pickups = [m for m in pickup_times_minutes if m >= 720]
+            pickup_range = {"am": len(am_pickups), "pm": len(pm_pickups)}
+        else:
+            pickup_range = {"am": 0, "pm": 0}
+
+        assert pickup_range["am"] == 0
+        assert pickup_range["pm"] == 0
+
 
 class TestTripInsightsResponseFormat:
     """Tests for trip insights in API response format."""
@@ -1501,14 +1574,12 @@ class TestTripInsightsResponseFormat:
             "total_successful": 80,
             "avg_trip_duration": 7.5,
             "dropoff_range": {
-                "min": "06:00",
-                "max": "14:00",
-                "avg": "09:30",
+                "am": 25,
+                "pm": 55,
             },
             "pickup_range": {
-                "min": "15:00",
-                "max": "22:00",
-                "avg": "18:00",
+                "am": 10,
+                "pm": 70,
             },
         }
 
@@ -1516,13 +1587,11 @@ class TestTripInsightsResponseFormat:
         assert "dropoff_range" in response
         assert "pickup_range" in response
 
-        assert "min" in response["dropoff_range"]
-        assert "max" in response["dropoff_range"]
-        assert "avg" in response["dropoff_range"]
+        assert "am" in response["dropoff_range"]
+        assert "pm" in response["dropoff_range"]
 
-        assert "min" in response["pickup_range"]
-        assert "max" in response["pickup_range"]
-        assert "avg" in response["pickup_range"]
+        assert "am" in response["pickup_range"]
+        assert "pm" in response["pickup_range"]
 
     def test_trip_duration_is_numeric(self):
         """Test that avg_trip_duration is a number."""
@@ -1530,29 +1599,25 @@ class TestTripInsightsResponseFormat:
 
         assert isinstance(avg_trip_duration, (int, float))
 
-    def test_time_range_format(self):
-        """Test that time ranges are in HH:MM format."""
-        dropoff_range = {
-            "min": "06:00",
-            "max": "14:00",
-            "avg": "09:30",
-        }
+    def test_am_pm_counts_are_integers(self):
+        """Test that AM/PM counts are integers."""
+        dropoff_range = {"am": 25, "pm": 55}
+        pickup_range = {"am": 10, "pm": 70}
 
-        # Check format with regex
-        import re
-        time_pattern = r"^\d{2}:\d{2}$"
+        assert isinstance(dropoff_range["am"], int)
+        assert isinstance(dropoff_range["pm"], int)
+        assert isinstance(pickup_range["am"], int)
+        assert isinstance(pickup_range["pm"], int)
 
-        assert re.match(time_pattern, dropoff_range["min"])
-        assert re.match(time_pattern, dropoff_range["max"])
-        assert re.match(time_pattern, dropoff_range["avg"])
+    def test_zero_values_when_no_data(self):
+        """Test zero values when no time data exists."""
+        dropoff_range = {"am": 0, "pm": 0}
+        pickup_range = {"am": 0, "pm": 0}
 
-    def test_na_values_when_no_data(self):
-        """Test N/A values when no time data exists."""
-        dropoff_range = {"min": "N/A", "max": "N/A", "avg": "N/A"}
-        pickup_range = {"min": "N/A", "max": "N/A", "avg": "N/A"}
-
-        assert dropoff_range["min"] == "N/A"
-        assert pickup_range["avg"] == "N/A"
+        assert dropoff_range["am"] == 0
+        assert dropoff_range["pm"] == 0
+        assert pickup_range["am"] == 0
+        assert pickup_range["pm"] == 0
 
 
 class TestTripInsightsEdgeCases:
@@ -1587,9 +1652,9 @@ class TestTripInsightsEdgeCases:
             create_mock_booking(
                 id=1, status="confirmed",
                 dropoff_date=date(2026, 3, 1),
-                dropoff_time=dt_time(8, 0),
+                dropoff_time=dt_time(8, 0),   # AM
                 pickup_date=date(2026, 3, 5),
-                pickup_time=dt_time(16, 30),
+                pickup_time=dt_time(16, 30),  # PM
             ),
         ]
 
@@ -1611,20 +1676,23 @@ class TestTripInsightsEdgeCases:
                 minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
                 pickup_times_minutes.append(minutes)
 
-        # For single booking, min = max = avg
         assert trip_durations == [4]
-        assert dropoff_times_minutes == [480]  # 08:00
-        assert pickup_times_minutes == [990]   # 16:30
+        assert dropoff_times_minutes == [480]  # 08:00 AM
+        assert pickup_times_minutes == [990]   # 16:30 PM
 
-        avg_duration = round(sum(trip_durations) / len(trip_durations), 1)
-        min_dropoff = min(dropoff_times_minutes)
-        max_dropoff = max(dropoff_times_minutes)
+        # Check AM/PM categorization
+        am_dropoffs = [m for m in dropoff_times_minutes if m < 720]
+        pm_dropoffs = [m for m in dropoff_times_minutes if m >= 720]
+        am_pickups = [m for m in pickup_times_minutes if m < 720]
+        pm_pickups = [m for m in pickup_times_minutes if m >= 720]
 
-        assert avg_duration == 4.0
-        assert min_dropoff == max_dropoff == 480
+        assert len(am_dropoffs) == 1  # 08:00 is AM
+        assert len(pm_dropoffs) == 0
+        assert len(am_pickups) == 0
+        assert len(pm_pickups) == 1   # 16:30 is PM
 
-    def test_midnight_times(self):
-        """Test handling of midnight (00:00) times."""
+    def test_midnight_times_are_am(self):
+        """Test that midnight (00:00) is counted as AM."""
         from datetime import time as dt_time
 
         bookings = [
@@ -1646,11 +1714,12 @@ class TestTripInsightsEdgeCases:
         assert dropoff_times_minutes == [0]  # 00:00 = 0 minutes
         assert pickup_times_minutes == [0]
 
-        formatted = f"{0 // 60:02d}:{0 % 60:02d}"
-        assert formatted == "00:00"
+        # 00:00 should be AM (< 720)
+        am_dropoffs = [m for m in dropoff_times_minutes if m < 720]
+        assert len(am_dropoffs) == 1
 
-    def test_23_59_times(self):
-        """Test handling of 23:59 times."""
+    def test_23_59_times_are_pm(self):
+        """Test that 23:59 is counted as PM."""
         from datetime import time as dt_time
 
         bookings = [
@@ -1665,9 +1734,9 @@ class TestTripInsightsEdgeCases:
 
         assert pickup_times_minutes == [1439]  # 23*60 + 59
 
-        max_pickup = max(pickup_times_minutes)
-        formatted = f"{max_pickup // 60:02d}:{max_pickup % 60:02d}"
-        assert formatted == "23:59"
+        # 23:59 should be PM (>= 720)
+        pm_pickups = [m for m in pickup_times_minutes if m >= 720]
+        assert len(pm_pickups) == 1
 
 
 # =============================================================================
