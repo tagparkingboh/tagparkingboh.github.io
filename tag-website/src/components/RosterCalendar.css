@@ -1443,7 +1443,7 @@
 
 .blocked-date-form .checkbox-label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   color: #ccc;
   cursor: pointer;
@@ -1452,6 +1452,8 @@
 .blocked-date-form .checkbox-label input[type="checkbox"] {
   width: 18px;
   height: 18px;
+  margin-top: 2px;
+  flex-shrink: 0;
   accent-color: #D9FF00;
 }
 
@@ -1530,7 +1532,7 @@
 }
 
 .time-slots-description {
-  color: #888;
+  color: #333333;
   font-size: 0.85rem;
   margin: 0 0 15px 0;
   line-height: 1.4;
