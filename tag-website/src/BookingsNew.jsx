@@ -431,6 +431,26 @@ function Bookings() {
     return checkMins >= startMins && checkMins < endMins
   }
 
+  // Get the actual dropoff time from selected slot
+  const getActualDropoffTime = useMemo(() => {
+    if (!manualDepartureData.dropoffSlot || !manualDepartureData.flightTime) return null
+    if (!isValidTimeFormat(manualDepartureData.flightTime)) return null
+
+    const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
+    const departureMinutes = hours * 60 + minutes
+    const slotMinutesBefore = parseInt(manualDepartureData.dropoffSlot, 10)
+
+    if (isNaN(slotMinutesBefore)) return null
+
+    const dropoffMinutes = departureMinutes - slotMinutesBefore
+    const dropoffHours = Math.floor(dropoffMinutes / 60)
+    const dropoffMins = dropoffMinutes % 60
+
+    if (dropoffHours < 0 || dropoffHours > 23) return null
+
+    return `${String(dropoffHours).padStart(2, '0')}:${String(dropoffMins).padStart(2, '0')}`
+  }, [manualDepartureData.dropoffSlot, manualDepartureData.flightTime])
+
   // Check if a date/time is blocked for drop-offs
   const isDropoffDateBlocked = useMemo(() => {
     if (!formData.dropoffDate || blockedDates.length === 0) return false
@@ -445,7 +465,7 @@ function Bookings() {
 
     // If blocked date has time slots, check against those
     if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
-      const dropoffTime = manualDepartureData.dropoffSlot
+      const dropoffTime = getActualDropoffTime
       if (!dropoffTime) {
         // No time selected yet - check if ANY slot blocks dropoffs
         return blockedDate.time_slots.some(slot => slot.block_dropoffs)
@@ -458,7 +478,7 @@ function Bookings() {
 
     // No time slots - use full day blocking
     return blockedDate.block_dropoffs
-  }, [formData.dropoffDate, blockedDates, manualDepartureData.dropoffSlot])
+  }, [formData.dropoffDate, blockedDates, getActualDropoffTime])
 
   // Check if a date/time is blocked for pick-ups
   const isPickupDateBlocked = useMemo(() => {
@@ -2319,7 +2339,7 @@ function Bookings() {
                 {isDropoffDateBlocked && formData.dropoffDate && (
                   <div className="blocked-date-message">
                     {(() => {
-                      const blockedInfo = getBlockedDateInfo(formData.dropoffDate, true, manualDepartureData.dropoffSlot)
+                      const blockedInfo = getBlockedDateInfo(formData.dropoffDate, true, getActualDropoffTime)
                       if (blockedInfo?.blocked_slot) {
                         return (
                           <p>
