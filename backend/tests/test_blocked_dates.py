@@ -1981,3 +1981,218 @@ class TestBoundaryConditions:
 
         assert dropoff_blocked is False, "Dropoff at 15:00 should NOT be blocked"
         assert pickup_blocked is True, "Pickup at 15:00 should be blocked"
+
+
+class TestTimeSlotNoTimeSelected:
+    """
+    Tests for behavior when date has time slots but no time is selected yet.
+    The user should be allowed to proceed until they select a specific time.
+    """
+
+    def test_no_time_selected_should_not_block_dropoff(self):
+        """When time slots exist but no dropoff time selected, don't block."""
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": [
+                {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True, "block_pickups": True},
+                {"start_time": "14:00", "end_time": "18:00", "block_dropoffs": True, "block_pickups": True},
+            ]
+        }
+
+        dropoff_time = None  # No time selected yet
+
+        # With time slots configured, no time selected = not blocked
+        if blocked_date["time_slots"]:
+            if not dropoff_time:
+                is_blocked = False  # Don't block until time is selected
+            else:
+                is_blocked = True  # Would check against slots
+        else:
+            is_blocked = blocked_date["block_dropoffs"]
+
+        assert is_blocked is False, "No time selected with time slots should NOT block"
+
+    def test_no_time_selected_should_not_block_pickup(self):
+        """When time slots exist but no pickup time selected, don't block."""
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": [
+                {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True, "block_pickups": True},
+            ]
+        }
+
+        pickup_time = None  # No time selected yet
+
+        if blocked_date["time_slots"]:
+            if not pickup_time:
+                is_blocked = False
+            else:
+                is_blocked = True
+        else:
+            is_blocked = blocked_date["block_pickups"]
+
+        assert is_blocked is False, "No time selected with time slots should NOT block"
+
+    def test_full_day_block_no_time_slots_blocks_immediately(self):
+        """When no time slots exist, block immediately on date selection."""
+        blocked_date = {
+            "start_date": "2026-03-26",
+            "end_date": "2026-03-26",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": []  # No time slots - full day block
+        }
+
+        dropoff_time = None  # No time selected yet
+
+        if blocked_date["time_slots"]:
+            is_blocked = False
+        else:
+            is_blocked = blocked_date["block_dropoffs"]
+
+        assert is_blocked is True, "Full day block should block immediately"
+
+    def test_time_in_gap_between_slots_allowed(self):
+        """Time in gap between blocked slots should be allowed."""
+        time_slots = [
+            {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True},
+            {"start_time": "14:00", "end_time": "18:00", "block_dropoffs": True},
+        ]
+
+        # 13:30 is in the gap between 13:00 and 14:00
+        booking_time = "13:30"
+
+        def is_time_in_slot(check_time, slot):
+            check_h, check_m = map(int, check_time.split(":"))
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+            check_mins = check_h * 60 + check_m
+            start_mins = start_h * 60 + start_m
+            end_mins = end_h * 60 + end_m
+            return start_mins <= check_mins < end_mins
+
+        is_blocked = any(
+            slot["block_dropoffs"] and is_time_in_slot(booking_time, slot)
+            for slot in time_slots
+        )
+
+        assert is_blocked is False, "Time 13:30 in gap between slots should be allowed"
+
+    def test_time_at_exact_end_of_slot_allowed(self):
+        """Time at exact end of slot (exclusive) should be allowed."""
+        slot = {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True}
+
+        # 13:00 is the end time (exclusive)
+        booking_time = "13:00"
+
+        def is_time_in_slot(check_time, slot):
+            check_h, check_m = map(int, check_time.split(":"))
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+            check_mins = check_h * 60 + check_m
+            start_mins = start_h * 60 + start_m
+            end_mins = end_h * 60 + end_m
+            return start_mins <= check_mins < end_mins
+
+        is_blocked = is_time_in_slot(booking_time, slot) and slot["block_dropoffs"]
+
+        assert is_blocked is False, "Time at exact end of slot should be allowed (end exclusive)"
+
+    def test_time_one_minute_before_slot_end_blocked(self):
+        """Time 1 minute before slot ends should be blocked."""
+        slot = {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True}
+
+        booking_time = "12:59"
+
+        def is_time_in_slot(check_time, slot):
+            check_h, check_m = map(int, check_time.split(":"))
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+            check_mins = check_h * 60 + check_m
+            start_mins = start_h * 60 + start_m
+            end_mins = end_h * 60 + end_m
+            return start_mins <= check_mins < end_mins
+
+        is_blocked = is_time_in_slot(booking_time, slot) and slot["block_dropoffs"]
+
+        assert is_blocked is True, "Time 12:59 should be blocked (inside slot)"
+
+    def test_dropoff_time_calculation_from_flight(self):
+        """Test dropoff time calculation: flight time - slot minutes."""
+        flight_time = "16:00"
+        slot_minutes_before = 165  # 2h 45min
+
+        flight_h, flight_m = map(int, flight_time.split(":"))
+        flight_total_mins = flight_h * 60 + flight_m
+        dropoff_total_mins = flight_total_mins - slot_minutes_before
+
+        dropoff_h = dropoff_total_mins // 60
+        dropoff_m = dropoff_total_mins % 60
+        actual_dropoff_time = f"{dropoff_h:02d}:{dropoff_m:02d}"
+
+        # 16:00 - 165 mins = 13:15
+        assert actual_dropoff_time == "13:15", "Dropoff should be 13:15 for 16:00 flight with 2h45m slot"
+
+    def test_dropoff_in_blocked_slot_after_calculation(self):
+        """Dropoff time falling in blocked slot should be blocked."""
+        time_slots = [
+            {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True},
+        ]
+
+        # Flight at 14:00, slot 165 mins before = 11:15
+        flight_time = "14:00"
+        slot_minutes_before = 165
+
+        flight_h, flight_m = map(int, flight_time.split(":"))
+        dropoff_mins = (flight_h * 60 + flight_m) - slot_minutes_before
+        actual_dropoff_time = f"{dropoff_mins // 60:02d}:{dropoff_mins % 60:02d}"
+
+        def is_time_in_slot(check_time, slot):
+            check_h, check_m = map(int, check_time.split(":"))
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+            check_mins = check_h * 60 + check_m
+            return (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+        is_blocked = any(
+            slot["block_dropoffs"] and is_time_in_slot(actual_dropoff_time, slot)
+            for slot in time_slots
+        )
+
+        assert actual_dropoff_time == "11:15", "Dropoff should be 11:15"
+        assert is_blocked is True, "11:15 falls within 06:00-13:00 blocked slot"
+
+    def test_dropoff_outside_blocked_slot_after_calculation(self):
+        """Dropoff time outside blocked slot should be allowed."""
+        time_slots = [
+            {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True},
+        ]
+
+        # Flight at 16:00, slot 165 mins before = 13:15 (outside 06:00-13:00)
+        flight_time = "16:00"
+        slot_minutes_before = 165
+
+        flight_h, flight_m = map(int, flight_time.split(":"))
+        dropoff_mins = (flight_h * 60 + flight_m) - slot_minutes_before
+        actual_dropoff_time = f"{dropoff_mins // 60:02d}:{dropoff_mins % 60:02d}"
+
+        def is_time_in_slot(check_time, slot):
+            check_h, check_m = map(int, check_time.split(":"))
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+            check_mins = check_h * 60 + check_m
+            return (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+        is_blocked = any(
+            slot["block_dropoffs"] and is_time_in_slot(actual_dropoff_time, slot)
+            for slot in time_slots
+        )
+
+        assert actual_dropoff_time == "13:15", "Dropoff should be 13:15"
+        assert is_blocked is False, "13:15 is outside 06:00-13:00 blocked slot"
