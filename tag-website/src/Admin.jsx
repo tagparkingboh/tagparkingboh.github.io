@@ -6222,6 +6222,40 @@ function Admin() {
                       </div>
                     </div>
 
+                    {/* Trip Insights */}
+                    <div className="trip-insights-section">
+                      <h3>Trip Insights</h3>
+                      <div className="trip-insights-grid">
+                        <div className="trip-insight-card">
+                          <span className="trip-insight-icon">📊</span>
+                          <div className="trip-insight-content">
+                            <span className="trip-insight-label">Avg Trip Duration</span>
+                            <span className="trip-insight-value">{bookingStats.avg_trip_duration || 0} days</span>
+                          </div>
+                        </div>
+                        <div className="trip-insight-card">
+                          <span className="trip-insight-icon">🚗</span>
+                          <div className="trip-insight-content">
+                            <span className="trip-insight-label">Drop-off Time Range</span>
+                            <span className="trip-insight-value">{bookingStats.dropoff_range?.avg || 'N/A'}</span>
+                            <span className="trip-insight-detail">
+                              {bookingStats.dropoff_range?.min || 'N/A'} - {bookingStats.dropoff_range?.max || 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="trip-insight-card">
+                          <span className="trip-insight-icon">✈️</span>
+                          <div className="trip-insight-content">
+                            <span className="trip-insight-label">Pick-up Time Range</span>
+                            <span className="trip-insight-value">{bookingStats.pickup_range?.avg || 'N/A'}</span>
+                            <span className="trip-insight-detail">
+                              {bookingStats.pickup_range?.min || 'N/A'} - {bookingStats.pickup_range?.max || 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Fun Facts */}
                     {funFacts && (
                       <div className="fun-facts-section">
