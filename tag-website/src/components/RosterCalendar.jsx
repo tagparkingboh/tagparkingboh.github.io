@@ -1180,8 +1180,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
           </div>
 
           <div className="detail-content">
-            {/* Blocked Date Section */}
-            {selectedDateBlockedInfo && isAdmin && (
+            {/* Blocked Date Section - visible to all users, but edit/delete only for admins */}
+            {selectedDateBlockedInfo && (
               <div className="blocked-dates-section">
                 <h4>🚫 Date Blocked</h4>
                 <div className="blocked-date-info">
@@ -1217,20 +1217,22 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                       Reason: {selectedDateBlockedInfo.reason}
                     </div>
                   )}
-                  <div className="blocked-date-actions">
-                    <button
-                      className="blocked-date-edit-btn"
-                      onClick={() => openEditBlockedDateModal(selectedDateBlockedInfo)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="blocked-date-delete-btn"
-                      onClick={() => deleteBlockedDate(selectedDateBlockedInfo.id)}
-                    >
-                      Unblock
-                    </button>
-                  </div>
+                  {isAdmin && (
+                    <div className="blocked-date-actions">
+                      <button
+                        className="blocked-date-edit-btn"
+                        onClick={() => openEditBlockedDateModal(selectedDateBlockedInfo)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="blocked-date-delete-btn"
+                        onClick={() => deleteBlockedDate(selectedDateBlockedInfo.id)}
+                      >
+                        Unblock
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
