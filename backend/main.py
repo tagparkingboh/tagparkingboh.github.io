@@ -1231,47 +1231,31 @@ async def get_booking_stats(
     # Calculate averages
     avg_trip_duration = round(sum(trip_durations) / len(trip_durations), 1) if trip_durations else 0
 
-    # Helper function to find top N busiest 1-hour windows using sliding window
+    # Helper function to find top N busiest hours using fixed hourly buckets
+    # Each booking is counted in exactly one bucket (00:00-01:00, 01:00-02:00, etc.)
     def find_top_busiest_hours(times_minutes, top_n=3):
         if not times_minutes:
             return []
 
-        sorted_times = sorted(times_minutes)
-        # Calculate count for each unique start time
+        # Count bookings in each fixed hourly bucket (0-23)
+        hour_buckets = {}
+        for time_min in times_minutes:
+            hour = time_min // 60  # Get the hour (0-23)
+            hour_buckets[hour] = hour_buckets.get(hour, 0) + 1
+
+        # Convert to list of dicts with formatted times
         hour_counts = []
-
-        for i, start_time in enumerate(sorted_times):
-            end_time = start_time + 60
-            count = sum(1 for t in sorted_times[i:] if t < end_time)
-
-            # Convert minutes back to HH:MM format
-            start_hour = start_time // 60
-            start_min = start_time % 60
-            end_minutes = start_time + 60
-            end_hour = end_minutes // 60
-            end_min = end_minutes % 60
-
-            # Handle overflow past midnight
-            if end_hour >= 24:
-                end_hour = end_hour % 24
-
+        for hour, count in hour_buckets.items():
+            end_hour = (hour + 1) % 24
             hour_counts.append({
-                "start": f"{start_hour:02d}:{start_min:02d}",
-                "end": f"{end_hour:02d}:{end_min:02d}",
+                "start": f"{hour:02d}:00",
+                "end": f"{end_hour:02d}:00",
                 "count": count
             })
 
-        # Sort by count descending and remove duplicates (same start time)
-        seen_starts = set()
-        unique_hours = []
-        for h in sorted(hour_counts, key=lambda x: x["count"], reverse=True):
-            if h["start"] not in seen_starts:
-                seen_starts.add(h["start"])
-                unique_hours.append(h)
-                if len(unique_hours) >= top_n:
-                    break
-
-        return unique_hours
+        # Sort by count descending and return top N
+        hour_counts.sort(key=lambda x: x["count"], reverse=True)
+        return hour_counts[:top_n]
 
     # Drop-off time range (AM: 00:00-11:59, PM: 12:00-23:59)
     if dropoff_times_minutes:
