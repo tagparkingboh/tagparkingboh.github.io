@@ -39,7 +39,7 @@ def log_promo(message: str, data: dict = None):
             print(f"[PROMO {timestamp}] {message}")
 
 
-from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends
+from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
@@ -10063,21 +10063,240 @@ async def delete_blocked_date(
     return {"success": True, "message": "Blocked date deleted"}
 
 
+# =====================================================
+# BLOCKED TIME SLOTS ENDPOINTS (Admin)
+# =====================================================
+
+@app.get("/api/admin/blocked-dates/{blocked_date_id}/time-slots")
+async def get_blocked_time_slots(
+    blocked_date_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Get all time slots for a blocked date."""
+    from db_models import BlockedDate, BlockedTimeSlot
+
+    blocked_date = db.query(BlockedDate).filter(BlockedDate.id == blocked_date_id).first()
+    if not blocked_date:
+        raise HTTPException(status_code=404, detail="Blocked date not found")
+
+    time_slots = db.query(BlockedTimeSlot).filter(
+        BlockedTimeSlot.blocked_date_id == blocked_date_id
+    ).order_by(BlockedTimeSlot.start_time).all()
+
+    return {
+        "blocked_date_id": blocked_date_id,
+        "time_slots": [
+            {
+                "id": ts.id,
+                "start_time": ts.start_time.strftime("%H:%M") if ts.start_time else None,
+                "end_time": ts.end_time.strftime("%H:%M") if ts.end_time else None,
+                "block_dropoffs": ts.block_dropoffs,
+                "block_pickups": ts.block_pickups,
+                "reason": ts.reason,
+                "created_at": ts.created_at.isoformat() if ts.created_at else None,
+            }
+            for ts in time_slots
+        ],
+    }
+
+
+@app.post("/api/admin/blocked-dates/{blocked_date_id}/time-slots")
+async def create_blocked_time_slot(
+    blocked_date_id: int,
+    start_time: str = Body(...),
+    end_time: str = Body(...),
+    block_dropoffs: bool = Body(True),
+    block_pickups: bool = Body(True),
+    reason: Optional[str] = Body(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Create a new time slot for a blocked date."""
+    from db_models import BlockedDate, BlockedTimeSlot
+    from datetime import time
+
+    blocked_date = db.query(BlockedDate).filter(BlockedDate.id == blocked_date_id).first()
+    if not blocked_date:
+        raise HTTPException(status_code=404, detail="Blocked date not found")
+
+    # Parse times
+    try:
+        start_h, start_m = map(int, start_time.split(":"))
+        end_h, end_m = map(int, end_time.split(":"))
+        start_t = time(start_h, start_m)
+        end_t = time(end_h, end_m)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
+
+    if start_t >= end_t:
+        raise HTTPException(status_code=400, detail="Start time must be before end time")
+
+    if not block_dropoffs and not block_pickups:
+        raise HTTPException(status_code=400, detail="Must block at least drop-offs or pick-ups")
+
+    # Check for overlapping time slots
+    existing = db.query(BlockedTimeSlot).filter(
+        BlockedTimeSlot.blocked_date_id == blocked_date_id,
+        BlockedTimeSlot.start_time < end_t,
+        BlockedTimeSlot.end_time > start_t
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Time slot overlaps with existing slot ({existing.start_time.strftime('%H:%M')}-{existing.end_time.strftime('%H:%M')})"
+        )
+
+    new_slot = BlockedTimeSlot(
+        blocked_date_id=blocked_date_id,
+        start_time=start_t,
+        end_time=end_t,
+        block_dropoffs=block_dropoffs,
+        block_pickups=block_pickups,
+        reason=reason,
+    )
+
+    db.add(new_slot)
+    db.commit()
+    db.refresh(new_slot)
+
+    return {
+        "success": True,
+        "time_slot": {
+            "id": new_slot.id,
+            "blocked_date_id": blocked_date_id,
+            "start_time": new_slot.start_time.strftime("%H:%M"),
+            "end_time": new_slot.end_time.strftime("%H:%M"),
+            "block_dropoffs": new_slot.block_dropoffs,
+            "block_pickups": new_slot.block_pickups,
+            "reason": new_slot.reason,
+        },
+    }
+
+
+@app.put("/api/admin/blocked-time-slots/{time_slot_id}")
+async def update_blocked_time_slot(
+    time_slot_id: int,
+    start_time: Optional[str] = Body(None),
+    end_time: Optional[str] = Body(None),
+    block_dropoffs: Optional[bool] = Body(None),
+    block_pickups: Optional[bool] = Body(None),
+    reason: Optional[str] = Body(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Update an existing time slot."""
+    from db_models import BlockedTimeSlot
+    from datetime import time
+
+    slot = db.query(BlockedTimeSlot).filter(BlockedTimeSlot.id == time_slot_id).first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Time slot not found")
+
+    # Parse and update times
+    new_start = slot.start_time
+    new_end = slot.end_time
+
+    if start_time:
+        try:
+            h, m = map(int, start_time.split(":"))
+            new_start = time(h, m)
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=400, detail="Invalid start time format. Use HH:MM")
+
+    if end_time:
+        try:
+            h, m = map(int, end_time.split(":"))
+            new_end = time(h, m)
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=400, detail="Invalid end time format. Use HH:MM")
+
+    if new_start >= new_end:
+        raise HTTPException(status_code=400, detail="Start time must be before end time")
+
+    # Check for overlapping time slots (excluding self)
+    existing = db.query(BlockedTimeSlot).filter(
+        BlockedTimeSlot.blocked_date_id == slot.blocked_date_id,
+        BlockedTimeSlot.id != time_slot_id,
+        BlockedTimeSlot.start_time < new_end,
+        BlockedTimeSlot.end_time > new_start
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Time slot overlaps with existing slot ({existing.start_time.strftime('%H:%M')}-{existing.end_time.strftime('%H:%M')})"
+        )
+
+    # Update fields
+    slot.start_time = new_start
+    slot.end_time = new_end
+
+    if block_dropoffs is not None:
+        slot.block_dropoffs = block_dropoffs
+    if block_pickups is not None:
+        slot.block_pickups = block_pickups
+    if reason is not None:
+        slot.reason = reason
+
+    # Validate at least one is blocked
+    if not slot.block_dropoffs and not slot.block_pickups:
+        raise HTTPException(status_code=400, detail="Must block at least drop-offs or pick-ups")
+
+    db.commit()
+    db.refresh(slot)
+
+    return {
+        "success": True,
+        "time_slot": {
+            "id": slot.id,
+            "blocked_date_id": slot.blocked_date_id,
+            "start_time": slot.start_time.strftime("%H:%M"),
+            "end_time": slot.end_time.strftime("%H:%M"),
+            "block_dropoffs": slot.block_dropoffs,
+            "block_pickups": slot.block_pickups,
+            "reason": slot.reason,
+        },
+    }
+
+
+@app.delete("/api/admin/blocked-time-slots/{time_slot_id}")
+async def delete_blocked_time_slot(
+    time_slot_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Delete a time slot."""
+    from db_models import BlockedTimeSlot
+
+    slot = db.query(BlockedTimeSlot).filter(BlockedTimeSlot.id == time_slot_id).first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Time slot not found")
+
+    db.delete(slot)
+    db.commit()
+
+    return {"success": True, "message": "Time slot deleted"}
+
+
 @app.get("/api/blocked-dates/check")
 async def check_blocked_date(
     dropoff_date: Optional[str] = None,
     pickup_date: Optional[str] = None,
+    dropoff_time: Optional[str] = None,
+    pickup_time: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """
-    Check if a date is blocked for bookings (public endpoint).
+    Check if a date/time is blocked for bookings (public endpoint).
     Returns blocking info for the specified dates.
     If date_from and date_to are provided, returns all blocked dates in that range.
+    If time is provided, checks against specific time slots.
     All dates are in UK timezone.
     """
-    from db_models import BlockedDate
+    from db_models import BlockedDate, BlockedTimeSlot
+    from datetime import time
 
     result = {
         "dropoff_blocked": False,
@@ -10087,7 +10306,7 @@ async def check_blocked_date(
         "blocked_dates": [],
     }
 
-    # If date range provided, return all blocked dates in that range
+    # If date range provided, return all blocked dates in that range (with time slots)
     if date_from and date_to:
         from_date = parse_blocked_date(date_from)
         to_date = parse_blocked_date(date_to)
@@ -10105,34 +10324,90 @@ async def check_blocked_date(
                 "block_dropoffs": bd.block_dropoffs,
                 "block_pickups": bd.block_pickups,
                 "reason": bd.reason,
+                "time_slots": [
+                    {
+                        "id": ts.id,
+                        "start_time": ts.start_time.strftime("%H:%M") if ts.start_time else None,
+                        "end_time": ts.end_time.strftime("%H:%M") if ts.end_time else None,
+                        "block_dropoffs": ts.block_dropoffs,
+                        "block_pickups": ts.block_pickups,
+                        "reason": ts.reason,
+                    }
+                    for ts in bd.time_slots
+                ],
             }
             for bd in blocked_dates
         ]
         return result
 
+    # Helper to check if a time falls within any blocked time slot
+    def is_time_blocked(blocked_date, check_time_str, check_type):
+        """
+        Check if a specific time is blocked.
+        - If no time slots exist, use the blocked_date's block settings
+        - If time slots exist, check if the time falls within any slot
+        """
+        if not blocked_date.time_slots:
+            # No time slots - entire day is blocked based on blocked_date settings
+            if check_type == "dropoff":
+                return blocked_date.block_dropoffs, blocked_date.reason
+            else:
+                return blocked_date.block_pickups, blocked_date.reason
+
+        # Time slots exist - check if the time falls within any
+        if not check_time_str:
+            # No time provided but time slots exist - check if any slot blocks this type
+            for ts in blocked_date.time_slots:
+                if check_type == "dropoff" and ts.block_dropoffs:
+                    return True, ts.reason or blocked_date.reason
+                if check_type == "pickup" and ts.block_pickups:
+                    return True, ts.reason or blocked_date.reason
+            return False, None
+
+        # Parse the time
+        try:
+            h, m = map(int, check_time_str.split(":"))
+            check_time = time(h, m)
+        except (ValueError, AttributeError):
+            return False, None
+
+        # Check each time slot
+        for ts in blocked_date.time_slots:
+            if ts.start_time <= check_time < ts.end_time:
+                if check_type == "dropoff" and ts.block_dropoffs:
+                    return True, ts.reason or blocked_date.reason
+                if check_type == "pickup" and ts.block_pickups:
+                    return True, ts.reason or blocked_date.reason
+
+        return False, None
+
     if dropoff_date:
         d_date = parse_blocked_date(dropoff_date)
-        # Find any blocked date that covers this date and blocks dropoffs
+        # Find any blocked date that covers this date
         blocked = db.query(BlockedDate).filter(
             BlockedDate.start_date <= d_date,
-            BlockedDate.end_date >= d_date,
-            BlockedDate.block_dropoffs == True
+            BlockedDate.end_date >= d_date
         ).first()
+
         if blocked:
-            result["dropoff_blocked"] = True
-            result["dropoff_reason"] = blocked.reason
+            is_blocked, reason = is_time_blocked(blocked, dropoff_time, "dropoff")
+            if is_blocked:
+                result["dropoff_blocked"] = True
+                result["dropoff_reason"] = reason
 
     if pickup_date:
         p_date = parse_blocked_date(pickup_date)
-        # Find any blocked date that covers this date and blocks pickups
+        # Find any blocked date that covers this date
         blocked = db.query(BlockedDate).filter(
             BlockedDate.start_date <= p_date,
-            BlockedDate.end_date >= p_date,
-            BlockedDate.block_pickups == True
+            BlockedDate.end_date >= p_date
         ).first()
+
         if blocked:
-            result["pickup_blocked"] = True
-            result["pickup_reason"] = blocked.reason
+            is_blocked, reason = is_time_blocked(blocked, pickup_time, "pickup")
+            if is_blocked:
+                result["pickup_blocked"] = True
+                result["pickup_reason"] = reason
 
     return result
 

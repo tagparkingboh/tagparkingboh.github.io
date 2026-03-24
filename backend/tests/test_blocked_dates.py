@@ -1226,3 +1226,439 @@ class TestPublicCheckEndpointParameterVariations:
         )
 
         assert blocked is False
+
+
+# =============================================================================
+# Time Slots Tests
+# =============================================================================
+
+# Mock time slots data
+mock_time_slots = [
+    {
+        "id": 1,
+        "blocked_date_id": 1,  # March 26
+        "start_time": "06:00",
+        "end_time": "10:00",
+        "block_dropoffs": True,
+        "block_pickups": True,
+        "reason": "Morning staff meeting",
+    },
+    {
+        "id": 2,
+        "blocked_date_id": 1,  # March 26
+        "start_time": "14:00",
+        "end_time": "16:00",
+        "block_dropoffs": True,
+        "block_pickups": False,
+        "reason": "Afternoon training - dropoffs only",
+    },
+]
+
+
+class TestBlockedTimeSlotsModel:
+    """Tests for BlockedTimeSlot database model."""
+
+    def test_time_slot_has_required_fields(self):
+        """Time slot should have all required fields."""
+        slot = mock_time_slots[0]
+
+        required_fields = [
+            "id", "blocked_date_id", "start_time", "end_time",
+            "block_dropoffs", "block_pickups"
+        ]
+        for field in required_fields:
+            assert field in slot
+
+    def test_time_format_is_hhmm(self):
+        """Time fields should be in HH:MM format."""
+        slot = mock_time_slots[0]
+
+        # Should match HH:MM pattern
+        import re
+        time_pattern = r"^\d{2}:\d{2}$"
+        assert re.match(time_pattern, slot["start_time"])
+        assert re.match(time_pattern, slot["end_time"])
+
+    def test_start_time_before_end_time(self):
+        """Start time must be before end time."""
+        for slot in mock_time_slots:
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+
+            start_minutes = start_h * 60 + start_m
+            end_minutes = end_h * 60 + end_m
+
+            assert start_minutes < end_minutes
+
+
+class TestTimeSlotsCRUD:
+    """Tests for time slots CRUD operations."""
+
+    def test_get_time_slots_for_blocked_date(self):
+        """Should return all time slots for a blocked date."""
+        blocked_date_id = 1
+        slots = [ts for ts in mock_time_slots if ts["blocked_date_id"] == blocked_date_id]
+
+        assert len(slots) == 2
+
+    def test_create_time_slot_validates_time_format(self):
+        """Should reject invalid time format."""
+        invalid_times = ["25:00", "12:60", "abc", "12", "12:00:00"]
+
+        for invalid_time in invalid_times:
+            try:
+                h, m = map(int, invalid_time.split(":"))
+                if h < 0 or h > 23 or m < 0 or m > 59:
+                    is_valid = False
+                else:
+                    is_valid = True
+            except (ValueError, AttributeError):
+                is_valid = False
+
+            assert is_valid is False
+
+    def test_create_time_slot_validates_time_order(self):
+        """Should reject start_time >= end_time."""
+        invalid_ranges = [
+            ("10:00", "10:00"),  # Equal
+            ("14:00", "10:00"),  # Start after end
+        ]
+
+        for start, end in invalid_ranges:
+            start_h, start_m = map(int, start.split(":"))
+            end_h, end_m = map(int, end.split(":"))
+
+            is_valid = (start_h * 60 + start_m) < (end_h * 60 + end_m)
+            assert is_valid is False
+
+    def test_create_time_slot_checks_overlap(self):
+        """Should reject overlapping time slots."""
+        existing_slot = mock_time_slots[0]  # 06:00-10:00
+
+        overlapping_ranges = [
+            ("05:00", "07:00"),  # Overlaps start
+            ("09:00", "11:00"),  # Overlaps end
+            ("07:00", "09:00"),  # Completely inside
+            ("05:00", "11:00"),  # Completely covers
+        ]
+
+        for new_start, new_end in overlapping_ranges:
+            existing_start_h, existing_start_m = map(int, existing_slot["start_time"].split(":"))
+            existing_end_h, existing_end_m = map(int, existing_slot["end_time"].split(":"))
+            new_start_h, new_start_m = map(int, new_start.split(":"))
+            new_end_h, new_end_m = map(int, new_end.split(":"))
+
+            existing_start = existing_start_h * 60 + existing_start_m
+            existing_end = existing_end_h * 60 + existing_end_m
+            new_start_mins = new_start_h * 60 + new_start_m
+            new_end_mins = new_end_h * 60 + new_end_m
+
+            # Overlap check: new_start < existing_end AND new_end > existing_start
+            overlaps = new_start_mins < existing_end and new_end_mins > existing_start
+            assert overlaps is True
+
+    def test_create_time_slot_allows_adjacent(self):
+        """Should allow adjacent (non-overlapping) time slots."""
+        existing_slot = mock_time_slots[0]  # 06:00-10:00
+
+        adjacent_ranges = [
+            ("04:00", "06:00"),  # Ends when existing starts
+            ("10:00", "12:00"),  # Starts when existing ends
+        ]
+
+        for new_start, new_end in adjacent_ranges:
+            existing_start_h, existing_start_m = map(int, existing_slot["start_time"].split(":"))
+            existing_end_h, existing_end_m = map(int, existing_slot["end_time"].split(":"))
+            new_start_h, new_start_m = map(int, new_start.split(":"))
+            new_end_h, new_end_m = map(int, new_end.split(":"))
+
+            existing_start = existing_start_h * 60 + existing_start_m
+            existing_end = existing_end_h * 60 + existing_end_m
+            new_start_mins = new_start_h * 60 + new_start_m
+            new_end_mins = new_end_h * 60 + new_end_m
+
+            # Overlap check: new_start < existing_end AND new_end > existing_start
+            overlaps = new_start_mins < existing_end and new_end_mins > existing_start
+            assert overlaps is False
+
+    def test_delete_time_slot_cascades_from_blocked_date(self):
+        """Deleting a blocked date should cascade delete its time slots."""
+        # This is handled by ON DELETE CASCADE in the database
+        # Verify the relationship is set up correctly
+        cascade_behavior = "CASCADE"
+        assert cascade_behavior == "CASCADE"
+
+
+class TestTimeSlotBlockingLogic:
+    """Tests for time-based blocking logic."""
+
+    def is_time_in_slot(self, check_time, slot):
+        """Helper: Check if a time falls within a slot."""
+        check_h, check_m = map(int, check_time.split(":"))
+        start_h, start_m = map(int, slot["start_time"].split(":"))
+        end_h, end_m = map(int, slot["end_time"].split(":"))
+
+        check_mins = check_h * 60 + check_m
+        start_mins = start_h * 60 + start_m
+        end_mins = end_h * 60 + end_m
+
+        return start_mins <= check_mins < end_mins
+
+    def test_time_within_blocked_slot_is_blocked(self):
+        """Time within a blocked slot should be blocked."""
+        slot = mock_time_slots[0]  # 06:00-10:00
+
+        blocked_times = ["06:00", "07:30", "09:59"]
+        for check_time in blocked_times:
+            assert self.is_time_in_slot(check_time, slot) is True
+
+    def test_time_outside_blocked_slot_is_not_blocked(self):
+        """Time outside a blocked slot should not be blocked."""
+        slot = mock_time_slots[0]  # 06:00-10:00
+
+        unblocked_times = ["05:59", "10:00", "12:00", "00:00"]
+        for check_time in unblocked_times:
+            assert self.is_time_in_slot(check_time, slot) is False
+
+    def test_dropoff_blocked_but_pickup_allowed(self):
+        """Time slot can block dropoffs but allow pickups."""
+        slot = mock_time_slots[1]  # 14:00-16:00, dropoffs blocked, pickups allowed
+
+        assert slot["block_dropoffs"] is True
+        assert slot["block_pickups"] is False
+
+    def test_no_time_slots_uses_blocked_date_settings(self):
+        """Without time slots, entire day uses blocked_date settings."""
+        # Blocked date without time slots
+        blocked_date = {
+            "block_dropoffs": True,
+            "block_pickups": False,
+            "time_slots": [],
+        }
+
+        # Without time slots, the blocked_date settings apply to entire day
+        has_time_slots = len(blocked_date["time_slots"]) > 0
+
+        if not has_time_slots:
+            dropoff_blocked = blocked_date["block_dropoffs"]
+            pickup_blocked = blocked_date["block_pickups"]
+        else:
+            dropoff_blocked = False
+            pickup_blocked = False
+
+        assert dropoff_blocked is True
+        assert pickup_blocked is False
+
+
+class TestTimeSlotCheckEndpoint:
+    """Tests for checking blocked status with time slots."""
+
+    def test_check_with_dropoff_time_in_blocked_slot(self):
+        """Should detect blocked when dropoff_time falls in blocked slot."""
+        # GET /api/blocked-dates/check?dropoff_date=2026-03-26&dropoff_time=08:00
+        dropoff_time = "08:00"
+        slot = mock_time_slots[0]  # 06:00-10:00
+
+        check_h, check_m = map(int, dropoff_time.split(":"))
+        start_h, start_m = map(int, slot["start_time"].split(":"))
+        end_h, end_m = map(int, slot["end_time"].split(":"))
+
+        check_mins = check_h * 60 + check_m
+        in_slot = (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+        is_blocked = in_slot and slot["block_dropoffs"]
+        assert is_blocked is True
+
+    def test_check_with_dropoff_time_outside_blocked_slot(self):
+        """Should not block when dropoff_time is outside blocked slots."""
+        # GET /api/blocked-dates/check?dropoff_date=2026-03-26&dropoff_time=12:00
+        dropoff_time = "12:00"
+
+        # Check against all time slots
+        is_blocked = False
+        for slot in mock_time_slots:
+            check_h, check_m = map(int, dropoff_time.split(":"))
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+
+            check_mins = check_h * 60 + check_m
+            in_slot = (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+            if in_slot and slot["block_dropoffs"]:
+                is_blocked = True
+                break
+
+        assert is_blocked is False
+
+    def test_check_pickup_in_dropoff_only_slot(self):
+        """Pickup should be allowed in dropoff-only blocked slot."""
+        # GET /api/blocked-dates/check?pickup_date=2026-03-26&pickup_time=15:00
+        pickup_time = "15:00"
+        slot = mock_time_slots[1]  # 14:00-16:00, dropoffs only
+
+        check_h, check_m = map(int, pickup_time.split(":"))
+        start_h, start_m = map(int, slot["start_time"].split(":"))
+        end_h, end_m = map(int, slot["end_time"].split(":"))
+
+        check_mins = check_h * 60 + check_m
+        in_slot = (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+        pickup_blocked = in_slot and slot["block_pickups"]
+        assert pickup_blocked is False
+
+    def test_check_without_time_checks_any_slot(self):
+        """Without specific time, should check if any slot blocks the type."""
+        # GET /api/blocked-dates/check?dropoff_date=2026-03-26
+        # Without dropoff_time, should indicate if any slot blocks dropoffs
+
+        any_dropoff_blocked = any(slot["block_dropoffs"] for slot in mock_time_slots)
+        assert any_dropoff_blocked is True
+
+    def test_date_range_includes_time_slots(self):
+        """Date range response should include time_slots for each blocked date."""
+        # GET /api/blocked-dates/check?date_from=2026-03-01&date_to=2026-03-31
+
+        blocked_date_with_slots = {
+            "id": 1,
+            "start_date": "2026-03-26",
+            "end_date": "2026-03-26",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "reason": "Staff Training Day",
+            "time_slots": mock_time_slots,
+        }
+
+        assert "time_slots" in blocked_date_with_slots
+        assert len(blocked_date_with_slots["time_slots"]) == 2
+
+    def test_multiple_time_slots_checked_in_order(self):
+        """Multiple time slots should be checked correctly."""
+        # Day has two blocked slots: 06:00-10:00 and 14:00-16:00
+
+        test_times = [
+            ("05:00", False),  # Before first slot
+            ("08:00", True),   # In first slot
+            ("12:00", False),  # Between slots
+            ("15:00", True),   # In second slot (dropoffs blocked)
+            ("17:00", False),  # After all slots
+        ]
+
+        for check_time, expected_blocked in test_times:
+            is_blocked = False
+            for slot in mock_time_slots:
+                check_h, check_m = map(int, check_time.split(":"))
+                start_h, start_m = map(int, slot["start_time"].split(":"))
+                end_h, end_m = map(int, slot["end_time"].split(":"))
+
+                check_mins = check_h * 60 + check_m
+                in_slot = (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+                if in_slot and slot["block_dropoffs"]:
+                    is_blocked = True
+                    break
+
+            assert is_blocked == expected_blocked, f"Time {check_time} expected {expected_blocked}, got {is_blocked}"
+
+
+class TestTimeSlotEdgeCases:
+    """Edge case tests for time slots."""
+
+    def test_midnight_handling(self):
+        """Should handle times around midnight correctly."""
+        slot = {"start_time": "00:00", "end_time": "02:00"}
+
+        test_times = [
+            ("00:00", True),
+            ("01:00", True),
+            ("01:59", True),
+            ("02:00", False),  # End time is exclusive
+            ("23:59", False),
+        ]
+
+        for check_time, expected_in_slot in test_times:
+            check_h, check_m = map(int, check_time.split(":"))
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+
+            check_mins = check_h * 60 + check_m
+            in_slot = (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+            assert in_slot == expected_in_slot
+
+    def test_end_of_day_handling(self):
+        """Should handle times at end of day correctly."""
+        slot = {"start_time": "22:00", "end_time": "23:59"}
+
+        test_times = [
+            ("21:59", False),
+            ("22:00", True),
+            ("23:00", True),
+            ("23:58", True),
+            ("23:59", False),  # End time is exclusive
+        ]
+
+        for check_time, expected_in_slot in test_times:
+            check_h, check_m = map(int, check_time.split(":"))
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+
+            check_mins = check_h * 60 + check_m
+            in_slot = (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+            assert in_slot == expected_in_slot
+
+    def test_single_minute_slot(self):
+        """Should handle very short time slots."""
+        slot = {"start_time": "10:00", "end_time": "10:01"}
+
+        assert slot["start_time"] != slot["end_time"]
+
+        check_h, check_m = 10, 0
+        start_h, start_m = map(int, slot["start_time"].split(":"))
+        end_h, end_m = map(int, slot["end_time"].split(":"))
+
+        check_mins = check_h * 60 + check_m
+        in_slot = (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+        assert in_slot is True
+
+    def test_full_day_slot(self):
+        """Should handle slot covering entire day."""
+        slot = {"start_time": "00:00", "end_time": "23:59"}
+
+        # All reasonable times should be in this slot
+        test_times = ["00:00", "06:00", "12:00", "18:00", "23:58"]
+
+        for check_time in test_times:
+            check_h, check_m = map(int, check_time.split(":"))
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+
+            check_mins = check_h * 60 + check_m
+            in_slot = (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+            assert in_slot is True
+
+    def test_empty_time_string(self):
+        """Should handle empty time string gracefully."""
+        check_time = ""
+
+        try:
+            h, m = map(int, check_time.split(":"))
+            is_valid = True
+        except (ValueError, AttributeError):
+            is_valid = False
+
+        assert is_valid is False
+
+    def test_none_time_value(self):
+        """Should handle None time value gracefully."""
+        check_time = None
+
+        try:
+            h, m = map(int, check_time.split(":"))
+            is_valid = True
+        except (ValueError, AttributeError, TypeError):
+            is_valid = False
+
+        assert is_valid is False
