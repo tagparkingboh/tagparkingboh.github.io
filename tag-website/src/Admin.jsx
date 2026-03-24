@@ -6282,7 +6282,7 @@ function Admin() {
                               <span className="booking-target-label">Daily Target</span>
                               <span className="booking-target-value">{bookingStats.confirmed_today || 0} confirmed today</span>
                               <div className="booking-target-milestones">
-                                {[5, 10, 15, 20, 25, 30].map(target => (
+                                {[1, 3, 5, 7, 9].map(target => (
                                   <span key={target} className={`milestone ${(bookingStats.confirmed_today || 0) >= target ? 'achieved' : ''}`}>
                                     {target}
                                   </span>
@@ -6296,7 +6296,7 @@ function Admin() {
                               <span className="booking-target-label">Weekly Target</span>
                               <span className="booking-target-value">{bookingStats.confirmed_this_week || 0} confirmed this week</span>
                               <div className="booking-target-milestones">
-                                {[20, 25, 30, 50, 75].map(target => (
+                                {[1, 5, 10, 20, 25, 30].map(target => (
                                   <span key={target} className={`milestone ${(bookingStats.confirmed_this_week || 0) >= target ? 'achieved' : ''}`}>
                                     {target}
                                   </span>
@@ -6310,7 +6310,7 @@ function Admin() {
                               <span className="booking-target-label">Monthly Target</span>
                               <span className="booking-target-value">{bookingStats.confirmed_this_month || 0} confirmed this month</span>
                               <div className="booking-target-milestones">
-                                {[50, 75, 100, 150, 200].map(target => (
+                                {[1, 10, 25, 50, 75, 100].map(target => (
                                   <span key={target} className={`milestone ${(bookingStats.confirmed_this_month || 0) >= target ? 'achieved' : ''}`}>
                                     {target}
                                   </span>
