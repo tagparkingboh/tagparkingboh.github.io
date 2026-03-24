@@ -9917,9 +9917,9 @@ def parse_blocked_date(date_str: str) -> date:
         raise HTTPException(status_code=422, detail=f"Invalid date format: {date_str}. Use YYYY-MM-DD")
 
 
-def format_blocked_date(blocked: "BlockedDate") -> dict:
+def format_blocked_date(blocked: "BlockedDate", include_time_slots: bool = True) -> dict:
     """Format a BlockedDate model for API response."""
-    return {
+    result = {
         "id": blocked.id,
         "start_date": blocked.start_date.isoformat(),
         "end_date": blocked.end_date.isoformat(),
@@ -9931,6 +9931,24 @@ def format_blocked_date(blocked: "BlockedDate") -> dict:
         "updated_at": blocked.updated_at.isoformat() if blocked.updated_at else None,
     }
 
+    # Include time slots if requested and relationship is loaded
+    if include_time_slots and hasattr(blocked, 'time_slots') and blocked.time_slots:
+        result["time_slots"] = [
+            {
+                "id": slot.id,
+                "start_time": slot.start_time.strftime("%H:%M") if slot.start_time else None,
+                "end_time": slot.end_time.strftime("%H:%M") if slot.end_time else None,
+                "block_dropoffs": slot.block_dropoffs,
+                "block_pickups": slot.block_pickups,
+                "reason": slot.reason,
+            }
+            for slot in blocked.time_slots
+        ]
+    else:
+        result["time_slots"] = []
+
+    return result
+
 
 @app.get("/api/admin/blocked-dates")
 async def get_blocked_dates(
@@ -9941,8 +9959,9 @@ async def get_blocked_dates(
 ):
     """Get all blocked dates with optional date range filter (admin only)."""
     from db_models import BlockedDate
+    from sqlalchemy.orm import joinedload
 
-    query = db.query(BlockedDate)
+    query = db.query(BlockedDate).options(joinedload(BlockedDate.time_slots))
 
     # Apply date range filters
     if date_from:
