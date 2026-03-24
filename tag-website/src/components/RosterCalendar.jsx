@@ -1685,8 +1685,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
               {/* Full day blocking or time slots info */}
               <div className="modal-form-group">
                 <label>Block Type {timeSlots.length > 0 && <span className="time-slots-info">(Time slots override full day settings)</span>}</label>
-                <div className="checkbox-group">
-                  <label className="checkbox-label">
+                <div className="checkbox-group" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <input
                       type="checkbox"
                       checked={blockedDateForm.block_dropoffs}
@@ -1694,10 +1694,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                         setBlockedDateForm({ ...blockedDateForm, block_dropoffs: e.target.checked })
                       }
                       disabled={timeSlots.length > 0}
+                      style={{ width: '18px', height: '18px', flexShrink: 0 }}
                     />
                     Block Drop-offs {timeSlots.length > 0 && '(full day)'}
                   </label>
-                  <label className="checkbox-label">
+                  <label className="checkbox-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <input
                       type="checkbox"
                       checked={blockedDateForm.block_pickups}
@@ -1705,6 +1706,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                         setBlockedDateForm({ ...blockedDateForm, block_pickups: e.target.checked })
                       }
                       disabled={timeSlots.length > 0}
+                      style={{ width: '18px', height: '18px', flexShrink: 0 }}
                     />
                     Block Pick-ups {timeSlots.length > 0 && '(full day)'}
                   </label>
