@@ -4796,7 +4796,7 @@
 }
 
 .checkbox-label {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
@@ -4805,7 +4805,21 @@
 .checkbox-label input[type="checkbox"] {
   width: 18px;
   height: 18px;
+  flex-shrink: 0;
   cursor: pointer;
+}
+
+/* Blocked date form checkbox styling */
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.checkbox-group .checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .actions-cell {
