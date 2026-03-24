@@ -296,7 +296,7 @@ function HomePage() {
         <div className="pricing-cards">
           <div className="pricing-card">
             <span className="pricing-label">1 WEEK TRIP</span>
-            <p className="pricing-from">Is</p>
+            <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
               <span className="price">{prices.week1}</span>
@@ -316,7 +316,7 @@ function HomePage() {
 
           <div className="pricing-card">
             <span className="pricing-label">2 WEEK TRIP</span>
-            <p className="pricing-from">Is</p>
+            <p className="pricing-from">From</p>
             <div className="pricing-amount">
               <span className="currency">£</span>
               <span className="price">{prices.week2}</span>
