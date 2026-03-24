@@ -6392,29 +6392,85 @@ async def create_payment(
         # Parse pickup_date for blocked date check
         request_pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
 
+        # Helper function to check if a time is blocked
+        def check_time_blocked(blocked_date, check_time_str, check_type):
+            """Check if a specific time is blocked within a blocked date."""
+            if not blocked_date.time_slots or len(blocked_date.time_slots) == 0:
+                # No time slots - entire day is blocked based on blocked_date settings
+                if check_type == "dropoff":
+                    return blocked_date.block_dropoffs
+                else:
+                    return blocked_date.block_pickups
+
+            # Time slots exist - check if the time falls within any
+            if not check_time_str:
+                return False  # No time provided, can't determine if blocked
+
+            # Parse the time
+            try:
+                h, m = map(int, check_time_str.split(":"))
+                check_time = time(h, m)
+            except (ValueError, AttributeError):
+                return False
+
+            # Check each time slot
+            for ts in blocked_date.time_slots:
+                if ts.start_time <= check_time < ts.end_time:
+                    if check_type == "dropoff" and ts.block_dropoffs:
+                        return True
+                    if check_type == "pickup" and ts.block_pickups:
+                        return True
+
+            return False
+
         # Check if dropoff date is blocked
-        blocked_dropoff = db.query(BlockedDate).filter(
+        blocked_dropoff = db.query(BlockedDate).options(
+            joinedload(BlockedDate.time_slots)
+        ).filter(
             BlockedDate.start_date <= request_dropoff_date,
-            BlockedDate.end_date >= request_dropoff_date,
-            BlockedDate.block_dropoffs == True
+            BlockedDate.end_date >= request_dropoff_date
         ).first()
+
         if blocked_dropoff:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Sorry, drop-offs are not available on {request_dropoff_date.strftime('%d %B %Y')}. Please select a different date."
-            )
+            # Get the dropoff time to check against time slots
+            dropoff_time_str = request.drop_off_time
+            if not dropoff_time_str and request.dropoff_flight_time and request.drop_off_slot:
+                # Calculate from flight time and slot
+                try:
+                    h, m = map(int, request.dropoff_flight_time.split(":"))
+                    slot_mins = int(request.drop_off_slot)
+                    total_mins = h * 60 + m - slot_mins
+                    if total_mins < 0:
+                        total_mins += 24 * 60
+                    dropoff_time_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
+                except (ValueError, TypeError):
+                    pass
+
+            if check_time_blocked(blocked_dropoff, dropoff_time_str, "dropoff"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Sorry, drop-offs are not available on {request_dropoff_date.strftime('%d %B %Y')}. Please select a different date or time."
+                )
 
         # Check if pickup date is blocked
-        blocked_pickup = db.query(BlockedDate).filter(
+        blocked_pickup = db.query(BlockedDate).options(
+            joinedload(BlockedDate.time_slots)
+        ).filter(
             BlockedDate.start_date <= request_pickup_date,
-            BlockedDate.end_date >= request_pickup_date,
-            BlockedDate.block_pickups == True
+            BlockedDate.end_date >= request_pickup_date
         ).first()
+
         if blocked_pickup:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Sorry, pick-ups are not available on {request_pickup_date.strftime('%d %B %Y')}. Please select a different date."
-            )
+            # Get the pickup time to check against time slots
+            pickup_time_str = request.pickup_time
+            if not pickup_time_str and request.pickup_flight_time:
+                pickup_time_str = request.pickup_flight_time
+
+            if check_time_blocked(blocked_pickup, pickup_time_str, "pickup"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Sorry, pick-ups are not available on {request_pickup_date.strftime('%d %B %Y')}. Please select a different date or time."
+                )
 
         # Check for existing PENDING booking with same session_id (prevent duplicates from Terms toggle)
         existing_booking = None
