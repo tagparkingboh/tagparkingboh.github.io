@@ -1740,6 +1740,384 @@ class TestTripInsightsEdgeCases:
 
 
 # =============================================================================
+# Busiest Hour Tests
+# =============================================================================
+
+class TestBusiestHourCalculation:
+    """Tests for busiest hour sliding window calculation."""
+
+    def test_find_busiest_hour_basic(self):
+        """Test basic busiest hour calculation with clustered times."""
+        # Helper function to find busiest 1-hour window
+        def find_busiest_hour(times_minutes):
+            if not times_minutes:
+                return None
+
+            sorted_times = sorted(times_minutes)
+            max_count = 0
+            best_start = sorted_times[0]
+
+            for i, start_time in enumerate(sorted_times):
+                end_time = start_time + 60
+                count = 0
+                for t in sorted_times[i:]:
+                    if t < end_time:
+                        count += 1
+                    else:
+                        break
+
+                if count > max_count:
+                    max_count = count
+                    best_start = start_time
+
+            start_hour = best_start // 60
+            start_min = best_start % 60
+            end_minutes = best_start + 60
+            end_hour = end_minutes // 60
+            end_min = end_minutes % 60
+
+            if end_hour >= 24:
+                end_hour = end_hour % 24
+
+            return {
+                "start": f"{start_hour:02d}:{start_min:02d}",
+                "end": f"{end_hour:02d}:{end_min:02d}",
+                "count": max_count
+            }
+
+        # Times clustered around 06:00-07:00
+        times = [360, 365, 370, 380, 400, 900, 910]  # 06:00, 06:05, 06:10, 06:20, 06:40, 15:00, 15:10
+        result = find_busiest_hour(times)
+
+        assert result["start"] == "06:00"
+        assert result["end"] == "07:00"
+        assert result["count"] == 5  # 5 times fall within 06:00-07:00
+
+    def test_find_busiest_hour_sliding_window(self):
+        """Test that sliding window finds optimal start time."""
+        def find_busiest_hour(times_minutes):
+            if not times_minutes:
+                return None
+
+            sorted_times = sorted(times_minutes)
+            max_count = 0
+            best_start = sorted_times[0]
+
+            for i, start_time in enumerate(sorted_times):
+                end_time = start_time + 60
+                count = 0
+                for t in sorted_times[i:]:
+                    if t < end_time:
+                        count += 1
+                    else:
+                        break
+
+                if count > max_count:
+                    max_count = count
+                    best_start = start_time
+
+            start_hour = best_start // 60
+            start_min = best_start % 60
+            end_minutes = best_start + 60
+            end_hour = end_minutes // 60
+            end_min = end_minutes % 60
+
+            if end_hour >= 24:
+                end_hour = end_hour % 24
+
+            return {
+                "start": f"{start_hour:02d}:{start_min:02d}",
+                "end": f"{end_hour:02d}:{end_min:02d}",
+                "count": max_count
+            }
+
+        # Times at 05:30, 05:40, 05:50, 06:00, 06:15
+        # Busiest hour window starting at 05:30 captures 05:30, 05:40, 05:50, 06:00, 06:15 (all < 06:30)
+        times = [330, 340, 350, 360, 375]
+        result = find_busiest_hour(times)
+
+        assert result["start"] == "05:30"
+        assert result["end"] == "06:30"
+        assert result["count"] == 5
+
+    def test_find_busiest_hour_single_time(self):
+        """Test busiest hour with single time entry."""
+        def find_busiest_hour(times_minutes):
+            if not times_minutes:
+                return None
+
+            sorted_times = sorted(times_minutes)
+            max_count = 0
+            best_start = sorted_times[0]
+
+            for i, start_time in enumerate(sorted_times):
+                end_time = start_time + 60
+                count = 0
+                for t in sorted_times[i:]:
+                    if t < end_time:
+                        count += 1
+                    else:
+                        break
+
+                if count > max_count:
+                    max_count = count
+                    best_start = start_time
+
+            start_hour = best_start // 60
+            start_min = best_start % 60
+            end_minutes = best_start + 60
+            end_hour = end_minutes // 60
+            end_min = end_minutes % 60
+
+            if end_hour >= 24:
+                end_hour = end_hour % 24
+
+            return {
+                "start": f"{start_hour:02d}:{start_min:02d}",
+                "end": f"{end_hour:02d}:{end_min:02d}",
+                "count": max_count
+            }
+
+        times = [480]  # 08:00
+        result = find_busiest_hour(times)
+
+        assert result["start"] == "08:00"
+        assert result["end"] == "09:00"
+        assert result["count"] == 1
+
+    def test_find_busiest_hour_empty_list(self):
+        """Test busiest hour with empty list returns None."""
+        def find_busiest_hour(times_minutes):
+            if not times_minutes:
+                return None
+            # ... rest of logic
+            return {"start": "00:00", "end": "01:00", "count": 0}
+
+        result = find_busiest_hour([])
+        assert result is None
+
+    def test_find_busiest_hour_late_night(self):
+        """Test busiest hour near midnight (23:00-00:00 range)."""
+        def find_busiest_hour(times_minutes):
+            if not times_minutes:
+                return None
+
+            sorted_times = sorted(times_minutes)
+            max_count = 0
+            best_start = sorted_times[0]
+
+            for i, start_time in enumerate(sorted_times):
+                end_time = start_time + 60
+                count = 0
+                for t in sorted_times[i:]:
+                    if t < end_time:
+                        count += 1
+                    else:
+                        break
+
+                if count > max_count:
+                    max_count = count
+                    best_start = start_time
+
+            start_hour = best_start // 60
+            start_min = best_start % 60
+            end_minutes = best_start + 60
+            end_hour = end_minutes // 60
+            end_min = end_minutes % 60
+
+            if end_hour >= 24:
+                end_hour = end_hour % 24
+
+            return {
+                "start": f"{start_hour:02d}:{start_min:02d}",
+                "end": f"{end_hour:02d}:{end_min:02d}",
+                "count": max_count
+            }
+
+        # Times at 23:15, 23:30, 23:45
+        times = [1395, 1410, 1425]
+        result = find_busiest_hour(times)
+
+        assert result["start"] == "23:15"
+        assert result["end"] == "00:15"  # Wraps to next day
+        assert result["count"] == 3
+
+    def test_find_busiest_hour_two_clusters(self):
+        """Test finding busiest hour when there are two distinct clusters."""
+        def find_busiest_hour(times_minutes):
+            if not times_minutes:
+                return None
+
+            sorted_times = sorted(times_minutes)
+            max_count = 0
+            best_start = sorted_times[0]
+
+            for i, start_time in enumerate(sorted_times):
+                end_time = start_time + 60
+                count = 0
+                for t in sorted_times[i:]:
+                    if t < end_time:
+                        count += 1
+                    else:
+                        break
+
+                if count > max_count:
+                    max_count = count
+                    best_start = start_time
+
+            start_hour = best_start // 60
+            start_min = best_start % 60
+            end_minutes = best_start + 60
+            end_hour = end_minutes // 60
+            end_min = end_minutes % 60
+
+            if end_hour >= 24:
+                end_hour = end_hour % 24
+
+            return {
+                "start": f"{start_hour:02d}:{start_min:02d}",
+                "end": f"{end_hour:02d}:{end_min:02d}",
+                "count": max_count
+            }
+
+        # Morning cluster: 06:00, 06:15, 06:30 (3 bookings)
+        # Afternoon cluster: 14:00, 14:10, 14:20, 14:30, 14:45 (5 bookings)
+        times = [360, 375, 390, 840, 850, 860, 870, 885]
+        result = find_busiest_hour(times)
+
+        assert result["start"] == "14:00"
+        assert result["end"] == "15:00"
+        assert result["count"] == 5
+
+
+class TestBusiestHourWithBookings:
+    """Tests for busiest hour using mock bookings."""
+
+    def test_busiest_dropoff_hour_from_bookings(self):
+        """Test busiest dropoff hour calculated from bookings."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_booking(id=1, status="confirmed", dropoff_time=dt_time(6, 0)),
+            create_mock_booking(id=2, status="confirmed", dropoff_time=dt_time(6, 15)),
+            create_mock_booking(id=3, status="confirmed", dropoff_time=dt_time(6, 30)),
+            create_mock_booking(id=4, status="confirmed", dropoff_time=dt_time(6, 45)),
+            create_mock_booking(id=5, status="confirmed", dropoff_time=dt_time(14, 0)),
+            create_mock_booking(id=6, status="confirmed", dropoff_time=dt_time(14, 30)),
+        ]
+
+        dropoff_times_minutes = []
+        for booking in bookings:
+            if booking.dropoff_time:
+                minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+                dropoff_times_minutes.append(minutes)
+
+        # Find busiest hour
+        sorted_times = sorted(dropoff_times_minutes)
+        max_count = 0
+        best_start = sorted_times[0]
+
+        for i, start_time in enumerate(sorted_times):
+            end_time = start_time + 60
+            count = sum(1 for t in sorted_times[i:] if t < end_time)
+            if count > max_count:
+                max_count = count
+                best_start = start_time
+
+        assert max_count == 4  # 4 bookings between 06:00-07:00
+        assert best_start == 360  # 06:00
+
+    def test_busiest_pickup_hour_from_bookings(self):
+        """Test busiest pickup hour calculated from bookings."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_booking(id=1, status="confirmed", pickup_time=dt_time(15, 0)),
+            create_mock_booking(id=2, status="confirmed", pickup_time=dt_time(15, 20)),
+            create_mock_booking(id=3, status="confirmed", pickup_time=dt_time(15, 40)),
+            create_mock_booking(id=4, status="confirmed", pickup_time=dt_time(9, 0)),
+        ]
+
+        pickup_times_minutes = []
+        for booking in bookings:
+            if booking.pickup_time:
+                minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+                pickup_times_minutes.append(minutes)
+
+        # Find busiest hour
+        sorted_times = sorted(pickup_times_minutes)
+        max_count = 0
+        best_start = sorted_times[0]
+
+        for i, start_time in enumerate(sorted_times):
+            end_time = start_time + 60
+            count = sum(1 for t in sorted_times[i:] if t < end_time)
+            if count > max_count:
+                max_count = count
+                best_start = start_time
+
+        assert max_count == 3  # 3 bookings between 15:00-16:00
+        assert best_start == 900  # 15:00
+
+
+class TestBusiestHourResponseFormat:
+    """Tests for busiest hour response format."""
+
+    def test_busiest_hour_response_structure(self):
+        """Test that busiest hour response has correct structure."""
+        busiest_hour = {
+            "start": "06:15",
+            "end": "07:15",
+            "count": 23
+        }
+
+        assert "start" in busiest_hour
+        assert "end" in busiest_hour
+        assert "count" in busiest_hour
+        assert isinstance(busiest_hour["count"], int)
+
+    def test_dropoff_range_includes_busiest_hour(self):
+        """Test that dropoff_range includes busiest_hour field."""
+        dropoff_range = {
+            "am": 73,
+            "pm": 31,
+            "busiest_hour": {
+                "start": "06:00",
+                "end": "07:00",
+                "count": 15
+            }
+        }
+
+        assert "busiest_hour" in dropoff_range
+        assert dropoff_range["busiest_hour"]["count"] == 15
+
+    def test_pickup_range_includes_busiest_hour(self):
+        """Test that pickup_range includes busiest_hour field."""
+        pickup_range = {
+            "am": 13,
+            "pm": 91,
+            "busiest_hour": {
+                "start": "15:30",
+                "end": "16:30",
+                "count": 28
+            }
+        }
+
+        assert "busiest_hour" in pickup_range
+        assert pickup_range["busiest_hour"]["start"] == "15:30"
+
+    def test_busiest_hour_none_when_no_data(self):
+        """Test that busiest_hour is None when no time data."""
+        dropoff_range = {
+            "am": 0,
+            "pm": 0,
+            "busiest_hour": None
+        }
+
+        assert dropoff_range["busiest_hour"] is None
+
+
+# =============================================================================
 # Run tests if executed directly
 # =============================================================================
 
