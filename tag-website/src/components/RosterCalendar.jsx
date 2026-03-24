@@ -1432,16 +1432,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       {showBlockedDateModal && isAdmin && (
         <div className="modal-overlay" onClick={closeBlockedDateModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>{editingBlockedDate ? 'Edit Blocked Date' : 'Block Date'}</h3>
-              <button className="modal-close-btn" onClick={closeBlockedDateModal}>
-                ×
-              </button>
-            </div>
+            <h3>{editingBlockedDate ? 'Edit Blocked Date' : 'Block Date'}</h3>
 
-            <div className="blocked-date-form">
-              <div className="form-row">
-                <div className="form-group">
+            <div className="modal-form">
+              <div className="modal-form-row">
+                <div className="modal-form-group">
                   <label>Start Date</label>
                   <input
                     type="date"
@@ -1451,7 +1446,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     }
                   />
                 </div>
-                <div className="form-group">
+                <div className="modal-form-group">
                   <label>End Date</label>
                   <input
                     type="date"
@@ -1463,7 +1458,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 </div>
               </div>
 
-              <div className="form-group">
+              <div className="modal-form-group">
                 <label>Block Type</label>
                 <div className="checkbox-group">
                   <label className="checkbox-label">
@@ -1489,7 +1484,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 </div>
               </div>
 
-              <div className="form-group">
+              <div className="modal-form-group">
                 <label>Reason (optional)</label>
                 <input
                   type="text"
@@ -1500,14 +1495,56 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   placeholder="e.g., Bank Holiday, Staff Training, etc."
                 />
               </div>
+
+              {/* Warning about existing bookings */}
+              {blockedDateForm.start_date && (
+                (() => {
+                  // Check for bookings in the date range being blocked
+                  const startDate = blockedDateForm.start_date
+                  const endDate = blockedDateForm.end_date || blockedDateForm.start_date
+                  const affectedBookings = bookings.filter(b => {
+                    if (b.status !== 'confirmed') return false
+                    const hasDropoff = blockedDateForm.block_dropoffs &&
+                      b.dropoff_date >= startDate && b.dropoff_date <= endDate
+                    const hasPickup = blockedDateForm.block_pickups &&
+                      b.pickup_date >= startDate && b.pickup_date <= endDate
+                    return hasDropoff || hasPickup
+                  })
+
+                  if (affectedBookings.length > 0) {
+                    const dropoffCount = affectedBookings.filter(b =>
+                      blockedDateForm.block_dropoffs &&
+                      b.dropoff_date >= startDate && b.dropoff_date <= endDate
+                    ).length
+                    const pickupCount = affectedBookings.filter(b =>
+                      blockedDateForm.block_pickups &&
+                      b.pickup_date >= startDate && b.pickup_date <= endDate
+                    ).length
+
+                    return (
+                      <div className="blocked-date-warning">
+                        <strong>⚠️ Existing bookings found:</strong>
+                        <p>
+                          {dropoffCount > 0 && `${dropoffCount} drop-off${dropoffCount > 1 ? 's' : ''}`}
+                          {dropoffCount > 0 && pickupCount > 0 && ' and '}
+                          {pickupCount > 0 && `${pickupCount} pick-up${pickupCount > 1 ? 's' : ''}`}
+                          {' '}scheduled during this period.
+                        </p>
+                        <p className="warning-note">These bookings will still need to be fulfilled. Blocking only prevents new bookings.</p>
+                      </div>
+                    )
+                  }
+                  return null
+                })()
+              )}
             </div>
 
             <div className="modal-actions">
-              <button className="modal-cancel-btn" onClick={closeBlockedDateModal}>
+              <button className="modal-btn modal-btn-secondary" onClick={closeBlockedDateModal}>
                 Cancel
               </button>
               <button
-                className="modal-save-btn"
+                className="modal-btn modal-btn-primary"
                 onClick={saveBlockedDate}
                 disabled={savingBlockedDate || (!blockedDateForm.block_dropoffs && !blockedDateForm.block_pickups)}
               >
