@@ -431,42 +431,14 @@ function Bookings() {
     return checkMins >= startMins && checkMins < endMins
   }
 
-  // Helper function to check if a time is blocked (defined as regular function, not hook)
-  const checkTimeBlocked = (date, dropoffTimeStr, isDropoff = true) => {
-    if (!date || !dropoffTimeStr || blockedDates.length === 0) return false
-    const dateStr = format(date, 'yyyy-MM-dd')
-
-    const blockedDate = blockedDates.find(bd =>
-      dateStr >= bd.start_date && dateStr <= bd.end_date
-    )
-
-    if (!blockedDate) return false
-
-    // If blocked date has time slots, check against those
-    if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
-      return blockedDate.time_slots.some(slot => {
-        if (isDropoff && !slot.block_dropoffs) return false
-        if (!isDropoff && !slot.block_pickups) return false
-        // Check if time falls within slot
-        const [checkH, checkM] = dropoffTimeStr.split(':').map(Number)
-        const [startH, startM] = slot.start_time.split(':').map(Number)
-        const [endH, endM] = slot.end_time.split(':').map(Number)
-        const checkMins = checkH * 60 + checkM
-        const startMins = startH * 60 + startM
-        const endMins = endH * 60 + endM
-        return checkMins >= startMins && checkMins < endMins
-      })
-    }
-
-    // No time slots - full day blocking
-    return isDropoff ? blockedDate.block_dropoffs : blockedDate.block_pickups
-  }
-
   // Check if a date/time is blocked for drop-offs
   // Returns true if ALL potential dropoff times are blocked (or full-day block)
   const isDropoffDateBlocked = useMemo(() => {
     if (!formData.dropoffDate || blockedDates.length === 0) return false
-    const dateStr = format(formData.dropoffDate, 'yyyy-MM-dd')
+
+    // Format date inline to avoid external function reference issues
+    const d = formData.dropoffDate
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
     // Find any blocked date that covers this date
     const blockedDate = blockedDates.find(bd =>
@@ -502,10 +474,19 @@ function Bookings() {
 
       if (potentialTimes.length === 0) return false
 
-      // Check if ALL potential dropoff times are blocked
-      const allBlocked = potentialTimes.every(time =>
-        checkTimeBlocked(formData.dropoffDate, time, true)
-      )
+      // Check if ALL potential dropoff times are blocked (inline logic)
+      const allBlocked = potentialTimes.every(timeStr => {
+        return blockedDate.time_slots.some(slot => {
+          if (!slot.block_dropoffs) return false
+          const [checkH, checkM] = timeStr.split(':').map(Number)
+          const [startH, startM] = slot.start_time.split(':').map(Number)
+          const [endH, endM] = slot.end_time.split(':').map(Number)
+          const checkMins = checkH * 60 + checkM
+          const startMins = startH * 60 + startM
+          const endMins = endH * 60 + endM
+          return checkMins >= startMins && checkMins < endMins
+        })
+      })
 
       return allBlocked
     }
@@ -1020,16 +1001,46 @@ function Bookings() {
     const departureMinutes = hours * 60 + minutes
 
     // Check if this is a same-day booking and enforce 4-hour minimum notice
-    const isToday = formData.dropoffDate &&
-      format(formData.dropoffDate, 'yyyy-MM-dd') === format(getTodayUK(), 'yyyy-MM-dd')
+    const todayUK = getTodayUK()
+    const todayStr = `${todayUK.getFullYear()}-${String(todayUK.getMonth() + 1).padStart(2, '0')}-${String(todayUK.getDate()).padStart(2, '0')}`
+    const dropoffDateStr = formData.dropoffDate
+      ? `${formData.dropoffDate.getFullYear()}-${String(formData.dropoffDate.getMonth() + 1).padStart(2, '0')}-${String(formData.dropoffDate.getDate()).padStart(2, '0')}`
+      : ''
+    const isToday = formData.dropoffDate && dropoffDateStr === todayStr
     const currentUKMinutes = isToday ? getCurrentUKTimeMinutes() : 0
     const minNoticeMinutes = MIN_HOURS_NOTICE * 60 // 4 hours = 240 minutes
+
+    // Find blocked date for this dropoff date
+    let blockedDate = null
+    if (formData.dropoffDate && blockedDates.length > 0) {
+      blockedDate = blockedDates.find(bd =>
+        dropoffDateStr >= bd.start_date && dropoffDateStr <= bd.end_date
+      )
+    }
+
+    // Helper to check if a time is blocked (inline)
+    const isTimeBlocked = (timeStr) => {
+      if (!blockedDate) return false
+      if (!blockedDate.time_slots || blockedDate.time_slots.length === 0) {
+        return blockedDate.block_dropoffs
+      }
+      return blockedDate.time_slots.some(slot => {
+        if (!slot.block_dropoffs) return false
+        const [checkH, checkM] = timeStr.split(':').map(Number)
+        const [startH, startM] = slot.start_time.split(':').map(Number)
+        const [endH, endM] = slot.end_time.split(':').map(Number)
+        const checkMins = checkH * 60 + checkM
+        const startMins = startH * 60 + startM
+        const endMins = endH * 60 + endM
+        return checkMins >= startMins && checkMins < endMins
+      })
+    }
 
     const slots = []
 
     const earlySlotMinutes = departureMinutes - 165
     const earlySlotTime = formatMinutesToTime(earlySlotMinutes)
-    const earlySlotBlocked = formData.dropoffDate && checkTimeBlocked(formData.dropoffDate, earlySlotTime, true)
+    const earlySlotBlocked = formData.dropoffDate && isTimeBlocked(earlySlotTime)
     if ((!isToday || (earlySlotMinutes >= currentUKMinutes + minNoticeMinutes)) && !earlySlotBlocked) {
       slots.push({
         id: '165',
@@ -1040,7 +1051,7 @@ function Bookings() {
 
     const lateSlotMinutes = departureMinutes - 120
     const lateSlotTime = formatMinutesToTime(lateSlotMinutes)
-    const lateSlotBlocked = formData.dropoffDate && checkTimeBlocked(formData.dropoffDate, lateSlotTime, true)
+    const lateSlotBlocked = formData.dropoffDate && isTimeBlocked(lateSlotTime)
     if ((!isToday || (lateSlotMinutes >= currentUKMinutes + minNoticeMinutes)) && !lateSlotBlocked) {
       slots.push({
         id: '120',
