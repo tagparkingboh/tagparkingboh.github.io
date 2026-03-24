@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
@@ -432,25 +432,36 @@ function Bookings() {
   }
 
   // Helper: Check if a specific dropoff time would be blocked on a date
-  const isDropoffTimeBlocked = useCallback((date, dropoffTimeStr) => {
-    if (!date || !dropoffTimeStr || blockedDates.length === 0) return false
-    const dateStr = format(date, 'yyyy-MM-dd')
+  // Using useMemo to return a stable function reference
+  const isDropoffTimeBlocked = useMemo(() => {
+    return (date, dropoffTimeStr) => {
+      if (!date || !dropoffTimeStr || blockedDates.length === 0) return false
+      const dateStr = format(date, 'yyyy-MM-dd')
 
-    const blockedDate = blockedDates.find(bd =>
-      dateStr >= bd.start_date && dateStr <= bd.end_date
-    )
-
-    if (!blockedDate) return false
-
-    // If blocked date has time slots, check against those
-    if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
-      return blockedDate.time_slots.some(slot =>
-        slot.block_dropoffs && isTimeInSlot(dropoffTimeStr, slot)
+      const blockedDate = blockedDates.find(bd =>
+        dateStr >= bd.start_date && dateStr <= bd.end_date
       )
-    }
 
-    // No time slots - full day blocking
-    return blockedDate.block_dropoffs
+      if (!blockedDate) return false
+
+      // If blocked date has time slots, check against those
+      if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
+        return blockedDate.time_slots.some(slot => {
+          if (!slot.block_dropoffs) return false
+          // Inline isTimeInSlot logic to avoid reference issues
+          const [checkH, checkM] = dropoffTimeStr.split(':').map(Number)
+          const [startH, startM] = slot.start_time.split(':').map(Number)
+          const [endH, endM] = slot.end_time.split(':').map(Number)
+          const checkMins = checkH * 60 + checkM
+          const startMins = startH * 60 + startM
+          const endMins = endH * 60 + endM
+          return checkMins >= startMins && checkMins < endMins
+        })
+      }
+
+      // No time slots - full day blocking
+      return blockedDate.block_dropoffs
+    }
   }, [blockedDates])
 
   // Calculate potential dropoff times from flight time (both slots)
