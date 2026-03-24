@@ -58,6 +58,27 @@ const formatTime = (timeStr) => {
   return timeStr.substring(0, 5)
 }
 
+// Format time input to 24-hour format (HH:MM)
+const formatTimeInput24h = (input) => {
+  // Remove non-digits except colon
+  const cleaned = input.replace(/[^\d:]/g, '')
+  // Split on colon if present
+  const parts = cleaned.split(':')
+
+  if (parts.length === 1) {
+    // No colon yet - just digits
+    const digits = parts[0]
+    if (digits.length <= 2) return digits
+    if (digits.length <= 4) return digits.slice(0, 2) + ':' + digits.slice(2)
+    return digits.slice(0, 2) + ':' + digits.slice(2, 4)
+  } else {
+    // Has colon - format as HH:MM
+    const hours = parts[0].slice(0, 2)
+    const minutes = (parts[1] || '').slice(0, 2)
+    return hours + ':' + minutes
+  }
+}
+
 function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrigger = 0, renderBookingActions = null }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [shifts, setShifts] = useState([])
@@ -93,6 +114,33 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   // Monthly hours (for payroll)
   const [monthlyHours, setMonthlyHours] = useState(null)
   const [loadingMonthlyHours, setLoadingMonthlyHours] = useState(false)
+
+  // Blocked dates state
+  const [blockedDates, setBlockedDates] = useState([])
+  const [showBlockedDateModal, setShowBlockedDateModal] = useState(false)
+  const [editingBlockedDate, setEditingBlockedDate] = useState(null)
+  const [blockedDateForm, setBlockedDateForm] = useState({
+    start_date: '',
+    end_date: '',
+    block_dropoffs: true,
+    block_pickups: true,
+    reason: '',
+  })
+  const [savingBlockedDate, setSavingBlockedDate] = useState(false)
+
+  // Time slots state (for partial day blocking)
+  const [timeSlots, setTimeSlots] = useState([])
+  const [loadingTimeSlots, setLoadingTimeSlots] = useState(false)
+  const [showTimeSlotForm, setShowTimeSlotForm] = useState(false)
+  const [editingTimeSlot, setEditingTimeSlot] = useState(null)
+  const [timeSlotForm, setTimeSlotForm] = useState({
+    start_time: '',
+    end_time: '',
+    block_dropoffs: true,
+    block_pickups: true,
+    reason: '',
+  })
+  const [savingTimeSlot, setSavingTimeSlot] = useState(false)
 
   // Fetch bookings
   const fetchBookings = useCallback(async () => {
@@ -150,18 +198,54 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }, [token, currentDate, isAdmin])
 
+  // Fetch blocked dates (for both admin and employees)
+  const fetchBlockedDates = useCallback(async () => {
+    if (!token) return
+
+    try {
+      const year = currentDate.getFullYear()
+      const month = currentDate.getMonth()
+      const startDate = new Date(year, month, 1)
+      const endDate = new Date(year, month + 1, 0)
+
+      const params = new URLSearchParams({
+        date_from: formatDateISO(startDate),
+        date_to: formatDateISO(endDate),
+      })
+
+      // Use admin endpoint for admins (with full CRUD), public endpoint for employees (read-only)
+      const endpoint = isAdmin
+        ? `${API_URL}/api/admin/blocked-dates?${params}`
+        : `${API_URL}/api/blocked-dates/check?${params}`
+
+      const response = await fetch(endpoint, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setBlockedDates(data.blocked_dates || [])
+      }
+    } catch (err) {
+      console.error('Failed to load blocked dates:', err)
+    }
+  }, [token, currentDate, isAdmin])
+
   // Fetch all data
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      await Promise.all([fetchBookings(), fetchShifts()])
+      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates()])
     } catch (err) {
       setError('Failed to load data')
     } finally {
       setLoading(false)
     }
-  }, [fetchBookings, fetchShifts])
+  }, [fetchBookings, fetchShifts, fetchBlockedDates])
 
   // Fetch all staff (admin only) - includes both admins and employees
   const fetchStaff = useCallback(async () => {
@@ -426,6 +510,17 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return shiftsByDate[dateKey] || []
   }
 
+  // Check if date is blocked
+  const getBlockedInfoForDay = (day) => {
+    if (!day) return null
+    const dateKey = getDateKey(day)
+    // Find any blocked date that covers this day
+    const blocked = blockedDates.find(bd => {
+      return dateKey >= bd.start_date && dateKey <= bd.end_date
+    })
+    return blocked || null
+  }
+
   // Is today?
   const isToday = (day) => {
     if (!day) return false
@@ -611,6 +706,277 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }
 
+  // ==================== BLOCKED DATES MANAGEMENT ====================
+
+  // Fetch time slots for a blocked date
+  const fetchTimeSlots = useCallback(async (blockedDateId) => {
+    if (!token || !blockedDateId) {
+      setTimeSlots([])
+      return
+    }
+
+    setLoadingTimeSlots(true)
+    try {
+      const response = await fetch(
+        `${API_URL}/api/admin/blocked-dates/${blockedDateId}/time-slots`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
+          },
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        setTimeSlots(data.time_slots || [])
+      } else {
+        setTimeSlots([])
+      }
+    } catch (err) {
+      console.error('Failed to load time slots:', err)
+      setTimeSlots([])
+    } finally {
+      setLoadingTimeSlots(false)
+    }
+  }, [token])
+
+  // Open modal to create a blocked date for a specific date
+  const openBlockedDateModal = (dateKey) => {
+    setEditingBlockedDate(null)
+    setBlockedDateForm({
+      start_date: dateKey,
+      end_date: dateKey,
+      block_dropoffs: true,
+      block_pickups: true,
+      reason: '',
+    })
+    setTimeSlots([])
+    setShowTimeSlotForm(false)
+    setEditingTimeSlot(null)
+    setShowBlockedDateModal(true)
+  }
+
+  // Open modal to edit an existing blocked date
+  const openEditBlockedDateModal = (blockedDate) => {
+    setEditingBlockedDate(blockedDate)
+    setBlockedDateForm({
+      start_date: blockedDate.start_date,
+      end_date: blockedDate.end_date,
+      block_dropoffs: blockedDate.block_dropoffs,
+      block_pickups: blockedDate.block_pickups,
+      reason: blockedDate.reason || '',
+    })
+    setShowTimeSlotForm(false)
+    setEditingTimeSlot(null)
+    fetchTimeSlots(blockedDate.id)
+    setShowBlockedDateModal(true)
+  }
+
+  // Close blocked date modal
+  const closeBlockedDateModal = () => {
+    setShowBlockedDateModal(false)
+    setEditingBlockedDate(null)
+    setBlockedDateForm({
+      start_date: '',
+      end_date: '',
+      block_dropoffs: true,
+      block_pickups: true,
+      reason: '',
+    })
+    setTimeSlots([])
+    setShowTimeSlotForm(false)
+    setEditingTimeSlot(null)
+  }
+
+  // ==================== TIME SLOTS MANAGEMENT ====================
+
+  // Open time slot form for new slot
+  const openNewTimeSlotForm = () => {
+    setEditingTimeSlot(null)
+    setTimeSlotForm({
+      start_time: '',
+      end_time: '',
+      block_dropoffs: true,
+      block_pickups: true,
+      reason: '',
+    })
+    setShowTimeSlotForm(true)
+  }
+
+  // Open time slot form for editing
+  const openEditTimeSlotForm = (slot) => {
+    setEditingTimeSlot(slot)
+    setTimeSlotForm({
+      start_time: formatTime(slot.start_time),
+      end_time: formatTime(slot.end_time),
+      block_dropoffs: slot.block_dropoffs,
+      block_pickups: slot.block_pickups,
+      reason: slot.reason || '',
+    })
+    setShowTimeSlotForm(true)
+  }
+
+  // Cancel time slot form
+  const cancelTimeSlotForm = () => {
+    setShowTimeSlotForm(false)
+    setEditingTimeSlot(null)
+    setTimeSlotForm({
+      start_time: '',
+      end_time: '',
+      block_dropoffs: true,
+      block_pickups: true,
+      reason: '',
+    })
+  }
+
+  // Save time slot (create or update)
+  const saveTimeSlot = async () => {
+    if (!editingBlockedDate) return
+
+    setSavingTimeSlot(true)
+    setError('')
+
+    try {
+      const payload = {
+        start_time: timeSlotForm.start_time,
+        end_time: timeSlotForm.end_time,
+        block_dropoffs: timeSlotForm.block_dropoffs,
+        block_pickups: timeSlotForm.block_pickups,
+        reason: timeSlotForm.reason || null,
+      }
+
+      const url = editingTimeSlot
+        ? `${API_URL}/api/admin/blocked-time-slots/${editingTimeSlot.id}`
+        : `${API_URL}/api/admin/blocked-dates/${editingBlockedDate.id}/time-slots`
+
+      const response = await fetch(url, {
+        method: editingTimeSlot ? 'PUT' : 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (response.ok) {
+        setSuccessMessage(editingTimeSlot ? 'Time slot updated' : 'Time slot added')
+        setTimeout(() => setSuccessMessage(''), 3000)
+        cancelTimeSlotForm()
+        fetchTimeSlots(editingBlockedDate.id)
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.detail || 'Failed to save time slot')
+      }
+    } catch (err) {
+      setError('Network error saving time slot')
+    } finally {
+      setSavingTimeSlot(false)
+    }
+  }
+
+  // Delete time slot
+  const deleteTimeSlot = async (slotId) => {
+    if (!window.confirm('Are you sure you want to delete this time slot?')) return
+
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/blocked-time-slots/${slotId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setSuccessMessage('Time slot deleted')
+        setTimeout(() => setSuccessMessage(''), 3000)
+        if (editingBlockedDate) {
+          fetchTimeSlots(editingBlockedDate.id)
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.detail || 'Failed to delete time slot')
+      }
+    } catch (err) {
+      setError('Network error deleting time slot')
+    }
+  }
+
+  // Save blocked date (create or update)
+  const saveBlockedDate = async () => {
+    setSavingBlockedDate(true)
+    setError('')
+
+    try {
+      const payload = {
+        start_date: blockedDateForm.start_date,
+        end_date: blockedDateForm.end_date,
+        block_dropoffs: blockedDateForm.block_dropoffs,
+        block_pickups: blockedDateForm.block_pickups,
+        reason: blockedDateForm.reason || null,
+      }
+
+      const url = editingBlockedDate
+        ? `${API_URL}/api/admin/blocked-dates/${editingBlockedDate.id}`
+        : `${API_URL}/api/admin/blocked-dates`
+
+      const response = await fetch(url, {
+        method: editingBlockedDate ? 'PUT' : 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (response.ok) {
+        setSuccessMessage(editingBlockedDate ? 'Blocked date updated' : 'Date blocked')
+        setTimeout(() => setSuccessMessage(''), 3000)
+        closeBlockedDateModal()
+        fetchBlockedDates()
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.detail || 'Failed to save blocked date')
+      }
+    } catch (err) {
+      setError('Network error saving blocked date')
+    } finally {
+      setSavingBlockedDate(false)
+    }
+  }
+
+  // Delete blocked date
+  const deleteBlockedDate = async (blockedDateId) => {
+    if (!window.confirm('Are you sure you want to unblock this date?')) return
+
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/blocked-dates/${blockedDateId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setSuccessMessage('Date unblocked')
+        setTimeout(() => setSuccessMessage(''), 3000)
+        fetchBlockedDates()
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.detail || 'Failed to unblock date')
+      }
+    } catch (err) {
+      setError('Network error unblocking date')
+    }
+  }
+
+  // Get blocked date info for selected date
+  const selectedDateBlockedInfo = selectedDate ? getBlockedInfoForDay(parseInt(selectedDate.split('-')[2])) : null
+
   // Month names
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -673,23 +1039,33 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 const dayBookings = getBookingsForDay(day)
                 const dayShifts = getShiftsForDay(day)
                 const dateKey = getDateKey(day)
+                const blockedInfo = getBlockedInfoForDay(day)
                 const hasDropoffs = dayBookings.dropoffs.length > 0
                 const hasPickups = dayBookings.pickups.length > 0
                 const hasShifts = dayShifts.length > 0
-                const hasContent = hasDropoffs || hasPickups || hasShifts
+                const hasContent = hasDropoffs || hasPickups || hasShifts || blockedInfo
 
                 return (
                   <div
                     key={dayIndex}
                     className={`calendar-day ${day ? '' : 'empty'} ${isToday(day) ? 'today' : ''} ${
                       selectedDate === dateKey ? 'selected' : ''
-                    } ${hasContent ? 'has-content' : ''}`}
+                    } ${hasContent ? 'has-content' : ''} ${blockedInfo ? 'blocked' : ''}`}
                     onClick={() => handleDateClick(day)}
                   >
                     {day && (
                       <>
                         <span className="day-number">{day}</span>
                         <div className="day-content">
+                          {/* Blocked date indicator */}
+                          {blockedInfo && (
+                            <div className="day-badge badge-blocked" title={blockedInfo.reason || 'Blocked'}>
+                              🚫 {blockedInfo.time_slots && blockedInfo.time_slots.length > 0
+                                ? `${blockedInfo.time_slots.length} slot${blockedInfo.time_slots.length > 1 ? 's' : ''}`
+                                : (blockedInfo.block_dropoffs && blockedInfo.block_pickups ? 'Closed' :
+                                    blockedInfo.block_dropoffs ? 'No Drop-offs' : 'No Pick-ups')}
+                            </div>
+                          )}
                           {/* Booking badges */}
                           {hasDropoffs && (
                             <div className="day-badge badge-dropoff">
@@ -780,12 +1156,22 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
             </h3>
             <div className="detail-header-actions">
               {isAdmin && (
-                <button
-                  className="roster-add-btn-small"
-                  onClick={() => openNewShiftModal(formatDateUK(selectedDate))}
-                >
-                  + Add Shift
-                </button>
+                <>
+                  <button
+                    className="roster-add-btn-small"
+                    onClick={() => openNewShiftModal(formatDateUK(selectedDate))}
+                  >
+                    + Add Shift
+                  </button>
+                  {!selectedDateBlockedInfo && (
+                    <button
+                      className="blocked-dates-btn"
+                      onClick={() => openBlockedDateModal(selectedDate)}
+                    >
+                      🚫 Block Date
+                    </button>
+                  )}
+                </>
               )}
               <button className="detail-close" onClick={() => setSelectedDate(null)}>
                 ×
@@ -794,6 +1180,63 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
           </div>
 
           <div className="detail-content">
+            {/* Blocked Date Section - visible to all users, but edit/delete only for admins */}
+            {selectedDateBlockedInfo && (
+              <div className="blocked-dates-section">
+                <h4>🚫 Date Blocked</h4>
+                <div className="blocked-date-info">
+                  {/* Show time slots if they exist */}
+                  {selectedDateBlockedInfo.time_slots && selectedDateBlockedInfo.time_slots.length > 0 ? (
+                    <div className="blocked-time-slots-detail">
+                      <div className="blocked-time-slots-label">Blocked time slots:</div>
+                      {selectedDateBlockedInfo.time_slots.map((slot) => (
+                        <div key={slot.id} className="blocked-time-slot-row">
+                          <span className="slot-time-range">
+                            {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
+                          </span>
+                          <span className="slot-block-types">
+                            {slot.block_dropoffs && slot.block_pickups ? 'All blocked' :
+                              slot.block_dropoffs ? 'No drop-offs' : 'No pick-ups'}
+                          </span>
+                          {slot.reason && <span className="slot-reason">{slot.reason}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="blocked-date-type">
+                      {selectedDateBlockedInfo.block_dropoffs && (
+                        <span className="blocked-type-badge">No Drop-offs</span>
+                      )}
+                      {selectedDateBlockedInfo.block_pickups && (
+                        <span className="blocked-type-badge">No Pick-ups</span>
+                      )}
+                    </div>
+                  )}
+                  {selectedDateBlockedInfo.reason && (
+                    <div className="blocked-date-reason">
+                      Reason: {selectedDateBlockedInfo.reason}
+                    </div>
+                  )}
+                  {isAdmin && (
+                    <div className="blocked-date-actions">
+                      <button
+                        className="blocked-date-edit-btn"
+                        onClick={() => openEditBlockedDateModal(selectedDateBlockedInfo)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="blocked-date-delete-btn"
+                        onClick={() => deleteBlockedDate(selectedDateBlockedInfo.id)}
+                      >
+                        Unblock
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Drop-offs Section */}
             {selectedDateBookings.dropoffs.length > 0 && (
               <div className="detail-section">
@@ -1199,6 +1642,308 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
               </button>
               <button className="modal-delete-btn" onClick={deleteShift} disabled={deletingShift}>
                 {deletingShift ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Blocked Date Modal */}
+      {showBlockedDateModal && isAdmin && (
+        <div className="modal-overlay" onClick={closeBlockedDateModal}>
+          <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
+            <h3>{editingBlockedDate ? 'Edit Blocked Date' : 'Block Date'}</h3>
+
+            <div className="modal-form">
+              <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Start Date</label>
+                  <input
+                    type="date"
+                    value={blockedDateForm.start_date}
+                    onChange={(e) =>
+                      setBlockedDateForm({ ...blockedDateForm, start_date: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>End Date</label>
+                  <input
+                    type="date"
+                    value={blockedDateForm.end_date}
+                    onChange={(e) =>
+                      setBlockedDateForm({ ...blockedDateForm, end_date: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* Full day blocking or time slots info */}
+              <div className="modal-form-group">
+                <label>Block Type {timeSlots.length > 0 && <span className="time-slots-info">(Time slots override full day settings)</span>}</label>
+                <div className="checkbox-group">
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={blockedDateForm.block_dropoffs}
+                      onChange={(e) =>
+                        setBlockedDateForm({ ...blockedDateForm, block_dropoffs: e.target.checked })
+                      }
+                      disabled={timeSlots.length > 0}
+                    />
+                    Block Drop-offs {timeSlots.length > 0 && '(full day)'}
+                  </label>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={blockedDateForm.block_pickups}
+                      onChange={(e) =>
+                        setBlockedDateForm({ ...blockedDateForm, block_pickups: e.target.checked })
+                      }
+                      disabled={timeSlots.length > 0}
+                    />
+                    Block Pick-ups {timeSlots.length > 0 && '(full day)'}
+                  </label>
+                </div>
+                {timeSlots.length > 0 && (
+                  <p className="time-slots-note">
+                    Time slots are configured - only specific hours will be blocked instead of the full day.
+                  </p>
+                )}
+              </div>
+
+              <div className="modal-form-group">
+                <label>Reason (optional)</label>
+                <input
+                  type="text"
+                  value={blockedDateForm.reason}
+                  onChange={(e) =>
+                    setBlockedDateForm({ ...blockedDateForm, reason: e.target.value })
+                  }
+                  placeholder="e.g., Bank Holiday, Staff Training, etc."
+                />
+              </div>
+
+              {/* Time Slots Section - only show when editing existing blocked date */}
+              {editingBlockedDate && (
+                <div className="time-slots-section">
+                  <div className="time-slots-header">
+                    <h4>Time Slots (Partial Day Blocking)</h4>
+                    {!showTimeSlotForm && (
+                      <button
+                        type="button"
+                        className="time-slot-add-btn"
+                        onClick={openNewTimeSlotForm}
+                      >
+                        + Add Time Slot
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="time-slots-description">
+                    Add specific time ranges to block instead of the entire day.
+                    When time slots exist, only those hours are blocked.
+                  </p>
+
+                  {/* Time Slot Form */}
+                  {showTimeSlotForm && (
+                    <div className="time-slot-form">
+                      <label className="time-slot-form-label">Block bookings from:</label>
+                      <div className="time-slot-time-row">
+                        <input
+                          type="text"
+                          placeholder="06:00"
+                          maxLength={5}
+                          className="time-input"
+                          value={timeSlotForm.start_time}
+                          onChange={(e) => {
+                            const formatted = formatTimeInput24h(e.target.value)
+                            setTimeSlotForm({ ...timeSlotForm, start_time: formatted })
+                          }}
+                        />
+                        <span className="time-separator">to</span>
+                        <input
+                          type="text"
+                          placeholder="14:00"
+                          maxLength={5}
+                          className="time-input"
+                          value={timeSlotForm.end_time}
+                          onChange={(e) => {
+                            const formatted = formatTimeInput24h(e.target.value)
+                            setTimeSlotForm({ ...timeSlotForm, end_time: formatted })
+                          }}
+                        />
+                      </div>
+
+                      <label className="time-slot-form-label">What to block:</label>
+                      <div className="time-slot-block-options">
+                        <label className={`block-option ${timeSlotForm.block_dropoffs && timeSlotForm.block_pickups ? 'selected' : ''}`}>
+                          <input
+                            type="radio"
+                            name="blockType"
+                            checked={timeSlotForm.block_dropoffs && timeSlotForm.block_pickups}
+                            onChange={() => setTimeSlotForm({ ...timeSlotForm, block_dropoffs: true, block_pickups: true })}
+                          />
+                          <span className="option-icon">🚫</span>
+                          <span className="option-text">Both</span>
+                        </label>
+                        <label className={`block-option ${timeSlotForm.block_dropoffs && !timeSlotForm.block_pickups ? 'selected' : ''}`}>
+                          <input
+                            type="radio"
+                            name="blockType"
+                            checked={timeSlotForm.block_dropoffs && !timeSlotForm.block_pickups}
+                            onChange={() => setTimeSlotForm({ ...timeSlotForm, block_dropoffs: true, block_pickups: false })}
+                          />
+                          <span className="option-icon">🚗</span>
+                          <span className="option-text">Drop-offs only</span>
+                        </label>
+                        <label className={`block-option ${!timeSlotForm.block_dropoffs && timeSlotForm.block_pickups ? 'selected' : ''}`}>
+                          <input
+                            type="radio"
+                            name="blockType"
+                            checked={!timeSlotForm.block_dropoffs && timeSlotForm.block_pickups}
+                            onChange={() => setTimeSlotForm({ ...timeSlotForm, block_dropoffs: false, block_pickups: true })}
+                          />
+                          <span className="option-icon">🛬</span>
+                          <span className="option-text">Pick-ups only</span>
+                        </label>
+                      </div>
+
+                      <div className="modal-form-group">
+                        <label>Reason (optional)</label>
+                        <input
+                          type="text"
+                          value={timeSlotForm.reason}
+                          onChange={(e) =>
+                            setTimeSlotForm({ ...timeSlotForm, reason: e.target.value })
+                          }
+                          placeholder="e.g., Staff meeting, Maintenance"
+                        />
+                      </div>
+
+                      {/* Preview */}
+                      {timeSlotForm.start_time && timeSlotForm.end_time && (
+                        <div className="time-slot-preview">
+                          Blocking {timeSlotForm.block_dropoffs && timeSlotForm.block_pickups ? 'all bookings' :
+                            timeSlotForm.block_dropoffs ? 'drop-offs' : 'pick-ups'} from <strong>{timeSlotForm.start_time}</strong> to <strong>{timeSlotForm.end_time}</strong>
+                        </div>
+                      )}
+                      <div className="time-slot-form-actions">
+                        <button
+                          type="button"
+                          className="modal-btn modal-btn-secondary"
+                          onClick={cancelTimeSlotForm}
+                          disabled={savingTimeSlot}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className="modal-btn modal-btn-primary"
+                          onClick={saveTimeSlot}
+                          disabled={savingTimeSlot || !timeSlotForm.start_time || !timeSlotForm.end_time || (!timeSlotForm.block_dropoffs && !timeSlotForm.block_pickups)}
+                        >
+                          {savingTimeSlot ? 'Saving...' : editingTimeSlot ? 'Update Slot' : 'Add Slot'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Time Slots List */}
+                  {loadingTimeSlots ? (
+                    <div className="time-slots-loading">Loading time slots...</div>
+                  ) : timeSlots.length > 0 ? (
+                    <div className="time-slots-list">
+                      {timeSlots.map((slot) => (
+                        <div key={slot.id} className="time-slot-item">
+                          <div className="time-slot-time">
+                            {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
+                          </div>
+                          <div className="time-slot-blocks">
+                            {slot.block_dropoffs && <span className="block-badge dropoff">No Drop-offs</span>}
+                            {slot.block_pickups && <span className="block-badge pickup">No Pick-ups</span>}
+                          </div>
+                          {slot.reason && <div className="time-slot-reason">{slot.reason}</div>}
+                          <div className="time-slot-actions">
+                            <button
+                              type="button"
+                              className="time-slot-edit-btn"
+                              onClick={() => openEditTimeSlotForm(slot)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="time-slot-delete-btn"
+                              onClick={() => deleteTimeSlot(slot.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="time-slots-empty">
+                      No time slots configured. The entire day will be blocked based on settings above.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Warning about existing bookings */}
+              {blockedDateForm.start_date && (
+                (() => {
+                  // Check for bookings in the date range being blocked
+                  const startDate = blockedDateForm.start_date
+                  const endDate = blockedDateForm.end_date || blockedDateForm.start_date
+                  const affectedBookings = bookings.filter(b => {
+                    if (b.status !== 'confirmed') return false
+                    const hasDropoff = blockedDateForm.block_dropoffs &&
+                      b.dropoff_date >= startDate && b.dropoff_date <= endDate
+                    const hasPickup = blockedDateForm.block_pickups &&
+                      b.pickup_date >= startDate && b.pickup_date <= endDate
+                    return hasDropoff || hasPickup
+                  })
+
+                  if (affectedBookings.length > 0) {
+                    const dropoffCount = affectedBookings.filter(b =>
+                      blockedDateForm.block_dropoffs &&
+                      b.dropoff_date >= startDate && b.dropoff_date <= endDate
+                    ).length
+                    const pickupCount = affectedBookings.filter(b =>
+                      blockedDateForm.block_pickups &&
+                      b.pickup_date >= startDate && b.pickup_date <= endDate
+                    ).length
+
+                    return (
+                      <div className="blocked-date-warning">
+                        <strong>Warning: Existing bookings found:</strong>
+                        <p>
+                          {dropoffCount > 0 && `${dropoffCount} drop-off${dropoffCount > 1 ? 's' : ''}`}
+                          {dropoffCount > 0 && pickupCount > 0 && ' and '}
+                          {pickupCount > 0 && `${pickupCount} pick-up${pickupCount > 1 ? 's' : ''}`}
+                          {' '}scheduled during this period.
+                        </p>
+                        <p className="warning-note">These bookings will still need to be fulfilled. Blocking only prevents new bookings.</p>
+                      </div>
+                    )
+                  }
+                  return null
+                })()
+              )}
+            </div>
+
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={closeBlockedDateModal}>
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={saveBlockedDate}
+                disabled={savingBlockedDate || (!blockedDateForm.block_dropoffs && !blockedDateForm.block_pickups && timeSlots.length === 0)}
+              >
+                {savingBlockedDate ? 'Saving...' : editingBlockedDate ? 'Update' : 'Block Date'}
               </button>
             </div>
           </div>

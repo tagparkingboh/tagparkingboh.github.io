@@ -1250,3 +1250,569 @@
   font-style: italic;
   padding: 10px;
 }
+
+/* ===========================================
+   Blocked Dates Styling
+   =========================================== */
+
+/* Blocked day styling */
+.calendar-day.blocked {
+  background: linear-gradient(135deg, #2a1a1a 0%, #3a2020 100%) !important;
+  border-color: #e74c3c !important;
+}
+
+.calendar-day.blocked:hover {
+  background: linear-gradient(135deg, #3a2020 0%, #4a2a2a 100%) !important;
+}
+
+.calendar-day.blocked .day-number {
+  color: #ff6b6b;
+}
+
+/* Blocked badge */
+.day-badge.badge-blocked {
+  background: #e74c3c;
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+/* Blocked time slots in detail panel */
+.blocked-time-slots-detail {
+  margin-bottom: 12px;
+}
+
+.blocked-time-slots-label {
+  color: #888;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.blocked-time-slot-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #1e1e1e;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.blocked-time-slot-row .slot-time-range {
+  font-family: monospace;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ff6b6b;
+  min-width: 110px;
+}
+
+.blocked-time-slot-row .slot-block-types {
+  background: #3a2020;
+  color: #ffaaaa;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.blocked-time-slot-row .slot-reason {
+  color: #888;
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+/* Blocked dates manager button */
+.blocked-dates-btn {
+  background: #e74c3c;
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.blocked-dates-btn:hover {
+  background: #c0392b;
+}
+
+/* Blocked dates section in detail panel */
+.blocked-dates-section {
+  background: #2a1a1a;
+  border: 1px solid #e74c3c;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.blocked-dates-section h4 {
+  color: #e74c3c;
+  margin: 0 0 10px 0;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.blocked-date-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.blocked-date-type {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.blocked-type-badge {
+  background: #3a2020;
+  color: #ff6b6b;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.blocked-date-reason {
+  color: #888;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+.blocked-date-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.blocked-date-edit-btn {
+  background: #444;
+  border: none;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.blocked-date-edit-btn:hover {
+  background: #555;
+}
+
+.blocked-date-delete-btn {
+  background: #e74c3c;
+  border: none;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.blocked-date-delete-btn:hover {
+  background: #c0392b;
+}
+
+/* Blocked date modal form */
+.blocked-date-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.blocked-date-form .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.blocked-date-form .checkbox-group {
+  display: flex;
+  gap: 20px;
+}
+
+.blocked-date-form .checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.blocked-date-form .checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #D9FF00;
+}
+
+/* Blocked date warning for existing bookings */
+.blocked-date-warning {
+  background: #fff8e1;
+  border: 1px solid #ffc107;
+  border-left: 4px solid #ff9800;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 8px;
+}
+
+.blocked-date-warning strong {
+  color: #e65100;
+  font-size: 0.95rem;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.blocked-date-warning p {
+  margin: 0 0 6px 0;
+  color: #5d4037;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.blocked-date-warning p:last-child {
+  margin-bottom: 0;
+}
+
+.blocked-date-warning .warning-note {
+  font-style: italic;
+  color: #795548;
+  font-size: 0.85rem;
+}
+
+/* ===========================================
+   Time Slots Styling (Partial Day Blocking)
+   =========================================== */
+
+.time-slots-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #333;
+}
+
+.time-slots-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.time-slots-header h4 {
+  margin: 0;
+  color: #D9FF00;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.time-slot-add-btn {
+  background: #D9FF00;
+  border: none;
+  color: #1a1a2e;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.time-slot-add-btn:hover {
+  background: #c5e600;
+}
+
+.time-slots-description {
+  color: #888;
+  font-size: 0.85rem;
+  margin: 0 0 15px 0;
+  line-height: 1.4;
+}
+
+.time-slots-info {
+  font-size: 0.8rem;
+  color: #D9FF00;
+  font-weight: normal;
+}
+
+.time-slots-note {
+  color: #D9FF00;
+  font-size: 0.8rem;
+  font-style: italic;
+  margin: 8px 0 0 0;
+}
+
+/* Time Slot Form */
+.time-slot-form {
+  background: #252525;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 15px;
+}
+
+.time-slot-form-label {
+  display: block;
+  color: #ccc;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+.time-slot-time-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.time-slot-time-row .time-input {
+  flex: 1;
+  max-width: 120px;
+  padding: 12px 14px;
+  font-size: 1.1rem;
+  font-family: monospace;
+  text-align: center;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 8px;
+  color: #fff;
+}
+
+.time-slot-time-row .time-input:focus {
+  outline: none;
+  border-color: #D9FF00;
+  box-shadow: 0 0 0 2px rgba(217, 255, 0, 0.2);
+}
+
+.time-slot-time-row .time-separator {
+  color: #888;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.time-slot-block-options {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.time-slot-block-options .block-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #1a1a1a;
+  border: 2px solid #333;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+  min-width: 100px;
+}
+
+.time-slot-block-options .block-option:hover {
+  border-color: #555;
+}
+
+.time-slot-block-options .block-option.selected {
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
+}
+
+.time-slot-block-options .block-option input[type="radio"] {
+  display: none;
+}
+
+.time-slot-block-options .option-icon {
+  font-size: 1.1rem;
+}
+
+.time-slot-block-options .option-text {
+  color: #ccc;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.time-slot-block-options .block-option.selected .option-text {
+  color: #D9FF00;
+}
+
+.time-slot-preview {
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  color: #aaa;
+  font-size: 0.9rem;
+}
+
+.time-slot-preview strong {
+  color: #D9FF00;
+}
+
+.time-slot-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 12px;
+}
+
+.time-slot-form-row:last-child {
+  margin-bottom: 0;
+}
+
+.time-slot-form .checkbox-group {
+  display: flex;
+  gap: 20px;
+  grid-column: span 2;
+}
+
+.time-slot-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 15px;
+  padding-top: 12px;
+  border-top: 1px solid #3a3a3a;
+}
+
+/* Time Slots List */
+.time-slots-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.time-slot-item {
+  background: #252525;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 12px 15px;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 15px;
+}
+
+.time-slot-time {
+  font-family: monospace;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #D9FF00;
+  min-width: 120px;
+}
+
+.time-slot-blocks {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.block-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.block-badge.dropoff {
+  background: #3a2020;
+  color: #ff6b6b;
+}
+
+.block-badge.pickup {
+  background: #203a3a;
+  color: #6bffff;
+}
+
+.time-slot-reason {
+  color: #888;
+  font-size: 0.85rem;
+  font-style: italic;
+  flex: 1;
+}
+
+.time-slot-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.time-slot-edit-btn {
+  background: #444;
+  border: none;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.time-slot-edit-btn:hover {
+  background: #555;
+}
+
+.time-slot-delete-btn {
+  background: #e74c3c;
+  border: none;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.time-slot-delete-btn:hover {
+  background: #c0392b;
+}
+
+.time-slots-loading {
+  color: #888;
+  font-style: italic;
+  padding: 10px;
+  text-align: center;
+}
+
+.time-slots-empty {
+  color: #666;
+  font-style: italic;
+  padding: 15px;
+  text-align: center;
+  background: #1e1e1e;
+  border-radius: 6px;
+}
+
+/* Responsive Time Slots */
+@media (max-width: 768px) {
+  .time-slot-item {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .time-slot-time {
+    min-width: auto;
+  }
+
+  .time-slot-actions {
+    justify-content: flex-end;
+  }
+
+  .time-slot-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .time-slot-form .checkbox-group {
+    grid-column: span 1;
+  }
+}

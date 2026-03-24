@@ -2652,3 +2652,297 @@ describe('BookingsNew - Return Flight Override Integration', () => {
     expect(pickupTime).toBe('19:30')
   })
 })
+
+// =============================================================================
+// Blocked Dates Validation Tests
+// =============================================================================
+
+describe('BookingsNew - Blocked Dates Validation', () => {
+  // Helper function that mirrors the blocked date check logic in BookingsNew.jsx
+  const isDateBlocked = (dateStr, blockedDates, checkType) => {
+    if (!dateStr || blockedDates.length === 0) return false
+    return blockedDates.some(bd =>
+      (checkType === 'dropoff' ? bd.block_dropoffs : bd.block_pickups) &&
+      dateStr >= bd.start_date && dateStr <= bd.end_date
+    )
+  }
+
+  const getBlockedDateInfo = (dateStr, blockedDates, checkType) => {
+    if (!dateStr || blockedDates.length === 0) return null
+    return blockedDates.find(bd =>
+      (checkType === 'dropoff' ? bd.block_dropoffs : bd.block_pickups) &&
+      dateStr >= bd.start_date && dateStr <= bd.end_date
+    )
+  }
+
+  describe('Drop-off date blocking', () => {
+    it('returns false when no blocked dates exist', () => {
+      const result = isDateBlocked('2026-03-26', [], 'dropoff')
+      expect(result).toBe(false)
+    })
+
+    it('returns false when date is not in blocked range', () => {
+      const blockedDates = [
+        { start_date: '2026-03-26', end_date: '2026-03-26', block_dropoffs: true, block_pickups: true }
+      ]
+      const result = isDateBlocked('2026-03-27', blockedDates, 'dropoff')
+      expect(result).toBe(false)
+    })
+
+    it('returns true when drop-off date is blocked', () => {
+      const blockedDates = [
+        { start_date: '2026-03-26', end_date: '2026-03-26', block_dropoffs: true, block_pickups: true }
+      ]
+      const result = isDateBlocked('2026-03-26', blockedDates, 'dropoff')
+      expect(result).toBe(true)
+    })
+
+    it('returns true when date falls within blocked range', () => {
+      const blockedDates = [
+        { start_date: '2026-03-25', end_date: '2026-03-28', block_dropoffs: true, block_pickups: true }
+      ]
+      const result = isDateBlocked('2026-03-26', blockedDates, 'dropoff')
+      expect(result).toBe(true)
+    })
+
+    it('returns false when only pick-ups are blocked for that date', () => {
+      const blockedDates = [
+        { start_date: '2026-03-26', end_date: '2026-03-26', block_dropoffs: false, block_pickups: true }
+      ]
+      const result = isDateBlocked('2026-03-26', blockedDates, 'dropoff')
+      expect(result).toBe(false)
+    })
+
+    it('returns true on boundary dates (start_date)', () => {
+      const blockedDates = [
+        { start_date: '2026-03-26', end_date: '2026-03-28', block_dropoffs: true, block_pickups: true }
+      ]
+      const result = isDateBlocked('2026-03-26', blockedDates, 'dropoff')
+      expect(result).toBe(true)
+    })
+
+    it('returns true on boundary dates (end_date)', () => {
+      const blockedDates = [
+        { start_date: '2026-03-26', end_date: '2026-03-28', block_dropoffs: true, block_pickups: true }
+      ]
+      const result = isDateBlocked('2026-03-28', blockedDates, 'dropoff')
+      expect(result).toBe(true)
+    })
+  })
+
+  describe('Pick-up date blocking', () => {
+    it('returns false when no blocked dates exist', () => {
+      const result = isDateBlocked('2026-03-26', [], 'pickup')
+      expect(result).toBe(false)
+    })
+
+    it('returns true when pick-up date is blocked', () => {
+      const blockedDates = [
+        { start_date: '2026-03-26', end_date: '2026-03-26', block_dropoffs: true, block_pickups: true }
+      ]
+      const result = isDateBlocked('2026-03-26', blockedDates, 'pickup')
+      expect(result).toBe(true)
+    })
+
+    it('returns false when only drop-offs are blocked for that date', () => {
+      const blockedDates = [
+        { start_date: '2026-03-26', end_date: '2026-03-26', block_dropoffs: true, block_pickups: false }
+      ]
+      const result = isDateBlocked('2026-03-26', blockedDates, 'pickup')
+      expect(result).toBe(false)
+    })
+
+    it('returns true when date falls within multi-day blocked range', () => {
+      const blockedDates = [
+        { start_date: '2026-04-01', end_date: '2026-04-05', block_dropoffs: true, block_pickups: true }
+      ]
+      const result = isDateBlocked('2026-04-03', blockedDates, 'pickup')
+      expect(result).toBe(true)
+    })
+  })
+
+  describe('Multiple blocked date ranges', () => {
+    const blockedDates = [
+      { start_date: '2026-03-26', end_date: '2026-03-26', block_dropoffs: true, block_pickups: true, reason: 'Staff Training' },
+      { start_date: '2026-04-10', end_date: '2026-04-13', block_dropoffs: true, block_pickups: true, reason: 'Easter Holiday' },
+      { start_date: '2026-05-01', end_date: '2026-05-01', block_dropoffs: true, block_pickups: false, reason: 'May Day - Drop-offs only' }
+    ]
+
+    it('correctly identifies first blocked range', () => {
+      expect(isDateBlocked('2026-03-26', blockedDates, 'dropoff')).toBe(true)
+      expect(isDateBlocked('2026-03-27', blockedDates, 'dropoff')).toBe(false)
+    })
+
+    it('correctly identifies second blocked range', () => {
+      expect(isDateBlocked('2026-04-09', blockedDates, 'dropoff')).toBe(false)
+      expect(isDateBlocked('2026-04-10', blockedDates, 'dropoff')).toBe(true)
+      expect(isDateBlocked('2026-04-12', blockedDates, 'dropoff')).toBe(true)
+      expect(isDateBlocked('2026-04-13', blockedDates, 'dropoff')).toBe(true)
+      expect(isDateBlocked('2026-04-14', blockedDates, 'dropoff')).toBe(false)
+    })
+
+    it('correctly handles partial block (drop-offs only)', () => {
+      expect(isDateBlocked('2026-05-01', blockedDates, 'dropoff')).toBe(true)
+      expect(isDateBlocked('2026-05-01', blockedDates, 'pickup')).toBe(false)
+    })
+  })
+
+  describe('getBlockedDateInfo helper', () => {
+    const blockedDates = [
+      { start_date: '2026-03-26', end_date: '2026-03-26', block_dropoffs: true, block_pickups: true, reason: 'Staff Training' },
+      { start_date: '2026-04-10', end_date: '2026-04-13', block_dropoffs: true, block_pickups: true, reason: 'Easter Holiday' }
+    ]
+
+    it('returns undefined when date is not blocked', () => {
+      const result = getBlockedDateInfo('2026-03-27', blockedDates, 'dropoff')
+      expect(result).toBeUndefined()
+    })
+
+    it('returns blocked date info with reason', () => {
+      const result = getBlockedDateInfo('2026-03-26', blockedDates, 'dropoff')
+      expect(result).not.toBeNull()
+      expect(result.reason).toBe('Staff Training')
+    })
+
+    it('returns correct blocked date for multi-day range', () => {
+      const result = getBlockedDateInfo('2026-04-12', blockedDates, 'pickup')
+      expect(result).not.toBeNull()
+      expect(result.reason).toBe('Easter Holiday')
+      expect(result.start_date).toBe('2026-04-10')
+      expect(result.end_date).toBe('2026-04-13')
+    })
+  })
+
+  describe('Step 1 completion validation with blocked dates', () => {
+    // Simulates the isStep1Complete logic
+    const isStep1Complete = (formData, flags) => {
+      const {
+        isDepartureComplete,
+        isArrivalComplete,
+        isCapacityAvailable,
+        isDropoffDateBlocked,
+        isPickupDateBlocked
+      } = flags
+
+      return formData.dropoffDate &&
+        isDepartureComplete &&
+        formData.pickupDate &&
+        isArrivalComplete &&
+        isCapacityAvailable &&
+        !isDropoffDateBlocked &&
+        !isPickupDateBlocked
+    }
+
+    it('returns false when drop-off date is blocked', () => {
+      const formData = { dropoffDate: new Date('2026-03-26'), pickupDate: new Date('2026-04-02') }
+      const flags = {
+        isDepartureComplete: true,
+        isArrivalComplete: true,
+        isCapacityAvailable: true,
+        isDropoffDateBlocked: true,
+        isPickupDateBlocked: false
+      }
+      expect(isStep1Complete(formData, flags)).toBe(false)
+    })
+
+    it('returns false when pick-up date is blocked', () => {
+      const formData = { dropoffDate: new Date('2026-03-20'), pickupDate: new Date('2026-03-26') }
+      const flags = {
+        isDepartureComplete: true,
+        isArrivalComplete: true,
+        isCapacityAvailable: true,
+        isDropoffDateBlocked: false,
+        isPickupDateBlocked: true
+      }
+      expect(isStep1Complete(formData, flags)).toBe(false)
+    })
+
+    it('returns false when both dates are blocked', () => {
+      const formData = { dropoffDate: new Date('2026-03-26'), pickupDate: new Date('2026-03-26') }
+      const flags = {
+        isDepartureComplete: true,
+        isArrivalComplete: true,
+        isCapacityAvailable: true,
+        isDropoffDateBlocked: true,
+        isPickupDateBlocked: true
+      }
+      expect(isStep1Complete(formData, flags)).toBe(false)
+    })
+
+    it('returns true when no dates are blocked and all other conditions met', () => {
+      const formData = { dropoffDate: new Date('2026-03-20'), pickupDate: new Date('2026-03-27') }
+      const flags = {
+        isDepartureComplete: true,
+        isArrivalComplete: true,
+        isCapacityAvailable: true,
+        isDropoffDateBlocked: false,
+        isPickupDateBlocked: false
+      }
+      expect(isStep1Complete(formData, flags)).toBe(true)
+    })
+
+    it('returns false when dates not blocked but departure incomplete', () => {
+      const formData = { dropoffDate: new Date('2026-03-20'), pickupDate: new Date('2026-03-27') }
+      const flags = {
+        isDepartureComplete: false,
+        isArrivalComplete: true,
+        isCapacityAvailable: true,
+        isDropoffDateBlocked: false,
+        isPickupDateBlocked: false
+      }
+      expect(isStep1Complete(formData, flags)).toBe(false)
+    })
+
+    it('returns false when dates not blocked but capacity unavailable', () => {
+      const formData = { dropoffDate: new Date('2026-03-20'), pickupDate: new Date('2026-03-27') }
+      const flags = {
+        isDepartureComplete: true,
+        isArrivalComplete: true,
+        isCapacityAvailable: false,
+        isDropoffDateBlocked: false,
+        isPickupDateBlocked: false
+      }
+      expect(isStep1Complete(formData, flags)).toBe(false)
+    })
+  })
+
+  describe('Edge cases', () => {
+    it('handles empty date string', () => {
+      const blockedDates = [
+        { start_date: '2026-03-26', end_date: '2026-03-26', block_dropoffs: true, block_pickups: true }
+      ]
+      expect(isDateBlocked('', blockedDates, 'dropoff')).toBe(false)
+      expect(isDateBlocked(null, blockedDates, 'dropoff')).toBe(false)
+      expect(isDateBlocked(undefined, blockedDates, 'dropoff')).toBe(false)
+    })
+
+    it('handles same start and end date (single day block)', () => {
+      const blockedDates = [
+        { start_date: '2026-03-26', end_date: '2026-03-26', block_dropoffs: true, block_pickups: true }
+      ]
+      expect(isDateBlocked('2026-03-25', blockedDates, 'dropoff')).toBe(false)
+      expect(isDateBlocked('2026-03-26', blockedDates, 'dropoff')).toBe(true)
+      expect(isDateBlocked('2026-03-27', blockedDates, 'dropoff')).toBe(false)
+    })
+
+    it('handles blocking only drop-offs for consecutive days', () => {
+      const blockedDates = [
+        { start_date: '2026-12-25', end_date: '2026-12-26', block_dropoffs: true, block_pickups: false, reason: 'Christmas' }
+      ]
+      expect(isDateBlocked('2026-12-25', blockedDates, 'dropoff')).toBe(true)
+      expect(isDateBlocked('2026-12-26', blockedDates, 'dropoff')).toBe(true)
+      expect(isDateBlocked('2026-12-25', blockedDates, 'pickup')).toBe(false)
+      expect(isDateBlocked('2026-12-26', blockedDates, 'pickup')).toBe(false)
+    })
+
+    it('handles blocking only pick-ups for consecutive days', () => {
+      const blockedDates = [
+        { start_date: '2026-12-25', end_date: '2026-12-26', block_dropoffs: false, block_pickups: true, reason: 'Christmas' }
+      ]
+      expect(isDateBlocked('2026-12-25', blockedDates, 'dropoff')).toBe(false)
+      expect(isDateBlocked('2026-12-26', blockedDates, 'dropoff')).toBe(false)
+      expect(isDateBlocked('2026-12-25', blockedDates, 'pickup')).toBe(true)
+      expect(isDateBlocked('2026-12-26', blockedDates, 'pickup')).toBe(true)
+    })
+  })
+})

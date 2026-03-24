@@ -1002,3 +1002,81 @@ class RosterShift(Base):
             # Add 24 hours worth of minutes for overnight shifts
             return (24 * 60 - start_mins) + end_mins
         return end_mins - start_mins
+
+
+class BlockedDate(Base):
+    """Blocked dates - prevents bookings on specific dates.
+
+    Used to block off days when the service is not available
+    (e.g., holidays, maintenance, staff unavailability).
+    All dates are stored and interpreted in UK timezone (Europe/London).
+    """
+    __tablename__ = "blocked_dates"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Date range (inclusive) - stored in UK timezone
+    start_date = Column(Date, nullable=False, index=True)
+    end_date = Column(Date, nullable=False, index=True)
+
+    # What is blocked
+    block_dropoffs = Column(Boolean, default=True, nullable=False)  # Block drop-offs on this date
+    block_pickups = Column(Boolean, default=True, nullable=False)   # Block pick-ups on this date
+
+    # Reason/description (shown to admins)
+    reason = Column(String(255), nullable=True)
+
+    # Admin tracking
+    created_by = Column(String(255), nullable=True)  # Admin email
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationship to time slots
+    time_slots = relationship("BlockedTimeSlot", back_populates="blocked_date", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        block_type = []
+        if self.block_dropoffs:
+            block_type.append("dropoffs")
+        if self.block_pickups:
+            block_type.append("pickups")
+        return f"<BlockedDate {self.start_date} to {self.end_date} ({', '.join(block_type)})>"
+
+
+class BlockedTimeSlot(Base):
+    """Blocked time slots - allows partial day blocking.
+
+    Child of BlockedDate. When a BlockedDate has time slots, only those
+    specific time periods are blocked (not the entire day).
+    If no time slots exist, the entire day is blocked based on BlockedDate settings.
+    """
+    __tablename__ = "blocked_time_slots"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Parent blocked date
+    blocked_date_id = Column(Integer, ForeignKey("blocked_dates.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Time range (UK timezone)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+
+    # What is blocked during this time slot
+    block_dropoffs = Column(Boolean, default=True, nullable=False)
+    block_pickups = Column(Boolean, default=True, nullable=False)
+
+    # Reason for this specific time slot
+    reason = Column(String(255), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationship back to parent
+    blocked_date = relationship("BlockedDate", back_populates="time_slots")
+
+    def __repr__(self):
+        block_type = []
+        if self.block_dropoffs:
+            block_type.append("dropoffs")
+        if self.block_pickups:
+            block_type.append("pickups")
+        return f"<BlockedTimeSlot {self.start_time}-{self.end_time} ({', '.join(block_type)})>"
