@@ -2416,8 +2416,8 @@ function Bookings() {
 
               {/* Flight lookup removed - using direct entry flow */}
 
-              {/* Departure Flight Entry Form */}
-              {showManualDeparture && formData.dropoffDate && !isDropoffDateBlocked && (
+              {/* Departure Flight Entry Form - always show when date selected, even if blocked (so user can edit time) */}
+              {showManualDeparture && formData.dropoffDate && (
                 <div className="form-group fade-in">
                   <div className="form-group">
                     <label htmlFor="manualAirline">Airline <span className="required">*</span></label>
