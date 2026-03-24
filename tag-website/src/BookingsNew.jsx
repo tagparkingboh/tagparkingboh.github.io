@@ -431,27 +431,65 @@ function Bookings() {
     return checkMins >= startMins && checkMins < endMins
   }
 
-  // Get the actual dropoff time from selected slot
-  const getActualDropoffTime = useMemo(() => {
-    if (!manualDepartureData.dropoffSlot || !manualDepartureData.flightTime) return null
-    if (!isValidTimeFormat(manualDepartureData.flightTime)) return null
+  // Helper: Check if a specific dropoff time would be blocked on a date
+  const isDropoffTimeBlocked = useCallback((date, dropoffTimeStr) => {
+    if (!date || !dropoffTimeStr || blockedDates.length === 0) return false
+    const dateStr = format(date, 'yyyy-MM-dd')
+
+    const blockedDate = blockedDates.find(bd =>
+      dateStr >= bd.start_date && dateStr <= bd.end_date
+    )
+
+    if (!blockedDate) return false
+
+    // If blocked date has time slots, check against those
+    if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
+      return blockedDate.time_slots.some(slot =>
+        slot.block_dropoffs && isTimeInSlot(dropoffTimeStr, slot)
+      )
+    }
+
+    // No time slots - full day blocking
+    return blockedDate.block_dropoffs
+  }, [blockedDates])
+
+  // Calculate potential dropoff times from flight time (both slots)
+  const getPotentialDropoffTimes = useMemo(() => {
+    if (!manualDepartureData.flightTime) return []
+    if (!isValidTimeFormat(manualDepartureData.flightTime)) return []
 
     const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
-    const slotMinutesBefore = parseInt(manualDepartureData.dropoffSlot, 10)
 
-    if (isNaN(slotMinutesBefore)) return null
+    const times = []
 
-    const dropoffMinutes = departureMinutes - slotMinutesBefore
-    const dropoffHours = Math.floor(dropoffMinutes / 60)
-    const dropoffMins = dropoffMinutes % 60
+    // Early slot: 165 minutes before
+    const earlyMinutes = departureMinutes - 165
+    if (earlyMinutes >= 0) {
+      const earlyHours = Math.floor(earlyMinutes / 60)
+      const earlyMins = earlyMinutes % 60
+      times.push({
+        slotId: '165',
+        time: `${String(earlyHours).padStart(2, '0')}:${String(earlyMins).padStart(2, '0')}`
+      })
+    }
 
-    if (dropoffHours < 0 || dropoffHours > 23) return null
+    // Late slot: 120 minutes before
+    const lateMinutes = departureMinutes - 120
+    if (lateMinutes >= 0) {
+      const lateHours = Math.floor(lateMinutes / 60)
+      const lateMins = lateMinutes % 60
+      times.push({
+        slotId: '120',
+        time: `${String(lateHours).padStart(2, '0')}:${String(lateMins).padStart(2, '0')}`
+      })
+    }
 
-    return `${String(dropoffHours).padStart(2, '0')}:${String(dropoffMins).padStart(2, '0')}`
-  }, [manualDepartureData.dropoffSlot, manualDepartureData.flightTime])
+    return times
+  }, [manualDepartureData.flightTime])
 
   // Check if a date/time is blocked for drop-offs
+  // Returns true if ALL potential dropoff times are blocked (or full-day block)
   const isDropoffDateBlocked = useMemo(() => {
     if (!formData.dropoffDate || blockedDates.length === 0) return false
     const dateStr = format(formData.dropoffDate, 'yyyy-MM-dd')
@@ -463,22 +501,26 @@ function Bookings() {
 
     if (!blockedDate) return false
 
-    // If blocked date has time slots, check against those
+    // If blocked date has time slots, check if ALL slots would be blocked
     if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
-      const dropoffTime = getActualDropoffTime
-      if (!dropoffTime) {
-        // No time selected yet - don't block, let user select time first
+      // Need flight time entered to check time slots
+      if (!manualDepartureData.flightTime || !isValidTimeFormat(manualDepartureData.flightTime)) {
         return false
       }
-      // Check if the selected time falls within a blocked slot
-      return blockedDate.time_slots.some(slot =>
-        slot.block_dropoffs && isTimeInSlot(dropoffTime, slot)
+
+      // Check if ALL potential dropoff times are blocked
+      if (getPotentialDropoffTimes.length === 0) return false
+
+      const allBlocked = getPotentialDropoffTimes.every(potentialSlot =>
+        isDropoffTimeBlocked(formData.dropoffDate, potentialSlot.time)
       )
+
+      return allBlocked
     }
 
     // No time slots - use full day blocking
     return blockedDate.block_dropoffs
-  }, [formData.dropoffDate, blockedDates, getActualDropoffTime])
+  }, [formData.dropoffDate, blockedDates, manualDepartureData.flightTime, getPotentialDropoffTimes, isDropoffTimeBlocked])
 
   // Check if a date/time is blocked for pick-ups
   const isPickupDateBlocked = useMemo(() => {
@@ -977,6 +1019,7 @@ function Bookings() {
   }
 
   // Calculate drop-off slots for manual departure entries
+  // Filters out slots that fall within blocked time slots
   const manualDropoffSlots = useMemo(() => {
     if (!showManualDeparture) return []
     if (!isValidTimeFormat(manualDepartureData.flightTime)) return []
@@ -993,25 +1036,29 @@ function Bookings() {
     const slots = []
 
     const earlySlotMinutes = departureMinutes - 165
-    if (!isToday || (earlySlotMinutes >= currentUKMinutes + minNoticeMinutes)) {
+    const earlySlotTime = formatMinutesToTime(earlySlotMinutes)
+    const earlySlotBlocked = formData.dropoffDate && isDropoffTimeBlocked(formData.dropoffDate, earlySlotTime)
+    if ((!isToday || (earlySlotMinutes >= currentUKMinutes + minNoticeMinutes)) && !earlySlotBlocked) {
       slots.push({
         id: '165',
         label: '2¾ hours before',
-        time: formatMinutesToTime(earlySlotMinutes)
+        time: earlySlotTime
       })
     }
 
     const lateSlotMinutes = departureMinutes - 120
-    if (!isToday || (lateSlotMinutes >= currentUKMinutes + minNoticeMinutes)) {
+    const lateSlotTime = formatMinutesToTime(lateSlotMinutes)
+    const lateSlotBlocked = formData.dropoffDate && isDropoffTimeBlocked(formData.dropoffDate, lateSlotTime)
+    if ((!isToday || (lateSlotMinutes >= currentUKMinutes + minNoticeMinutes)) && !lateSlotBlocked) {
       slots.push({
         id: '120',
         label: '2 hours before',
-        time: formatMinutesToTime(lateSlotMinutes)
+        time: lateSlotTime
       })
     }
 
     return slots
-  }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate])
+  }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate, isDropoffTimeBlocked])
 
   // Check if same-day slots were filtered due to 4-hour notice requirement
   const sameDaySlotsFiltered = useMemo(() => {
@@ -2339,7 +2386,9 @@ function Bookings() {
                 {isDropoffDateBlocked && formData.dropoffDate && (
                   <div className="blocked-date-message">
                     {(() => {
-                      const blockedInfo = getBlockedDateInfo(formData.dropoffDate, true, getActualDropoffTime)
+                      // Get first blocked slot info for error message
+                      const firstPotentialTime = getPotentialDropoffTimes[0]?.time
+                      const blockedInfo = getBlockedDateInfo(formData.dropoffDate, true, firstPotentialTime)
                       if (blockedInfo?.blocked_slot) {
                         return (
                           <p>
