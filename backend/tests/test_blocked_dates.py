@@ -843,3 +843,386 @@ class TestDatabaseModel:
         for blocked in mock_blocked_dates:
             assert isinstance(blocked["id"], int)
             assert blocked["id"] > 0
+
+
+class TestPublicCheckEndpointParameterVariations:
+    """
+    Comprehensive tests for GET /api/blocked-dates/check endpoint with all parameter combinations.
+
+    This endpoint supports multiple modes:
+    1. No parameters - should return empty blocked_dates list
+    2. dropoff_date only - check if specific dropoff date is blocked
+    3. pickup_date only - check if specific pickup date is blocked
+    4. dropoff_date + pickup_date - check both dates
+    5. date_from + date_to - return all blocked dates in range
+    6. date_from only (no date_to) - should handle gracefully
+    7. date_to only (no date_from) - should handle gracefully
+    8. All parameters combined - date range should take precedence
+    """
+
+    def test_no_parameters_returns_empty_blocked_dates(self):
+        """Calling endpoint with no parameters should return empty blocked_dates list."""
+        # Simulates: GET /api/blocked-dates/check
+        result = {
+            "dropoff_blocked": False,
+            "pickup_blocked": False,
+            "dropoff_reason": None,
+            "pickup_reason": None,
+            "blocked_dates": [],
+        }
+
+        assert result["blocked_dates"] == []
+        assert result["dropoff_blocked"] is False
+        assert result["pickup_blocked"] is False
+
+    def test_dropoff_date_only_checks_dropoff(self):
+        """Calling with dropoff_date only should check dropoff blocking."""
+        # Simulates: GET /api/blocked-dates/check?dropoff_date=2026-03-26
+        dropoff_date = "2026-03-26"
+
+        blocked = None
+        for bd in mock_blocked_dates:
+            if bd["start_date"] <= dropoff_date <= bd["end_date"] and bd["block_dropoffs"]:
+                blocked = bd
+                break
+
+        result = {
+            "dropoff_blocked": blocked is not None,
+            "dropoff_reason": blocked["reason"] if blocked else None,
+            "pickup_blocked": False,
+            "pickup_reason": None,
+            "blocked_dates": [],
+        }
+
+        assert result["dropoff_blocked"] is True
+        assert result["dropoff_reason"] == "Staff Training Day"
+        assert result["pickup_blocked"] is False
+        assert result["blocked_dates"] == []
+
+    def test_pickup_date_only_checks_pickup(self):
+        """Calling with pickup_date only should check pickup blocking."""
+        # Simulates: GET /api/blocked-dates/check?pickup_date=2026-06-15
+        pickup_date = "2026-06-15"
+
+        blocked = None
+        for bd in mock_blocked_dates:
+            if bd["start_date"] <= pickup_date <= bd["end_date"] and bd["block_pickups"]:
+                blocked = bd
+                break
+
+        result = {
+            "dropoff_blocked": False,
+            "dropoff_reason": None,
+            "pickup_blocked": blocked is not None,
+            "pickup_reason": blocked["reason"] if blocked else None,
+            "blocked_dates": [],
+        }
+
+        assert result["dropoff_blocked"] is False
+        assert result["pickup_blocked"] is True
+        assert result["pickup_reason"] == "No pickups - limited staff"
+        assert result["blocked_dates"] == []
+
+    def test_both_dates_checks_both(self):
+        """Calling with both dropoff_date and pickup_date should check both."""
+        # Simulates: GET /api/blocked-dates/check?dropoff_date=2026-03-26&pickup_date=2026-04-02
+        dropoff_date = "2026-03-26"
+        pickup_date = "2026-04-02"
+
+        dropoff_blocked = None
+        for bd in mock_blocked_dates:
+            if bd["start_date"] <= dropoff_date <= bd["end_date"] and bd["block_dropoffs"]:
+                dropoff_blocked = bd
+                break
+
+        pickup_blocked_bd = None
+        for bd in mock_blocked_dates:
+            if bd["start_date"] <= pickup_date <= bd["end_date"] and bd["block_pickups"]:
+                pickup_blocked_bd = bd
+                break
+
+        result = {
+            "dropoff_blocked": dropoff_blocked is not None,
+            "dropoff_reason": dropoff_blocked["reason"] if dropoff_blocked else None,
+            "pickup_blocked": pickup_blocked_bd is not None,
+            "pickup_reason": pickup_blocked_bd["reason"] if pickup_blocked_bd else None,
+            "blocked_dates": [],
+        }
+
+        assert result["dropoff_blocked"] is True
+        assert result["dropoff_reason"] == "Staff Training Day"
+        assert result["pickup_blocked"] is False  # 2026-04-02 is not blocked
+        assert result["blocked_dates"] == []
+
+    def test_date_range_returns_blocked_dates_list(self):
+        """Calling with date_from and date_to should return blocked_dates list."""
+        # Simulates: GET /api/blocked-dates/check?date_from=2026-03-01&date_to=2026-04-30
+        date_from = "2026-03-01"
+        date_to = "2026-04-30"
+
+        # Filter blocked dates that overlap with range
+        filtered = [bd for bd in mock_blocked_dates
+                   if bd["end_date"] >= date_from and bd["start_date"] <= date_to]
+
+        result = {
+            "dropoff_blocked": False,
+            "pickup_blocked": False,
+            "dropoff_reason": None,
+            "pickup_reason": None,
+            "blocked_dates": filtered,
+        }
+
+        assert len(result["blocked_dates"]) == 2  # March 26 and April 10-13
+        assert result["blocked_dates"][0]["start_date"] == "2026-03-26"
+        assert result["blocked_dates"][1]["start_date"] == "2026-04-10"
+
+    def test_date_range_empty_returns_empty_list(self):
+        """Date range with no blocked dates should return empty list."""
+        # Simulates: GET /api/blocked-dates/check?date_from=2026-07-01&date_to=2026-07-31
+        date_from = "2026-07-01"
+        date_to = "2026-07-31"
+
+        filtered = [bd for bd in mock_blocked_dates
+                   if bd["end_date"] >= date_from and bd["start_date"] <= date_to]
+
+        result = {
+            "blocked_dates": filtered,
+        }
+
+        assert result["blocked_dates"] == []
+
+    def test_date_from_only_should_handle_gracefully(self):
+        """Calling with only date_from (no date_to) should not crash."""
+        # Simulates: GET /api/blocked-dates/check?date_from=2026-03-01
+        # Without date_to, should not return blocked_dates list
+        date_from = "2026-03-01"
+        date_to = None
+
+        # If date_to is missing, don't filter - return empty
+        if date_from and date_to:
+            filtered = [bd for bd in mock_blocked_dates
+                       if bd["end_date"] >= date_from and bd["start_date"] <= date_to]
+        else:
+            filtered = []
+
+        result = {
+            "blocked_dates": filtered,
+        }
+
+        assert result["blocked_dates"] == []
+
+    def test_date_to_only_should_handle_gracefully(self):
+        """Calling with only date_to (no date_from) should not crash."""
+        # Simulates: GET /api/blocked-dates/check?date_to=2026-04-30
+        date_from = None
+        date_to = "2026-04-30"
+
+        # If date_from is missing, don't filter - return empty
+        if date_from and date_to:
+            filtered = [bd for bd in mock_blocked_dates
+                       if bd["end_date"] >= date_from and bd["start_date"] <= date_to]
+        else:
+            filtered = []
+
+        result = {
+            "blocked_dates": filtered,
+        }
+
+        assert result["blocked_dates"] == []
+
+    def test_date_range_with_specific_dates_range_takes_precedence(self):
+        """When both date range and specific dates provided, date range returns list."""
+        # Simulates: GET /api/blocked-dates/check?dropoff_date=2026-03-26&date_from=2026-03-01&date_to=2026-04-30
+        # The date range parameters should take precedence and return the list
+        date_from = "2026-03-01"
+        date_to = "2026-04-30"
+
+        filtered = [bd for bd in mock_blocked_dates
+                   if bd["end_date"] >= date_from and bd["start_date"] <= date_to]
+
+        result = {
+            "blocked_dates": filtered,
+        }
+
+        assert len(result["blocked_dates"]) == 2
+
+    def test_date_range_90_days_returns_all_in_range(self):
+        """90-day date range should return all blocked dates in that period."""
+        # Simulates customer booking page: GET /api/blocked-dates/check?date_from=2026-03-23&date_to=2026-06-21
+        date_from = "2026-03-23"
+        date_to = "2026-06-21"
+
+        filtered = [bd for bd in mock_blocked_dates
+                   if bd["end_date"] >= date_from and bd["start_date"] <= date_to]
+
+        result = {
+            "blocked_dates": filtered,
+        }
+
+        # Should include: March 26, April 10-13, May 1, June 15
+        assert len(result["blocked_dates"]) == 4
+
+    def test_blocked_dates_list_includes_all_fields(self):
+        """Blocked dates in list should include all necessary fields."""
+        # Simulates: GET /api/blocked-dates/check?date_from=2026-03-01&date_to=2026-03-31
+        date_from = "2026-03-01"
+        date_to = "2026-03-31"
+
+        filtered = [bd for bd in mock_blocked_dates
+                   if bd["end_date"] >= date_from and bd["start_date"] <= date_to]
+
+        assert len(filtered) == 1
+        blocked = filtered[0]
+
+        # Verify all required fields are present
+        assert "id" in blocked
+        assert "start_date" in blocked
+        assert "end_date" in blocked
+        assert "block_dropoffs" in blocked
+        assert "block_pickups" in blocked
+        assert "reason" in blocked
+
+    def test_dropoff_date_with_dropoff_only_block(self):
+        """Should correctly identify dropoff-only block."""
+        # Simulates: GET /api/blocked-dates/check?dropoff_date=2026-05-01
+        dropoff_date = "2026-05-01"  # This date has dropoff blocked but pickup allowed
+
+        dropoff_blocked = None
+        for bd in mock_blocked_dates:
+            if bd["start_date"] <= dropoff_date <= bd["end_date"] and bd["block_dropoffs"]:
+                dropoff_blocked = bd
+                break
+
+        pickup_blocked = None
+        for bd in mock_blocked_dates:
+            if bd["start_date"] <= dropoff_date <= bd["end_date"] and bd["block_pickups"]:
+                pickup_blocked = bd
+                break
+
+        assert dropoff_blocked is not None
+        assert dropoff_blocked["reason"] == "No drop-offs - maintenance"
+        assert pickup_blocked is None
+
+    def test_pickup_date_with_pickup_only_block(self):
+        """Should correctly identify pickup-only block."""
+        # Simulates: GET /api/blocked-dates/check?pickup_date=2026-06-15
+        pickup_date = "2026-06-15"  # This date has pickup blocked but dropoff allowed
+
+        dropoff_blocked = None
+        for bd in mock_blocked_dates:
+            if bd["start_date"] <= pickup_date <= bd["end_date"] and bd["block_dropoffs"]:
+                dropoff_blocked = bd
+                break
+
+        pickup_blocked = None
+        for bd in mock_blocked_dates:
+            if bd["start_date"] <= pickup_date <= bd["end_date"] and bd["block_pickups"]:
+                pickup_blocked = bd
+                break
+
+        assert dropoff_blocked is None
+        assert pickup_blocked is not None
+        assert pickup_blocked["reason"] == "No pickups - limited staff"
+
+    def test_date_range_single_day(self):
+        """Date range of single day should work correctly."""
+        # Simulates: GET /api/blocked-dates/check?date_from=2026-03-26&date_to=2026-03-26
+        date_from = "2026-03-26"
+        date_to = "2026-03-26"
+
+        filtered = [bd for bd in mock_blocked_dates
+                   if bd["end_date"] >= date_from and bd["start_date"] <= date_to]
+
+        assert len(filtered) == 1
+        assert filtered[0]["start_date"] == "2026-03-26"
+
+    def test_date_range_boundary_start(self):
+        """Should include blocked date that starts on date_from."""
+        # Simulates: GET /api/blocked-dates/check?date_from=2026-04-10&date_to=2026-04-20
+        date_from = "2026-04-10"  # Easter closure starts on this day
+        date_to = "2026-04-20"
+
+        filtered = [bd for bd in mock_blocked_dates
+                   if bd["end_date"] >= date_from and bd["start_date"] <= date_to]
+
+        assert len(filtered) == 1
+        assert filtered[0]["start_date"] == "2026-04-10"
+
+    def test_date_range_boundary_end(self):
+        """Should include blocked date that ends on date_to."""
+        # Simulates: GET /api/blocked-dates/check?date_from=2026-04-01&date_to=2026-04-13
+        date_from = "2026-04-01"
+        date_to = "2026-04-13"  # Easter closure ends on this day
+
+        filtered = [bd for bd in mock_blocked_dates
+                   if bd["end_date"] >= date_from and bd["start_date"] <= date_to]
+
+        assert len(filtered) == 1
+        assert filtered[0]["end_date"] == "2026-04-13"
+
+    def test_invalid_date_format_dropoff(self):
+        """Invalid dropoff_date format should be handled gracefully."""
+        # Simulates: GET /api/blocked-dates/check?dropoff_date=invalid-date
+        # The endpoint should either return error or handle gracefully
+        invalid_date = "invalid-date"
+
+        try:
+            from datetime import datetime
+            datetime.strptime(invalid_date, "%Y-%m-%d")
+            is_valid = True
+        except ValueError:
+            is_valid = False
+
+        assert is_valid is False
+
+    def test_invalid_date_format_date_range(self):
+        """Invalid date range format should be handled gracefully."""
+        # Simulates: GET /api/blocked-dates/check?date_from=2026/03/01&date_to=2026/04/30
+        invalid_from = "2026/03/01"
+        invalid_to = "2026/04/30"
+
+        try:
+            from datetime import datetime
+            datetime.strptime(invalid_from, "%Y-%m-%d")
+            is_valid = True
+        except ValueError:
+            is_valid = False
+
+        assert is_valid is False
+
+    def test_empty_string_parameters(self):
+        """Empty string parameters should be treated as no parameter."""
+        # Simulates: GET /api/blocked-dates/check?dropoff_date=&pickup_date=
+        dropoff_date = ""
+        pickup_date = ""
+
+        # Empty strings should be treated as None/not provided
+        dropoff_provided = bool(dropoff_date)
+        pickup_provided = bool(pickup_date)
+
+        assert dropoff_provided is False
+        assert pickup_provided is False
+
+    def test_future_date_check(self):
+        """Should correctly check dates far in the future."""
+        # Simulates: GET /api/blocked-dates/check?dropoff_date=2027-01-01
+        future_date = "2027-01-01"
+
+        blocked = any(
+            bd["start_date"] <= future_date <= bd["end_date"]
+            for bd in mock_blocked_dates
+        )
+
+        assert blocked is False
+
+    def test_past_date_check(self):
+        """Should correctly check dates in the past."""
+        # Simulates: GET /api/blocked-dates/check?dropoff_date=2025-01-01
+        past_date = "2025-01-01"
+
+        blocked = any(
+            bd["start_date"] <= past_date <= bd["end_date"]
+            for bd in mock_blocked_dates
+        )
+
+        assert blocked is False

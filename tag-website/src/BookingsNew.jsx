@@ -473,11 +473,21 @@ function Bookings() {
     fetchAirlinesAndDestinations()
   }, [API_BASE_URL])
 
-  // Fetch blocked dates on mount
+  // Fetch blocked dates on mount (get all future blocked dates for next 90 days)
   useEffect(() => {
     const fetchBlockedDates = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/blocked-dates/check`)
+        // Get blocked dates from today to 90 days in the future
+        const today = new Date()
+        const futureDate = new Date()
+        futureDate.setDate(futureDate.getDate() + 90)
+
+        const params = new URLSearchParams({
+          date_from: format(today, 'yyyy-MM-dd'),
+          date_to: format(futureDate, 'yyyy-MM-dd'),
+        })
+
+        const response = await fetch(`${API_BASE_URL}/api/blocked-dates/check?${params}`)
         if (response.ok) {
           const data = await response.json()
           setBlockedDates(data.blocked_dates || [])

@@ -163,9 +163,9 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }, [token, currentDate, isAdmin])
 
-  // Fetch blocked dates (admin only)
+  // Fetch blocked dates (for both admin and employees)
   const fetchBlockedDates = useCallback(async () => {
-    if (!token || !isAdmin) return
+    if (!token) return
 
     try {
       const year = currentDate.getFullYear()
@@ -178,7 +178,12 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         date_to: formatDateISO(endDate),
       })
 
-      const response = await fetch(`${API_URL}/api/admin/blocked-dates?${params}`, {
+      // Use admin endpoint for admins (with full CRUD), public endpoint for employees (read-only)
+      const endpoint = isAdmin
+        ? `${API_URL}/api/admin/blocked-dates?${params}`
+        : `${API_URL}/api/blocked-dates/check?${params}`
+
+      const response = await fetch(endpoint, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',

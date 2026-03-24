@@ -10067,11 +10067,14 @@ async def delete_blocked_date(
 async def check_blocked_date(
     dropoff_date: Optional[str] = None,
     pickup_date: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """
     Check if a date is blocked for bookings (public endpoint).
     Returns blocking info for the specified dates.
+    If date_from and date_to are provided, returns all blocked dates in that range.
     All dates are in UK timezone.
     """
     from db_models import BlockedDate
@@ -10081,7 +10084,31 @@ async def check_blocked_date(
         "pickup_blocked": False,
         "dropoff_reason": None,
         "pickup_reason": None,
+        "blocked_dates": [],
     }
+
+    # If date range provided, return all blocked dates in that range
+    if date_from and date_to:
+        from_date = parse_blocked_date(date_from)
+        to_date = parse_blocked_date(date_to)
+
+        blocked_dates = db.query(BlockedDate).filter(
+            BlockedDate.start_date <= to_date,
+            BlockedDate.end_date >= from_date
+        ).order_by(BlockedDate.start_date).all()
+
+        result["blocked_dates"] = [
+            {
+                "id": bd.id,
+                "start_date": bd.start_date.isoformat(),
+                "end_date": bd.end_date.isoformat(),
+                "block_dropoffs": bd.block_dropoffs,
+                "block_pickups": bd.block_pickups,
+                "reason": bd.reason,
+            }
+            for bd in blocked_dates
+        ]
+        return result
 
     if dropoff_date:
         d_date = parse_blocked_date(dropoff_date)
