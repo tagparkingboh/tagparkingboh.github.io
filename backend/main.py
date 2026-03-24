@@ -1206,6 +1206,57 @@ async def get_booking_stats(
     avg_revenue_per_customer = round(total_revenue_pence / paid_customer_count / 100, 2) if paid_customer_count > 0 else 0
     total_revenue_pounds = round(total_revenue_pence / 100, 2)
 
+    # Calculate average trip duration, drop-off time range, and pick-up time range
+    trip_durations = []
+    dropoff_times_minutes = []
+    pickup_times_minutes = []
+
+    for booking in successful_bookings:
+        # Trip duration (in days)
+        if booking.dropoff_date and booking.pickup_date:
+            duration = (booking.pickup_date - booking.dropoff_date).days
+            if duration >= 0:
+                trip_durations.append(duration)
+
+        # Drop-off time (convert to minutes from midnight for averaging)
+        if booking.dropoff_time:
+            minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+            dropoff_times_minutes.append(minutes)
+
+        # Pick-up time (convert to minutes from midnight for averaging)
+        if booking.pickup_time:
+            minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+            pickup_times_minutes.append(minutes)
+
+    # Calculate averages
+    avg_trip_duration = round(sum(trip_durations) / len(trip_durations), 1) if trip_durations else 0
+
+    # Drop-off time range (min, max, avg)
+    if dropoff_times_minutes:
+        min_dropoff = min(dropoff_times_minutes)
+        max_dropoff = max(dropoff_times_minutes)
+        avg_dropoff = sum(dropoff_times_minutes) / len(dropoff_times_minutes)
+        dropoff_range = {
+            "min": f"{min_dropoff // 60:02d}:{min_dropoff % 60:02d}",
+            "max": f"{max_dropoff // 60:02d}:{max_dropoff % 60:02d}",
+            "avg": f"{int(avg_dropoff) // 60:02d}:{int(avg_dropoff) % 60:02d}",
+        }
+    else:
+        dropoff_range = {"min": "N/A", "max": "N/A", "avg": "N/A"}
+
+    # Pick-up time range (min, max, avg)
+    if pickup_times_minutes:
+        min_pickup = min(pickup_times_minutes)
+        max_pickup = max(pickup_times_minutes)
+        avg_pickup = sum(pickup_times_minutes) / len(pickup_times_minutes)
+        pickup_range = {
+            "min": f"{min_pickup // 60:02d}:{min_pickup % 60:02d}",
+            "max": f"{max_pickup // 60:02d}:{max_pickup % 60:02d}",
+            "avg": f"{int(avg_pickup) // 60:02d}:{int(avg_pickup) % 60:02d}",
+        }
+    else:
+        pickup_range = {"min": "N/A", "max": "N/A", "avg": "N/A"}
+
     return {
         "total_bookings": len(all_bookings),
         "total_successful": total_successful,
@@ -1224,6 +1275,9 @@ async def get_booking_stats(
         "total_revenue": total_revenue_pounds,
         "paid_customer_count": paid_customer_count,
         "avg_revenue_per_customer": avg_revenue_per_customer,
+        "avg_trip_duration": avg_trip_duration,
+        "dropoff_range": dropoff_range,
+        "pickup_range": pickup_range,
     }
 
 
