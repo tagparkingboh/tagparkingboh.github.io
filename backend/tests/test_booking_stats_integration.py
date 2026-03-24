@@ -1531,25 +1531,62 @@ class TestTripInsightsEdgeCasesIntegration:
 
 
 # =============================================================================
-# Busiest Hour Integration Tests
+# Top 3 Busiest Hours AM/PM Integration Tests
 # =============================================================================
 
-class TestBusiestHourIntegration:
-    """Integration tests for busiest hour calculation."""
+class TestTopBusiestHoursIntegration:
+    """Integration tests for top 3 busiest hours AM/PM calculation."""
 
-    def test_busiest_dropoff_hour_from_db_bookings(self):
-        """Test busiest dropoff hour calculated from DB booking models."""
+    def _find_top_busiest_hours(self, times_minutes, top_n=3):
+        """Helper function matching backend implementation."""
+        if not times_minutes:
+            return []
+
+        sorted_times = sorted(times_minutes)
+        hour_counts = []
+
+        for i, start_time in enumerate(sorted_times):
+            end_time = start_time + 60
+            count = sum(1 for t in sorted_times[i:] if t < end_time)
+
+            start_hour = start_time // 60
+            start_min = start_time % 60
+            end_minutes = start_time + 60
+            end_hour = end_minutes // 60
+            end_min = end_minutes % 60
+
+            if end_hour >= 24:
+                end_hour = end_hour % 24
+
+            hour_counts.append({
+                "start": f"{start_hour:02d}:{start_min:02d}",
+                "end": f"{end_hour:02d}:{end_min:02d}",
+                "count": count
+            })
+
+        seen_starts = set()
+        unique_hours = []
+        for h in sorted(hour_counts, key=lambda x: x["count"], reverse=True):
+            if h["start"] not in seen_starts:
+                seen_starts.add(h["start"])
+                unique_hours.append(h)
+                if len(unique_hours) >= top_n:
+                    break
+
+        return unique_hours
+
+    def test_top_3_am_dropoff_hours_from_db_bookings(self):
+        """Test top 3 busiest AM dropoff hours from DB booking models."""
         from datetime import time as dt_time
 
-        # Create bookings clustered around 06:00-07:00
         bookings = [
             create_mock_db_booking(id=1, status_value="confirmed", dropoff_time=dt_time(6, 0)),
             create_mock_db_booking(id=2, status_value="confirmed", dropoff_time=dt_time(6, 10)),
             create_mock_db_booking(id=3, status_value="confirmed", dropoff_time=dt_time(6, 25)),
             create_mock_db_booking(id=4, status_value="confirmed", dropoff_time=dt_time(6, 45)),
-            create_mock_db_booking(id=5, status_value="completed", dropoff_time=dt_time(6, 55)),
-            create_mock_db_booking(id=6, status_value="confirmed", dropoff_time=dt_time(14, 0)),
-            create_mock_db_booking(id=7, status_value="confirmed", dropoff_time=dt_time(14, 30)),
+            create_mock_db_booking(id=5, status_value="completed", dropoff_time=dt_time(8, 0)),
+            create_mock_db_booking(id=6, status_value="confirmed", dropoff_time=dt_time(8, 15)),
+            create_mock_db_booking(id=7, status_value="confirmed", dropoff_time=dt_time(10, 0)),
         ]
 
         dropoff_times_minutes = []
@@ -1558,33 +1595,49 @@ class TestBusiestHourIntegration:
                 minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
                 dropoff_times_minutes.append(minutes)
 
-        # Find busiest hour using sliding window
-        sorted_times = sorted(dropoff_times_minutes)
-        max_count = 0
-        best_start = sorted_times[0]
+        am_times = [m for m in dropoff_times_minutes if m < 720]
+        result = self._find_top_busiest_hours(am_times, 3)
 
-        for i, start_time in enumerate(sorted_times):
-            end_time = start_time + 60
-            count = sum(1 for t in sorted_times[i:] if t < end_time)
-            if count > max_count:
-                max_count = count
-                best_start = start_time
+        assert len(result) == 3
+        assert result[0]["start"] == "06:00"
+        assert result[0]["count"] == 4  # 06:00, 06:10, 06:25, 06:45
 
-        assert max_count == 5  # 5 bookings between 06:00-07:00
-        assert best_start == 360  # Starts at 06:00
-
-    def test_busiest_pickup_hour_from_db_bookings(self):
-        """Test busiest pickup hour calculated from DB booking models."""
+    def test_top_3_pm_dropoff_hours_from_db_bookings(self):
+        """Test top 3 busiest PM dropoff hours from DB booking models."""
         from datetime import time as dt_time
 
-        # Create bookings clustered around 15:30-16:30
         bookings = [
-            create_mock_db_booking(id=1, status_value="confirmed", pickup_time=dt_time(15, 30)),
-            create_mock_db_booking(id=2, status_value="confirmed", pickup_time=dt_time(15, 45)),
-            create_mock_db_booking(id=3, status_value="confirmed", pickup_time=dt_time(16, 0)),
-            create_mock_db_booking(id=4, status_value="confirmed", pickup_time=dt_time(16, 15)),
-            create_mock_db_booking(id=5, status_value="confirmed", pickup_time=dt_time(9, 0)),
-            create_mock_db_booking(id=6, status_value="confirmed", pickup_time=dt_time(10, 0)),
+            create_mock_db_booking(id=1, status_value="confirmed", dropoff_time=dt_time(14, 0)),
+            create_mock_db_booking(id=2, status_value="confirmed", dropoff_time=dt_time(14, 15)),
+            create_mock_db_booking(id=3, status_value="confirmed", dropoff_time=dt_time(14, 30)),
+            create_mock_db_booking(id=4, status_value="confirmed", dropoff_time=dt_time(14, 45)),
+            create_mock_db_booking(id=5, status_value="confirmed", dropoff_time=dt_time(14, 55)),
+            create_mock_db_booking(id=6, status_value="confirmed", dropoff_time=dt_time(16, 0)),
+            create_mock_db_booking(id=7, status_value="confirmed", dropoff_time=dt_time(18, 30)),
+        ]
+
+        dropoff_times_minutes = []
+        for booking in bookings:
+            if booking.dropoff_time:
+                minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+                dropoff_times_minutes.append(minutes)
+
+        pm_times = [m for m in dropoff_times_minutes if m >= 720]
+        result = self._find_top_busiest_hours(pm_times, 3)
+
+        assert len(result) == 3
+        assert result[0]["start"] == "14:00"
+        assert result[0]["count"] == 5  # All 5 between 14:00-15:00
+
+    def test_top_3_am_pickup_hours_from_db_bookings(self):
+        """Test top 3 busiest AM pickup hours from DB booking models."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_db_booking(id=1, status_value="confirmed", pickup_time=dt_time(9, 0)),
+            create_mock_db_booking(id=2, status_value="confirmed", pickup_time=dt_time(9, 15)),
+            create_mock_db_booking(id=3, status_value="confirmed", pickup_time=dt_time(9, 30)),
+            create_mock_db_booking(id=4, status_value="confirmed", pickup_time=dt_time(11, 0)),
         ]
 
         pickup_times_minutes = []
@@ -1593,98 +1646,39 @@ class TestBusiestHourIntegration:
                 minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
                 pickup_times_minutes.append(minutes)
 
-        # Find busiest hour
-        sorted_times = sorted(pickup_times_minutes)
-        max_count = 0
-        best_start = sorted_times[0]
+        am_times = [m for m in pickup_times_minutes if m < 720]
+        result = self._find_top_busiest_hours(am_times, 3)
 
-        for i, start_time in enumerate(sorted_times):
-            end_time = start_time + 60
-            count = sum(1 for t in sorted_times[i:] if t < end_time)
-            if count > max_count:
-                max_count = count
-                best_start = start_time
+        assert result[0]["start"] == "09:00"
+        assert result[0]["count"] == 3
 
-        assert max_count == 4  # 4 bookings between 15:30-16:30
-        assert best_start == 930  # 15:30
-
-    def test_busiest_hour_format_output(self):
-        """Test busiest hour output format matches API response structure."""
+    def test_top_3_pm_pickup_hours_from_db_bookings(self):
+        """Test top 3 busiest PM pickup hours from DB booking models."""
         from datetime import time as dt_time
 
-        def find_busiest_hour(times_minutes):
-            if not times_minutes:
-                return None
-
-            sorted_times = sorted(times_minutes)
-            max_count = 0
-            best_start = sorted_times[0]
-
-            for i, start_time in enumerate(sorted_times):
-                end_time = start_time + 60
-                count = sum(1 for t in sorted_times[i:] if t < end_time)
-                if count > max_count:
-                    max_count = count
-                    best_start = start_time
-
-            start_hour = best_start // 60
-            start_min = best_start % 60
-            end_minutes = best_start + 60
-            end_hour = end_minutes // 60
-            end_min = end_minutes % 60
-
-            if end_hour >= 24:
-                end_hour = end_hour % 24
-
-            return {
-                "start": f"{start_hour:02d}:{start_min:02d}",
-                "end": f"{end_hour:02d}:{end_min:02d}",
-                "count": max_count
-            }
-
         bookings = [
-            create_mock_db_booking(id=1, status_value="confirmed", dropoff_time=dt_time(5, 15)),
-            create_mock_db_booking(id=2, status_value="confirmed", dropoff_time=dt_time(5, 30)),
-            create_mock_db_booking(id=3, status_value="confirmed", dropoff_time=dt_time(5, 45)),
+            create_mock_db_booking(id=1, status_value="confirmed", pickup_time=dt_time(15, 30)),
+            create_mock_db_booking(id=2, status_value="confirmed", pickup_time=dt_time(15, 45)),
+            create_mock_db_booking(id=3, status_value="confirmed", pickup_time=dt_time(16, 0)),
+            create_mock_db_booking(id=4, status_value="confirmed", pickup_time=dt_time(16, 15)),
+            create_mock_db_booking(id=5, status_value="confirmed", pickup_time=dt_time(17, 0)),
+            create_mock_db_booking(id=6, status_value="confirmed", pickup_time=dt_time(17, 30)),
         ]
 
-        dropoff_times_minutes = []
+        pickup_times_minutes = []
         for booking in bookings:
-            if booking.dropoff_time:
-                minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
-                dropoff_times_minutes.append(minutes)
+            if booking.pickup_time:
+                minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+                pickup_times_minutes.append(minutes)
 
-        result = find_busiest_hour(dropoff_times_minutes)
+        pm_times = [m for m in pickup_times_minutes if m >= 720]
+        result = self._find_top_busiest_hours(pm_times, 3)
 
-        assert result["start"] == "05:15"
-        assert result["end"] == "06:15"
-        assert result["count"] == 3
+        assert result[0]["start"] == "15:30"
+        assert result[0]["count"] == 4  # 15:30, 15:45, 16:00, 16:15
 
-    def test_busiest_hour_with_mixed_statuses(self):
-        """Test busiest hour includes all successful booking statuses."""
-        from datetime import time as dt_time
-
-        bookings = [
-            create_mock_db_booking(id=1, status_value="confirmed", dropoff_time=dt_time(7, 0)),
-            create_mock_db_booking(id=2, status_value="completed", dropoff_time=dt_time(7, 15)),
-            create_mock_db_booking(id=3, status_value="confirmed", dropoff_time=dt_time(7, 30)),
-            create_mock_db_booking(id=4, status_value="cancelled", dropoff_time=dt_time(7, 45)),  # Should be excluded
-        ]
-
-        # Filter successful bookings
-        successful_statuses = ["confirmed", "completed", "active"]
-        successful_bookings = [b for b in bookings if b.status.value in successful_statuses]
-
-        dropoff_times_minutes = []
-        for booking in successful_bookings:
-            if booking.dropoff_time:
-                minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
-                dropoff_times_minutes.append(minutes)
-
-        assert len(dropoff_times_minutes) == 3  # Cancelled excluded
-
-    def test_busiest_hour_none_when_empty(self):
-        """Test busiest hour returns None when no bookings have times."""
+    def test_busiest_hours_empty_when_no_data(self):
+        """Test busiest hours returns empty list when no bookings have times."""
         bookings = [
             create_mock_db_booking(id=1, status_value="confirmed", dropoff_time=None),
             create_mock_db_booking(id=2, status_value="confirmed", dropoff_time=None),
@@ -1696,16 +1690,12 @@ class TestBusiestHourIntegration:
                 minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
                 dropoff_times_minutes.append(minutes)
 
-        def find_busiest_hour(times_minutes):
-            if not times_minutes:
-                return None
-            return {"start": "00:00", "end": "01:00", "count": 0}
+        am_times = [m for m in dropoff_times_minutes if m < 720]
+        result = self._find_top_busiest_hours(am_times, 3)
+        assert result == []
 
-        result = find_busiest_hour(dropoff_times_minutes)
-        assert result is None
-
-    def test_busiest_hour_response_included_in_stats(self):
-        """Test that API response includes busiest_hour in dropoff_range and pickup_range."""
+    def test_response_includes_am_pm_busiest_arrays(self):
+        """Test that API response includes am_busiest and pm_busiest arrays."""
         response = {
             "total_bookings": 100,
             "total_successful": 80,
@@ -1713,27 +1703,37 @@ class TestBusiestHourIntegration:
             "dropoff_range": {
                 "am": 50,
                 "pm": 30,
-                "busiest_hour": {
-                    "start": "06:15",
-                    "end": "07:15",
-                    "count": 18
-                }
+                "am_busiest": [
+                    {"start": "06:15", "end": "07:15", "count": 18},
+                    {"start": "08:00", "end": "09:00", "count": 12},
+                    {"start": "10:30", "end": "11:30", "count": 8},
+                ],
+                "pm_busiest": [
+                    {"start": "14:00", "end": "15:00", "count": 10},
+                    {"start": "16:30", "end": "17:30", "count": 7},
+                ]
             },
             "pickup_range": {
                 "am": 20,
                 "pm": 60,
-                "busiest_hour": {
-                    "start": "15:30",
-                    "end": "16:30",
-                    "count": 25
-                }
+                "am_busiest": [
+                    {"start": "09:00", "end": "10:00", "count": 8},
+                ],
+                "pm_busiest": [
+                    {"start": "15:30", "end": "16:30", "count": 25},
+                    {"start": "17:00", "end": "18:00", "count": 18},
+                    {"start": "19:15", "end": "20:15", "count": 12},
+                ]
             },
         }
 
-        assert "busiest_hour" in response["dropoff_range"]
-        assert "busiest_hour" in response["pickup_range"]
-        assert response["dropoff_range"]["busiest_hour"]["count"] == 18
-        assert response["pickup_range"]["busiest_hour"]["start"] == "15:30"
+        assert "am_busiest" in response["dropoff_range"]
+        assert "pm_busiest" in response["dropoff_range"]
+        assert "am_busiest" in response["pickup_range"]
+        assert "pm_busiest" in response["pickup_range"]
+        assert len(response["dropoff_range"]["am_busiest"]) == 3
+        assert len(response["pickup_range"]["pm_busiest"]) == 3
+        assert response["dropoff_range"]["am_busiest"][0]["count"] == 18
 
 
 # =============================================================================

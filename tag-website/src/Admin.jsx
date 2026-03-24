@@ -6240,13 +6240,25 @@ function Admin() {
                             <span className="trip-insight-value">
                               AM: {bookingStats.dropoff_range?.am || 0} | PM: {bookingStats.dropoff_range?.pm || 0}
                             </span>
-                            <span className="trip-insight-detail">
-                              00:00-11:59 | 12:00-23:59
-                            </span>
-                            {bookingStats.dropoff_range?.busiest_hour && (
-                              <span className="trip-insight-busiest">
-                                Busiest: {bookingStats.dropoff_range.busiest_hour.start} - {bookingStats.dropoff_range.busiest_hour.end} ({bookingStats.dropoff_range.busiest_hour.count} drop-offs)
-                              </span>
+                            {bookingStats.dropoff_range?.am_busiest?.length > 0 && (
+                              <div className="trip-insight-busiest-section">
+                                <span className="trip-insight-busiest-label">AM Busiest:</span>
+                                {bookingStats.dropoff_range.am_busiest.map((h, i) => (
+                                  <span key={i} className="trip-insight-busiest">
+                                    {h.start} - {h.end} ({h.count})
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {bookingStats.dropoff_range?.pm_busiest?.length > 0 && (
+                              <div className="trip-insight-busiest-section">
+                                <span className="trip-insight-busiest-label">PM Busiest:</span>
+                                {bookingStats.dropoff_range.pm_busiest.map((h, i) => (
+                                  <span key={i} className="trip-insight-busiest">
+                                    {h.start} - {h.end} ({h.count})
+                                  </span>
+                                ))}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -6257,13 +6269,25 @@ function Admin() {
                             <span className="trip-insight-value">
                               AM: {bookingStats.pickup_range?.am || 0} | PM: {bookingStats.pickup_range?.pm || 0}
                             </span>
-                            <span className="trip-insight-detail">
-                              00:00-11:59 | 12:00-23:59
-                            </span>
-                            {bookingStats.pickup_range?.busiest_hour && (
-                              <span className="trip-insight-busiest">
-                                Busiest: {bookingStats.pickup_range.busiest_hour.start} - {bookingStats.pickup_range.busiest_hour.end} ({bookingStats.pickup_range.busiest_hour.count} pick-ups)
-                              </span>
+                            {bookingStats.pickup_range?.am_busiest?.length > 0 && (
+                              <div className="trip-insight-busiest-section">
+                                <span className="trip-insight-busiest-label">AM Busiest:</span>
+                                {bookingStats.pickup_range.am_busiest.map((h, i) => (
+                                  <span key={i} className="trip-insight-busiest">
+                                    {h.start} - {h.end} ({h.count})
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {bookingStats.pickup_range?.pm_busiest?.length > 0 && (
+                              <div className="trip-insight-busiest-section">
+                                <span className="trip-insight-busiest-label">PM Busiest:</span>
+                                {bookingStats.pickup_range.pm_busiest.map((h, i) => (
+                                  <span key={i} className="trip-insight-busiest">
+                                    {h.start} - {h.end} ({h.count})
+                                  </span>
+                                ))}
+                              </div>
                             )}
                           </div>
                         </div>
