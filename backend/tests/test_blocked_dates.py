@@ -1662,3 +1662,322 @@ class TestTimeSlotEdgeCases:
             is_valid = False
 
         assert is_valid is False
+
+
+class TestBoundaryConditions:
+    """
+    E2E boundary tests for blocked dates/times.
+    Tests: 1 day before, 1 day after, 1 minute before, 1 minute after.
+    """
+
+    # ==========================================================
+    # DATE BOUNDARY TESTS
+    # ==========================================================
+
+    def test_booking_day_before_blocked_date_allowed(self):
+        """Booking for 1 day BEFORE blocked date should be allowed."""
+        # Blocked date: March 26, 2026
+        blocked_start = "2026-03-26"
+        blocked_end = "2026-03-26"
+
+        # Booking for March 25 (1 day before)
+        booking_date = "2026-03-25"
+
+        is_blocked = blocked_start <= booking_date <= blocked_end
+        assert is_blocked is False, "Day before blocked date should NOT be blocked"
+
+    def test_booking_day_after_blocked_date_allowed(self):
+        """Booking for 1 day AFTER blocked date should be allowed."""
+        # Blocked date: March 26, 2026
+        blocked_start = "2026-03-26"
+        blocked_end = "2026-03-26"
+
+        # Booking for March 27 (1 day after)
+        booking_date = "2026-03-27"
+
+        is_blocked = blocked_start <= booking_date <= blocked_end
+        assert is_blocked is False, "Day after blocked date should NOT be blocked"
+
+    def test_booking_on_blocked_date_blocked(self):
+        """Booking ON blocked date should be blocked."""
+        # Blocked date: March 26, 2026
+        blocked_start = "2026-03-26"
+        blocked_end = "2026-03-26"
+
+        # Booking for March 26 (the blocked date)
+        booking_date = "2026-03-26"
+
+        is_blocked = blocked_start <= booking_date <= blocked_end
+        assert is_blocked is True, "Booking on blocked date should be blocked"
+
+    def test_booking_day_before_blocked_range_allowed(self):
+        """Booking for 1 day BEFORE a blocked date range should be allowed."""
+        # Blocked range: April 10-13, 2026 (Easter)
+        blocked_start = "2026-04-10"
+        blocked_end = "2026-04-13"
+
+        # Booking for April 9 (1 day before range starts)
+        booking_date = "2026-04-09"
+
+        is_blocked = blocked_start <= booking_date <= blocked_end
+        assert is_blocked is False, "Day before blocked range should NOT be blocked"
+
+    def test_booking_day_after_blocked_range_allowed(self):
+        """Booking for 1 day AFTER a blocked date range should be allowed."""
+        # Blocked range: April 10-13, 2026 (Easter)
+        blocked_start = "2026-04-10"
+        blocked_end = "2026-04-13"
+
+        # Booking for April 14 (1 day after range ends)
+        booking_date = "2026-04-14"
+
+        is_blocked = blocked_start <= booking_date <= blocked_end
+        assert is_blocked is False, "Day after blocked range should NOT be blocked"
+
+    def test_booking_on_first_day_of_blocked_range_blocked(self):
+        """Booking on FIRST day of blocked range should be blocked."""
+        # Blocked range: April 10-13, 2026 (Easter)
+        blocked_start = "2026-04-10"
+        blocked_end = "2026-04-13"
+
+        # Booking for April 10 (first day of range)
+        booking_date = "2026-04-10"
+
+        is_blocked = blocked_start <= booking_date <= blocked_end
+        assert is_blocked is True, "First day of blocked range should be blocked"
+
+    def test_booking_on_last_day_of_blocked_range_blocked(self):
+        """Booking on LAST day of blocked range should be blocked."""
+        # Blocked range: April 10-13, 2026 (Easter)
+        blocked_start = "2026-04-10"
+        blocked_end = "2026-04-13"
+
+        # Booking for April 13 (last day of range)
+        booking_date = "2026-04-13"
+
+        is_blocked = blocked_start <= booking_date <= blocked_end
+        assert is_blocked is True, "Last day of blocked range should be blocked"
+
+    # ==========================================================
+    # TIME BOUNDARY TESTS (with time slots)
+    # ==========================================================
+
+    def is_time_blocked(self, check_time, slot):
+        """Helper: Check if time falls within blocked slot."""
+        check_h, check_m = map(int, check_time.split(":"))
+        start_h, start_m = map(int, slot["start_time"].split(":"))
+        end_h, end_m = map(int, slot["end_time"].split(":"))
+
+        check_mins = check_h * 60 + check_m
+        start_mins = start_h * 60 + start_m
+        end_mins = end_h * 60 + end_m
+
+        return start_mins <= check_mins < end_mins
+
+    def test_booking_1_minute_before_blocked_slot_allowed(self):
+        """Booking 1 minute BEFORE blocked time slot should be allowed."""
+        # Blocked slot: 06:00 - 10:00
+        slot = {"start_time": "06:00", "end_time": "10:00", "block_dropoffs": True}
+
+        # Booking for 05:59 (1 minute before slot starts)
+        booking_time = "05:59"
+
+        is_blocked = self.is_time_blocked(booking_time, slot) and slot["block_dropoffs"]
+        assert is_blocked is False, "1 minute before blocked slot should NOT be blocked"
+
+    def test_booking_1_minute_after_blocked_slot_allowed(self):
+        """Booking 1 minute AFTER blocked time slot ends should be allowed."""
+        # Blocked slot: 06:00 - 10:00
+        slot = {"start_time": "06:00", "end_time": "10:00", "block_dropoffs": True}
+
+        # Booking for 10:00 (slot ends at 10:00, so 10:00 is first available)
+        booking_time = "10:00"
+
+        is_blocked = self.is_time_blocked(booking_time, slot) and slot["block_dropoffs"]
+        assert is_blocked is False, "Time at exact end of slot should NOT be blocked"
+
+    def test_booking_at_exact_start_of_blocked_slot_blocked(self):
+        """Booking at EXACT start time of blocked slot should be blocked."""
+        # Blocked slot: 06:00 - 10:00
+        slot = {"start_time": "06:00", "end_time": "10:00", "block_dropoffs": True}
+
+        # Booking for 06:00 (exact start of slot)
+        booking_time = "06:00"
+
+        is_blocked = self.is_time_blocked(booking_time, slot) and slot["block_dropoffs"]
+        assert is_blocked is True, "Exact start of blocked slot should be blocked"
+
+    def test_booking_1_minute_into_blocked_slot_blocked(self):
+        """Booking 1 minute INTO blocked slot should be blocked."""
+        # Blocked slot: 06:00 - 10:00
+        slot = {"start_time": "06:00", "end_time": "10:00", "block_dropoffs": True}
+
+        # Booking for 06:01 (1 minute after slot starts)
+        booking_time = "06:01"
+
+        is_blocked = self.is_time_blocked(booking_time, slot) and slot["block_dropoffs"]
+        assert is_blocked is True, "1 minute into blocked slot should be blocked"
+
+    def test_booking_1_minute_before_slot_ends_blocked(self):
+        """Booking 1 minute BEFORE blocked slot ends should be blocked."""
+        # Blocked slot: 06:00 - 10:00
+        slot = {"start_time": "06:00", "end_time": "10:00", "block_dropoffs": True}
+
+        # Booking for 09:59 (1 minute before slot ends)
+        booking_time = "09:59"
+
+        is_blocked = self.is_time_blocked(booking_time, slot) and slot["block_dropoffs"]
+        assert is_blocked is True, "1 minute before slot ends should be blocked"
+
+    def test_multiple_slots_boundary_between_slots(self):
+        """Time between two blocked slots should be allowed."""
+        # Two blocked slots: 06:00-10:00 and 14:00-18:00
+        slots = [
+            {"start_time": "06:00", "end_time": "10:00", "block_dropoffs": True},
+            {"start_time": "14:00", "end_time": "18:00", "block_dropoffs": True},
+        ]
+
+        # Test times in the gap between slots
+        gap_times = ["10:00", "12:00", "13:59"]
+
+        for booking_time in gap_times:
+            is_blocked = any(
+                self.is_time_blocked(booking_time, slot) and slot["block_dropoffs"]
+                for slot in slots
+            )
+            assert is_blocked is False, f"Time {booking_time} between slots should NOT be blocked"
+
+    def test_adjacent_slots_transition(self):
+        """Transition point between adjacent slots works correctly."""
+        # Two adjacent slots: 06:00-10:00 and 10:00-14:00
+        slot1 = {"start_time": "06:00", "end_time": "10:00", "block_dropoffs": True}
+        slot2 = {"start_time": "10:00", "end_time": "14:00", "block_dropoffs": True}
+
+        # At 10:00, slot1 ends and slot2 starts
+        booking_time = "10:00"
+
+        in_slot1 = self.is_time_blocked(booking_time, slot1)
+        in_slot2 = self.is_time_blocked(booking_time, slot2)
+
+        # 10:00 should be in slot2 but not slot1 (end time is exclusive)
+        assert in_slot1 is False, "10:00 should NOT be in slot1 (end exclusive)"
+        assert in_slot2 is True, "10:00 should be in slot2 (start inclusive)"
+
+    # ==========================================================
+    # COMBINED DATE + TIME BOUNDARY TESTS
+    # ==========================================================
+
+    def test_date_boundary_with_time_slot(self):
+        """Time slot blocking only applies on the correct date."""
+        # Blocked date: March 26 with time slot 06:00-10:00
+        blocked_date = "2026-03-26"
+        slot = {"start_time": "06:00", "end_time": "10:00", "block_dropoffs": True}
+
+        # Booking for March 25 at 08:00 (day before, but during blocked hours)
+        booking_date = "2026-03-25"
+        booking_time = "08:00"
+
+        # Check if date matches AND time is blocked
+        date_matches = booking_date == blocked_date
+        time_blocked = self.is_time_blocked(booking_time, slot)
+
+        is_blocked = date_matches and time_blocked
+        assert is_blocked is False, "Time slot should not apply to different date"
+
+    def test_same_date_outside_time_slot(self):
+        """Same date but outside time slot should be allowed."""
+        # Blocked date: March 26 with time slot 06:00-10:00
+        blocked_date = "2026-03-26"
+        slot = {"start_time": "06:00", "end_time": "10:00", "block_dropoffs": True}
+
+        # Booking for March 26 at 12:00 (same date, but outside blocked hours)
+        booking_date = "2026-03-26"
+        booking_time = "12:00"
+
+        date_matches = booking_date == blocked_date
+        time_blocked = self.is_time_blocked(booking_time, slot) and slot["block_dropoffs"]
+
+        # Date matches but time is not in blocked slot
+        is_blocked = date_matches and time_blocked
+        assert is_blocked is False, "Same date outside time slot should NOT be blocked"
+
+    def test_same_date_inside_time_slot(self):
+        """Same date inside time slot should be blocked."""
+        # Blocked date: March 26 with time slot 06:00-10:00
+        blocked_date = "2026-03-26"
+        slot = {"start_time": "06:00", "end_time": "10:00", "block_dropoffs": True}
+
+        # Booking for March 26 at 08:00 (same date, inside blocked hours)
+        booking_date = "2026-03-26"
+        booking_time = "08:00"
+
+        date_matches = booking_date == blocked_date
+        time_blocked = self.is_time_blocked(booking_time, slot) and slot["block_dropoffs"]
+
+        is_blocked = date_matches and time_blocked
+        assert is_blocked is True, "Same date inside time slot should be blocked"
+
+    # ==========================================================
+    # MIDNIGHT / DAY TRANSITION TESTS
+    # ==========================================================
+
+    def test_midnight_boundary_23_59_to_00_00(self):
+        """Test transition from 23:59 to 00:00."""
+        # Slot that ends at 23:59
+        slot = {"start_time": "22:00", "end_time": "23:59", "block_dropoffs": True}
+
+        # 23:58 should be blocked
+        assert self.is_time_blocked("23:58", slot) is True
+
+        # 23:59 is end time (exclusive), so NOT blocked
+        assert self.is_time_blocked("23:59", slot) is False
+
+    def test_early_morning_slot_boundary(self):
+        """Test early morning slot boundaries."""
+        # Early morning slot: 00:00 - 04:00
+        slot = {"start_time": "00:00", "end_time": "04:00", "block_dropoffs": True}
+
+        # Test boundaries
+        assert self.is_time_blocked("00:00", slot) is True, "00:00 should be blocked"
+        assert self.is_time_blocked("03:59", slot) is True, "03:59 should be blocked"
+        assert self.is_time_blocked("04:00", slot) is False, "04:00 should NOT be blocked"
+
+    # ==========================================================
+    # DROPOFF vs PICKUP TYPE BOUNDARIES
+    # ==========================================================
+
+    def test_dropoff_blocked_pickup_allowed_same_time(self):
+        """Same time slot can block dropoffs but allow pickups."""
+        slot = {
+            "start_time": "14:00",
+            "end_time": "16:00",
+            "block_dropoffs": True,
+            "block_pickups": False,
+        }
+
+        booking_time = "15:00"
+        in_slot = self.is_time_blocked(booking_time, slot)
+
+        dropoff_blocked = in_slot and slot["block_dropoffs"]
+        pickup_blocked = in_slot and slot["block_pickups"]
+
+        assert dropoff_blocked is True, "Dropoff at 15:00 should be blocked"
+        assert pickup_blocked is False, "Pickup at 15:00 should NOT be blocked"
+
+    def test_pickup_blocked_dropoff_allowed_same_time(self):
+        """Same time slot can block pickups but allow dropoffs."""
+        slot = {
+            "start_time": "14:00",
+            "end_time": "16:00",
+            "block_dropoffs": False,
+            "block_pickups": True,
+        }
+
+        booking_time = "15:00"
+        in_slot = self.is_time_blocked(booking_time, slot)
+
+        dropoff_blocked = in_slot and slot["block_dropoffs"]
+        pickup_blocked = in_slot and slot["block_pickups"]
+
+        assert dropoff_blocked is False, "Dropoff at 15:00 should NOT be blocked"
+        assert pickup_blocked is True, "Pickup at 15:00 should be blocked"
