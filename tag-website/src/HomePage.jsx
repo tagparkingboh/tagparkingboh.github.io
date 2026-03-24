@@ -336,6 +336,7 @@ function HomePage() {
         </div>
 
         <Link to="/tag-it" className="pricing-btn pricing-btn-center" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_section' })}>Book it <span>→</span></Link>
+        <p className="pricing-early-note">*Book early for the best price</p>
       </section>
 
       {/* Features Banner Section */}
