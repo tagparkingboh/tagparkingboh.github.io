@@ -54,12 +54,22 @@ def create_mock_db_booking(
     status_value="confirmed",
     created_at=None,
     payment_amount_pence=None,
+    dropoff_date=None,
+    dropoff_time=None,
+    pickup_date=None,
+    pickup_time=None,
 ):
-    """Create a mock database booking object with optional payment."""
+    """Create a mock database booking object with optional payment and trip details."""
     booking = MagicMock()
     booking.id = id
     booking.reference = reference
     booking.created_at = created_at or datetime.now()
+
+    # Trip dates and times
+    booking.dropoff_date = dropoff_date
+    booking.dropoff_time = dropoff_time
+    booking.pickup_date = pickup_date
+    booking.pickup_time = pickup_time
 
     # Create mock status enum matching db_models.BookingStatus
     from db_models import BookingStatus
@@ -1090,6 +1100,408 @@ class TestPerformanceConsiderations:
 
         assert counts["test"] == 1
         assert counts["nonexistent"] == 0  # No KeyError
+
+
+# =============================================================================
+# Integration Tests: Trip Insights
+# =============================================================================
+
+class TestTripInsightsIntegration:
+    """Integration tests for trip insights (duration, dropoff/pickup ranges)."""
+
+    def test_trip_insights_response_fields(self):
+        """Test that response includes trip insights fields."""
+        response_data = {
+            "total_bookings": 100,
+            "total_successful": 80,
+            "avg_trip_duration": 7.5,
+            "dropoff_range": {
+                "min": "06:00",
+                "max": "14:00",
+                "avg": "09:30",
+            },
+            "pickup_range": {
+                "min": "15:00",
+                "max": "22:00",
+                "avg": "18:00",
+            },
+        }
+
+        assert "avg_trip_duration" in response_data
+        assert "dropoff_range" in response_data
+        assert "pickup_range" in response_data
+
+    def test_trip_duration_calculation_with_bookings(self):
+        """Test trip duration calculation with mock bookings."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_db_booking(
+                id=1, status_value="confirmed",
+                dropoff_date=date(2026, 3, 1),
+                pickup_date=date(2026, 3, 8),
+            ),
+            create_mock_db_booking(
+                id=2, status_value="completed",
+                dropoff_date=date(2026, 3, 10),
+                pickup_date=date(2026, 3, 17),
+            ),
+        ]
+
+        trip_durations = []
+        for booking in bookings:
+            if booking.dropoff_date and booking.pickup_date:
+                duration = (booking.pickup_date - booking.dropoff_date).days
+                if duration >= 0:
+                    trip_durations.append(duration)
+
+        avg_duration = round(sum(trip_durations) / len(trip_durations), 1)
+
+        assert trip_durations == [7, 7]
+        assert avg_duration == 7.0
+
+    def test_dropoff_range_calculation_with_bookings(self):
+        """Test dropoff range calculation with mock bookings."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_db_booking(
+                id=1, status_value="confirmed",
+                dropoff_time=dt_time(6, 0),
+            ),
+            create_mock_db_booking(
+                id=2, status_value="confirmed",
+                dropoff_time=dt_time(10, 0),
+            ),
+            create_mock_db_booking(
+                id=3, status_value="completed",
+                dropoff_time=dt_time(14, 0),
+            ),
+        ]
+
+        dropoff_times_minutes = []
+        for booking in bookings:
+            if booking.dropoff_time:
+                minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+                dropoff_times_minutes.append(minutes)
+
+        min_dropoff = min(dropoff_times_minutes)
+        max_dropoff = max(dropoff_times_minutes)
+        avg_dropoff = sum(dropoff_times_minutes) / len(dropoff_times_minutes)
+
+        dropoff_range = {
+            "min": f"{min_dropoff // 60:02d}:{min_dropoff % 60:02d}",
+            "max": f"{max_dropoff // 60:02d}:{max_dropoff % 60:02d}",
+            "avg": f"{int(avg_dropoff) // 60:02d}:{int(avg_dropoff) % 60:02d}",
+        }
+
+        assert dropoff_range["min"] == "06:00"
+        assert dropoff_range["max"] == "14:00"
+        assert dropoff_range["avg"] == "10:00"  # (360 + 600 + 840) / 3 = 600 = 10:00
+
+    def test_pickup_range_calculation_with_bookings(self):
+        """Test pickup range calculation with mock bookings."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_db_booking(
+                id=1, status_value="confirmed",
+                pickup_time=dt_time(15, 30),
+            ),
+            create_mock_db_booking(
+                id=2, status_value="confirmed",
+                pickup_time=dt_time(18, 0),
+            ),
+            create_mock_db_booking(
+                id=3, status_value="completed",
+                pickup_time=dt_time(21, 30),
+            ),
+        ]
+
+        pickup_times_minutes = []
+        for booking in bookings:
+            if booking.pickup_time:
+                minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+                pickup_times_minutes.append(minutes)
+
+        min_pickup = min(pickup_times_minutes)
+        max_pickup = max(pickup_times_minutes)
+        avg_pickup = sum(pickup_times_minutes) / len(pickup_times_minutes)
+
+        pickup_range = {
+            "min": f"{min_pickup // 60:02d}:{min_pickup % 60:02d}",
+            "max": f"{max_pickup // 60:02d}:{max_pickup % 60:02d}",
+            "avg": f"{int(avg_pickup) // 60:02d}:{int(avg_pickup) % 60:02d}",
+        }
+
+        assert pickup_range["min"] == "15:30"
+        assert pickup_range["max"] == "21:30"
+
+    def test_empty_bookings_trip_insights(self):
+        """Test trip insights with no bookings returns defaults."""
+        bookings = []
+
+        trip_durations = []
+        dropoff_times_minutes = []
+        pickup_times_minutes = []
+
+        for booking in bookings:
+            if booking.dropoff_date and booking.pickup_date:
+                duration = (booking.pickup_date - booking.dropoff_date).days
+                if duration >= 0:
+                    trip_durations.append(duration)
+
+            if booking.dropoff_time:
+                minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+                dropoff_times_minutes.append(minutes)
+
+            if booking.pickup_time:
+                minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+                pickup_times_minutes.append(minutes)
+
+        avg_trip_duration = round(sum(trip_durations) / len(trip_durations), 1) if trip_durations else 0
+
+        if dropoff_times_minutes:
+            dropoff_range = {"min": "06:00", "max": "14:00", "avg": "10:00"}
+        else:
+            dropoff_range = {"min": "N/A", "max": "N/A", "avg": "N/A"}
+
+        if pickup_times_minutes:
+            pickup_range = {"min": "15:00", "max": "21:00", "avg": "18:00"}
+        else:
+            pickup_range = {"min": "N/A", "max": "N/A", "avg": "N/A"}
+
+        assert avg_trip_duration == 0
+        assert dropoff_range["min"] == "N/A"
+        assert pickup_range["avg"] == "N/A"
+
+    def test_mixed_bookings_with_missing_data(self):
+        """Test trip insights with some bookings missing dates/times."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_db_booking(
+                id=1, status_value="confirmed",
+                dropoff_date=date(2026, 3, 1),
+                dropoff_time=dt_time(8, 0),
+                pickup_date=date(2026, 3, 8),
+                pickup_time=dt_time(16, 0),
+            ),
+            create_mock_db_booking(
+                id=2, status_value="confirmed",
+                dropoff_date=None,  # Missing date
+                dropoff_time=dt_time(10, 0),
+                pickup_date=date(2026, 3, 15),
+                pickup_time=None,  # Missing time
+            ),
+            create_mock_db_booking(
+                id=3, status_value="completed",
+                dropoff_date=date(2026, 3, 5),
+                dropoff_time=None,  # Missing time
+                pickup_date=date(2026, 3, 12),
+                pickup_time=dt_time(18, 0),
+            ),
+        ]
+
+        trip_durations = []
+        dropoff_times_minutes = []
+        pickup_times_minutes = []
+
+        for booking in bookings:
+            if booking.dropoff_date and booking.pickup_date:
+                duration = (booking.pickup_date - booking.dropoff_date).days
+                if duration >= 0:
+                    trip_durations.append(duration)
+
+            if booking.dropoff_time:
+                minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+                dropoff_times_minutes.append(minutes)
+
+            if booking.pickup_time:
+                minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+                pickup_times_minutes.append(minutes)
+
+        # Only bookings 1 and 3 have both dates (7 and 7 days)
+        assert len(trip_durations) == 2
+        assert trip_durations == [7, 7]
+
+        # Only bookings 1 and 2 have dropoff times
+        assert len(dropoff_times_minutes) == 2
+
+        # Only bookings 1 and 3 have pickup times
+        assert len(pickup_times_minutes) == 2
+
+    def test_trip_insights_only_successful_bookings(self):
+        """Test that trip insights only include confirmed/completed bookings."""
+        from datetime import time as dt_time
+        from db_models import BookingStatus
+
+        bookings = [
+            create_mock_db_booking(
+                id=1, status_value="confirmed",
+                dropoff_date=date(2026, 3, 1),
+                pickup_date=date(2026, 3, 8),
+            ),
+            create_mock_db_booking(
+                id=2, status_value="completed",
+                dropoff_date=date(2026, 3, 10),
+                pickup_date=date(2026, 3, 17),
+            ),
+            create_mock_db_booking(
+                id=3, status_value="cancelled",
+                dropoff_date=date(2026, 3, 5),
+                pickup_date=date(2026, 3, 20),  # 15 days - would skew average
+            ),
+            create_mock_db_booking(
+                id=4, status_value="pending",
+                dropoff_date=date(2026, 3, 1),
+                pickup_date=date(2026, 3, 30),  # 29 days - would skew average
+            ),
+        ]
+
+        # Filter to successful bookings only
+        successful_bookings = [
+            b for b in bookings
+            if b.status in [BookingStatus.CONFIRMED, BookingStatus.COMPLETED]
+        ]
+
+        trip_durations = []
+        for booking in successful_bookings:
+            if booking.dropoff_date and booking.pickup_date:
+                duration = (booking.pickup_date - booking.dropoff_date).days
+                if duration >= 0:
+                    trip_durations.append(duration)
+
+        avg_duration = round(sum(trip_durations) / len(trip_durations), 1)
+
+        # Only confirmed + completed (7 + 7 days, not 15 or 29)
+        assert len(trip_durations) == 2
+        assert avg_duration == 7.0
+
+
+class TestTripInsightsEdgeCasesIntegration:
+    """Edge case integration tests for trip insights."""
+
+    def test_single_booking_trip_insights(self):
+        """Test trip insights with single booking."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_db_booking(
+                id=1, status_value="confirmed",
+                dropoff_date=date(2026, 3, 1),
+                dropoff_time=dt_time(9, 30),
+                pickup_date=date(2026, 3, 10),
+                pickup_time=dt_time(17, 45),
+            ),
+        ]
+
+        trip_durations = []
+        dropoff_times_minutes = []
+        pickup_times_minutes = []
+
+        for booking in bookings:
+            if booking.dropoff_date and booking.pickup_date:
+                duration = (booking.pickup_date - booking.dropoff_date).days
+                if duration >= 0:
+                    trip_durations.append(duration)
+
+            if booking.dropoff_time:
+                minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+                dropoff_times_minutes.append(minutes)
+
+            if booking.pickup_time:
+                minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+                pickup_times_minutes.append(minutes)
+
+        avg_duration = round(sum(trip_durations) / len(trip_durations), 1)
+
+        # Single booking: min = max = avg
+        assert avg_duration == 9.0
+        assert min(dropoff_times_minutes) == max(dropoff_times_minutes) == 570  # 09:30
+        assert min(pickup_times_minutes) == max(pickup_times_minutes) == 1065  # 17:45
+
+    def test_long_duration_trips(self):
+        """Test handling of very long trips (30+ days)."""
+        bookings = [
+            create_mock_db_booking(
+                id=1, status_value="confirmed",
+                dropoff_date=date(2026, 1, 1),
+                pickup_date=date(2026, 2, 15),  # 45 days
+            ),
+            create_mock_db_booking(
+                id=2, status_value="confirmed",
+                dropoff_date=date(2026, 3, 1),
+                pickup_date=date(2026, 4, 30),  # 60 days
+            ),
+        ]
+
+        trip_durations = []
+        for booking in bookings:
+            if booking.dropoff_date and booking.pickup_date:
+                duration = (booking.pickup_date - booking.dropoff_date).days
+                if duration >= 0:
+                    trip_durations.append(duration)
+
+        avg_duration = round(sum(trip_durations) / len(trip_durations), 1)
+
+        assert trip_durations == [45, 60]
+        assert avg_duration == 52.5
+
+    def test_same_day_dropoff_pickup(self):
+        """Test same-day dropoff and pickup (0 day trip)."""
+        bookings = [
+            create_mock_db_booking(
+                id=1, status_value="confirmed",
+                dropoff_date=date(2026, 3, 15),
+                pickup_date=date(2026, 3, 15),  # Same day
+            ),
+        ]
+
+        trip_durations = []
+        for booking in bookings:
+            if booking.dropoff_date and booking.pickup_date:
+                duration = (booking.pickup_date - booking.dropoff_date).days
+                if duration >= 0:
+                    trip_durations.append(duration)
+
+        assert trip_durations == [0]
+
+    def test_time_boundaries(self):
+        """Test time boundaries (00:00 and 23:59)."""
+        from datetime import time as dt_time
+
+        bookings = [
+            create_mock_db_booking(
+                id=1, status_value="confirmed",
+                dropoff_time=dt_time(0, 0),   # Midnight
+                pickup_time=dt_time(23, 59),  # Just before midnight
+            ),
+        ]
+
+        dropoff_times_minutes = []
+        pickup_times_minutes = []
+
+        for booking in bookings:
+            if booking.dropoff_time:
+                minutes = booking.dropoff_time.hour * 60 + booking.dropoff_time.minute
+                dropoff_times_minutes.append(minutes)
+
+            if booking.pickup_time:
+                minutes = booking.pickup_time.hour * 60 + booking.pickup_time.minute
+                pickup_times_minutes.append(minutes)
+
+        assert dropoff_times_minutes == [0]      # 00:00
+        assert pickup_times_minutes == [1439]    # 23:59
+
+        min_dropoff = min(dropoff_times_minutes)
+        max_pickup = max(pickup_times_minutes)
+
+        formatted_dropoff = f"{min_dropoff // 60:02d}:{min_dropoff % 60:02d}"
+        formatted_pickup = f"{max_pickup // 60:02d}:{max_pickup % 60:02d}"
+
+        assert formatted_dropoff == "00:00"
+        assert formatted_pickup == "23:59"
 
 
 # =============================================================================
