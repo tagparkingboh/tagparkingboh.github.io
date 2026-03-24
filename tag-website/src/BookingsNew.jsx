@@ -262,6 +262,9 @@ function Bookings() {
   const [departuresLoaded, setDeparturesLoaded] = useState(false)
   const [arrivalsLoaded, setArrivalsLoaded] = useState(false)
 
+  // Blocked dates state
+  const [blockedDates, setBlockedDates] = useState([])
+
   // Parking capacity management
   const MAX_PARKING_SPOTS = 60
 
@@ -412,6 +415,34 @@ function Bookings() {
 
   const isCapacityAvailable = checkAvailability(formData.dropoffDate, formData.pickupDate)
 
+  // Check if a date is blocked for drop-offs
+  const isDropoffDateBlocked = useMemo(() => {
+    if (!formData.dropoffDate || blockedDates.length === 0) return false
+    const dateStr = format(formData.dropoffDate, 'yyyy-MM-dd')
+    return blockedDates.some(bd =>
+      bd.block_dropoffs && dateStr >= bd.start_date && dateStr <= bd.end_date
+    )
+  }, [formData.dropoffDate, blockedDates])
+
+  // Check if a date is blocked for pick-ups
+  const isPickupDateBlocked = useMemo(() => {
+    if (!formData.pickupDate || blockedDates.length === 0) return false
+    const dateStr = format(formData.pickupDate, 'yyyy-MM-dd')
+    return blockedDates.some(bd =>
+      bd.block_pickups && dateStr >= bd.start_date && dateStr <= bd.end_date
+    )
+  }, [formData.pickupDate, blockedDates])
+
+  // Get blocked date info for error messages
+  const getBlockedDateInfo = (date, isDropoff) => {
+    if (!date || blockedDates.length === 0) return null
+    const dateStr = format(date, 'yyyy-MM-dd')
+    return blockedDates.find(bd =>
+      (isDropoff ? bd.block_dropoffs : bd.block_pickups) &&
+      dateStr >= bd.start_date && dateStr <= bd.end_date
+    )
+  }
+
   // Get car makes and models from car-info library
   const carMakes = useMemo(() => getMakes().sort(), [])
   const carModels = useMemo(() => {
@@ -440,6 +471,22 @@ function Bookings() {
       }
     }
     fetchAirlinesAndDestinations()
+  }, [API_BASE_URL])
+
+  // Fetch blocked dates on mount
+  useEffect(() => {
+    const fetchBlockedDates = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/blocked-dates/check`)
+        if (response.ok) {
+          const data = await response.json()
+          setBlockedDates(data.blocked_dates || [])
+        }
+      } catch (error) {
+        console.error('Error fetching blocked dates:', error)
+      }
+    }
+    fetchBlockedDates()
   }, [API_BASE_URL])
 
   // Fetch departures when drop-off date changes
@@ -1425,7 +1472,7 @@ function Bookings() {
     isOriginComplete
 
   // Step 1: Trip Details
-  const isStep1Complete = formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete && isCapacityAvailable
+  const isStep1Complete = formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete && isCapacityAvailable && !isDropoffDateBlocked && !isPickupDateBlocked
   // Step 2: Package Selection
   const isStep2Complete = formData.package
   // Step 4: Payment
@@ -2178,12 +2225,17 @@ function Bookings() {
                   calendarClassName="fixed-height-calendar"
                   onFocus={(e) => e.target.readOnly = true}
                 />
+                {isDropoffDateBlocked && formData.dropoffDate && (
+                  <div className="blocked-date-message">
+                    <p>Sorry, we have no availability for {format(formData.dropoffDate, 'EEEE d MMMM yyyy')}</p>
+                  </div>
+                )}
               </div>
 
               {/* Flight lookup removed - using direct entry flow */}
 
               {/* Departure Flight Entry Form */}
-              {showManualDeparture && formData.dropoffDate && (
+              {showManualDeparture && formData.dropoffDate && !isDropoffDateBlocked && (
                 <div className="form-group fade-in">
                   <div className="form-group">
                     <label htmlFor="manualAirline">Airline <span className="required">*</span></label>
@@ -2420,7 +2472,7 @@ function Bookings() {
                         calendarClassName="fixed-height-calendar"
                         onFocus={(e) => e.target.readOnly = true}
                       />
-                      {formData.pickupDate && (
+                      {formData.pickupDate && !isPickupDateBlocked && (
                         <div className="return-date-summary">
                           <span className="return-date-formatted">
                             {format(formData.pickupDate, 'EEEE, d MMMM yyyy')}
@@ -2435,6 +2487,11 @@ function Bookings() {
                           </span>
                         </div>
                       )}
+                      {isPickupDateBlocked && formData.pickupDate && (
+                        <div className="blocked-date-message">
+                          <p>Sorry, we have no availability for {format(formData.pickupDate, 'EEEE d MMMM yyyy')}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </>
@@ -2443,7 +2500,7 @@ function Bookings() {
               {/* Flight-based arrival lookup removed - using direct entry */}
 
               {/* Return Flight Entry Form */}
-              {showManualArrival && formData.pickupDate && (
+              {showManualArrival && formData.pickupDate && !isPickupDateBlocked && (
                 <div className="form-group fade-in">
                   <div className="form-group">
                     <label htmlFor="manualArrivalAirline">Airline <span className="required">*</span></label>
