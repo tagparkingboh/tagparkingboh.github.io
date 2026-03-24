@@ -58,6 +58,27 @@ const formatTime = (timeStr) => {
   return timeStr.substring(0, 5)
 }
 
+// Format time input to 24-hour format (HH:MM)
+const formatTimeInput24h = (input) => {
+  // Remove non-digits except colon
+  const cleaned = input.replace(/[^\d:]/g, '')
+  // Split on colon if present
+  const parts = cleaned.split(':')
+
+  if (parts.length === 1) {
+    // No colon yet - just digits
+    const digits = parts[0]
+    if (digits.length <= 2) return digits
+    if (digits.length <= 4) return digits.slice(0, 2) + ':' + digits.slice(2)
+    return digits.slice(0, 2) + ':' + digits.slice(2, 4)
+  } else {
+    // Has colon - format as HH:MM
+    const hours = parts[0].slice(0, 2)
+    const minutes = (parts[1] || '').slice(0, 2)
+    return hours + ':' + minutes
+  }
+}
+
 function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrigger = 0, renderBookingActions = null }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [shifts, setShifts] = useState([])
@@ -1706,23 +1727,29 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     <div className="time-slot-form">
                       <div className="time-slot-form-row">
                         <div className="modal-form-group">
-                          <label>Start Time</label>
+                          <label>Start Time (24hr)</label>
                           <input
-                            type="time"
+                            type="text"
+                            placeholder="HH:MM"
+                            maxLength={5}
                             value={timeSlotForm.start_time}
-                            onChange={(e) =>
-                              setTimeSlotForm({ ...timeSlotForm, start_time: e.target.value })
-                            }
+                            onChange={(e) => {
+                              const formatted = formatTimeInput24h(e.target.value)
+                              setTimeSlotForm({ ...timeSlotForm, start_time: formatted })
+                            }}
                           />
                         </div>
                         <div className="modal-form-group">
-                          <label>End Time</label>
+                          <label>End Time (24hr)</label>
                           <input
-                            type="time"
+                            type="text"
+                            placeholder="HH:MM"
+                            maxLength={5}
                             value={timeSlotForm.end_time}
-                            onChange={(e) =>
-                              setTimeSlotForm({ ...timeSlotForm, end_time: e.target.value })
-                            }
+                            onChange={(e) => {
+                              const formatted = formatTimeInput24h(e.target.value)
+                              setTimeSlotForm({ ...timeSlotForm, end_time: formatted })
+                            }}
                           />
                         </div>
                       </div>
