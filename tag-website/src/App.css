@@ -710,6 +710,13 @@
   width: calc(100% + 6rem);
 }
 
+.pricing-early-note {
+  color: #a0a0a0;
+  font-size: 14px;
+  margin-top: 1rem;
+  text-align: center;
+}
+
 /* Support Section */
 .support-section {
   display: flex;
