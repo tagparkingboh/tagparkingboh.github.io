@@ -1531,8 +1531,8 @@
   background: #c5e600;
 }
 
-.time-slots-description {
-  color: #333333;
+.time-slots-section p.time-slots-description {
+  color: #333333 !important;
   font-size: 0.85rem;
   margin: 0 0 15px 0;
   line-height: 1.4;
