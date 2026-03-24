@@ -6236,20 +6236,24 @@ function Admin() {
                         <div className="trip-insight-card">
                           <span className="trip-insight-icon">🚗</span>
                           <div className="trip-insight-content">
-                            <span className="trip-insight-label">Drop-off Time Range</span>
-                            <span className="trip-insight-value">{bookingStats.dropoff_range?.avg || 'N/A'}</span>
+                            <span className="trip-insight-label">Drop-off Times</span>
+                            <span className="trip-insight-value">
+                              AM: {bookingStats.dropoff_range?.am || 0} | PM: {bookingStats.dropoff_range?.pm || 0}
+                            </span>
                             <span className="trip-insight-detail">
-                              {bookingStats.dropoff_range?.min || 'N/A'} - {bookingStats.dropoff_range?.max || 'N/A'}
+                              00:00-11:59 | 12:00-23:59
                             </span>
                           </div>
                         </div>
                         <div className="trip-insight-card">
                           <span className="trip-insight-icon">✈️</span>
                           <div className="trip-insight-content">
-                            <span className="trip-insight-label">Pick-up Time Range</span>
-                            <span className="trip-insight-value">{bookingStats.pickup_range?.avg || 'N/A'}</span>
+                            <span className="trip-insight-label">Pick-up Times</span>
+                            <span className="trip-insight-value">
+                              AM: {bookingStats.pickup_range?.am || 0} | PM: {bookingStats.pickup_range?.pm || 0}
+                            </span>
                             <span className="trip-insight-detail">
-                              {bookingStats.pickup_range?.min || 'N/A'} - {bookingStats.pickup_range?.max || 'N/A'}
+                              00:00-11:59 | 12:00-23:59
                             </span>
                           </div>
                         </div>
