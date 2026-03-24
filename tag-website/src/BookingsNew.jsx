@@ -431,6 +431,17 @@ function Bookings() {
     return checkMins >= startMins && checkMins < endMins
   }
 
+  // Validate time format helper (24-hour clock with valid hours 00-23 and minutes 00-59)
+  // Defined here before useMemo hooks that use it
+  const isValidTimeFormat = (timeStr) => {
+    if (!timeStr) return false
+    const match = timeStr.match(/^(\d{1,2}):(\d{2})$/)
+    if (!match) return false
+    const hours = parseInt(match[1], 10)
+    const minutes = parseInt(match[2], 10)
+    return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59
+  }
+
   // Check if a date/time is blocked for drop-offs
   // Returns true if ALL potential dropoff times are blocked (or full-day block)
   const isDropoffDateBlocked = useMemo(() => {
@@ -945,16 +956,6 @@ function Bookings() {
     const hours = Math.floor(totalMinutes / 60) % 24
     const mins = totalMinutes % 60
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
-  }
-
-  // Validate time format helper (24-hour clock with valid hours 00-23 and minutes 00-59)
-  const isValidTimeFormat = (timeStr) => {
-    if (!timeStr) return false
-    const match = timeStr.match(/^(\d{1,2}):(\d{2})$/)
-    if (!match) return false
-    const hours = parseInt(match[1], 10)
-    const minutes = parseInt(match[2], 10)
-    return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59
   }
 
   // Format time input - auto-insert colon, validate 24-hour format
