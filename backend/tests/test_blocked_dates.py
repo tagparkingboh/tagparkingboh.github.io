@@ -2299,3 +2299,252 @@ class TestTimeSlotNoTimeSelected:
         # FE isDropoffDateBlocked: True when ALL slots blocked
         all_blocked = early_blocked and late_blocked
         assert all_blocked is True, "Should show blocked warning - all slots blocked"
+
+
+class TestBackendBookingValidationWithTimeSlots:
+    """
+    Tests for backend booking validation when blocked dates have time slots.
+    Simulates the check_time_blocked function used in booking creation.
+    """
+
+    def _check_time_blocked(self, blocked_date, check_time_str, check_type):
+        """
+        Simulates the backend check_time_blocked helper function.
+        """
+        from datetime import time
+
+        time_slots = blocked_date.get("time_slots", [])
+
+        if not time_slots:
+            # No time slots - entire day is blocked based on blocked_date settings
+            if check_type == "dropoff":
+                return blocked_date.get("block_dropoffs", False)
+            else:
+                return blocked_date.get("block_pickups", False)
+
+        # Time slots exist - check if the time falls within any
+        if not check_time_str:
+            return False  # No time provided, can't determine if blocked
+
+        # Parse the time
+        try:
+            h, m = map(int, check_time_str.split(":"))
+            check_time = time(h, m)
+        except (ValueError, AttributeError):
+            return False
+
+        # Check each time slot
+        for ts in time_slots:
+            start_h, start_m = map(int, ts["start_time"].split(":"))
+            end_h, end_m = map(int, ts["end_time"].split(":"))
+            start_time = time(start_h, start_m)
+            end_time = time(end_h, end_m)
+
+            if start_time <= check_time < end_time:
+                if check_type == "dropoff" and ts.get("block_dropoffs", False):
+                    return True
+                if check_type == "pickup" and ts.get("block_pickups", False):
+                    return True
+
+        return False
+
+    def test_full_day_block_no_time_slots_blocks_dropoff(self):
+        """Full day block with no time slots should block dropoffs."""
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": False,
+            "time_slots": []
+        }
+
+        result = self._check_time_blocked(blocked_date, "09:00", "dropoff")
+        assert result is True, "Full day dropoff block should block any time"
+
+    def test_full_day_block_no_time_slots_allows_pickup(self):
+        """Full day block with only dropoffs blocked should allow pickups."""
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": False,
+            "time_slots": []
+        }
+
+        result = self._check_time_blocked(blocked_date, "09:00", "pickup")
+        assert result is False, "Dropoff-only block should allow pickups"
+
+    def test_time_slot_blocks_dropoff_inside_slot(self):
+        """Dropoff time inside a blocked time slot should be blocked."""
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": [
+                {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True, "block_pickups": True}
+            ]
+        }
+
+        result = self._check_time_blocked(blocked_date, "10:30", "dropoff")
+        assert result is True, "10:30 is inside 06:00-13:00 and should be blocked"
+
+    def test_time_slot_allows_dropoff_outside_slot(self):
+        """Dropoff time outside blocked time slots should be allowed."""
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": [
+                {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True, "block_pickups": True}
+            ]
+        }
+
+        result = self._check_time_blocked(blocked_date, "13:15", "dropoff")
+        assert result is False, "13:15 is outside 06:00-13:00 and should be allowed"
+
+    def test_time_slot_end_time_is_exclusive(self):
+        """Time at exact end of slot should be allowed (end time exclusive)."""
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": [
+                {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True, "block_pickups": True}
+            ]
+        }
+
+        result = self._check_time_blocked(blocked_date, "13:00", "dropoff")
+        assert result is False, "13:00 is the end time (exclusive) and should be allowed"
+
+    def test_time_slot_start_time_is_inclusive(self):
+        """Time at exact start of slot should be blocked (start time inclusive)."""
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": [
+                {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True, "block_pickups": True}
+            ]
+        }
+
+        result = self._check_time_blocked(blocked_date, "06:00", "dropoff")
+        assert result is True, "06:00 is the start time (inclusive) and should be blocked"
+
+    def test_multiple_time_slots_check_all(self):
+        """Time falling in any blocked slot should be blocked."""
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": [
+                {"start_time": "06:00", "end_time": "08:00", "block_dropoffs": True, "block_pickups": True},
+                {"start_time": "14:00", "end_time": "16:00", "block_dropoffs": True, "block_pickups": True}
+            ]
+        }
+
+        # In first slot
+        result1 = self._check_time_blocked(blocked_date, "07:00", "dropoff")
+        assert result1 is True, "07:00 is in first slot (06:00-08:00)"
+
+        # In gap between slots
+        result2 = self._check_time_blocked(blocked_date, "10:00", "dropoff")
+        assert result2 is False, "10:00 is in gap between slots"
+
+        # In second slot
+        result3 = self._check_time_blocked(blocked_date, "15:00", "dropoff")
+        assert result3 is True, "15:00 is in second slot (14:00-16:00)"
+
+    def test_time_slot_dropoff_only_allows_pickup(self):
+        """Time slot blocking only dropoffs should allow pickups."""
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": [
+                {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True, "block_pickups": False}
+            ]
+        }
+
+        dropoff_result = self._check_time_blocked(blocked_date, "10:00", "dropoff")
+        pickup_result = self._check_time_blocked(blocked_date, "10:00", "pickup")
+
+        assert dropoff_result is True, "Dropoffs should be blocked"
+        assert pickup_result is False, "Pickups should be allowed"
+
+    def test_no_time_provided_returns_false(self):
+        """When time slots exist but no time provided, should return False."""
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": [
+                {"start_time": "06:00", "end_time": "13:00", "block_dropoffs": True, "block_pickups": True}
+            ]
+        }
+
+        result = self._check_time_blocked(blocked_date, None, "dropoff")
+        assert result is False, "No time provided should not block"
+
+        result2 = self._check_time_blocked(blocked_date, "", "dropoff")
+        assert result2 is False, "Empty time string should not block"
+
+    def test_booking_outside_blocked_slot_allowed(self):
+        """
+        Integration test: Booking with dropoff time outside blocked slots should be allowed.
+        Simulates the full booking validation flow.
+        """
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": [
+                {"start_time": "06:01", "end_time": "13:00", "block_dropoffs": True, "block_pickups": True}
+            ]
+        }
+
+        # Flight at 16:00, slot 165 mins before = 13:15 dropoff (outside blocked slot)
+        flight_time = "16:00"
+        slot_minutes = 165
+        h, m = map(int, flight_time.split(":"))
+        total_mins = h * 60 + m - slot_minutes
+        dropoff_time = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
+
+        assert dropoff_time == "13:15", "Calculated dropoff should be 13:15"
+
+        result = self._check_time_blocked(blocked_date, dropoff_time, "dropoff")
+        assert result is False, "Booking at 13:15 should be allowed (outside 06:01-13:00)"
+
+    def test_booking_inside_blocked_slot_rejected(self):
+        """
+        Integration test: Booking with dropoff time inside blocked slots should be rejected.
+        Simulates the full booking validation flow.
+        """
+        blocked_date = {
+            "start_date": "2026-03-25",
+            "end_date": "2026-03-25",
+            "block_dropoffs": True,
+            "block_pickups": True,
+            "time_slots": [
+                {"start_time": "06:01", "end_time": "13:00", "block_dropoffs": True, "block_pickups": True}
+            ]
+        }
+
+        # Flight at 09:01, slot 165 mins before = 06:16 dropoff (inside blocked slot)
+        flight_time = "09:01"
+        slot_minutes = 165
+        h, m = map(int, flight_time.split(":"))
+        total_mins = h * 60 + m - slot_minutes
+        dropoff_time = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
+
+        assert dropoff_time == "06:16", "Calculated dropoff should be 06:16"
+
+        result = self._check_time_blocked(blocked_date, dropoff_time, "dropoff")
+        assert result is True, "Booking at 06:16 should be blocked (inside 06:01-13:00)"
