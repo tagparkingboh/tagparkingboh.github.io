@@ -431,73 +431,36 @@ function Bookings() {
     return checkMins >= startMins && checkMins < endMins
   }
 
-  // Helper: Check if a specific dropoff time would be blocked on a date
-  // Using useMemo to return a stable function reference
-  const isDropoffTimeBlocked = useMemo(() => {
-    return (date, dropoffTimeStr) => {
-      if (!date || !dropoffTimeStr || blockedDates.length === 0) return false
-      const dateStr = format(date, 'yyyy-MM-dd')
+  // Helper function to check if a time is blocked (defined as regular function, not hook)
+  const checkTimeBlocked = (date, dropoffTimeStr, isDropoff = true) => {
+    if (!date || !dropoffTimeStr || blockedDates.length === 0) return false
+    const dateStr = format(date, 'yyyy-MM-dd')
 
-      const blockedDate = blockedDates.find(bd =>
-        dateStr >= bd.start_date && dateStr <= bd.end_date
-      )
+    const blockedDate = blockedDates.find(bd =>
+      dateStr >= bd.start_date && dateStr <= bd.end_date
+    )
 
-      if (!blockedDate) return false
+    if (!blockedDate) return false
 
-      // If blocked date has time slots, check against those
-      if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
-        return blockedDate.time_slots.some(slot => {
-          if (!slot.block_dropoffs) return false
-          // Inline isTimeInSlot logic to avoid reference issues
-          const [checkH, checkM] = dropoffTimeStr.split(':').map(Number)
-          const [startH, startM] = slot.start_time.split(':').map(Number)
-          const [endH, endM] = slot.end_time.split(':').map(Number)
-          const checkMins = checkH * 60 + checkM
-          const startMins = startH * 60 + startM
-          const endMins = endH * 60 + endM
-          return checkMins >= startMins && checkMins < endMins
-        })
-      }
-
-      // No time slots - full day blocking
-      return blockedDate.block_dropoffs
-    }
-  }, [blockedDates])
-
-  // Calculate potential dropoff times from flight time (both slots)
-  const getPotentialDropoffTimes = useMemo(() => {
-    if (!manualDepartureData.flightTime) return []
-    if (!isValidTimeFormat(manualDepartureData.flightTime)) return []
-
-    const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
-    const departureMinutes = hours * 60 + minutes
-
-    const times = []
-
-    // Early slot: 165 minutes before
-    const earlyMinutes = departureMinutes - 165
-    if (earlyMinutes >= 0) {
-      const earlyHours = Math.floor(earlyMinutes / 60)
-      const earlyMins = earlyMinutes % 60
-      times.push({
-        slotId: '165',
-        time: `${String(earlyHours).padStart(2, '0')}:${String(earlyMins).padStart(2, '0')}`
+    // If blocked date has time slots, check against those
+    if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
+      return blockedDate.time_slots.some(slot => {
+        if (isDropoff && !slot.block_dropoffs) return false
+        if (!isDropoff && !slot.block_pickups) return false
+        // Check if time falls within slot
+        const [checkH, checkM] = dropoffTimeStr.split(':').map(Number)
+        const [startH, startM] = slot.start_time.split(':').map(Number)
+        const [endH, endM] = slot.end_time.split(':').map(Number)
+        const checkMins = checkH * 60 + checkM
+        const startMins = startH * 60 + startM
+        const endMins = endH * 60 + endM
+        return checkMins >= startMins && checkMins < endMins
       })
     }
 
-    // Late slot: 120 minutes before
-    const lateMinutes = departureMinutes - 120
-    if (lateMinutes >= 0) {
-      const lateHours = Math.floor(lateMinutes / 60)
-      const lateMins = lateMinutes % 60
-      times.push({
-        slotId: '120',
-        time: `${String(lateHours).padStart(2, '0')}:${String(lateMins).padStart(2, '0')}`
-      })
-    }
-
-    return times
-  }, [manualDepartureData.flightTime])
+    // No time slots - full day blocking
+    return isDropoff ? blockedDate.block_dropoffs : blockedDate.block_pickups
+  }
 
   // Check if a date/time is blocked for drop-offs
   // Returns true if ALL potential dropoff times are blocked (or full-day block)
@@ -519,11 +482,29 @@ function Bookings() {
         return false
       }
 
-      // Check if ALL potential dropoff times are blocked
-      if (getPotentialDropoffTimes.length === 0) return false
+      // Calculate both potential dropoff times
+      const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
+      const departureMinutes = hours * 60 + minutes
 
-      const allBlocked = getPotentialDropoffTimes.every(potentialSlot =>
-        isDropoffTimeBlocked(formData.dropoffDate, potentialSlot.time)
+      const potentialTimes = []
+      const earlyMinutes = departureMinutes - 165
+      if (earlyMinutes >= 0) {
+        const earlyHours = Math.floor(earlyMinutes / 60)
+        const earlyMins = earlyMinutes % 60
+        potentialTimes.push(`${String(earlyHours).padStart(2, '0')}:${String(earlyMins).padStart(2, '0')}`)
+      }
+      const lateMinutes = departureMinutes - 120
+      if (lateMinutes >= 0) {
+        const lateHours = Math.floor(lateMinutes / 60)
+        const lateMins = lateMinutes % 60
+        potentialTimes.push(`${String(lateHours).padStart(2, '0')}:${String(lateMins).padStart(2, '0')}`)
+      }
+
+      if (potentialTimes.length === 0) return false
+
+      // Check if ALL potential dropoff times are blocked
+      const allBlocked = potentialTimes.every(time =>
+        checkTimeBlocked(formData.dropoffDate, time, true)
       )
 
       return allBlocked
@@ -531,7 +512,7 @@ function Bookings() {
 
     // No time slots - use full day blocking
     return blockedDate.block_dropoffs
-  }, [formData.dropoffDate, blockedDates, manualDepartureData.flightTime, getPotentialDropoffTimes, isDropoffTimeBlocked])
+  }, [formData.dropoffDate, blockedDates, manualDepartureData.flightTime])
 
   // Check if a date/time is blocked for pick-ups
   const isPickupDateBlocked = useMemo(() => {
@@ -1048,7 +1029,7 @@ function Bookings() {
 
     const earlySlotMinutes = departureMinutes - 165
     const earlySlotTime = formatMinutesToTime(earlySlotMinutes)
-    const earlySlotBlocked = formData.dropoffDate && isDropoffTimeBlocked(formData.dropoffDate, earlySlotTime)
+    const earlySlotBlocked = formData.dropoffDate && checkTimeBlocked(formData.dropoffDate, earlySlotTime, true)
     if ((!isToday || (earlySlotMinutes >= currentUKMinutes + minNoticeMinutes)) && !earlySlotBlocked) {
       slots.push({
         id: '165',
@@ -1059,7 +1040,7 @@ function Bookings() {
 
     const lateSlotMinutes = departureMinutes - 120
     const lateSlotTime = formatMinutesToTime(lateSlotMinutes)
-    const lateSlotBlocked = formData.dropoffDate && isDropoffTimeBlocked(formData.dropoffDate, lateSlotTime)
+    const lateSlotBlocked = formData.dropoffDate && checkTimeBlocked(formData.dropoffDate, lateSlotTime, true)
     if ((!isToday || (lateSlotMinutes >= currentUKMinutes + minNoticeMinutes)) && !lateSlotBlocked) {
       slots.push({
         id: '120',
@@ -1069,7 +1050,7 @@ function Bookings() {
     }
 
     return slots
-  }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate, isDropoffTimeBlocked])
+  }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate, blockedDates])
 
   // Check if same-day slots were filtered due to 4-hour notice requirement
   const sameDaySlotsFiltered = useMemo(() => {
@@ -2397,8 +2378,15 @@ function Bookings() {
                 {isDropoffDateBlocked && formData.dropoffDate && (
                   <div className="blocked-date-message">
                     {(() => {
-                      // Get first blocked slot info for error message
-                      const firstPotentialTime = getPotentialDropoffTimes[0]?.time
+                      // Calculate first potential dropoff time for error message
+                      let firstPotentialTime = null
+                      if (manualDepartureData.flightTime && isValidTimeFormat(manualDepartureData.flightTime)) {
+                        const [h, m] = manualDepartureData.flightTime.split(':').map(Number)
+                        const earlyMins = (h * 60 + m) - 165
+                        if (earlyMins >= 0) {
+                          firstPotentialTime = `${String(Math.floor(earlyMins / 60)).padStart(2, '0')}:${String(earlyMins % 60).padStart(2, '0')}`
+                        }
+                      }
                       const blockedInfo = getBlockedDateInfo(formData.dropoffDate, true, firstPotentialTime)
                       if (blockedInfo?.blocked_slot) {
                         return (
