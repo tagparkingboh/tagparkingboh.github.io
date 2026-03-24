@@ -2196,3 +2196,106 @@ class TestTimeSlotNoTimeSelected:
 
         assert actual_dropoff_time == "13:15", "Dropoff should be 13:15"
         assert is_blocked is False, "13:15 is outside 06:00-13:00 blocked slot"
+
+    def test_one_slot_blocked_one_slot_available(self):
+        """When one dropoff slot is blocked but another is available."""
+        time_slots = [
+            {"start_time": "06:00", "end_time": "07:00", "block_dropoffs": True},
+        ]
+
+        # Flight at 09:01
+        # Early slot: 09:01 - 165 mins = 06:16 (BLOCKED - inside 06:00-07:00)
+        # Late slot: 09:01 - 120 mins = 07:01 (AVAILABLE - outside, end is exclusive)
+        flight_time = "09:01"
+
+        def calc_dropoff_time(flight_time, minutes_before):
+            flight_h, flight_m = map(int, flight_time.split(":"))
+            dropoff_mins = (flight_h * 60 + flight_m) - minutes_before
+            return f"{dropoff_mins // 60:02d}:{dropoff_mins % 60:02d}"
+
+        def is_time_in_slot(check_time, slot):
+            check_h, check_m = map(int, check_time.split(":"))
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+            check_mins = check_h * 60 + check_m
+            return (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+        def is_dropoff_blocked(dropoff_time):
+            return any(
+                slot["block_dropoffs"] and is_time_in_slot(dropoff_time, slot)
+                for slot in time_slots
+            )
+
+        early_slot_time = calc_dropoff_time(flight_time, 165)  # 2h 45m before
+        late_slot_time = calc_dropoff_time(flight_time, 120)   # 2h before
+
+        early_blocked = is_dropoff_blocked(early_slot_time)
+        late_blocked = is_dropoff_blocked(late_slot_time)
+
+        # Verify calculations
+        assert early_slot_time == "06:16", "Early slot should be 06:16"
+        assert late_slot_time == "07:01", "Late slot should be 07:01"
+
+        # Verify blocking
+        assert early_blocked is True, "06:16 should be BLOCKED (inside 06:00-07:00)"
+        assert late_blocked is False, "07:01 should be AVAILABLE (end time 07:00 is exclusive)"
+
+        # FE logic: only show non-blocked slots
+        available_slots = []
+        if not early_blocked:
+            available_slots.append({"id": "165", "time": early_slot_time})
+        if not late_blocked:
+            available_slots.append({"id": "120", "time": late_slot_time})
+
+        assert len(available_slots) == 1, "Should have exactly 1 available slot"
+        assert available_slots[0]["id"] == "120", "Only the 2h before slot should be available"
+        assert available_slots[0]["time"] == "07:01", "Available slot should be 07:01"
+
+        # FE isDropoffDateBlocked: only True if ALL slots blocked
+        all_blocked = early_blocked and late_blocked
+        assert all_blocked is False, "Should NOT show blocked warning - one slot is available"
+
+    def test_both_slots_blocked(self):
+        """When both dropoff slots are blocked, should show warning."""
+        time_slots = [
+            {"start_time": "06:00", "end_time": "08:00", "block_dropoffs": True},
+        ]
+
+        # Flight at 09:01
+        # Early slot: 09:01 - 165 mins = 06:16 (BLOCKED - inside 06:00-08:00)
+        # Late slot: 09:01 - 120 mins = 07:01 (BLOCKED - inside 06:00-08:00)
+        flight_time = "09:01"
+
+        def calc_dropoff_time(flight_time, minutes_before):
+            flight_h, flight_m = map(int, flight_time.split(":"))
+            dropoff_mins = (flight_h * 60 + flight_m) - minutes_before
+            return f"{dropoff_mins // 60:02d}:{dropoff_mins % 60:02d}"
+
+        def is_time_in_slot(check_time, slot):
+            check_h, check_m = map(int, check_time.split(":"))
+            start_h, start_m = map(int, slot["start_time"].split(":"))
+            end_h, end_m = map(int, slot["end_time"].split(":"))
+            check_mins = check_h * 60 + check_m
+            return (start_h * 60 + start_m) <= check_mins < (end_h * 60 + end_m)
+
+        def is_dropoff_blocked(dropoff_time):
+            return any(
+                slot["block_dropoffs"] and is_time_in_slot(dropoff_time, slot)
+                for slot in time_slots
+            )
+
+        early_slot_time = calc_dropoff_time(flight_time, 165)
+        late_slot_time = calc_dropoff_time(flight_time, 120)
+
+        early_blocked = is_dropoff_blocked(early_slot_time)
+        late_blocked = is_dropoff_blocked(late_slot_time)
+
+        assert early_slot_time == "06:16", "Early slot should be 06:16"
+        assert late_slot_time == "07:01", "Late slot should be 07:01"
+
+        assert early_blocked is True, "06:16 should be BLOCKED"
+        assert late_blocked is True, "07:01 should be BLOCKED (inside 06:00-08:00)"
+
+        # FE isDropoffDateBlocked: True when ALL slots blocked
+        all_blocked = early_blocked and late_blocked
+        assert all_blocked is True, "Should show blocked warning - all slots blocked"
