@@ -1279,6 +1279,33 @@
   white-space: nowrap;
 }
 
+/* Blocked time slots container */
+.day-blocked-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Blocked time slot badge */
+.day-badge.badge-blocked-slot {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  color: #fff;
+  font-size: 0.6rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  font-family: monospace;
+}
+
+/* More slots indicator */
+.day-badge.badge-blocked-more {
+  background: #8e2c22;
+  color: #ffcccc;
+  font-size: 0.55rem;
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+
 /* Blocked dates manager button */
 .blocked-dates-btn {
   background: #e74c3c;
@@ -1510,8 +1537,110 @@
   background: #252525;
   border: 1px solid #3a3a3a;
   border-radius: 8px;
-  padding: 15px;
+  padding: 16px;
   margin-bottom: 15px;
+}
+
+.time-slot-form-label {
+  display: block;
+  color: #ccc;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+.time-slot-time-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.time-slot-time-row .time-input {
+  flex: 1;
+  max-width: 120px;
+  padding: 12px 14px;
+  font-size: 1.1rem;
+  font-family: monospace;
+  text-align: center;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 8px;
+  color: #fff;
+}
+
+.time-slot-time-row .time-input:focus {
+  outline: none;
+  border-color: #D9FF00;
+  box-shadow: 0 0 0 2px rgba(217, 255, 0, 0.2);
+}
+
+.time-slot-time-row .time-separator {
+  color: #888;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.time-slot-block-options {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.time-slot-block-options .block-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #1a1a1a;
+  border: 2px solid #333;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+  min-width: 100px;
+}
+
+.time-slot-block-options .block-option:hover {
+  border-color: #555;
+}
+
+.time-slot-block-options .block-option.selected {
+  border-color: #D9FF00;
+  background: rgba(217, 255, 0, 0.1);
+}
+
+.time-slot-block-options .block-option input[type="radio"] {
+  display: none;
+}
+
+.time-slot-block-options .option-icon {
+  font-size: 1.1rem;
+}
+
+.time-slot-block-options .option-text {
+  color: #ccc;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.time-slot-block-options .block-option.selected .option-text {
+  color: #D9FF00;
+}
+
+.time-slot-preview {
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  color: #aaa;
+  font-size: 0.9rem;
+}
+
+.time-slot-preview strong {
+  color: #D9FF00;
 }
 
 .time-slot-form-row {

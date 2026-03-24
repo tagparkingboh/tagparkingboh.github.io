@@ -1059,10 +1059,32 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                         <div className="day-content">
                           {/* Blocked date indicator */}
                           {blockedInfo && (
-                            <div className="day-badge badge-blocked" title={blockedInfo.reason || 'Blocked'}>
-                              🚫 {blockedInfo.block_dropoffs && blockedInfo.block_pickups ? 'Closed' :
-                                  blockedInfo.block_dropoffs ? 'No Drop-offs' : 'No Pick-ups'}
-                            </div>
+                            <>
+                              {/* Show time slots if they exist */}
+                              {blockedInfo.time_slots && blockedInfo.time_slots.length > 0 ? (
+                                <div className="day-blocked-slots">
+                                  {blockedInfo.time_slots.slice(0, 2).map((slot, idx) => (
+                                    <div
+                                      key={slot.id || idx}
+                                      className="day-badge badge-blocked-slot"
+                                      title={slot.reason || `Blocked ${formatTime(slot.start_time)}-${formatTime(slot.end_time)}`}
+                                    >
+                                      🚫 {formatTime(slot.start_time)}-{formatTime(slot.end_time)}
+                                    </div>
+                                  ))}
+                                  {blockedInfo.time_slots.length > 2 && (
+                                    <div className="day-badge badge-blocked-more">
+                                      +{blockedInfo.time_slots.length - 2} more
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="day-badge badge-blocked" title={blockedInfo.reason || 'Blocked'}>
+                                  🚫 {blockedInfo.block_dropoffs && blockedInfo.block_pickups ? 'Closed' :
+                                      blockedInfo.block_dropoffs ? 'No Drop-offs' : 'No Pick-ups'}
+                                </div>
+                              )}
+                            </>
                           )}
                           {/* Booking badges */}
                           {hasDropoffs && (
@@ -1725,58 +1747,67 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   {/* Time Slot Form */}
                   {showTimeSlotForm && (
                     <div className="time-slot-form">
-                      <div className="time-slot-form-row">
-                        <div className="modal-form-group">
-                          <label>Start Time (24hr)</label>
-                          <input
-                            type="text"
-                            placeholder="HH:MM"
-                            maxLength={5}
-                            value={timeSlotForm.start_time}
-                            onChange={(e) => {
-                              const formatted = formatTimeInput24h(e.target.value)
-                              setTimeSlotForm({ ...timeSlotForm, start_time: formatted })
-                            }}
-                          />
-                        </div>
-                        <div className="modal-form-group">
-                          <label>End Time (24hr)</label>
-                          <input
-                            type="text"
-                            placeholder="HH:MM"
-                            maxLength={5}
-                            value={timeSlotForm.end_time}
-                            onChange={(e) => {
-                              const formatted = formatTimeInput24h(e.target.value)
-                              setTimeSlotForm({ ...timeSlotForm, end_time: formatted })
-                            }}
-                          />
-                        </div>
+                      <label className="time-slot-form-label">Block bookings from:</label>
+                      <div className="time-slot-time-row">
+                        <input
+                          type="text"
+                          placeholder="06:00"
+                          maxLength={5}
+                          className="time-input"
+                          value={timeSlotForm.start_time}
+                          onChange={(e) => {
+                            const formatted = formatTimeInput24h(e.target.value)
+                            setTimeSlotForm({ ...timeSlotForm, start_time: formatted })
+                          }}
+                        />
+                        <span className="time-separator">to</span>
+                        <input
+                          type="text"
+                          placeholder="14:00"
+                          maxLength={5}
+                          className="time-input"
+                          value={timeSlotForm.end_time}
+                          onChange={(e) => {
+                            const formatted = formatTimeInput24h(e.target.value)
+                            setTimeSlotForm({ ...timeSlotForm, end_time: formatted })
+                          }}
+                        />
                       </div>
-                      <div className="time-slot-form-row">
-                        <div className="checkbox-group">
-                          <label className="checkbox-label">
-                            <input
-                              type="checkbox"
-                              checked={timeSlotForm.block_dropoffs}
-                              onChange={(e) =>
-                                setTimeSlotForm({ ...timeSlotForm, block_dropoffs: e.target.checked })
-                              }
-                            />
-                            Block Drop-offs
-                          </label>
-                          <label className="checkbox-label">
-                            <input
-                              type="checkbox"
-                              checked={timeSlotForm.block_pickups}
-                              onChange={(e) =>
-                                setTimeSlotForm({ ...timeSlotForm, block_pickups: e.target.checked })
-                              }
-                            />
-                            Block Pick-ups
-                          </label>
-                        </div>
+
+                      <label className="time-slot-form-label">What to block:</label>
+                      <div className="time-slot-block-options">
+                        <label className={`block-option ${timeSlotForm.block_dropoffs && timeSlotForm.block_pickups ? 'selected' : ''}`}>
+                          <input
+                            type="radio"
+                            name="blockType"
+                            checked={timeSlotForm.block_dropoffs && timeSlotForm.block_pickups}
+                            onChange={() => setTimeSlotForm({ ...timeSlotForm, block_dropoffs: true, block_pickups: true })}
+                          />
+                          <span className="option-icon">🚫</span>
+                          <span className="option-text">Both</span>
+                        </label>
+                        <label className={`block-option ${timeSlotForm.block_dropoffs && !timeSlotForm.block_pickups ? 'selected' : ''}`}>
+                          <input
+                            type="radio"
+                            name="blockType"
+                            checked={timeSlotForm.block_dropoffs && !timeSlotForm.block_pickups}
+                            onChange={() => setTimeSlotForm({ ...timeSlotForm, block_dropoffs: true, block_pickups: false })}
+                          />
+                          <span className="option-icon">🚗</span>
+                          <span className="option-text">Drop-offs only</span>
+                        </label>
+                        <label className={`block-option ${!timeSlotForm.block_dropoffs && timeSlotForm.block_pickups ? 'selected' : ''}`}>
+                          <input
+                            type="radio"
+                            name="blockType"
+                            checked={!timeSlotForm.block_dropoffs && timeSlotForm.block_pickups}
+                            onChange={() => setTimeSlotForm({ ...timeSlotForm, block_dropoffs: false, block_pickups: true })}
+                          />
+                          <span className="option-icon">🛬</span>
+                          <span className="option-text">Pick-ups only</span>
+                        </label>
                       </div>
+
                       <div className="modal-form-group">
                         <label>Reason (optional)</label>
                         <input
@@ -1785,9 +1816,17 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                           onChange={(e) =>
                             setTimeSlotForm({ ...timeSlotForm, reason: e.target.value })
                           }
-                          placeholder="e.g., Morning maintenance"
+                          placeholder="e.g., Staff meeting, Maintenance"
                         />
                       </div>
+
+                      {/* Preview */}
+                      {timeSlotForm.start_time && timeSlotForm.end_time && (
+                        <div className="time-slot-preview">
+                          Blocking {timeSlotForm.block_dropoffs && timeSlotForm.block_pickups ? 'all bookings' :
+                            timeSlotForm.block_dropoffs ? 'drop-offs' : 'pick-ups'} from <strong>{timeSlotForm.start_time}</strong> to <strong>{timeSlotForm.end_time}</strong>
+                        </div>
+                      )}
                       <div className="time-slot-form-actions">
                         <button
                           type="button"
