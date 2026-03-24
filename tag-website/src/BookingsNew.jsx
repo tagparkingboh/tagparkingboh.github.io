@@ -415,32 +415,113 @@ function Bookings() {
 
   const isCapacityAvailable = checkAvailability(formData.dropoffDate, formData.pickupDate)
 
-  // Check if a date is blocked for drop-offs
+  // Helper: Check if a time falls within a time slot
+  const isTimeInSlot = (timeStr, slot) => {
+    if (!timeStr || !slot) return false
+    // Parse time (HH:MM format)
+    const [checkH, checkM] = timeStr.split(':').map(Number)
+    const [startH, startM] = slot.start_time.split(':').map(Number)
+    const [endH, endM] = slot.end_time.split(':').map(Number)
+
+    const checkMins = checkH * 60 + checkM
+    const startMins = startH * 60 + startM
+    const endMins = endH * 60 + endM
+
+    // Start time is inclusive, end time is exclusive
+    return checkMins >= startMins && checkMins < endMins
+  }
+
+  // Check if a date/time is blocked for drop-offs
   const isDropoffDateBlocked = useMemo(() => {
     if (!formData.dropoffDate || blockedDates.length === 0) return false
     const dateStr = format(formData.dropoffDate, 'yyyy-MM-dd')
-    return blockedDates.some(bd =>
-      bd.block_dropoffs && dateStr >= bd.start_date && dateStr <= bd.end_date
-    )
-  }, [formData.dropoffDate, blockedDates])
 
-  // Check if a date is blocked for pick-ups
+    // Find any blocked date that covers this date
+    const blockedDate = blockedDates.find(bd =>
+      dateStr >= bd.start_date && dateStr <= bd.end_date
+    )
+
+    if (!blockedDate) return false
+
+    // If blocked date has time slots, check against those
+    if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
+      const dropoffTime = manualDepartureData.dropoffSlot
+      if (!dropoffTime) {
+        // No time selected yet - check if ANY slot blocks dropoffs
+        return blockedDate.time_slots.some(slot => slot.block_dropoffs)
+      }
+      // Check if the selected time falls within a blocked slot
+      return blockedDate.time_slots.some(slot =>
+        slot.block_dropoffs && isTimeInSlot(dropoffTime, slot)
+      )
+    }
+
+    // No time slots - use full day blocking
+    return blockedDate.block_dropoffs
+  }, [formData.dropoffDate, blockedDates, manualDepartureData.dropoffSlot])
+
+  // Check if a date/time is blocked for pick-ups
   const isPickupDateBlocked = useMemo(() => {
     if (!formData.pickupDate || blockedDates.length === 0) return false
     const dateStr = format(formData.pickupDate, 'yyyy-MM-dd')
-    return blockedDates.some(bd =>
-      bd.block_pickups && dateStr >= bd.start_date && dateStr <= bd.end_date
-    )
-  }, [formData.pickupDate, blockedDates])
 
-  // Get blocked date info for error messages
-  const getBlockedDateInfo = (date, isDropoff) => {
-    if (!date || blockedDates.length === 0) return null
-    const dateStr = format(date, 'yyyy-MM-dd')
-    return blockedDates.find(bd =>
-      (isDropoff ? bd.block_dropoffs : bd.block_pickups) &&
+    // Find any blocked date that covers this date
+    const blockedDate = blockedDates.find(bd =>
       dateStr >= bd.start_date && dateStr <= bd.end_date
     )
+
+    if (!blockedDate) return false
+
+    // If blocked date has time slots, check against those
+    if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
+      const pickupTime = manualArrivalData.flightTime
+      if (!pickupTime) {
+        // No time selected yet - check if ANY slot blocks pickups
+        return blockedDate.time_slots.some(slot => slot.block_pickups)
+      }
+      // Check if the selected time falls within a blocked slot
+      return blockedDate.time_slots.some(slot =>
+        slot.block_pickups && isTimeInSlot(pickupTime, slot)
+      )
+    }
+
+    // No time slots - use full day blocking
+    return blockedDate.block_pickups
+  }, [formData.pickupDate, blockedDates, manualArrivalData.flightTime])
+
+  // Get blocked date info for error messages
+  const getBlockedDateInfo = (date, isDropoff, time = null) => {
+    if (!date || blockedDates.length === 0) return null
+    const dateStr = format(date, 'yyyy-MM-dd')
+
+    const blockedDate = blockedDates.find(bd =>
+      dateStr >= bd.start_date && dateStr <= bd.end_date
+    )
+
+    if (!blockedDate) return null
+
+    // If time slots exist and time is provided, check specific slot
+    if (blockedDate.time_slots && blockedDate.time_slots.length > 0 && time) {
+      const slot = blockedDate.time_slots.find(slot =>
+        (isDropoff ? slot.block_dropoffs : slot.block_pickups) &&
+        isTimeInSlot(time, slot)
+      )
+      if (slot) {
+        return {
+          ...blockedDate,
+          reason: slot.reason || blockedDate.reason,
+          blocked_slot: slot
+        }
+      }
+      return null
+    }
+
+    // Full day blocking
+    if (isDropoff ? blockedDate.block_dropoffs : blockedDate.block_pickups) {
+      return blockedDate
+    }
+
+    return null
   }
 
   // Get car makes and models from car-info library
@@ -2237,7 +2318,18 @@ function Bookings() {
                 />
                 {isDropoffDateBlocked && formData.dropoffDate && (
                   <div className="blocked-date-message">
-                    <p>Sorry, we have no availability for {format(formData.dropoffDate, 'EEEE d MMMM yyyy')}</p>
+                    {(() => {
+                      const blockedInfo = getBlockedDateInfo(formData.dropoffDate, true, manualDepartureData.dropoffSlot)
+                      if (blockedInfo?.blocked_slot) {
+                        return (
+                          <p>
+                            Sorry, drop-offs are unavailable between {blockedInfo.blocked_slot.start_time} and {blockedInfo.blocked_slot.end_time}
+                            {blockedInfo.blocked_slot.reason && ` (${blockedInfo.blocked_slot.reason})`}
+                          </p>
+                        )
+                      }
+                      return <p>Sorry, we have no availability for drop-offs on {format(formData.dropoffDate, 'EEEE d MMMM yyyy')}</p>
+                    })()}
                   </div>
                 )}
               </div>
@@ -2499,7 +2591,18 @@ function Bookings() {
                       )}
                       {isPickupDateBlocked && formData.pickupDate && (
                         <div className="blocked-date-message">
-                          <p>Sorry, we have no availability for {format(formData.pickupDate, 'EEEE d MMMM yyyy')}</p>
+                          {(() => {
+                            const blockedInfo = getBlockedDateInfo(formData.pickupDate, false, manualArrivalData.flightTime)
+                            if (blockedInfo?.blocked_slot) {
+                              return (
+                                <p>
+                                  Sorry, pick-ups are unavailable between {blockedInfo.blocked_slot.start_time} and {blockedInfo.blocked_slot.end_time}
+                                  {blockedInfo.blocked_slot.reason && ` (${blockedInfo.blocked_slot.reason})`}
+                                </p>
+                              )
+                            }
+                            return <p>Sorry, we have no availability for pick-ups on {format(formData.pickupDate, 'EEEE d MMMM yyyy')}</p>
+                          })()}
                         </div>
                       )}
                     </div>
