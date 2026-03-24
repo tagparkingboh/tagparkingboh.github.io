@@ -1279,31 +1279,48 @@
   white-space: nowrap;
 }
 
-/* Blocked time slots container */
-.day-blocked-slots {
+/* Blocked time slots in detail panel */
+.blocked-time-slots-detail {
+  margin-bottom: 12px;
+}
+
+.blocked-time-slots-label {
+  color: #888;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.blocked-time-slot-row {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #1e1e1e;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
 }
 
-/* Blocked time slot badge */
-.day-badge.badge-blocked-slot {
-  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
-  color: #fff;
-  font-size: 0.6rem;
-  padding: 2px 4px;
-  border-radius: 3px;
-  white-space: nowrap;
+.blocked-time-slot-row .slot-time-range {
   font-family: monospace;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ff6b6b;
+  min-width: 110px;
 }
 
-/* More slots indicator */
-.day-badge.badge-blocked-more {
-  background: #8e2c22;
-  color: #ffcccc;
-  font-size: 0.55rem;
-  padding: 1px 3px;
-  border-radius: 2px;
+.blocked-time-slot-row .slot-block-types {
+  background: #3a2020;
+  color: #ffaaaa;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.blocked-time-slot-row .slot-reason {
+  color: #888;
+  font-size: 0.85rem;
+  font-style: italic;
 }
 
 /* Blocked dates manager button */

@@ -1059,32 +1059,12 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                         <div className="day-content">
                           {/* Blocked date indicator */}
                           {blockedInfo && (
-                            <>
-                              {/* Show time slots if they exist */}
-                              {blockedInfo.time_slots && blockedInfo.time_slots.length > 0 ? (
-                                <div className="day-blocked-slots">
-                                  {blockedInfo.time_slots.slice(0, 2).map((slot, idx) => (
-                                    <div
-                                      key={slot.id || idx}
-                                      className="day-badge badge-blocked-slot"
-                                      title={slot.reason || `Blocked ${formatTime(slot.start_time)}-${formatTime(slot.end_time)}`}
-                                    >
-                                      🚫 {formatTime(slot.start_time)}-{formatTime(slot.end_time)}
-                                    </div>
-                                  ))}
-                                  {blockedInfo.time_slots.length > 2 && (
-                                    <div className="day-badge badge-blocked-more">
-                                      +{blockedInfo.time_slots.length - 2} more
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="day-badge badge-blocked" title={blockedInfo.reason || 'Blocked'}>
-                                  🚫 {blockedInfo.block_dropoffs && blockedInfo.block_pickups ? 'Closed' :
-                                      blockedInfo.block_dropoffs ? 'No Drop-offs' : 'No Pick-ups'}
-                                </div>
-                              )}
-                            </>
+                            <div className="day-badge badge-blocked" title={blockedInfo.reason || 'Blocked'}>
+                              🚫 {blockedInfo.time_slots && blockedInfo.time_slots.length > 0
+                                ? `${blockedInfo.time_slots.length} slot${blockedInfo.time_slots.length > 1 ? 's' : ''}`
+                                : (blockedInfo.block_dropoffs && blockedInfo.block_pickups ? 'Closed' :
+                                    blockedInfo.block_dropoffs ? 'No Drop-offs' : 'No Pick-ups')}
+                            </div>
                           )}
                           {/* Booking badges */}
                           {hasDropoffs && (
@@ -1205,14 +1185,33 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
               <div className="blocked-dates-section">
                 <h4>🚫 Date Blocked</h4>
                 <div className="blocked-date-info">
-                  <div className="blocked-date-type">
-                    {selectedDateBlockedInfo.block_dropoffs && (
-                      <span className="blocked-type-badge">No Drop-offs</span>
-                    )}
-                    {selectedDateBlockedInfo.block_pickups && (
-                      <span className="blocked-type-badge">No Pick-ups</span>
-                    )}
-                  </div>
+                  {/* Show time slots if they exist */}
+                  {selectedDateBlockedInfo.time_slots && selectedDateBlockedInfo.time_slots.length > 0 ? (
+                    <div className="blocked-time-slots-detail">
+                      <div className="blocked-time-slots-label">Blocked time slots:</div>
+                      {selectedDateBlockedInfo.time_slots.map((slot) => (
+                        <div key={slot.id} className="blocked-time-slot-row">
+                          <span className="slot-time-range">
+                            {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
+                          </span>
+                          <span className="slot-block-types">
+                            {slot.block_dropoffs && slot.block_pickups ? 'All blocked' :
+                              slot.block_dropoffs ? 'No drop-offs' : 'No pick-ups'}
+                          </span>
+                          {slot.reason && <span className="slot-reason">{slot.reason}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="blocked-date-type">
+                      {selectedDateBlockedInfo.block_dropoffs && (
+                        <span className="blocked-type-badge">No Drop-offs</span>
+                      )}
+                      {selectedDateBlockedInfo.block_pickups && (
+                        <span className="blocked-type-badge">No Pick-ups</span>
+                      )}
+                    </div>
+                  )}
                   {selectedDateBlockedInfo.reason && (
                     <div className="blocked-date-reason">
                       Reason: {selectedDateBlockedInfo.reason}
