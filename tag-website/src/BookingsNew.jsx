@@ -2831,8 +2831,9 @@ function Bookings() {
               <div className="form-actions">
                 <button
                   type="button"
-                  className="next-btn"
+                  className={`next-btn ${!isStep1Complete ? 'disabled' : ''}`}
                   onClick={handleContinueStep1}
+                  disabled={!isStep1Complete}
                 >
                   Continue to Package Selection
                 </button>
