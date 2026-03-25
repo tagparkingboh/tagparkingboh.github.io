@@ -331,10 +331,9 @@ function HomePage() {
             </div>
             <ul className="pricing-features-compact">
               <li><span className="check">✓</span> Meet & Greet at terminal</li>
-              <li><span className="check">✓</span> Secure storage facility</li>
-              <li><span className="check">✓</span> 24/7 monitoring</li>
+              <li><span className="check">✓</span> 24/7 secure car park</li>
               <li><span className="check">✓</span> No hidden fees</li>
-              <li><span className="check">✓</span> Cancel up to 24 hours before</li>
+              <li><span className="check">✓</span> Free cancellation up to 24hrs before</li>
             </ul>
             <p className="pricing-save-unified">Save up to 60% off official airport parking</p>
           </div>
@@ -371,9 +370,9 @@ function HomePage() {
               <p className="pricing-tier-features-title">All trips include:</p>
               <ul className="pricing-features-grid">
                 <li><span className="check">✓</span> Meet & Greet at terminal</li>
-                <li><span className="check">✓</span> Secure storage facility</li>
-                <li><span className="check">✓</span> 24/7 monitoring</li>
+                <li><span className="check">✓</span> 24/7 secure car park</li>
                 <li><span className="check">✓</span> No hidden fees</li>
+                <li><span className="check">✓</span> Free cancellation up to 24hrs before</li>
               </ul>
             </div>
             <p className="pricing-save-unified">Save up to 60% off official airport parking</p>
@@ -412,9 +411,9 @@ function HomePage() {
             </div>
             <ul className="pricing-features-row">
               <li><span className="check">✓</span> Meet & Greet</li>
-              <li><span className="check">✓</span> Secure storage</li>
-              <li><span className="check">✓</span> 24/7 monitoring</li>
+              <li><span className="check">✓</span> 24/7 secure car park</li>
               <li><span className="check">✓</span> No hidden fees</li>
+              <li><span className="check">✓</span> Free cancellation</li>
             </ul>
             <p className="pricing-save-unified">Save up to 60% off official airport parking</p>
           </div>
