@@ -6219,7 +6219,7 @@ function Admin() {
                                 <span className="trip-insight-busiest-label">Top 5:</span>
                                 {bookingStats.top_durations.map((d, i) => (
                                   <span key={i} className="trip-insight-busiest">
-                                    {d.days} day{d.days !== 1 ? 's' : ''} ({d.count})
+                                    {d.days} day{d.days !== 1 ? 's' : ''} ({d.count} · {d.percent}%)
                                   </span>
                                 ))}
                               </div>
