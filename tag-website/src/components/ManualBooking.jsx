@@ -1385,15 +1385,9 @@ function ManualBooking({ token }) {
                 } else {
                   tripLabel = `${days} day${days !== 1 ? 's' : ''} trip`
                 }
-                const extraDays = days > 14 ? days - 14 : 0
                 return (
                   <>
                     <span className="trip-duration"><strong>{tripLabel}</strong></span>
-                    {extraDays > 0 && (
-                      <span className="extra-days-note" style={{ fontSize: '12px', color: '#666', marginLeft: '8px' }}>
-                        (14 days + {extraDays} extra @ £9/day)
-                      </span>
-                    )}
                     {pricingLoading && <span className="calculated-price">Calculating...</span>}
                     {!pricingLoading && calculatedPrice && (
                       <span className="calculated-price">

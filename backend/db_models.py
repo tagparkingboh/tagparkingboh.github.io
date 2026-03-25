@@ -685,23 +685,28 @@ class VehicleInspection(Base):
 
 
 class PricingSettings(Base):
-    """Dynamic pricing configuration for booking packages with flexible duration tiers."""
+    """Dynamic pricing configuration for booking packages with simplified anchor pricing."""
     __tablename__ = "pricing_settings"
 
     id = Column(Integer, primary_key=True, index=True)
 
-    # Base prices for early booking tier (by duration)
-    # These are the "early" tier prices - standard adds increment, late adds 2x increment
-    days_1_4_price = Column(Numeric(10, 2), nullable=False, default=60.00)    # 1-4 days
-    days_5_6_price = Column(Numeric(10, 2), nullable=False, default=72.00)    # 5-6 days
-    week1_base_price = Column(Numeric(10, 2), nullable=False, default=79.00)  # 7 days
-    days_8_9_price = Column(Numeric(10, 2), nullable=False, default=99.00)    # 8-9 days
-    days_10_11_price = Column(Numeric(10, 2), nullable=False, default=119.00) # 10-11 days
-    days_12_13_price = Column(Numeric(10, 2), nullable=False, default=130.00) # 12-13 days
-    week2_base_price = Column(Numeric(10, 2), nullable=False, default=140.00) # 14 days
+    # Anchor base prices for early booking tier
+    # These are the "early" tier prices - standard adds tier_increment, late adds 2x tier_increment
+    days_1_4_price = Column(Numeric(10, 2), nullable=False, default=65.00)    # 1-4 days anchor
+    week1_base_price = Column(Numeric(10, 2), nullable=False, default=85.00)  # 7 days anchor
+    week2_base_price = Column(Numeric(10, 2), nullable=False, default=150.00) # 14 days anchor
+
+    # Daily increment for days between anchors (5-6, 8-13, 15+)
+    daily_increment = Column(Numeric(10, 2), nullable=False, default=8.00)
 
     # Price increment per booking tier (early -> standard -> late)
-    tier_increment = Column(Numeric(10, 2), nullable=False, default=10.00)
+    tier_increment = Column(Numeric(10, 2), nullable=False, default=5.00)
+
+    # Legacy columns - kept for migration compatibility, will be removed later
+    days_5_6_price = Column(Numeric(10, 2), nullable=True)
+    days_8_9_price = Column(Numeric(10, 2), nullable=True)
+    days_10_11_price = Column(Numeric(10, 2), nullable=True)
+    days_12_13_price = Column(Numeric(10, 2), nullable=True)
 
     # Audit fields
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -710,7 +715,7 @@ class PricingSettings(Base):
     updater = relationship("User")
 
     def __repr__(self):
-        return f"<PricingSettings 1-4d={self.days_1_4_price} 5-6d={self.days_5_6_price} 7d={self.week1_base_price} 8-9d={self.days_8_9_price} 10-11d={self.days_10_11_price} 12-13d={self.days_12_13_price} 14d={self.week2_base_price} increment={self.tier_increment}>"
+        return f"<PricingSettings 1-4d={self.days_1_4_price} 7d={self.week1_base_price} 14d={self.week2_base_price} daily_inc={self.daily_increment} tier_inc={self.tier_increment}>"
 
 
 class TestRunStatus(enum.Enum):
