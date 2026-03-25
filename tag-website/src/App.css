@@ -717,31 +717,6 @@
   text-align: center;
 }
 
-/* Design Selector - for testing */
-.pricing-design-selector {
-  display: flex;
-  justify-content: center;
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.pricing-design-selector button {
-  padding: 0.5rem 1.5rem;
-  border: 2px solid #D9FF00;
-  background: transparent;
-  color: #D9FF00;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.2s;
-}
-
-.pricing-design-selector button:hover,
-.pricing-design-selector button.active {
-  background: #D9FF00;
-  color: #343434;
-}
-
 /* Unified Card Base */
 .pricing-unified-card {
   background: var(--white);
@@ -762,36 +737,6 @@
   border-radius: 0 0 16px 16px;
 }
 
-/* ========== DESIGN 1: Horizontal Price Strip ========== */
-.pricing-strip {
-  display: flex;
-  justify-content: center;
-  gap: 0;
-  margin-bottom: 2rem;
-}
-
-.pricing-strip-item {
-  flex: 1;
-  padding: 1.5rem 2rem;
-  border-right: 1px solid #e0e0e0;
-  position: relative;
-}
-
-.pricing-strip-item:last-child {
-  border-right: none;
-}
-
-.pricing-strip-item.featured {
-  background: linear-gradient(135deg, #f8fff0 0%, #f0ffdb 100%);
-  margin: -0.5rem 0;
-  padding: 2rem 2rem;
-  border-radius: 12px;
-  border: 2px solid #D9FF00;
-  box-shadow: 0 4px 20px rgba(217, 255, 0, 0.2);
-}
-
-.pricing-strip-badge,
-.pricing-tier-badge,
 .pricing-hero-badge {
   position: absolute;
   top: -12px;
@@ -806,167 +751,7 @@
   white-space: nowrap;
 }
 
-.pricing-strip-label {
-  display: block;
-  color: #5C7300;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  margin-bottom: 0.75rem;
-}
-
-.pricing-strip-price {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.pricing-strip-from {
-  font-size: 12px;
-  color: #666;
-  font-weight: 600;
-}
-
-.pricing-strip-amount {
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: #343434;
-}
-
-.pricing-strip-amount .currency {
-  font-size: 1.25rem;
-  vertical-align: top;
-}
-
-.pricing-strip-item.featured .pricing-strip-amount {
-  font-size: 3rem;
-}
-
-.pricing-features-compact {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem 2rem;
-}
-
-.pricing-features-compact li {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: #343434;
-  font-size: 0.9rem;
-}
-
-.pricing-features-compact .check {
-  color: #5C7300;
-  font-weight: 700;
-}
-
-/* ========== DESIGN 2: Stacked Price Tiers ========== */
-.pricing-tiers {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  margin-bottom: 1.5rem;
-}
-
-.pricing-tier {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.25rem 2rem;
-  border-bottom: 1px solid #e0e0e0;
-  position: relative;
-}
-
-.pricing-tier:last-child {
-  border-bottom: none;
-}
-
-.pricing-tier.featured {
-  background: linear-gradient(135deg, #f8fff0 0%, #f0ffdb 100%);
-  margin: 0.5rem -1rem;
-  padding: 1.5rem 3rem;
-  border-radius: 12px;
-  border: 2px solid #D9FF00;
-  border-bottom: 2px solid #D9FF00;
-}
-
-.pricing-tier-badge {
-  top: -10px;
-  left: 2rem;
-  transform: none;
-}
-
-.pricing-tier-label {
-  font-size: 16px;
-  font-weight: 700;
-  color: #5C7300;
-  letter-spacing: 1px;
-}
-
-.pricing-tier-price {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-
-.pricing-tier-from {
-  font-size: 14px;
-  color: #666;
-}
-
-.pricing-tier-amount {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #343434;
-}
-
-.pricing-tier-amount .currency {
-  font-size: 1rem;
-}
-
-.pricing-tier.featured .pricing-tier-amount {
-  font-size: 2.5rem;
-}
-
-.pricing-tier-features {
-  text-align: left;
-  margin-bottom: 1rem;
-}
-
-.pricing-tier-features-title {
-  font-weight: 700;
-  color: #343434;
-  margin-bottom: 0.75rem;
-}
-
-.pricing-features-grid {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem 2rem;
-}
-
-.pricing-features-grid li {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: #343434;
-  font-size: 0.9rem;
-}
-
-.pricing-features-grid .check {
-  color: #5C7300;
-  font-weight: 700;
-}
-
-/* ========== DESIGN 3: Central Feature Card ========== */
+/* ========== Central Feature Card Pricing ========== */
 .pricing-hero-layout {
   display: flex;
   align-items: center;
@@ -1105,41 +890,7 @@
     font-size: 14px;
   }
 
-  /* Design 1 mobile */
-  .pricing-strip {
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .pricing-strip-item {
-    border-right: none;
-    border-bottom: 1px solid #e0e0e0;
-    padding: 1rem;
-  }
-
-  .pricing-strip-item:last-child {
-    border-bottom: none;
-  }
-
-  .pricing-strip-item.featured {
-    margin: 0;
-  }
-
-  /* Design 2 mobile */
-  .pricing-tier {
-    padding: 1rem;
-  }
-
-  .pricing-tier.featured {
-    margin: 0.5rem 0;
-    padding: 1.25rem;
-  }
-
-  .pricing-features-grid {
-    grid-template-columns: 1fr;
-  }
-
-  /* Design 3 mobile */
+/* Pricing card mobile */
   .pricing-hero-layout {
     flex-direction: column;
     gap: 1rem;
@@ -1156,11 +907,6 @@
   }
 
   .pricing-features-row {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .pricing-features-compact {
     flex-direction: column;
     align-items: center;
   }
