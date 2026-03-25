@@ -1227,6 +1227,13 @@ async def get_booking_stats(
     # Calculate averages
     avg_trip_duration = round(sum(trip_durations) / len(trip_durations), 1) if trip_durations else 0
 
+    # Calculate top 5 most common trip durations
+    duration_counts = {}
+    for d in trip_durations:
+        duration_counts[d] = duration_counts.get(d, 0) + 1
+    top_durations = sorted(duration_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    top_durations = [{"days": d, "count": c} for d, c in top_durations]
+
     # Helper function to find top N busiest hours using fixed hourly buckets
     # Each booking is counted in exactly one bucket (00:00-01:00, 01:00-02:00, etc.)
     def find_top_busiest_hours(times_minutes, top_n=3):
@@ -1298,6 +1305,7 @@ async def get_booking_stats(
         "paid_customer_count": paid_customer_count,
         "avg_revenue_per_customer": avg_revenue_per_customer,
         "avg_trip_duration": avg_trip_duration,
+        "top_durations": top_durations,
         "dropoff_range": dropoff_range,
         "pickup_range": pickup_range,
     }

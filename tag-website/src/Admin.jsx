@@ -6214,6 +6214,16 @@ function Admin() {
                           <div className="trip-insight-content">
                             <span className="trip-insight-label">Avg Trip Duration</span>
                             <span className="trip-insight-value">{bookingStats.avg_trip_duration || 0} days</span>
+                            {bookingStats.top_durations?.length > 0 && (
+                              <div className="trip-insight-busiest-section">
+                                <span className="trip-insight-busiest-label">Top 5:</span>
+                                {bookingStats.top_durations.map((d, i) => (
+                                  <span key={i} className="trip-insight-busiest">
+                                    {d.days} day{d.days !== 1 ? 's' : ''} ({d.count})
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="trip-insight-card">
