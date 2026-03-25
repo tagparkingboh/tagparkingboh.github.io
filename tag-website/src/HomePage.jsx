@@ -31,7 +31,8 @@ function HomePage() {
   const [submitStatus, setSubmitStatus] = useState(null) // 'success' | 'error' | null
   const [heroBannerIndex, setHeroBannerIndex] = useState(0)
   const [bannerFading, setBannerFading] = useState(false)
-  const [prices, setPrices] = useState({ week1: 89, week2: 140 })
+  const [prices, setPrices] = useState({ days4: 65, week1: 89, week2: 140 })
+  const [pricingDesign, setPricingDesign] = useState(1) // 1, 2, or 3 for different designs
 
   // Alternate hero banner every 10 seconds
   useEffect(() => {
@@ -77,6 +78,7 @@ function HomePage() {
       .then(res => res.json())
       .then(data => {
         setPrices({
+          days4: data.days_1_4_price || 65,
           week1: data.week1_base_price || 89,
           week2: data.week2_base_price || 140,
         })
@@ -293,47 +295,130 @@ function HomePage() {
         <h2>Pricing & plans</h2>
         <p className="pricing-subtitle">Heading off for a short trip or a longer stay? Pick one of our pricing options that's right for you.</p>
 
-        <div className="pricing-cards">
-          <div className="pricing-card">
-            <span className="pricing-label">1 WEEK TRIP</span>
-            <p className="pricing-from">From</p>
-            <div className="pricing-amount">
-              <span className="currency">£</span>
-              <span className="price">{prices.week1}</span>
-            </div>
-            <p className="pricing-note">one off payment</p>
-
-            <ul className="pricing-features">
-              <li><span className="check">✓</span> Meet & Greet at terminal</li>
-              <li><span className="check">✓</span> Secure storage facility</li>
-              <li><span className="check">✓</span> 24/7 monitoring</li>
-              <li><span className="check">✓</span> No hidden fees</li>
-              <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
-            </ul>
-
-            <p className="pricing-save">Save up to 60% off<br />official airport parking</p>
-          </div>
-
-          <div className="pricing-card">
-            <span className="pricing-label">2 WEEK TRIP</span>
-            <p className="pricing-from">From</p>
-            <div className="pricing-amount">
-              <span className="currency">£</span>
-              <span className="price">{prices.week2}</span>
-            </div>
-            <p className="pricing-note">one off payment</p>
-
-            <ul className="pricing-features">
-              <li><span className="check">✓</span> Meet & Greet at terminal</li>
-              <li><span className="check">✓</span> Secure storage facility</li>
-              <li><span className="check">✓</span> 24/7 monitoring</li>
-              <li><span className="check">✓</span> No hidden fees</li>
-              <li><span className="check">✓</span> Cancel up to 24 hours before booking</li>
-            </ul>
-
-            <p className="pricing-save">Save up to 60% off<br />official airport parking</p>
-          </div>
+        {/* Design Selector - for testing only */}
+        <div className="pricing-design-selector">
+          <button className={pricingDesign === 1 ? 'active' : ''} onClick={() => setPricingDesign(1)}>Design 1</button>
+          <button className={pricingDesign === 2 ? 'active' : ''} onClick={() => setPricingDesign(2)}>Design 2</button>
+          <button className={pricingDesign === 3 ? 'active' : ''} onClick={() => setPricingDesign(3)}>Design 3</button>
         </div>
+
+        {/* Design 1: Horizontal Price Strip */}
+        {pricingDesign === 1 && (
+          <div className="pricing-unified-card pricing-design-1">
+            <div className="pricing-strip">
+              <div className="pricing-strip-item">
+                <span className="pricing-strip-label">4 DAY TRIP</span>
+                <div className="pricing-strip-price">
+                  <span className="pricing-strip-from">From</span>
+                  <span className="pricing-strip-amount"><span className="currency">£</span>{prices.days4}</span>
+                </div>
+              </div>
+              <div className="pricing-strip-item featured">
+                <span className="pricing-strip-badge">MOST POPULAR</span>
+                <span className="pricing-strip-label">7 DAY TRIP</span>
+                <div className="pricing-strip-price">
+                  <span className="pricing-strip-from">From</span>
+                  <span className="pricing-strip-amount"><span className="currency">£</span>{prices.week1}</span>
+                </div>
+              </div>
+              <div className="pricing-strip-item">
+                <span className="pricing-strip-label">14 DAY TRIP</span>
+                <div className="pricing-strip-price">
+                  <span className="pricing-strip-from">From</span>
+                  <span className="pricing-strip-amount"><span className="currency">£</span>{prices.week2}</span>
+                </div>
+              </div>
+            </div>
+            <ul className="pricing-features-compact">
+              <li><span className="check">✓</span> Meet & Greet at terminal</li>
+              <li><span className="check">✓</span> Secure storage facility</li>
+              <li><span className="check">✓</span> 24/7 monitoring</li>
+              <li><span className="check">✓</span> No hidden fees</li>
+              <li><span className="check">✓</span> Cancel up to 24 hours before</li>
+            </ul>
+            <p className="pricing-save-unified">Save up to 60% off official airport parking</p>
+          </div>
+        )}
+
+        {/* Design 2: Stacked Price Tiers */}
+        {pricingDesign === 2 && (
+          <div className="pricing-unified-card pricing-design-2">
+            <div className="pricing-tiers">
+              <div className="pricing-tier">
+                <span className="pricing-tier-label">4 DAY TRIP</span>
+                <div className="pricing-tier-price">
+                  <span className="pricing-tier-from">From</span>
+                  <span className="pricing-tier-amount"><span className="currency">£</span>{prices.days4}</span>
+                </div>
+              </div>
+              <div className="pricing-tier featured">
+                <span className="pricing-tier-badge">MOST POPULAR</span>
+                <span className="pricing-tier-label">7 DAY TRIP</span>
+                <div className="pricing-tier-price">
+                  <span className="pricing-tier-from">From</span>
+                  <span className="pricing-tier-amount"><span className="currency">£</span>{prices.week1}</span>
+                </div>
+              </div>
+              <div className="pricing-tier">
+                <span className="pricing-tier-label">14 DAY TRIP</span>
+                <div className="pricing-tier-price">
+                  <span className="pricing-tier-from">From</span>
+                  <span className="pricing-tier-amount"><span className="currency">£</span>{prices.week2}</span>
+                </div>
+              </div>
+            </div>
+            <div className="pricing-tier-features">
+              <p className="pricing-tier-features-title">All trips include:</p>
+              <ul className="pricing-features-grid">
+                <li><span className="check">✓</span> Meet & Greet at terminal</li>
+                <li><span className="check">✓</span> Secure storage facility</li>
+                <li><span className="check">✓</span> 24/7 monitoring</li>
+                <li><span className="check">✓</span> No hidden fees</li>
+              </ul>
+            </div>
+            <p className="pricing-save-unified">Save up to 60% off official airport parking</p>
+          </div>
+        )}
+
+        {/* Design 3: Central Feature Card */}
+        {pricingDesign === 3 && (
+          <div className="pricing-unified-card pricing-design-3">
+            <div className="pricing-hero-layout">
+              <div className="pricing-side-option left">
+                <span className="pricing-side-label">4 DAY TRIP</span>
+                <div className="pricing-side-price">
+                  <span className="pricing-side-from">From</span>
+                  <span className="pricing-side-amount"><span className="currency">£</span>{prices.days4}</span>
+                </div>
+              </div>
+              <div className="pricing-center-hero">
+                <span className="pricing-hero-badge">MOST POPULAR</span>
+                <span className="pricing-hero-label">7 DAY TRIP</span>
+                <div className="pricing-hero-price">
+                  <span className="pricing-hero-from">From</span>
+                  <div className="pricing-hero-amount">
+                    <span className="currency">£</span>
+                    <span className="price">{prices.week1}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="pricing-side-option right">
+                <span className="pricing-side-label">14 DAY TRIP</span>
+                <div className="pricing-side-price">
+                  <span className="pricing-side-from">From</span>
+                  <span className="pricing-side-amount"><span className="currency">£</span>{prices.week2}</span>
+                </div>
+              </div>
+            </div>
+            <ul className="pricing-features-row">
+              <li><span className="check">✓</span> Meet & Greet</li>
+              <li><span className="check">✓</span> Secure storage</li>
+              <li><span className="check">✓</span> 24/7 monitoring</li>
+              <li><span className="check">✓</span> No hidden fees</li>
+            </ul>
+            <p className="pricing-save-unified">Save up to 60% off official airport parking</p>
+          </div>
+        )}
 
         <Link to="/tag-it" className="pricing-btn pricing-btn-center" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_section' })}>Book it <span>→</span></Link>
         <p className="pricing-early-note">*Book early for the best price</p>
