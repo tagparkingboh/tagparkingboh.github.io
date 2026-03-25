@@ -58,8 +58,8 @@ const formatTime = (timeStr) => {
   return timeStr.substring(0, 5)
 }
 
-// Format time input to 24-hour format (HH:MM)
-const formatTimeInput24h = (input) => {
+// Format time input to 24-hour format (HH:MM) with auto-colon insertion
+const formatTimeInput24h = (input, previousValue = '') => {
   // Remove non-digits except colon
   const cleaned = input.replace(/[^\d:]/g, '')
   // Split on colon if present
@@ -69,6 +69,7 @@ const formatTimeInput24h = (input) => {
     // No colon yet - just digits
     const digits = parts[0]
     if (digits.length <= 2) return digits
+    // Auto-insert colon after 2 digits
     if (digits.length <= 4) return digits.slice(0, 2) + ':' + digits.slice(2)
     return digits.slice(0, 2) + ':' + digits.slice(2, 4)
   } else {
@@ -106,10 +107,25 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const [dateBookings, setDateBookings] = useState([])
   const [loadingDateBookings, setLoadingDateBookings] = useState(false)
 
+  // Duplicate shift state
+  const [duplicateMode, setDuplicateMode] = useState(false)
+  const [additionalStaffIds, setAdditionalStaffIds] = useState([])  // Up to 6 additional staff
+
   // Delete confirmation
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [shiftToDelete, setShiftToDelete] = useState(null)
   const [deletingShift, setDeletingShift] = useState(false)
+
+  // Bulk edit state
+  const [selectedShiftIds, setSelectedShiftIds] = useState([])
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false)
+  const [bulkEditForm, setBulkEditForm] = useState({
+    action: 'edit_times',  // 'edit_times', 'add_bookings', 'delete'
+    start_time: '',
+    end_time: '',
+    booking_ids: [],
+  })
+  const [savingBulkEdit, setSavingBulkEdit] = useState(false)
 
   // Monthly hours (for payroll)
   const [monthlyHours, setMonthlyHours] = useState(null)
@@ -557,6 +573,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       notes: '',
     })
     setDateBookings([])
+    setDuplicateMode(false)
+    setAdditionalStaffIds([])
     if (date) {
       fetchBookingsForDate(date)
     }
@@ -598,6 +616,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       notes: '',
     })
     setDateBookings([])
+    setDuplicateMode(false)
+    setAdditionalStaffIds([])
   }
 
   const handleShiftFormChange = (field, value) => {
@@ -626,8 +646,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       const isoDate = ukToISO(shiftForm.date)
       const isoEndDate = shiftForm.end_date ? ukToISO(shiftForm.end_date) : null
 
-      const payload = {
-        staff_id: shiftForm.staff_id ? parseInt(shiftForm.staff_id) : null,
+      const basePayload = {
         booking_ids: shiftForm.booking_ids.map(id => parseInt(id)),
         date: isoDate,
         end_date: isoEndDate,  // For overnight shifts
@@ -637,29 +656,98 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         notes: shiftForm.notes || null,
       }
 
-      const url = editingShift
-        ? `${API_URL}/api/roster/${editingShift.id}`
-        : `${API_URL}/api/roster`
+      if (editingShift) {
+        // Editing existing shift - single update
+        const payload = {
+          ...basePayload,
+          staff_id: shiftForm.staff_id ? parseInt(shiftForm.staff_id) : null,
+        }
 
-      const response = await fetch(url, {
-        method: editingShift ? 'PUT' : 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache',
-        },
-        body: JSON.stringify(payload),
-      })
+        const response = await fetch(`${API_URL}/api/roster/${editingShift.id}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+          },
+          body: JSON.stringify(payload),
+        })
 
-      if (response.ok) {
-        setSuccessMessage(editingShift ? 'Shift updated' : 'Shift created')
-        setTimeout(() => setSuccessMessage(''), 3000)
-        closeShiftModal()
-        fetchShifts()
-        fetchMonthlyHours()
+        if (response.ok) {
+          setSuccessMessage('Shift updated')
+          setTimeout(() => setSuccessMessage(''), 3000)
+          closeShiftModal()
+          fetchShifts()
+          fetchMonthlyHours()
+        } else {
+          const errorData = await response.json().catch(() => ({}))
+          setError(errorData.detail || 'Failed to save shift')
+        }
       } else {
-        const errorData = await response.json().catch(() => ({}))
-        setError(errorData.detail || 'Failed to save shift')
+        // Creating new shift(s)
+        // Collect all staff IDs to create shifts for
+        const staffIdsToCreate = []
+        if (shiftForm.staff_id) {
+          staffIdsToCreate.push(parseInt(shiftForm.staff_id))
+        }
+        if (duplicateMode && additionalStaffIds.length > 0) {
+          additionalStaffIds.forEach(id => {
+            if (id && !staffIdsToCreate.includes(parseInt(id))) {
+              staffIdsToCreate.push(parseInt(id))
+            }
+          })
+        }
+
+        // If no staff selected, create one unassigned shift
+        if (staffIdsToCreate.length === 0) {
+          staffIdsToCreate.push(null)
+        }
+
+        let successCount = 0
+        let errorMessages = []
+
+        // Create shifts for each staff member
+        for (const staffId of staffIdsToCreate) {
+          const payload = {
+            ...basePayload,
+            staff_id: staffId,
+          }
+
+          try {
+            const response = await fetch(`${API_URL}/api/roster`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache',
+              },
+              body: JSON.stringify(payload),
+            })
+
+            if (response.ok) {
+              successCount++
+            } else {
+              const errorData = await response.json().catch(() => ({}))
+              const staffName = employees.find(e => e.id === staffId)
+              const name = staffName ? `${staffName.first_name} ${staffName.last_name}` : 'Unknown'
+              errorMessages.push(`${name}: ${errorData.detail || 'Failed'}`)
+            }
+          } catch (err) {
+            errorMessages.push(`Network error`)
+          }
+        }
+
+        if (successCount > 0) {
+          setSuccessMessage(`${successCount} shift${successCount > 1 ? 's' : ''} created`)
+          setTimeout(() => setSuccessMessage(''), 3000)
+          closeShiftModal()
+          fetchShifts()
+          fetchMonthlyHours()
+        }
+
+        if (errorMessages.length > 0) {
+          setError(errorMessages.join('; '))
+        }
       }
     } catch (err) {
       setError('Network error saving shift')
@@ -671,6 +759,157 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const confirmDeleteShift = (shift) => {
     setShiftToDelete(shift)
     setShowDeleteModal(true)
+  }
+
+  // Bulk edit functions
+  const toggleShiftSelection = (shiftId) => {
+    setSelectedShiftIds(prev => {
+      if (prev.includes(shiftId)) {
+        return prev.filter(id => id !== shiftId)
+      } else {
+        return [...prev, shiftId]
+      }
+    })
+  }
+
+  const clearShiftSelection = () => {
+    setSelectedShiftIds([])
+  }
+
+  const openBulkEditModal = () => {
+    if (selectedShiftIds.length === 0) return
+    setBulkEditForm({
+      action: 'edit_times',
+      start_time: '',
+      end_time: '',
+      booking_ids: [],
+    })
+    // Fetch bookings for the selected dates
+    const selectedShifts = shifts.filter(s => selectedShiftIds.includes(s.id))
+    const uniqueDates = [...new Set(selectedShifts.map(s => s.date))]
+    if (uniqueDates.length === 1) {
+      fetchBookingsForDate(formatDateUK(uniqueDates[0]))
+    }
+    setShowBulkEditModal(true)
+  }
+
+  const closeBulkEditModal = () => {
+    setShowBulkEditModal(false)
+    setBulkEditForm({
+      action: 'edit_times',
+      start_time: '',
+      end_time: '',
+      booking_ids: [],
+    })
+  }
+
+  const executeBulkEdit = async () => {
+    if (selectedShiftIds.length === 0) return
+
+    setSavingBulkEdit(true)
+    setError('')
+
+    try {
+      if (bulkEditForm.action === 'delete') {
+        // Bulk delete
+        let successCount = 0
+        let errorMessages = []
+
+        for (const shiftId of selectedShiftIds) {
+          try {
+            const response = await fetch(`${API_URL}/api/roster/${shiftId}`, {
+              method: 'DELETE',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Cache-Control': 'no-cache',
+              },
+            })
+
+            if (response.ok) {
+              successCount++
+            } else {
+              const errorData = await response.json().catch(() => ({}))
+              errorMessages.push(errorData.detail || `Failed to delete shift ${shiftId}`)
+            }
+          } catch (err) {
+            errorMessages.push(`Network error deleting shift ${shiftId}`)
+          }
+        }
+
+        if (successCount > 0) {
+          setSuccessMessage(`${successCount} shift${successCount > 1 ? 's' : ''} deleted`)
+          setTimeout(() => setSuccessMessage(''), 3000)
+          setSelectedShiftIds([])
+          closeBulkEditModal()
+          fetchShifts()
+          fetchMonthlyHours()
+        }
+
+        if (errorMessages.length > 0) {
+          setError(errorMessages.join('; '))
+        }
+      } else {
+        // Bulk edit times or add bookings
+        let successCount = 0
+        let errorMessages = []
+
+        for (const shiftId of selectedShiftIds) {
+          const payload = {}
+
+          if (bulkEditForm.action === 'edit_times') {
+            if (bulkEditForm.start_time) payload.start_time = bulkEditForm.start_time
+            if (bulkEditForm.end_time) payload.end_time = bulkEditForm.end_time
+          } else if (bulkEditForm.action === 'add_bookings') {
+            // Get existing shift to merge booking_ids
+            const existingShift = shifts.find(s => s.id === shiftId)
+            const existingBookingIds = existingShift?.bookings?.map(b => b.id) || []
+            const newBookingIds = [...new Set([...existingBookingIds, ...bulkEditForm.booking_ids])]
+            payload.booking_ids = newBookingIds
+          }
+
+          // Only send if there's something to update
+          if (Object.keys(payload).length === 0) continue
+
+          try {
+            const response = await fetch(`${API_URL}/api/roster/${shiftId}`, {
+              method: 'PUT',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache',
+              },
+              body: JSON.stringify(payload),
+            })
+
+            if (response.ok) {
+              successCount++
+            } else {
+              const errorData = await response.json().catch(() => ({}))
+              errorMessages.push(errorData.detail || `Failed to update shift ${shiftId}`)
+            }
+          } catch (err) {
+            errorMessages.push(`Network error updating shift ${shiftId}`)
+          }
+        }
+
+        if (successCount > 0) {
+          setSuccessMessage(`${successCount} shift${successCount > 1 ? 's' : ''} updated`)
+          setTimeout(() => setSuccessMessage(''), 3000)
+          setSelectedShiftIds([])
+          closeBulkEditModal()
+          fetchShifts()
+          fetchMonthlyHours()
+        }
+
+        if (errorMessages.length > 0) {
+          setError(errorMessages.join('; '))
+        }
+      }
+    } catch (err) {
+      setError('Network error during bulk operation')
+    } finally {
+      setSavingBulkEdit(false)
+    }
   }
 
   const deleteShift = async () => {
@@ -1348,16 +1587,39 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
             {/* Shifts Section */}
             {selectedDateShifts.length > 0 && (
               <div className="detail-section">
-                <h4 className="detail-section-title shifts">
-                  📅 Shifts ({selectedDateShifts.length})
-                </h4>
+                <div className="shifts-section-header">
+                  <h4 className="detail-section-title shifts">
+                    📅 Shifts ({selectedDateShifts.length})
+                  </h4>
+                  {isAdmin && selectedShiftIds.length > 0 && (
+                    <div className="bulk-actions-bar">
+                      <span className="bulk-selection-count">{selectedShiftIds.length} selected</span>
+                      <button className="bulk-edit-btn" onClick={openBulkEditModal}>
+                        Bulk Edit
+                      </button>
+                      <button className="bulk-clear-btn" onClick={clearShiftSelection}>
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <div className="shift-list">
                   {selectedDateShifts.map((shift) => {
                     const typeConfig = SHIFT_TYPE_CONFIG[shift.shift_type] || SHIFT_TYPE_CONFIG.other
                     const statusConfig = SHIFT_STATUS_CONFIG[shift.status] || SHIFT_STATUS_CONFIG.scheduled
 
                     return (
-                      <div key={shift.id} className="shift-card">
+                      <div key={shift.id} className={`shift-card ${selectedShiftIds.includes(shift.id) ? 'selected' : ''}`}>
+                        {isAdmin && (
+                          <div className="shift-select-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selectedShiftIds.includes(shift.id)}
+                              onChange={() => toggleShiftSelection(shift.id)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                        )}
                         <div className="shift-card-header">
                           <div className="shift-time-range">
                             <span className="shift-time">{formatTime(shift.start_time)}</span>
@@ -1475,7 +1737,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   <input
                     type="text"
                     value={shiftForm.start_time}
-                    onChange={(e) => handleShiftFormChange('start_time', e.target.value)}
+                    onChange={(e) => {
+                      const formatted = formatTimeInput24h(e.target.value)
+                      handleShiftFormChange('start_time', formatted)
+                    }}
                     placeholder="HH:MM"
                     maxLength={5}
                   />
@@ -1485,7 +1750,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   <input
                     type="text"
                     value={shiftForm.end_time}
-                    onChange={(e) => handleShiftFormChange('end_time', e.target.value)}
+                    onChange={(e) => {
+                      const formatted = formatTimeInput24h(e.target.value)
+                      handleShiftFormChange('end_time', formatted)
+                    }}
                     placeholder="HH:MM"
                     maxLength={5}
                   />
@@ -1539,6 +1807,65 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   </select>
                 </div>
               </div>
+
+              {/* Duplicate Shift Feature - only show when creating new shift */}
+              {!editingShift && (
+                <div className="duplicate-shift-section">
+                  <label className="duplicate-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={duplicateMode}
+                      onChange={(e) => {
+                        setDuplicateMode(e.target.checked)
+                        if (!e.target.checked) {
+                          setAdditionalStaffIds([])
+                        }
+                      }}
+                    />
+                    <span>Duplicate shift for additional staff</span>
+                  </label>
+
+                  {duplicateMode && (
+                    <div className="additional-staff-section">
+                      <label>Select additional staff (up to 6):</label>
+                      <div className="additional-staff-grid">
+                        {employees
+                          .filter(emp => String(emp.id) !== shiftForm.staff_id)  // Exclude primary staff
+                          .slice(0, 6)  // Max 6 additional
+                          .map((emp) => {
+                            const isSelected = additionalStaffIds.includes(String(emp.id))
+                            const isDisabled = !isSelected && additionalStaffIds.length >= 6
+                            return (
+                              <label
+                                key={emp.id}
+                                className={`additional-staff-checkbox ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  disabled={isDisabled}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setAdditionalStaffIds([...additionalStaffIds, String(emp.id)])
+                                    } else {
+                                      setAdditionalStaffIds(additionalStaffIds.filter(id => id !== String(emp.id)))
+                                    }
+                                  }}
+                                />
+                                <span className="staff-name">{emp.first_name} {emp.last_name}</span>
+                              </label>
+                            )
+                          })}
+                      </div>
+                      {additionalStaffIds.length > 0 && (
+                        <div className="duplicate-summary">
+                          Will create {additionalStaffIds.length + (shiftForm.staff_id ? 1 : 0)} shift{(additionalStaffIds.length + (shiftForm.staff_id ? 1 : 0)) > 1 ? 's' : ''}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Link to Bookings - full width multi-select */}
               <div className="modal-form-group">
@@ -1646,6 +1973,150 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
               </button>
               <button className="modal-delete-btn" onClick={deleteShift} disabled={deletingShift}>
                 {deletingShift ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Edit Modal */}
+      {showBulkEditModal && isAdmin && (
+        <div className="modal-overlay" onClick={closeBulkEditModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Bulk Edit ({selectedShiftIds.length} shifts)</h3>
+
+            <div className="modal-form">
+              <div className="modal-form-group">
+                <label>Action</label>
+                <select
+                  value={bulkEditForm.action}
+                  onChange={(e) => setBulkEditForm({ ...bulkEditForm, action: e.target.value })}
+                >
+                  <option value="edit_times">Edit Times</option>
+                  <option value="add_bookings">Add Bookings</option>
+                  <option value="delete">Delete All</option>
+                </select>
+              </div>
+
+              {bulkEditForm.action === 'edit_times' && (
+                <>
+                  <div className="modal-form-row">
+                    <div className="modal-form-group">
+                      <label>New Start Time (leave blank to keep)</label>
+                      <input
+                        type="text"
+                        value={bulkEditForm.start_time}
+                        onChange={(e) => {
+                          const formatted = formatTimeInput24h(e.target.value)
+                          setBulkEditForm({ ...bulkEditForm, start_time: formatted })
+                        }}
+                        placeholder="HH:MM"
+                        maxLength={5}
+                      />
+                    </div>
+                    <div className="modal-form-group">
+                      <label>New End Time (leave blank to keep)</label>
+                      <input
+                        type="text"
+                        value={bulkEditForm.end_time}
+                        onChange={(e) => {
+                          const formatted = formatTimeInput24h(e.target.value)
+                          setBulkEditForm({ ...bulkEditForm, end_time: formatted })
+                        }}
+                        placeholder="HH:MM"
+                        maxLength={5}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {bulkEditForm.action === 'add_bookings' && (
+                <div className="modal-form-group">
+                  <label>Select Bookings to Add</label>
+                  {loadingDateBookings ? (
+                    <div className="booking-checkboxes loading">Loading bookings...</div>
+                  ) : dateBookings.length === 0 ? (
+                    <div className="booking-checkboxes empty">No bookings available for selected date(s)</div>
+                  ) : (
+                    <div className="booking-checkboxes">
+                      {dateBookings.filter(b => b.type === 'dropoff').length > 0 && (
+                        <div className="booking-group">
+                          <div className="booking-group-label">🚗 Drop-offs</div>
+                          {dateBookings.filter(b => b.type === 'dropoff').map((b) => (
+                            <label key={`dropoff-${b.id}`} className="booking-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={bulkEditForm.booking_ids.includes(b.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setBulkEditForm({ ...bulkEditForm, booking_ids: [...bulkEditForm.booking_ids, b.id] })
+                                  } else {
+                                    setBulkEditForm({ ...bulkEditForm, booking_ids: bulkEditForm.booking_ids.filter(id => id !== b.id) })
+                                  }
+                                }}
+                              />
+                              <span className="booking-info">
+                                <span className="booking-time">{b.time}</span>
+                                <span className="booking-ref">{b.reference}</span>
+                                <span className="booking-customer">{b.customer_name}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {dateBookings.filter(b => b.type === 'pickup').length > 0 && (
+                        <div className="booking-group">
+                          <div className="booking-group-label">✈️ Pick-ups</div>
+                          {dateBookings.filter(b => b.type === 'pickup').map((b) => (
+                            <label key={`pickup-${b.id}`} className="booking-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={bulkEditForm.booking_ids.includes(b.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setBulkEditForm({ ...bulkEditForm, booking_ids: [...bulkEditForm.booking_ids, b.id] })
+                                  } else {
+                                    setBulkEditForm({ ...bulkEditForm, booking_ids: bulkEditForm.booking_ids.filter(id => id !== b.id) })
+                                  }
+                                }}
+                              />
+                              <span className="booking-info">
+                                <span className="booking-time">{b.time}</span>
+                                <span className="booking-ref">{b.reference}</span>
+                                <span className="booking-customer">{b.customer_name}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {bulkEditForm.action === 'delete' && (
+                <div className="bulk-delete-warning">
+                  <p>⚠️ Are you sure you want to delete {selectedShiftIds.length} shift{selectedShiftIds.length > 1 ? 's' : ''}?</p>
+                  <p>This action cannot be undone.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={closeBulkEditModal}
+                disabled={savingBulkEdit}
+              >
+                Cancel
+              </button>
+              <button
+                className={`modal-btn ${bulkEditForm.action === 'delete' ? 'modal-btn-danger' : 'modal-btn-primary'}`}
+                onClick={executeBulkEdit}
+                disabled={savingBulkEdit || (bulkEditForm.action === 'edit_times' && !bulkEditForm.start_time && !bulkEditForm.end_time) || (bulkEditForm.action === 'add_bookings' && bulkEditForm.booking_ids.length === 0)}
+              >
+                {savingBulkEdit ? 'Processing...' : bulkEditForm.action === 'delete' ? 'Delete All' : 'Apply Changes'}
               </button>
             </div>
           </div>
