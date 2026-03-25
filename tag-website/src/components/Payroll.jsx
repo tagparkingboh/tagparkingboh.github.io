@@ -464,7 +464,7 @@ function Payroll({ token }) {
                                       <td>
                                         <div className="shifts-list">
                                           {day.shifts.map((shift, idx) => (
-                                            <span key={shift.id} className="shift-time">
+                                            <span key={shift.id} className="payroll-shift-time">
                                               {shift.start_time} - {shift.end_time}
                                               {shift.is_overnight && ' (overnight)'}
                                             </span>
