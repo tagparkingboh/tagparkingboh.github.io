@@ -148,7 +148,7 @@ function LandingPage() {
       <section className="hero" id="hero">
         <div className="hero-content">
           <div className="hero-text">
-            <p className="hero-subtitle">TAG: HIGHLY-RATED, FRIENDLY, AND EFFICIENT MEET-AND-GREET SERVICE AT BOURNEMOUTH AIRPORT.</p>
+            <p className="hero-subtitle">TAG: HIGHLY-RATED, FRIENDLY, AND EFFICIENT MEET-AND-GREET<br />SERVICE AT BOURNEMOUTH AIRPORT.</p>
             <h1 className="hero-title">Sign up early. Save more.</h1>
           </div>
 
