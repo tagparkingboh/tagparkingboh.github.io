@@ -1123,7 +1123,6 @@
 
   .pricing-strip-item.featured {
     margin: 0;
-    order: -1;
   }
 
   /* Design 2 mobile */
@@ -1154,7 +1153,6 @@
   .pricing-center-hero {
     max-width: 100%;
     width: 100%;
-    order: -1;
   }
 
   .pricing-features-row {
