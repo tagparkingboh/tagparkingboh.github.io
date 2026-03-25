@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import RosterCalendar from './components/RosterCalendar'
+import EmployeePayroll from './components/EmployeePayroll'
 import SignaturePad from './components/SignaturePad'
 import './Employee.css'
 
@@ -637,6 +638,8 @@ function Employee() {
           refreshTrigger={refreshTrigger}
           renderBookingActions={renderBookingActions}
         />
+
+        <EmployeePayroll token={token} />
       </main>
 
       {/* Inspection Modal */}

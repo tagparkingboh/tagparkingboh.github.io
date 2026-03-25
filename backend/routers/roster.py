@@ -1403,3 +1403,72 @@ async def get_monthly_payroll(
             "total_hours": round(sum(s["total_hours"] for s in result), 2)
         }
     }
+
+
+@router.get("/employee/payroll/monthly")
+async def get_employee_monthly_payroll(
+    year: int = Query(..., description="Year (e.g., 2026)"),
+    month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get monthly payroll for the authenticated employee.
+    Returns total shifts and hours for the current user only.
+    """
+    from calendar import monthrange
+
+    # Calculate month date range
+    first_day = date_type(year, month, 1)
+    last_day = date_type(year, month, monthrange(year, month)[1])
+
+    # Get shifts for the current user only
+    shifts = db.query(RosterShift).filter(
+        RosterShift.date >= first_day,
+        RosterShift.date <= last_day,
+        RosterShift.staff_id == current_user.id
+    ).order_by(RosterShift.date, RosterShift.start_time).all()
+
+    # Calculate totals and group by date
+    total_hours = 0.0
+    total_shifts = 0
+    shifts_by_date = {}
+
+    for shift in shifts:
+        is_overnight = shift.end_date and shift.end_date != shift.date
+        hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
+
+        total_hours += hours
+        total_shifts += 1
+
+        date_key = str(shift.date)
+        if date_key not in shifts_by_date:
+            shifts_by_date[date_key] = {
+                "date": date_key,
+                "shifts": [],
+                "daily_hours": 0.0
+            }
+
+        shifts_by_date[date_key]["shifts"].append({
+            "id": shift.id,
+            "start_time": format_time(shift.start_time),
+            "end_time": format_time(shift.end_time),
+            "hours": round(hours, 2),
+            "is_overnight": is_overnight
+        })
+        shifts_by_date[date_key]["daily_hours"] += hours
+
+    # Round daily hours
+    for date_data in shifts_by_date.values():
+        date_data["daily_hours"] = round(date_data["daily_hours"], 2)
+
+    return {
+        "year": year,
+        "month": month,
+        "month_name": first_day.strftime("%B"),
+        "employee_id": current_user.id,
+        "employee_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email,
+        "total_shifts": total_shifts,
+        "total_hours": round(total_hours, 2),
+        "shifts_by_date": sorted(shifts_by_date.values(), key=lambda x: x["date"])
+    }

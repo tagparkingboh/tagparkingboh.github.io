@@ -1,0 +1,273 @@
+/* Employee Payroll Component Styles */
+
+.emp-payroll-container {
+  background: #fff;
+  border-radius: 12px;
+  margin-top: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.emp-payroll-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background: #f8f9fa;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.emp-payroll-header:hover {
+  background: #f0f1f2;
+}
+
+.emp-payroll-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.emp-payroll-title h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.emp-payroll-expand {
+  font-size: 12px;
+  color: #666;
+  transition: transform 0.2s;
+}
+
+.emp-payroll-expand.expanded {
+  transform: rotate(90deg);
+}
+
+.emp-payroll-quick-summary {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  color: #666;
+  font-size: 14px;
+}
+
+.emp-payroll-hours {
+  font-weight: 600;
+  color: #333;
+  background: #e8f5e9;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.emp-payroll-content {
+  padding: 20px;
+  border-top: 1px solid #eee;
+}
+
+.emp-payroll-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.emp-payroll-date-selector {
+  display: flex;
+  gap: 10px;
+}
+
+.emp-payroll-select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.emp-payroll-select:focus {
+  outline: none;
+  border-color: #4a90e2;
+}
+
+.emp-payroll-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.emp-payroll-btn.pdf {
+  background: #e74c3c;
+  color: #fff;
+}
+
+.emp-payroll-btn.pdf:hover {
+  background: #c0392b;
+}
+
+.emp-payroll-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.emp-payroll-download {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.emp-payroll-download-note {
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+}
+
+.emp-payroll-error {
+  background: #fce4e4;
+  border: 1px solid #e74c3c;
+  color: #c0392b;
+  padding: 10px 15px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  font-size: 14px;
+}
+
+.emp-payroll-loading {
+  text-align: center;
+  padding: 20px;
+  color: #888;
+}
+
+.emp-payroll-summary {
+  display: flex;
+  gap: 30px;
+  margin-bottom: 20px;
+}
+
+.emp-payroll-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.emp-payroll-summary-item .label {
+  color: #888;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.emp-payroll-summary-item .value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.emp-payroll-shifts {
+  overflow-x: auto;
+}
+
+.emp-payroll-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.emp-payroll-table th,
+.emp-payroll-table td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.emp-payroll-table th {
+  background: #f5f5f5;
+  font-weight: 600;
+  color: #333;
+  font-size: 13px;
+}
+
+.emp-payroll-table td {
+  font-size: 14px;
+}
+
+.emp-payroll-table .date-cell {
+  white-space: nowrap;
+}
+
+.emp-payroll-table .shifts-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.emp-payroll-table .shift-badge {
+  background: #e8f4fd;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.emp-payroll-table .hours-cell {
+  font-weight: 600;
+  text-align: center;
+}
+
+.emp-payroll-empty {
+  text-align: center;
+  padding: 30px;
+  color: #888;
+  font-style: italic;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .emp-payroll-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .emp-payroll-quick-summary {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .emp-payroll-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .emp-payroll-date-selector {
+    width: 100%;
+  }
+
+  .emp-payroll-select {
+    flex: 1;
+  }
+
+  .emp-payroll-btn {
+    width: 100%;
+  }
+
+  .emp-payroll-summary {
+    flex-direction: row;
+    justify-content: space-around;
+  }
+
+  .emp-payroll-summary-item {
+    align-items: center;
+  }
+
+  .emp-payroll-table .shifts-cell {
+    flex-direction: column;
+  }
+}
