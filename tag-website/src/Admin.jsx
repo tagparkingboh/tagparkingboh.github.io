@@ -190,16 +190,13 @@ function Admin() {
   const [deletingCustomerId, setDeletingCustomerId] = useState(null)
   const [customerMessage, setCustomerMessage] = useState('')
 
-  // Pricing settings state - all duration tiers
+  // Pricing settings state - anchor pricing with daily increment
   const [pricing, setPricing] = useState({
-    days_1_4_price: 60,
-    days_5_6_price: 72,
-    week1_base_price: 79,    // 7 days
-    days_8_9_price: 99,
-    days_10_11_price: 119,
-    days_12_13_price: 130,
-    week2_base_price: 140,   // 14 days
-    tier_increment: 10,
+    days_1_4_price: 65,       // 1-4 days anchor
+    week1_base_price: 85,     // 7 days anchor
+    week2_base_price: 150,    // 14 days anchor
+    daily_increment: 8,       // Daily increment between anchors
+    tier_increment: 5,        // Early -> Standard -> Late increment
   })
   const [loadingPricing, setLoadingPricing] = useState(false)
   const [savingPricing, setSavingPricing] = useState(false)
@@ -1579,14 +1576,11 @@ function Admin() {
       if (response.ok) {
         const data = await response.json()
         setPricing({
-          days_1_4_price: data.days_1_4_price ?? 60,
-          days_5_6_price: data.days_5_6_price ?? 72,
-          week1_base_price: data.week1_base_price ?? 79,
-          days_8_9_price: data.days_8_9_price ?? 99,
-          days_10_11_price: data.days_10_11_price ?? 119,
-          days_12_13_price: data.days_12_13_price ?? 130,
-          week2_base_price: data.week2_base_price ?? 140,
-          tier_increment: data.tier_increment ?? 10,
+          days_1_4_price: data.days_1_4_price ?? 65,
+          week1_base_price: data.week1_base_price ?? 85,
+          week2_base_price: data.week2_base_price ?? 150,
+          daily_increment: data.daily_increment ?? 8,
+          tier_increment: data.tier_increment ?? 5,
         })
       } else {
         setError('Failed to load pricing settings')
@@ -5923,8 +5917,8 @@ function Admin() {
             ) : (
               <div className="pricing-settings-form">
                 <div className="admin-pricing-section">
-                  <h3>Base Prices (Early Booking Tier)</h3>
-                  <p className="pricing-hint">These are the prices when customers book 14+ days in advance. Standard tier adds the increment once, Late tier adds it twice.</p>
+                  <h3>Anchor Prices (Early Booking Tier)</h3>
+                  <p className="pricing-hint">These are the base prices when customers book 14+ days in advance. Days between anchors use daily increments.</p>
 
                   <div className="pricing-inputs pricing-inputs-grid">
                     <div className="pricing-input-group">
@@ -5944,23 +5938,7 @@ function Admin() {
                     </div>
 
                     <div className="pricing-input-group">
-                      <label>5-6 Days</label>
-                      <div className="price-input-wrapper">
-                        <span className="currency-symbol">£</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={pricing.days_5_6_price}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/[^0-9.]/g, '')
-                            setPricing({ ...pricing, days_5_6_price: parseFloat(val) || 0 })
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="pricing-input-group">
-                      <label>1 Week Trip</label>
+                      <label>1 Week (7 Days)</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
@@ -5976,55 +5954,7 @@ function Admin() {
                     </div>
 
                     <div className="pricing-input-group">
-                      <label>8-9 Days</label>
-                      <div className="price-input-wrapper">
-                        <span className="currency-symbol">£</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={pricing.days_8_9_price}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/[^0-9.]/g, '')
-                            setPricing({ ...pricing, days_8_9_price: parseFloat(val) || 0 })
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="pricing-input-group">
-                      <label>10-11 Days</label>
-                      <div className="price-input-wrapper">
-                        <span className="currency-symbol">£</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={pricing.days_10_11_price}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/[^0-9.]/g, '')
-                            setPricing({ ...pricing, days_10_11_price: parseFloat(val) || 0 })
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="pricing-input-group">
-                      <label>12-13 Days</label>
-                      <div className="price-input-wrapper">
-                        <span className="currency-symbol">£</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          value={pricing.days_12_13_price}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/[^0-9.]/g, '')
-                            setPricing({ ...pricing, days_12_13_price: parseFloat(val) || 0 })
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="pricing-input-group">
-                      <label>2 Week Trip</label>
+                      <label>2 Weeks (14 Days)</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
@@ -6042,11 +5972,34 @@ function Admin() {
                 </div>
 
                 <div className="admin-pricing-section tier-increment-section">
-                  <h3>Tier Increment</h3>
-                  <p className="pricing-hint">This amount is added for Standard tier (+1x) and Late tier (+2x) bookings.</p>
+                  <h3>Daily Increment</h3>
+                  <p className="pricing-hint">Added per day for durations between anchors (5-6, 8-13, 15+ days).</p>
                   <div className="pricing-inputs">
                     <div className="pricing-input-group pricing-input-highlight">
-                      <label>Increment Amount</label>
+                      <label>Daily Increment</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.daily_increment}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, daily_increment: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                      <span className="pricing-input-hint">per extra day</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="admin-pricing-section tier-increment-section">
+                  <h3>Tier Increment</h3>
+                  <p className="pricing-hint">Added for Standard tier (+1x) and Late tier (+2x) bookings based on advance booking.</p>
+                  <div className="pricing-inputs">
+                    <div className="pricing-input-group pricing-input-highlight">
+                      <label>Tier Increment</label>
                       <div className="price-input-wrapper">
                         <span className="currency-symbol">£</span>
                         <input
@@ -6083,40 +6036,40 @@ function Admin() {
                         <td>£{pricing.days_1_4_price + (pricing.tier_increment * 2)}</td>
                       </tr>
                       <tr>
-                        <td>5-6 Days</td>
-                        <td>£{pricing.days_5_6_price}</td>
-                        <td>£{pricing.days_5_6_price + pricing.tier_increment}</td>
-                        <td>£{pricing.days_5_6_price + (pricing.tier_increment * 2)}</td>
+                        <td>5 Days</td>
+                        <td>£{pricing.days_1_4_price + pricing.daily_increment}</td>
+                        <td>£{pricing.days_1_4_price + pricing.daily_increment + pricing.tier_increment}</td>
+                        <td>£{pricing.days_1_4_price + pricing.daily_increment + (pricing.tier_increment * 2)}</td>
                       </tr>
                       <tr>
-                        <td>1 Week Trip</td>
+                        <td>6 Days</td>
+                        <td>£{pricing.days_1_4_price + (pricing.daily_increment * 2)}</td>
+                        <td>£{pricing.days_1_4_price + (pricing.daily_increment * 2) + pricing.tier_increment}</td>
+                        <td>£{pricing.days_1_4_price + (pricing.daily_increment * 2) + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>7 Days (1 Week)</td>
                         <td>£{pricing.week1_base_price}</td>
                         <td>£{pricing.week1_base_price + pricing.tier_increment}</td>
                         <td>£{pricing.week1_base_price + (pricing.tier_increment * 2)}</td>
                       </tr>
                       <tr>
-                        <td>8-9 Days</td>
-                        <td>£{pricing.days_8_9_price}</td>
-                        <td>£{pricing.days_8_9_price + pricing.tier_increment}</td>
-                        <td>£{pricing.days_8_9_price + (pricing.tier_increment * 2)}</td>
+                        <td>8 Days</td>
+                        <td>£{pricing.week1_base_price + pricing.daily_increment}</td>
+                        <td>£{pricing.week1_base_price + pricing.daily_increment + pricing.tier_increment}</td>
+                        <td>£{pricing.week1_base_price + pricing.daily_increment + (pricing.tier_increment * 2)}</td>
                       </tr>
                       <tr>
-                        <td>10-11 Days</td>
-                        <td>£{pricing.days_10_11_price}</td>
-                        <td>£{pricing.days_10_11_price + pricing.tier_increment}</td>
-                        <td>£{pricing.days_10_11_price + (pricing.tier_increment * 2)}</td>
-                      </tr>
-                      <tr>
-                        <td>12-13 Days</td>
-                        <td>£{pricing.days_12_13_price}</td>
-                        <td>£{pricing.days_12_13_price + pricing.tier_increment}</td>
-                        <td>£{pricing.days_12_13_price + (pricing.tier_increment * 2)}</td>
-                      </tr>
-                      <tr>
-                        <td>2 Week Trip</td>
+                        <td>14 Days (2 Weeks)</td>
                         <td>£{pricing.week2_base_price}</td>
                         <td>£{pricing.week2_base_price + pricing.tier_increment}</td>
                         <td>£{pricing.week2_base_price + (pricing.tier_increment * 2)}</td>
+                      </tr>
+                      <tr>
+                        <td>15 Days</td>
+                        <td>£{pricing.week2_base_price + pricing.daily_increment}</td>
+                        <td>£{pricing.week2_base_price + pricing.daily_increment + pricing.tier_increment}</td>
+                        <td>£{pricing.week2_base_price + pricing.daily_increment + (pricing.tier_increment * 2)}</td>
                       </tr>
                     </tbody>
                   </table>

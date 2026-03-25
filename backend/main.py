@@ -547,15 +547,16 @@ async def calculate_price(request: PriceCalculationRequest):
     """
     Calculate booking price based on dates.
 
-    Supports flexible durations from 1-14 days with tiered pricing:
-    - 1-4 days, 5-6 days, 7 days, 8-9 days, 10-11 days, 12-13 days, 14 days
+    Uses simplified anchor pricing model:
+    - 3 anchor prices: 1-4 days, 7 days (1 week), 14 days (2 weeks)
+    - Daily increment for days between anchors (5-6, 8-13, 15+)
 
     Advance booking tiers:
     - Early (>=14 days in advance): base price
     - Standard (7-13 days in advance): base + increment
     - Late (<7 days in advance): base + 2x increment
     """
-    from booking_service import BookingService, get_duration_tier
+    from booking_service import BookingService
 
     duration = (request.pickup_date - request.drop_off_date).days
 
@@ -569,37 +570,32 @@ async def calculate_price(request: PriceCalculationRequest):
     # Determine package (for legacy compatibility)
     package = BookingService.get_package_for_duration(request.drop_off_date, request.pickup_date)
 
-    # Get duration tier name for display
-    duration_tier = get_duration_tier(min(duration, 14))  # Cap at 14 for tier lookup
-    duration_labels = {
-        "1_4": "1-4 Days",
-        "5_6": "5-6 Days",
-        "7": "1 Week Trip",
-        "8_9": "8-9 Days",
-        "10_11": "10-11 Days",
-        "12_13": "12-13 Days",
-        "14": "2 Week Trip",
-    }
-    # For stays beyond 14 days, show the actual duration
-    if duration > 14:
-        package_name = f"{duration} Days"
+    # Generate package name based on duration
+    if duration == 7:
+        package_name = "1 Week Trip"
+    elif duration == 14:
+        package_name = "2 Week Trip"
+    elif duration == 21:
+        package_name = "3 Week Trip"
     else:
-        package_name = duration_labels.get(duration_tier, f"{duration} Days")
+        package_name = f"{duration} Day{'s' if duration != 1 else ''}"
 
     # Calculate advance booking tier
     today = date.today()
     days_in_advance = (request.drop_off_date - today).days
     advance_tier = BookingService.get_advance_tier(request.drop_off_date)
 
-    # Calculate price using flexible duration pricing
+    # Calculate price using anchor pricing with daily increment
     price = BookingService.calculate_price_for_duration(duration, request.drop_off_date)
 
-    # Get all prices for this duration tier
+    # Get all prices for this duration (keyed by day number as string)
     all_duration_prices = BookingService.get_all_duration_prices()
-    tier_prices = all_duration_prices.get(duration_tier, {})
+    # Use actual duration if <= 21, otherwise use day 21 as reference
+    lookup_day = str(min(duration, 21))
+    tier_prices = all_duration_prices.get(lookup_day, {})
 
     # 1-week base rate price (early tier) used for free parking promo discount
-    week1_price = all_duration_prices.get("7", {}).get("early", 79.0)
+    week1_price = all_duration_prices.get("7", {}).get("early", 85.0)
 
     return PriceCalculationResponse(
         package=package,
@@ -8475,28 +8471,22 @@ async def undecline_return_inspection(
 
 
 class PricingSettingsResponse(BaseModel):
-    """Response model for pricing settings with all duration tiers."""
-    days_1_4_price: float
-    days_5_6_price: float
-    week1_base_price: float    # 7 days
-    days_8_9_price: float
-    days_10_11_price: float
-    days_12_13_price: float
-    week2_base_price: float    # 14 days
-    tier_increment: float
+    """Response model for pricing settings with anchor pricing."""
+    days_1_4_price: float      # 1-4 days anchor
+    week1_base_price: float    # 7 days anchor
+    week2_base_price: float    # 14 days anchor
+    daily_increment: float     # Daily increment between anchors
+    tier_increment: float      # Early -> Standard -> Late increment
     updated_at: Optional[str] = None
 
 
 class PricingSettingsUpdate(BaseModel):
-    """Request model for updating pricing settings with all duration tiers."""
-    days_1_4_price: float
-    days_5_6_price: float
-    week1_base_price: float    # 7 days
-    days_8_9_price: float
-    days_10_11_price: float
-    days_12_13_price: float
-    week2_base_price: float    # 14 days
-    tier_increment: float
+    """Request model for updating pricing settings with anchor pricing."""
+    days_1_4_price: float      # 1-4 days anchor
+    week1_base_price: float    # 7 days anchor
+    week2_base_price: float    # 14 days anchor
+    daily_increment: float     # Daily increment between anchors
+    tier_increment: float      # Early -> Standard -> Late increment
 
 
 @app.get("/api/pricing")
@@ -8518,6 +8508,7 @@ async def get_admin_pricing(
 ):
     """
     Admin endpoint: Get current pricing settings with metadata.
+    Uses simplified anchor pricing model.
     """
     from db_models import PricingSettings
 
@@ -8525,27 +8516,21 @@ async def get_admin_pricing(
 
     if not settings:
         return {
-            "days_1_4_price": 60.0,
-            "days_5_6_price": 72.0,
-            "week1_base_price": 79.0,
-            "days_8_9_price": 99.0,
-            "days_10_11_price": 119.0,
-            "days_12_13_price": 130.0,
-            "week2_base_price": 140.0,
-            "tier_increment": 10.0,
+            "days_1_4_price": 65.0,
+            "week1_base_price": 85.0,
+            "week2_base_price": 150.0,
+            "daily_increment": 8.0,
+            "tier_increment": 5.0,
             "updated_at": None,
             "updated_by": None,
         }
 
     return {
-        "days_1_4_price": float(settings.days_1_4_price) if settings.days_1_4_price else 60.0,
-        "days_5_6_price": float(settings.days_5_6_price) if settings.days_5_6_price else 72.0,
-        "week1_base_price": float(settings.week1_base_price) if settings.week1_base_price else 79.0,
-        "days_8_9_price": float(settings.days_8_9_price) if settings.days_8_9_price else 99.0,
-        "days_10_11_price": float(settings.days_10_11_price) if settings.days_10_11_price else 119.0,
-        "days_12_13_price": float(settings.days_12_13_price) if settings.days_12_13_price else 130.0,
-        "week2_base_price": float(settings.week2_base_price) if settings.week2_base_price else 140.0,
-        "tier_increment": float(settings.tier_increment) if settings.tier_increment is not None else 10.0,
+        "days_1_4_price": float(settings.days_1_4_price) if settings.days_1_4_price else 65.0,
+        "week1_base_price": float(settings.week1_base_price) if settings.week1_base_price else 85.0,
+        "week2_base_price": float(settings.week2_base_price) if settings.week2_base_price else 150.0,
+        "daily_increment": float(settings.daily_increment) if settings.daily_increment is not None else 8.0,
+        "tier_increment": float(settings.tier_increment) if settings.tier_increment is not None else 5.0,
         "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
         "updated_by": settings.updater.first_name if settings.updater else None,
     }
@@ -8558,7 +8543,7 @@ async def update_pricing(
     current_user: User = Depends(require_admin),
 ):
     """
-    Admin endpoint: Update pricing settings for all duration tiers.
+    Admin endpoint: Update pricing settings with anchor pricing model.
     """
     from db_models import PricingSettings
     from decimal import Decimal
@@ -8569,12 +8554,9 @@ async def update_pricing(
         # Create new settings
         settings = PricingSettings(
             days_1_4_price=Decimal(str(update.days_1_4_price)),
-            days_5_6_price=Decimal(str(update.days_5_6_price)),
             week1_base_price=Decimal(str(update.week1_base_price)),
-            days_8_9_price=Decimal(str(update.days_8_9_price)),
-            days_10_11_price=Decimal(str(update.days_10_11_price)),
-            days_12_13_price=Decimal(str(update.days_12_13_price)),
             week2_base_price=Decimal(str(update.week2_base_price)),
+            daily_increment=Decimal(str(update.daily_increment)),
             tier_increment=Decimal(str(update.tier_increment)),
             updated_by=current_user.id,
         )
@@ -8582,12 +8564,9 @@ async def update_pricing(
     else:
         # Update existing
         settings.days_1_4_price = Decimal(str(update.days_1_4_price))
-        settings.days_5_6_price = Decimal(str(update.days_5_6_price))
         settings.week1_base_price = Decimal(str(update.week1_base_price))
-        settings.days_8_9_price = Decimal(str(update.days_8_9_price))
-        settings.days_10_11_price = Decimal(str(update.days_10_11_price))
-        settings.days_12_13_price = Decimal(str(update.days_12_13_price))
         settings.week2_base_price = Decimal(str(update.week2_base_price))
+        settings.daily_increment = Decimal(str(update.daily_increment))
         settings.tier_increment = Decimal(str(update.tier_increment))
         settings.updated_by = current_user.id
 
@@ -8599,12 +8578,9 @@ async def update_pricing(
         "message": "Pricing updated successfully",
         "pricing": {
             "days_1_4_price": float(settings.days_1_4_price),
-            "days_5_6_price": float(settings.days_5_6_price),
             "week1_base_price": float(settings.week1_base_price),
-            "days_8_9_price": float(settings.days_8_9_price),
-            "days_10_11_price": float(settings.days_10_11_price),
-            "days_12_13_price": float(settings.days_12_13_price),
             "week2_base_price": float(settings.week2_base_price),
+            "daily_increment": float(settings.daily_increment),
             "tier_increment": float(settings.tier_increment),
             "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
         }

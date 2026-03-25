@@ -29,18 +29,15 @@ def get_pricing_from_db() -> dict:
     Fetch pricing settings from database.
 
     Returns:
-        Dictionary with all duration-based prices and tier_increment.
+        Dictionary with anchor prices, daily_increment, and tier_increment.
         Returns defaults if database is unavailable or no settings exist.
     """
     defaults = {
-        "days_1_4_price": 60.0,
-        "days_5_6_price": 72.0,
-        "week1_base_price": 79.0,   # 7 days
-        "days_8_9_price": 99.0,
-        "days_10_11_price": 119.0,
-        "days_12_13_price": 130.0,
-        "week2_base_price": 140.0,  # 14 days
-        "tier_increment": 10.0,
+        "days_1_4_price": 65.0,      # 1-4 days anchor
+        "week1_base_price": 85.0,    # 7 days anchor
+        "week2_base_price": 150.0,   # 14 days anchor
+        "daily_increment": 8.0,      # Per-day increment between anchors
+        "tier_increment": 5.0,       # Early -> Standard -> Late increment
     }
 
     try:
@@ -53,9 +50,8 @@ def get_pricing_from_db() -> dict:
         conn = psycopg2.connect(database_url)
         cur = conn.cursor()
         cur.execute("""
-            SELECT days_1_4_price, days_5_6_price, week1_base_price,
-                   days_8_9_price, days_10_11_price, days_12_13_price,
-                   week2_base_price, tier_increment
+            SELECT days_1_4_price, week1_base_price, week2_base_price,
+                   daily_increment, tier_increment
             FROM pricing_settings LIMIT 1
         """)
         row = cur.fetchone()
@@ -65,13 +61,10 @@ def get_pricing_from_db() -> dict:
         if row:
             return {
                 "days_1_4_price": float(row[0]) if row[0] else defaults["days_1_4_price"],
-                "days_5_6_price": float(row[1]) if row[1] else defaults["days_5_6_price"],
-                "week1_base_price": float(row[2]) if row[2] else defaults["week1_base_price"],
-                "days_8_9_price": float(row[3]) if row[3] else defaults["days_8_9_price"],
-                "days_10_11_price": float(row[4]) if row[4] else defaults["days_10_11_price"],
-                "days_12_13_price": float(row[5]) if row[5] else defaults["days_12_13_price"],
-                "week2_base_price": float(row[6]) if row[6] else defaults["week2_base_price"],
-                "tier_increment": float(row[7]) if row[7] is not None else defaults["tier_increment"],
+                "week1_base_price": float(row[1]) if row[1] else defaults["week1_base_price"],
+                "week2_base_price": float(row[2]) if row[2] else defaults["week2_base_price"],
+                "daily_increment": float(row[3]) if row[3] is not None else defaults["daily_increment"],
+                "tier_increment": float(row[4]) if row[4] is not None else defaults["tier_increment"],
             }
         return defaults
     except Exception:
@@ -79,38 +72,23 @@ def get_pricing_from_db() -> dict:
         return defaults
 
 
-def get_duration_tier(duration_days: int) -> str:
-    """
-    Get the duration tier key based on number of days.
-
-    Args:
-        duration_days: Number of days for the trip (1-14)
-
-    Returns:
-        Duration tier key: "1_4", "5_6", "7", "8_9", "10_11", "12_13", or "14"
-    """
-    if duration_days <= 4:
-        return "1_4"
-    elif duration_days <= 6:
-        return "5_6"
-    elif duration_days == 7:
-        return "7"
-    elif duration_days <= 9:
-        return "8_9"
-    elif duration_days <= 11:
-        return "10_11"
-    elif duration_days <= 13:
-        return "12_13"
-    else:
-        return "14"
-
-
 def get_base_price_for_duration(duration_days: int, pricing: dict = None) -> float:
     """
-    Get the base (early tier) price for a given duration.
+    Get the base (early tier) price for a given duration using anchor pricing.
+
+    Anchor prices: 1-4 days, 7 days (1 week), 14 days (2 weeks)
+    In-between days use the previous anchor + daily increments.
+
+    Pricing logic:
+    - Days 1-4: Base 1-4 days price
+    - Days 5-6: Base 1-4 + (days - 4) * daily_increment
+    - Day 7: Base 1 week price
+    - Days 8-13: Base 1 week + (days - 7) * daily_increment
+    - Day 14: Base 2 weeks price
+    - Days 15+: Base 2 weeks + (days - 14) * daily_increment
 
     Args:
-        duration_days: Number of days for the trip (1-14)
+        duration_days: Number of days for the trip (1+)
         pricing: Optional pricing dict, fetched from DB if not provided
 
     Returns:
@@ -119,20 +97,29 @@ def get_base_price_for_duration(duration_days: int, pricing: dict = None) -> flo
     if pricing is None:
         pricing = get_pricing_from_db()
 
-    tier = get_duration_tier(duration_days)
+    daily_inc = pricing["daily_increment"]
 
-    # Map duration tier to pricing field
-    price_map = {
-        "1_4": pricing["days_1_4_price"],
-        "5_6": pricing["days_5_6_price"],
-        "7": pricing["week1_base_price"],
-        "8_9": pricing["days_8_9_price"],
-        "10_11": pricing["days_10_11_price"],
-        "12_13": pricing["days_12_13_price"],
-        "14": pricing["week2_base_price"],
-    }
-
-    return price_map.get(tier, pricing["week2_base_price"])
+    if duration_days <= 4:
+        # 1-4 days: use anchor price
+        return pricing["days_1_4_price"]
+    elif duration_days <= 6:
+        # 5-6 days: 1-4 anchor + increments
+        extra_days = duration_days - 4
+        return pricing["days_1_4_price"] + (extra_days * daily_inc)
+    elif duration_days == 7:
+        # 7 days: use 1 week anchor price
+        return pricing["week1_base_price"]
+    elif duration_days <= 13:
+        # 8-13 days: 1 week anchor + increments
+        extra_days = duration_days - 7
+        return pricing["week1_base_price"] + (extra_days * daily_inc)
+    elif duration_days == 14:
+        # 14 days: use 2 weeks anchor price
+        return pricing["week2_base_price"]
+    else:
+        # 15+ days: 2 weeks anchor + increments
+        extra_days = duration_days - 14
+        return pricing["week2_base_price"] + (extra_days * daily_inc)
 
 
 # Cache for pricing settings (refreshed every request in production)
@@ -166,51 +153,26 @@ class BookingService:
     @classmethod
     def get_all_duration_prices(cls) -> dict:
         """
-        Get current pricing for all duration tiers from database.
+        Get current pricing for all durations using anchor pricing with daily increments.
 
         Returns:
-            Dict with prices for each duration tier and advance tier
+            Dict with prices for each day (1-21+) with early/standard/late tiers
         """
         pricing = get_pricing_from_db()
-        increment = pricing["tier_increment"]
+        tier_inc = pricing["tier_increment"]
 
-        return {
-            "1_4": {
-                "early": pricing["days_1_4_price"],
-                "standard": pricing["days_1_4_price"] + increment,
-                "late": pricing["days_1_4_price"] + (increment * 2),
-            },
-            "5_6": {
-                "early": pricing["days_5_6_price"],
-                "standard": pricing["days_5_6_price"] + increment,
-                "late": pricing["days_5_6_price"] + (increment * 2),
-            },
-            "7": {
-                "early": pricing["week1_base_price"],
-                "standard": pricing["week1_base_price"] + increment,
-                "late": pricing["week1_base_price"] + (increment * 2),
-            },
-            "8_9": {
-                "early": pricing["days_8_9_price"],
-                "standard": pricing["days_8_9_price"] + increment,
-                "late": pricing["days_8_9_price"] + (increment * 2),
-            },
-            "10_11": {
-                "early": pricing["days_10_11_price"],
-                "standard": pricing["days_10_11_price"] + increment,
-                "late": pricing["days_10_11_price"] + (increment * 2),
-            },
-            "12_13": {
-                "early": pricing["days_12_13_price"],
-                "standard": pricing["days_12_13_price"] + increment,
-                "late": pricing["days_12_13_price"] + (increment * 2),
-            },
-            "14": {
-                "early": pricing["week2_base_price"],
-                "standard": pricing["week2_base_price"] + increment,
-                "late": pricing["week2_base_price"] + (increment * 2),
-            },
-        }
+        result = {}
+
+        # Generate prices for days 1-21 (and beyond can be calculated on demand)
+        for days in range(1, 22):
+            base_price = get_base_price_for_duration(days, pricing)
+            result[str(days)] = {
+                "early": base_price,
+                "standard": base_price + tier_inc,
+                "late": base_price + (tier_inc * 2),
+            }
+
+        return result
 
     @classmethod
     def get_package_prices(cls) -> dict:
@@ -266,6 +228,14 @@ class BookingService:
         """
         Calculate the price based on trip duration and advance booking tier.
 
+        Uses anchor pricing with daily increments:
+        - 1-4 days: Base price
+        - 5-6 days: 1-4 base + daily increments
+        - 7 days: 1 week base
+        - 8-13 days: 1 week base + daily increments
+        - 14 days: 2 weeks base
+        - 15+ days: 2 weeks base + daily increments
+
         Args:
             duration_days: Number of days for the trip (1+)
             drop_off_date: The date of drop-off
@@ -274,17 +244,19 @@ class BookingService:
             The price in pounds
         """
         advance_tier = cls.get_advance_tier(drop_off_date)
-        all_prices = cls.get_all_duration_prices()
+        pricing = get_pricing_from_db()
+        tier_inc = pricing["tier_increment"]
 
-        # For stays beyond 14 days, use 14-day price + £9 per extra day
-        if duration_days > 14:
-            base_14_day_price = all_prices["14"][advance_tier]
-            extra_days = duration_days - 14
-            extra_day_rate = 9.0  # £9 per day beyond 14 days
-            return base_14_day_price + (extra_days * extra_day_rate)
+        # Get base price using anchor pricing
+        base_price = get_base_price_for_duration(duration_days, pricing)
 
-        duration_tier = get_duration_tier(duration_days)
-        return all_prices[duration_tier][advance_tier]
+        # Apply tier increment based on advance booking
+        if advance_tier == "early":
+            return base_price
+        elif advance_tier == "standard":
+            return base_price + tier_inc
+        else:  # late
+            return base_price + (tier_inc * 2)
 
     @classmethod
     def calculate_price(cls, package: str, drop_off_date: date) -> float:
