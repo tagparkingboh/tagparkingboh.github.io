@@ -2030,11 +2030,12 @@
 
 /* Modal Error Message */
 .modal-error {
-  background: #3d1f1f;
-  border: 1px solid #e74c3c;
+  background: #e74c3c;
+  border: 1px solid #c0392b;
   border-radius: 6px;
   padding: 12px 16px;
   margin-bottom: 15px;
-  color: #ff6b6b;
+  color: #ffffff;
   font-size: 0.9rem;
+  font-weight: 500;
 }
