@@ -413,7 +413,7 @@ function HomePage() {
               <li><span className="check">✓</span> Meet & Greet</li>
               <li><span className="check">✓</span> 24/7 secure car park</li>
               <li><span className="check">✓</span> No hidden fees</li>
-              <li><span className="check">✓</span> Free cancellation</li>
+              <li><span className="check">✓</span> Free cancellation up to 24hrs before</li>
             </ul>
             <p className="pricing-save-unified">Save up to 60% off official airport parking</p>
           </div>
