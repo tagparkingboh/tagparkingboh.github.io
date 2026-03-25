@@ -9,14 +9,16 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ]
 
-// Format date for display (DD Mon YYYY)
+// Format date for display (DD Mon YYYY) - parse directly to avoid timezone issues
 const formatDateDisplay = (isoDate) => {
   if (!isoDate) return ''
-  const date = new Date(isoDate)
-  const day = String(date.getDate()).padStart(2, '0')
-  const month = MONTH_NAMES[date.getMonth()].substring(0, 3)
-  const year = date.getFullYear()
-  return `${day} ${month} ${year}`
+  // Parse YYYY-MM-DD directly to avoid timezone conversion
+  const parts = isoDate.split('-')
+  if (parts.length !== 3) return isoDate
+  const year = parts[0]
+  const monthIndex = parseInt(parts[1], 10) - 1
+  const day = parts[2]
+  return `${day} ${MONTH_NAMES[monthIndex].substring(0, 3)} ${year}`
 }
 
 // Get last day of month (handles leap years)
