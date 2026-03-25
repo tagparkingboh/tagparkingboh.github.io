@@ -112,6 +112,15 @@
   background: #c0392b;
 }
 
+.emp-payroll-btn.pdf.not-yet {
+  background: #999;
+  cursor: pointer;
+}
+
+.emp-payroll-btn.pdf.not-yet:hover {
+  background: #888;
+}
+
 .emp-payroll-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -138,6 +147,17 @@
   border-radius: 6px;
   margin-bottom: 15px;
   font-size: 14px;
+}
+
+.emp-payroll-warning {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  color: #856404;
+  padding: 12px 15px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  text-align: center;
 }
 
 .emp-payroll-loading {

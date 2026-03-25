@@ -48,9 +48,22 @@ function EmployeePayroll({ token }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [expanded, setExpanded] = useState(false)
+  const [downloadWarning, setDownloadWarning] = useState(null)
 
   // Check if payslip can be downloaded (on or after last day of month)
   const downloadAllowed = canDownloadPayslip(selectedYear, selectedMonth)
+
+  // Handle download attempt - show warning if not allowed
+  const handleDownloadClick = () => {
+    if (!downloadAllowed) {
+      const lastDay = getLastDayOfMonth(selectedYear, selectedMonth)
+      setDownloadWarning(`Payslip will be available from ${lastDay} ${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`)
+      // Auto-hide warning after 5 seconds
+      setTimeout(() => setDownloadWarning(null), 5000)
+      return
+    }
+    downloadPDF()
+  }
 
   // Fetch payroll data for the current user
   const fetchPayroll = useCallback(async () => {
@@ -222,10 +235,9 @@ function EmployeePayroll({ token }) {
 
             <div className="emp-payroll-download">
               <button
-                onClick={downloadPDF}
-                className="emp-payroll-btn pdf"
-                disabled={!payrollData || payrollData.total_shifts === 0 || !downloadAllowed}
-                title={!downloadAllowed ? `Available from ${getLastDayOfMonth(selectedYear, selectedMonth)} ${MONTH_NAMES[selectedMonth - 1]}` : ''}
+                onClick={handleDownloadClick}
+                className={`emp-payroll-btn pdf ${!downloadAllowed ? 'not-yet' : ''}`}
+                disabled={!payrollData || payrollData.total_shifts === 0}
               >
                 Download PDF
               </button>
@@ -238,6 +250,12 @@ function EmployeePayroll({ token }) {
           </div>
 
           {error && <div className="emp-payroll-error">{error}</div>}
+
+          {downloadWarning && (
+            <div className="emp-payroll-warning">
+              {downloadWarning}
+            </div>
+          )}
 
           {loading && <div className="emp-payroll-loading">Loading...</div>}
 
