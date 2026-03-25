@@ -910,6 +910,12 @@
     flex-direction: column;
     align-items: center;
   }
+
+  /* Reorder features on mobile: Meet & Greet, No hidden fees, 24/7 secure, Free cancellation */
+  .pricing-features-row .feature-1 { order: 1; }
+  .pricing-features-row .feature-3 { order: 2; }
+  .pricing-features-row .feature-2 { order: 3; }
+  .pricing-features-row .feature-4 { order: 4; }
 }
 
 /* Support Section */

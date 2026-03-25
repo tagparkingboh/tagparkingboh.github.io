@@ -323,10 +323,10 @@ function HomePage() {
             </div>
           </div>
           <ul className="pricing-features-row">
-            <li><span className="check">✓</span> Meet & Greet</li>
-            <li><span className="check">✓</span> 24/7 secure car park</li>
-            <li><span className="check">✓</span> No hidden fees</li>
-            <li><span className="check">✓</span> Free cancellation up to 24hrs before</li>
+            <li className="feature-1"><span className="check">✓</span> Meet & Greet</li>
+            <li className="feature-2"><span className="check">✓</span> 24/7 secure car park</li>
+            <li className="feature-3"><span className="check">✓</span> No hidden fees</li>
+            <li className="feature-4"><span className="check">✓</span> Free cancellation up to 24hrs before</li>
           </ul>
           <p className="pricing-save-unified">Save up to 60% off official airport parking</p>
         </div>
