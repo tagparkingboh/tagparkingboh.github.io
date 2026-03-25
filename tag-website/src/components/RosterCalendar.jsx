@@ -575,6 +575,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     setDateBookings([])
     setDuplicateMode(false)
     setAdditionalStaffIds([])
+    setError('')  // Clear any previous errors
     if (date) {
       fetchBookingsForDate(date)
     }
@@ -784,12 +785,14 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       end_time: '',
       booking_ids: [],
     })
+    setError('')  // Clear any previous errors
     // Fetch bookings for the selected dates
     const selectedShifts = shifts.filter(s => selectedShiftIds.includes(s.id))
     const uniqueDates = [...new Set(selectedShifts.map(s => s.date))]
     if (uniqueDates.length === 1) {
       fetchBookingsForDate(formatDateUK(uniqueDates[0]))
     }
+    setError('')
     setShowBulkEditModal(true)
   }
 
@@ -1720,6 +1723,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
           <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
             <h3>{editingShift ? 'Edit Shift' : 'New Shift'}</h3>
 
+            {error && <div className="modal-error">{error}</div>}
+
             <div className="modal-form">
               <h4 className="modal-section-title">Shift Details</h4>
               <div className="modal-form-row">
@@ -1984,6 +1989,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         <div className="modal-overlay" onClick={closeBulkEditModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>Bulk Edit ({selectedShiftIds.length} shifts)</h3>
+
+            {error && <div className="modal-error">{error}</div>}
 
             <div className="modal-form">
               <div className="modal-form-group">
