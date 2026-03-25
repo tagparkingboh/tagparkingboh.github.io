@@ -60,6 +60,7 @@ def check_shift_overlap(
     """
     Check if a shift overlaps with existing shifts for the same staff member.
     Returns the conflicting shift if found, None otherwise.
+    Handles overnight shifts where end_time < start_time.
     """
     if not staff_id:
         return None  # Unassigned shifts don't conflict
@@ -74,10 +75,26 @@ def check_shift_overlap(
 
     existing_shifts = query.all()
 
+    def time_to_minutes(t: time, is_overnight_end: bool = False) -> int:
+        """Convert time to minutes, adding 24 hours for overnight end times."""
+        mins = t.hour * 60 + t.minute
+        if is_overnight_end:
+            mins += 24 * 60
+        return mins
+
+    # Convert new shift times to minutes
+    new_start_mins = time_to_minutes(start_time)
+    new_is_overnight = end_time < start_time
+    new_end_mins = time_to_minutes(end_time, is_overnight_end=new_is_overnight)
+
     for shift in existing_shifts:
-        # Check for overlap
-        # Overlap occurs if: start1 < end2 AND start2 < end1
-        if start_time < shift.end_time and shift.start_time < end_time:
+        # Convert existing shift times to minutes
+        existing_start_mins = time_to_minutes(shift.start_time)
+        existing_is_overnight = shift.end_time < shift.start_time
+        existing_end_mins = time_to_minutes(shift.end_time, is_overnight_end=existing_is_overnight)
+
+        # Check for overlap: start1 < end2 AND start2 < end1
+        if new_start_mins < existing_end_mins and existing_start_mins < new_end_mins:
             return shift
 
     return None

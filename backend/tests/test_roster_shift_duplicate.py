@@ -335,6 +335,118 @@ class TestShiftOverlapDetectionEdgeCases:
 
 
 # =============================================================================
+# Unit Tests: Overnight Shift Overlap Detection
+# =============================================================================
+
+class TestOvernightShiftOverlapDetection:
+    """Tests for overnight shift overlap detection (end_time < start_time)."""
+
+    def test_overnight_shift_exact_same_times_conflicts(self, mock_db):
+        """Overnight shift with exact same times should conflict."""
+        from routers.roster import check_shift_overlap
+
+        # Existing overnight shift 23:10-00:40
+        existing_shift = MagicMock(spec=RosterShift)
+        existing_shift.id = 1
+        existing_shift.start_time = time(23, 10)
+        existing_shift.end_time = time(0, 40)
+
+        mock_query = MagicMock()
+        mock_db.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = [existing_shift]
+
+        # New overnight shift with exact same times
+        result = check_shift_overlap(
+            mock_db,
+            staff_id=1,
+            date=date(2026, 4, 3),
+            start_time=time(23, 10),
+            end_time=time(0, 40)
+        )
+
+        assert result == existing_shift
+
+    def test_overnight_shift_overlapping_times_conflicts(self, mock_db):
+        """Overnight shift overlapping another overnight shift should conflict."""
+        from routers.roster import check_shift_overlap
+
+        # Existing overnight shift 22:00-02:00
+        existing_shift = MagicMock(spec=RosterShift)
+        existing_shift.id = 1
+        existing_shift.start_time = time(22, 0)
+        existing_shift.end_time = time(2, 0)
+
+        mock_query = MagicMock()
+        mock_db.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = [existing_shift]
+
+        # New overnight shift 23:00-01:00 (overlaps)
+        result = check_shift_overlap(
+            mock_db,
+            staff_id=1,
+            date=date(2026, 4, 3),
+            start_time=time(23, 0),
+            end_time=time(1, 0)
+        )
+
+        assert result == existing_shift
+
+    def test_overnight_shift_no_overlap_before(self, mock_db):
+        """Overnight shift not overlapping should not conflict."""
+        from routers.roster import check_shift_overlap
+
+        # Existing overnight shift 23:00-01:00
+        existing_shift = MagicMock(spec=RosterShift)
+        existing_shift.id = 1
+        existing_shift.start_time = time(23, 0)
+        existing_shift.end_time = time(1, 0)
+
+        mock_query = MagicMock()
+        mock_db.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = [existing_shift]
+
+        # New shift 20:00-22:00 (before, no overlap)
+        result = check_shift_overlap(
+            mock_db,
+            staff_id=1,
+            date=date(2026, 4, 3),
+            start_time=time(20, 0),
+            end_time=time(22, 0)
+        )
+
+        assert result is None
+
+    def test_daytime_shift_overlapping_overnight_conflicts(self, mock_db):
+        """Daytime shift starting before midnight overlapping overnight shift should conflict."""
+        from routers.roster import check_shift_overlap
+
+        # Existing overnight shift 22:00-02:00
+        existing_shift = MagicMock(spec=RosterShift)
+        existing_shift.id = 1
+        existing_shift.start_time = time(22, 0)
+        existing_shift.end_time = time(2, 0)
+
+        mock_query = MagicMock()
+        mock_db.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = [existing_shift]
+
+        # New shift 21:00-23:30 (overlaps start of overnight)
+        result = check_shift_overlap(
+            mock_db,
+            staff_id=1,
+            date=date(2026, 4, 3),
+            start_time=time(21, 0),
+            end_time=time(23, 30)
+        )
+
+        assert result == existing_shift
+
+
+# =============================================================================
 # Unit Tests: Staff Validation - Happy Paths
 # =============================================================================
 
