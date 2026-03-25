@@ -19,6 +19,50 @@ const formatDateDisplay = (isoDate) => {
   return `${day} ${month} ${year}`
 }
 
+// Format time input - allows entering "2300" and formats to "23:00"
+const formatTimeInput = (value) => {
+  // Remove any non-digit characters
+  const digits = value.replace(/\D/g, '')
+
+  if (digits.length === 0) return ''
+
+  // Handle different input lengths
+  if (digits.length <= 2) {
+    // Just hours (e.g., "23" or "9")
+    return digits
+  } else if (digits.length === 3) {
+    // e.g., "930" -> "9:30" or "230" -> "2:30"
+    return `${digits.slice(0, 1)}:${digits.slice(1)}`
+  } else if (digits.length >= 4) {
+    // e.g., "2300" -> "23:00" or "0930" -> "09:30"
+    const hours = digits.slice(0, 2)
+    const mins = digits.slice(2, 4)
+    return `${hours}:${mins}`
+  }
+
+  return value
+}
+
+// Validate time format HH:MM
+const isValidTime = (timeStr) => {
+  if (!timeStr) return false
+  const match = timeStr.match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) return false
+  const hours = parseInt(match[1], 10)
+  const mins = parseInt(match[2], 10)
+  return hours >= 0 && hours <= 23 && mins >= 0 && mins <= 59
+}
+
+// Ensure time is in HH:MM format (pad hours if needed)
+const normalizeTime = (timeStr) => {
+  if (!timeStr) return ''
+  const match = timeStr.match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) return timeStr
+  const hours = match[1].padStart(2, '0')
+  const mins = match[2]
+  return `${hours}:${mins}`
+}
+
 function Payroll({ token }) {
   const now = new Date()
   const [selectedYear, setSelectedYear] = useState(now.getFullYear())
@@ -32,6 +76,9 @@ function Payroll({ token }) {
   const [editingShift, setEditingShift] = useState(null)
   const [editStartTime, setEditStartTime] = useState('')
   const [editEndTime, setEditEndTime] = useState('')
+  const [editIsOvernight, setEditIsOvernight] = useState(false)
+  const [editDate, setEditDate] = useState('')
+  const [editEndDate, setEditEndDate] = useState('')
   const [editSaving, setEditSaving] = useState(false)
 
   // Delete confirmation state
@@ -82,10 +129,21 @@ function Payroll({ token }) {
   }
 
   // Open edit modal
-  const openEditModal = (shift, staffName) => {
-    setEditingShift({ ...shift, staffName })
+  const openEditModal = (shift, staffName, shiftDate) => {
+    setEditingShift({ ...shift, staffName, shiftDate })
     setEditStartTime(shift.start_time)
     setEditEndTime(shift.end_time)
+    setEditIsOvernight(shift.is_overnight || false)
+    setEditDate(shift.date || shiftDate)
+    // For overnight shifts, calculate end_date (next day)
+    if (shift.is_overnight) {
+      const startDate = new Date(shift.date || shiftDate)
+      const endDate = new Date(startDate)
+      endDate.setDate(endDate.getDate() + 1)
+      setEditEndDate(endDate.toISOString().split('T')[0])
+    } else {
+      setEditEndDate(shift.date || shiftDate)
+    }
   }
 
   // Close edit modal
@@ -93,24 +151,51 @@ function Payroll({ token }) {
     setEditingShift(null)
     setEditStartTime('')
     setEditEndTime('')
+    setEditIsOvernight(false)
+    setEditDate('')
+    setEditEndDate('')
   }
 
   // Save shift edit
   const saveShiftEdit = async () => {
     if (!editingShift) return
 
+    // Validate times
+    const normalizedStart = normalizeTime(editStartTime)
+    const normalizedEnd = normalizeTime(editEndTime)
+
+    if (!isValidTime(normalizedStart)) {
+      setError('Invalid start time. Use format HH:MM (e.g., 23:00)')
+      return
+    }
+    if (!isValidTime(normalizedEnd)) {
+      setError('Invalid end time. Use format HH:MM (e.g., 23:00)')
+      return
+    }
+
     setEditSaving(true)
+    setError(null)
+
     try {
-      const response = await fetch(`${API_URL}/api/shifts/${editingShift.id}`, {
+      // Build request body with dates for overnight shifts
+      const requestBody = {
+        start_time: normalizedStart,
+        end_time: normalizedEnd,
+        date: editDate
+      }
+
+      // Include end_date for overnight shifts
+      if (editIsOvernight && editEndDate) {
+        requestBody.end_date = editEndDate
+      }
+
+      const response = await fetch(`${API_URL}/api/roster/${editingShift.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          start_time: editStartTime,
-          end_time: editEndTime
-        })
+        body: JSON.stringify(requestBody)
       })
 
       if (!response.ok) {
@@ -128,8 +213,8 @@ function Payroll({ token }) {
   }
 
   // Open delete confirmation
-  const openDeleteConfirm = (shift, staffName) => {
-    setDeletingShift({ ...shift, staffName })
+  const openDeleteConfirm = (shift, staffName, shiftDate) => {
+    setDeletingShift({ ...shift, staffName, shiftDate })
   }
 
   // Close delete confirmation
@@ -143,7 +228,7 @@ function Payroll({ token }) {
 
     setDeleteConfirming(true)
     try {
-      const response = await fetch(`${API_URL}/api/shifts/${deletingShift.id}`, {
+      const response = await fetch(`${API_URL}/api/roster/${deletingShift.id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -477,14 +562,14 @@ function Payroll({ token }) {
                                           <div key={shift.id} className="shift-actions">
                                             <button
                                               className="action-btn edit"
-                                              onClick={() => openEditModal(shift, staffMember.staff_name)}
+                                              onClick={() => openEditModal(shift, staffMember.staff_name, day.date)}
                                               title="Edit shift"
                                             >
                                               ✏️
                                             </button>
                                             <button
                                               className="action-btn delete"
-                                              onClick={() => openDeleteConfirm(shift, staffMember.staff_name)}
+                                              onClick={() => openDeleteConfirm(shift, staffMember.staff_name, day.date)}
                                               title="Delete shift"
                                             >
                                               🗑️
@@ -518,26 +603,38 @@ function Payroll({ token }) {
           <div className="payroll-modal" onClick={e => e.stopPropagation()}>
             <h3>Edit Shift</h3>
             <p className="modal-subtitle">
-              {editingShift.staffName} - {formatDateDisplay(editingShift.date)}
+              {editingShift.staffName} - {formatDateDisplay(editingShift.shiftDate || editingShift.date)}
+              {editIsOvernight && ' (overnight)'}
             </p>
 
             <div className="modal-form">
               <div className="form-row">
-                <label>Start Time</label>
+                <label>Start Time (24hr, e.g. 2300)</label>
                 <input
-                  type="time"
+                  type="text"
                   value={editStartTime}
-                  onChange={(e) => setEditStartTime(e.target.value)}
+                  onChange={(e) => setEditStartTime(formatTimeInput(e.target.value))}
+                  placeholder="23:00"
+                  maxLength={5}
+                  className="time-input"
                 />
               </div>
               <div className="form-row">
-                <label>End Time</label>
+                <label>End Time (24hr, e.g. 0700)</label>
                 <input
-                  type="time"
+                  type="text"
                   value={editEndTime}
-                  onChange={(e) => setEditEndTime(e.target.value)}
+                  onChange={(e) => setEditEndTime(formatTimeInput(e.target.value))}
+                  placeholder="07:00"
+                  maxLength={5}
+                  className="time-input"
                 />
               </div>
+              {editIsOvernight && (
+                <div className="form-info overnight-info">
+                  Overnight shift: {formatDateDisplay(editDate)} to {formatDateDisplay(editEndDate)}
+                </div>
+              )}
             </div>
 
             <div className="modal-actions">
