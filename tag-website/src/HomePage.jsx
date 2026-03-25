@@ -31,7 +31,7 @@ function HomePage() {
   const [submitStatus, setSubmitStatus] = useState(null) // 'success' | 'error' | null
   const [heroBannerIndex, setHeroBannerIndex] = useState(0)
   const [bannerFading, setBannerFading] = useState(false)
-  const [prices, setPrices] = useState({ days4: 65, week1: 89, week2: 140 })
+  const [prices, setPrices] = useState({ days4: 65, week1: 89, week2: 140, tierIncrement: 10 })
 
   // Alternate hero banner every 10 seconds
   useEffect(() => {
@@ -80,6 +80,7 @@ function HomePage() {
           days4: data.days_1_4_price || 65,
           week1: data.week1_base_price || 89,
           week2: data.week2_base_price || 140,
+          tierIncrement: data.tier_increment || 10,
         })
       })
       .catch(() => {
@@ -301,6 +302,7 @@ function HomePage() {
               <div className="pricing-side-price">
                 <span className="pricing-side-from">From</span>
                 <span className="pricing-side-amount"><span className="currency">£</span>{prices.days4}</span>
+                <span className="pricing-side-to">to £{prices.days4 + (2 * prices.tierIncrement)}</span>
               </div>
             </div>
             <div className="pricing-center-hero">
@@ -312,6 +314,7 @@ function HomePage() {
                   <span className="currency">£</span>
                   <span className="price">{prices.week1}</span>
                 </div>
+                <span className="pricing-hero-to">to £{prices.week1 + (2 * prices.tierIncrement)}</span>
               </div>
             </div>
             <div className="pricing-side-option right">
@@ -319,6 +322,7 @@ function HomePage() {
               <div className="pricing-side-price">
                 <span className="pricing-side-from">From</span>
                 <span className="pricing-side-amount"><span className="currency">£</span>{prices.week2}</span>
+                <span className="pricing-side-to">to £{prices.week2 + (2 * prices.tierIncrement)}</span>
               </div>
             </div>
           </div>
