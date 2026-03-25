@@ -246,16 +246,11 @@
   font-family: 'Barlow Condensed', sans-serif;
   color: #D9FF00;
   font-size: 20px;
-  letter-spacing: 1px;
+  letter-spacing: 2px;
   margin-top: 160px;
   margin-bottom: 1.5rem;
-  font-weight: 500;
-  line-height: 1.4;
-}
-
-.hero-subtitle-tag {
   font-weight: 700;
-  text-transform: uppercase;
+  line-height: 1.4;
 }
 
 .hero-title {
