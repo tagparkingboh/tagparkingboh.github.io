@@ -767,6 +767,13 @@
   background: #f5f5f5;
   border-radius: 12px;
   text-align: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+}
+
+.pricing-side-option:hover {
+  transform: scale(1.08);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
 }
 
 .pricing-side-label {
@@ -809,6 +816,13 @@
   border: 3px solid #D9FF00;
   box-shadow: 0 8px 30px rgba(217, 255, 0, 0.25);
   text-align: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+}
+
+.pricing-center-hero:hover {
+  transform: scale(1.08);
+  box-shadow: 0 12px 40px rgba(217, 255, 0, 0.4);
   position: relative;
 }
 
