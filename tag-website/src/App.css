@@ -246,9 +246,14 @@
   font-family: 'Barlow Condensed', sans-serif;
   color: #D9FF00;
   font-size: 20px;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   margin-top: 160px;
   margin-bottom: 1.5rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.hero-subtitle-tag {
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -1197,6 +1202,11 @@
     padding-top: 80px;
   }
 
+  .hero-subtitle {
+    font-size: 18px;
+    margin-top: 120px;
+  }
+
   /* Offset for fixed header when navigating to sections */
   #how-it-works,
   #pricing,
@@ -1551,8 +1561,10 @@
   }
 
   .hero-subtitle {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     margin-top: 80px;
+    letter-spacing: 0.5px;
+    line-height: 1.5;
   }
 
   .features-content {
@@ -1734,6 +1746,10 @@
 @media (max-width: 480px) {
   .hero-title {
     font-size: 1.75rem;
+  }
+
+  .hero-subtitle {
+    font-size: 0.75rem;
   }
 
   .features-banner .feature {

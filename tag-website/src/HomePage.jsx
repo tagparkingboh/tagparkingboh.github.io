@@ -244,7 +244,7 @@ function HomePage() {
       <section className="hero" id="hero">
         <div className="hero-content">
           <div className="hero-text">
-            <p className="hero-subtitle">TAG: MEET & GREET FOR BOURNEMOUTH AIRPORT</p>
+            <p className="hero-subtitle"><span className="hero-subtitle-tag">TAG:</span> highly-rated, friendly, and efficient<br />meet-and-greet service at Bournemouth Airport.</p>
             <h1 className={`hero-title ${bannerFading ? 'fading' : ''}`}>
               {heroBannerIndex === 0 && (
                 <>Save up to 60% off<br />official airport parking</>
