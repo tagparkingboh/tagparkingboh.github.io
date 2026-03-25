@@ -1290,3 +1290,116 @@ async def get_employee_weekly_hours(
         "shift_count": shift_count,
         "daily_hours": daily_hours
     }
+
+
+# ============================================================================
+# Payroll Endpoints (Admin Only)
+# ============================================================================
+
+@router.get("/payroll/monthly")
+async def get_monthly_payroll(
+    year: int = Query(..., description="Year (e.g., 2026)"),
+    month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get monthly payroll summary for all staff.
+    Returns total shifts and hours per staff member for the specified month.
+    Shifts are attributed to the month based on their start date.
+    """
+    from calendar import monthrange
+
+    # Calculate month date range
+    first_day = date_type(year, month, 1)
+    last_day = date_type(year, month, monthrange(year, month)[1])
+
+    # Get all shifts for the month with staff info
+    shifts = db.query(RosterShift).filter(
+        RosterShift.date >= first_day,
+        RosterShift.date <= last_day,
+        RosterShift.staff_id.isnot(None)  # Only assigned shifts
+    ).order_by(RosterShift.date, RosterShift.start_time).all()
+
+    # Get all active staff for the summary (even if they have no shifts)
+    all_staff = db.query(User).filter(User.is_active == True).order_by(User.first_name, User.last_name).all()
+
+    # Group shifts by staff
+    staff_data = {}
+    for staff in all_staff:
+        staff_data[staff.id] = {
+            "staff_id": staff.id,
+            "staff_name": f"{staff.first_name or ''} {staff.last_name or ''}".strip() or staff.email,
+            "total_shifts": 0,
+            "total_hours": 0.0,
+            "shifts": []  # Detailed shift list for individual view
+        }
+
+    for shift in shifts:
+        if shift.staff_id not in staff_data:
+            # Staff might be inactive but has historical shifts
+            staff = db.query(User).filter(User.id == shift.staff_id).first()
+            if staff:
+                staff_data[shift.staff_id] = {
+                    "staff_id": shift.staff_id,
+                    "staff_name": f"{staff.first_name or ''} {staff.last_name or ''}".strip() or staff.email,
+                    "total_shifts": 0,
+                    "total_hours": 0.0,
+                    "shifts": []
+                }
+            else:
+                continue
+
+        is_overnight = shift.end_date and shift.end_date != shift.date
+        hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
+
+        staff_data[shift.staff_id]["total_shifts"] += 1
+        staff_data[shift.staff_id]["total_hours"] += hours
+        staff_data[shift.staff_id]["shifts"].append({
+            "id": shift.id,
+            "date": str(shift.date),
+            "start_time": format_time(shift.start_time),
+            "end_time": format_time(shift.end_time),
+            "hours": round(hours, 2),
+            "is_overnight": is_overnight
+        })
+
+    # Round totals and filter out staff with no shifts (optional: keep all for full list)
+    result = []
+    for staff_id, data in staff_data.items():
+        data["total_hours"] = round(data["total_hours"], 2)
+        # Group shifts by date for the individual view
+        shifts_by_date = {}
+        for shift in data["shifts"]:
+            date_key = shift["date"]
+            if date_key not in shifts_by_date:
+                shifts_by_date[date_key] = {
+                    "date": date_key,
+                    "shifts": [],
+                    "daily_hours": 0.0
+                }
+            shifts_by_date[date_key]["shifts"].append(shift)
+            shifts_by_date[date_key]["daily_hours"] += shift["hours"]
+
+        # Round daily hours and sort by date
+        for date_data in shifts_by_date.values():
+            date_data["daily_hours"] = round(date_data["daily_hours"], 2)
+
+        data["shifts_by_date"] = sorted(shifts_by_date.values(), key=lambda x: x["date"])
+        del data["shifts"]  # Remove flat list, use grouped version
+
+        result.append(data)
+
+    # Sort by name
+    result.sort(key=lambda x: x["staff_name"])
+
+    return {
+        "year": year,
+        "month": month,
+        "month_name": first_day.strftime("%B"),
+        "staff": result,
+        "totals": {
+            "total_staff_with_shifts": len([s for s in result if s["total_shifts"] > 0]),
+            "total_shifts": sum(s["total_shifts"] for s in result),
+            "total_hours": round(sum(s["total_hours"] for s in result), 2)
+        }
+    }

@@ -7,6 +7,7 @@ import ManualBooking from './components/ManualBooking'
 import BookingCalendar from './components/BookingCalendar'
 import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
+import Payroll from './components/Payroll'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -3019,6 +3020,12 @@ function Admin() {
           Calendar
         </button>
         <button
+          className={`admin-nav-item ${activeTab === 'payroll' ? 'active' : ''}`}
+          onClick={() => setActiveTab('payroll')}
+        >
+          Payroll
+        </button>
+        <button
           className={`admin-nav-item ${activeTab === 'manual-booking' ? 'active' : ''}`}
           onClick={() => setActiveTab('manual-booking')}
         >
@@ -3270,6 +3277,12 @@ function Admin() {
         {activeTab === 'calendar' && (
           <div className="admin-section">
             <RosterCalendar token={token} isAdmin={true} />
+          </div>
+        )}
+
+        {activeTab === 'payroll' && (
+          <div className="admin-section">
+            <Payroll token={token} />
           </div>
         )}
 
