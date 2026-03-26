@@ -12,6 +12,61 @@ import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// Sidebar navigation structure
+const NAV_STRUCTURE = [
+  {
+    category: 'Operations',
+    icon: '📋',
+    items: [
+      { id: 'bookings', label: 'Bookings' },
+      { id: 'calendar', label: 'Calendar' },
+      { id: 'manual-booking', label: 'Manual Booking' },
+      { id: 'flights', label: 'Flights' },
+    ]
+  },
+  {
+    category: 'Staff',
+    icon: '👥',
+    items: [
+      { id: 'payroll', label: 'Payroll' },
+      { id: 'users', label: 'Users' },
+    ]
+  },
+  {
+    category: 'Customers',
+    icon: '🧑‍💼',
+    items: [
+      { id: 'customers', label: 'Customers' },
+      { id: 'leads', label: 'Abandoned Leads' },
+    ]
+  },
+  {
+    category: 'Marketing',
+    icon: '📢',
+    items: [
+      { id: 'marketing', label: 'Subscribers' },
+      { id: 'promotions', label: 'Promotions' },
+      { id: 'sources', label: 'Sources' },
+    ]
+  },
+  {
+    category: 'Reports',
+    icon: '📊',
+    items: [
+      { id: 'reports', label: 'Reports' },
+    ]
+  },
+  {
+    category: 'Settings',
+    icon: '⚙️',
+    items: [
+      { id: 'pricing', label: 'Pricing' },
+      { id: 'qa', label: 'QA Dashboard' },
+      { id: 'testimonials', label: 'Testimonials' },
+    ]
+  },
+]
+
 // Photo slots - must match Employee.jsx
 const PHOTO_SLOTS = [
   { key: 'front', label: 'Front' },
@@ -58,6 +113,17 @@ function Admin() {
   const navigate = useNavigate()
 
   const [activeTab, setActiveTab] = useState('bookings')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [expandedCategories, setExpandedCategories] = useState(() => {
+    // Expand the category containing the current tab
+    const expanded = {}
+    NAV_STRUCTURE.forEach(cat => {
+      if (cat.items.some(item => item.id === 'bookings')) {
+        expanded[cat.category] = true
+      }
+    })
+    return expanded
+  })
   const [bookings, setBookings] = useState([])
   const [loadingData, setLoadingData] = useState(false)
   const [error, setError] = useState('')
@@ -2987,14 +3053,67 @@ function Admin() {
     return null
   }
 
+  // Helper to check if a tab belongs to a category
+  const isTabInCategory = (category, tabId) => {
+    return category.items.some(item => item.id === tabId)
+  }
+
+  // Toggle category expansion
+  const toggleCategory = (categoryName) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [categoryName]: !prev[categoryName]
+    }))
+  }
+
+  // Handle tab selection - also expand the parent category
+  const handleTabSelect = (tabId) => {
+    setActiveTab(tabId)
+    // For marketing sub-tabs, also set the marketingSubTab
+    if (tabId === 'marketing') {
+      setMarketingSubTab('subscribers')
+    } else if (tabId === 'promotions') {
+      setActiveTab('marketing')
+      setMarketingSubTab('promotions')
+    } else if (tabId === 'sources') {
+      setActiveTab('marketing')
+      setMarketingSubTab('sources')
+    }
+    // Expand the category containing this tab
+    NAV_STRUCTURE.forEach(cat => {
+      if (isTabInCategory(cat, tabId)) {
+        setExpandedCategories(prev => ({ ...prev, [cat.category]: true }))
+      }
+    })
+  }
+
+  // Check if a nav item is active
+  const isNavItemActive = (itemId) => {
+    if (itemId === 'marketing' && activeTab === 'marketing' && marketingSubTab === 'subscribers') return true
+    if (itemId === 'promotions' && activeTab === 'marketing' && marketingSubTab === 'promotions') return true
+    if (itemId === 'sources' && activeTab === 'marketing' && marketingSubTab === 'sources') return true
+    if (itemId !== 'marketing' && itemId !== 'promotions' && itemId !== 'sources') {
+      return activeTab === itemId
+    }
+    return false
+  }
+
   return (
-    <div className="admin-container">
+    <div className={`admin-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      {/* Header */}
       <header className="admin-header">
         <div className="admin-header-left">
+          <button
+            className="sidebar-toggle"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed ? '☰' : '✕'}
+          </button>
           <Link to="/">
             <img src="/assets/logo.svg" alt="TAG Parking" className="admin-logo" />
           </Link>
-          <h1>Admin Dashboard</h1>
+          <h1>Admin</h1>
         </div>
         <div className="admin-header-right">
           <span className="admin-user">
@@ -3006,88 +3125,46 @@ function Admin() {
         </div>
       </header>
 
-      <nav className="admin-nav">
-        <button
-          className={`admin-nav-item ${activeTab === 'bookings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('bookings')}
-        >
-          Bookings
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'calendar' ? 'active' : ''}`}
-          onClick={() => setActiveTab('calendar')}
-        >
-          Calendar
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'payroll' ? 'active' : ''}`}
-          onClick={() => setActiveTab('payroll')}
-        >
-          Payroll
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'manual-booking' ? 'active' : ''}`}
-          onClick={() => setActiveTab('manual-booking')}
-        >
-          Manual Booking
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'users' ? 'active' : ''}`}
-          onClick={() => setActiveTab('users')}
-        >
-          Users
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'flights' ? 'active' : ''}`}
-          onClick={() => setActiveTab('flights')}
-        >
-          Flights
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'marketing' ? 'active' : ''}`}
-          onClick={() => setActiveTab('marketing')}
-        >
-          Marketing
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'leads' ? 'active' : ''}`}
-          onClick={() => setActiveTab('leads')}
-        >
-          Leads
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'customers' ? 'active' : ''}`}
-          onClick={() => setActiveTab('customers')}
-        >
-          Customers
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'pricing' ? 'active' : ''}`}
-          onClick={() => setActiveTab('pricing')}
-        >
-          Pricing
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'reports' ? 'active' : ''}`}
-          onClick={() => setActiveTab('reports')}
-        >
-          Reports
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'qa' ? 'active' : ''}`}
-          onClick={() => setActiveTab('qa')}
-        >
-          QA
-        </button>
-        <button
-          className={`admin-nav-item ${activeTab === 'testimonials' ? 'active' : ''}`}
-          onClick={() => setActiveTab('testimonials')}
-        >
-          Testimonials
-        </button>
-      </nav>
+      <div className="admin-body">
+        {/* Sidebar */}
+        <aside className="admin-sidebar">
+          <nav className="admin-sidebar-nav">
+            {NAV_STRUCTURE.map(cat => (
+              <div key={cat.category} className="nav-category">
+                <button
+                  className={`nav-category-header ${expandedCategories[cat.category] ? 'expanded' : ''}`}
+                  onClick={() => toggleCategory(cat.category)}
+                >
+                  <span className="nav-category-icon">{cat.icon}</span>
+                  {!sidebarCollapsed && (
+                    <>
+                      <span className="nav-category-label">{cat.category}</span>
+                      <span className="nav-category-arrow">
+                        {expandedCategories[cat.category] ? '▼' : '▶'}
+                      </span>
+                    </>
+                  )}
+                </button>
+                {expandedCategories[cat.category] && !sidebarCollapsed && (
+                  <div className="nav-category-items">
+                    {cat.items.map(item => (
+                      <button
+                        key={item.id}
+                        className={`nav-item ${isNavItemActive(item.id) ? 'active' : ''}`}
+                        onClick={() => handleTabSelect(item.id)}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </nav>
+        </aside>
 
-      <main className="admin-content">
+        {/* Main Content */}
+        <main className="admin-main">
         {error && <div className="admin-error">{error}</div>}
         {successMessage && <div className="admin-success">{successMessage}</div>}
 
@@ -7684,7 +7761,8 @@ function Admin() {
           </div>
         )}
 
-      </main>
+        </main>
+      </div>
 
       {/* Testimonial Add/Edit Modal */}
       {showTestimonialModal && (
