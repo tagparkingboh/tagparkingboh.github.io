@@ -4044,27 +4044,11 @@ function Admin() {
 
         {activeTab === 'marketing' && (
           <div className="admin-section">
-            {/* Marketing Sub-tabs */}
-            <div className="reports-subtabs" style={{ marginBottom: '20px' }}>
-              <button
-                className={`reports-subtab ${marketingSubTab === 'subscribers' ? 'active' : ''}`}
-                onClick={() => setMarketingSubTab('subscribers')}
-              >
-                Subscribers
-              </button>
-              <button
-                className={`reports-subtab ${marketingSubTab === 'promotions' ? 'active' : ''}`}
-                onClick={() => setMarketingSubTab('promotions')}
-              >
-                Promotions
-              </button>
-              <button
-                className={`reports-subtab ${marketingSubTab === 'sources' ? 'active' : ''}`}
-                onClick={() => setMarketingSubTab('sources')}
-              >
-                Sources
-              </button>
-            </div>
+            <h2>
+              {marketingSubTab === 'subscribers' && 'Subscribers'}
+              {marketingSubTab === 'promotions' && 'Promotions'}
+              {marketingSubTab === 'sources' && 'Sources'}
+            </h2>
 
             {/* Promotions Success/Error Message */}
             {promotionMessage && (
@@ -6237,35 +6221,12 @@ function Admin() {
 
         {activeTab === 'reports' && (
           <div className="admin-section">
-            <h2>Reports</h2>
-
-            {/* Reports Sub-Tabs */}
-            <div className="reports-subtabs">
-              <button
-                className={`reports-subtab ${reportsSubTab === 'growth' ? 'active' : ''}`}
-                onClick={() => setReportsSubTab('growth')}
-              >
-                Booking Growth
-              </button>
-              <button
-                className={`reports-subtab ${reportsSubTab === 'occupancy' ? 'active' : ''}`}
-                onClick={() => setReportsSubTab('occupancy')}
-              >
-                Occupancy
-              </button>
-              <button
-                className={`reports-subtab ${reportsSubTab === 'popular' ? 'active' : ''}`}
-                onClick={() => setReportsSubTab('popular')}
-              >
-                Popular Routes
-              </button>
-              <button
-                className={`reports-subtab ${reportsSubTab === 'map' ? 'active' : ''}`}
-                onClick={() => setReportsSubTab('map')}
-              >
-                Location Maps
-              </button>
-            </div>
+            <h2>
+              {reportsSubTab === 'growth' && 'Booking Growth'}
+              {reportsSubTab === 'occupancy' && 'Occupancy'}
+              {reportsSubTab === 'popular' && 'Popular Routes'}
+              {reportsSubTab === 'map' && 'Location Maps'}
+            </h2>
 
             {/* Booking Growth Charts */}
             {reportsSubTab === 'growth' && (
