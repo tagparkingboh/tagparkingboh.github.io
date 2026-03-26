@@ -2,7 +2,7 @@
 Database service layer for CRUD operations.
 """
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 from datetime import date, time, datetime
 from typing import Optional, List
 import random
@@ -25,8 +25,12 @@ def generate_booking_reference() -> str:
 # ============== CUSTOMER OPERATIONS ==============
 
 def get_customer_by_email(db: Session, email: str) -> Optional[Customer]:
-    """Get customer by email address."""
-    return db.query(Customer).filter(Customer.email == email).first()
+    """Get customer by email address (case-insensitive)."""
+    if not email:
+        return None
+    return db.query(Customer).filter(
+        func.lower(Customer.email) == email.lower().strip()
+    ).first()
 
 
 def normalize_name(name: str) -> str:
