@@ -1,36 +1,45 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../../AuthContext'
 import { API_URL } from '../adminUtils'
-import '../adminStyles.css'
 import './UsersPage.css'
 
 function UsersPage() {
   const { token } = useAuth()
 
-  // Users management state (matching Admin.jsx)
   const [users, setUsers] = useState([])
-  const [loadingUsers, setLoadingUsers] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [userSearchTerm, setUserSearchTerm] = useState('')
-  const [showUserModal, setShowUserModal] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+
+  // Modal states
+  const [showModal, setShowModal] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
-  const [userForm, setUserForm] = useState({ first_name: '', last_name: '', email: '', phone: '', is_admin: false, is_active: true })
-  const [savingUser, setSavingUser] = useState(false)
-  const [showDeleteUserModal, setShowDeleteUserModal] = useState(false)
+  const [userForm, setUserForm] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    is_admin: false,
+    is_active: true
+  })
+  const [saving, setSaving] = useState(false)
+
+  // Delete modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [userToDelete, setUserToDelete] = useState(null)
-  const [deletingUser, setDeletingUser] = useState(false)
-  const [userSuccessMessage, setUserSuccessMessage] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (token) fetchUsers()
   }, [token])
 
   const fetchUsers = async () => {
-    setLoadingUsers(true)
+    setLoading(true)
     setError('')
     try {
       const response = await fetch(`${API_URL}/api/admin/users`, {
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: { 'Authorization': `Bearer ${token}` }
       })
       if (response.ok) {
         const data = await response.json()
@@ -41,27 +50,27 @@ function UsersPage() {
     } catch (err) {
       setError('Network error loading users')
     } finally {
-      setLoadingUsers(false)
+      setLoading(false)
     }
   }
 
   const filteredUsers = useMemo(() => {
-    if (!userSearchTerm) return users
-    const term = userSearchTerm.toLowerCase()
+    if (!searchTerm) return users
+    const term = searchTerm.toLowerCase()
     return users.filter(u =>
       (u.first_name || '').toLowerCase().includes(term) ||
       (u.last_name || '').toLowerCase().includes(term) ||
       (u.email || '').toLowerCase().includes(term)
     )
-  }, [users, userSearchTerm])
+  }, [users, searchTerm])
 
-  const openAddUserModal = () => {
+  const openAddModal = () => {
     setEditingUser(null)
     setUserForm({ first_name: '', last_name: '', email: '', phone: '', is_admin: false, is_active: true })
-    setShowUserModal(true)
+    setShowModal(true)
   }
 
-  const openEditUserModal = (u) => {
+  const openEditModal = (u) => {
     setEditingUser(u)
     setUserForm({
       first_name: u.first_name || '',
@@ -71,11 +80,11 @@ function UsersPage() {
       is_admin: u.is_admin,
       is_active: u.is_active,
     })
-    setShowUserModal(true)
+    setShowModal(true)
   }
 
-  const handleSaveUser = async () => {
-    setSavingUser(true)
+  const handleSave = async () => {
+    setSaving(true)
     setError('')
     try {
       const url = editingUser
@@ -91,9 +100,9 @@ function UsersPage() {
         body: JSON.stringify(userForm),
       })
       if (response.ok) {
-        setShowUserModal(false)
-        setUserSuccessMessage(editingUser ? 'User updated successfully' : 'User created successfully')
-        setTimeout(() => setUserSuccessMessage(''), 3000)
+        setShowModal(false)
+        setSuccessMessage(editingUser ? 'User updated successfully' : 'User created successfully')
+        setTimeout(() => setSuccessMessage(''), 3000)
         fetchUsers()
       } else {
         const data = await response.json()
@@ -102,11 +111,11 @@ function UsersPage() {
     } catch (err) {
       setError('Network error saving user')
     } finally {
-      setSavingUser(false)
+      setSaving(false)
     }
   }
 
-  const handleToggleUserField = async (u, field) => {
+  const handleToggleField = async (u, field) => {
     try {
       const response = await fetch(`${API_URL}/api/admin/users/${u.id}`, {
         method: 'PUT',
@@ -128,19 +137,19 @@ function UsersPage() {
     }
   }
 
-  const handleDeleteUser = async () => {
+  const handleDelete = async () => {
     if (!userToDelete) return
-    setDeletingUser(true)
+    setDeleting(true)
     try {
       const response = await fetch(`${API_URL}/api/admin/users/${userToDelete.id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` },
       })
       if (response.ok) {
-        setShowDeleteUserModal(false)
+        setShowDeleteModal(false)
         setUserToDelete(null)
-        setUserSuccessMessage('User deleted successfully')
-        setTimeout(() => setUserSuccessMessage(''), 3000)
+        setSuccessMessage('User deleted successfully')
+        setTimeout(() => setSuccessMessage(''), 3000)
         fetchUsers()
       } else {
         const data = await response.json()
@@ -149,21 +158,18 @@ function UsersPage() {
     } catch (err) {
       setError('Network error deleting user')
     } finally {
-      setDeletingUser(false)
+      setDeleting(false)
     }
   }
 
   return (
-    <div className="admin-section">
-      <div className="admin-section-header">
+    <div className="admin-page">
+      <div className="admin-page-header">
         <h2>User Management</h2>
-        <button className="action-btn paid-btn" onClick={openAddUserModal}>+ Add User</button>
+        <button className="btn-primary" onClick={openAddModal}>+ Add User</button>
       </div>
 
-      {userSuccessMessage && (
-        <div className="success-banner">{userSuccessMessage}</div>
-      )}
-
+      {successMessage && <div className="admin-success">{successMessage}</div>}
       {error && <div className="admin-error">{error}</div>}
 
       <div className="admin-filters">
@@ -172,18 +178,18 @@ function UsersPage() {
             type="text"
             className="admin-search-input"
             placeholder="Search by name or email..."
-            value={userSearchTerm}
-            onChange={(e) => setUserSearchTerm(e.target.value)}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
-          {userSearchTerm && (
-            <button className="admin-search-clear" onClick={() => setUserSearchTerm('')}>&times;</button>
+          {searchTerm && (
+            <button className="admin-search-clear" onClick={() => setSearchTerm('')}>&times;</button>
           )}
         </div>
         <span className="admin-filter-count">{filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''}</span>
       </div>
 
-      {loadingUsers ? (
-        <div className="admin-loading-inline"><div className="spinner-small"></div> Loading users...</div>
+      {loading ? (
+        <div className="admin-loading-inline">Loading users...</div>
       ) : filteredUsers.length === 0 ? (
         <p className="admin-empty">No users found</p>
       ) : (
@@ -211,7 +217,7 @@ function UsersPage() {
                   <td>
                     <button
                       className={`toggle-btn ${u.is_admin ? 'toggle-on' : 'toggle-off'}`}
-                      onClick={() => handleToggleUserField(u, 'is_admin')}
+                      onClick={() => handleToggleField(u, 'is_admin')}
                       title={u.is_admin ? 'Remove admin' : 'Make admin'}
                     >
                       {u.is_admin ? 'Yes' : 'No'}
@@ -220,16 +226,18 @@ function UsersPage() {
                   <td>
                     <button
                       className={`toggle-btn ${u.is_active ? 'toggle-on' : 'toggle-off'}`}
-                      onClick={() => handleToggleUserField(u, 'is_active')}
+                      onClick={() => handleToggleField(u, 'is_active')}
                       title={u.is_active ? 'Deactivate' : 'Activate'}
                     >
                       {u.is_active ? 'Yes' : 'No'}
                     </button>
                   </td>
-                  <td className="small-text">{u.last_login ? new Date(u.last_login).toLocaleDateString('en-GB', { timeZone: 'Europe/London' }) : 'Never'}</td>
+                  <td className="small-text">
+                    {u.last_login ? new Date(u.last_login).toLocaleDateString('en-GB', { timeZone: 'Europe/London' }) : 'Never'}
+                  </td>
                   <td className="actions-cell">
-                    <button className="action-btn email-btn" onClick={() => openEditUserModal(u)}>Edit</button>
-                    <button className="action-btn cancel-btn" onClick={() => { setUserToDelete(u); setShowDeleteUserModal(true) }}>Delete</button>
+                    <button className="btn-secondary btn-sm" onClick={() => openEditModal(u)}>Edit</button>
+                    <button className="btn-danger btn-sm" onClick={() => { setUserToDelete(u); setShowDeleteModal(true) }}>Delete</button>
                   </td>
                 </tr>
               ))}
@@ -239,8 +247,8 @@ function UsersPage() {
       )}
 
       {/* Add/Edit User Modal */}
-      {showUserModal && (
-        <div className="modal-overlay" onClick={() => setShowUserModal(false)}>
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <h3>{editingUser ? 'Edit User' : 'Add User'}</h3>
             <div className="user-form">
@@ -263,24 +271,24 @@ function UsersPage() {
                 <input type="text" value={userForm.phone} onChange={e => setUserForm({...userForm, phone: e.target.value})} />
               </div>
               <div className="user-form-toggles">
-                <label className="admin-checkbox-label">
+                <label className="checkbox-label">
                   <input type="checkbox" checked={userForm.is_admin} onChange={e => setUserForm({...userForm, is_admin: e.target.checked})} />
                   Admin
                 </label>
-                <label className="admin-checkbox-label">
+                <label className="checkbox-label">
                   <input type="checkbox" checked={userForm.is_active} onChange={e => setUserForm({...userForm, is_active: e.target.checked})} />
                   Active
                 </label>
               </div>
             </div>
             <div className="modal-actions">
-              <button className="modal-btn modal-btn-secondary" onClick={() => setShowUserModal(false)}>Cancel</button>
+              <button className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
               <button
-                className="modal-btn modal-btn-primary"
-                onClick={handleSaveUser}
-                disabled={savingUser || !userForm.first_name.trim() || !userForm.last_name.trim() || !userForm.email.trim()}
+                className="btn-primary"
+                onClick={handleSave}
+                disabled={saving || !userForm.first_name.trim() || !userForm.last_name.trim() || !userForm.email.trim()}
               >
-                {savingUser ? 'Saving...' : (editingUser ? 'Update' : 'Create')}
+                {saving ? 'Saving...' : (editingUser ? 'Update' : 'Create')}
               </button>
             </div>
           </div>
@@ -288,15 +296,15 @@ function UsersPage() {
       )}
 
       {/* Delete User Confirmation Modal */}
-      {showDeleteUserModal && userToDelete && (
-        <div className="modal-overlay" onClick={() => setShowDeleteUserModal(false)}>
+      {showDeleteModal && userToDelete && (
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <h3>Delete User</h3>
             <p>Are you sure you want to delete <strong>{userToDelete.first_name} {userToDelete.last_name}</strong> ({userToDelete.email})?</p>
             <div className="modal-actions">
-              <button className="modal-btn modal-btn-secondary" onClick={() => setShowDeleteUserModal(false)}>Cancel</button>
-              <button className="modal-btn modal-btn-danger" onClick={handleDeleteUser} disabled={deletingUser}>
-                {deletingUser ? 'Deleting...' : 'Delete'}
+              <button className="btn-secondary" onClick={() => setShowDeleteModal(false)}>Cancel</button>
+              <button className="btn-danger" onClick={handleDelete} disabled={deleting}>
+                {deleting ? 'Deleting...' : 'Delete'}
               </button>
             </div>
           </div>

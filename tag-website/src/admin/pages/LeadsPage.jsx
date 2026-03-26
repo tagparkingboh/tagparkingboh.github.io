@@ -1,346 +1,118 @@
 import { useState, useEffect, useMemo } from 'react'
-import DatePicker from 'react-datepicker'
-import 'react-datepicker/dist/react-datepicker.css'
 import { useAuth } from '../../AuthContext'
-import { API_URL } from '../adminUtils'
+import { API_URL, isTestEmail, formatDateDisplay } from '../adminUtils'
 import '../adminStyles.css'
 
 function LeadsPage() {
   const { token } = useAuth()
-
-  // Abandoned leads state (matching Admin.jsx lines 172-179)
   const [leads, setLeads] = useState([])
-  const [loadingLeads, setLoadingLeads] = useState(false)
-  const [leadSearchTerm, setLeadSearchTerm] = useState('')
-  const [expandedLeadId, setExpandedLeadId] = useState(null)
-  const [leadDateFrom, setLeadDateFrom] = useState(null)
-  const [leadDateTo, setLeadDateTo] = useState(null)
-  const [expandedLeadMonths, setExpandedLeadMonths] = useState({})
-  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [hideTestEmails, setHideTestEmails] = useState(true)
 
   useEffect(() => {
     if (token) fetchLeads()
   }, [token])
 
   const fetchLeads = async () => {
-    setLoadingLeads(true)
-    setError('')
+    setLoading(true)
     try {
       const response = await fetch(`${API_URL}/api/admin/abandoned-leads`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Authorization': `Bearer ${token}` }
       })
       if (response.ok) {
         const data = await response.json()
         setLeads(data.leads || [])
-      } else {
-        setError('Failed to load leads')
       }
     } catch (err) {
-      setError('Network error loading leads')
+      console.error('Failed to fetch leads:', err)
     } finally {
-      setLoadingLeads(false)
+      setLoading(false)
     }
   }
 
-  // Filter leads based on date and search
   const filteredLeads = useMemo(() => {
-    return leads.filter(lead => {
-      // Date filter (UK time)
-      if (leadDateFrom || leadDateTo) {
-        const leadDate = lead.created_at ? new Date(lead.created_at) : null
-        if (!leadDate) return false
-        if (leadDateFrom) {
-          const fromDate = new Date(leadDateFrom)
-          fromDate.setHours(0, 0, 0, 0)
-          if (leadDate < fromDate) return false
-        }
-        if (leadDateTo) {
-          const toDate = new Date(leadDateTo)
-          toDate.setHours(23, 59, 59, 999)
-          if (leadDate > toDate) return false
-        }
-      }
-      // Search filter
-      if (!leadSearchTerm) return true
-      const search = leadSearchTerm.toLowerCase()
-      return (
-        lead.first_name?.toLowerCase().includes(search) ||
-        lead.last_name?.toLowerCase().includes(search) ||
-        lead.email?.toLowerCase().includes(search) ||
-        lead.phone?.includes(search)
+    let filtered = leads
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      filtered = filtered.filter(l =>
+        (l.first_name || '').toLowerCase().includes(term) ||
+        (l.last_name || '').toLowerCase().includes(term) ||
+        (l.email || '').toLowerCase().includes(term)
       )
-    })
-  }, [leads, leadSearchTerm, leadDateFrom, leadDateTo])
-
-  const downloadCSV = () => {
-    // Generate CSV
-    const csvRows = [['Name', 'Phone', 'Email', 'Date Added']]
-    filteredLeads.forEach(lead => {
-      const name = `${lead.first_name || ''} ${lead.last_name || ''}`.trim()
-      const dateAdded = lead.created_at
-        ? new Date(lead.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
-        : ''
-      csvRows.push([name, lead.phone || '', lead.email || '', dateAdded])
-    })
-    const csvContent = csvRows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.setAttribute('href', url)
-    // Build descriptive filename based on filters (DD-MM-YYYY format)
-    const formatDateForFilename = (date) => {
-      const day = String(date.getDate()).padStart(2, '0')
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const year = date.getFullYear()
-      return `${day}-${month}-${year}`
-    }
-    let filename = 'leads'
-    if (leadDateFrom && leadDateTo) {
-      filename = `leads_${formatDateForFilename(leadDateFrom)}_to_${formatDateForFilename(leadDateTo)}`
-    } else if (leadDateFrom) {
-      filename = `leads_from_${formatDateForFilename(leadDateFrom)}`
-    } else if (leadDateTo) {
-      filename = `leads_to_${formatDateForFilename(leadDateTo)}`
-    } else {
-      filename = `leads_all_${formatDateForFilename(new Date())}`
-    }
-    link.setAttribute('download', `${filename}.csv`)
-    link.click()
-    URL.revokeObjectURL(url)
-  }
-
-  // Group leads by month and render
-  const renderLeads = () => {
-    // Group by month
-    const monthlyGroups = {}
-    filteredLeads.forEach(lead => {
-      const date = lead.created_at ? new Date(lead.created_at) : null
-      if (date) {
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-        if (!monthlyGroups[monthKey]) monthlyGroups[monthKey] = []
-        monthlyGroups[monthKey].push(lead)
-      }
-    })
-
-    const sortedMonths = Object.keys(monthlyGroups).sort().reverse()
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-
-    if (sortedMonths.length === 0) {
-      return <p className="admin-no-data">No abandoned leads found</p>
     }
 
-    return sortedMonths.map(monthKey => {
-      const [year, month] = monthKey.split('-')
-      const monthName = `${monthNames[parseInt(month, 10) - 1]} ${year}`
-      const monthLeads = monthlyGroups[monthKey]
-      const isExpanded = expandedLeadMonths[monthKey]
+    if (hideTestEmails) {
+      filtered = filtered.filter(l => !isTestEmail(l.email))
+    }
 
-      return (
-        <div key={monthKey} className="leads-month-container">
-          <div
-            className="leads-month-header"
-            onClick={() => setExpandedLeadMonths(prev => ({
-              ...prev,
-              [monthKey]: !prev[monthKey]
-            }))}
-          >
-            <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
-            <span className="month-name">{monthName}</span>
-            <span className="month-total">{monthLeads.length} lead{monthLeads.length !== 1 ? 's' : ''}</span>
-          </div>
-          {isExpanded && (
-            <div className="leads-month-content">
-              {monthLeads.map(lead => (
-                <div
-                  key={lead.id}
-                  className={`booking-card ${expandedLeadId === lead.id ? 'expanded' : ''}`}
-                >
-                  <div
-                    className="booking-card-header booking-header-stacked"
-                    onClick={() => setExpandedLeadId(expandedLeadId === lead.id ? null : lead.id)}
-                  >
-                    <div className="booking-header-info">
-                      <div className="booking-header-top">
-                        <span className="booking-customer-name">
-                          {lead.first_name} {lead.last_name}
-                        </span>
-                        {lead.booking_attempts > 0 && (
-                          <span className="booking-source-badge manual">
-                            {lead.booking_attempts} attempt{lead.booking_attempts > 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </div>
-                      <span className="booking-date">
-                        {lead.created_at ? new Date(lead.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {expandedLeadId === lead.id && (
-                    <div className="booking-card-body">
-                      <div className="booking-section">
-                        <h4>Contact Details</h4>
-                        <div className="booking-section-content">
-                          <div className="booking-detail-row">
-                            <div className="booking-detail">
-                              <span className="detail-label">Email</span>
-                              <span className="detail-value">
-                                <a href={`mailto:${lead.email}`}>{lead.email}</a>
-                              </span>
-                            </div>
-                            <div className="booking-detail">
-                              <span className="detail-label">Phone</span>
-                              <span className="detail-value">
-                                <a href={`tel:${lead.phone}`}>{lead.phone}</a>
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {(lead.billing_address1 || lead.billing_city || lead.billing_postcode) && (
-                        <div className="booking-section">
-                          <h4>Billing Address</h4>
-                          <div className="booking-section-content">
-                            <div className="booking-detail">
-                              <span className="detail-value">
-                                {[lead.billing_address1, lead.billing_city, lead.billing_postcode].filter(Boolean).join(', ')}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="booking-section">
-                        <h4>Status</h4>
-                        <div className="booking-section-content">
-                          <div className="booking-detail-row">
-                            <div className="booking-detail">
-                              <span className="detail-label">Started</span>
-                              <span className="detail-value">
-                                {lead.created_at ? new Date(lead.created_at).toLocaleString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}
-                              </span>
-                            </div>
-                            {lead.last_booking_status && (
-                              <div className="booking-detail">
-                                <span className="detail-label">Last Booking Status</span>
-                                <span className="detail-value">{lead.last_booking_status}</span>
-                              </div>
-                            )}
-                            <div className="booking-detail">
-                              <span className="detail-label">Founder Email</span>
-                              <span className="detail-value">
-                                <button
-                                  className={`action-btn email-btn ${lead.founder_followup_sent ? 'sent-status' : ''}`}
-                                  disabled={true}
-                                  title={lead.founder_followup_sent
-                                    ? `Sent on ${lead.founder_followup_sent_at ? new Date(lead.founder_followup_sent_at).toLocaleString('en-GB', { timeZone: 'Europe/London' }) : 'Unknown'}`
-                                    : 'Not sent yet'}
-                                >
-                                  {lead.founder_followup_sent ? 'Sent ✓' : 'Not Sent'}
-                                </button>
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )
-    })
-  }
+    return filtered
+  }, [leads, searchTerm, hideTestEmails])
 
   return (
-    <div className="admin-section">
-      <div className="admin-section-header">
+    <div className="admin-page">
+      <div className="admin-page-header">
         <h2>Abandoned Leads</h2>
-        <div className="flights-header-actions">
-          <button
-            className="btn-secondary"
-            onClick={fetchLeads}
-            disabled={loadingLeads}
-          >
-            {loadingLeads ? 'Loading...' : '↻ Refresh'}
-          </button>
-          <button
-            className="btn-primary"
-            onClick={downloadCSV}
-            disabled={loadingLeads}
-          >
-            ↓ Download CSV
-          </button>
-        </div>
+        <button className="btn-secondary" onClick={fetchLeads} disabled={loading}>
+          {loading ? 'Loading...' : 'Refresh'}
+        </button>
       </div>
-      <p className="admin-subtitle">Customers who started booking but didn't complete payment</p>
 
-      <div className="flights-filters">
-        <div className="flight-filter-group lead-search-group">
+      <div className="admin-filters">
+        <div className="admin-search">
           <input
             type="text"
-            placeholder="Search by name, email, or phone..."
-            value={leadSearchTerm}
-            onChange={(e) => setLeadSearchTerm(e.target.value)}
-            className="flight-number-input lead-search-input"
+            className="admin-search-input"
+            placeholder="Search by name or email..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
-          {leadSearchTerm && (
-            <button
-              className="lead-search-clear"
-              onClick={() => setLeadSearchTerm('')}
-            >
-              ×
-            </button>
+          {searchTerm && (
+            <button className="admin-search-clear" onClick={() => setSearchTerm('')}>&times;</button>
           )}
         </div>
-        <div className="flight-filter-group leads-date-picker">
-          <label>From:</label>
-          <DatePicker
-            selected={leadDateFrom}
-            onChange={(date) => setLeadDateFrom(date)}
-            dateFormat="dd/MM/yyyy"
-            placeholderText="DD/MM/YYYY"
-            className="flight-date-input"
-            isClearable
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+          <input
+            type="checkbox"
+            checked={hideTestEmails}
+            onChange={(e) => setHideTestEmails(e.target.checked)}
           />
-        </div>
-        <div className="flight-filter-group leads-date-picker">
-          <label>To:</label>
-          <DatePicker
-            selected={leadDateTo}
-            onChange={(date) => setLeadDateTo(date)}
-            dateFormat="dd/MM/yyyy"
-            placeholderText="DD/MM/YYYY"
-            className="flight-date-input"
-            isClearable
-          />
-        </div>
-        {(leadDateFrom || leadDateTo) && (
-          <button
-            className="btn-secondary clear-dates-btn"
-            onClick={() => { setLeadDateFrom(null); setLeadDateTo(null); }}
-          >
-            × Clear
-          </button>
-        )}
-        <div className="leads-filter-count">
-          Showing {filteredLeads.length} of {leads.length} leads
-        </div>
+          Hide test emails
+        </label>
+        <span className="admin-filter-count">{filteredLeads.length} leads</span>
       </div>
 
-      {loadingLeads ? (
-        <div className="admin-loading-inline">
-          <div className="loading-spinner-small"></div>
-          <span>Loading leads...</span>
-        </div>
+      {loading ? (
+        <div className="admin-loading-inline">Loading leads...</div>
+      ) : filteredLeads.length === 0 ? (
+        <p className="admin-empty">No leads found</p>
       ) : (
-        <div className="booking-accordion">
-          {renderLeads()}
+        <div className="admin-table-container">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Drop-off</th>
+                <th>Pickup</th>
+                <th>Step</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredLeads.slice(0, 50).map(lead => (
+                <tr key={lead.id}>
+                  <td>{lead.first_name} {lead.last_name}</td>
+                  <td>{lead.email}</td>
+                  <td>{formatDateDisplay(lead.dropoff_date)}</td>
+                  <td>{formatDateDisplay(lead.pickup_date)}</td>
+                  <td>{lead.abandoned_step || '-'}</td>
+                  <td>{formatDateDisplay(lead.created_at?.split('T')[0])}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
