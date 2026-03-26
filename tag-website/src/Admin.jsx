@@ -1900,24 +1900,25 @@ function Admin() {
     return filtered
   }, [bookings, searchTerm, statusFilter, hideTestEmails, sortAsc])
 
-  // Today's bookings (dropoff date is today in UK timezone)
+  // Today's bookings (bookings created today in UK timezone)
   const todaysBookings = useMemo(() => {
-    // Get today's date in UK timezone
-    const todayUK = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' }) // YYYY-MM-DD format
+    // Get today's date in UK timezone (YYYY-MM-DD format)
+    const todayUK = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' })
 
-    let todays = bookings.filter(b => b.dropoff_date === todayUK)
+    let todays = bookings.filter(b => {
+      if (!b.created_at) return false
+      // Convert created_at to UK date
+      const createdDate = new Date(b.created_at).toLocaleDateString('en-CA', { timeZone: 'Europe/London' })
+      return createdDate === todayUK
+    })
 
     // Hide test emails
     if (hideTestEmails) {
       todays = todays.filter(b => !isTestEmail(b.customer?.email))
     }
 
-    // Sort by dropoff time
-    todays.sort((a, b) => {
-      const timeA = a.dropoff_time || '00:00'
-      const timeB = b.dropoff_time || '00:00'
-      return timeA.localeCompare(timeB)
-    })
+    // Sort by created_at descending (newest first)
+    todays.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
     return todays
   }, [bookings, hideTestEmails])
