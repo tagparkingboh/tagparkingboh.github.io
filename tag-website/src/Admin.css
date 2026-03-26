@@ -2775,39 +2775,44 @@
 .add-flight-form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  margin: 1.5rem 0;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 .add-flight-form .form-row {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 6px;
 }
 
 .add-flight-form label {
-  color: #888;
-  font-size: 0.875rem;
+  font-size: 13px;
+  font-weight: 500;
+  color: #555;
 }
 
 .add-flight-form input,
 .add-flight-form select {
-  background: #0a0a0a;
-  border: 1px solid #333;
-  color: #fff;
-  padding: 0.75rem;
-  border-radius: 6px;
-  font-size: 0.9375rem;
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+  background: #fff;
+  color: #333;
 }
 
 .add-flight-form input:focus,
 .add-flight-form select:focus {
-  border-color: #D9FF00;
-  outline: none;
+  border-color: #f7b32b;
+  box-shadow: 0 0 0 3px rgba(247, 179, 43, 0.15);
 }
 
 .add-flight-form input::placeholder {
-  color: #555;
+  color: #999;
 }
 
 .warning-text {
