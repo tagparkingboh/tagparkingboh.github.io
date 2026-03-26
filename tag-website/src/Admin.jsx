@@ -3213,14 +3213,39 @@ function Admin() {
                       key={booking.id || booking.reference}
                       className={`recent-booking-card booking-status-${booking.status?.toLowerCase() || 'pending'}`}
                       onClick={() => {
+                        // Navigate to Bookings tab and open this booking
+                        const statusKey = (booking.status || 'pending').toLowerCase()
+
+                        // Switch to bookings tab
+                        setActiveTab('bookings')
+
+                        // Expand the status section
+                        setCollapsedStatusSections(prev => ({
+                          ...prev,
+                          [statusKey]: false
+                        }))
+
+                        // For confirmed/completed, expand the month container
+                        if (statusKey === 'confirmed' || statusKey === 'completed') {
+                          const dropoffDate = new Date(booking.dropoff_date + 'T12:00:00')
+                          const monthKey = `${dropoffDate.getFullYear()}-${String(dropoffDate.getMonth() + 1).padStart(2, '0')}`
+                          const expandKey = `${statusKey}-${monthKey}`
+                          setExpandedBookingMonths(prev => ({
+                            ...prev,
+                            [expandKey]: true
+                          }))
+                        }
+
+                        // Expand this specific booking
                         setExpandedBookingId(booking.id)
-                        // Scroll to the booking in the main list
+
+                        // Scroll to the booking after DOM updates
                         setTimeout(() => {
                           const element = document.querySelector(`.booking-card[data-booking-id="${booking.id}"]`)
                           if (element) {
                             element.scrollIntoView({ behavior: 'smooth', block: 'center' })
                           }
-                        }, 100)
+                        }, 300)
                       }}
                     >
                       <div className="recent-booking-ref">{booking.reference}</div>
