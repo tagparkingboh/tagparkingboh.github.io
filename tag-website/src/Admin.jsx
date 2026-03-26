@@ -6426,7 +6426,7 @@ function Admin() {
                               <span className="booking-target-label">Daily Target</span>
                               <span className="booking-target-value">{bookingStats.confirmed_today || 0} confirmed today</span>
                               <div className="booking-target-milestones">
-                                {[1, 3, 5, 7, 9].map(target => (
+                                {[1, 3, 5, 7, 9, 11, 13, 15].map(target => (
                                   <span key={target} className={`milestone ${(bookingStats.confirmed_today || 0) >= target ? 'achieved' : ''}`}>
                                     {target}
                                   </span>
