@@ -95,7 +95,7 @@ class TestFunFactsResponseStructure:
     def test_response_includes_busiest_day(self):
         """Response should include busiestDay field."""
         response = create_mock_fun_facts_response(
-            busiest_day={"date": "Mon 24 Feb 2026", "count": 15}
+            busiest_day={"dates": ["Mon 24 Feb 2026"], "count": 15}
         )
 
         assert "busiestDay" in response
@@ -125,12 +125,12 @@ class TestFunFactsResponseStructure:
         assert "highestTransaction" in response
 
     def test_busiest_day_structure(self):
-        """Busiest day should include date and count."""
+        """Busiest day should include dates (array) and count."""
         response = create_mock_fun_facts_response(
-            busiest_day={"date": "Mon 24 Feb 2026", "count": 15}
+            busiest_day={"dates": ["Mon 24 Feb 2026"], "count": 15}
         )
 
-        assert "date" in response["busiestDay"]
+        assert "dates" in response["busiestDay"]
         assert "count" in response["busiestDay"]
 
     def test_busiest_streak_structure(self):
@@ -228,8 +228,8 @@ class TestBusiestDayLogic:
         assert busiest_date == date(2026, 3, 16)
         assert busiest_count == 3
 
-    def test_busiest_day_tie_returns_first(self):
-        """Tie in busiest day should return one of the tied days."""
+    def test_busiest_day_tie_returns_all_tied_days(self):
+        """Tie in busiest day should return all tied days."""
         bookings = [
             create_mock_booking(id=1, paid_at=datetime(2026, 3, 15, 10, 0, 0)),
             create_mock_booking(id=2, paid_at=datetime(2026, 3, 15, 11, 0, 0)),
@@ -243,10 +243,13 @@ class TestBusiestDayLogic:
                 paid_date = booking.payment.paid_at.date()
                 day_counter[paid_date] += 1
 
-        busiest_date, busiest_count = day_counter.most_common(1)[0]
+        max_count = max(day_counter.values())
+        busiest_dates = sorted([d for d, c in day_counter.items() if c == max_count])
 
-        assert busiest_count == 2
-        assert busiest_date in [date(2026, 3, 15), date(2026, 3, 16)]
+        assert max_count == 2
+        assert len(busiest_dates) == 2
+        assert date(2026, 3, 15) in busiest_dates
+        assert date(2026, 3, 16) in busiest_dates
 
     def test_busiest_day_skips_null_payment(self):
         """Should skip bookings with null payment/paid_at."""

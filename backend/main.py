@@ -3362,10 +3362,15 @@ async def get_fun_facts(
             day_counter[paid_date] += 1
 
     if day_counter:
-        busiest_date, busiest_count = day_counter.most_common(1)[0]
+        # Find the maximum count
+        max_count = max(day_counter.values())
+        # Get all dates that have the maximum count
+        busiest_dates = [d for d, c in day_counter.items() if c == max_count]
+        # Sort dates chronologically
+        busiest_dates.sort()
         result["busiestDay"] = {
-            "date": busiest_date.strftime("%a %d %b %Y"),  # e.g., "Mon 24 Feb 2026"
-            "count": busiest_count,
+            "dates": [d.strftime("%a %d %b %Y") for d in busiest_dates],  # e.g., ["Mon 24 Feb 2026", "Tue 25 Feb 2026"]
+            "count": max_count,
         }
 
     # === Busiest Streak ===

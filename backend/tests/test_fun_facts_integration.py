@@ -149,7 +149,7 @@ class TestFunFactsIntegrationHappyPath:
             data = response.json()
 
             assert data["busiestDay"]["count"] == 3
-            assert "15" in data["busiestDay"]["date"]  # Mar 15
+            assert any("15" in d for d in data["busiestDay"]["dates"])  # Mar 15
         finally:
             app.dependency_overrides.clear()
 
@@ -515,10 +515,12 @@ class TestFunFactsIntegrationDateFormatting:
             data = response.json()
 
             # Should be like "Tue 24 Feb 2026"
-            assert "Tue" in data["busiestDay"]["date"]
-            assert "24" in data["busiestDay"]["date"]
-            assert "Feb" in data["busiestDay"]["date"]
-            assert "2026" in data["busiestDay"]["date"]
+            assert len(data["busiestDay"]["dates"]) == 1
+            busiest_date = data["busiestDay"]["dates"][0]
+            assert "Tue" in busiest_date
+            assert "24" in busiest_date
+            assert "Feb" in busiest_date
+            assert "2026" in busiest_date
         finally:
             app.dependency_overrides.clear()
 

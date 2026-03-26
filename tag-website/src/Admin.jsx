@@ -6373,9 +6373,11 @@ function Admin() {
                             <div className="fun-fact-card">
                               <span className="fun-fact-icon">📅</span>
                               <div className="fun-fact-content">
-                                <span className="fun-fact-label">Busiest Day</span>
+                                <span className="fun-fact-label">Busiest {funFacts.busiestDay.dates?.length > 1 ? 'Days' : 'Day'}</span>
                                 <span className="fun-fact-value">{funFacts.busiestDay.count} bookings</span>
-                                <span className="fun-fact-detail">{funFacts.busiestDay.date}</span>
+                                {funFacts.busiestDay.dates?.map((date, index) => (
+                                  <span key={index} className="fun-fact-detail">{date}</span>
+                                ))}
                               </div>
                             </div>
                           )}
