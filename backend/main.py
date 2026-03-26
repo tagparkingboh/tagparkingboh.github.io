@@ -7420,13 +7420,14 @@ async def stripe_webhook(
     if event_type == "payment_intent.succeeded":
         # Payment was successful - update database
         payment_intent_id = data["id"]
-        metadata = data.get("metadata", {})
-        booking_reference = metadata.get("booking_reference")
-        departure_id = metadata.get("departure_id")
-        drop_off_slot = metadata.get("drop_off_slot")
-        promo_code = metadata.get("promo_code")
-        meta_original_amount = metadata.get("original_amount")  # pence, as string
-        meta_discount_amount = metadata.get("discount_amount")  # pence, as string
+        # Stripe returns StripeObject, not dict - use bracket notation or getattr
+        metadata = getattr(data, "metadata", {}) or {}
+        booking_reference = metadata.get("booking_reference") if isinstance(metadata, dict) else getattr(metadata, "booking_reference", None)
+        departure_id = metadata.get("departure_id") if isinstance(metadata, dict) else getattr(metadata, "departure_id", None)
+        drop_off_slot = metadata.get("drop_off_slot") if isinstance(metadata, dict) else getattr(metadata, "drop_off_slot", None)
+        promo_code = metadata.get("promo_code") if isinstance(metadata, dict) else getattr(metadata, "promo_code", None)
+        meta_original_amount = metadata.get("original_amount") if isinstance(metadata, dict) else getattr(metadata, "original_amount", None)  # pence, as string
+        meta_discount_amount = metadata.get("discount_amount") if isinstance(metadata, dict) else getattr(metadata, "discount_amount", None)  # pence, as string
 
         # Update payment status in database (this also updates booking to CONFIRMED)
         # Returns (payment, was_already_processed) for idempotency
