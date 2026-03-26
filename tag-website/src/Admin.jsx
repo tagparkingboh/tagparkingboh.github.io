@@ -1900,20 +1900,26 @@ function Admin() {
     return filtered
   }, [bookings, searchTerm, statusFilter, hideTestEmails, sortAsc])
 
-  // Recent 10 bookings (sorted by ID descending - newest first)
-  const recentBookings = useMemo(() => {
-    let recent = [...bookings]
+  // Today's bookings (dropoff date is today in UK timezone)
+  const todaysBookings = useMemo(() => {
+    // Get today's date in UK timezone
+    const todayUK = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' }) // YYYY-MM-DD format
+
+    let todays = bookings.filter(b => b.dropoff_date === todayUK)
 
     // Hide test emails
     if (hideTestEmails) {
-      recent = recent.filter(b => !isTestEmail(b.customer?.email))
+      todays = todays.filter(b => !isTestEmail(b.customer?.email))
     }
 
-    // Sort by ID descending (newest first)
-    recent.sort((a, b) => b.id - a.id)
+    // Sort by dropoff time
+    todays.sort((a, b) => {
+      const timeA = a.dropoff_time || '00:00'
+      const timeB = b.dropoff_time || '00:00'
+      return timeA.localeCompare(timeB)
+    })
 
-    // Take top 10 most recent
-    return recent.slice(0, 10)
+    return todays
   }, [bookings, hideTestEmails])
 
   // Group bookings by status
@@ -3203,12 +3209,12 @@ function Admin() {
               </button>
             </div>
 
-            {/* Recent 10 Bookings */}
-            {recentBookings.length > 0 && (
+            {/* Today's Bookings */}
+            {todaysBookings.length > 0 && (
               <div className="recent-bookings-container">
-                <h3 className="recent-bookings-title">Recent Bookings</h3>
+                <h3 className="recent-bookings-title">Today's Bookings</h3>
                 <div className="recent-bookings-grid">
-                  {recentBookings.map((booking) => (
+                  {todaysBookings.map((booking) => (
                     <div
                       key={booking.id || booking.reference}
                       className={`recent-booking-card booking-status-${booking.status?.toLowerCase() || 'pending'}`}
