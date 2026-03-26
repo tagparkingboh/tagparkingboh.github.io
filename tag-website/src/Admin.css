@@ -1020,12 +1020,12 @@
   font-weight: 500;
 }
 
-.admin-container .modal-btn-success {
+.modal-btn-success {
   background: #38a169;
   color: white;
 }
 
-.admin-container .modal-btn-success:hover {
+.modal-btn-success:hover {
   background: #2f855a;
 }
 
@@ -1145,8 +1145,8 @@
   color: #4a5568;
 }
 
-/* Modal styles - scoped to admin-container to prevent conflicts with Employee page */
-.admin-container .modal-overlay {
+/* Modal styles for Admin page */
+.modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -1160,7 +1160,7 @@
   padding: 20px;
 }
 
-.admin-container .modal-content {
+.modal-content {
   background: white;
   border-radius: 12px;
   padding: 24px;
@@ -1170,35 +1170,35 @@
   color: #333;
 }
 
-.admin-container .modal-content h3 {
+.modal-content h3 {
   margin: 0 0 12px 0;
   font-size: 20px;
   color: #1a1a2e;
 }
 
-.admin-container .modal-content > p {
+.modal-content > p {
   color: #666;
   margin: 0 0 20px 0;
 }
 
-.admin-container .modal-booking-info {
+.modal-booking-info {
   background: #f8f9fa;
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 24px;
 }
 
-.admin-container .modal-booking-info p {
+.modal-booking-info p {
   margin: 0 0 8px 0;
   font-size: 14px;
   color: #333;
 }
 
-.admin-container .modal-booking-info p:last-child {
+.modal-booking-info p:last-child {
   margin-bottom: 0;
 }
 
-.admin-container .modal-warning {
+.modal-warning {
   color: #856404;
   background: #fff3cd;
   padding: 12px;
@@ -1207,13 +1207,13 @@
   margin: 16px 0;
 }
 
-.admin-container .modal-actions {
+.modal-actions {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
 }
 
-.admin-container .modal-btn {
+.modal-btn {
   padding: 10px 20px;
   font-size: 14px;
   font-weight: 500;
@@ -1223,60 +1223,60 @@
   transition: all 0.2s ease;
 }
 
-.admin-container .modal-btn:disabled {
+.modal-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.admin-container .modal-btn-secondary {
+.modal-btn-secondary {
   background: #f0f0f0;
   color: #333;
 }
 
-.admin-container .modal-btn-secondary:hover:not(:disabled) {
+.modal-btn-secondary:hover:not(:disabled) {
   background: #e0e0e0;
 }
 
-.admin-container .modal-btn-danger {
+.modal-btn-danger {
   background: #c53030;
   color: white;
 }
 
-.admin-container .modal-btn-danger:hover:not(:disabled) {
+.modal-btn-danger:hover:not(:disabled) {
   background: #9b2c2c;
 }
 
-.admin-container .modal-btn-primary {
+.modal-btn-primary {
   background: #f7b32b;
   color: #1a1a2e;
 }
 
-.admin-container .modal-btn-primary:hover:not(:disabled) {
+.modal-btn-primary:hover:not(:disabled) {
   background: #e5a320;
 }
 
 /* Modal form styles */
-.admin-container .modal-form {
+.modal-form {
   margin: 16px 0;
 }
 
-.admin-container .modal-form-group {
+.modal-form-group {
   margin-bottom: 16px;
 }
 
-.admin-container .modal-form-group:last-child {
+.modal-form-group:last-child {
   margin-bottom: 0;
 }
 
-.admin-container .modal-form-group label {
+.modal-form-group label {
   display: block;
   font-weight: 500;
   margin-bottom: 6px;
   color: #333;
 }
 
-.admin-container .modal-form-group input,
-.admin-container .modal-form-group select {
+.modal-form-group input,
+.modal-form-group select {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid #e0e0e0;
@@ -1288,7 +1288,7 @@
   transition: all 0.2s ease;
 }
 
-.admin-container .modal-form-group select {
+.modal-form-group select {
   appearance: none;
   -webkit-appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23666' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
@@ -1298,21 +1298,21 @@
   cursor: pointer;
 }
 
-.admin-container .modal-form-group input:hover,
-.admin-container .modal-form-group select:hover {
+.modal-form-group input:hover,
+.modal-form-group select:hover {
   border-color: #ccc;
   background-color: #fff;
 }
 
-.admin-container .modal-form-group input:focus,
-.admin-container .modal-form-group select:focus {
+.modal-form-group input:focus,
+.modal-form-group select:focus {
   outline: none;
   border-color: #f7b32b;
   background-color: #fff;
   box-shadow: 0 0 0 3px rgba(247, 179, 43, 0.15);
 }
 
-.admin-container .modal-form-hint {
+.modal-form-hint {
   font-size: 12px;
   color: #666;
   margin-top: 6px;
@@ -1320,22 +1320,22 @@
 }
 
 /* Modern date and time input styling */
-.admin-container .modal-form-group input[type="date"],
-.admin-container .modal-form-group input[type="time"] {
+.modal-form-group input[type="date"],
+.modal-form-group input[type="time"] {
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
 }
 
-.admin-container .modal-form-group input[type="date"]::-webkit-calendar-picker-indicator,
-.admin-container .modal-form-group input[type="time"]::-webkit-calendar-picker-indicator {
+.modal-form-group input[type="date"]::-webkit-calendar-picker-indicator,
+.modal-form-group input[type="time"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
   opacity: 0.6;
   transition: opacity 0.2s ease;
 }
 
-.admin-container .modal-form-group input[type="date"]:hover::-webkit-calendar-picker-indicator,
-.admin-container .modal-form-group input[type="time"]:hover::-webkit-calendar-picker-indicator {
+.modal-form-group input[type="date"]:hover::-webkit-calendar-picker-indicator,
+.modal-form-group input[type="time"]:hover::-webkit-calendar-picker-indicator {
   opacity: 1;
 }
 
@@ -1351,7 +1351,7 @@
 }
 
 /* Wide modal for multi-column forms */
-.admin-container .modal-content-wide {
+.modal-content-wide {
   max-width: 700px;
 }
 
@@ -1532,7 +1532,7 @@
   }
 }
 
-.admin-container .modal-section-title {
+.modal-section-title {
   font-size: 14px;
   font-weight: 600;
   color: #1a1a2e;
@@ -1541,11 +1541,11 @@
   border-bottom: 1px solid #e0e0e0;
 }
 
-.admin-container .modal-section-title:first-of-type {
+.modal-section-title:first-of-type {
   margin-top: 0;
 }
 
-.admin-container .modal-form-row {
+.modal-form-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
@@ -1553,7 +1553,7 @@
 }
 
 @media (max-width: 600px) {
-  .admin-container .modal-form-row {
+  .modal-form-row {
     grid-template-columns: 1fr;
   }
 }
@@ -1620,11 +1620,11 @@
     margin-left: 0;
   }
 
-  .admin-container .modal-actions {
+  .modal-actions {
     flex-direction: column;
   }
 
-  .admin-container .modal-btn {
+  .modal-btn {
     width: 100%;
   }
 
