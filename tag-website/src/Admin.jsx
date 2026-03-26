@@ -53,7 +53,10 @@ const NAV_STRUCTURE = [
     category: 'Reports',
     icon: '📊',
     items: [
-      { id: 'reports', label: 'Reports' },
+      { id: 'reports-growth', label: 'Booking Growth' },
+      { id: 'reports-occupancy', label: 'Occupancy' },
+      { id: 'reports-routes', label: 'Popular Routes' },
+      { id: 'reports-map', label: 'Location Maps' },
     ]
   },
   {
@@ -3068,9 +3071,9 @@ function Admin() {
 
   // Handle tab selection - also expand the parent category
   const handleTabSelect = (tabId) => {
-    setActiveTab(tabId)
-    // For marketing sub-tabs, also set the marketingSubTab
+    // For marketing sub-tabs, set activeTab to 'marketing' and set marketingSubTab
     if (tabId === 'marketing') {
+      setActiveTab('marketing')
       setMarketingSubTab('subscribers')
     } else if (tabId === 'promotions') {
       setActiveTab('marketing')
@@ -3078,6 +3081,21 @@ function Admin() {
     } else if (tabId === 'sources') {
       setActiveTab('marketing')
       setMarketingSubTab('sources')
+    // For reports sub-tabs, set activeTab to 'reports' and set reportsSubTab
+    } else if (tabId === 'reports-growth') {
+      setActiveTab('reports')
+      setReportsSubTab('growth')
+    } else if (tabId === 'reports-occupancy') {
+      setActiveTab('reports')
+      setReportsSubTab('occupancy')
+    } else if (tabId === 'reports-routes') {
+      setActiveTab('reports')
+      setReportsSubTab('popular')
+    } else if (tabId === 'reports-map') {
+      setActiveTab('reports')
+      setReportsSubTab('map')
+    } else {
+      setActiveTab(tabId)
     }
     // Expand the category containing this tab
     NAV_STRUCTURE.forEach(cat => {
@@ -3089,10 +3107,18 @@ function Admin() {
 
   // Check if a nav item is active
   const isNavItemActive = (itemId) => {
+    // Marketing sub-tabs
     if (itemId === 'marketing' && activeTab === 'marketing' && marketingSubTab === 'subscribers') return true
     if (itemId === 'promotions' && activeTab === 'marketing' && marketingSubTab === 'promotions') return true
     if (itemId === 'sources' && activeTab === 'marketing' && marketingSubTab === 'sources') return true
-    if (itemId !== 'marketing' && itemId !== 'promotions' && itemId !== 'sources') {
+    // Reports sub-tabs
+    if (itemId === 'reports-growth' && activeTab === 'reports' && reportsSubTab === 'growth') return true
+    if (itemId === 'reports-occupancy' && activeTab === 'reports' && reportsSubTab === 'occupancy') return true
+    if (itemId === 'reports-routes' && activeTab === 'reports' && reportsSubTab === 'popular') return true
+    if (itemId === 'reports-map' && activeTab === 'reports' && reportsSubTab === 'map') return true
+    // Standard tabs (exclude marketing and reports sub-tab ids)
+    const subTabIds = ['marketing', 'promotions', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map']
+    if (!subTabIds.includes(itemId)) {
       return activeTab === itemId
     }
     return false
