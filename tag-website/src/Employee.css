@@ -269,7 +269,7 @@
   padding: 20px;
 }
 
-.employee-container .modal-content {
+.modal-content {
   background: #2a2a2a;
   border-radius: 12px;
   padding: 24px;
@@ -279,13 +279,13 @@
   color: #e0e0e0;
 }
 
-.employee-container .modal-content h3 {
+.modal-content h3 {
   margin: 0 0 16px 0;
   font-size: 20px;
   color: #D9FF00;
 }
 
-.employee-container .modal-content p {
+.modal-content p {
   color: #ccc;
   margin: 0 0 12px 0;
 }
