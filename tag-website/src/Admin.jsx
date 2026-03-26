@@ -3213,7 +3213,7 @@ function Admin() {
             {/* Today's Bookings */}
             {todaysBookings.length > 0 && (
               <div className="recent-bookings-container">
-                <h3 className="recent-bookings-title">Today's Bookings</h3>
+                <h3 className="recent-bookings-title">Today's Bookings - {new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'Europe/London' })}</h3>
                 <div className="recent-bookings-grid">
                   {todaysBookings.map((booking) => (
                     <div
