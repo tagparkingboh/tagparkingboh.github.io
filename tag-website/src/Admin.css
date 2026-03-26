@@ -1368,6 +1368,42 @@
   border-bottom: 1px solid #e0e0e0;
 }
 
+/* Override dark booking flow form-group styles for admin modals */
+.admin-container .modal-content .form-group label {
+  color: #555;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.admin-container .modal-content .form-group input,
+.admin-container .modal-content .form-group select,
+.admin-container .modal-content .form-group textarea {
+  background: #fafafa;
+  color: #333;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.admin-container .modal-content .form-group input:focus,
+.admin-container .modal-content .form-group select:focus,
+.admin-container .modal-content .form-group textarea:focus {
+  border-color: #f7b32b;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(247, 179, 43, 0.15);
+}
+
+.admin-container .modal-content .form-group input::placeholder,
+.admin-container .modal-content .form-group textarea::placeholder {
+  color: #999;
+}
+
+.admin-container .modal-content .form-group select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23666' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+}
+
 /* View Return Inspection Button */
 .view-inspection-btn {
   background: #17a2b8 !important;
