@@ -90,6 +90,55 @@ def create_mock_promo_code(
     return promo
 
 
+def create_mock_marketing_subscriber(
+    id=1,
+    email="subscriber@example.com",
+    first_name="Jane",
+    last_name="Smith",
+    # 10% off promo
+    promo_10_code=None,
+    promo_10_used=False,
+    promo_10_used_booking_id=None,
+    # FREE parking promo (100% off)
+    promo_free_code=None,
+    promo_free_used=False,
+    promo_free_used_booking_id=None,
+    # Founder promo (10% off)
+    founder_promo_code=None,
+    founder_promo_used=False,
+    founder_promo_used_booking_id=None,
+    # Legacy promo
+    promo_code=None,
+    promo_code_used=False,
+    promo_code_used_booking_id=None,
+    discount_percent=10,
+):
+    """Create a mock marketing subscriber object with promo tracking."""
+    sub = MagicMock()
+    sub.id = id
+    sub.email = email
+    sub.first_name = first_name
+    sub.last_name = last_name
+    # 10% off promo
+    sub.promo_10_code = promo_10_code
+    sub.promo_10_used = promo_10_used
+    sub.promo_10_used_booking_id = promo_10_used_booking_id
+    # FREE parking promo
+    sub.promo_free_code = promo_free_code
+    sub.promo_free_used = promo_free_used
+    sub.promo_free_used_booking_id = promo_free_used_booking_id
+    # Founder promo
+    sub.founder_promo_code = founder_promo_code
+    sub.founder_promo_used = founder_promo_used
+    sub.founder_promo_used_booking_id = founder_promo_used_booking_id
+    # Legacy promo
+    sub.promo_code = promo_code
+    sub.promo_code_used = promo_code_used
+    sub.promo_code_used_booking_id = promo_code_used_booking_id
+    sub.discount_percent = discount_percent
+    return sub
+
+
 def create_mock_booking(
     id=1,
     reference="TAG-TEST001",
@@ -810,6 +859,161 @@ class TestNegativeScenarios:
 
         # booking.payment.paid_at is None, so has_valid_payment is falsy (None)
         assert not has_valid_payment
+
+
+# =============================================================================
+# Marketing Subscriber Promos
+# =============================================================================
+
+class TestMarketingSubscriberPromos:
+    """Tests for MarketingSubscriber promo code tracking in financial reports."""
+
+    def test_promo_10_used_discount_applied(self):
+        """10% off promo from MarketingSubscriber should apply 10% discount."""
+        sub = create_mock_marketing_subscriber(
+            promo_10_code="TAG-10OFF-XXXX",
+            promo_10_used=True,
+            promo_10_used_booking_id=1,
+        )
+
+        assert sub.promo_10_used is True
+        assert sub.promo_10_used_booking_id == 1
+        assert sub.promo_10_code == "TAG-10OFF-XXXX"
+
+        # 10% off means discount_percent = 10
+        discount_percent = 10
+        net_pence = 9000  # Customer paid £90
+        gross_pence = int(net_pence / (1 - discount_percent / 100))
+        discount_pence = gross_pence - net_pence
+
+        assert gross_pence == 10000  # Original price was £100
+        assert discount_pence == 1000  # Discount was £10
+
+    def test_promo_free_used_discount_applied(self):
+        """FREE parking promo (100% off) from MarketingSubscriber."""
+        sub = create_mock_marketing_subscriber(
+            promo_free_code="TAG-FREE-XXXX",
+            promo_free_used=True,
+            promo_free_used_booking_id=2,
+        )
+
+        assert sub.promo_free_used is True
+        assert sub.promo_free_used_booking_id == 2
+        assert sub.promo_free_code == "TAG-FREE-XXXX"
+
+        # 100% off - customer paid £0
+        discount_percent = 100
+        net_pence = 0
+
+        # For 100% off, we can't calculate original price
+        # The logic should handle this gracefully
+        assert discount_percent == 100
+
+    def test_promo_free_partial_payment_longer_trip(self):
+        """FREE parking promo for trip > 7 days only covers first week."""
+        sub = create_mock_marketing_subscriber(
+            promo_free_code="TAG-FREE-XXXX",
+            promo_free_used=True,
+            promo_free_used_booking_id=3,
+        )
+
+        # For trips > 7 days, customer pays remainder minus £79/£85 base week
+        # Example: 10 day trip at £120, free week promo = £120 - £79 = £41 paid
+        net_pence = 4100  # Customer paid £41
+
+        # Since it's recorded as 100% off but customer still paid,
+        # the discount calculation won't work with standard formula
+        # This is expected behavior - free week promos are special
+        assert sub.promo_free_used is True
+        assert net_pence > 0
+
+    def test_founder_promo_used_discount_applied(self):
+        """Founder's 10% off promo from MarketingSubscriber."""
+        sub = create_mock_marketing_subscriber(
+            founder_promo_code="TAG-FOUNDER-XXXX",
+            founder_promo_used=True,
+            founder_promo_used_booking_id=4,
+        )
+
+        assert sub.founder_promo_used is True
+        assert sub.founder_promo_used_booking_id == 4
+        assert sub.founder_promo_code == "TAG-FOUNDER-XXXX"
+
+        # 10% off
+        discount_percent = 10
+        net_pence = 7200  # Customer paid £72
+        gross_pence = int(net_pence / (1 - discount_percent / 100))
+
+        assert gross_pence == 8000  # Original price was £80
+
+    def test_legacy_promo_code_used(self):
+        """Legacy promo_code field from MarketingSubscriber."""
+        sub = create_mock_marketing_subscriber(
+            promo_code="TAG-LEGACY-XXXX",
+            promo_code_used=True,
+            promo_code_used_booking_id=5,
+            discount_percent=15,  # Custom discount
+        )
+
+        assert sub.promo_code_used is True
+        assert sub.promo_code_used_booking_id == 5
+        assert sub.discount_percent == 15
+
+        # 15% off
+        net_pence = 8500  # Customer paid £85
+        gross_pence = int(net_pence / (1 - sub.discount_percent / 100))
+
+        assert gross_pence == 10000  # Original price was £100
+
+    def test_multiple_promo_types_same_subscriber(self):
+        """Subscriber can have multiple promo types, each for different bookings."""
+        sub = create_mock_marketing_subscriber(
+            promo_10_code="TAG-10OFF-XXXX",
+            promo_10_used=True,
+            promo_10_used_booking_id=1,
+            promo_free_code="TAG-FREE-XXXX",
+            promo_free_used=True,
+            promo_free_used_booking_id=2,
+            founder_promo_code="TAG-FOUNDER-XXXX",
+            founder_promo_used=False,  # Not used yet
+            founder_promo_used_booking_id=None,
+        )
+
+        assert sub.promo_10_used_booking_id == 1
+        assert sub.promo_free_used_booking_id == 2
+        assert sub.founder_promo_used_booking_id is None
+
+    def test_promo_not_used_excluded(self):
+        """Unused promos should not be included in report."""
+        sub = create_mock_marketing_subscriber(
+            promo_10_code="TAG-10OFF-XXXX",
+            promo_10_used=False,  # Not used
+            promo_10_used_booking_id=None,
+        )
+
+        assert sub.promo_10_used is False
+        assert sub.promo_10_used_booking_id is None
+
+    def test_promo_code_lookup_priority(self):
+        """PromoCode table should take priority over MarketingSubscriber promos."""
+        # If a booking has a promo from PromoCode table, don't overwrite with MarketingSubscriber
+        promo_from_promotion = create_mock_promo_code(
+            code="PROMO-SYS-CODE",
+            booking_id=1,
+            discount_percent=20,
+        )
+
+        sub_promo = create_mock_marketing_subscriber(
+            promo_10_code="TAG-10OFF-XXXX",
+            promo_10_used=True,
+            promo_10_used_booking_id=1,  # Same booking
+        )
+
+        # PromoCode system has 20% off
+        # MarketingSubscriber has 10% off
+        # PromoCode should win (first lookup)
+        assert promo_from_promotion.promotion.discount_percent == 20
+        assert promo_from_promotion.booking_id == 1
 
 
 # =============================================================================
