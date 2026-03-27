@@ -212,6 +212,10 @@ class Booking(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     completed_at = Column(DateTime(timezone=True))  # When booking was marked complete
 
+    # Financial overrides (for manual adjustment of gross/discount values)
+    override_gross_pence = Column(Integer, nullable=True)  # Original price before discount
+    override_discount_pence = Column(Integer, nullable=True)  # Discount amount
+
     # Relationships
     customer = relationship("Customer", back_populates="bookings")
     vehicle = relationship("Vehicle", back_populates="bookings")

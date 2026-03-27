@@ -3457,6 +3457,37 @@ async def get_fun_facts(
     return result
 
 
+@app.put("/api/admin/bookings/{booking_id}/financial-override")
+async def update_booking_financial_override(
+    booking_id: int,
+    gross_pence: int = Query(..., description="Original price in pence"),
+    discount_pence: int = Query(..., description="Discount amount in pence"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Update the financial override values for a booking.
+    Used for bookings where gross/discount can't be calculated (e.g. 100% off promos).
+    """
+    from db_models import Booking as DbBookingModel
+
+    booking = db.query(DbBookingModel).filter(DbBookingModel.id == booking_id).first()
+
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    booking.override_gross_pence = gross_pence
+    booking.override_discount_pence = discount_pence
+    db.commit()
+
+    return {
+        "success": True,
+        "booking_id": booking_id,
+        "override_gross_pence": gross_pence,
+        "override_discount_pence": discount_pence,
+    }
+
+
 @app.get("/api/admin/reports/financial")
 async def get_financial_report(
     from_date: str = Query(None, description="Start date DD/MM/YYYY"),
@@ -3670,21 +3701,26 @@ async def get_financial_report(
         discount_percent = promo_info["discount_percent"] if promo_info else 0
 
         # Calculate discount amount and gross (original) price
-        # Gross = Net + Discount
-        # Net = Gross * (1 - discount/100)
-        # Gross = Net / (1 - discount/100)
-        discount_pence = 0
-        gross_pence = net_pence
-        if discount_percent and discount_percent < 100:
-            gross_pence = int(net_pence / (1 - discount_percent / 100))
-            discount_pence = gross_pence - net_pence
-        elif discount_percent == 100:
-            # Free parking - we don't know original price, just mark as 100% off
-            gross_pence = net_pence  # What they paid (could be 0 for free, or partial for >7 days)
-            discount_pence = 0  # Unknown
+        # Use override values if available, otherwise calculate
+        if booking.override_gross_pence is not None:
+            gross_pence = booking.override_gross_pence
+            discount_pence = booking.override_discount_pence or 0
+        else:
+            # Gross = Net + Discount
+            # Net = Gross * (1 - discount/100)
+            # Gross = Net / (1 - discount/100)
+            discount_pence = 0
+            gross_pence = net_pence
+            if discount_percent and discount_percent < 100:
+                gross_pence = int(net_pence / (1 - discount_percent / 100))
+                discount_pence = gross_pence - net_pence
 
         # Final revenue after refunds
         final_revenue_pence = net_pence - refund_pence
+
+        # Flag for bookings that need manual override (has promo but no discount calculated)
+        needs_override = promo_info is not None and discount_pence == 0 and booking.override_gross_pence is None
+        has_override = booking.override_gross_pence is not None
 
         bookings_by_month[month_key].append({
             "id": booking.id,
@@ -3707,6 +3743,8 @@ async def get_financial_report(
             "finalRevenuePence": final_revenue_pence,
             "status": booking.status.value if booking.status else "unknown",
             "paymentStatus": booking.payment.status.value if booking.payment.status else "unknown",
+            "needsOverride": needs_override,
+            "hasOverride": has_override,
         })
 
     # Sort bookings within each month by date ASC

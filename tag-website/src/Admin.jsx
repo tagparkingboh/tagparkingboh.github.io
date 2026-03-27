@@ -364,6 +364,8 @@ function Admin() {
   const [financialPromoFilter, setFinancialPromoFilter] = useState('all')
   const [expandedFinancialMonths, setExpandedFinancialMonths] = useState({})
   const [exportingFinancial, setExportingFinancial] = useState(false)
+  const [editingFinancialBooking, setEditingFinancialBooking] = useState(null) // { id, grossPence, discountPence }
+  const [savingFinancialOverride, setSavingFinancialOverride] = useState(false)
 
   // Marketing Sources report state
   const [marketingSourcesData, setMarketingSourcesData] = useState(null)
@@ -801,6 +803,36 @@ function Admin() {
       console.error('Failed to fetch financial report:', err)
     } finally {
       setLoadingFinancial(false)
+    }
+  }
+
+  const saveFinancialOverride = async (bookingId, grossPounds, discountPounds) => {
+    setSavingFinancialOverride(true)
+    try {
+      const grossPence = Math.round(parseFloat(grossPounds) * 100)
+      const discountPence = Math.round(parseFloat(discountPounds) * 100)
+
+      const response = await fetch(
+        `${API_URL}/api/admin/bookings/${bookingId}/financial-override?gross_pence=${grossPence}&discount_pence=${discountPence}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      )
+
+      if (response.ok) {
+        setEditingFinancialBooking(null)
+        // Refresh the financial report to show updated values
+        await fetchFinancialReport()
+      } else {
+        console.error('Failed to save financial override')
+      }
+    } catch (err) {
+      console.error('Error saving financial override:', err)
+    } finally {
+      setSavingFinancialOverride(false)
     }
   }
 
@@ -7762,33 +7794,85 @@ function Admin() {
                             </div>
                             {expandedFinancialMonths[month.monthKey] && (
                               <div className="financial-month-bookings">
-                                <table className="admin-table financial-table">
+                                <table className="admin-table financial-table financial-table-compact">
                                   <thead>
                                     <tr>
-                                      <th>Date</th>
-                                      <th>Reference</th>
-                                      <th>Customer</th>
-                                      <th>Days</th>
-                                      <th>Gross</th>
-                                      <th>Promo</th>
-                                      <th>Discount</th>
-                                      <th>Paid</th>
-                                      <th>Refund</th>
-                                      <th>Revenue</th>
-                                      <th>Status</th>
+                                      <th style={{ width: '70px' }}>Date</th>
+                                      <th style={{ width: '100px' }}>Ref</th>
+                                      <th style={{ width: '120px' }}>Customer</th>
+                                      <th style={{ width: '40px' }}>Days</th>
+                                      <th style={{ width: '60px' }}>Gross</th>
+                                      <th style={{ width: '100px' }}>Promo</th>
+                                      <th style={{ width: '70px' }}>Discount</th>
+                                      <th style={{ width: '60px' }}>Paid</th>
+                                      <th style={{ width: '60px' }}>Refund</th>
+                                      <th style={{ width: '60px' }}>Revenue</th>
+                                      <th style={{ width: '70px' }}>Status</th>
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {month.bookings.map((booking) => (
-                                      <tr key={booking.id}>
+                                      <tr key={booking.id} className={booking.needsOverride ? 'needs-override' : ''}>
                                         <td>{booking.paidDate}</td>
                                         <td>{booking.reference}</td>
                                         <td>{booking.customerName}</td>
                                         <td>{booking.tripDays || '-'}</td>
-                                        <td>{booking.grossPrice}</td>
-                                        <td>{booking.promoCode || '-'}</td>
+                                        {/* Gross column - editable if needs override */}
+                                        <td>
+                                          {editingFinancialBooking?.id === booking.id ? (
+                                            <input
+                                              type="number"
+                                              step="0.01"
+                                              min="0"
+                                              className="financial-edit-input"
+                                              value={editingFinancialBooking.gross}
+                                              onChange={(e) => setEditingFinancialBooking({
+                                                ...editingFinancialBooking,
+                                                gross: e.target.value
+                                              })}
+                                              placeholder="0.00"
+                                            />
+                                          ) : (
+                                            <>
+                                              {booking.grossPrice}
+                                              {booking.hasOverride && <span className="override-indicator" title="Manual override">*</span>}
+                                            </>
+                                          )}
+                                        </td>
+                                        <td>
+                                          {booking.promoCode || '-'}
+                                          {booking.needsOverride && editingFinancialBooking?.id !== booking.id && (
+                                            <button
+                                              className="edit-btn-inline"
+                                              onClick={() => setEditingFinancialBooking({
+                                                id: booking.id,
+                                                gross: '',
+                                                discount: ''
+                                              })}
+                                              title="Edit financial values"
+                                            >
+                                              ✎
+                                            </button>
+                                          )}
+                                        </td>
+                                        {/* Discount column - editable if in edit mode */}
                                         <td style={{ color: booking.discountAmount ? '#f59e0b' : 'inherit' }}>
-                                          {booking.discountAmount || '-'}
+                                          {editingFinancialBooking?.id === booking.id ? (
+                                            <input
+                                              type="number"
+                                              step="0.01"
+                                              min="0"
+                                              className="financial-edit-input"
+                                              value={editingFinancialBooking.discount}
+                                              onChange={(e) => setEditingFinancialBooking({
+                                                ...editingFinancialBooking,
+                                                discount: e.target.value
+                                              })}
+                                              placeholder="0.00"
+                                            />
+                                          ) : (
+                                            booking.discountAmount || '-'
+                                          )}
                                         </td>
                                         <td>{booking.netPrice}</td>
                                         <td style={{ color: booking.refundAmount ? '#ef4444' : 'inherit' }}>
@@ -7796,9 +7880,33 @@ function Admin() {
                                         </td>
                                         <td style={{ color: '#22c55e' }}>{booking.netRevenue}</td>
                                         <td>
-                                          <span className={`status-badge status-${booking.status}`}>
-                                            {booking.status}
-                                          </span>
+                                          {editingFinancialBooking?.id === booking.id ? (
+                                            <div className="edit-actions">
+                                              <button
+                                                className="save-btn-inline"
+                                                onClick={() => saveFinancialOverride(
+                                                  booking.id,
+                                                  editingFinancialBooking.gross,
+                                                  editingFinancialBooking.discount
+                                                )}
+                                                disabled={savingFinancialOverride || !editingFinancialBooking.gross}
+                                                title="Save"
+                                              >
+                                                {savingFinancialOverride ? '...' : '✓'}
+                                              </button>
+                                              <button
+                                                className="cancel-btn-inline"
+                                                onClick={() => setEditingFinancialBooking(null)}
+                                                title="Cancel"
+                                              >
+                                                ✕
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <span className={`status-badge status-${booking.status}`}>
+                                              {booking.status}
+                                            </span>
+                                          )}
                                         </td>
                                       </tr>
                                     ))}

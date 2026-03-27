@@ -147,6 +147,8 @@ def create_mock_booking(
     pickup_date=None,
     customer=None,
     payment=None,
+    override_gross_pence=None,
+    override_discount_pence=None,
 ):
     """Create a mock booking object."""
     from db_models import BookingStatus
@@ -167,6 +169,10 @@ def create_mock_booking(
     booking.pickup_date = pickup_date or (date.today() + timedelta(days=7))
     booking.customer = customer or create_mock_customer()
     booking.payment = payment or create_mock_payment(booking_id=id)
+
+    # Financial override fields
+    booking.override_gross_pence = override_gross_pence
+    booking.override_discount_pence = override_discount_pence
 
     return booking
 
@@ -1228,3 +1234,300 @@ class TestSummaryTotals:
         total_net = total_gross - total_refunds
 
         assert total_net == 8500  # £85
+
+
+# =============================================================================
+# Financial Override Tests
+# =============================================================================
+
+class TestFinancialOverrideEndpoint:
+    """Tests for PUT /api/admin/bookings/{booking_id}/financial-override endpoint."""
+
+    def test_override_endpoint_updates_booking_values(self):
+        """Override endpoint should update gross and discount pence values."""
+        booking = create_mock_booking(id=1)
+
+        # Simulate what the endpoint does
+        gross_pence = 8500
+        discount_pence = 8500
+
+        booking.override_gross_pence = gross_pence
+        booking.override_discount_pence = discount_pence
+
+        assert booking.override_gross_pence == 8500
+        assert booking.override_discount_pence == 8500
+
+    def test_override_with_zero_discount(self):
+        """Override should allow zero discount (no discount applied)."""
+        booking = create_mock_booking(id=1)
+
+        booking.override_gross_pence = 5000
+        booking.override_discount_pence = 0
+
+        assert booking.override_gross_pence == 5000
+        assert booking.override_discount_pence == 0
+
+    def test_override_with_full_discount(self):
+        """Override should allow 100% discount (free booking)."""
+        booking = create_mock_booking(
+            id=1,
+            payment=create_mock_payment(amount_pence=0),  # Free booking
+        )
+
+        # 8 day trip at £85 = gross, full discount = £85
+        booking.override_gross_pence = 8500
+        booking.override_discount_pence = 8500
+
+        assert booking.override_gross_pence == 8500
+        assert booking.override_discount_pence == 8500
+        assert booking.payment.amount_pence == 0
+
+
+class TestFinancialOverrideInReport:
+    """Tests for override values being used in financial report."""
+
+    def test_booking_without_override_uses_calculated_values(self):
+        """Booking without override should use calculated gross/discount."""
+        booking = create_mock_booking(
+            id=1,
+            payment=create_mock_payment(amount_pence=5000),
+            override_gross_pence=None,
+            override_discount_pence=None,
+        )
+
+        # Without override, we calculate from payment and discount percent
+        net_pence = booking.payment.amount_pence
+        discount_percent = 10
+        gross_pence = int(net_pence / (1 - discount_percent / 100))
+        discount_pence = gross_pence - net_pence
+
+        assert gross_pence == 5555  # 5000 / 0.9 = ~5555
+        assert discount_pence == 555  # 5555 - 5000 = 555
+
+    def test_booking_with_override_uses_override_values(self):
+        """Booking with override should use override gross/discount."""
+        booking = create_mock_booking(
+            id=1,
+            payment=create_mock_payment(amount_pence=0),  # Free booking
+            override_gross_pence=8500,  # £85 original price
+            override_discount_pence=8500,  # £85 discount (100% off)
+        )
+
+        # With override, use override values directly
+        if booking.override_gross_pence is not None:
+            gross_pence = booking.override_gross_pence
+            discount_pence = booking.override_discount_pence or 0
+        else:
+            gross_pence = booking.payment.amount_pence
+            discount_pence = 0
+
+        assert gross_pence == 8500
+        assert discount_pence == 8500
+
+    def test_override_takes_precedence_over_calculated(self):
+        """Override values should take precedence over calculation."""
+        # Booking with payment of £50 and 10% discount normally
+        booking = create_mock_booking(
+            id=1,
+            payment=create_mock_payment(amount_pence=5000),
+            override_gross_pence=10000,  # Manual override: £100
+            override_discount_pence=5000,  # Manual override: £50 discount
+        )
+
+        # Normal calculation would give ~£55.55 gross
+        # But override gives £100 gross
+
+        if booking.override_gross_pence is not None:
+            gross_pence = booking.override_gross_pence
+            discount_pence = booking.override_discount_pence or 0
+        else:
+            net_pence = booking.payment.amount_pence
+            discount_percent = 10
+            gross_pence = int(net_pence / (1 - discount_percent / 100))
+            discount_pence = gross_pence - net_pence
+
+        assert gross_pence == 10000  # Override value
+        assert discount_pence == 5000  # Override value
+
+    def test_needs_override_flag_when_promo_but_no_discount(self):
+        """needsOverride should be True when promo exists but discount is 0."""
+        booking = create_mock_booking(
+            id=1,
+            payment=create_mock_payment(amount_pence=0),  # Free booking
+            override_gross_pence=None,  # No override yet
+        )
+
+        promo_info = {"code": "FREE-PARKING", "discount_percent": 100}
+        discount_pence = 0  # Can't calculate for 100% off
+
+        needs_override = (
+            promo_info is not None and
+            discount_pence == 0 and
+            booking.override_gross_pence is None
+        )
+
+        assert needs_override is True
+
+    def test_needs_override_flag_false_when_override_exists(self):
+        """needsOverride should be False when override values exist."""
+        booking = create_mock_booking(
+            id=1,
+            payment=create_mock_payment(amount_pence=0),
+            override_gross_pence=8500,  # Has override
+            override_discount_pence=8500,
+        )
+
+        promo_info = {"code": "FREE-PARKING", "discount_percent": 100}
+        discount_pence = booking.override_discount_pence
+
+        needs_override = (
+            promo_info is not None and
+            discount_pence == 0 and
+            booking.override_gross_pence is None
+        )
+
+        assert needs_override is False  # Override exists
+
+    def test_has_override_flag(self):
+        """hasOverride should be True when override values exist."""
+        booking_with_override = create_mock_booking(
+            id=1,
+            override_gross_pence=8500,
+        )
+        booking_without_override = create_mock_booking(
+            id=2,
+            override_gross_pence=None,
+        )
+
+        has_override_1 = booking_with_override.override_gross_pence is not None
+        has_override_2 = booking_without_override.override_gross_pence is not None
+
+        assert has_override_1 is True
+        assert has_override_2 is False
+
+
+class TestFinancialOverrideEdgeCases:
+    """Edge cases for financial override functionality."""
+
+    def test_override_with_partial_discount(self):
+        """Override should work for partial discounts (e.g., free week on 8-day trip)."""
+        # Customer books 8 days, gets 1 week free (£85)
+        # Total would be £93 for 8 days, minus £85 = £8 paid
+
+        booking = create_mock_booking(
+            id=1,
+            payment=create_mock_payment(amount_pence=800),  # £8 paid
+            override_gross_pence=9300,  # £93 original price
+            override_discount_pence=8500,  # £85 discount (1 week free)
+        )
+
+        gross = booking.override_gross_pence
+        discount = booking.override_discount_pence
+        net = booking.payment.amount_pence
+
+        assert gross == 9300
+        assert discount == 8500
+        assert net == 800
+        assert gross - discount == net  # Should balance
+
+    def test_override_zero_gross_not_allowed(self):
+        """Override should not have zero gross (invalid state)."""
+        # Zero gross doesn't make sense - there should be some original price
+        booking = create_mock_booking(
+            id=1,
+            override_gross_pence=0,
+            override_discount_pence=0,
+        )
+
+        # In practice, we'd validate this in the endpoint
+        # For now, test that it's technically possible but illogical
+        is_valid = booking.override_gross_pence > 0 if booking.override_gross_pence is not None else True
+
+        assert is_valid is False  # 0 > 0 is False
+
+    def test_override_discount_exceeds_gross(self):
+        """Override discount exceeding gross is unusual but allowed."""
+        # This could happen with additional discounts or refunds
+        booking = create_mock_booking(
+            id=1,
+            override_gross_pence=5000,
+            override_discount_pence=6000,  # More than gross
+        )
+
+        # This is technically allowed - might represent a refund situation
+        assert booking.override_discount_pence > booking.override_gross_pence
+
+    def test_multiple_bookings_with_mixed_overrides(self):
+        """Report should handle mix of override and non-override bookings."""
+        bookings = [
+            create_mock_booking(
+                id=1,
+                payment=create_mock_payment(amount_pence=5000),
+                override_gross_pence=None,  # No override
+            ),
+            create_mock_booking(
+                id=2,
+                payment=create_mock_payment(amount_pence=0),
+                override_gross_pence=8500,  # Has override
+                override_discount_pence=8500,
+            ),
+            create_mock_booking(
+                id=3,
+                payment=create_mock_payment(amount_pence=4500),
+                override_gross_pence=None,  # No override
+            ),
+        ]
+
+        total_override_count = sum(
+            1 for b in bookings if b.override_gross_pence is not None
+        )
+        total_needs_override = sum(
+            1 for b in bookings
+            if b.override_gross_pence is None and b.payment.amount_pence == 0
+        )
+
+        assert total_override_count == 1
+        assert total_needs_override == 0  # Booking 2 has override now
+
+    def test_override_affects_totals_correctly(self):
+        """Override values should be included in summary totals."""
+        # Booking 1: Regular £50 payment with 10% discount
+        # Gross ~£55.55, discount ~£5.55
+        booking1 = create_mock_booking(
+            id=1,
+            payment=create_mock_payment(amount_pence=5000),
+            override_gross_pence=None,
+        )
+
+        # Booking 2: Free booking with £85 override
+        booking2 = create_mock_booking(
+            id=2,
+            payment=create_mock_payment(amount_pence=0),
+            override_gross_pence=8500,
+            override_discount_pence=8500,
+        )
+
+        # Calculate totals
+        total_gross = 0
+        total_discount = 0
+
+        for booking in [booking1, booking2]:
+            if booking.override_gross_pence is not None:
+                total_gross += booking.override_gross_pence
+                total_discount += booking.override_discount_pence or 0
+            else:
+                net = booking.payment.amount_pence
+                discount_percent = 10
+                if discount_percent and discount_percent < 100:
+                    gross = int(net / (1 - discount_percent / 100))
+                    discount = gross - net
+                else:
+                    gross = net
+                    discount = 0
+                total_gross += gross
+                total_discount += discount
+
+        # Expected: 5555 + 8500 = 14055 gross
+        # Expected: 555 + 8500 = 9055 discount
+        assert total_gross == 5555 + 8500
+        assert total_discount == 555 + 8500

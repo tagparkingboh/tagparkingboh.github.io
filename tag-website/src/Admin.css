@@ -5466,3 +5466,105 @@
   padding: 10px 12px;
   vertical-align: middle;
 }
+
+/* Compact financial table */
+.financial-table-compact {
+  table-layout: fixed;
+}
+
+.financial-table-compact th,
+.financial-table-compact td {
+  padding: 6px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Inline edit button */
+.edit-btn-inline {
+  background: #f59e0b;
+  border: none;
+  border-radius: 3px;
+  color: white;
+  cursor: pointer;
+  font-size: 10px;
+  margin-left: 4px;
+  padding: 2px 5px;
+  vertical-align: middle;
+  transition: background 0.2s;
+}
+
+.edit-btn-inline:hover {
+  background: #d97706;
+}
+
+/* Row highlighting for needs override */
+.needs-override {
+  background: #fef3c7 !important;
+}
+
+.needs-override:hover {
+  background: #fde68a !important;
+}
+
+/* Override indicator */
+.override-indicator {
+  color: #059669;
+  font-weight: bold;
+  margin-left: 4px;
+}
+
+/* Financial edit input */
+.financial-edit-input {
+  width: 60px;
+  padding: 2px 4px;
+  font-size: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 3px;
+}
+
+.financial-edit-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+/* Edit actions */
+.edit-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.save-btn-inline {
+  background: #22c55e;
+  border: none;
+  border-radius: 3px;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+
+.save-btn-inline:hover {
+  background: #16a34a;
+}
+
+.save-btn-inline:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.cancel-btn-inline {
+  background: #ef4444;
+  border: none;
+  border-radius: 3px;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+
+.cancel-btn-inline:hover {
+  background: #dc2626;
+}
