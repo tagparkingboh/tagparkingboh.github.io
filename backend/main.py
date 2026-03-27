@@ -3660,9 +3660,9 @@ async def get_financial_report(
 
     if revenue_by_week:
         top_week = max(revenue_by_week.items(), key=lambda x: x[1])
-        # Parse week key to get date range
+        # Parse week key to get date range using ISO calendar
         year, week_num = int(top_week[0][:4]), int(top_week[0][6:])
-        week_start = datetime.strptime(f"{year}-W{week_num}-1", "%Y-W%W-%w").date()
+        week_start = date.fromisocalendar(year, week_num, 1)  # Monday
         week_end = week_start + timedelta(days=6)
         fun_facts["topRevenueWeek"] = {
             "week": f"{week_start.strftime('%d %b')} - {week_end.strftime('%d %b %Y')}",
