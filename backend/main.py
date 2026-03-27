@@ -3522,8 +3522,8 @@ async def get_financial_report(
     elif status_filter == "refunded":
         query = query.filter(Payment.status.in_([PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED]))
     else:
-        # All - include confirmed, completed
-        query = query.filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
+        # All - include confirmed, completed, and cancelled (which may have refunds)
+        query = query.filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.CANCELLED]))
 
     # Date filters (based on payment date)
     if from_date:
@@ -3827,7 +3827,8 @@ async def export_financial_report(
     elif status_filter == "refunded":
         query = query.filter(Payment.status.in_([PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED]))
     else:
-        query = query.filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
+        # All - include confirmed, completed, and cancelled (which may have refunds)
+        query = query.filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.CANCELLED]))
 
     if from_date:
         try:
