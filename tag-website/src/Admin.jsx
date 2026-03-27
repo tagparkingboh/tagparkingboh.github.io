@@ -601,6 +601,7 @@ function Admin() {
 
       if (response.ok) {
         setPromoModalSuccessMessage(editingPromoModal ? 'Promo modal updated!' : 'Promo modal created!')
+        setTimeout(() => setPromoModalSuccessMessage(''), 3000)
         setShowPromoModalForm(false)
         setEditingPromoModal(null)
         setPromoModalForm({
@@ -640,6 +641,7 @@ function Admin() {
       })
       if (response.ok) {
         setPromoModalSuccessMessage('Promo modal deleted!')
+        setTimeout(() => setPromoModalSuccessMessage(''), 3000)
         setShowDeletePromoModal(false)
         setPromoModalToDelete(null)
         fetchPromoModals()
