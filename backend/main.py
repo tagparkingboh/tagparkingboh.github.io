@@ -10925,6 +10925,34 @@ async def delete_promo_modal(
     }
 
 
+@app.patch("/api/admin/promo-modals/{modal_id}/status")
+async def toggle_promo_modal_status(
+    modal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Toggle promo modal status between active and inactive (admin only)."""
+    from db_models import PromoModal, PromoModalStatus
+
+    modal = db.query(PromoModal).filter(PromoModal.id == modal_id).first()
+    if not modal:
+        raise HTTPException(status_code=404, detail="Promo modal not found")
+
+    # Toggle status
+    if modal.status == PromoModalStatus.ACTIVE:
+        modal.status = PromoModalStatus.INACTIVE
+    else:
+        modal.status = PromoModalStatus.ACTIVE
+
+    db.commit()
+    db.refresh(modal)
+
+    return {
+        "success": True,
+        "promoModal": format_promo_modal(modal),
+    }
+
+
 @app.get("/api/promo-modal")
 async def get_active_promo_modal(
     db: Session = Depends(get_db),
