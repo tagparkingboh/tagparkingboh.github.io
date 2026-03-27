@@ -7717,15 +7717,23 @@ function Admin() {
                         </div>
                         <div className="stats-card">
                           <div className="stats-card-value">{financialData.summary?.totalGross || '£0.00'}</div>
-                          <div className="stats-card-label">Total Gross</div>
+                          <div className="stats-card-label">Original Price (Gross)</div>
+                        </div>
+                        <div className="stats-card">
+                          <div className="stats-card-value" style={{ color: '#f59e0b' }}>{financialData.summary?.totalDiscount || '£0.00'}</div>
+                          <div className="stats-card-label">Total Discounts</div>
+                        </div>
+                        <div className="stats-card">
+                          <div className="stats-card-value">{financialData.summary?.totalNet || '£0.00'}</div>
+                          <div className="stats-card-label">Amount Paid (Net)</div>
                         </div>
                         <div className="stats-card">
                           <div className="stats-card-value" style={{ color: '#ef4444' }}>{financialData.summary?.totalRefunds || '£0.00'}</div>
                           <div className="stats-card-label">Total Refunds</div>
                         </div>
                         <div className="stats-card">
-                          <div className="stats-card-value" style={{ color: '#22c55e' }}>{financialData.summary?.totalNet || '£0.00'}</div>
-                          <div className="stats-card-label">Total Net Revenue</div>
+                          <div className="stats-card-value" style={{ color: '#22c55e' }}>{financialData.summary?.totalRevenue || '£0.00'}</div>
+                          <div className="stats-card-label">Final Revenue</div>
                         </div>
                       </div>
                     </div>
@@ -7749,7 +7757,8 @@ function Admin() {
                               <span className="month-label">{month.monthLabel}</span>
                               <span className="month-count">{month.bookingCount} bookings</span>
                               <span className="month-gross">Gross: {month.totalGross}</span>
-                              <span className="month-net">Net: {month.totalNet}</span>
+                              <span className="month-net">Paid: {month.totalNet}</span>
+                              <span className="month-revenue" style={{ color: '#22c55e' }}>Revenue: {month.totalRevenue}</span>
                             </div>
                             {expandedFinancialMonths[month.monthKey] && (
                               <div className="financial-month-bookings">
@@ -7763,8 +7772,9 @@ function Admin() {
                                       <th>Gross</th>
                                       <th>Promo</th>
                                       <th>Discount</th>
+                                      <th>Paid</th>
                                       <th>Refund</th>
-                                      <th>Net</th>
+                                      <th>Revenue</th>
                                       <th>Status</th>
                                     </tr>
                                   </thead>
@@ -7777,7 +7787,10 @@ function Admin() {
                                         <td>{booking.tripDays || '-'}</td>
                                         <td>{booking.grossPrice}</td>
                                         <td>{booking.promoCode || '-'}</td>
-                                        <td>{booking.discountAmount || '-'}</td>
+                                        <td style={{ color: booking.discountAmount ? '#f59e0b' : 'inherit' }}>
+                                          {booking.discountAmount || '-'}
+                                        </td>
+                                        <td>{booking.netPrice}</td>
                                         <td style={{ color: booking.refundAmount ? '#ef4444' : 'inherit' }}>
                                           {booking.refundAmount || '-'}
                                         </td>

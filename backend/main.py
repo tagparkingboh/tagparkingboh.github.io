@@ -3605,9 +3605,9 @@ async def get_financial_report(
         paid_date = booking.payment.paid_at.date()
         month_key = paid_date.strftime("%Y-%m")
 
-        gross_pence = booking.payment.amount_pence or 0
+        # Net = what customer actually paid
+        net_pence = booking.payment.amount_pence or 0
         refund_pence = booking.payment.refund_amount_pence or 0
-        net_pence = gross_pence - refund_pence
 
         # Calculate trip days
         trip_days = None
@@ -3618,18 +3618,22 @@ async def get_financial_report(
         promo_info = promo_codes.get(booking.id)
         discount_percent = promo_info["discount_percent"] if promo_info else 0
 
-        # Calculate original price before discount (if promo was used)
-        original_pence = gross_pence
+        # Calculate discount amount and gross (original) price
+        # Gross = Net + Discount
+        # Net = Gross * (1 - discount/100)
+        # Gross = Net / (1 - discount/100)
         discount_pence = 0
+        gross_pence = net_pence
         if discount_percent and discount_percent < 100:
-            # gross = original * (1 - discount/100)
-            # original = gross / (1 - discount/100)
-            original_pence = int(gross_pence / (1 - discount_percent / 100))
-            discount_pence = original_pence - gross_pence
+            gross_pence = int(net_pence / (1 - discount_percent / 100))
+            discount_pence = gross_pence - net_pence
         elif discount_percent == 100:
-            # Free parking - original price is unknown, just mark as 100% off
-            discount_pence = 0
-            original_pence = 0
+            # Free parking - we don't know original price, just mark as 100% off
+            gross_pence = net_pence  # What they paid (could be 0 for free, or partial for >7 days)
+            discount_pence = 0  # Unknown
+
+        # Final revenue after refunds
+        final_revenue_pence = net_pence - refund_pence
 
         bookings_by_month[month_key].append({
             "id": booking.id,
@@ -3644,10 +3648,12 @@ async def get_financial_report(
             "discountPercent": discount_percent,
             "discountAmount": f"£{discount_pence / 100:.2f}" if discount_pence else None,
             "discountPence": discount_pence,
+            "netPrice": f"£{net_pence / 100:.2f}",
+            "netPence": net_pence,
             "refundAmount": f"£{refund_pence / 100:.2f}" if refund_pence else None,
             "refundPence": refund_pence,
-            "netRevenue": f"£{net_pence / 100:.2f}",
-            "netPence": net_pence,
+            "netRevenue": f"£{final_revenue_pence / 100:.2f}",
+            "finalRevenuePence": final_revenue_pence,
             "status": booking.status.value if booking.status else "unknown",
             "paymentStatus": booking.payment.status.value if booking.payment.status else "unknown",
         })
@@ -3663,22 +3669,30 @@ async def get_financial_report(
     for month_key in months_sorted:
         month_date = datetime.strptime(month_key, "%Y-%m")
         month_bookings = bookings_by_month[month_key]
-        month_total = sum(b["netPence"] for b in month_bookings)
         month_gross = sum(b["grossPence"] for b in month_bookings)
+        month_discount = sum(b["discountPence"] for b in month_bookings)
+        month_net = sum(b["netPence"] for b in month_bookings)
+        month_refunds = sum(b["refundPence"] for b in month_bookings)
+        month_final = sum(b["finalRevenuePence"] for b in month_bookings)
 
         monthly_data.append({
             "monthKey": month_key,
             "monthLabel": month_date.strftime("%B %Y"),
             "bookingCount": len(month_bookings),
             "totalGross": f"£{month_gross / 100:.2f}",
-            "totalNet": f"£{month_total / 100:.2f}",
+            "totalDiscount": f"£{month_discount / 100:.2f}",
+            "totalNet": f"£{month_net / 100:.2f}",
+            "totalRefunds": f"£{month_refunds / 100:.2f}",
+            "totalRevenue": f"£{month_final / 100:.2f}",
             "bookings": month_bookings,
         })
 
-    # Calculate totals
-    total_gross = sum(b.payment.amount_pence or 0 for b in bookings if b.payment)
-    total_refunds = sum(b.payment.refund_amount_pence or 0 for b in bookings if b.payment)
-    total_net = total_gross - total_refunds
+    # Calculate totals from processed bookings
+    total_gross = sum(b["grossPence"] for mb in bookings_by_month.values() for b in mb)
+    total_discount = sum(b["discountPence"] for mb in bookings_by_month.values() for b in mb)
+    total_net = sum(b["netPence"] for mb in bookings_by_month.values() for b in mb)
+    total_refunds = sum(b["refundPence"] for mb in bookings_by_month.values() for b in mb)
+    total_revenue = sum(b["finalRevenuePence"] for mb in bookings_by_month.values() for b in mb)
 
     return {
         "funFacts": fun_facts,
@@ -3686,8 +3700,10 @@ async def get_financial_report(
         "summary": {
             "totalBookings": len(bookings),
             "totalGross": f"£{total_gross / 100:.2f}",
-            "totalRefunds": f"£{total_refunds / 100:.2f}",
+            "totalDiscount": f"£{total_discount / 100:.2f}",
             "totalNet": f"£{total_net / 100:.2f}",
+            "totalRefunds": f"£{total_refunds / 100:.2f}",
+            "totalRevenue": f"£{total_revenue / 100:.2f}",
         }
     }
 
@@ -3778,8 +3794,9 @@ async def export_financial_report(
         "Promo Code",
         "Discount %",
         "Discount Amount",
+        "Net Price",
         "Refund Amount",
-        "Net Revenue",
+        "Final Revenue",
         "Booking Status",
         "Payment Status"
     ])
@@ -3790,9 +3807,9 @@ async def export_financial_report(
             continue
 
         paid_date = booking.payment.paid_at.strftime("%d/%m/%Y")
-        gross_pence = booking.payment.amount_pence or 0
+        # Net = what customer actually paid
+        net_pence = booking.payment.amount_pence or 0
         refund_pence = booking.payment.refund_amount_pence or 0
-        net_pence = gross_pence - refund_pence
 
         trip_days = ""
         if booking.dropoff_date and booking.pickup_date:
@@ -3802,10 +3819,16 @@ async def export_financial_report(
         discount_percent = promo_info["discount_percent"] if promo_info else ""
         promo_code = promo_info["code"] if promo_info else ""
 
+        # Calculate gross (original price) and discount
+        # Gross = Net + Discount
+        gross_pence = net_pence
         discount_pence = 0
         if promo_info and discount_percent and discount_percent < 100:
-            original_pence = int(gross_pence / (1 - discount_percent / 100))
-            discount_pence = original_pence - gross_pence
+            gross_pence = int(net_pence / (1 - discount_percent / 100))
+            discount_pence = gross_pence - net_pence
+
+        # Final revenue after refunds
+        final_revenue_pence = net_pence - refund_pence
 
         customer_name = f"{booking.customer.first_name} {booking.customer.last_name}" if booking.customer else "Unknown"
 
@@ -3818,8 +3841,9 @@ async def export_financial_report(
             promo_code,
             f"{discount_percent}%" if discount_percent else "",
             f"£{discount_pence / 100:.2f}" if discount_pence else "",
-            f"£{refund_pence / 100:.2f}" if refund_pence else "",
             f"£{net_pence / 100:.2f}",
+            f"£{refund_pence / 100:.2f}" if refund_pence else "",
+            f"£{final_revenue_pence / 100:.2f}",
             booking.status.value if booking.status else "",
             booking.payment.status.value if booking.payment.status else ""
         ])
