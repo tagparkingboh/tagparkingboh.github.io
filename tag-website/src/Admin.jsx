@@ -7714,6 +7714,39 @@ function Admin() {
                     <div className="financial-fun-facts">
                       <h3>Revenue Highlights</h3>
                       <div className="stats-summary-cards">
+                        {financialData.funFacts?.revenueToday && (
+                          <div className="stats-card fun-fact-card fun-fact-vertical">
+                            <div className="stats-card-label">Revenue Today</div>
+                            <div className="stats-card-value">{financialData.funFacts.revenueToday.amount}</div>
+                            {financialData.funFacts.revenueToday.vsYesterday && (
+                              <div className="fun-fact-change" style={{ color: financialData.funFacts.revenueToday.vsYesterday.startsWith('+') ? '#22c55e' : '#ef4444' }}>
+                                {financialData.funFacts.revenueToday.vsYesterday} vs yesterday
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {financialData.funFacts?.revenueThisWeek && (
+                          <div className="stats-card fun-fact-card fun-fact-vertical">
+                            <div className="stats-card-label">Revenue This Week</div>
+                            <div className="stats-card-value">{financialData.funFacts.revenueThisWeek.amount}</div>
+                            {financialData.funFacts.revenueThisWeek.vsLastWeek && (
+                              <div className="fun-fact-change" style={{ color: financialData.funFacts.revenueThisWeek.vsLastWeek.startsWith('+') ? '#22c55e' : '#ef4444' }}>
+                                {financialData.funFacts.revenueThisWeek.vsLastWeek} vs last week
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {financialData.funFacts?.revenueThisMonth && (
+                          <div className="stats-card fun-fact-card fun-fact-vertical">
+                            <div className="stats-card-label">Revenue This Month</div>
+                            <div className="stats-card-value">{financialData.funFacts.revenueThisMonth.amount}</div>
+                            {financialData.funFacts.revenueThisMonth.vsLastMonth && (
+                              <div className="fun-fact-change" style={{ color: financialData.funFacts.revenueThisMonth.vsLastMonth.startsWith('+') ? '#22c55e' : '#ef4444' }}>
+                                {financialData.funFacts.revenueThisMonth.vsLastMonth} vs last month
+                              </div>
+                            )}
+                          </div>
+                        )}
                         {financialData.funFacts?.topRevenueDay && (
                           <div className="stats-card fun-fact-card fun-fact-vertical">
                             <div className="stats-card-label">Top Revenue Day</div>
@@ -7726,11 +7759,6 @@ function Admin() {
                             <div className="stats-card-label">Top Revenue Week</div>
                             <div className="stats-card-value">{financialData.funFacts.topRevenueWeek.amount}</div>
                             <div className="fun-fact-detail">{financialData.funFacts.topRevenueWeek.week}</div>
-                            {financialData.funFacts.topRevenueWeek.vsLastWeek && (
-                              <div className="fun-fact-change" style={{ color: financialData.funFacts.topRevenueWeek.vsLastWeek.startsWith('+') ? '#22c55e' : '#ef4444' }}>
-                                {financialData.funFacts.topRevenueWeek.vsLastWeek} vs last week
-                              </div>
-                            )}
                           </div>
                         )}
                         {financialData.funFacts?.topRevenueMonth && (
@@ -7738,11 +7766,6 @@ function Admin() {
                             <div className="stats-card-label">Top Revenue Month</div>
                             <div className="stats-card-value">{financialData.funFacts.topRevenueMonth.amount}</div>
                             <div className="fun-fact-detail">{financialData.funFacts.topRevenueMonth.month}</div>
-                            {financialData.funFacts.topRevenueMonth.vsLastMonth && (
-                              <div className="fun-fact-change" style={{ color: financialData.funFacts.topRevenueMonth.vsLastMonth.startsWith('+') ? '#22c55e' : '#ef4444' }}>
-                                {financialData.funFacts.topRevenueMonth.vsLastMonth} vs last month
-                              </div>
-                            )}
                           </div>
                         )}
                       </div>

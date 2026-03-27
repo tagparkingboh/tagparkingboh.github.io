@@ -3648,68 +3648,97 @@ async def get_financial_report(
         "topRevenueDay": None,
         "topRevenueWeek": None,
         "topRevenueMonth": None,
+        "revenueToday": None,
+        "revenueThisWeek": None,
+        "revenueThisMonth": None,
     }
 
+    # Get current date info
+    today = date.today()
+    today_iso = today.isocalendar()
+    current_week_key = f"{today_iso[0]}-W{today_iso[1]:02d}"
+    current_month_key = today.strftime("%Y-%m")
+
+    # Top Revenue Day (no % change)
     if revenue_by_day:
         top_day = max(revenue_by_day.items(), key=lambda x: x[1])
         fun_facts["topRevenueDay"] = {
             "date": top_day[0].strftime("%a %d %b %Y"),
             "amount": f"£{top_day[1] / 100:.2f}",
-            "bookings": sum(1 for b in bookings if b.payment and b.payment.paid_at and b.payment.paid_at.date() == top_day[0])
         }
 
+    # Top Revenue Week (no % change)
     if revenue_by_week:
         top_week = max(revenue_by_week.items(), key=lambda x: x[1])
-        # Parse week key to get date range using ISO calendar
         year, week_num = int(top_week[0][:4]), int(top_week[0][6:])
-        week_start = date.fromisocalendar(year, week_num, 1)  # Monday
+        week_start = date.fromisocalendar(year, week_num, 1)
         week_end = week_start + timedelta(days=6)
-
-        # Calculate previous week for comparison
-        prev_week_num = week_num - 1
-        prev_year = year
-        if prev_week_num < 1:
-            prev_year -= 1
-            prev_week_num = date(prev_year, 12, 28).isocalendar()[1]  # Last week of prev year
-        prev_week_key = f"{prev_year}-W{prev_week_num:02d}"
-        prev_week_revenue = revenue_by_week.get(prev_week_key, 0)
-
-        # Calculate percentage change
-        week_change = None
-        if prev_week_revenue > 0:
-            change_pct = ((top_week[1] - prev_week_revenue) / prev_week_revenue) * 100
-            week_change = f"+{change_pct:.0f}%" if change_pct >= 0 else f"{change_pct:.0f}%"
-
         fun_facts["topRevenueWeek"] = {
             "week": f"{week_start.strftime('%d %b')} - {week_end.strftime('%d %b %Y')}",
             "amount": f"£{top_week[1] / 100:.2f}",
-            "vsLastWeek": week_change,
-            "lastWeekAmount": f"£{prev_week_revenue / 100:.2f}" if prev_week_revenue > 0 else None,
         }
 
+    # Top Revenue Month (no % change)
     if revenue_by_month:
         top_month = max(revenue_by_month.items(), key=lambda x: x[1])
         month_date = datetime.strptime(top_month[0], "%Y-%m")
-
-        # Calculate previous month for comparison
-        if month_date.month == 1:
-            prev_month_key = f"{month_date.year - 1}-12"
-        else:
-            prev_month_key = f"{month_date.year}-{month_date.month - 1:02d}"
-        prev_month_revenue = revenue_by_month.get(prev_month_key, 0)
-
-        # Calculate percentage change
-        month_change = None
-        if prev_month_revenue > 0:
-            change_pct = ((top_month[1] - prev_month_revenue) / prev_month_revenue) * 100
-            month_change = f"+{change_pct:.0f}%" if change_pct >= 0 else f"{change_pct:.0f}%"
-
         fun_facts["topRevenueMonth"] = {
             "month": month_date.strftime("%B %Y"),
             "amount": f"£{top_month[1] / 100:.2f}",
-            "vsLastMonth": month_change,
-            "lastMonthAmount": f"£{prev_month_revenue / 100:.2f}" if prev_month_revenue > 0 else None,
         }
+
+    # Revenue Today with % change vs yesterday
+    today_revenue = revenue_by_day.get(today, 0)
+    yesterday = today - timedelta(days=1)
+    yesterday_revenue = revenue_by_day.get(yesterday, 0)
+    day_change = None
+    if yesterday_revenue > 0:
+        change_pct = ((today_revenue - yesterday_revenue) / yesterday_revenue) * 100
+        day_change = f"+{change_pct:.0f}%" if change_pct >= 0 else f"{change_pct:.0f}%"
+    elif today_revenue > 0:
+        day_change = "+100%"
+    fun_facts["revenueToday"] = {
+        "amount": f"£{today_revenue / 100:.2f}",
+        "vsYesterday": day_change,
+    }
+
+    # Revenue This Week with % change vs last week
+    this_week_revenue = revenue_by_week.get(current_week_key, 0)
+    prev_week_num = today_iso[1] - 1
+    prev_year = today_iso[0]
+    if prev_week_num < 1:
+        prev_year -= 1
+        prev_week_num = date(prev_year, 12, 28).isocalendar()[1]
+    prev_week_key = f"{prev_year}-W{prev_week_num:02d}"
+    last_week_revenue = revenue_by_week.get(prev_week_key, 0)
+    week_change = None
+    if last_week_revenue > 0:
+        change_pct = ((this_week_revenue - last_week_revenue) / last_week_revenue) * 100
+        week_change = f"+{change_pct:.0f}%" if change_pct >= 0 else f"{change_pct:.0f}%"
+    elif this_week_revenue > 0:
+        week_change = "+100%"
+    fun_facts["revenueThisWeek"] = {
+        "amount": f"£{this_week_revenue / 100:.2f}",
+        "vsLastWeek": week_change,
+    }
+
+    # Revenue This Month with % change vs last month
+    this_month_revenue = revenue_by_month.get(current_month_key, 0)
+    if today.month == 1:
+        prev_month_key = f"{today.year - 1}-12"
+    else:
+        prev_month_key = f"{today.year}-{today.month - 1:02d}"
+    last_month_revenue = revenue_by_month.get(prev_month_key, 0)
+    month_change = None
+    if last_month_revenue > 0:
+        change_pct = ((this_month_revenue - last_month_revenue) / last_month_revenue) * 100
+        month_change = f"+{change_pct:.0f}%" if change_pct >= 0 else f"{change_pct:.0f}%"
+    elif this_month_revenue > 0:
+        month_change = "+100%"
+    fun_facts["revenueThisMonth"] = {
+        "amount": f"£{this_month_revenue / 100:.2f}",
+        "vsLastMonth": month_change,
+    }
 
     # Build bookings list with financial details, grouped by month
     bookings_by_month = defaultdict(list)
