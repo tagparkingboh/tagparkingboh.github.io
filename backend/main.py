@@ -3835,9 +3835,60 @@ async def get_financial_report(
     total_refunds = sum(b["refundPence"] for mb in bookings_by_month.values() for b in mb)
     total_revenue = sum(b["finalRevenuePence"] for mb in bookings_by_month.values() for b in mb)
 
+    # Build chart data for daily, weekly, monthly, and cumulative revenue
+    # Daily chart data (sorted by date ASC)
+    daily_chart = []
+    for day_date in sorted(revenue_by_day.keys()):
+        daily_chart.append({
+            "date": day_date.isoformat(),
+            "revenue": revenue_by_day[day_date],
+            "revenuePounds": round(revenue_by_day[day_date] / 100, 2),
+        })
+
+    # Weekly chart data (sorted by week ASC)
+    weekly_chart = []
+    for week_key in sorted(revenue_by_week.keys()):
+        year, week_num = int(week_key[:4]), int(week_key[6:])
+        week_start = date.fromisocalendar(year, week_num, 1)
+        week_end = week_start + timedelta(days=6)
+        weekly_chart.append({
+            "week": week_key,
+            "weekLabel": f"{week_start.strftime('%d %b')} - {week_end.strftime('%d %b')}",
+            "revenue": revenue_by_week[week_key],
+            "revenuePounds": round(revenue_by_week[week_key] / 100, 2),
+        })
+
+    # Monthly chart data (sorted by month ASC)
+    monthly_chart = []
+    for month_key in sorted(revenue_by_month.keys()):
+        month_date = datetime.strptime(month_key, "%Y-%m")
+        monthly_chart.append({
+            "month": month_key,
+            "monthLabel": month_date.strftime("%b %Y"),
+            "revenue": revenue_by_month[month_key],
+            "revenuePounds": round(revenue_by_month[month_key] / 100, 2),
+        })
+
+    # Cumulative chart data (daily cumulative total)
+    cumulative_chart = []
+    running_total = 0
+    for day_date in sorted(revenue_by_day.keys()):
+        running_total += revenue_by_day[day_date]
+        cumulative_chart.append({
+            "date": day_date.isoformat(),
+            "total": running_total,
+            "totalPounds": round(running_total / 100, 2),
+        })
+
     return {
         "funFacts": fun_facts,
         "monthlyData": monthly_data,
+        "chartData": {
+            "daily": daily_chart,
+            "weekly": weekly_chart,
+            "monthly": monthly_chart,
+            "cumulative": cumulative_chart,
+        },
         "summary": {
             "totalBookings": len(bookings),
             "totalGross": f"£{total_gross / 100:.2f}",

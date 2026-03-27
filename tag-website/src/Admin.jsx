@@ -363,6 +363,9 @@ function Admin() {
   const [financialStatusFilter, setFinancialStatusFilter] = useState('all')
   const [financialPromoFilter, setFinancialPromoFilter] = useState('all')
   const [expandedFinancialMonths, setExpandedFinancialMonths] = useState({})
+  const [revenueChartType, setRevenueChartType] = useState('monthly') // 'daily', 'weekly', 'monthly', 'cumulative'
+  const [revenueWeeklyPageIndex, setRevenueWeeklyPageIndex] = useState(0) // For weekly navigation
+  const [expandedRevenueDailyMonths, setExpandedRevenueDailyMonths] = useState({}) // For daily collapsible months
   const [exportingFinancial, setExportingFinancial] = useState(false)
   const [editingFinancialBooking, setEditingFinancialBooking] = useState(null) // { id, grossPence, discountPence }
   const [savingFinancialOverride, setSavingFinancialOverride] = useState(false)
@@ -7801,6 +7804,204 @@ function Admin() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Revenue Chart */}
+                    {financialData.chartData && (
+                      <div className="booking-chart revenue-chart-section">
+                        <div className="chart-controls">
+                          <label>View:</label>
+                          <select value={revenueChartType} onChange={e => setRevenueChartType(e.target.value)}>
+                            <option value="monthly">Monthly</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="daily">Daily</option>
+                            <option value="cumulative">Cumulative Growth</option>
+                          </select>
+                        </div>
+
+                        <h3>
+                          {revenueChartType === 'monthly' && 'Revenue by Month'}
+                          {revenueChartType === 'weekly' && 'Revenue by Week'}
+                          {revenueChartType === 'daily' && 'Revenue by Day'}
+                          {revenueChartType === 'cumulative' && 'Cumulative Revenue Growth'}
+                        </h3>
+
+                        <div className="chart-container">
+                          {revenueChartType === 'cumulative' ? (
+                            <div className="line-chart">
+                              {financialData.chartData.cumulative?.length > 0 && (
+                                <>
+                                  <div className="chart-y-axis">
+                                    <span>£{Math.round(Math.max(...financialData.chartData.cumulative.map(d => d.totalPounds)))}</span>
+                                    <span>£{Math.round(Math.max(...financialData.chartData.cumulative.map(d => d.totalPounds)) / 2)}</span>
+                                    <span>£0</span>
+                                  </div>
+                                  <div className="chart-area">
+                                    <svg viewBox={`0 0 ${Math.min(financialData.chartData.cumulative.length * 30, 1200)} 200`} preserveAspectRatio="none">
+                                      <defs>
+                                        <linearGradient id="revenueLineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                          <stop offset="0%" stopColor="#22c55e" stopOpacity="0.3" />
+                                          <stop offset="100%" stopColor="#22c55e" stopOpacity="0.05" />
+                                        </linearGradient>
+                                      </defs>
+                                      {(() => {
+                                        const data = financialData.chartData.cumulative
+                                        const maxVal = Math.max(...data.map(d => d.totalPounds))
+                                        const width = Math.min(data.length * 30, 1200)
+                                        const points = data.map((d, i) => {
+                                          const x = (i / (data.length - 1)) * width
+                                          const y = 200 - ((d.totalPounds / maxVal) * 180)
+                                          return `${x},${y}`
+                                        }).join(' ')
+                                        const areaPoints = `0,200 ${points} ${width},200`
+                                        return (
+                                          <>
+                                            <polygon points={areaPoints} fill="url(#revenueLineGradient)" />
+                                            <polyline points={points} fill="none" stroke="#22c55e" strokeWidth="2" />
+                                          </>
+                                        )
+                                      })()}
+                                    </svg>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ) : revenueChartType === 'weekly' ? (
+                            <div className="weekly-chart-container">
+                              {(() => {
+                                const data = financialData.chartData.weekly || []
+                                const weeksPerPage = 8
+                                const totalPages = Math.ceil(data.length / weeksPerPage)
+                                const startIdx = Math.max(0, data.length - weeksPerPage - (revenueWeeklyPageIndex * weeksPerPage))
+                                const endIdx = Math.min(data.length, startIdx + weeksPerPage)
+                                const displayData = data.slice(startIdx, endIdx)
+                                const maxRevenue = Math.max(...data.map(d => d.revenuePounds), 1)
+
+                                return (
+                                  <>
+                                    {totalPages > 1 && (
+                                      <div className="weekly-pagination">
+                                        <button
+                                          onClick={() => setRevenueWeeklyPageIndex(i => Math.min(i + 1, totalPages - 1))}
+                                          disabled={revenueWeeklyPageIndex >= totalPages - 1}
+                                        >
+                                          ← Older
+                                        </button>
+                                        <span>Page {revenueWeeklyPageIndex + 1} of {totalPages}</span>
+                                        <button
+                                          onClick={() => setRevenueWeeklyPageIndex(i => Math.max(i - 1, 0))}
+                                          disabled={revenueWeeklyPageIndex <= 0}
+                                        >
+                                          Newer →
+                                        </button>
+                                      </div>
+                                    )}
+                                    <div className="stacked-bar-chart revenue-bar-chart">
+                                      {displayData.map((item, idx) => (
+                                        <div key={idx} className="bar-column">
+                                          <div
+                                            className="bar-segment revenue-bar"
+                                            style={{
+                                              height: `${(item.revenuePounds / maxRevenue) * 100}%`,
+                                              backgroundColor: '#22c55e'
+                                            }}
+                                            title={`£${item.revenuePounds.toFixed(2)}`}
+                                          />
+                                          <div className="bar-label">{item.weekLabel?.split(' - ')[0] || item.week}</div>
+                                          <div className="bar-total">£{item.revenuePounds.toFixed(0)}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </>
+                                )
+                              })()}
+                            </div>
+                          ) : revenueChartType === 'daily' ? (
+                            <div className="daily-chart-container">
+                              {(() => {
+                                const data = financialData.chartData.daily || []
+                                const monthlyGroups = {}
+                                data.forEach(item => {
+                                  const monthKey = item.date?.slice(0, 7)
+                                  if (monthKey) {
+                                    if (!monthlyGroups[monthKey]) monthlyGroups[monthKey] = []
+                                    monthlyGroups[monthKey].push(item)
+                                  }
+                                })
+                                const months = Object.keys(monthlyGroups).sort().reverse()
+                                const maxRevenue = Math.max(...data.map(d => d.revenuePounds), 1)
+
+                                return months.map(monthKey => {
+                                  const monthItems = monthlyGroups[monthKey]
+                                  const monthDate = new Date(monthKey + '-01')
+                                  const monthLabel = monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+                                  const isExpanded = expandedRevenueDailyMonths[monthKey] !== false
+                                  const monthTotal = monthItems.reduce((sum, d) => sum + d.revenuePounds, 0)
+
+                                  return (
+                                    <div key={monthKey} className="daily-month-group">
+                                      <div
+                                        className="daily-month-header"
+                                        onClick={() => setExpandedRevenueDailyMonths(prev => ({
+                                          ...prev,
+                                          [monthKey]: !isExpanded
+                                        }))}
+                                      >
+                                        <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                                        <span className="month-label">{monthLabel}</span>
+                                        <span className="month-total">£{monthTotal.toFixed(2)}</span>
+                                      </div>
+                                      {isExpanded && (
+                                        <div className="stacked-bar-chart daily-bar-chart revenue-bar-chart">
+                                          {monthItems.map((item, idx) => {
+                                            const dayDate = new Date(item.date)
+                                            const dayLabel = dayDate.getDate()
+                                            return (
+                                              <div key={idx} className="bar-column">
+                                                <div
+                                                  className="bar-segment revenue-bar"
+                                                  style={{
+                                                    height: `${(item.revenuePounds / maxRevenue) * 100}%`,
+                                                    backgroundColor: '#22c55e'
+                                                  }}
+                                                  title={`£${item.revenuePounds.toFixed(2)}`}
+                                                />
+                                                <div className="bar-label">{dayLabel}</div>
+                                                <div className="bar-total">£{item.revenuePounds.toFixed(0)}</div>
+                                              </div>
+                                            )
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })
+                              })()}
+                            </div>
+                          ) : (
+                            <div className="stacked-bar-chart revenue-bar-chart">
+                              {(() => {
+                                const data = financialData.chartData.monthly || []
+                                const maxRevenue = Math.max(...data.map(d => d.revenuePounds), 1)
+                                return data.map((item, idx) => (
+                                  <div key={idx} className="bar-column">
+                                    <div
+                                      className="bar-segment revenue-bar"
+                                      style={{
+                                        height: `${(item.revenuePounds / maxRevenue) * 100}%`,
+                                        backgroundColor: '#22c55e'
+                                      }}
+                                      title={`£${item.revenuePounds.toFixed(2)}`}
+                                    />
+                                    <div className="bar-label">{item.monthLabel}</div>
+                                    <div className="bar-total">£{item.revenuePounds.toFixed(0)}</div>
+                                  </div>
+                                ))
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Monthly Breakdown */}
                     <div className="financial-monthly-breakdown">
