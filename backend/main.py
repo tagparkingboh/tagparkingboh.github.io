@@ -3457,6 +3457,383 @@ async def get_fun_facts(
     return result
 
 
+@app.get("/api/admin/reports/financial")
+async def get_financial_report(
+    from_date: str = Query(None, description="Start date DD/MM/YYYY"),
+    to_date: str = Query(None, description="End date DD/MM/YYYY"),
+    status_filter: str = Query("all", description="Filter by status: all, confirmed, completed, refunded"),
+    promo_filter: str = Query("all", description="Filter by promo usage: all, yes, no"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get financial report data for the admin dashboard.
+
+    Returns:
+    - Revenue fun facts (most revenue day/week/month)
+    - Bookings with financial details grouped by month
+    """
+    from db_models import Booking, BookingStatus, Payment, PaymentStatus, PromoCode
+    from collections import defaultdict
+    from datetime import datetime, timedelta
+    import calendar
+
+    # Build query for bookings with successful payments
+    query = db.query(Booking).join(Payment).filter(
+        Payment.status.in_([PaymentStatus.SUCCEEDED, PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED])
+    )
+
+    # Status filter
+    if status_filter == "confirmed":
+        query = query.filter(Booking.status == BookingStatus.CONFIRMED)
+    elif status_filter == "completed":
+        query = query.filter(Booking.status == BookingStatus.COMPLETED)
+    elif status_filter == "refunded":
+        query = query.filter(Payment.status.in_([PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED]))
+    else:
+        # All - include confirmed, completed
+        query = query.filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
+
+    # Date filters (based on payment date)
+    if from_date:
+        try:
+            from_dt = datetime.strptime(from_date, "%d/%m/%Y")
+            query = query.filter(Payment.paid_at >= from_dt)
+        except ValueError:
+            pass
+
+    if to_date:
+        try:
+            to_dt = datetime.strptime(to_date, "%d/%m/%Y")
+            # Include the entire end date
+            to_dt = to_dt.replace(hour=23, minute=59, second=59)
+            query = query.filter(Payment.paid_at <= to_dt)
+        except ValueError:
+            pass
+
+    bookings = query.all()
+
+    # Get promo codes used by these bookings
+    booking_ids = [b.id for b in bookings]
+    promo_codes = {}
+    if booking_ids:
+        promos = db.query(PromoCode).filter(
+            PromoCode.booking_id.in_(booking_ids),
+            PromoCode.is_used == True
+        ).all()
+        for promo in promos:
+            promo_codes[promo.booking_id] = {
+                "code": promo.code,
+                "discount_percent": promo.discount_percent or (promo.promotion.discount_percent if promo.promotion else 0)
+            }
+
+    # Filter by promo usage if requested
+    if promo_filter == "yes":
+        bookings = [b for b in bookings if b.id in promo_codes]
+    elif promo_filter == "no":
+        bookings = [b for b in bookings if b.id not in promo_codes]
+
+    # Calculate revenue fun facts
+    revenue_by_day = defaultdict(int)
+    revenue_by_week = defaultdict(int)
+    revenue_by_month = defaultdict(int)
+
+    for booking in bookings:
+        if booking.payment and booking.payment.paid_at and booking.payment.amount_pence:
+            paid_date = booking.payment.paid_at.date()
+            amount = booking.payment.amount_pence
+
+            # Subtract refunds for net revenue
+            if booking.payment.refund_amount_pence:
+                amount -= booking.payment.refund_amount_pence
+
+            revenue_by_day[paid_date] += amount
+
+            # Week (ISO week)
+            year, week, _ = paid_date.isocalendar()
+            week_key = f"{year}-W{week:02d}"
+            revenue_by_week[week_key] += amount
+
+            # Month
+            month_key = paid_date.strftime("%Y-%m")
+            revenue_by_month[month_key] += amount
+
+    # Find top revenue periods
+    fun_facts = {
+        "topRevenueDay": None,
+        "topRevenueWeek": None,
+        "topRevenueMonth": None,
+    }
+
+    if revenue_by_day:
+        top_day = max(revenue_by_day.items(), key=lambda x: x[1])
+        fun_facts["topRevenueDay"] = {
+            "date": top_day[0].strftime("%a %d %b %Y"),
+            "amount": f"£{top_day[1] / 100:.2f}",
+            "bookings": sum(1 for b in bookings if b.payment and b.payment.paid_at and b.payment.paid_at.date() == top_day[0])
+        }
+
+    if revenue_by_week:
+        top_week = max(revenue_by_week.items(), key=lambda x: x[1])
+        # Parse week key to get date range
+        year, week_num = int(top_week[0][:4]), int(top_week[0][6:])
+        week_start = datetime.strptime(f"{year}-W{week_num}-1", "%Y-W%W-%w").date()
+        week_end = week_start + timedelta(days=6)
+        fun_facts["topRevenueWeek"] = {
+            "week": f"{week_start.strftime('%d %b')} - {week_end.strftime('%d %b %Y')}",
+            "amount": f"£{top_week[1] / 100:.2f}",
+        }
+
+    if revenue_by_month:
+        top_month = max(revenue_by_month.items(), key=lambda x: x[1])
+        month_date = datetime.strptime(top_month[0], "%Y-%m")
+        fun_facts["topRevenueMonth"] = {
+            "month": month_date.strftime("%B %Y"),
+            "amount": f"£{top_month[1] / 100:.2f}",
+        }
+
+    # Build bookings list with financial details, grouped by month
+    bookings_by_month = defaultdict(list)
+
+    for booking in bookings:
+        if not booking.payment or not booking.payment.paid_at:
+            continue
+
+        paid_date = booking.payment.paid_at.date()
+        month_key = paid_date.strftime("%Y-%m")
+
+        gross_pence = booking.payment.amount_pence or 0
+        refund_pence = booking.payment.refund_amount_pence or 0
+        net_pence = gross_pence - refund_pence
+
+        # Calculate trip days
+        trip_days = None
+        if booking.dropoff_date and booking.pickup_date:
+            trip_days = (booking.pickup_date - booking.dropoff_date).days
+
+        # Get promo info
+        promo_info = promo_codes.get(booking.id)
+        discount_percent = promo_info["discount_percent"] if promo_info else 0
+
+        # Calculate original price before discount (if promo was used)
+        original_pence = gross_pence
+        discount_pence = 0
+        if discount_percent and discount_percent < 100:
+            # gross = original * (1 - discount/100)
+            # original = gross / (1 - discount/100)
+            original_pence = int(gross_pence / (1 - discount_percent / 100))
+            discount_pence = original_pence - gross_pence
+        elif discount_percent == 100:
+            # Free parking - original price is unknown, just mark as 100% off
+            discount_pence = 0
+            original_pence = 0
+
+        bookings_by_month[month_key].append({
+            "id": booking.id,
+            "reference": booking.reference,
+            "paidDate": paid_date.strftime("%d/%m/%Y"),
+            "paidDateSort": paid_date.isoformat(),
+            "customerName": f"{booking.customer.first_name} {booking.customer.last_name}" if booking.customer else "Unknown",
+            "tripDays": trip_days,
+            "grossPrice": f"£{gross_pence / 100:.2f}",
+            "grossPence": gross_pence,
+            "promoCode": promo_info["code"] if promo_info else None,
+            "discountPercent": discount_percent,
+            "discountAmount": f"£{discount_pence / 100:.2f}" if discount_pence else None,
+            "discountPence": discount_pence,
+            "refundAmount": f"£{refund_pence / 100:.2f}" if refund_pence else None,
+            "refundPence": refund_pence,
+            "netRevenue": f"£{net_pence / 100:.2f}",
+            "netPence": net_pence,
+            "status": booking.status.value if booking.status else "unknown",
+            "paymentStatus": booking.payment.status.value if booking.payment.status else "unknown",
+        })
+
+    # Sort bookings within each month by date ASC
+    for month_key in bookings_by_month:
+        bookings_by_month[month_key].sort(key=lambda x: x["paidDateSort"])
+
+    # Convert to list sorted by month DESC
+    months_sorted = sorted(bookings_by_month.keys(), reverse=True)
+    monthly_data = []
+
+    for month_key in months_sorted:
+        month_date = datetime.strptime(month_key, "%Y-%m")
+        month_bookings = bookings_by_month[month_key]
+        month_total = sum(b["netPence"] for b in month_bookings)
+        month_gross = sum(b["grossPence"] for b in month_bookings)
+
+        monthly_data.append({
+            "monthKey": month_key,
+            "monthLabel": month_date.strftime("%B %Y"),
+            "bookingCount": len(month_bookings),
+            "totalGross": f"£{month_gross / 100:.2f}",
+            "totalNet": f"£{month_total / 100:.2f}",
+            "bookings": month_bookings,
+        })
+
+    # Calculate totals
+    total_gross = sum(b.payment.amount_pence or 0 for b in bookings if b.payment)
+    total_refunds = sum(b.payment.refund_amount_pence or 0 for b in bookings if b.payment)
+    total_net = total_gross - total_refunds
+
+    return {
+        "funFacts": fun_facts,
+        "monthlyData": monthly_data,
+        "summary": {
+            "totalBookings": len(bookings),
+            "totalGross": f"£{total_gross / 100:.2f}",
+            "totalRefunds": f"£{total_refunds / 100:.2f}",
+            "totalNet": f"£{total_net / 100:.2f}",
+        }
+    }
+
+
+@app.get("/api/admin/reports/financial/export")
+async def export_financial_report(
+    from_date: str = Query(None, description="Start date DD/MM/YYYY"),
+    to_date: str = Query(None, description="End date DD/MM/YYYY"),
+    status_filter: str = Query("all", description="Filter by status: all, confirmed, completed, refunded"),
+    promo_filter: str = Query("all", description="Filter by promo usage: all, yes, no"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Export financial report as CSV.
+    """
+    from db_models import Booking, BookingStatus, Payment, PaymentStatus, PromoCode
+    from fastapi.responses import StreamingResponse
+    import csv
+    import io
+    from datetime import datetime
+
+    # Build query (same as financial report)
+    query = db.query(Booking).join(Payment).filter(
+        Payment.status.in_([PaymentStatus.SUCCEEDED, PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED])
+    )
+
+    if status_filter == "confirmed":
+        query = query.filter(Booking.status == BookingStatus.CONFIRMED)
+    elif status_filter == "completed":
+        query = query.filter(Booking.status == BookingStatus.COMPLETED)
+    elif status_filter == "refunded":
+        query = query.filter(Payment.status.in_([PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED]))
+    else:
+        query = query.filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]))
+
+    if from_date:
+        try:
+            from_dt = datetime.strptime(from_date, "%d/%m/%Y")
+            query = query.filter(Payment.paid_at >= from_dt)
+        except ValueError:
+            pass
+
+    if to_date:
+        try:
+            to_dt = datetime.strptime(to_date, "%d/%m/%Y")
+            to_dt = to_dt.replace(hour=23, minute=59, second=59)
+            query = query.filter(Payment.paid_at <= to_dt)
+        except ValueError:
+            pass
+
+    bookings = query.order_by(Payment.paid_at.desc()).all()
+
+    # Get promo codes
+    booking_ids = [b.id for b in bookings]
+    promo_codes = {}
+    if booking_ids:
+        promos = db.query(PromoCode).filter(
+            PromoCode.booking_id.in_(booking_ids),
+            PromoCode.is_used == True
+        ).all()
+        for promo in promos:
+            promo_codes[promo.booking_id] = {
+                "code": promo.code,
+                "discount_percent": promo.discount_percent or (promo.promotion.discount_percent if promo.promotion else 0)
+            }
+
+    # Filter by promo
+    if promo_filter == "yes":
+        bookings = [b for b in bookings if b.id in promo_codes]
+    elif promo_filter == "no":
+        bookings = [b for b in bookings if b.id not in promo_codes]
+
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Header
+    writer.writerow([
+        "Date",
+        "Reference",
+        "Customer",
+        "Trip Days",
+        "Gross Price",
+        "Promo Code",
+        "Discount %",
+        "Discount Amount",
+        "Refund Amount",
+        "Net Revenue",
+        "Booking Status",
+        "Payment Status"
+    ])
+
+    # Data rows
+    for booking in bookings:
+        if not booking.payment or not booking.payment.paid_at:
+            continue
+
+        paid_date = booking.payment.paid_at.strftime("%d/%m/%Y")
+        gross_pence = booking.payment.amount_pence or 0
+        refund_pence = booking.payment.refund_amount_pence or 0
+        net_pence = gross_pence - refund_pence
+
+        trip_days = ""
+        if booking.dropoff_date and booking.pickup_date:
+            trip_days = (booking.pickup_date - booking.dropoff_date).days
+
+        promo_info = promo_codes.get(booking.id)
+        discount_percent = promo_info["discount_percent"] if promo_info else ""
+        promo_code = promo_info["code"] if promo_info else ""
+
+        discount_pence = 0
+        if promo_info and discount_percent and discount_percent < 100:
+            original_pence = int(gross_pence / (1 - discount_percent / 100))
+            discount_pence = original_pence - gross_pence
+
+        customer_name = f"{booking.customer.first_name} {booking.customer.last_name}" if booking.customer else "Unknown"
+
+        writer.writerow([
+            paid_date,
+            booking.reference,
+            customer_name,
+            trip_days,
+            f"£{gross_pence / 100:.2f}",
+            promo_code,
+            f"{discount_percent}%" if discount_percent else "",
+            f"£{discount_pence / 100:.2f}" if discount_pence else "",
+            f"£{refund_pence / 100:.2f}" if refund_pence else "",
+            f"£{net_pence / 100:.2f}",
+            booking.status.value if booking.status else "",
+            booking.payment.status.value if booking.payment.status else ""
+        ])
+
+    # Build filename
+    filename_parts = ["financial_report"]
+    if from_date:
+        filename_parts.append(f"from_{from_date.replace('/', '-')}")
+    if to_date:
+        filename_parts.append(f"to_{to_date.replace('/', '-')}")
+    filename = "_".join(filename_parts) + ".csv"
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 @app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
 async def send_promo_email_to_subscriber(
     subscriber_id: int,

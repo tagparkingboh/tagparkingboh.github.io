@@ -54,6 +54,7 @@ const NAV_STRUCTURE = [
     icon: '📊',
     items: [
       { id: 'reports-growth', label: 'Booking Growth' },
+      { id: 'reports-financial', label: 'Financial' },
       { id: 'reports-occupancy', label: 'Occupancy' },
       { id: 'reports-routes', label: 'Popular Routes' },
       { id: 'reports-map', label: 'Location Maps' },
@@ -354,6 +355,16 @@ function Admin() {
   const [funFacts, setFunFacts] = useState(null)
   const [loadingFunFacts, setLoadingFunFacts] = useState(false)
 
+  // Financial report state
+  const [financialData, setFinancialData] = useState(null)
+  const [loadingFinancial, setLoadingFinancial] = useState(false)
+  const [financialFromDate, setFinancialFromDate] = useState('')
+  const [financialToDate, setFinancialToDate] = useState('')
+  const [financialStatusFilter, setFinancialStatusFilter] = useState('all')
+  const [financialPromoFilter, setFinancialPromoFilter] = useState('all')
+  const [expandedFinancialMonths, setExpandedFinancialMonths] = useState({})
+  const [exportingFinancial, setExportingFinancial] = useState(false)
+
   // Marketing Sources report state
   const [marketingSourcesData, setMarketingSourcesData] = useState(null)
   const [loadingMarketingSources, setLoadingMarketingSources] = useState(false)
@@ -495,6 +506,8 @@ function Admin() {
         fetchOccupancyReport(occupancyView)
       } else if (reportsSubTab === 'popular') {
         fetchPopularReport()
+      } else if (reportsSubTab === 'financial') {
+        fetchFinancialReport()
       }
     }
   }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularTop])
@@ -763,6 +776,63 @@ function Admin() {
       console.error('Failed to fetch popular report:', err)
     } finally {
       setLoadingPopular(false)
+    }
+  }
+
+  const fetchFinancialReport = async () => {
+    setLoadingFinancial(true)
+    try {
+      const params = new URLSearchParams()
+      if (financialFromDate) params.append('from_date', financialFromDate)
+      if (financialToDate) params.append('to_date', financialToDate)
+      if (financialStatusFilter !== 'all') params.append('status_filter', financialStatusFilter)
+      if (financialPromoFilter !== 'all') params.append('promo_filter', financialPromoFilter)
+
+      const response = await fetch(`${API_URL}/api/admin/reports/financial?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setFinancialData(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch financial report:', err)
+    } finally {
+      setLoadingFinancial(false)
+    }
+  }
+
+  const exportFinancialCSV = async () => {
+    setExportingFinancial(true)
+    try {
+      const params = new URLSearchParams()
+      if (financialFromDate) params.append('from_date', financialFromDate)
+      if (financialToDate) params.append('to_date', financialToDate)
+      if (financialStatusFilter !== 'all') params.append('status_filter', financialStatusFilter)
+      if (financialPromoFilter !== 'all') params.append('promo_filter', financialPromoFilter)
+
+      const response = await fetch(`${API_URL}/api/admin/reports/financial/export?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `financial-report-${new Date().toISOString().split('T')[0]}.csv`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        a.remove()
+      }
+    } catch (err) {
+      console.error('Failed to export financial report:', err)
+    } finally {
+      setExportingFinancial(false)
     }
   }
 
@@ -3101,6 +3171,9 @@ function Admin() {
     } else if (tabId === 'reports-map') {
       setActiveTab('reports')
       setReportsSubTab('map')
+    } else if (tabId === 'reports-financial') {
+      setActiveTab('reports')
+      setReportsSubTab('financial')
     } else {
       setActiveTab(tabId)
     }
@@ -3123,8 +3196,9 @@ function Admin() {
     if (itemId === 'reports-occupancy' && activeTab === 'reports' && reportsSubTab === 'occupancy') return true
     if (itemId === 'reports-routes' && activeTab === 'reports' && reportsSubTab === 'popular') return true
     if (itemId === 'reports-map' && activeTab === 'reports' && reportsSubTab === 'map') return true
+    if (itemId === 'reports-financial' && activeTab === 'reports' && reportsSubTab === 'financial') return true
     // Standard tabs (exclude marketing and reports sub-tab ids)
-    const subTabIds = ['marketing', 'promotions', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map']
+    const subTabIds = ['marketing', 'promotions', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map', 'reports-financial']
     if (!subTabIds.includes(itemId)) {
       return activeTab === itemId
     }
@@ -6255,6 +6329,7 @@ function Admin() {
           <div className="admin-section">
             <h2>
               {reportsSubTab === 'growth' && 'Booking Growth'}
+              {reportsSubTab === 'financial' && 'Financial'}
               {reportsSubTab === 'occupancy' && 'Occupancy'}
               {reportsSubTab === 'popular' && 'Popular Routes'}
               {reportsSubTab === 'map' && 'Location Maps'}
@@ -7520,6 +7595,211 @@ function Admin() {
                       </div>
                     )}
                   </>
+                )}
+              </>
+            )}
+
+            {/* Financial Report */}
+            {reportsSubTab === 'financial' && (
+              <>
+                <div className="reports-section-header">
+                  <button
+                    className="refresh-page-btn"
+                    onClick={fetchFinancialReport}
+                    disabled={loadingFinancial}
+                  >
+                    {loadingFinancial ? 'Refreshing...' : 'Refresh Page'}
+                  </button>
+                </div>
+
+                {/* Filters */}
+                <div className="financial-filters">
+                  <div className="filter-group">
+                    <label>From Date</label>
+                    <input
+                      type="text"
+                      placeholder="DD/MM/YYYY"
+                      value={financialFromDate}
+                      onChange={(e) => setFinancialFromDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="filter-group">
+                    <label>To Date</label>
+                    <input
+                      type="text"
+                      placeholder="DD/MM/YYYY"
+                      value={financialToDate}
+                      onChange={(e) => setFinancialToDate(e.target.value)}
+                    />
+                  </div>
+                  <div className="filter-group">
+                    <label>Status</label>
+                    <select
+                      value={financialStatusFilter}
+                      onChange={(e) => setFinancialStatusFilter(e.target.value)}
+                    >
+                      <option value="all">All</option>
+                      <option value="confirmed">Confirmed</option>
+                      <option value="completed">Completed</option>
+                      <option value="refunded">Refunded</option>
+                    </select>
+                  </div>
+                  <div className="filter-group">
+                    <label>Promo Code</label>
+                    <select
+                      value={financialPromoFilter}
+                      onChange={(e) => setFinancialPromoFilter(e.target.value)}
+                    >
+                      <option value="all">All</option>
+                      <option value="yes">With Promo</option>
+                      <option value="no">Without Promo</option>
+                    </select>
+                  </div>
+                  <button
+                    className="filter-apply-btn"
+                    onClick={fetchFinancialReport}
+                    disabled={loadingFinancial}
+                  >
+                    Apply Filters
+                  </button>
+                  <button
+                    className="export-csv-btn"
+                    onClick={exportFinancialCSV}
+                    disabled={exportingFinancial}
+                  >
+                    {exportingFinancial ? 'Exporting...' : 'Export CSV'}
+                  </button>
+                </div>
+
+                {loadingFinancial ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading financial report...</span>
+                  </div>
+                ) : financialData ? (
+                  <>
+                    {/* Revenue Fun Facts */}
+                    <div className="financial-fun-facts">
+                      <h3>Revenue Highlights</h3>
+                      <div className="stats-summary-cards">
+                        {financialData.funFacts?.topRevenueDay && (
+                          <div className="stats-card fun-fact-card">
+                            <div className="stats-card-value">{financialData.funFacts.topRevenueDay.amount}</div>
+                            <div className="stats-card-label">Top Revenue Day</div>
+                            <div className="fun-fact-detail">{financialData.funFacts.topRevenueDay.date}</div>
+                            <div className="fun-fact-detail">{financialData.funFacts.topRevenueDay.bookings} bookings</div>
+                          </div>
+                        )}
+                        {financialData.funFacts?.topRevenueWeek && (
+                          <div className="stats-card fun-fact-card">
+                            <div className="stats-card-value">{financialData.funFacts.topRevenueWeek.amount}</div>
+                            <div className="stats-card-label">Top Revenue Week</div>
+                            <div className="fun-fact-detail">{financialData.funFacts.topRevenueWeek.week}</div>
+                          </div>
+                        )}
+                        {financialData.funFacts?.topRevenueMonth && (
+                          <div className="stats-card fun-fact-card">
+                            <div className="stats-card-value">{financialData.funFacts.topRevenueMonth.amount}</div>
+                            <div className="stats-card-label">Top Revenue Month</div>
+                            <div className="fun-fact-detail">{financialData.funFacts.topRevenueMonth.month}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Summary Totals */}
+                    <div className="financial-summary">
+                      <h3>Summary</h3>
+                      <div className="stats-summary-cards">
+                        <div className="stats-card">
+                          <div className="stats-card-value">{financialData.summary?.totalBookings || 0}</div>
+                          <div className="stats-card-label">Total Bookings</div>
+                        </div>
+                        <div className="stats-card">
+                          <div className="stats-card-value">{financialData.summary?.totalGross || '£0.00'}</div>
+                          <div className="stats-card-label">Total Gross</div>
+                        </div>
+                        <div className="stats-card">
+                          <div className="stats-card-value" style={{ color: '#ef4444' }}>{financialData.summary?.totalRefunds || '£0.00'}</div>
+                          <div className="stats-card-label">Total Refunds</div>
+                        </div>
+                        <div className="stats-card">
+                          <div className="stats-card-value" style={{ color: '#22c55e' }}>{financialData.summary?.totalNet || '£0.00'}</div>
+                          <div className="stats-card-label">Total Net Revenue</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Monthly Breakdown */}
+                    <div className="financial-monthly-breakdown">
+                      <h3>Monthly Breakdown</h3>
+                      {financialData.monthlyData?.length === 0 ? (
+                        <p className="admin-empty">No financial data found for the selected filters.</p>
+                      ) : (
+                        financialData.monthlyData?.map((month) => (
+                          <div key={month.monthKey} className="financial-month-container">
+                            <div
+                              className="financial-month-header"
+                              onClick={() => setExpandedFinancialMonths(prev => ({
+                                ...prev,
+                                [month.monthKey]: !prev[month.monthKey]
+                              }))}
+                            >
+                              <span className="expand-icon">{expandedFinancialMonths[month.monthKey] ? '▼' : '▶'}</span>
+                              <span className="month-label">{month.monthLabel}</span>
+                              <span className="month-count">{month.bookingCount} bookings</span>
+                              <span className="month-gross">Gross: {month.totalGross}</span>
+                              <span className="month-net">Net: {month.totalNet}</span>
+                            </div>
+                            {expandedFinancialMonths[month.monthKey] && (
+                              <div className="financial-month-bookings">
+                                <table className="admin-table financial-table">
+                                  <thead>
+                                    <tr>
+                                      <th>Date</th>
+                                      <th>Reference</th>
+                                      <th>Customer</th>
+                                      <th>Days</th>
+                                      <th>Gross</th>
+                                      <th>Promo</th>
+                                      <th>Discount</th>
+                                      <th>Refund</th>
+                                      <th>Net</th>
+                                      <th>Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {month.bookings.map((booking) => (
+                                      <tr key={booking.id}>
+                                        <td>{booking.paidDate}</td>
+                                        <td>{booking.reference}</td>
+                                        <td>{booking.customerName}</td>
+                                        <td>{booking.tripDays || '-'}</td>
+                                        <td>{booking.grossPrice}</td>
+                                        <td>{booking.promoCode || '-'}</td>
+                                        <td>{booking.discountAmount || '-'}</td>
+                                        <td style={{ color: booking.refundAmount ? '#ef4444' : 'inherit' }}>
+                                          {booking.refundAmount || '-'}
+                                        </td>
+                                        <td style={{ color: '#22c55e' }}>{booking.netRevenue}</td>
+                                        <td>
+                                          <span className={`status-badge status-${booking.status}`}>
+                                            {booking.status}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="admin-empty">Click "Refresh Page" to load financial data.</p>
                 )}
               </>
             )}
