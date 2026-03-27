@@ -1738,6 +1738,8 @@ async def mark_booking_paid(
     payment = db.query(Payment).filter(Payment.booking_id == booking_id).first()
     if payment:
         payment.status = PaymentStatus.SUCCEEDED
+        if not payment.paid_at:
+            payment.paid_at = datetime.utcnow()
 
     db.commit()
 
