@@ -8893,7 +8893,7 @@ function Admin() {
                   }}
                 >
                   <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>{promoModalForm.title || 'Title'}</h4>
-                  <p style={{ margin: '0 0 1rem 0', opacity: 0.9 }}>{promoModalForm.message || 'Your message here...'}</p>
+                  <p style={{ margin: '0 0 1rem 0', opacity: 0.9, whiteSpace: 'pre-line' }}>{promoModalForm.message || 'Your message here...'}</p>
                   <button
                     style={{
                       backgroundColor: promoModalForm.button_color,

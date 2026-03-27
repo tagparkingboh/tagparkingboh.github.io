@@ -84,7 +84,7 @@ function PromoModal() {
 
         <div className="promo-modal-content">
           <h2 className="promo-modal-title">{promo.title}</h2>
-          <p className="promo-modal-message">{promo.message}</p>
+          <p className="promo-modal-message" style={{ whiteSpace: 'pre-line' }}>{promo.message}</p>
 
           {promo.startDate && promo.endDate && (
             <p className="promo-modal-dates">
