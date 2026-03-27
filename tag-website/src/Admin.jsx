@@ -421,10 +421,10 @@ function Admin() {
     button_link: '',
     start_date: '',
     end_date: '',
-    background_color: '#1e3a5f',
-    text_color: '#ffffff',
-    button_color: '#22c55e',
-    button_text_color: '#ffffff',
+    background_color: '#343434',
+    text_color: '#d9ff00',
+    button_color: '#d9ff00',
+    button_text_color: '#343434',
     status: 'inactive'
   })
   const [savingPromoModal, setSavingPromoModal] = useState(false)
@@ -611,10 +611,10 @@ function Admin() {
           button_link: '',
           start_date: '',
           end_date: '',
-          background_color: '#1e3a5f',
-          text_color: '#ffffff',
-          button_color: '#22c55e',
-          button_text_color: '#ffffff',
+          background_color: '#343434',
+          text_color: '#d9ff00',
+          button_color: '#d9ff00',
+          button_text_color: '#343434',
           status: 'inactive'
         })
         fetchPromoModals()
@@ -8589,10 +8589,10 @@ function Admin() {
                       button_link: '',
                       start_date: '',
                       end_date: '',
-                      background_color: '#1e3a5f',
-                      text_color: '#ffffff',
-                      button_color: '#22c55e',
-                      button_text_color: '#ffffff',
+                      background_color: '#343434',
+                      text_color: '#d9ff00',
+                      button_color: '#d9ff00',
+                      button_text_color: '#343434',
                       status: 'inactive'
                     })
                     setShowPromoModalForm(true)
