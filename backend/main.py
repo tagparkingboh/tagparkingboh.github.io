@@ -3517,14 +3517,17 @@ async def get_financial_report(
     booking_ids = [b.id for b in bookings]
     promo_codes = {}
     if booking_ids:
-        promos = db.query(PromoCode).filter(
+        from sqlalchemy.orm import joinedload
+        promos = db.query(PromoCode).options(
+            joinedload(PromoCode.promotion)
+        ).filter(
             PromoCode.booking_id.in_(booking_ids),
             PromoCode.is_used == True
         ).all()
         for promo in promos:
             promo_codes[promo.booking_id] = {
                 "code": promo.code,
-                "discount_percent": promo.discount_percent or (promo.promotion.discount_percent if promo.promotion else 0)
+                "discount_percent": promo.promotion.discount_percent if promo.promotion else 0
             }
 
     # Filter by promo usage if requested
@@ -3742,14 +3745,17 @@ async def export_financial_report(
     booking_ids = [b.id for b in bookings]
     promo_codes = {}
     if booking_ids:
-        promos = db.query(PromoCode).filter(
+        from sqlalchemy.orm import joinedload
+        promos = db.query(PromoCode).options(
+            joinedload(PromoCode.promotion)
+        ).filter(
             PromoCode.booking_id.in_(booking_ids),
             PromoCode.is_used == True
         ).all()
         for promo in promos:
             promo_codes[promo.booking_id] = {
                 "code": promo.code,
-                "discount_percent": promo.discount_percent or (promo.promotion.discount_percent if promo.promotion else 0)
+                "discount_percent": promo.promotion.discount_percent if promo.promotion else 0
             }
 
     # Filter by promo
