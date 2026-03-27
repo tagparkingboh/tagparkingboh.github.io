@@ -1739,7 +1739,8 @@ async def mark_booking_paid(
     if payment:
         payment.status = PaymentStatus.SUCCEEDED
         if not payment.paid_at:
-            payment.paid_at = datetime.utcnow()
+            # Use booking created_at date for manual bookings
+            payment.paid_at = booking.created_at or datetime.utcnow()
 
     db.commit()
 
