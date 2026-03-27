@@ -7719,7 +7719,6 @@ function Admin() {
                             <div className="stats-card-value">{financialData.funFacts.topRevenueDay.amount}</div>
                             <div className="stats-card-label">Top Revenue Day</div>
                             <div className="fun-fact-detail">{financialData.funFacts.topRevenueDay.date}</div>
-                            <div className="fun-fact-detail">{financialData.funFacts.topRevenueDay.bookings} bookings</div>
                           </div>
                         )}
                         {financialData.funFacts?.topRevenueWeek && (
