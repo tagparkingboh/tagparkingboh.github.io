@@ -424,6 +424,7 @@ function Admin() {
     background_color: '#1e3a5f',
     text_color: '#ffffff',
     button_color: '#22c55e',
+    button_text_color: '#ffffff',
     status: 'inactive'
   })
   const [savingPromoModal, setSavingPromoModal] = useState(false)
@@ -613,6 +614,7 @@ function Admin() {
           background_color: '#1e3a5f',
           text_color: '#ffffff',
           button_color: '#22c55e',
+          button_text_color: '#ffffff',
           status: 'inactive'
         })
         fetchPromoModals()
@@ -662,6 +664,7 @@ function Admin() {
       background_color: modal.backgroundColor,
       text_color: modal.textColor,
       button_color: modal.buttonColor,
+      button_text_color: modal.buttonTextColor || '#ffffff',
       status: modal.status
     })
     setShowPromoModalForm(true)
@@ -8575,6 +8578,7 @@ function Admin() {
                       background_color: '#1e3a5f',
                       text_color: '#ffffff',
                       button_color: '#22c55e',
+                      button_text_color: '#ffffff',
                       status: 'inactive'
                     })
                     setShowPromoModalForm(true)
@@ -8823,6 +8827,24 @@ function Admin() {
                     />
                   </div>
                 </div>
+
+                <div className="form-group">
+                  <label>Button Text Color</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      value={promoModalForm.button_text_color}
+                      onChange={(e) => setPromoModalForm({ ...promoModalForm, button_text_color: e.target.value })}
+                      style={{ width: '50px', height: '35px', cursor: 'pointer' }}
+                    />
+                    <input
+                      type="text"
+                      value={promoModalForm.button_text_color}
+                      onChange={(e) => setPromoModalForm({ ...promoModalForm, button_text_color: e.target.value })}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="form-group">
@@ -8854,7 +8876,7 @@ function Admin() {
                   <button
                     style={{
                       backgroundColor: promoModalForm.button_color,
-                      color: '#fff',
+                      color: promoModalForm.button_text_color,
                       border: 'none',
                       padding: '0.5rem 1.5rem',
                       borderRadius: '4px',

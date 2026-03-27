@@ -832,6 +832,7 @@ class PromoModal(Base):
     background_color = Column(String(20), default="#1e3a5f")  # Dark blue default
     text_color = Column(String(20), default="#ffffff")
     button_color = Column(String(20), default="#22c55e")  # Green default
+    button_text_color = Column(String(20), default="#ffffff")  # White default
 
     # Status
     status = Column(

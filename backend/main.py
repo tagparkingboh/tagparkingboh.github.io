@@ -10712,6 +10712,7 @@ class PromoModalCreate(BaseModel):
     background_color: str = "#1e3a5f"
     text_color: str = "#ffffff"
     button_color: str = "#22c55e"
+    button_text_color: str = "#ffffff"
     status: str = "inactive"
 
 
@@ -10727,6 +10728,7 @@ class PromoModalUpdate(BaseModel):
     background_color: Optional[str] = None
     text_color: Optional[str] = None
     button_color: Optional[str] = None
+    button_text_color: Optional[str] = None
     status: Optional[str] = None
 
 
@@ -10744,6 +10746,7 @@ def format_promo_modal(modal):
         "backgroundColor": modal.background_color,
         "textColor": modal.text_color,
         "buttonColor": modal.button_color,
+        "buttonTextColor": getattr(modal, 'button_text_color', '#ffffff') or '#ffffff',
         "status": modal.status.value,
         "createdAt": modal.created_at.isoformat() if modal.created_at else None,
         "viewCount": modal.view_count or 0,
@@ -10817,6 +10820,7 @@ async def create_promo_modal(
         background_color=request.background_color,
         text_color=request.text_color,
         button_color=request.button_color,
+        button_text_color=request.button_text_color,
         status=status_enum,
     )
 
@@ -10861,6 +10865,8 @@ async def update_promo_modal(
         modal.text_color = request.text_color
     if request.button_color is not None:
         modal.button_color = request.button_color
+    if request.button_text_color is not None:
+        modal.button_text_color = request.button_text_color
 
     # Parse dates
     if request.start_date is not None:

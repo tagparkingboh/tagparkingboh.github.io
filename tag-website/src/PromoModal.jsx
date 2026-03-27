@@ -97,7 +97,7 @@ function PromoModal() {
             onClick={handleButtonClick}
             style={{
               backgroundColor: promo.buttonColor,
-              color: '#ffffff',
+              color: promo.buttonTextColor || '#ffffff',
             }}
           >
             {promo.buttonText}

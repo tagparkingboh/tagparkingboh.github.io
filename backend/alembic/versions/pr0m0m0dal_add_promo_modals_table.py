@@ -30,6 +30,7 @@ def upgrade():
         sa.Column('background_color', sa.String(20), nullable=True, server_default='#1e3a5f'),
         sa.Column('text_color', sa.String(20), nullable=True, server_default='#ffffff'),
         sa.Column('button_color', sa.String(20), nullable=True, server_default='#22c55e'),
+        sa.Column('button_text_color', sa.String(20), nullable=True, server_default='#ffffff'),
         sa.Column('status', sa.Enum('active', 'inactive', 'scheduled', name='promomodalstatus'), nullable=False, server_default='inactive'),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
