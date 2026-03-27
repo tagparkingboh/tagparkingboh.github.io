@@ -7874,38 +7874,41 @@ function Admin() {
                                 const startIdx = Math.max(0, data.length - weeksPerPage - (revenueWeeklyPageIndex * weeksPerPage))
                                 const endIdx = Math.min(data.length, startIdx + weeksPerPage)
                                 const displayData = data.slice(startIdx, endIdx)
-                                const maxRevenue = Math.max(...data.map(d => d.revenuePounds), 1)
+                                const maxRevenue = Math.max(...displayData.map(d => d.revenuePounds), 1)
 
                                 return (
                                   <>
                                     {totalPages > 1 && (
-                                      <div className="weekly-pagination">
+                                      <div className="chart-navigation">
                                         <button
+                                          className="nav-btn"
                                           onClick={() => setRevenueWeeklyPageIndex(i => Math.min(i + 1, totalPages - 1))}
                                           disabled={revenueWeeklyPageIndex >= totalPages - 1}
                                         >
-                                          ← Older
+                                          &larr; Older
                                         </button>
-                                        <span>Page {revenueWeeklyPageIndex + 1} of {totalPages}</span>
+                                        <span className="nav-info">
+                                          Showing weeks {startIdx + 1}-{endIdx} of {data.length}
+                                        </span>
                                         <button
+                                          className="nav-btn"
                                           onClick={() => setRevenueWeeklyPageIndex(i => Math.max(i - 1, 0))}
                                           disabled={revenueWeeklyPageIndex <= 0}
                                         >
-                                          Newer →
+                                          Newer &rarr;
                                         </button>
                                       </div>
                                     )}
-                                    <div className="stacked-bar-chart revenue-bar-chart">
+                                    <div className="stacked-bar-chart">
                                       {displayData.map((item, idx) => (
                                         <div key={idx} className="bar-column">
-                                          <div
-                                            className="bar-segment revenue-bar"
-                                            style={{
-                                              height: `${(item.revenuePounds / maxRevenue) * 100}%`,
-                                              backgroundColor: '#22c55e'
-                                            }}
-                                            title={`£${item.revenuePounds.toFixed(2)}`}
-                                          />
+                                          <div className="bar-stack" style={{ height: '150px' }}>
+                                            <div
+                                              className="bar-segment bar-confirmed"
+                                              style={{ height: `${(item.revenuePounds / maxRevenue) * 100}%` }}
+                                              title={`£${item.revenuePounds.toFixed(2)}`}
+                                            />
+                                          </div>
                                           <div className="bar-label">{item.weekLabel?.split(' - ')[0] || item.week}</div>
                                           <div className="bar-total">£{item.revenuePounds.toFixed(0)}</div>
                                         </div>
@@ -7928,14 +7931,15 @@ function Admin() {
                                   }
                                 })
                                 const months = Object.keys(monthlyGroups).sort().reverse()
-                                const maxRevenue = Math.max(...data.map(d => d.revenuePounds), 1)
 
                                 return months.map(monthKey => {
                                   const monthItems = monthlyGroups[monthKey]
-                                  const monthDate = new Date(monthKey + '-01')
-                                  const monthLabel = monthDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+                                  const [year, month] = monthKey.split('-')
+                                  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+                                  const monthLabel = `${monthNames[parseInt(month, 10) - 1]} ${year}`
                                   const isExpanded = expandedRevenueDailyMonths[monthKey] !== false
                                   const monthTotal = monthItems.reduce((sum, d) => sum + d.revenuePounds, 0)
+                                  const maxRevenue = Math.max(...monthItems.map(d => d.revenuePounds), 1)
 
                                   return (
                                     <div key={monthKey} className="daily-month-group">
@@ -7951,20 +7955,18 @@ function Admin() {
                                         <span className="month-total">£{monthTotal.toFixed(2)}</span>
                                       </div>
                                       {isExpanded && (
-                                        <div className="stacked-bar-chart daily-bar-chart revenue-bar-chart">
+                                        <div className="stacked-bar-chart daily-bar-chart">
                                           {monthItems.map((item, idx) => {
-                                            const dayDate = new Date(item.date)
-                                            const dayLabel = dayDate.getDate()
+                                            const dayLabel = item.date?.slice(8, 10).replace(/^0/, '') || ''
                                             return (
                                               <div key={idx} className="bar-column">
-                                                <div
-                                                  className="bar-segment revenue-bar"
-                                                  style={{
-                                                    height: `${(item.revenuePounds / maxRevenue) * 100}%`,
-                                                    backgroundColor: '#22c55e'
-                                                  }}
-                                                  title={`£${item.revenuePounds.toFixed(2)}`}
-                                                />
+                                                <div className="bar-stack" style={{ height: '150px' }}>
+                                                  <div
+                                                    className="bar-segment bar-confirmed"
+                                                    style={{ height: `${(item.revenuePounds / maxRevenue) * 100}%` }}
+                                                    title={`£${item.revenuePounds.toFixed(2)}`}
+                                                  />
+                                                </div>
                                                 <div className="bar-label">{dayLabel}</div>
                                                 <div className="bar-total">£{item.revenuePounds.toFixed(0)}</div>
                                               </div>
@@ -7978,20 +7980,19 @@ function Admin() {
                               })()}
                             </div>
                           ) : (
-                            <div className="stacked-bar-chart revenue-bar-chart">
+                            <div className="stacked-bar-chart">
                               {(() => {
                                 const data = financialData.chartData.monthly || []
                                 const maxRevenue = Math.max(...data.map(d => d.revenuePounds), 1)
                                 return data.map((item, idx) => (
                                   <div key={idx} className="bar-column">
-                                    <div
-                                      className="bar-segment revenue-bar"
-                                      style={{
-                                        height: `${(item.revenuePounds / maxRevenue) * 100}%`,
-                                        backgroundColor: '#22c55e'
-                                      }}
-                                      title={`£${item.revenuePounds.toFixed(2)}`}
-                                    />
+                                    <div className="bar-stack" style={{ height: '150px' }}>
+                                      <div
+                                        className="bar-segment bar-confirmed"
+                                        style={{ height: `${(item.revenuePounds / maxRevenue) * 100}%` }}
+                                        title={`£${item.revenuePounds.toFixed(2)}`}
+                                      />
+                                    </div>
                                     <div className="bar-label">{item.monthLabel}</div>
                                     <div className="bar-total">£{item.revenuePounds.toFixed(0)}</div>
                                   </div>
