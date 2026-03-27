@@ -651,6 +651,20 @@ function Admin() {
     }
   }
 
+  const handleTogglePromoModalStatus = async (modal) => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promo-modals/${modal.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        fetchPromoModals()
+      }
+    } catch (err) {
+      console.error('Error toggling promo modal status:', err)
+    }
+  }
+
   const openEditPromoModal = (modal) => {
     setEditingPromoModal(modal)
     setPromoModalForm({
@@ -8658,12 +8672,19 @@ function Admin() {
                         <td>{modal.viewCount}</td>
                         <td>{modal.clickCount}</td>
                         <td>{ctr}%</td>
-                        <td>
+                        <td className="actions-cell">
                           <button
                             className="action-btn edit-btn"
                             onClick={() => openEditPromoModal(modal)}
                           >
                             Edit
+                          </button>
+                          <button
+                            className="action-btn"
+                            onClick={() => handleTogglePromoModalStatus(modal)}
+                            style={{ backgroundColor: modal.status === 'active' ? '#f59e0b' : '#22c55e', color: '#fff' }}
+                          >
+                            {modal.status === 'active' ? 'Deactivate' : 'Activate'}
                           </button>
                           <button
                             className="action-btn cancel-btn"
