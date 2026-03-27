@@ -3518,6 +3518,9 @@ async def get_financial_report(
     promo_codes = {}
     if booking_ids:
         from sqlalchemy.orm import joinedload
+        from db_models import MarketingSubscriber
+
+        # 1. Get promos from PromoCode table (Promotions system)
         promos = db.query(PromoCode).options(
             joinedload(PromoCode.promotion)
         ).filter(
@@ -3529,6 +3532,54 @@ async def get_financial_report(
                 "code": promo.code,
                 "discount_percent": promo.promotion.discount_percent if promo.promotion else 0
             }
+
+        # 2. Get promos from MarketingSubscriber table (10% off promos)
+        promo_10_subs = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.promo_10_used_booking_id.in_(booking_ids),
+            MarketingSubscriber.promo_10_used == True
+        ).all()
+        for sub in promo_10_subs:
+            if sub.promo_10_used_booking_id not in promo_codes:
+                promo_codes[sub.promo_10_used_booking_id] = {
+                    "code": sub.promo_10_code,
+                    "discount_percent": 10
+                }
+
+        # 3. Get promos from MarketingSubscriber table (FREE parking promos - 100% off)
+        promo_free_subs = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.promo_free_used_booking_id.in_(booking_ids),
+            MarketingSubscriber.promo_free_used == True
+        ).all()
+        for sub in promo_free_subs:
+            if sub.promo_free_used_booking_id not in promo_codes:
+                promo_codes[sub.promo_free_used_booking_id] = {
+                    "code": sub.promo_free_code,
+                    "discount_percent": 100
+                }
+
+        # 4. Get founder promos from MarketingSubscriber table (10% off)
+        founder_promo_subs = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.founder_promo_used_booking_id.in_(booking_ids),
+            MarketingSubscriber.founder_promo_used == True
+        ).all()
+        for sub in founder_promo_subs:
+            if sub.founder_promo_used_booking_id not in promo_codes:
+                promo_codes[sub.founder_promo_used_booking_id] = {
+                    "code": sub.founder_promo_code,
+                    "discount_percent": 10
+                }
+
+        # 5. Get legacy promos from MarketingSubscriber table
+        legacy_promo_subs = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.promo_code_used_booking_id.in_(booking_ids),
+            MarketingSubscriber.promo_code_used == True
+        ).all()
+        for sub in legacy_promo_subs:
+            if sub.promo_code_used_booking_id not in promo_codes:
+                promo_codes[sub.promo_code_used_booking_id] = {
+                    "code": sub.promo_code,
+                    "discount_percent": sub.discount_percent or 10
+                }
 
     # Filter by promo usage if requested
     if promo_filter == "yes":
@@ -3762,6 +3813,9 @@ async def export_financial_report(
     promo_codes = {}
     if booking_ids:
         from sqlalchemy.orm import joinedload
+        from db_models import MarketingSubscriber
+
+        # 1. Get promos from PromoCode table (Promotions system)
         promos = db.query(PromoCode).options(
             joinedload(PromoCode.promotion)
         ).filter(
@@ -3773,6 +3827,54 @@ async def export_financial_report(
                 "code": promo.code,
                 "discount_percent": promo.promotion.discount_percent if promo.promotion else 0
             }
+
+        # 2. Get promos from MarketingSubscriber table (10% off promos)
+        promo_10_subs = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.promo_10_used_booking_id.in_(booking_ids),
+            MarketingSubscriber.promo_10_used == True
+        ).all()
+        for sub in promo_10_subs:
+            if sub.promo_10_used_booking_id not in promo_codes:
+                promo_codes[sub.promo_10_used_booking_id] = {
+                    "code": sub.promo_10_code,
+                    "discount_percent": 10
+                }
+
+        # 3. Get promos from MarketingSubscriber table (FREE parking promos - 100% off)
+        promo_free_subs = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.promo_free_used_booking_id.in_(booking_ids),
+            MarketingSubscriber.promo_free_used == True
+        ).all()
+        for sub in promo_free_subs:
+            if sub.promo_free_used_booking_id not in promo_codes:
+                promo_codes[sub.promo_free_used_booking_id] = {
+                    "code": sub.promo_free_code,
+                    "discount_percent": 100
+                }
+
+        # 4. Get founder promos from MarketingSubscriber table (10% off)
+        founder_promo_subs = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.founder_promo_used_booking_id.in_(booking_ids),
+            MarketingSubscriber.founder_promo_used == True
+        ).all()
+        for sub in founder_promo_subs:
+            if sub.founder_promo_used_booking_id not in promo_codes:
+                promo_codes[sub.founder_promo_used_booking_id] = {
+                    "code": sub.founder_promo_code,
+                    "discount_percent": 10
+                }
+
+        # 5. Get legacy promos from MarketingSubscriber table
+        legacy_promo_subs = db.query(MarketingSubscriber).filter(
+            MarketingSubscriber.promo_code_used_booking_id.in_(booking_ids),
+            MarketingSubscriber.promo_code_used == True
+        ).all()
+        for sub in legacy_promo_subs:
+            if sub.promo_code_used_booking_id not in promo_codes:
+                promo_codes[sub.promo_code_used_booking_id] = {
+                    "code": sub.promo_code,
+                    "discount_percent": sub.discount_percent or 10
+                }
 
     # Filter by promo
     if promo_filter == "yes":
