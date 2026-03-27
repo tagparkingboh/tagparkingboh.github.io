@@ -806,6 +806,50 @@ class Testimonial(Base):
         return f"<Testimonial {self.id} - {self.customer_name} ({self.star_rating}★)>"
 
 
+class PromoModalStatus(enum.Enum):
+    """Status of a promo modal."""
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    SCHEDULED = "scheduled"
+
+
+class PromoModal(Base):
+    """Promotional modals/popups for the homepage."""
+    __tablename__ = "promo_modals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(100), nullable=False)  # e.g. "Spring Sale!"
+    message = Column(Text, nullable=False)  # Main promotional message
+    button_text = Column(String(50), default="Subscribe")  # CTA button text
+    button_action = Column(String(50), default="subscribe")  # subscribe, link, close
+    button_link = Column(String(500), nullable=True)  # If button_action is "link"
+
+    # Date range when promo is valid
+    start_date = Column(Date, nullable=True)  # If null, starts immediately when active
+    end_date = Column(Date, nullable=True)  # If null, runs indefinitely when active
+
+    # Styling
+    background_color = Column(String(20), default="#1e3a5f")  # Dark blue default
+    text_color = Column(String(20), default="#ffffff")
+    button_color = Column(String(20), default="#22c55e")  # Green default
+
+    # Status
+    status = Column(
+        Enum(PromoModalStatus, values_callable=lambda x: [e.value for e in x]),
+        default=PromoModalStatus.INACTIVE,
+        nullable=False
+    )
+
+    # Tracking
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    view_count = Column(Integer, default=0)  # How many times shown
+    click_count = Column(Integer, default=0)  # How many times CTA clicked
+
+    def __repr__(self):
+        return f"<PromoModal {self.id} - {self.title} ({self.status.value})>"
+
+
 class MarketingSource(Base):
     """Marketing attribution - where customers heard about TAG Parking."""
     __tablename__ = "marketing_sources"

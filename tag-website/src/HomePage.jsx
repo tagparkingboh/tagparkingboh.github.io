@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import TestimonialsCarousel from './TestimonialsCarousel'
+import PromoModal from './PromoModal'
 import './App.css'
 
 function HomePage() {
@@ -218,6 +219,9 @@ function HomePage() {
 
   return (
     <div className="app">
+      {/* Promo Modal */}
+      <PromoModal />
+
       {/* Header/Nav */}
       <header className="header">
         <nav className="nav">

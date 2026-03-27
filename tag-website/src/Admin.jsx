@@ -67,6 +67,7 @@ const NAV_STRUCTURE = [
       { id: 'pricing', label: 'Pricing' },
       { id: 'qa', label: 'QA Dashboard' },
       { id: 'testimonials', label: 'Testimonials' },
+      { id: 'promo-modals', label: 'Promo Modals' },
     ]
   },
 ]
@@ -407,6 +408,30 @@ function Admin() {
   const [deletingTestimonial, setDeletingTestimonial] = useState(false)
   const [testimonialSuccessMessage, setTestimonialSuccessMessage] = useState('')
 
+  // Promo Modals state
+  const [promoModals, setPromoModals] = useState([])
+  const [loadingPromoModals, setLoadingPromoModals] = useState(false)
+  const [showPromoModalForm, setShowPromoModalForm] = useState(false)
+  const [editingPromoModal, setEditingPromoModal] = useState(null)
+  const [promoModalForm, setPromoModalForm] = useState({
+    title: '',
+    message: '',
+    button_text: 'Subscribe',
+    button_action: 'subscribe',
+    button_link: '',
+    start_date: '',
+    end_date: '',
+    background_color: '#1e3a5f',
+    text_color: '#ffffff',
+    button_color: '#22c55e',
+    status: 'inactive'
+  })
+  const [savingPromoModal, setSavingPromoModal] = useState(false)
+  const [showDeletePromoModal, setShowDeletePromoModal] = useState(false)
+  const [promoModalToDelete, setPromoModalToDelete] = useState(null)
+  const [deletingPromoModal, setDeletingPromoModal] = useState(false)
+  const [promoModalSuccessMessage, setPromoModalSuccessMessage] = useState('')
+
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
 
@@ -530,6 +555,117 @@ function Admin() {
       fetchTestimonials()
     }
   }, [activeTab, token, testimonialFilter, testimonialSort])
+
+  // Fetch promo modals when promo-modals tab is active
+  useEffect(() => {
+    if (activeTab === 'promo-modals' && token) {
+      fetchPromoModals()
+    }
+  }, [activeTab, token])
+
+  const fetchPromoModals = async () => {
+    setLoadingPromoModals(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promo-modals`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPromoModals(data.promoModals || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch promo modals:', err)
+    } finally {
+      setLoadingPromoModals(false)
+    }
+  }
+
+  const handleSavePromoModal = async () => {
+    setSavingPromoModal(true)
+    setPromoModalSuccessMessage('')
+    try {
+      const url = editingPromoModal
+        ? `${API_URL}/api/admin/promo-modals/${editingPromoModal.id}`
+        : `${API_URL}/api/admin/promo-modals`
+      const method = editingPromoModal ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(promoModalForm),
+      })
+
+      if (response.ok) {
+        setPromoModalSuccessMessage(editingPromoModal ? 'Promo modal updated!' : 'Promo modal created!')
+        setShowPromoModalForm(false)
+        setEditingPromoModal(null)
+        setPromoModalForm({
+          title: '',
+          message: '',
+          button_text: 'Subscribe',
+          button_action: 'subscribe',
+          button_link: '',
+          start_date: '',
+          end_date: '',
+          background_color: '#1e3a5f',
+          text_color: '#ffffff',
+          button_color: '#22c55e',
+          status: 'inactive'
+        })
+        fetchPromoModals()
+      } else {
+        const error = await response.json()
+        alert(error.detail || 'Failed to save promo modal')
+      }
+    } catch (err) {
+      console.error('Failed to save promo modal:', err)
+      alert('Failed to save promo modal')
+    } finally {
+      setSavingPromoModal(false)
+    }
+  }
+
+  const handleDeletePromoModal = async () => {
+    if (!promoModalToDelete) return
+    setDeletingPromoModal(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promo-modals/${promoModalToDelete.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setPromoModalSuccessMessage('Promo modal deleted!')
+        setShowDeletePromoModal(false)
+        setPromoModalToDelete(null)
+        fetchPromoModals()
+      }
+    } catch (err) {
+      console.error('Failed to delete promo modal:', err)
+    } finally {
+      setDeletingPromoModal(false)
+    }
+  }
+
+  const openEditPromoModal = (modal) => {
+    setEditingPromoModal(modal)
+    setPromoModalForm({
+      title: modal.title,
+      message: modal.message,
+      button_text: modal.buttonText,
+      button_action: modal.buttonAction,
+      button_link: modal.buttonLink || '',
+      start_date: modal.startDate || '',
+      end_date: modal.endDate || '',
+      background_color: modal.backgroundColor,
+      text_color: modal.textColor,
+      button_color: modal.buttonColor,
+      status: modal.status
+    })
+    setShowPromoModalForm(true)
+  }
 
   const fetchTestimonials = async () => {
     setLoadingTestimonials(true)
@@ -8419,8 +8555,365 @@ function Admin() {
           </div>
         )}
 
+        {/* Promo Modals Section */}
+        {activeTab === 'promo-modals' && (
+          <div className="admin-section">
+            <div className="admin-section-header">
+              <h2>Promo Modals</h2>
+              <div className="admin-header-actions">
+                <button
+                  onClick={() => {
+                    setEditingPromoModal(null)
+                    setPromoModalForm({
+                      title: '',
+                      message: '',
+                      button_text: 'Subscribe',
+                      button_action: 'subscribe',
+                      button_link: '',
+                      start_date: '',
+                      end_date: '',
+                      background_color: '#1e3a5f',
+                      text_color: '#ffffff',
+                      button_color: '#22c55e',
+                      status: 'inactive'
+                    })
+                    setShowPromoModalForm(true)
+                  }}
+                  className="admin-btn admin-btn-primary"
+                >
+                  + Add Promo Modal
+                </button>
+                <button onClick={fetchPromoModals} className="admin-refresh" disabled={loadingPromoModals}>
+                  {loadingPromoModals ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+            </div>
+
+            {promoModalSuccessMessage && (
+              <div className="admin-success">{promoModalSuccessMessage}</div>
+            )}
+
+            <p className="reports-description">
+              Create promotional popups that display when users first visit the homepage.
+              Only one active modal within its date range will be shown at a time.
+            </p>
+
+            {loadingPromoModals ? (
+              <div className="admin-loading-inline">
+                <div className="spinner-small"></div>
+                <span>Loading promo modals...</span>
+              </div>
+            ) : promoModals.length === 0 ? (
+              <div className="admin-empty">No promo modals created yet.</div>
+            ) : (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th>Date Range</th>
+                    <th>Views</th>
+                    <th>Clicks</th>
+                    <th>CTR</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {promoModals.map(modal => {
+                    const ctr = modal.viewCount > 0 ? ((modal.clickCount / modal.viewCount) * 100).toFixed(1) : '0.0'
+                    return (
+                      <tr key={modal.id}>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span
+                              style={{
+                                width: '12px',
+                                height: '12px',
+                                borderRadius: '2px',
+                                backgroundColor: modal.backgroundColor,
+                                border: '1px solid #ccc'
+                              }}
+                            />
+                            {modal.title}
+                          </div>
+                        </td>
+                        <td>
+                          <span className={`status-badge status-${modal.status}`}>
+                            {modal.status}
+                          </span>
+                        </td>
+                        <td>
+                          {modal.startDate && modal.endDate
+                            ? `${modal.startDate} - ${modal.endDate}`
+                            : modal.startDate
+                              ? `From ${modal.startDate}`
+                              : modal.endDate
+                                ? `Until ${modal.endDate}`
+                                : 'No date limit'}
+                        </td>
+                        <td>{modal.viewCount}</td>
+                        <td>{modal.clickCount}</td>
+                        <td>{ctr}%</td>
+                        <td>
+                          <button
+                            className="action-btn edit-btn"
+                            onClick={() => openEditPromoModal(modal)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="action-btn cancel-btn"
+                            onClick={() => {
+                              setPromoModalToDelete(modal)
+                              setShowDeletePromoModal(true)
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+
         </main>
       </div>
+
+      {/* Promo Modal Add/Edit Modal */}
+      {showPromoModalForm && (
+        <div className="modal-overlay" onClick={() => setShowPromoModalForm(false)}>
+          <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
+            <h3>{editingPromoModal ? 'Edit Promo Modal' : 'Add Promo Modal'}</h3>
+
+            <div className="modal-form">
+              <div className="form-group">
+                <label>Title *</label>
+                <input
+                  type="text"
+                  value={promoModalForm.title}
+                  onChange={(e) => setPromoModalForm({ ...promoModalForm, title: e.target.value })}
+                  placeholder="e.g. Spring Sale!"
+                  maxLength={100}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Message *</label>
+                <textarea
+                  value={promoModalForm.message}
+                  onChange={(e) => setPromoModalForm({ ...promoModalForm, message: e.target.value })}
+                  placeholder="Enter the promotional message..."
+                  rows={4}
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Button Text</label>
+                  <input
+                    type="text"
+                    value={promoModalForm.button_text}
+                    onChange={(e) => setPromoModalForm({ ...promoModalForm, button_text: e.target.value })}
+                    placeholder="Subscribe"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Button Action</label>
+                  <select
+                    value={promoModalForm.button_action}
+                    onChange={(e) => setPromoModalForm({ ...promoModalForm, button_action: e.target.value })}
+                  >
+                    <option value="subscribe">Scroll to Subscribe</option>
+                    <option value="link">Open Link</option>
+                    <option value="close">Just Close</option>
+                  </select>
+                </div>
+              </div>
+
+              {promoModalForm.button_action === 'link' && (
+                <div className="form-group">
+                  <label>Button Link</label>
+                  <input
+                    type="url"
+                    value={promoModalForm.button_link}
+                    onChange={(e) => setPromoModalForm({ ...promoModalForm, button_link: e.target.value })}
+                    placeholder="https://..."
+                  />
+                </div>
+              )}
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Start Date (DD/MM/YYYY)</label>
+                  <input
+                    type="text"
+                    value={promoModalForm.start_date}
+                    onChange={(e) => setPromoModalForm({ ...promoModalForm, start_date: e.target.value })}
+                    placeholder="DD/MM/YYYY"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>End Date (DD/MM/YYYY)</label>
+                  <input
+                    type="text"
+                    value={promoModalForm.end_date}
+                    onChange={(e) => setPromoModalForm({ ...promoModalForm, end_date: e.target.value })}
+                    placeholder="DD/MM/YYYY"
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Background Color</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      value={promoModalForm.background_color}
+                      onChange={(e) => setPromoModalForm({ ...promoModalForm, background_color: e.target.value })}
+                      style={{ width: '50px', height: '35px', cursor: 'pointer' }}
+                    />
+                    <input
+                      type="text"
+                      value={promoModalForm.background_color}
+                      onChange={(e) => setPromoModalForm({ ...promoModalForm, background_color: e.target.value })}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Text Color</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      value={promoModalForm.text_color}
+                      onChange={(e) => setPromoModalForm({ ...promoModalForm, text_color: e.target.value })}
+                      style={{ width: '50px', height: '35px', cursor: 'pointer' }}
+                    />
+                    <input
+                      type="text"
+                      value={promoModalForm.text_color}
+                      onChange={(e) => setPromoModalForm({ ...promoModalForm, text_color: e.target.value })}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Button Color</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      value={promoModalForm.button_color}
+                      onChange={(e) => setPromoModalForm({ ...promoModalForm, button_color: e.target.value })}
+                      style={{ width: '50px', height: '35px', cursor: 'pointer' }}
+                    />
+                    <input
+                      type="text"
+                      value={promoModalForm.button_color}
+                      onChange={(e) => setPromoModalForm({ ...promoModalForm, button_color: e.target.value })}
+                      style={{ flex: 1 }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Status</label>
+                <select
+                  value={promoModalForm.status}
+                  onChange={(e) => setPromoModalForm({ ...promoModalForm, status: e.target.value })}
+                >
+                  <option value="inactive">Inactive (Draft)</option>
+                  <option value="active">Active (Live)</option>
+                  <option value="scheduled">Scheduled</option>
+                </select>
+              </div>
+
+              {/* Preview */}
+              <div className="form-group">
+                <label>Preview</label>
+                <div
+                  style={{
+                    backgroundColor: promoModalForm.background_color,
+                    color: promoModalForm.text_color,
+                    padding: '1.5rem',
+                    borderRadius: '8px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>{promoModalForm.title || 'Title'}</h4>
+                  <p style={{ margin: '0 0 1rem 0', opacity: 0.9 }}>{promoModalForm.message || 'Your message here...'}</p>
+                  <button
+                    style={{
+                      backgroundColor: promoModalForm.button_color,
+                      color: '#fff',
+                      border: 'none',
+                      padding: '0.5rem 1.5rem',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {promoModalForm.button_text || 'Subscribe'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowPromoModalForm(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={handleSavePromoModal}
+                disabled={savingPromoModal || !promoModalForm.title || !promoModalForm.message}
+              >
+                {savingPromoModal ? 'Saving...' : (editingPromoModal ? 'Update' : 'Save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Promo Modal Confirmation */}
+      {showDeletePromoModal && promoModalToDelete && (
+        <div className="modal-overlay" onClick={() => setShowDeletePromoModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Promo Modal</h3>
+            <p>Are you sure you want to delete this promo modal?</p>
+            <div className="modal-booking-info">
+              <p><strong>Title:</strong> {promoModalToDelete.title}</p>
+              <p><strong>Views:</strong> {promoModalToDelete.viewCount} | <strong>Clicks:</strong> {promoModalToDelete.clickCount}</p>
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowDeletePromoModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-danger"
+                onClick={handleDeletePromoModal}
+                disabled={deletingPromoModal}
+              >
+                {deletingPromoModal ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Testimonial Add/Edit Modal */}
       {showTestimonialModal && (

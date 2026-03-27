@@ -10697,6 +10697,300 @@ async def get_active_testimonials(
 
 
 # =============================================================================
+# PROMO MODAL ENDPOINTS
+# =============================================================================
+
+class PromoModalCreate(BaseModel):
+    """Request to create a promo modal."""
+    title: str
+    message: str
+    button_text: str = "Subscribe"
+    button_action: str = "subscribe"  # subscribe, link, close
+    button_link: Optional[str] = None
+    start_date: Optional[str] = None  # DD/MM/YYYY format
+    end_date: Optional[str] = None  # DD/MM/YYYY format
+    background_color: str = "#1e3a5f"
+    text_color: str = "#ffffff"
+    button_color: str = "#22c55e"
+    status: str = "inactive"
+
+
+class PromoModalUpdate(BaseModel):
+    """Request to update a promo modal."""
+    title: Optional[str] = None
+    message: Optional[str] = None
+    button_text: Optional[str] = None
+    button_action: Optional[str] = None
+    button_link: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    background_color: Optional[str] = None
+    text_color: Optional[str] = None
+    button_color: Optional[str] = None
+    status: Optional[str] = None
+
+
+def format_promo_modal(modal):
+    """Format a promo modal for API response."""
+    return {
+        "id": modal.id,
+        "title": modal.title,
+        "message": modal.message,
+        "buttonText": modal.button_text,
+        "buttonAction": modal.button_action,
+        "buttonLink": modal.button_link,
+        "startDate": modal.start_date.strftime("%d/%m/%Y") if modal.start_date else None,
+        "endDate": modal.end_date.strftime("%d/%m/%Y") if modal.end_date else None,
+        "backgroundColor": modal.background_color,
+        "textColor": modal.text_color,
+        "buttonColor": modal.button_color,
+        "status": modal.status.value,
+        "createdAt": modal.created_at.isoformat() if modal.created_at else None,
+        "viewCount": modal.view_count or 0,
+        "clickCount": modal.click_count or 0,
+    }
+
+
+@app.get("/api/admin/promo-modals")
+async def get_all_promo_modals(
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Get all promo modals for admin management."""
+    from db_models import PromoModal, PromoModalStatus
+
+    query = db.query(PromoModal)
+
+    if status:
+        try:
+            status_enum = PromoModalStatus(status)
+            query = query.filter(PromoModal.status == status_enum)
+        except ValueError:
+            pass
+
+    modals = query.order_by(PromoModal.created_at.desc()).all()
+
+    return {
+        "promoModals": [format_promo_modal(m) for m in modals],
+        "total": len(modals),
+    }
+
+
+@app.post("/api/admin/promo-modals")
+async def create_promo_modal(
+    request: PromoModalCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Create a new promo modal."""
+    from db_models import PromoModal, PromoModalStatus
+
+    # Parse dates
+    start_date = None
+    end_date = None
+    if request.start_date:
+        try:
+            start_date = datetime.strptime(request.start_date, "%d/%m/%Y").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid start date format. Use DD/MM/YYYY")
+    if request.end_date:
+        try:
+            end_date = datetime.strptime(request.end_date, "%d/%m/%Y").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid end date format. Use DD/MM/YYYY")
+
+    # Validate status
+    try:
+        status_enum = PromoModalStatus(request.status)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid status. Use active, inactive, or scheduled")
+
+    modal = PromoModal(
+        title=request.title,
+        message=request.message,
+        button_text=request.button_text,
+        button_action=request.button_action,
+        button_link=request.button_link,
+        start_date=start_date,
+        end_date=end_date,
+        background_color=request.background_color,
+        text_color=request.text_color,
+        button_color=request.button_color,
+        status=status_enum,
+    )
+
+    db.add(modal)
+    db.commit()
+    db.refresh(modal)
+
+    return {
+        "success": True,
+        "promoModal": format_promo_modal(modal),
+    }
+
+
+@app.put("/api/admin/promo-modals/{modal_id}")
+async def update_promo_modal(
+    modal_id: int,
+    request: PromoModalUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Update an existing promo modal."""
+    from db_models import PromoModal, PromoModalStatus
+
+    modal = db.query(PromoModal).filter(PromoModal.id == modal_id).first()
+    if not modal:
+        raise HTTPException(status_code=404, detail="Promo modal not found")
+
+    # Update fields
+    if request.title is not None:
+        modal.title = request.title
+    if request.message is not None:
+        modal.message = request.message
+    if request.button_text is not None:
+        modal.button_text = request.button_text
+    if request.button_action is not None:
+        modal.button_action = request.button_action
+    if request.button_link is not None:
+        modal.button_link = request.button_link
+    if request.background_color is not None:
+        modal.background_color = request.background_color
+    if request.text_color is not None:
+        modal.text_color = request.text_color
+    if request.button_color is not None:
+        modal.button_color = request.button_color
+
+    # Parse dates
+    if request.start_date is not None:
+        if request.start_date == "":
+            modal.start_date = None
+        else:
+            try:
+                modal.start_date = datetime.strptime(request.start_date, "%d/%m/%Y").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid start date format. Use DD/MM/YYYY")
+
+    if request.end_date is not None:
+        if request.end_date == "":
+            modal.end_date = None
+        else:
+            try:
+                modal.end_date = datetime.strptime(request.end_date, "%d/%m/%Y").date()
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid end date format. Use DD/MM/YYYY")
+
+    # Parse status
+    if request.status is not None:
+        try:
+            modal.status = PromoModalStatus(request.status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid status. Use active, inactive, or scheduled")
+
+    db.commit()
+    db.refresh(modal)
+
+    return {
+        "success": True,
+        "promoModal": format_promo_modal(modal),
+    }
+
+
+@app.delete("/api/admin/promo-modals/{modal_id}")
+async def delete_promo_modal(
+    modal_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Delete a promo modal."""
+    from db_models import PromoModal
+
+    modal = db.query(PromoModal).filter(PromoModal.id == modal_id).first()
+    if not modal:
+        raise HTTPException(status_code=404, detail="Promo modal not found")
+
+    db.delete(modal)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Promo modal '{modal.title}' deleted",
+    }
+
+
+@app.get("/api/promo-modal")
+async def get_active_promo_modal(
+    db: Session = Depends(get_db),
+):
+    """
+    Get the currently active promo modal for public display.
+    Returns the first active modal that's within its date range (UK timezone).
+
+    Date boundaries are inclusive:
+    - start_date: Modal shows from 00:00:00 UK time on this date
+    - end_date: Modal shows until 23:59:59 UK time on this date
+    """
+    from db_models import PromoModal, PromoModalStatus
+
+    # Use UK timezone for date comparison
+    today_uk = get_uk_now().date()
+
+    # Find active modals within date range
+    modals = db.query(PromoModal).filter(
+        PromoModal.status == PromoModalStatus.ACTIVE
+    ).all()
+
+    for modal in modals:
+        # Check date range (inclusive on both ends)
+        if modal.start_date and today_uk < modal.start_date:
+            continue
+        if modal.end_date and today_uk > modal.end_date:
+            continue
+        # This modal is valid
+        return {
+            "promoModal": format_promo_modal(modal),
+        }
+
+    # No active modal found
+    return {
+        "promoModal": None,
+    }
+
+
+@app.post("/api/promo-modal/{modal_id}/view")
+async def track_promo_modal_view(
+    modal_id: int,
+    db: Session = Depends(get_db),
+):
+    """Track a view of a promo modal."""
+    from db_models import PromoModal
+
+    modal = db.query(PromoModal).filter(PromoModal.id == modal_id).first()
+    if modal:
+        modal.view_count = (modal.view_count or 0) + 1
+        db.commit()
+
+    return {"success": True}
+
+
+@app.post("/api/promo-modal/{modal_id}/click")
+async def track_promo_modal_click(
+    modal_id: int,
+    db: Session = Depends(get_db),
+):
+    """Track a CTA click on a promo modal."""
+    from db_models import PromoModal
+
+    modal = db.query(PromoModal).filter(PromoModal.id == modal_id).first()
+    if modal:
+        modal.click_count = (modal.click_count or 0) + 1
+        db.commit()
+
+    return {"success": True}
+
+
+# =============================================================================
 # BLOCKED DATES ENDPOINTS
 # =============================================================================
 
