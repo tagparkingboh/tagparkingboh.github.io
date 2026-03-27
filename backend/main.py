@@ -8299,8 +8299,35 @@ async def stripe_webhook(
     elif event_type == "charge.refunded":
         charge_id = data["id"]
         refund_amount = data.get("amount_refunded", 0)
+        original_amount = data.get("amount", 0)
+        payment_intent_id = data.get("payment_intent")
         metadata = data.get("metadata", {})
         booking_reference = metadata.get("booking_reference")
+
+        # Get refund details from the refunds list
+        refunds_data = data.get("refunds", {})
+        refunds_list = refunds_data.get("data", []) if isinstance(refunds_data, dict) else []
+        latest_refund_id = refunds_list[0].get("id") if refunds_list else None
+
+        # Update Payment record with refund information
+        if payment_intent_id:
+            payment = db.query(Payment).filter(
+                Payment.stripe_payment_intent_id == payment_intent_id
+            ).first()
+
+            if payment:
+                payment.refund_amount_pence = refund_amount
+                payment.refunded_at = datetime.utcnow()
+                if latest_refund_id:
+                    payment.refund_id = latest_refund_id
+
+                # Set status based on refund amount
+                if refund_amount >= original_amount:
+                    payment.status = PaymentStatus.REFUNDED
+                else:
+                    payment.status = PaymentStatus.PARTIALLY_REFUNDED
+
+                db.commit()
 
         # Log refund
         log_audit_event(
@@ -8310,11 +8337,12 @@ async def stripe_webhook(
             booking_reference=booking_reference,
             event_data={
                 "charge_id": charge_id,
+                "payment_intent_id": payment_intent_id,
                 "refund_amount_pence": refund_amount,
             },
         )
 
-        return {"status": "refunded"}
+        return {"status": "refunded", "payment_intent_id": payment_intent_id}
 
     # Return success for other event types (we don't need to handle them)
     return {"status": "received", "type": event_type}
