@@ -5391,6 +5391,42 @@
   margin-top: 4px;
 }
 
+/* Vertical layout for fun fact cards */
+.fun-fact-vertical {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 20px 24px;
+}
+
+.fun-fact-vertical .stats-card-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  order: 1;
+}
+
+.fun-fact-vertical .stats-card-value {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  order: 2;
+}
+
+.fun-fact-vertical .fun-fact-detail {
+  font-size: 14px;
+  margin-top: 0;
+  margin-bottom: 6px;
+  order: 3;
+}
+
+.fun-fact-vertical .fun-fact-change {
+  font-size: 13px;
+  margin-top: 0;
+  order: 4;
+}
+
 /* Financial Month Containers */
 .financial-monthly-breakdown {
   margin-top: 24px;
