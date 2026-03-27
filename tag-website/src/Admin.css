@@ -5385,6 +5385,12 @@
   margin-top: 4px;
 }
 
+.fun-fact-change {
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
 /* Financial Month Containers */
 .financial-monthly-breakdown {
   margin-top: 24px;

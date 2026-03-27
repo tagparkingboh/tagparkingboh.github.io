@@ -3664,17 +3664,51 @@ async def get_financial_report(
         year, week_num = int(top_week[0][:4]), int(top_week[0][6:])
         week_start = date.fromisocalendar(year, week_num, 1)  # Monday
         week_end = week_start + timedelta(days=6)
+
+        # Calculate previous week for comparison
+        prev_week_num = week_num - 1
+        prev_year = year
+        if prev_week_num < 1:
+            prev_year -= 1
+            prev_week_num = date(prev_year, 12, 28).isocalendar()[1]  # Last week of prev year
+        prev_week_key = f"{prev_year}-W{prev_week_num:02d}"
+        prev_week_revenue = revenue_by_week.get(prev_week_key, 0)
+
+        # Calculate percentage change
+        week_change = None
+        if prev_week_revenue > 0:
+            change_pct = ((top_week[1] - prev_week_revenue) / prev_week_revenue) * 100
+            week_change = f"+{change_pct:.0f}%" if change_pct >= 0 else f"{change_pct:.0f}%"
+
         fun_facts["topRevenueWeek"] = {
             "week": f"{week_start.strftime('%d %b')} - {week_end.strftime('%d %b %Y')}",
             "amount": f"£{top_week[1] / 100:.2f}",
+            "vsLastWeek": week_change,
+            "lastWeekAmount": f"£{prev_week_revenue / 100:.2f}" if prev_week_revenue > 0 else None,
         }
 
     if revenue_by_month:
         top_month = max(revenue_by_month.items(), key=lambda x: x[1])
         month_date = datetime.strptime(top_month[0], "%Y-%m")
+
+        # Calculate previous month for comparison
+        if month_date.month == 1:
+            prev_month_key = f"{month_date.year - 1}-12"
+        else:
+            prev_month_key = f"{month_date.year}-{month_date.month - 1:02d}"
+        prev_month_revenue = revenue_by_month.get(prev_month_key, 0)
+
+        # Calculate percentage change
+        month_change = None
+        if prev_month_revenue > 0:
+            change_pct = ((top_month[1] - prev_month_revenue) / prev_month_revenue) * 100
+            month_change = f"+{change_pct:.0f}%" if change_pct >= 0 else f"{change_pct:.0f}%"
+
         fun_facts["topRevenueMonth"] = {
             "month": month_date.strftime("%B %Y"),
             "amount": f"£{top_month[1] / 100:.2f}",
+            "vsLastMonth": month_change,
+            "lastMonthAmount": f"£{prev_month_revenue / 100:.2f}" if prev_month_revenue > 0 else None,
         }
 
     # Build bookings list with financial details, grouped by month

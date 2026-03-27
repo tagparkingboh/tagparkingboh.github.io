@@ -7726,6 +7726,11 @@ function Admin() {
                             <div className="stats-card-value">{financialData.funFacts.topRevenueWeek.amount}</div>
                             <div className="stats-card-label">Top Revenue Week</div>
                             <div className="fun-fact-detail">{financialData.funFacts.topRevenueWeek.week}</div>
+                            {financialData.funFacts.topRevenueWeek.vsLastWeek && (
+                              <div className="fun-fact-change" style={{ color: financialData.funFacts.topRevenueWeek.vsLastWeek.startsWith('+') ? '#22c55e' : '#ef4444' }}>
+                                {financialData.funFacts.topRevenueWeek.vsLastWeek} vs last week
+                              </div>
+                            )}
                           </div>
                         )}
                         {financialData.funFacts?.topRevenueMonth && (
@@ -7733,6 +7738,11 @@ function Admin() {
                             <div className="stats-card-value">{financialData.funFacts.topRevenueMonth.amount}</div>
                             <div className="stats-card-label">Top Revenue Month</div>
                             <div className="fun-fact-detail">{financialData.funFacts.topRevenueMonth.month}</div>
+                            {financialData.funFacts.topRevenueMonth.vsLastMonth && (
+                              <div className="fun-fact-change" style={{ color: financialData.funFacts.topRevenueMonth.vsLastMonth.startsWith('+') ? '#22c55e' : '#ef4444' }}>
+                                {financialData.funFacts.topRevenueMonth.vsLastMonth} vs last month
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
