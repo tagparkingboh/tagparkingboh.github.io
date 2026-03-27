@@ -5449,6 +5449,24 @@
   font-weight: 600;
 }
 
+.financial-month-header .month-discount {
+  font-size: 14px;
+  color: #f59e0b;
+  font-weight: 500;
+}
+
+.financial-month-header .month-refunds {
+  font-size: 14px;
+  color: #ef4444;
+  font-weight: 500;
+}
+
+.financial-month-header .month-revenue {
+  font-size: 14px;
+  color: #22c55e;
+  font-weight: 600;
+}
+
 .financial-month-bookings {
   padding: 0;
 }

@@ -7798,10 +7798,10 @@ function Admin() {
                               <span className="month-label">{month.monthLabel}</span>
                               <span className="month-count">{month.bookingCount} bookings</span>
                               <span className="month-gross">Gross: {month.totalGross}</span>
-                              <span className="month-discount" style={{ color: '#f59e0b' }}>Discounts: {month.totalDiscount}</span>
+                              <span className="month-discount">Discounts: {month.totalDiscount}</span>
                               <span className="month-net">Paid: {month.totalNet}</span>
-                              <span className="month-refunds" style={{ color: '#ef4444' }}>Refunds: {month.totalRefunds}</span>
-                              <span className="month-revenue" style={{ color: '#22c55e' }}>Revenue: {month.totalRevenue}</span>
+                              <span className="month-refunds">Refunds: {month.totalRefunds}</span>
+                              <span className="month-revenue">Revenue: {month.totalRevenue}</span>
                             </div>
                             {expandedFinancialMonths[month.monthKey] && (
                               <div className="financial-month-bookings">
