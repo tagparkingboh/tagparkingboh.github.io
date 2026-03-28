@@ -85,7 +85,10 @@ const PHOTO_SLOTS = [
 // UK date format helpers (DD/MM/YYYY)
 const isoToUkDate = (isoDate) => {
   if (!isoDate) return ''
-  const [year, month, day] = isoDate.split('-')
+  // Handle both "YYYY-MM-DD" and "YYYY-MM-DDTHH:MM:SS" formats
+  const datePart = isoDate.split('T')[0]
+  const [year, month, day] = datePart.split('-')
+  if (!year || !month || !day) return ''
   return `${day}/${month}/${year}`
 }
 
@@ -193,6 +196,7 @@ function Admin() {
   const [expandedBookingMonths, setExpandedBookingMonths] = useState({})
   const [editForm, setEditForm] = useState({
     // Dropoff/Departure details
+    dropoff_date: '',
     dropoff_time: '',
     flight_departure_time: '',
     dropoff_airline_name: '',
