@@ -9298,7 +9298,7 @@ function Admin() {
                       value={editForm.dropoff_date}
                       onChange={(e) => setEditForm({ ...editForm, dropoff_date: formatDateInput(e.target.value) })}
                       maxLength={10}
-                      style={{ flex: 1 }}
+                      style={{ width: '110px' }}
                     />
                     <DatePicker
                       selected={parseUkDate(editForm.dropoff_date)}
@@ -9369,7 +9369,7 @@ function Admin() {
                       value={editForm.pickup_date}
                       onChange={(e) => setEditForm({ ...editForm, pickup_date: formatDateInput(e.target.value) })}
                       maxLength={10}
-                      style={{ flex: 1 }}
+                      style={{ width: '110px' }}
                     />
                     <DatePicker
                       selected={parseUkDate(editForm.pickup_date)}
