@@ -1511,8 +1511,9 @@ async def create_manual_booking(
         )
         db.add(payment)
 
-        # Mark promo code as used for ALL bookings with promo codes (free or paid)
-        if request.promo_code:
+        # Mark promo code as used ONLY for free bookings (100% discount)
+        # For paid bookings, the Stripe webhook will mark the code as used after payment succeeds
+        if request.promo_code and is_free:
             promo_code_str = request.promo_code.strip().upper()
             from db_models import PromoCode as DbPromoCode, Promotion as DbPromotion
 
@@ -1943,7 +1944,7 @@ async def delete_booking(
         db.delete(payment)
 
     # Clear any promo code references to this booking
-    from db_models import MarketingSubscriber
+    from db_models import MarketingSubscriber, PromoCode
     db.query(MarketingSubscriber).filter(
         MarketingSubscriber.promo_code_used_booking_id == booking_id
     ).update({MarketingSubscriber.promo_code_used_booking_id: None}, synchronize_session=False)
@@ -1953,6 +1954,11 @@ async def delete_booking(
     db.query(MarketingSubscriber).filter(
         MarketingSubscriber.promo_free_used_booking_id == booking_id
     ).update({MarketingSubscriber.promo_free_used_booking_id: None}, synchronize_session=False)
+
+    # Clear promo_codes booking reference and reset used status (for pending bookings, code wasn't truly used)
+    db.query(PromoCode).filter(
+        PromoCode.booking_id == booking_id
+    ).update({PromoCode.booking_id: None, PromoCode.is_used: False, PromoCode.used_at: None}, synchronize_session=False)
 
     # Delete the booking
     db.delete(booking)
