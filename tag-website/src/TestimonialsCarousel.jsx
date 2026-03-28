@@ -232,10 +232,10 @@ function TestimonialsCarousel() {
             >
               ✕
             </button>
-            <img
-              src="/assets/tag-press-article.png"
-              alt="Tag Parking featured in Southern Daily Echo, Dorset Echo & Salisbury Journal"
-              className="press-modal-image"
+            <iframe
+              src="/assets/Tag edit.pdf"
+              title="Tag Parking featured in Southern Daily Echo, Dorset Echo & Salisbury Journal"
+              className="press-modal-pdf"
             />
           </div>
         </div>

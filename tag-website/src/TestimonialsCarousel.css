@@ -323,6 +323,12 @@
   object-fit: contain;
 }
 
+.press-modal-pdf {
+  width: 80vw;
+  height: 85vh;
+  border: none;
+}
+
 /* ===== RESPONSIVE DESIGN ===== */
 
 /* Tablet */
