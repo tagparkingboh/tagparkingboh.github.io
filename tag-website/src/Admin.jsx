@@ -7833,7 +7833,8 @@ function Admin() {
                       type="text"
                       placeholder="DD/MM/YYYY"
                       value={financialFromDate}
-                      onChange={(e) => setFinancialFromDate(e.target.value)}
+                      onChange={(e) => setFinancialFromDate(formatDateInput(e.target.value))}
+                      maxLength={10}
                     />
                   </div>
                   <div className="filter-group">
@@ -7842,7 +7843,8 @@ function Admin() {
                       type="text"
                       placeholder="DD/MM/YYYY"
                       value={financialToDate}
-                      onChange={(e) => setFinancialToDate(e.target.value)}
+                      onChange={(e) => setFinancialToDate(formatDateInput(e.target.value))}
+                      maxLength={10}
                     />
                   </div>
                   <div className="filter-group">
@@ -9287,7 +9289,8 @@ function Admin() {
                     placeholder="DD/MM/YYYY"
                     pattern="\d{2}/\d{2}/\d{4}"
                     value={editForm.pickup_date}
-                    onChange={(e) => setEditForm({ ...editForm, pickup_date: e.target.value })}
+                    onChange={(e) => setEditForm({ ...editForm, pickup_date: formatDateInput(e.target.value) })}
+                    maxLength={10}
                   />
                 </div>
                 <div className="modal-form-group">
