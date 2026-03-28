@@ -117,6 +117,24 @@ const formatDateInput = (value) => {
   return formatted
 }
 
+// Parse UK date string (DD/MM/YYYY) to Date object
+const parseUkDate = (ukDateStr) => {
+  if (!ukDateStr || ukDateStr.length !== 10) return null
+  const [day, month, year] = ukDateStr.split('/')
+  if (!day || !month || !year) return null
+  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+  return isNaN(date.getTime()) ? null : date
+}
+
+// Format Date object to UK date string (DD/MM/YYYY)
+const dateToUkString = (date) => {
+  if (!date) return ''
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+  return `${day}/${month}/${year}`
+}
+
 // Format marketing source for display
 const formatMarketingSource = (source) => {
   if (!source) return '-'
@@ -7829,23 +7847,39 @@ function Admin() {
                 <div className="financial-filters">
                   <div className="filter-group">
                     <label>From Date</label>
-                    <input
-                      type="text"
-                      placeholder="DD/MM/YYYY"
-                      value={financialFromDate}
-                      onChange={(e) => setFinancialFromDate(formatDateInput(e.target.value))}
-                      maxLength={10}
-                    />
+                    <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        placeholder="DD/MM/YYYY"
+                        value={financialFromDate}
+                        onChange={(e) => setFinancialFromDate(formatDateInput(e.target.value))}
+                        maxLength={10}
+                      />
+                      <DatePicker
+                        selected={parseUkDate(financialFromDate)}
+                        onChange={(date) => setFinancialFromDate(dateToUkString(date))}
+                        dateFormat="dd/MM/yyyy"
+                        customInput={<button type="button" className="date-picker-btn">📅</button>}
+                      />
+                    </div>
                   </div>
                   <div className="filter-group">
                     <label>To Date</label>
-                    <input
-                      type="text"
-                      placeholder="DD/MM/YYYY"
-                      value={financialToDate}
-                      onChange={(e) => setFinancialToDate(formatDateInput(e.target.value))}
-                      maxLength={10}
-                    />
+                    <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        placeholder="DD/MM/YYYY"
+                        value={financialToDate}
+                        onChange={(e) => setFinancialToDate(formatDateInput(e.target.value))}
+                        maxLength={10}
+                      />
+                      <DatePicker
+                        selected={parseUkDate(financialToDate)}
+                        onChange={(date) => setFinancialToDate(dateToUkString(date))}
+                        dateFormat="dd/MM/yyyy"
+                        customInput={<button type="button" className="date-picker-btn">📅</button>}
+                      />
+                    </div>
                   </div>
                   <div className="filter-group">
                     <label>Status</label>
@@ -8802,25 +8836,43 @@ function Admin() {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label>Start Date (DD/MM/YYYY)</label>
-                  <input
-                    type="text"
-                    value={promoModalForm.start_date}
-                    onChange={(e) => setPromoModalForm({ ...promoModalForm, start_date: formatDateInput(e.target.value) })}
-                    placeholder="DD/MM/YYYY"
-                    maxLength={10}
-                  />
+                  <label>Start Date</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={promoModalForm.start_date}
+                      onChange={(e) => setPromoModalForm({ ...promoModalForm, start_date: formatDateInput(e.target.value) })}
+                      placeholder="DD/MM/YYYY"
+                      maxLength={10}
+                      style={{ flex: 1 }}
+                    />
+                    <DatePicker
+                      selected={parseUkDate(promoModalForm.start_date)}
+                      onChange={(date) => setPromoModalForm({ ...promoModalForm, start_date: dateToUkString(date) })}
+                      dateFormat="dd/MM/yyyy"
+                      customInput={<button type="button" className="date-picker-btn">📅</button>}
+                    />
+                  </div>
                 </div>
 
                 <div className="form-group">
-                  <label>End Date (DD/MM/YYYY)</label>
-                  <input
-                    type="text"
-                    value={promoModalForm.end_date}
-                    onChange={(e) => setPromoModalForm({ ...promoModalForm, end_date: formatDateInput(e.target.value) })}
-                    placeholder="DD/MM/YYYY"
-                    maxLength={10}
-                  />
+                  <label>End Date</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={promoModalForm.end_date}
+                      onChange={(e) => setPromoModalForm({ ...promoModalForm, end_date: formatDateInput(e.target.value) })}
+                      placeholder="DD/MM/YYYY"
+                      maxLength={10}
+                      style={{ flex: 1 }}
+                    />
+                    <DatePicker
+                      selected={parseUkDate(promoModalForm.end_date)}
+                      onChange={(date) => setPromoModalForm({ ...promoModalForm, end_date: dateToUkString(date) })}
+                      dateFormat="dd/MM/yyyy"
+                      customInput={<button type="button" className="date-picker-btn">📅</button>}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -9283,15 +9335,24 @@ function Admin() {
               <h4 className="modal-section-title">Pick-up / Return</h4>
               <div className="modal-form-row">
                 <div className="modal-form-group">
-                  <label>Pickup Date (DD/MM/YYYY)</label>
-                  <input
-                    type="text"
-                    placeholder="DD/MM/YYYY"
-                    pattern="\d{2}/\d{2}/\d{4}"
-                    value={editForm.pickup_date}
-                    onChange={(e) => setEditForm({ ...editForm, pickup_date: formatDateInput(e.target.value) })}
-                    maxLength={10}
-                  />
+                  <label>Pickup Date</label>
+                  <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      placeholder="DD/MM/YYYY"
+                      pattern="\d{2}/\d{2}/\d{4}"
+                      value={editForm.pickup_date}
+                      onChange={(e) => setEditForm({ ...editForm, pickup_date: formatDateInput(e.target.value) })}
+                      maxLength={10}
+                      style={{ flex: 1 }}
+                    />
+                    <DatePicker
+                      selected={parseUkDate(editForm.pickup_date)}
+                      onChange={(date) => setEditForm({ ...editForm, pickup_date: dateToUkString(date) })}
+                      dateFormat="dd/MM/yyyy"
+                      customInput={<button type="button" className="date-picker-btn">📅</button>}
+                    />
+                  </div>
                 </div>
                 <div className="modal-form-group">
                   <label>Arrival Time (24hr)</label>

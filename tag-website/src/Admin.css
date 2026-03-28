@@ -5630,3 +5630,19 @@
 .cancel-btn-inline:hover {
   background: #dc2626;
 }
+
+/* Date picker button */
+.date-picker-btn {
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: background 0.2s;
+}
+
+.date-picker-btn:hover {
+  background: #e5e7eb;
+}
