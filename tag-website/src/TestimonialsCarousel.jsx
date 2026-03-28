@@ -199,6 +199,18 @@ function TestimonialsCarousel() {
           <path d="M7 11H17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
           <path d="M7 15H17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
         </svg>
+        <span>Read our story in the </span>
+        <a
+          href="https://www.bournemouthecho.co.uk/news/25707007.new-parking-business-launches-near-bournemouth-airport/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="press-link"
+        >
+          Daily Echo
+        </a>
+      </div>
+
+      <div className="testimonials-press">
         <span>As featured in the </span>
         <button
           onClick={() => setShowPressModal(true)}
