@@ -8850,7 +8850,7 @@ function Admin() {
                       onChange={(e) => setPromoModalForm({ ...promoModalForm, start_date: formatDateInput(e.target.value) })}
                       placeholder="DD/MM/YYYY"
                       maxLength={10}
-                      style={{ width: '110px' }}
+                      style={{ width: '125px' }}
                     />
                     <DatePicker
                       selected={parseUkDate(promoModalForm.start_date)}
@@ -8870,7 +8870,7 @@ function Admin() {
                       onChange={(e) => setPromoModalForm({ ...promoModalForm, end_date: formatDateInput(e.target.value) })}
                       placeholder="DD/MM/YYYY"
                       maxLength={10}
-                      style={{ width: '110px' }}
+                      style={{ width: '125px' }}
                     />
                     <DatePicker
                       selected={parseUkDate(promoModalForm.end_date)}
@@ -9298,7 +9298,7 @@ function Admin() {
                       value={editForm.dropoff_date}
                       onChange={(e) => setEditForm({ ...editForm, dropoff_date: formatDateInput(e.target.value) })}
                       maxLength={10}
-                      style={{ width: '110px' }}
+                      style={{ width: '125px' }}
                     />
                     <DatePicker
                       selected={parseUkDate(editForm.dropoff_date)}
@@ -9369,7 +9369,7 @@ function Admin() {
                       value={editForm.pickup_date}
                       onChange={(e) => setEditForm({ ...editForm, pickup_date: formatDateInput(e.target.value) })}
                       maxLength={10}
-                      style={{ width: '110px' }}
+                      style={{ width: '125px' }}
                     />
                     <DatePicker
                       selected={parseUkDate(editForm.pickup_date)}
