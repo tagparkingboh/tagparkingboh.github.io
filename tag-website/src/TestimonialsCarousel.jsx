@@ -7,6 +7,7 @@ function TestimonialsCarousel() {
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [showPressModal, setShowPressModal] = useState(false)
 
   // Fetch testimonials from API
   useEffect(() => {
@@ -198,16 +199,34 @@ function TestimonialsCarousel() {
           <path d="M7 11H17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
           <path d="M7 15H17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
         </svg>
-        <span>Read our story in the </span>
-        <a
-          href="https://www.bournemouthecho.co.uk/news/25707007.new-parking-business-launches-near-bournemouth-airport/"
-          target="_blank"
-          rel="noopener noreferrer"
+        <span>As featured in the </span>
+        <button
+          onClick={() => setShowPressModal(true)}
           className="press-link"
         >
-          Daily Echo
-        </a>
+          Southern Daily Echo, Dorset Echo & Salisbury Journal
+        </button>
       </div>
+
+      {/* Press Article Modal */}
+      {showPressModal && (
+        <div className="press-modal-overlay" onClick={() => setShowPressModal(false)}>
+          <div className="press-modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="press-modal-close"
+              onClick={() => setShowPressModal(false)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <img
+              src="/assets/tag-press-article.png"
+              alt="Tag Parking featured in Southern Daily Echo, Dorset Echo & Salisbury Journal"
+              className="press-modal-image"
+            />
+          </div>
+        </div>
+      )}
     </section>
   )
 }
