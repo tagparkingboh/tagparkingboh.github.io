@@ -97,6 +97,26 @@ const ukToIsoDate = (ukDate) => {
   return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
 }
 
+// Auto-format date input as DD/MM/YYYY
+const formatDateInput = (value) => {
+  // Remove non-digits
+  const digits = value.replace(/\D/g, '')
+
+  // Build formatted string
+  let formatted = ''
+  if (digits.length > 0) {
+    formatted = digits.slice(0, 2)
+  }
+  if (digits.length > 2) {
+    formatted += '/' + digits.slice(2, 4)
+  }
+  if (digits.length > 4) {
+    formatted += '/' + digits.slice(4, 8)
+  }
+
+  return formatted
+}
+
 // Format marketing source for display
 const formatMarketingSource = (source) => {
   if (!source) return '-'
@@ -8784,8 +8804,9 @@ function Admin() {
                   <input
                     type="text"
                     value={promoModalForm.start_date}
-                    onChange={(e) => setPromoModalForm({ ...promoModalForm, start_date: e.target.value })}
+                    onChange={(e) => setPromoModalForm({ ...promoModalForm, start_date: formatDateInput(e.target.value) })}
                     placeholder="DD/MM/YYYY"
+                    maxLength={10}
                   />
                 </div>
 
@@ -8794,8 +8815,9 @@ function Admin() {
                   <input
                     type="text"
                     value={promoModalForm.end_date}
-                    onChange={(e) => setPromoModalForm({ ...promoModalForm, end_date: e.target.value })}
+                    onChange={(e) => setPromoModalForm({ ...promoModalForm, end_date: formatDateInput(e.target.value) })}
                     placeholder="DD/MM/YYYY"
+                    maxLength={10}
                   />
                 </div>
               </div>
