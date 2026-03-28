@@ -3003,7 +3003,8 @@ function Admin() {
     e.stopPropagation()
     setBookingToEdit(booking)
     setEditForm({
-      // Dropoff/Departure details
+      // Dropoff/Departure details - convert ISO date to UK format for display
+      dropoff_date: isoToUkDate(booking.dropoff_date) || '',
       dropoff_time: booking.dropoff_time || '',
       flight_departure_time: booking.flight_departure_time || '',
       dropoff_airline_name: booking.dropoff_airline_name || '',
@@ -3033,7 +3034,8 @@ function Admin() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          // Dropoff/Departure details
+          // Dropoff/Departure details - convert UK date back to ISO format for API
+          dropoff_date: ukToIsoDate(editForm.dropoff_date) || null,
           dropoff_time: editForm.dropoff_time || null,
           flight_departure_time: editForm.flight_departure_time || null,
           dropoff_airline_name: editForm.dropoff_airline_name || null,
@@ -9283,6 +9285,25 @@ function Admin() {
             <div className="modal-form">
               <h4 className="modal-section-title">Drop-off / Departure</h4>
               <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Drop-off Date</label>
+                  <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      placeholder="DD/MM/YYYY"
+                      value={editForm.dropoff_date}
+                      onChange={(e) => setEditForm({ ...editForm, dropoff_date: formatDateInput(e.target.value) })}
+                      maxLength={10}
+                      style={{ flex: 1 }}
+                    />
+                    <DatePicker
+                      selected={parseUkDate(editForm.dropoff_date)}
+                      onChange={(date) => setEditForm({ ...editForm, dropoff_date: dateToUkString(date) })}
+                      dateFormat="dd/MM/yyyy"
+                      customInput={<button type="button" className="date-picker-btn">📅</button>}
+                    />
+                  </div>
+                </div>
                 <div className="modal-form-group">
                   <label>Drop-off Time (24hr)</label>
                   <input
