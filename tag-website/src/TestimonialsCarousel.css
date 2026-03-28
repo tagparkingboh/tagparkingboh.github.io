@@ -247,6 +247,15 @@
   color: #fff;
 }
 
+/* Desktop/tablet: show inline version, hide mobile version */
+.press-link-papers .papers-mobile {
+  display: none;
+}
+
+.press-link-papers .papers-desktop {
+  display: inline;
+}
+
 /* Press Article Modal */
 .press-modal-overlay {
   position: fixed;
@@ -410,6 +419,20 @@
 
   .testimonial-dots .dot.active {
     width: 24px;
+  }
+
+  /* Mobile: show stacked version, hide inline version */
+  .press-link-papers .papers-desktop {
+    display: none;
+  }
+
+  .press-link-papers .papers-mobile {
+    display: inline;
+  }
+
+  .testimonials-press-featured {
+    flex-direction: column;
+    gap: 0.25rem;
   }
 }
 

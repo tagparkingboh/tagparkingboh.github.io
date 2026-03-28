@@ -210,13 +210,14 @@ function TestimonialsCarousel() {
         </a>
       </div>
 
-      <div className="testimonials-press">
+      <div className="testimonials-press testimonials-press-featured">
         <span>As featured in the </span>
         <button
           onClick={() => setShowPressModal(true)}
-          className="press-link"
+          className="press-link press-link-papers"
         >
-          Southern Daily Echo, Dorset Echo & Salisbury Journal
+          <span className="papers-desktop">Southern Daily Echo, Dorset Echo & Salisbury Journal</span>
+          <span className="papers-mobile">Dorset Echo,<br />Southern Daily Echo & Salisbury Journal</span>
         </button>
       </div>
 
