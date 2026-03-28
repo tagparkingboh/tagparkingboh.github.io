@@ -93,10 +93,11 @@ def create_payment_intent(request: PaymentIntentRequest) -> PaymentIntentRespons
         raise ValueError("Stripe is not configured. Please set STRIPE_SECRET_KEY.")
 
     # Create the payment intent
+    # Disable Link to avoid customer confusion - only allow card payments
     intent = stripe.PaymentIntent.create(
         amount=request.amount,
         currency=request.currency,
-        automatic_payment_methods={"enabled": True},
+        payment_method_types=["card"],
         metadata={
             "booking_reference": request.booking_reference,
             "flight_number": request.flight_number,
