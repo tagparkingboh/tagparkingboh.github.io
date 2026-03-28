@@ -841,6 +841,10 @@ class PromoModal(Base):
         nullable=False
     )
 
+    # Subscriber limit (auto-deactivate after X new subscribers)
+    max_subscribers = Column(Integer, nullable=True)  # null = unlimited
+    subscribers_at_activation = Column(Integer, nullable=True)  # Count when activated
+
     # Tracking
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

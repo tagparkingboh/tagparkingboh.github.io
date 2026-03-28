@@ -6730,6 +6730,9 @@ async def subscribe_to_marketing(
         db.add(subscriber)
         db.commit()
 
+        # Check if any active promo modals have hit their subscriber limit
+        check_promo_modal_subscriber_limits(db)
+
         return MarketingSubscribeResponse(
             success=True,
             message="Thanks for signing up!",
@@ -10730,6 +10733,32 @@ class PromoModalUpdate(BaseModel):
     button_color: Optional[str] = None
     button_text_color: Optional[str] = None
     status: Optional[str] = None
+    max_subscribers: Optional[int] = None
+
+
+def check_promo_modal_subscriber_limits(db: Session):
+    """
+    Check if any active promo modals have hit their subscriber limit.
+    If so, auto-deactivate them.
+    """
+    from db_models import PromoModal, PromoModalStatus, MarketingSubscriber
+
+    current_count = db.query(MarketingSubscriber).count()
+
+    # Find active modals with subscriber limits
+    active_modals = db.query(PromoModal).filter(
+        PromoModal.status == PromoModalStatus.ACTIVE,
+        PromoModal.max_subscribers.isnot(None),
+        PromoModal.subscribers_at_activation.isnot(None),
+    ).all()
+
+    for modal in active_modals:
+        target_count = modal.subscribers_at_activation + modal.max_subscribers
+        if current_count >= target_count:
+            modal.status = PromoModalStatus.INACTIVE
+            print(f"Auto-deactivated promo modal '{modal.title}' - subscriber limit reached ({modal.max_subscribers} new subscribers)")
+
+    db.commit()
 
 
 def format_promo_modal(modal):
@@ -10751,6 +10780,8 @@ def format_promo_modal(modal):
         "createdAt": modal.created_at.isoformat() if modal.created_at else None,
         "viewCount": modal.view_count or 0,
         "clickCount": modal.click_count or 0,
+        "maxSubscribers": modal.max_subscribers,
+        "subscribersAtActivation": modal.subscribers_at_activation,
     }
 
 
@@ -10842,7 +10873,7 @@ async def update_promo_modal(
     current_user: User = Depends(require_admin),
 ):
     """Update an existing promo modal."""
-    from db_models import PromoModal, PromoModalStatus
+    from db_models import PromoModal, PromoModalStatus, MarketingSubscriber
 
     modal = db.query(PromoModal).filter(PromoModal.id == modal_id).first()
     if not modal:
@@ -10887,10 +10918,24 @@ async def update_promo_modal(
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid end date format. Use DD/MM/YYYY")
 
-    # Parse status
+    # Handle max_subscribers
+    if request.max_subscribers is not None:
+        modal.max_subscribers = request.max_subscribers if request.max_subscribers > 0 else None
+
+    # Parse status and capture subscriber count if activating
+    old_status = modal.status
     if request.status is not None:
         try:
-            modal.status = PromoModalStatus(request.status)
+            new_status = PromoModalStatus(request.status)
+            modal.status = new_status
+
+            # If activating and has max_subscribers, capture current count
+            if new_status == PromoModalStatus.ACTIVE and old_status != PromoModalStatus.ACTIVE:
+                if modal.max_subscribers:
+                    current_count = db.query(MarketingSubscriber).count()
+                    modal.subscribers_at_activation = current_count
+            elif new_status != PromoModalStatus.ACTIVE:
+                modal.subscribers_at_activation = None
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid status. Use active, inactive, or scheduled")
 
@@ -10932,7 +10977,7 @@ async def toggle_promo_modal_status(
     current_user: User = Depends(require_admin),
 ):
     """Toggle promo modal status between active and inactive (admin only)."""
-    from db_models import PromoModal, PromoModalStatus
+    from db_models import PromoModal, PromoModalStatus, MarketingSubscriber
 
     modal = db.query(PromoModal).filter(PromoModal.id == modal_id).first()
     if not modal:
@@ -10941,8 +10986,13 @@ async def toggle_promo_modal_status(
     # Toggle status
     if modal.status == PromoModalStatus.ACTIVE:
         modal.status = PromoModalStatus.INACTIVE
+        modal.subscribers_at_activation = None
     else:
         modal.status = PromoModalStatus.ACTIVE
+        # Capture current subscriber count when activating
+        if modal.max_subscribers:
+            current_count = db.query(MarketingSubscriber).count()
+            modal.subscribers_at_activation = current_count
 
     db.commit()
     db.refresh(modal)

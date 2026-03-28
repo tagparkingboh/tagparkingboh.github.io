@@ -425,7 +425,8 @@ function Admin() {
     text_color: '#d9ff00',
     button_color: '#d9ff00',
     button_text_color: '#343434',
-    status: 'inactive'
+    status: 'inactive',
+    max_subscribers: ''
   })
   const [savingPromoModal, setSavingPromoModal] = useState(false)
   const [showDeletePromoModal, setShowDeletePromoModal] = useState(false)
@@ -616,7 +617,8 @@ function Admin() {
           text_color: '#d9ff00',
           button_color: '#d9ff00',
           button_text_color: '#343434',
-          status: 'inactive'
+          status: 'inactive',
+          max_subscribers: ''
         })
         fetchPromoModals()
       } else {
@@ -681,7 +683,8 @@ function Admin() {
       text_color: modal.textColor,
       button_color: modal.buttonColor,
       button_text_color: modal.buttonTextColor || '#ffffff',
-      status: modal.status
+      status: modal.status,
+      max_subscribers: modal.maxSubscribers || ''
     })
     setShowPromoModalForm(true)
   }
@@ -8595,7 +8598,8 @@ function Admin() {
                       text_color: '#d9ff00',
                       button_color: '#d9ff00',
                       button_text_color: '#343434',
-                      status: 'inactive'
+                      status: 'inactive',
+                      max_subscribers: ''
                     })
                     setShowPromoModalForm(true)
                   }}
@@ -8870,16 +8874,32 @@ function Admin() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label>Status</label>
-                <select
-                  value={promoModalForm.status}
-                  onChange={(e) => setPromoModalForm({ ...promoModalForm, status: e.target.value })}
-                >
-                  <option value="inactive">Inactive (Draft)</option>
-                  <option value="active">Active (Live)</option>
-                  <option value="scheduled">Scheduled</option>
-                </select>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Status</label>
+                  <select
+                    value={promoModalForm.status}
+                    onChange={(e) => setPromoModalForm({ ...promoModalForm, status: e.target.value })}
+                  >
+                    <option value="inactive">Inactive (Draft)</option>
+                    <option value="active">Active (Live)</option>
+                    <option value="scheduled">Scheduled</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Max New Subscribers</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={promoModalForm.max_subscribers}
+                    onChange={(e) => setPromoModalForm({ ...promoModalForm, max_subscribers: e.target.value })}
+                    placeholder="Leave empty for unlimited"
+                  />
+                  <small style={{ color: '#666', fontSize: '0.8rem' }}>
+                    Auto-deactivates after this many new sign-ups
+                  </small>
+                </div>
               </div>
 
               {/* Preview */}
