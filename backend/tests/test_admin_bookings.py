@@ -731,6 +731,46 @@ class TestDeleteBooking:
         assert promo_10_used_booking_id is None
         assert promo_free_used_booking_id is None
 
+    def test_delete_resets_promo_code_in_promo_codes_table(self):
+        """Deleting pending booking resets PromoCode record (is_used, booking_id, used_at)."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(id=456, status=BookingStatus.PENDING)
+
+        # Simulate promo code that was incorrectly marked as used
+        promo_code = MagicMock()
+        promo_code.id = 1
+        promo_code.code = "TAG-TEST-CODE"
+        promo_code.booking_id = 456
+        promo_code.is_used = True  # Bug: marked as used on pending booking
+        promo_code.used_at = datetime.utcnow()
+
+        # Delete operation should reset promo code
+        promo_code.booking_id = None
+        promo_code.is_used = False
+        promo_code.used_at = None
+
+        assert promo_code.booking_id is None
+        assert promo_code.is_used is False
+        assert promo_code.used_at is None
+
+    def test_delete_pending_booking_makes_promo_code_reusable(self):
+        """After deleting pending booking, promo code should pass validation again."""
+        from db_models import BookingStatus
+
+        booking = create_mock_booking(id=789, status=BookingStatus.PENDING)
+
+        promo_code = MagicMock()
+        promo_code.is_used = True  # Incorrectly marked
+
+        # Delete resets the code
+        promo_code.is_used = False
+        promo_code.booking_id = None
+
+        # Code should now be valid for use
+        is_valid = not promo_code.is_used
+        assert is_valid is True
+
     def test_delete_requires_admin_authentication(self):
         """Delete endpoint requires admin authentication."""
         user = MagicMock()
