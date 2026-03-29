@@ -64,6 +64,7 @@
   font-weight: 700;
   margin: 0 0 1rem 0;
   line-height: 1.2;
+  text-align: center;
 }
 
 .promo-modal-message {
@@ -81,7 +82,8 @@
 
 /* CTA Button */
 .promo-modal-button {
-  display: inline-block;
+  display: block;
+  margin: 0 auto;
   padding: 0.875rem 2rem;
   font-size: 1.1rem;
   font-weight: 600;
