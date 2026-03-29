@@ -785,7 +785,7 @@ async def validate_promo_code(
             log_promo("VALIDATE failed - code already used", {"code": code, "used_at": str(promo_code.used_at)})
             return PromoCodeValidateResponse(
                 valid=False,
-                message="This promo code has already been used",
+                message="Oops! Someone just beat you to it - this promo code has already been used. Keep an eye out for our next offer!",
             )
 
         # Check if code has expired (UK timezone)
@@ -834,25 +834,27 @@ async def validate_promo_code(
         )
 
     # Determine which promo type this code belongs to and check if used
+    already_used_message = "Oops! Someone just beat you to it - this promo code has already been used. Keep an eye out for our next offer!"
+
     if subscriber.founder_promo_code and subscriber.founder_promo_code == code:
         if subscriber.founder_promo_used:
             return PromoCodeValidateResponse(
                 valid=False,
-                message="This promo code has already been used",
+                message=already_used_message,
             )
         discount = 10
     elif subscriber.promo_10_code and subscriber.promo_10_code == code:
         if subscriber.promo_10_used:
             return PromoCodeValidateResponse(
                 valid=False,
-                message="This promo code has already been used",
+                message=already_used_message,
             )
         discount = 10
     elif subscriber.promo_free_code and subscriber.promo_free_code == code:
         if subscriber.promo_free_used:
             return PromoCodeValidateResponse(
                 valid=False,
-                message="This promo code has already been used",
+                message=already_used_message,
             )
         discount = 100
     elif subscriber.promo_code and subscriber.promo_code == code:
@@ -860,7 +862,7 @@ async def validate_promo_code(
         if subscriber.promo_code_used:
             return PromoCodeValidateResponse(
                 valid=False,
-                message="This promo code has already been used",
+                message=already_used_message,
             )
         discount = subscriber.discount_percent if subscriber.discount_percent is not None else PROMO_DISCOUNT_PERCENT
     else:
@@ -11446,6 +11448,7 @@ def check_promo_modal_code_used(db: Session, promo_code: str):
     If so, auto-deactivate it (the code has been used on a confirmed booking).
     """
     from db_models import PromoModal, PromoModalStatus
+    from sqlalchemy import func as sql_func
 
     if not promo_code:
         return
@@ -11454,7 +11457,7 @@ def check_promo_modal_code_used(db: Session, promo_code: str):
     modal = db.query(PromoModal).filter(
         PromoModal.status == PromoModalStatus.ACTIVE,
         PromoModal.promo_code.isnot(None),
-        func.upper(PromoModal.promo_code) == promo_code.upper(),
+        sql_func.upper(PromoModal.promo_code) == promo_code.strip().upper(),
     ).first()
 
     if modal:
