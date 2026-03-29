@@ -5162,25 +5162,21 @@ function Admin() {
                         />
                       </div>
                     </div>
-                    <div className="form-row" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '15px', padding: '15px', background: '#e8f5e9', borderRadius: '8px', border: '1px solid #c8e6c9' }}>
-                      <div style={{ width: '100%', marginBottom: '5px' }}>
-                        <label style={{ fontWeight: '600', color: '#2e7d32' }}>🔄 Multi-Use Codes (optional)</label>
-                        <small style={{ display: 'block', color: '#666', fontSize: '12px' }}>Allow each code to be used multiple times - perfect for promotions shared publicly!</small>
-                      </div>
-                      <div className="form-group" style={{ flex: '1', minWidth: '200px' }}>
-                        <label>Max Uses Per Code</label>
-                        <input
-                          type="number"
-                          value={newPromotion.max_uses}
-                          onChange={(e) => setNewPromotion(prev => ({ ...prev, max_uses: e.target.value }))}
-                          placeholder="Leave empty for single-use"
-                          className="admin-input"
-                          min="0"
-                        />
-                        <small style={{ color: '#666', fontSize: '12px' }}>
-                          {newPromotion.max_uses === '' || newPromotion.max_uses === null ? 'Single-use (default)' :
-                           newPromotion.max_uses === '0' || newPromotion.max_uses === 0 ? 'Unlimited uses' :
-                           `Each code can be used ${newPromotion.max_uses} times`}
+                    <div className="form-row" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '15px', padding: '15px', background: newPromotion.max_uses === '0' ? '#e8f5e9' : '#f8f9fa', borderRadius: '8px', border: newPromotion.max_uses === '0' ? '1px solid #c8e6c9' : '1px solid #e9ecef' }}>
+                      <div style={{ width: '100%' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: '600', color: newPromotion.max_uses === '0' ? '#2e7d32' : '#495057' }}>
+                          <input
+                            type="checkbox"
+                            checked={newPromotion.max_uses === '0'}
+                            onChange={(e) => setNewPromotion(prev => ({ ...prev, max_uses: e.target.checked ? '0' : '' }))}
+                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                          />
+                          🔄 Unlimited Uses (multi-use code)
+                        </label>
+                        <small style={{ display: 'block', color: '#666', fontSize: '12px', marginTop: '5px', marginLeft: '28px' }}>
+                          {newPromotion.max_uses === '0'
+                            ? 'This code can be used unlimited times by multiple customers'
+                            : 'Default: single-use code (one customer only)'}
                         </small>
                       </div>
                     </div>
@@ -5996,25 +5992,21 @@ function Admin() {
                         </div>
                       </div>
                     </div>
-                    <div style={{ padding: '15px', background: '#e8f5e9', borderRadius: '8px', border: '1px solid #c8e6c9' }}>
-                      <label style={{ fontWeight: '600', color: '#2e7d32', marginBottom: '10px', display: 'block' }}>🔄 Multi-Use Codes (optional)</label>
-                      <div className="form-group">
-                        <label style={{ fontSize: '12px' }}>Max Uses Per Code</label>
+                    <div style={{ padding: '15px', background: generateCodesMaxUses === '0' ? '#e8f5e9' : '#f8f9fa', borderRadius: '8px', border: generateCodesMaxUses === '0' ? '1px solid #c8e6c9' : '1px solid #e9ecef' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: '600', color: generateCodesMaxUses === '0' ? '#2e7d32' : '#495057' }}>
                         <input
-                          type="number"
-                          value={generateCodesMaxUses}
-                          onChange={(e) => setGenerateCodesMaxUses(e.target.value)}
-                          placeholder="Leave empty for single-use"
-                          className="admin-input"
-                          style={{ width: '100%' }}
-                          min="0"
+                          type="checkbox"
+                          checked={generateCodesMaxUses === '0'}
+                          onChange={(e) => setGenerateCodesMaxUses(e.target.checked ? '0' : '')}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                         />
-                        <small style={{ color: '#666', fontSize: '11px' }}>
-                          {generateCodesMaxUses === '' ? 'Single-use (default)' :
-                           generateCodesMaxUses === '0' ? 'Unlimited uses' :
-                           `Each code can be used ${generateCodesMaxUses} times`}
-                        </small>
-                      </div>
+                        🔄 Unlimited Uses (multi-use code)
+                      </label>
+                      <small style={{ color: '#666', fontSize: '11px', marginTop: '5px', display: 'block', marginLeft: '28px' }}>
+                        {generateCodesMaxUses === '0'
+                          ? 'This code can be used unlimited times'
+                          : 'Default: single-use code'}
+                      </small>
                     </div>
                   </div>
                   <div className="modal-actions">
