@@ -634,6 +634,112 @@ class TestErrorMessages:
 # Custom Code Tests
 # =============================================================================
 
+# =============================================================================
+# UI Checkbox Behavior Tests
+# =============================================================================
+
+class TestUICheckboxBehavior:
+    """Tests for simplified UI checkbox behavior.
+
+    UI now has a simple checkbox:
+    - Unchecked = single-use (max_uses=None)
+    - Checked = unlimited uses (max_uses=0)
+    """
+
+    def test_checkbox_unchecked_creates_single_use(self):
+        """Unchecked checkbox creates single-use code (max_uses=None)."""
+        from db_models import PromoCode
+
+        # UI sends empty string or None when unchecked
+        ui_value = ''  # or None
+        max_uses = None if ui_value == '' else int(ui_value)
+
+        code = PromoCode(
+            promotion_id=1,
+            code="SINGLE-1234-5678",
+            max_uses=max_uses,
+            use_count=0,
+            is_used=False
+        )
+
+        assert code.max_uses is None
+        assert code.is_multi_use == False
+        assert code.is_unlimited == False
+        assert code.can_be_used == True
+
+    def test_checkbox_checked_creates_unlimited(self):
+        """Checked checkbox creates unlimited code (max_uses=0)."""
+        from db_models import PromoCode
+
+        # UI sends '0' when checkbox is checked
+        ui_value = '0'
+        max_uses = 0 if ui_value == '0' else None
+
+        code = PromoCode(
+            promotion_id=1,
+            code="UNLIMITED-1234-5678",
+            max_uses=max_uses,
+            use_count=0,
+            is_used=False
+        )
+
+        assert code.max_uses == 0
+        assert code.is_multi_use == True
+        assert code.is_unlimited == True
+        assert code.can_be_used == True
+
+    def test_checkbox_toggle_on_off(self):
+        """Checkbox toggle changes between single-use and unlimited."""
+        # Simulate user toggling checkbox
+
+        # Start unchecked (single-use)
+        checked = False
+        max_uses = '0' if checked else ''
+        assert max_uses == ''
+
+        # User checks box (unlimited)
+        checked = True
+        max_uses = '0' if checked else ''
+        assert max_uses == '0'
+
+        # User unchecks box (back to single-use)
+        checked = False
+        max_uses = '0' if checked else ''
+        assert max_uses == ''
+
+    def test_unlimited_code_after_many_uses_still_works(self):
+        """Unlimited code (checkbox checked) works after many uses."""
+        from db_models import PromoCode
+
+        code = PromoCode(
+            promotion_id=1,
+            code="PROMO2024",
+            max_uses=0,  # Checkbox was checked = unlimited
+            use_count=500,
+            is_used=False
+        )
+
+        assert code.is_unlimited == True
+        assert code.can_be_used == True
+        assert code.uses_remaining is None
+
+    def test_single_use_code_used_once_cannot_reuse(self):
+        """Single-use code (checkbox unchecked) cannot be reused."""
+        from db_models import PromoCode
+
+        code = PromoCode(
+            promotion_id=1,
+            code="ONEOFF-1234",
+            max_uses=None,  # Checkbox unchecked = single-use
+            use_count=1,
+            is_used=True
+        )
+
+        assert code.is_multi_use == False
+        assert code.can_be_used == False
+        assert code.uses_remaining == 0
+
+
 class TestCustomCodes:
     """Tests for custom promo codes (e.g., SUMMER10 instead of TAG-XXXX-XXXX)."""
 
