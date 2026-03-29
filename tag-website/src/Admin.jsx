@@ -260,7 +260,7 @@ function Admin() {
   const [promotions, setPromotions] = useState([])
   const [loadingPromotions, setLoadingPromotions] = useState(false)
   const [showCreatePromotion, setShowCreatePromotion] = useState(false)
-  const [newPromotion, setNewPromotion] = useState({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '' })
+  const [newPromotion, setNewPromotion] = useState({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '', expiry_date: '', expiry_time: '' })
   const [creatingPromotion, setCreatingPromotion] = useState(false)
   const [expandedPromotionId, setExpandedPromotionId] = useState(null)
   const [promotionDetails, setPromotionDetails] = useState({}) // { [id]: { codes, loading } }
@@ -281,12 +281,15 @@ function Admin() {
   const [generateCodesPromotion, setGenerateCodesPromotion] = useState(null)
   const [generateCodesCount, setGenerateCodesCount] = useState(10)
   const [generatingCodes, setGeneratingCodes] = useState(false)
+  const [generateCodesExpiryDate, setGenerateCodesExpiryDate] = useState('')
+  const [generateCodesExpiryTime, setGenerateCodesExpiryTime] = useState('')
   // Promo code expiry state
   const [showExpiryModal, setShowExpiryModal] = useState(false)
-  const [expiryModalData, setExpiryModalData] = useState(null) // { promotionId, code }
+  const [expiryModalData, setExpiryModalData] = useState(null) // { promotionId, code } or { promotionId, codes: [] } for bulk
   const [expiryDate, setExpiryDate] = useState('') // DD/MM/YYYY
   const [expiryTime, setExpiryTime] = useState('') // HH:MM
   const [updatingExpiry, setUpdatingExpiry] = useState(false)
+  const [selectedCodes, setSelectedCodes] = useState({}) // { [promotionId]: Set of code ids }
 
   // Abandoned leads state
   const [leads, setLeads] = useState([])
@@ -1384,32 +1387,77 @@ function Admin() {
 
     setUpdatingExpiry(true)
     try {
-      const response = await fetch(`${API_URL}/api/admin/promo-codes/${expiryModalData.code.id}/expiry`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          expiry_date: expiryDate || null,
-          expiry_time: expiryTime || null
+      let response
+      const isBulk = expiryModalData.isBulk && expiryModalData.codeIds?.length > 0
+
+      if (isBulk) {
+        // Bulk update
+        response = await fetch(`${API_URL}/api/admin/promo-codes/bulk-expiry`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            code_ids: expiryModalData.codeIds,
+            expiry_date: expiryDate || null,
+            expiry_time: expiryTime || null
+          })
         })
-      })
+      } else {
+        // Single code update
+        response = await fetch(`${API_URL}/api/admin/promo-codes/${expiryModalData.code.id}/expiry`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            expiry_date: expiryDate || null,
+            expiry_time: expiryTime || null
+          })
+        })
+      }
 
       if (response.ok) {
         const data = await response.json()
-        // Update local state
-        setPromotionDetails(prev => ({
-          ...prev,
-          [expiryModalData.promotionId]: {
-            ...prev[expiryModalData.promotionId],
-            codes: prev[expiryModalData.promotionId].codes.map(code =>
-              code.id === expiryModalData.code.id
-                ? { ...code, expires_at: data.expires_at, is_expired: data.is_expired }
-                : code
-            )
-          }
-        }))
+
+        if (isBulk) {
+          // Bulk update - update all affected codes in local state
+          const updatedCodesMap = {}
+          data.codes.forEach(c => {
+            updatedCodesMap[c.code_id] = { expires_at: c.expires_at, is_expired: c.is_expired }
+          })
+
+          setPromotionDetails(prev => ({
+            ...prev,
+            [expiryModalData.promotionId]: {
+              ...prev[expiryModalData.promotionId],
+              codes: prev[expiryModalData.promotionId].codes.map(code =>
+                updatedCodesMap[code.id]
+                  ? { ...code, ...updatedCodesMap[code.id] }
+                  : code
+              )
+            }
+          }))
+
+          // Clear selection after bulk update
+          setSelectedCodes(prev => ({ ...prev, [expiryModalData.promotionId]: new Set() }))
+        } else {
+          // Single code update
+          setPromotionDetails(prev => ({
+            ...prev,
+            [expiryModalData.promotionId]: {
+              ...prev[expiryModalData.promotionId],
+              codes: prev[expiryModalData.promotionId].codes.map(code =>
+                code.id === expiryModalData.code.id
+                  ? { ...code, expires_at: data.expires_at, is_expired: data.is_expired }
+                  : code
+              )
+            }
+          }))
+        }
+
         setShowExpiryModal(false)
         setExpiryModalData(null)
         setPromotionMessage(data.message)
@@ -1499,6 +1547,8 @@ function Admin() {
   const openGenerateCodesModal = (promotion) => {
     setGenerateCodesPromotion(promotion)
     setGenerateCodesCount(10)
+    setGenerateCodesExpiryDate('')
+    setGenerateCodesExpiryTime('')
     setShowGenerateCodesModal(true)
   }
 
@@ -1506,19 +1556,27 @@ function Admin() {
     if (!generateCodesPromotion) return
     setGeneratingCodes(true)
     try {
+      const requestBody = { count: generateCodesCount }
+      if (generateCodesExpiryDate && generateCodesExpiryTime) {
+        requestBody.expiry_date = generateCodesExpiryDate
+        requestBody.expiry_time = generateCodesExpiryTime
+      }
       const response = await fetch(`${API_URL}/api/admin/promotions/${generateCodesPromotion.id}/generate-codes`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ count: generateCodesCount }),
+        body: JSON.stringify(requestBody),
       })
       if (response.ok) {
         const data = await response.json()
-        setPromotionMessage(`Successfully generated ${data.codes_created} new codes`)
+        const expiryMsg = generateCodesExpiryDate ? ` (expiring ${generateCodesExpiryDate} ${generateCodesExpiryTime})` : ''
+        setPromotionMessage(`Successfully generated ${data.codes_created} new codes${expiryMsg}`)
         setShowGenerateCodesModal(false)
         setGenerateCodesPromotion(null)
+        setGenerateCodesExpiryDate('')
+        setGenerateCodesExpiryTime('')
         fetchPromotions()
         // Refresh details if expanded
         if (promotionDetails[generateCodesPromotion.id]) {
@@ -5017,6 +5075,32 @@ function Admin() {
                         </small>
                       </div>
                     </div>
+                    <div className="form-row" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '15px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
+                      <div style={{ width: '100%', marginBottom: '5px' }}>
+                        <label style={{ fontWeight: '600', color: '#495057' }}>⏰ Code Expiry (optional)</label>
+                        <small style={{ display: 'block', color: '#666', fontSize: '12px' }}>Set an expiry for all generated codes - great for flash sales!</small>
+                      </div>
+                      <div className="form-group" style={{ flex: '1', minWidth: '140px' }}>
+                        <label>Expiry Date</label>
+                        <input
+                          type="text"
+                          value={newPromotion.expiry_date}
+                          onChange={(e) => setNewPromotion(prev => ({ ...prev, expiry_date: e.target.value }))}
+                          placeholder="DD/MM/YYYY"
+                          className="admin-input"
+                        />
+                      </div>
+                      <div className="form-group" style={{ flex: '1', minWidth: '140px' }}>
+                        <label>Expiry Time (UK)</label>
+                        <input
+                          type="text"
+                          value={newPromotion.expiry_time}
+                          onChange={(e) => setNewPromotion(prev => ({ ...prev, expiry_time: e.target.value }))}
+                          placeholder="HH:MM (24hr)"
+                          className="admin-input"
+                        />
+                      </div>
+                    </div>
                     <div className="form-group" style={{ marginBottom: '15px' }}>
                       <label>Description (optional)</label>
                       <textarea
@@ -5031,7 +5115,7 @@ function Admin() {
                     <div className="form-actions" style={{ display: 'flex', gap: '10px' }}>
                       <button
                         className="btn-secondary"
-                        onClick={() => { setShowCreatePromotion(false); setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '' }); }}
+                        onClick={() => { setShowCreatePromotion(false); setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '', expiry_date: '', expiry_time: '' }); }}
                       >
                         Cancel
                       </button>
@@ -5184,9 +5268,88 @@ function Admin() {
                               <div className="loading-spinner"><span>Loading codes...</span></div>
                             ) : promotionDetails[promo.id]?.codes?.length > 0 ? (
                               <div className="promo-codes-table" style={{ overflowX: 'auto' }}>
+                                {/* Bulk Actions Bar */}
+                                {selectedCodes[promo.id]?.size > 0 && (
+                                  <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '15px',
+                                    padding: '10px 15px',
+                                    marginBottom: '10px',
+                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                    borderRadius: '8px',
+                                    color: 'white'
+                                  }}>
+                                    <span style={{ fontWeight: '600' }}>
+                                      {selectedCodes[promo.id].size} code{selectedCodes[promo.id].size > 1 ? 's' : ''} selected
+                                    </span>
+                                    <button
+                                      onClick={() => {
+                                        setExpiryModalData({
+                                          promotionId: promo.id,
+                                          codeIds: Array.from(selectedCodes[promo.id]),
+                                          isBulk: true
+                                        })
+                                        setExpiryDate('')
+                                        setExpiryTime('')
+                                        setShowExpiryModal(true)
+                                      }}
+                                      style={{
+                                        background: 'white',
+                                        color: '#667eea',
+                                        border: 'none',
+                                        padding: '6px 12px',
+                                        borderRadius: '6px',
+                                        fontWeight: '600',
+                                        fontSize: '12px',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      ⏰ Set Expiry
+                                    </button>
+                                    <button
+                                      onClick={() => setSelectedCodes(prev => ({ ...prev, [promo.id]: new Set() }))}
+                                      style={{
+                                        background: 'rgba(255,255,255,0.2)',
+                                        color: 'white',
+                                        border: 'none',
+                                        padding: '6px 12px',
+                                        borderRadius: '6px',
+                                        fontWeight: '600',
+                                        fontSize: '12px',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      Clear Selection
+                                    </button>
+                                  </div>
+                                )}
                                 <table className="admin-table" style={{ width: '100%', fontSize: '13px' }}>
                                   <thead>
                                     <tr>
+                                      <th style={{ width: '40px', textAlign: 'center' }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={promotionDetails[promo.id]?.codes?.length > 0 &&
+                                            promotionDetails[promo.id].codes.every(c => selectedCodes[promo.id]?.has(c.id))}
+                                          onChange={(e) => {
+                                            const codes = promotionDetails[promo.id]?.codes || []
+                                            if (e.target.checked) {
+                                              setSelectedCodes(prev => ({
+                                                ...prev,
+                                                [promo.id]: new Set(codes.map(c => c.id))
+                                              }))
+                                            } else {
+                                              setSelectedCodes(prev => ({
+                                                ...prev,
+                                                [promo.id]: new Set()
+                                              }))
+                                            }
+                                          }}
+                                          title="Select all codes"
+                                          style={{ cursor: 'pointer' }}
+                                        />
+                                      </th>
                                       <th>Code</th>
                                       <th>Recipient</th>
                                       <th>Shared on Socials</th>
@@ -5198,7 +5361,25 @@ function Admin() {
                                   </thead>
                                   <tbody>
                                     {promotionDetails[promo.id].codes.map(code => (
-                                      <tr key={code.id}>
+                                      <tr key={code.id} style={{ background: selectedCodes[promo.id]?.has(code.id) ? '#f0f7ff' : 'transparent' }}>
+                                        <td style={{ textAlign: 'center' }}>
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedCodes[promo.id]?.has(code.id) || false}
+                                            onChange={(e) => {
+                                              setSelectedCodes(prev => {
+                                                const currentSet = prev[promo.id] ? new Set(prev[promo.id]) : new Set()
+                                                if (e.target.checked) {
+                                                  currentSet.add(code.id)
+                                                } else {
+                                                  currentSet.delete(code.id)
+                                                }
+                                                return { ...prev, [promo.id]: currentSet }
+                                              })
+                                            }}
+                                            style={{ cursor: 'pointer' }}
+                                          />
+                                        </td>
                                         <td><code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px' }}>{code.code}</code></td>
                                         <td>
                                           {/* Recipient: show email if sent, Social Media badge if shared on socials, Private badge if shared privately, otherwise blank */}
@@ -5649,7 +5830,7 @@ function Admin() {
                     <p style={{ marginBottom: '15px', fontSize: '14px', color: '#999' }}>
                       Current: {generateCodesPromotion.total_codes} codes ({generateCodesPromotion.codes_available} available)
                     </p>
-                    <div className="form-group">
+                    <div className="form-group" style={{ marginBottom: '15px' }}>
                       <label>Number of codes to generate</label>
                       <input
                         type="number"
@@ -5661,11 +5842,38 @@ function Admin() {
                         style={{ width: '100%' }}
                       />
                     </div>
+                    <div style={{ padding: '15px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
+                      <label style={{ fontWeight: '600', color: '#495057', marginBottom: '10px', display: 'block' }}>⏰ Code Expiry (optional)</label>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <div className="form-group" style={{ flex: 1 }}>
+                          <label style={{ fontSize: '12px' }}>Date (DD/MM/YYYY)</label>
+                          <input
+                            type="text"
+                            value={generateCodesExpiryDate}
+                            onChange={(e) => setGenerateCodesExpiryDate(e.target.value)}
+                            placeholder="28/03/2026"
+                            className="admin-input"
+                            style={{ width: '100%' }}
+                          />
+                        </div>
+                        <div className="form-group" style={{ flex: 1 }}>
+                          <label style={{ fontSize: '12px' }}>Time (HH:MM UK)</label>
+                          <input
+                            type="text"
+                            value={generateCodesExpiryTime}
+                            onChange={(e) => setGenerateCodesExpiryTime(e.target.value)}
+                            placeholder="14:30"
+                            className="admin-input"
+                            style={{ width: '100%' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   <div className="modal-actions">
                     <button
                       className="modal-btn modal-btn-secondary"
-                      onClick={() => setShowGenerateCodesModal(false)}
+                      onClick={() => { setShowGenerateCodesModal(false); setGenerateCodesExpiryDate(''); setGenerateCodesExpiryTime(''); }}
                     >
                       Cancel
                     </button>
@@ -5851,17 +6059,25 @@ function Admin() {
               <div className="modal-overlay" onClick={() => setShowExpiryModal(false)}>
                 <div className="modal-content" style={{ maxWidth: '400px' }} onClick={(e) => e.stopPropagation()}>
                   <div className="modal-header">
-                    <h3>Set Code Expiry</h3>
+                    <h3>{expiryModalData.isBulk ? 'Set Expiry for Selected Codes' : 'Set Code Expiry'}</h3>
                     <button className="modal-close" onClick={() => setShowExpiryModal(false)}>&times;</button>
                   </div>
                   <div className="modal-body">
-                    <p style={{ marginBottom: '15px', color: '#666' }}>
-                      Code: <code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px' }}>{expiryModalData.code.code}</code>
-                    </p>
-                    {expiryModalData.code.is_expired && (
-                      <p style={{ marginBottom: '15px', color: '#dc3545', fontWeight: '600' }}>
-                        ⚠️ This code has expired
+                    {expiryModalData.isBulk ? (
+                      <p style={{ marginBottom: '15px', color: '#666' }}>
+                        Setting expiry for <strong>{expiryModalData.codeIds?.length}</strong> selected code{expiryModalData.codeIds?.length > 1 ? 's' : ''}
                       </p>
+                    ) : (
+                      <>
+                        <p style={{ marginBottom: '15px', color: '#666' }}>
+                          Code: <code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px' }}>{expiryModalData.code?.code}</code>
+                        </p>
+                        {expiryModalData.code?.is_expired && (
+                          <p style={{ marginBottom: '15px', color: '#dc3545', fontWeight: '600' }}>
+                            This code has expired
+                          </p>
+                        )}
+                      </>
                     )}
                     <div className="form-group" style={{ marginBottom: '15px' }}>
                       <label>Expiry Date (DD/MM/YYYY)</label>
@@ -5886,7 +6102,7 @@ function Admin() {
                       />
                     </div>
                     <p style={{ fontSize: '12px', color: '#999' }}>
-                      Leave both fields empty to remove expiry (code never expires)
+                      Leave both fields empty to remove expiry (code{expiryModalData.isBulk ? 's' : ''} never expire{expiryModalData.isBulk ? '' : 's'})
                     </p>
                   </div>
                   <div className="modal-actions">
@@ -5901,7 +6117,7 @@ function Admin() {
                       onClick={updatePromoCodeExpiry}
                       disabled={updatingExpiry}
                     >
-                      {updatingExpiry ? 'Saving...' : 'Save Expiry'}
+                      {updatingExpiry ? 'Saving...' : (expiryModalData.isBulk ? `Update ${expiryModalData.codeIds?.length} Codes` : 'Save Expiry')}
                     </button>
                   </div>
                 </div>
