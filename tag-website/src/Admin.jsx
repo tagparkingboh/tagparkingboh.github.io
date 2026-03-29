@@ -5324,6 +5324,35 @@ function Admin() {
                                     </button>
                                   </div>
                                 )}
+                                {/* Copy All Codes Button */}
+                                <div style={{ marginBottom: '10px', display: 'flex', gap: '10px' }}>
+                                  <button
+                                    onClick={() => {
+                                      const codes = promotionDetails[promo.id]?.codes || []
+                                      const codeStrings = codes.map(c => c.code).join('\n')
+                                      navigator.clipboard.writeText(codeStrings).then(() => {
+                                        setPromotionMessage(`Copied ${codes.length} codes to clipboard`)
+                                      }).catch(() => {
+                                        setPromotionMessage('Failed to copy to clipboard')
+                                      })
+                                    }}
+                                    style={{
+                                      background: '#e9ecef',
+                                      color: '#495057',
+                                      border: 'none',
+                                      padding: '6px 12px',
+                                      borderRadius: '6px',
+                                      fontWeight: '500',
+                                      fontSize: '12px',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px'
+                                    }}
+                                  >
+                                    📋 Copy All Codes ({promotionDetails[promo.id]?.codes?.length || 0})
+                                  </button>
+                                </div>
                                 <table className="admin-table" style={{ width: '100%', fontSize: '13px' }}>
                                   <thead>
                                     <tr>
