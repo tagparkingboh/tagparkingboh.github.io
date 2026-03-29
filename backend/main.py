@@ -4929,10 +4929,15 @@ async def get_promotion(
             if booking:
                 booking_ref = booking.reference
 
-        # Calculate is_expired
+        # Calculate is_expired and convert expires_at to UK timezone for display
         is_expired = False
+        expires_at_uk = None
         if c.expires_at:
             is_expired = get_uk_now() >= c.expires_at
+            # Convert to UK timezone for display
+            import pytz
+            uk_tz = pytz.timezone("Europe/London")
+            expires_at_uk = c.expires_at.astimezone(uk_tz).isoformat()
 
         codes_data.append({
             "id": c.id,
@@ -4954,7 +4959,7 @@ async def get_promotion(
             "used_at": c.used_at,
             "booking_id": c.booking_id,
             "booking_reference": booking_ref,
-            "expires_at": c.expires_at,
+            "expires_at": expires_at_uk,
             "is_expired": is_expired,
             "created_at": c.created_at,
         })
