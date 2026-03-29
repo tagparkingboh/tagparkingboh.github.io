@@ -78,13 +78,41 @@ const getStripe = async () => {
   return stripePromise
 }
 
+// Helper to log audit events
+const logAuditEvent = (sessionId, event, eventData = {}) => {
+  fetch(`${API_BASE_URL}/api/booking/audit-event`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      event,
+      event_data: {
+        ...eventData,
+        timestamp: new Date().toISOString()
+      }
+    })
+  }).catch(err => console.error(`Failed to log ${event}:`, err))
+}
+
 // The checkout form component (inside Elements provider)
-function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDetails }) {
+function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDetails, sessionId }) {
   const stripe = useStripe()
   const elements = useElements()
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentSucceeded, setPaymentSucceeded] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [formReady, setFormReady] = useState(false)
+
+  // Log when Stripe form becomes ready
+  useEffect(() => {
+    if (stripe && elements && !formReady) {
+      setFormReady(true)
+      logAuditEvent(sessionId, 'stripe_form_ready', {
+        customer_email: billingDetails.email,
+        booking_reference: bookingReference
+      })
+    }
+  }, [stripe, elements, formReady, sessionId, billingDetails.email, bookingReference])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -94,6 +122,11 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
 
     if (!stripe || !elements) {
       console.error('Stripe or Elements not loaded')
+      logAuditEvent(sessionId, 'stripe_form_error', {
+        error: 'Stripe or Elements not loaded',
+        customer_email: billingDetails.email,
+        booking_reference: bookingReference
+      })
       return
     }
 
@@ -102,6 +135,13 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
       console.log('Payment already in progress or succeeded, ignoring click')
       return
     }
+
+    // Log payment initiated (user clicked Pay)
+    logAuditEvent(sessionId, 'payment_initiated', {
+      customer_email: billingDetails.email,
+      booking_reference: bookingReference,
+      amount: amount
+    })
 
     // Track "continue_to_payment" event when Pay button is clicked
     if (window.gtag) {
@@ -113,6 +153,12 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
 
     setIsProcessing(true)
     setErrorMessage('')
+
+    // Log payment processing (calling Stripe)
+    logAuditEvent(sessionId, 'payment_processing', {
+      customer_email: billingDetails.email,
+      booking_reference: bookingReference
+    })
 
     try {
       console.log('Calling stripe.confirmPayment...')
@@ -142,11 +188,28 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
 
       if (error) {
         console.error('Payment error:', error)
+        // Log payment failed with full error details
+        logAuditEvent(sessionId, 'payment_failed', {
+          customer_email: billingDetails.email,
+          booking_reference: bookingReference,
+          error_type: error.type,
+          error_code: error.code,
+          error_message: error.message,
+          decline_code: error.decline_code || null,
+          payment_intent_id: error.payment_intent?.id || null
+        })
         setErrorMessage(error.message)
         setIsProcessing(false) // Allow retry on error
         onError?.(error)
       } else if (paymentIntent && paymentIntent.status === 'succeeded') {
         console.log('Payment succeeded!')
+        // Log payment success
+        logAuditEvent(sessionId, 'payment_succeeded', {
+          customer_email: billingDetails.email,
+          booking_reference: bookingReference,
+          payment_intent_id: paymentIntent.id,
+          amount: paymentIntent.amount
+        })
         setPaymentSucceeded(true) // Keep button disabled permanently
         // Track "pay" event on successful payment
         if (window.gtag) {
@@ -157,12 +220,36 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
           })
         }
         onSuccess?.(paymentIntent, bookingReference)
+      } else if (paymentIntent && paymentIntent.status === 'requires_action') {
+        // 3D Secure or other action required
+        logAuditEvent(sessionId, 'payment_requires_action', {
+          customer_email: billingDetails.email,
+          booking_reference: bookingReference,
+          payment_intent_id: paymentIntent.id,
+          status: paymentIntent.status
+        })
+        setIsProcessing(false)
       } else {
-        // Unexpected state - allow retry
+        // Unexpected state - log it
+        logAuditEvent(sessionId, 'payment_failed', {
+          customer_email: billingDetails.email,
+          booking_reference: bookingReference,
+          error_type: 'unexpected_state',
+          error_message: `Unexpected payment status: ${paymentIntent?.status || 'unknown'}`,
+          payment_intent_id: paymentIntent?.id || null
+        })
         setIsProcessing(false)
       }
     } catch (err) {
       console.error('Unexpected error:', err)
+      // Log unexpected errors
+      logAuditEvent(sessionId, 'payment_failed', {
+        customer_email: billingDetails.email,
+        booking_reference: bookingReference,
+        error_type: 'exception',
+        error_message: err.message || 'An unexpected error occurred',
+        error_stack: err.stack?.substring(0, 500) || null
+      })
       setErrorMessage('An unexpected error occurred.')
       setIsProcessing(false) // Allow retry on error
       onError?.(err)
@@ -172,6 +259,14 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
   return (
     <div className="stripe-form">
       <PaymentElement
+        onLoadError={(error) => {
+          console.error('PaymentElement load error:', error)
+          logAuditEvent(sessionId, 'stripe_form_error', {
+            customer_email: billingDetails.email,
+            booking_reference: bookingReference,
+            error_message: error.message || 'PaymentElement failed to load'
+          })
+        }}
         options={{
           layout: 'tabs',
           fields: {
@@ -366,6 +461,14 @@ function StripePayment({
 
     // For FREE bookings (1-week + 100% promo), show free booking UI
     if (isFree) {
+      // Log checkout loaded event for free bookings
+      logAuditEvent(sessionId, 'checkout_loaded', {
+        customer_email: formData.email,
+        customer_name: `${formData.firstName} ${formData.lastName}`,
+        promo_code: promoCode || null,
+        is_free_booking: true
+      })
+
       const amounts = calculateAmounts()
       setOriginalAmount(amounts.original)
       setDiscountAmount(amounts.discount)
@@ -399,6 +502,13 @@ function StripePayment({
           return
         }
         setStripeLoaded(stripe)
+
+        // Log checkout loaded event for debugging
+        logAuditEvent(sessionId, 'checkout_loaded', {
+          customer_email: formData.email,
+          customer_name: `${formData.firstName} ${formData.lastName}`,
+          promo_code: promoCode || null
+        })
 
         const data = await createPaymentIntent()
         console.log('[StripePayment] Payment intent response:', data.amount_display, 'promo:', currentPromo)
@@ -629,6 +739,7 @@ function StripePayment({
           onError={handleError}
           bookingReference={bookingReference}
           amount={amount}
+          sessionId={sessionId}
           billingDetails={{
             name: `${formData.firstName} ${formData.lastName}`,
             email: formData.email,

@@ -1166,6 +1166,23 @@ function Bookings() {
       [name]: type === 'checkbox' ? checked : processedValue
     }))
 
+    // Log when T&C checkbox is checked (for debugging checkout issues)
+    if (name === 'terms' && checked) {
+      fetch(`${API_BASE_URL}/api/booking/audit-event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionIdRef.current,
+          event: 'tnc_accepted',
+          event_data: {
+            customer_email: formData.email,
+            customer_name: `${formData.firstName} ${formData.lastName}`,
+            timestamp: new Date().toISOString()
+          }
+        })
+      }).catch(err => console.error('Failed to log T&C acceptance:', err))
+    }
+
     // Reset dependent fields when parent changes
     if (name === 'dropoffAirline') {
       setFormData(prev => ({

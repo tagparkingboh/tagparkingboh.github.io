@@ -436,9 +436,15 @@ class AuditLogEvent(enum.Enum):
     VEHICLE_ENTERED = "vehicle_entered"
     CUSTOMER_ENTERED = "customer_entered"
     BILLING_ENTERED = "billing_entered"
-    PAYMENT_INITIATED = "payment_initiated"
+    TNC_ACCEPTED = "tnc_accepted"  # T&C checkbox checked
+    CHECKOUT_LOADED = "checkout_loaded"  # Stripe checkout page loaded
+    STRIPE_FORM_READY = "stripe_form_ready"  # Stripe PaymentElement rendered
+    STRIPE_FORM_ERROR = "stripe_form_error"  # Stripe PaymentElement failed to render
+    PAYMENT_INITIATED = "payment_initiated"  # User clicked Pay button
+    PAYMENT_PROCESSING = "payment_processing"  # stripe.confirmPayment called
     PAYMENT_SUCCEEDED = "payment_succeeded"
     PAYMENT_FAILED = "payment_failed"
+    PAYMENT_REQUIRES_ACTION = "payment_requires_action"  # 3D Secure or redirect needed
     BOOKING_CONFIRMED = "booking_confirmed"
     BOOKING_ABANDONED = "booking_abandoned"
     # Admin events

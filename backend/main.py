@@ -6282,6 +6282,52 @@ async def update_vehicle(
 
 
 # =============================================================================
+# Checkout Audit Logging Endpoint
+# =============================================================================
+
+class CheckoutAuditRequest(BaseModel):
+    """Request to log checkout events for debugging."""
+    session_id: str
+    event: str  # 'tnc_accepted', 'checkout_loaded'
+    booking_reference: Optional[str] = None
+    event_data: Optional[dict] = None
+
+
+@app.post("/api/booking/audit-event")
+async def log_checkout_event(
+    request: CheckoutAuditRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Log checkout flow events for debugging customer issues.
+
+    Events:
+    - tnc_accepted: User checked the T&C checkbox
+    - checkout_loaded: Stripe checkout page loaded successfully
+    """
+    event_map = {
+        "tnc_accepted": AuditLogEvent.TNC_ACCEPTED,
+        "checkout_loaded": AuditLogEvent.CHECKOUT_LOADED,
+    }
+
+    audit_event = event_map.get(request.event)
+    if not audit_event:
+        raise HTTPException(status_code=400, detail=f"Unknown event type: {request.event}")
+
+    log_audit_event(
+        db=db,
+        event=audit_event,
+        request=http_request,
+        session_id=request.session_id,
+        booking_reference=request.booking_reference,
+        event_data=request.event_data or {},
+    )
+
+    return {"success": True, "event": request.event}
+
+
+# =============================================================================
 # DVLA Vehicle Lookup Endpoint
 # =============================================================================
 
