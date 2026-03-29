@@ -777,25 +777,39 @@ async def validate_promo_code(
             "code": code,
             "promotion_id": promo_code.promotion_id,
             "is_used": promo_code.is_used,
+            "max_uses": promo_code.max_uses,
+            "use_count": promo_code.use_count,
             "email_sent": promo_code.email_sent,
             "recipient_email": promo_code.recipient_email
         })
 
-        if promo_code.is_used:
-            log_promo("VALIDATE failed - code already used", {"code": code, "used_at": str(promo_code.used_at)})
-            return PromoCodeValidateResponse(
-                valid=False,
-                message="Oops! Someone just beat you to it - this promo code has already been used. Keep an eye out for our next offer!",
-            )
-
-        # Check if code has expired (UK timezone)
+        # Check if code has expired (UK timezone) - check this first
         if promo_code.expires_at:
             uk_now = get_uk_now()
             if uk_now >= promo_code.expires_at:
                 log_promo("VALIDATE failed - code expired", {"code": code, "expires_at": str(promo_code.expires_at), "uk_now": str(uk_now)})
                 return PromoCodeValidateResponse(
                     valid=False,
-                    message="This promo code has expired",
+                    message="This promotion has now expired. Keep an eye out for our next offer!",
+                )
+
+        # Check if code can still be used (handles both single-use and multi-use)
+        if not promo_code.can_be_used:
+            if promo_code.is_multi_use:
+                log_promo("VALIDATE failed - multi-use code exhausted", {
+                    "code": code,
+                    "max_uses": promo_code.max_uses,
+                    "use_count": promo_code.use_count
+                })
+                return PromoCodeValidateResponse(
+                    valid=False,
+                    message="This promo code has reached its maximum number of uses. Keep an eye out for our next offer!",
+                )
+            else:
+                log_promo("VALIDATE failed - code already used", {"code": code, "used_at": str(promo_code.used_at)})
+                return PromoCodeValidateResponse(
+                    valid=False,
+                    message="Oops! Someone just beat you to it - this promo code has already been used. Keep an eye out for our next offer!",
                 )
 
         # Get discount from parent promotion
@@ -805,7 +819,9 @@ async def validate_promo_code(
             log_promo("VALIDATE success (new system)", {
                 "code": code,
                 "promotion_name": promotion.name,
-                "discount_percent": discount
+                "discount_percent": discount,
+                "is_multi_use": promo_code.is_multi_use,
+                "uses_remaining": promo_code.uses_remaining
             })
             if discount == 100:
                 message = "Promo code applied! 100% off your booking!"
@@ -830,7 +846,7 @@ async def validate_promo_code(
     if not subscriber:
         return PromoCodeValidateResponse(
             valid=False,
-            message="Invalid promo code",
+            message="This code is invalid. Please check and try again.",
         )
 
     # Determine which promo type this code belongs to and check if used
@@ -868,7 +884,7 @@ async def validate_promo_code(
     else:
         return PromoCodeValidateResponse(
             valid=False,
-            message="Invalid promo code",
+            message="This code is invalid. Please check and try again.",
         )
 
     if discount == 100:
@@ -1601,14 +1617,11 @@ async def create_manual_booking(
                 DbPromoCode.code == promo_code_str
             ).first()
 
-            if promo_code_record and not promo_code_record.is_used:
-                promo_code_record.is_used = True
-                promo_code_record.used_at = datetime.utcnow()
-                promo_code_record.booking_id = booking.id
-                # Update promotion stats
+            if promo_code_record and promo_code_record.can_be_used:
+                # Get discount percent from promotion
                 promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
-                if promotion:
-                    promotion.codes_used = (promotion.codes_used or 0) + 1
+                discount_pct = promotion.discount_percent if promotion else 100
+                mark_promo_code_used(db, promo_code_record, booking.id, discount_pct, request.amount_pence)
             else:
                 # Fallback: Legacy MarketingSubscriber promo fields
                 subscriber = db.query(MarketingSubscriber).filter(
@@ -4911,14 +4924,20 @@ async def create_promotion(
     discount_percent = request.get("discount_percent")
     total_codes = request.get("total_codes")
     code_prefix = request.get("code_prefix", "").strip().upper()
+    custom_code = request.get("custom_code", "").strip().upper()  # Custom code like "SUMMER10"
     expiry_date = request.get("expiry_date")  # DD/MM/YYYY
     expiry_time = request.get("expiry_time")  # HH:MM
+    max_uses_raw = request.get("max_uses")  # None = single-use, 0 = unlimited, N = max N uses
 
     # Validate and sanitize prefix - only allow alphanumeric, max 10 chars
     if code_prefix:
         code_prefix = ''.join(c for c in code_prefix if c.isalnum())[:10]
     if not code_prefix:
         code_prefix = "TAG"
+
+    # Validate custom code - only allow alphanumeric, max 20 chars
+    if custom_code:
+        custom_code = ''.join(c for c in custom_code if c.isalnum())[:20]
 
     # Parse expiry if provided
     expires_at = None
@@ -4935,19 +4954,40 @@ async def create_promotion(
             log_promo("CREATE_PROMOTION invalid expiry format", {"expiry_date": expiry_date, "expiry_time": expiry_time, "error": str(e)})
             raise HTTPException(status_code=400, detail="Invalid expiry format. Use DD/MM/YYYY for date and HH:MM for time")
 
-    log_promo("CREATE_PROMOTION request", {"name": name, "discount_percent": discount_percent, "total_codes": total_codes, "code_prefix": code_prefix, "expires_at": str(expires_at) if expires_at else None, "user": current_user.email})
+    # Parse max_uses - empty string or None means single-use, 0 means unlimited, N means max N uses
+    max_uses = None  # Default: single-use
+    if max_uses_raw is not None and max_uses_raw != '':
+        try:
+            max_uses = int(max_uses_raw)
+            if max_uses < 0:
+                raise HTTPException(status_code=400, detail="max_uses cannot be negative")
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="max_uses must be a number")
 
-    if not name or not discount_percent or not total_codes:
+    log_promo("CREATE_PROMOTION request", {"name": name, "discount_percent": discount_percent, "total_codes": total_codes, "code_prefix": code_prefix, "expires_at": str(expires_at) if expires_at else None, "max_uses": max_uses, "user": current_user.email})
+
+    # If custom_code is provided, we create exactly 1 code with that value
+    if custom_code:
+        total_codes = 1  # Override - custom code means 1 code
+
+    if not name or not discount_percent or (not total_codes and not custom_code):
         log_promo("CREATE_PROMOTION failed - missing required fields")
-        raise HTTPException(status_code=400, detail="name, discount_percent, and total_codes are required")
+        raise HTTPException(status_code=400, detail="name, discount_percent, and total_codes (or custom_code) are required")
 
     if discount_percent not in [10, 15, 20, 25, 50, 100]:
         log_promo("CREATE_PROMOTION failed - invalid discount_percent", {"discount_percent": discount_percent})
         raise HTTPException(status_code=400, detail="discount_percent must be 10, 15, 20, 25, 50, or 100")
 
-    if total_codes < 1 or total_codes > 1000:
+    if not custom_code and (total_codes < 1 or total_codes > 1000):
         log_promo("CREATE_PROMOTION failed - invalid total_codes", {"total_codes": total_codes})
         raise HTTPException(status_code=400, detail="total_codes must be between 1 and 1000")
+
+    # Check if custom code already exists
+    if custom_code:
+        existing = db.query(PromoCode).filter(PromoCode.code == custom_code).first()
+        if existing:
+            log_promo("CREATE_PROMOTION failed - custom code already exists", {"custom_code": custom_code})
+            raise HTTPException(status_code=400, detail=f"Code '{custom_code}' already exists. Please choose a different code.")
 
     # Create promotion
     promotion = Promotion(
@@ -4962,33 +5002,48 @@ async def create_promotion(
     db.flush()  # Get the ID
     log_promo("CREATE_PROMOTION created", {"promotion_id": promotion.id, "name": name})
 
-    # Generate unique promo codes
+    # Generate promo codes
     codes_created = 0
-    max_attempts = total_codes * 10  # Prevent infinite loop
-    attempts = 0
 
-    while codes_created < total_codes and attempts < max_attempts:
-        code = generate_promo_code(code_prefix)
-        attempts += 1
-
-        # Check if code already exists
-        existing = db.query(PromoCode).filter(PromoCode.code == code).first()
-        if existing:
-            log_promo("CREATE_PROMOTION code collision, retrying", {"code": code})
-            continue
-
+    if custom_code:
+        # Create single custom code (e.g., "SUMMER10")
         promo_code = PromoCode(
             promotion_id=promotion.id,
-            code=code,
+            code=custom_code,
             expires_at=expires_at,
+            max_uses=max_uses,
         )
         db.add(promo_code)
-        codes_created += 1
+        codes_created = 1
+        log_promo("CREATE_PROMOTION created custom code", {"code": custom_code, "max_uses": max_uses})
+    else:
+        # Generate random unique promo codes
+        max_attempts = total_codes * 10  # Prevent infinite loop
+        attempts = 0
+
+        while codes_created < total_codes and attempts < max_attempts:
+            code = generate_promo_code(code_prefix)
+            attempts += 1
+
+            # Check if code already exists
+            existing = db.query(PromoCode).filter(PromoCode.code == code).first()
+            if existing:
+                log_promo("CREATE_PROMOTION code collision, retrying", {"code": code})
+                continue
+
+            promo_code = PromoCode(
+                promotion_id=promotion.id,
+                code=code,
+                expires_at=expires_at,
+                max_uses=max_uses,
+            )
+            db.add(promo_code)
+            codes_created += 1
 
     db.commit()
     db.refresh(promotion)
 
-    log_promo("CREATE_PROMOTION success", {"promotion_id": promotion.id, "codes_created": codes_created, "expires_at": str(expires_at) if expires_at else None, "attempts": attempts})
+    log_promo("CREATE_PROMOTION success", {"promotion_id": promotion.id, "codes_created": codes_created, "custom_code": custom_code, "expires_at": str(expires_at) if expires_at else None})
 
     return {
         "id": promotion.id,
@@ -5123,6 +5178,12 @@ async def get_promotion(
             "expires_at": expires_at_uk,
             "is_expired": is_expired,
             "created_at": c.created_at,
+            # Multi-use fields
+            "max_uses": c.max_uses,  # None = single-use, 0 = unlimited, N = max N uses
+            "use_count": c.use_count or 0,
+            "is_multi_use": c.is_multi_use,
+            "uses_remaining": c.uses_remaining,
+            "can_be_used": c.can_be_used,
         })
 
     # Count truly available codes (not sent, not used, not shared on socials, not shared privately)
@@ -5321,9 +5382,20 @@ async def generate_more_codes(
     count = request.get("count")
     expiry_date = request.get("expiry_date")  # DD/MM/YYYY
     expiry_time = request.get("expiry_time")  # HH:MM
+    max_uses_raw = request.get("max_uses")  # None = single-use, 0 = unlimited, N = max N uses
 
     if not count or count < 1 or count > 1000:
         raise HTTPException(status_code=400, detail="count must be between 1 and 1000")
+
+    # Parse max_uses - empty string or None means single-use, 0 means unlimited, N means max N uses
+    max_uses = None  # Default: single-use
+    if max_uses_raw is not None and max_uses_raw != '':
+        try:
+            max_uses = int(max_uses_raw)
+            if max_uses < 0:
+                raise HTTPException(status_code=400, detail="max_uses cannot be negative")
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="max_uses must be a number")
 
     # Parse expiry if provided
     expires_at = None
@@ -5345,6 +5417,7 @@ async def generate_more_codes(
         "promotion_name": promotion.name,
         "count": count,
         "expires_at": str(expires_at) if expires_at else None,
+        "max_uses": max_uses,
         "user": current_user.email
     })
 
@@ -5370,6 +5443,7 @@ async def generate_more_codes(
             promotion_id=promotion.id,
             code=code,
             expires_at=expires_at,
+            max_uses=max_uses,
         )
         db.add(promo_code)
         codes_created += 1
@@ -8338,25 +8412,18 @@ async def create_payment(
             if promo_code_applied:
                 log_promo("MARK_USED (free booking) starting", {"code": promo_code_applied, "booking_id": booking_id})
                 # First, check if it's from the new promo_codes table
-                if promo_code_record:
-                    promo_code_record.is_used = True
-                    promo_code_record.used_at = get_uk_now()
-                    promo_code_record.booking_id = booking_id
-                    # Update promotion stats
+                if promo_code_record and promo_code_record.can_be_used:
+                    # Get discount percent from promotion
                     promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
-                    if promotion:
-                        promotion.codes_used += 1
-                        log_promo("MARK_USED (free booking) updated promotion stats", {
-                            "promotion_id": promotion.id,
-                            "codes_used": promotion.codes_used
-                        })
+                    discount_pct = promotion.discount_percent if promotion else 100
+                    mark_promo_code_used(db, promo_code_record, booking_id, discount_pct, 0)  # 0 amount for free bookings
                     db.commit()
                     log_promo("MARK_USED (free booking) success (new system)", {
                         "code": promo_code_applied,
                         "booking_id": booking_id,
                         "promotion_id": promo_code_record.promotion_id
                     })
-                else:
+                elif not promo_code_record:
                     # Fallback: Legacy MarketingSubscriber promo fields
                     subscriber = db.query(MarketingSubscriber).filter(
                         (MarketingSubscriber.promo_code == promo_code_applied) |
@@ -8813,38 +8880,40 @@ async def stripe_webhook(
                 # Use case-insensitive comparison and normalize to uppercase
                 promo_code_upper = promo_code.strip().upper() if promo_code else None
                 promo_code_record = db.query(DbPromoCode).filter(
-                    DbPromoCode.code == promo_code_upper,
-                    DbPromoCode.is_used == False
+                    DbPromoCode.code == promo_code_upper
                 ).first() if promo_code_upper else None
 
                 log_promo("WEBHOOK MARK_USED lookup result", {
                     "promo_code_upper": promo_code_upper,
                     "found_in_new_system": promo_code_record is not None,
+                    "can_be_used": promo_code_record.can_be_used if promo_code_record else None,
                     "booking_id": bid
                 })
 
-                if promo_code_record:
+                if promo_code_record and promo_code_record.can_be_used:
                     log_promo("WEBHOOK MARK_USED found in new system", {
                         "code": promo_code,
                         "promotion_id": promo_code_record.promotion_id,
+                        "is_multi_use": promo_code_record.is_multi_use,
                         "booking_id": bid
                     })
-                    # New promo_codes table
-                    promo_code_record.is_used = True
-                    promo_code_record.used_at = get_uk_now()
-                    promo_code_record.booking_id = bid
-                    # Update promotion stats
+                    # Get discount info from promotion
                     promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
-                    if promotion:
-                        promotion.codes_used += 1
-                        log_promo("WEBHOOK MARK_USED updated promotion stats", {
-                            "promotion_id": promotion.id,
-                            "promotion_name": promotion.name,
-                            "codes_used": promotion.codes_used
-                        })
+                    discount_pct = promotion.discount_percent if promotion else 0
+                    # Get actual discount amount from payment intent metadata if available
+                    discount_amount = None
+                    if hasattr(payment_intent, 'metadata') and payment_intent.metadata:
+                        discount_amount = payment_intent.metadata.get('discount_amount_pence')
+                        if discount_amount:
+                            try:
+                                discount_amount = int(discount_amount)
+                            except (ValueError, TypeError):
+                                discount_amount = None
+
+                    mark_promo_code_used(db, promo_code_record, bid, discount_pct, discount_amount)
                     db.commit()
                     log_promo("WEBHOOK MARK_USED success (new system)", {"code": promo_code, "booking_id": bid})
-                else:
+                elif not promo_code_record:
                     # Fallback: Legacy MarketingSubscriber promo fields
                     subscriber = db.query(MarketingSubscriber).filter(
                         (MarketingSubscriber.promo_code == promo_code) |
@@ -11464,6 +11533,81 @@ def check_promo_modal_code_used(db: Session, promo_code: str):
         modal.status = PromoModalStatus.INACTIVE
         db.commit()
         print(f"Auto-deactivated promo modal '{modal.title}' - promo code '{promo_code}' used on confirmed booking")
+
+
+def mark_promo_code_used(db: Session, promo_code_record, booking_id: int, discount_percent: int, discount_amount_pence: int = None):
+    """
+    Mark a promo code as used. Handles both single-use and multi-use codes.
+
+    For single-use codes (max_uses is None):
+        - Sets is_used = True
+        - Sets booking_id to the booking that used it
+
+    For multi-use codes (max_uses is set):
+        - Increments use_count
+        - Creates a PromoCodeUsage record to track each usage
+        - Sets is_used = True only when max_uses is reached
+        - Updates booking_id to the last booking that used it
+
+    Returns True if successful, False if code is already exhausted.
+    """
+    from db_models import PromoCodeUsage, Promotion as DbPromotion
+
+    if not promo_code_record:
+        return False
+
+    # Check if code can still be used
+    if not promo_code_record.can_be_used:
+        log_promo("MARK_USED code cannot be used", {
+            "code": promo_code_record.code,
+            "is_used": promo_code_record.is_used,
+            "max_uses": promo_code_record.max_uses,
+            "use_count": promo_code_record.use_count
+        })
+        return False
+
+    uk_now = get_uk_now()
+
+    # Increment use count
+    promo_code_record.use_count = (promo_code_record.use_count or 0) + 1
+    promo_code_record.used_at = uk_now
+    promo_code_record.booking_id = booking_id
+
+    # For single-use or when max uses reached, mark as used
+    if promo_code_record.max_uses is None:
+        # Single-use code
+        promo_code_record.is_used = True
+    elif promo_code_record.max_uses > 0 and promo_code_record.use_count >= promo_code_record.max_uses:
+        # Multi-use code that has reached its limit
+        promo_code_record.is_used = True
+    # For unlimited codes (max_uses = 0), is_used stays False
+
+    # Create usage record for multi-use codes (and optionally for single-use for tracking)
+    if promo_code_record.is_multi_use:
+        usage = PromoCodeUsage(
+            promo_code_id=promo_code_record.id,
+            booking_id=booking_id,
+            discount_percent=discount_percent,
+            discount_amount_pence=discount_amount_pence,
+            used_at=uk_now
+        )
+        db.add(usage)
+
+    # Update promotion stats
+    promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
+    if promotion:
+        promotion.codes_used = (promotion.codes_used or 0) + 1
+
+    log_promo("MARK_USED success", {
+        "code": promo_code_record.code,
+        "booking_id": booking_id,
+        "use_count": promo_code_record.use_count,
+        "max_uses": promo_code_record.max_uses,
+        "is_used": promo_code_record.is_used,
+        "is_multi_use": promo_code_record.is_multi_use
+    })
+
+    return True
 
 
 def format_promo_modal(modal):

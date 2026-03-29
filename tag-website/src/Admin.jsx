@@ -261,7 +261,7 @@ function Admin() {
   const [promotions, setPromotions] = useState([])
   const [loadingPromotions, setLoadingPromotions] = useState(false)
   const [showCreatePromotion, setShowCreatePromotion] = useState(false)
-  const [newPromotion, setNewPromotion] = useState({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '', expiry_date: '', expiry_time: '' })
+  const [newPromotion, setNewPromotion] = useState({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '', custom_code: '', expiry_date: '', expiry_time: '', max_uses: '' })
   const [creatingPromotion, setCreatingPromotion] = useState(false)
   const [expandedPromotionId, setExpandedPromotionId] = useState(null)
   const [promotionDetails, setPromotionDetails] = useState({}) // { [id]: { codes, loading } }
@@ -284,6 +284,7 @@ function Admin() {
   const [generatingCodes, setGeneratingCodes] = useState(false)
   const [generateCodesExpiryDate, setGenerateCodesExpiryDate] = useState('')
   const [generateCodesExpiryTime, setGenerateCodesExpiryTime] = useState('')
+  const [generateCodesMaxUses, setGenerateCodesMaxUses] = useState('')
   // Promo code expiry state
   const [showExpiryModal, setShowExpiryModal] = useState(false)
   const [expiryModalData, setExpiryModalData] = useState(null) // { promotionId, code } or { promotionId, codes: [] } for bulk
@@ -1298,7 +1299,7 @@ function Admin() {
         const data = await response.json()
         setPromotionMessage(`Created promotion "${data.name}" with ${data.total_codes} codes`)
         setShowCreatePromotion(false)
-        setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '' })
+        setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '', custom_code: '', expiry_date: '', expiry_time: '', max_uses: '' })
         fetchPromotions()
       } else {
         const error = await response.json()
@@ -1591,6 +1592,9 @@ function Admin() {
         requestBody.expiry_date = generateCodesExpiryDate
         requestBody.expiry_time = generateCodesExpiryTime
       }
+      if (generateCodesMaxUses !== '') {
+        requestBody.max_uses = generateCodesMaxUses
+      }
       const response = await fetch(`${API_URL}/api/admin/promotions/${generateCodesPromotion.id}/generate-codes`, {
         method: 'POST',
         headers: {
@@ -1602,11 +1606,13 @@ function Admin() {
       if (response.ok) {
         const data = await response.json()
         const expiryMsg = generateCodesExpiryDate ? ` (expiring ${generateCodesExpiryDate} ${generateCodesExpiryTime})` : ''
-        setPromotionMessage(`Successfully generated ${data.codes_created} new codes${expiryMsg}`)
+        const multiUseMsg = generateCodesMaxUses === '0' ? ' (unlimited uses)' : generateCodesMaxUses ? ` (max ${generateCodesMaxUses} uses each)` : ''
+        setPromotionMessage(`Successfully generated ${data.codes_created} new codes${expiryMsg}${multiUseMsg}`)
         setShowGenerateCodesModal(false)
         setGenerateCodesPromotion(null)
         setGenerateCodesExpiryDate('')
         setGenerateCodesExpiryTime('')
+        setGenerateCodesMaxUses('')
         fetchPromotions()
         // Refresh details if expanded
         if (promotionDetails[generateCodesPromotion.id]) {
@@ -5081,34 +5087,55 @@ function Admin() {
                           <option value={100}>100% (Free)</option>
                         </select>
                       </div>
-                      <div className="form-group" style={{ flex: '1', minWidth: '120px' }}>
-                        <label>Number of Codes</label>
-                        <input
-                          type="number"
-                          value={newPromotion.total_codes}
-                          onChange={(e) => setNewPromotion(prev => ({ ...prev, total_codes: parseInt(e.target.value) || 1 }))}
-                          min="1"
-                          max="1000"
-                          className="admin-input"
-                        />
-                      </div>
+                      {!newPromotion.custom_code && (
+                        <div className="form-group" style={{ flex: '1', minWidth: '120px' }}>
+                          <label>Number of Codes</label>
+                          <input
+                            type="number"
+                            value={newPromotion.total_codes}
+                            onChange={(e) => setNewPromotion(prev => ({ ...prev, total_codes: parseInt(e.target.value) || 1 }))}
+                            min="1"
+                            max="1000"
+                            className="admin-input"
+                          />
+                        </div>
+                      )}
                     </div>
                     <div className="form-row" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '15px' }}>
                       <div className="form-group" style={{ flex: '1', minWidth: '200px' }}>
-                        <label>Code Prefix (optional)</label>
+                        <label>Custom Code (e.g., SUMMER10)</label>
                         <input
                           type="text"
-                          value={newPromotion.code_prefix}
-                          onChange={(e) => setNewPromotion(prev => ({ ...prev, code_prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) }))}
-                          placeholder="e.g., SPRING"
+                          value={newPromotion.custom_code}
+                          onChange={(e) => setNewPromotion(prev => ({ ...prev, custom_code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20), total_codes: e.target.value ? 1 : prev.total_codes }))}
+                          placeholder="Leave empty for auto-generated codes"
                           className="admin-input"
-                          maxLength="10"
+                          maxLength="20"
+                          disabled={newPromotion.total_codes > 1 && !newPromotion.custom_code}
                         />
                         <small style={{ color: '#666', fontSize: '12px' }}>
-                          Codes will be: {newPromotion.code_prefix || 'TAG'}-XXXX-XXXX
+                          {newPromotion.custom_code ? `Code will be: ${newPromotion.custom_code}` : 'Or use Code Prefix below for auto-generated codes'}
                         </small>
                       </div>
                     </div>
+                    {!newPromotion.custom_code && (
+                      <div className="form-row" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '15px' }}>
+                        <div className="form-group" style={{ flex: '1', minWidth: '200px' }}>
+                          <label>Code Prefix (optional)</label>
+                          <input
+                            type="text"
+                            value={newPromotion.code_prefix}
+                            onChange={(e) => setNewPromotion(prev => ({ ...prev, code_prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) }))}
+                            placeholder="e.g., SPRING"
+                            className="admin-input"
+                            maxLength="10"
+                          />
+                          <small style={{ color: '#666', fontSize: '12px' }}>
+                            Codes will be: {newPromotion.code_prefix || 'TAG'}-XXXX-XXXX
+                          </small>
+                        </div>
+                      </div>
+                    )}
                     <div className="form-row" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '15px', padding: '15px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
                       <div style={{ width: '100%', marginBottom: '5px' }}>
                         <label style={{ fontWeight: '600', color: '#495057' }}>⏰ Code Expiry (optional)</label>
@@ -5135,6 +5162,28 @@ function Admin() {
                         />
                       </div>
                     </div>
+                    <div className="form-row" style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '15px', padding: '15px', background: '#e8f5e9', borderRadius: '8px', border: '1px solid #c8e6c9' }}>
+                      <div style={{ width: '100%', marginBottom: '5px' }}>
+                        <label style={{ fontWeight: '600', color: '#2e7d32' }}>🔄 Multi-Use Codes (optional)</label>
+                        <small style={{ display: 'block', color: '#666', fontSize: '12px' }}>Allow each code to be used multiple times - perfect for promotions shared publicly!</small>
+                      </div>
+                      <div className="form-group" style={{ flex: '1', minWidth: '200px' }}>
+                        <label>Max Uses Per Code</label>
+                        <input
+                          type="number"
+                          value={newPromotion.max_uses}
+                          onChange={(e) => setNewPromotion(prev => ({ ...prev, max_uses: e.target.value }))}
+                          placeholder="Leave empty for single-use"
+                          className="admin-input"
+                          min="0"
+                        />
+                        <small style={{ color: '#666', fontSize: '12px' }}>
+                          {newPromotion.max_uses === '' || newPromotion.max_uses === null ? 'Single-use (default)' :
+                           newPromotion.max_uses === '0' || newPromotion.max_uses === 0 ? 'Unlimited uses' :
+                           `Each code can be used ${newPromotion.max_uses} times`}
+                        </small>
+                      </div>
+                    </div>
                     <div className="form-group" style={{ marginBottom: '15px' }}>
                       <label>Description (optional)</label>
                       <textarea
@@ -5149,7 +5198,7 @@ function Admin() {
                     <div className="form-actions" style={{ display: 'flex', gap: '10px' }}>
                       <button
                         className="btn-secondary"
-                        onClick={() => { setShowCreatePromotion(false); setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '', expiry_date: '', expiry_time: '' }); }}
+                        onClick={() => { setShowCreatePromotion(false); setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '', custom_code: '', expiry_date: '', expiry_time: '', max_uses: '' }); }}
                       >
                         Cancel
                       </button>
@@ -5604,7 +5653,19 @@ function Admin() {
                                         </td>
                                         <td>
                                           <span className={`status-badge ${code.is_used ? 'used' : code.is_expired ? 'expired' : (code.email_sent || code.shared_on_socials || code.shared_privately) ? 'sent' : 'pending'}`}>
-                                            {code.is_used ? 'Used' : code.is_expired ? 'Expired' : (code.email_sent || code.shared_on_socials || code.shared_privately) ? 'Shared' : 'Available'}
+                                            {code.is_multi_use ? (
+                                              // Multi-use code - show usage count
+                                              code.max_uses === 0 ? (
+                                                // Unlimited uses
+                                                <span>♾️ {code.use_count} uses</span>
+                                              ) : (
+                                                // Limited uses
+                                                <span>{code.use_count}/{code.max_uses} uses</span>
+                                              )
+                                            ) : (
+                                              // Single-use code
+                                              code.is_used ? 'Used' : code.is_expired ? 'Expired' : (code.email_sent || code.shared_on_socials || code.shared_privately) ? 'Shared' : 'Available'
+                                            )}
                                           </span>
                                         </td>
                                         <td>
@@ -5908,7 +5969,7 @@ function Admin() {
                         style={{ width: '100%' }}
                       />
                     </div>
-                    <div style={{ padding: '15px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef' }}>
+                    <div style={{ padding: '15px', background: '#f8f9fa', borderRadius: '8px', border: '1px solid #e9ecef', marginBottom: '15px' }}>
                       <label style={{ fontWeight: '600', color: '#495057', marginBottom: '10px', display: 'block' }}>⏰ Code Expiry (optional)</label>
                       <div style={{ display: 'flex', gap: '10px' }}>
                         <div className="form-group" style={{ flex: 1 }}>
@@ -5933,6 +5994,26 @@ function Admin() {
                             style={{ width: '100%' }}
                           />
                         </div>
+                      </div>
+                    </div>
+                    <div style={{ padding: '15px', background: '#e8f5e9', borderRadius: '8px', border: '1px solid #c8e6c9' }}>
+                      <label style={{ fontWeight: '600', color: '#2e7d32', marginBottom: '10px', display: 'block' }}>🔄 Multi-Use Codes (optional)</label>
+                      <div className="form-group">
+                        <label style={{ fontSize: '12px' }}>Max Uses Per Code</label>
+                        <input
+                          type="number"
+                          value={generateCodesMaxUses}
+                          onChange={(e) => setGenerateCodesMaxUses(e.target.value)}
+                          placeholder="Leave empty for single-use"
+                          className="admin-input"
+                          style={{ width: '100%' }}
+                          min="0"
+                        />
+                        <small style={{ color: '#666', fontSize: '11px' }}>
+                          {generateCodesMaxUses === '' ? 'Single-use (default)' :
+                           generateCodesMaxUses === '0' ? 'Unlimited uses' :
+                           `Each code can be used ${generateCodesMaxUses} times`}
+                        </small>
                       </div>
                     </div>
                   </div>

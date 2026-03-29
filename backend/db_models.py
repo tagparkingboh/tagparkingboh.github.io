@@ -967,9 +967,16 @@ class PromoCode(Base):
     shared_privately_at = Column(DateTime(timezone=True), nullable=True)
 
     # Usage tracking
-    is_used = Column(Boolean, default=False, index=True)
-    used_at = Column(DateTime(timezone=True), nullable=True)
-    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True)
+    is_used = Column(Boolean, default=False, index=True)  # True if code has reached max uses
+    used_at = Column(DateTime(timezone=True), nullable=True)  # Last usage timestamp
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True)  # Last booking that used it
+
+    # Multi-use support
+    # max_uses = NULL means single-use (default, backwards compatible)
+    # max_uses = 0 means unlimited uses
+    # max_uses = N means can be used N times
+    max_uses = Column(Integer, nullable=True, default=None)
+    use_count = Column(Integer, nullable=False, default=0)  # How many times this code has been used
 
     # Expiry - if set, code is only valid before this date/time (UK timezone)
     # NULL means never expires (backwards compatible)
@@ -987,6 +994,62 @@ class PromoCode(Base):
     def __repr__(self):
         status = "used" if self.is_used else ("sent" if self.email_sent else "unsent")
         return f"<PromoCode {self.code} - {status}>"
+
+    @property
+    def is_multi_use(self):
+        """Check if this is a multi-use code (max_uses is set)."""
+        return self.max_uses is not None
+
+    @property
+    def is_unlimited(self):
+        """Check if this is an unlimited-use code (max_uses = 0)."""
+        return self.max_uses == 0
+
+    @property
+    def uses_remaining(self):
+        """Get number of uses remaining (None for unlimited, 0 for exhausted)."""
+        if self.max_uses is None:
+            # Single-use code
+            return 0 if self.is_used else 1
+        if self.max_uses == 0:
+            # Unlimited
+            return None
+        return max(0, self.max_uses - self.use_count)
+
+    @property
+    def can_be_used(self):
+        """Check if this code can still be used."""
+        if self.max_uses is None:
+            # Single-use: check is_used flag
+            return not self.is_used
+        if self.max_uses == 0:
+            # Unlimited: always can be used (unless expired - checked elsewhere)
+            return True
+        # Multi-use: check if under limit
+        return self.use_count < self.max_uses
+
+
+class PromoCodeUsage(Base):
+    """Tracks each usage of a promo code - especially for multi-use codes."""
+    __tablename__ = "promo_code_usages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    promo_code_id = Column(Integer, ForeignKey("promo_codes.id"), nullable=False, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=False, index=True)
+
+    # Discount applied for this specific usage
+    discount_percent = Column(Integer, nullable=False)
+    discount_amount_pence = Column(Integer, nullable=True)  # Actual discount in pence
+
+    # Timestamps
+    used_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    promo_code = relationship("PromoCode", backref="usages")
+    booking = relationship("Booking")
+
+    def __repr__(self):
+        return f"<PromoCodeUsage code_id={self.promo_code_id} booking_id={self.booking_id}>"
 
 
 class ShiftBookingLink(Base):
