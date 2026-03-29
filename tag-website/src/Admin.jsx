@@ -5324,18 +5324,20 @@ function Admin() {
                                     </button>
                                   </div>
                                 )}
-                                {/* Copy All Codes Button */}
+                                {/* Copy Available Codes Button */}
                                 <div style={{ marginBottom: '10px', display: 'flex', gap: '10px' }}>
                                   <button
                                     onClick={() => {
                                       const codes = promotionDetails[promo.id]?.codes || []
-                                      const codeStrings = codes.map(c => c.code).join('\n')
+                                      const availableCodes = codes.filter(c => !c.is_used && !c.email_sent && !c.shared_on_socials && !c.shared_privately)
+                                      const codeStrings = availableCodes.map(c => c.code).join('\n')
                                       navigator.clipboard.writeText(codeStrings).then(() => {
-                                        setPromotionMessage(`Copied ${codes.length} codes to clipboard`)
+                                        setPromotionMessage(`Copied ${availableCodes.length} available codes to clipboard`)
                                       }).catch(() => {
                                         setPromotionMessage('Failed to copy to clipboard')
                                       })
                                     }}
+                                    disabled={!(promotionDetails[promo.id]?.codes || []).some(c => !c.is_used && !c.email_sent && !c.shared_on_socials && !c.shared_privately)}
                                     style={{
                                       background: '#e9ecef',
                                       color: '#495057',
@@ -5347,10 +5349,11 @@ function Admin() {
                                       cursor: 'pointer',
                                       display: 'flex',
                                       alignItems: 'center',
-                                      gap: '6px'
+                                      gap: '6px',
+                                      opacity: (promotionDetails[promo.id]?.codes || []).some(c => !c.is_used && !c.email_sent && !c.shared_on_socials && !c.shared_privately) ? 1 : 0.5
                                     }}
                                   >
-                                    📋 Copy All Codes ({promotionDetails[promo.id]?.codes?.length || 0})
+                                    📋 Copy Available Codes ({(promotionDetails[promo.id]?.codes || []).filter(c => !c.is_used && !c.email_sent && !c.shared_on_socials && !c.shared_privately).length})
                                   </button>
                                 </div>
                                 <table className="admin-table" style={{ width: '100%', fontSize: '13px' }}>
