@@ -4227,8 +4227,8 @@ async def get_session_tracking_report(
     ]
 
     # Feature deployment date - only show data from this date onwards
-    # dates_selected tracking was deployed on 29 Mar 2026
-    feature_deploy_date = uk_tz.localize(datetime(2026, 3, 29, 0, 0, 0))
+    # dates_selected tracking was deployed on 29 Mar 2026 at 17:00 UK time
+    feature_deploy_date = uk_tz.localize(datetime(2026, 3, 29, 17, 0, 0))
 
     # Calculate date range based on period
     if period == "daily":
