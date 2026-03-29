@@ -229,6 +229,73 @@ def run_migrations():
         else:
             print("Migration check: testimonials table already exists")
 
+        # Migration 5: Fix audit_logs enum - add new values and convert to lowercase
+        # Check if we need to add lowercase values
+        result = db.execute(text("""
+            SELECT enumlabel FROM pg_enum
+            WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'auditlogevent')
+            AND enumlabel = 'tnc_accepted'
+        """))
+
+        if not result.fetchone():
+            print("Running migration: Fixing audit_logs enum values...")
+
+            # Add new lowercase enum values
+            new_values = [
+                'tnc_accepted',
+                'checkout_loaded',
+                'stripe_form_ready',
+                'stripe_form_error',
+                'payment_processing',
+                'payment_requires_action',
+                'booking_started',
+                'flight_selected',
+                'slot_selected',
+                'vehicle_entered',
+                'customer_entered',
+                'billing_entered',
+                'payment_initiated',
+                'payment_succeeded',
+                'payment_failed',
+                'booking_confirmed',
+                'booking_abandoned',
+                'booking_cancelled',
+                'booking_refunded',
+                'booking_updated',
+            ]
+
+            for value in new_values:
+                try:
+                    db.execute(text(f"ALTER TYPE auditlogevent ADD VALUE IF NOT EXISTS '{value}'"))
+                    db.commit()
+                except Exception:
+                    db.rollback()
+
+            # Update existing uppercase values to lowercase
+            uppercase_to_lowercase = {
+                'BOOKING_STARTED': 'booking_started',
+                'FLIGHT_SELECTED': 'flight_selected',
+                'SLOT_SELECTED': 'slot_selected',
+                'VEHICLE_ENTERED': 'vehicle_entered',
+                'CUSTOMER_ENTERED': 'customer_entered',
+                'BILLING_ENTERED': 'billing_entered',
+                'PAYMENT_INITIATED': 'payment_initiated',
+                'PAYMENT_SUCCEEDED': 'payment_succeeded',
+                'PAYMENT_FAILED': 'payment_failed',
+                'BOOKING_CONFIRMED': 'booking_confirmed',
+                'BOOKING_ABANDONED': 'booking_abandoned',
+                'BOOKING_CANCELLED': 'booking_cancelled',
+                'BOOKING_REFUNDED': 'booking_refunded',
+                'BOOKING_UPDATED': 'booking_updated',
+            }
+
+            for old_val, new_val in uppercase_to_lowercase.items():
+                db.execute(text(f"UPDATE audit_logs SET event = '{new_val}' WHERE event = '{old_val}'"))
+            db.commit()
+            print("Migration completed: audit_logs enum fixed")
+        else:
+            print("Migration check: audit_logs enum already has lowercase values")
+
     except Exception as e:
         print(f"Migration error (non-fatal): {e}")
         db.rollback()

@@ -466,7 +466,12 @@ class AuditLog(Base):
     booking_reference = Column(String(20), index=True)
 
     # Event details
-    event = Column(Enum(AuditLogEvent), nullable=False, index=True)
+    # Use values_callable to send enum values (lowercase) instead of names (uppercase) to PostgreSQL
+    event = Column(
+        Enum(AuditLogEvent, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        index=True
+    )
     event_data = Column(Text)  # JSON blob with event-specific data
 
     # User context
