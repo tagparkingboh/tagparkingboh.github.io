@@ -19,6 +19,16 @@ if DATABASE_URL.startswith("postgres://"):
 
 engine = create_engine(DATABASE_URL)
 
+# Set timezone to UK for all database connections
+from sqlalchemy import event
+
+@event.listens_for(engine, "connect")
+def set_timezone(dbapi_connection, connection_record):
+    """Set PostgreSQL session timezone to UK (Europe/London)."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("SET timezone TO 'Europe/London'")
+    cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
