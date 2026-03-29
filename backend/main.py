@@ -788,6 +788,16 @@ async def validate_promo_code(
                 message="This promo code has already been used",
             )
 
+        # Check if code has expired (UK timezone)
+        if promo_code.expires_at:
+            uk_now = get_uk_now()
+            if uk_now >= promo_code.expires_at:
+                log_promo("VALIDATE failed - code expired", {"code": code, "expires_at": str(promo_code.expires_at), "uk_now": str(uk_now)})
+                return PromoCodeValidateResponse(
+                    valid=False,
+                    message="This promo code has expired",
+                )
+
         # Get discount from parent promotion
         promotion = db.query(Promotion).filter(Promotion.id == promo_code.promotion_id).first()
         if promotion:
@@ -4901,6 +4911,11 @@ async def get_promotion(
             if booking:
                 booking_ref = booking.reference
 
+        # Calculate is_expired
+        is_expired = False
+        if c.expires_at:
+            is_expired = get_uk_now() >= c.expires_at
+
         codes_data.append({
             "id": c.id,
             "code": c.code,
@@ -4921,6 +4936,8 @@ async def get_promotion(
             "used_at": c.used_at,
             "booking_id": c.booking_id,
             "booking_reference": booking_ref,
+            "expires_at": c.expires_at,
+            "is_expired": is_expired,
             "created_at": c.created_at,
         })
 
@@ -5323,6 +5340,130 @@ async def mark_code_shared_privately(
         "code_id": code_id,
         "shared_privately": promo_code.shared_privately,
         "shared_privately_at": promo_code.shared_privately_at.isoformat() if promo_code.shared_privately_at else None
+    }
+
+
+class PromoCodeExpiryUpdate(BaseModel):
+    """Request to update a promo code's expiry date/time."""
+    # Date in DD/MM/YYYY format, time in 24hr format (HH:MM)
+    # If both are None, removes the expiry (code never expires)
+    expiry_date: Optional[str] = None  # DD/MM/YYYY
+    expiry_time: Optional[str] = None  # HH:MM (24hr format)
+
+
+@app.patch("/api/admin/promo-codes/{code_id}/expiry")
+async def update_promo_code_expiry(
+    code_id: int,
+    request: PromoCodeExpiryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Update a promo code's expiry date/time.
+
+    Accepts date in DD/MM/YYYY format and time in 24hr HH:MM format.
+    Both date and time must be provided together, or both must be None to remove expiry.
+    The expiry is stored in UK timezone.
+    """
+    from db_models import PromoCode
+    import pytz
+
+    promo_code = db.query(PromoCode).filter(PromoCode.id == code_id).first()
+    if not promo_code:
+        raise HTTPException(status_code=404, detail="Promo code not found")
+
+    # If both are None, remove expiry
+    if request.expiry_date is None and request.expiry_time is None:
+        old_expiry = promo_code.expires_at
+        promo_code.expires_at = None
+        db.commit()
+
+        log_promo("Promo code expiry removed", {
+            "code_id": code_id,
+            "code": promo_code.code,
+            "old_expires_at": str(old_expiry) if old_expiry else None,
+            "user": current_user.email
+        })
+
+        return {
+            "success": True,
+            "code_id": code_id,
+            "code": promo_code.code,
+            "expires_at": None,
+            "is_expired": False,
+            "message": "Expiry removed - code will never expire"
+        }
+
+    # Both must be provided together
+    if request.expiry_date is None or request.expiry_time is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Both expiry_date and expiry_time must be provided together, or both must be null to remove expiry"
+        )
+
+    # Parse date (DD/MM/YYYY format)
+    try:
+        day, month, year = request.expiry_date.strip().split("/")
+        day = int(day)
+        month = int(month)
+        year = int(year)
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid date format. Use DD/MM/YYYY (e.g., 25/12/2024)"
+        )
+
+    # Parse time (HH:MM 24hr format)
+    try:
+        hour, minute = request.expiry_time.strip().split(":")
+        hour = int(hour)
+        minute = int(minute)
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid time format. Use HH:MM 24hr format (e.g., 14:30)"
+        )
+
+    # Validate ranges
+    if not (1 <= day <= 31 and 1 <= month <= 12 and 2020 <= year <= 2100):
+        raise HTTPException(status_code=400, detail="Invalid date values")
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise HTTPException(status_code=400, detail="Invalid time values")
+
+    # Create UK timezone aware datetime
+    uk_tz = pytz.timezone("Europe/London")
+    try:
+        from datetime import datetime as dt
+        naive_dt = dt(year, month, day, hour, minute, 0)
+        # Localize to UK timezone
+        expires_at = uk_tz.localize(naive_dt)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date/time: {str(e)}")
+
+    old_expiry = promo_code.expires_at
+    promo_code.expires_at = expires_at
+    db.commit()
+
+    # Check if it's already expired
+    uk_now = get_uk_now()
+    is_expired = uk_now >= expires_at
+
+    log_promo("Promo code expiry updated", {
+        "code_id": code_id,
+        "code": promo_code.code,
+        "old_expires_at": str(old_expiry) if old_expiry else None,
+        "new_expires_at": str(expires_at),
+        "is_expired": is_expired,
+        "user": current_user.email
+    })
+
+    return {
+        "success": True,
+        "code_id": code_id,
+        "code": promo_code.code,
+        "expires_at": expires_at.isoformat(),
+        "is_expired": is_expired,
+        "message": f"Expiry set to {request.expiry_date} at {request.expiry_time} UK time" + (" (already expired)" if is_expired else "")
     }
 
 
@@ -7463,6 +7604,8 @@ async def create_payment(
                 })
                 if promo_code_record.is_used:
                     log_promo("PAYMENT code already used", {"code": promo_code, "used_at": str(promo_code_record.used_at)})
+                elif promo_code_record.expires_at and get_uk_now() >= promo_code_record.expires_at:
+                    log_promo("PAYMENT code expired", {"code": promo_code, "expires_at": str(promo_code_record.expires_at)})
                 else:
                     # Get discount from parent promotion
                     promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()

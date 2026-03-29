@@ -1778,6 +1778,11 @@
   color: #276749;
 }
 
+.status-badge.expired {
+  background: #fed7d7;
+  color: #c53030;
+}
+
 .status-badge.unsubscribed {
   background: #fed7d7;
   color: #c53030;

@@ -403,6 +403,10 @@ class PromoCodeResponse(BaseModel):
     shared_on_socials: bool = False
     shared_on_socials_at: Optional[datetime] = None
 
+    # Expiry - if set, code is only valid before this date/time (UK timezone)
+    expires_at: Optional[datetime] = None
+    is_expired: bool = False  # Computed field for convenience
+
     created_at: datetime
 
     class Config:

@@ -967,6 +967,10 @@ class PromoCode(Base):
     used_at = Column(DateTime(timezone=True), nullable=True)
     booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True)
 
+    # Expiry - if set, code is only valid before this date/time (UK timezone)
+    # NULL means never expires (backwards compatible)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

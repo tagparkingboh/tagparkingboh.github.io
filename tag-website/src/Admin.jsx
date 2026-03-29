@@ -281,6 +281,12 @@ function Admin() {
   const [generateCodesPromotion, setGenerateCodesPromotion] = useState(null)
   const [generateCodesCount, setGenerateCodesCount] = useState(10)
   const [generatingCodes, setGeneratingCodes] = useState(false)
+  // Promo code expiry state
+  const [showExpiryModal, setShowExpiryModal] = useState(false)
+  const [expiryModalData, setExpiryModalData] = useState(null) // { promotionId, code }
+  const [expiryDate, setExpiryDate] = useState('') // DD/MM/YYYY
+  const [expiryTime, setExpiryTime] = useState('') // HH:MM
+  const [updatingExpiry, setUpdatingExpiry] = useState(false)
 
   // Abandoned leads state
   const [leads, setLeads] = useState([])
@@ -1345,6 +1351,77 @@ function Admin() {
       }
     } catch (err) {
       console.error('Failed to toggle shared privately:', err)
+    }
+  }
+
+  const openExpiryModal = (promotionId, code) => {
+    setExpiryModalData({ promotionId, code })
+    // Pre-fill with existing expiry if set
+    if (code.expires_at) {
+      const expiryDate = new Date(code.expires_at)
+      const day = String(expiryDate.getDate()).padStart(2, '0')
+      const month = String(expiryDate.getMonth() + 1).padStart(2, '0')
+      const year = expiryDate.getFullYear()
+      const hours = String(expiryDate.getHours()).padStart(2, '0')
+      const minutes = String(expiryDate.getMinutes()).padStart(2, '0')
+      setExpiryDate(`${day}/${month}/${year}`)
+      setExpiryTime(`${hours}:${minutes}`)
+    } else {
+      setExpiryDate('')
+      setExpiryTime('')
+    }
+    setShowExpiryModal(true)
+  }
+
+  const updatePromoCodeExpiry = async () => {
+    if (!expiryModalData) return
+
+    // Validate: both must be set or both must be empty
+    if ((expiryDate && !expiryTime) || (!expiryDate && expiryTime)) {
+      setPromotionMessage('Error: Both date and time must be set, or both must be empty to remove expiry')
+      return
+    }
+
+    setUpdatingExpiry(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/promo-codes/${expiryModalData.code.id}/expiry`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          expiry_date: expiryDate || null,
+          expiry_time: expiryTime || null
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Update local state
+        setPromotionDetails(prev => ({
+          ...prev,
+          [expiryModalData.promotionId]: {
+            ...prev[expiryModalData.promotionId],
+            codes: prev[expiryModalData.promotionId].codes.map(code =>
+              code.id === expiryModalData.code.id
+                ? { ...code, expires_at: data.expires_at, is_expired: data.is_expired }
+                : code
+            )
+          }
+        }))
+        setShowExpiryModal(false)
+        setExpiryModalData(null)
+        setPromotionMessage(data.message)
+      } else {
+        const error = await response.json()
+        setPromotionMessage(`Error: ${error.detail || 'Failed to update expiry'}`)
+      }
+    } catch (err) {
+      console.error('Failed to update expiry:', err)
+      setPromotionMessage('Network error updating expiry')
+    } finally {
+      setUpdatingExpiry(false)
     }
   }
 
@@ -5114,6 +5191,7 @@ function Admin() {
                                       <th>Recipient</th>
                                       <th>Shared on Socials</th>
                                       <th>Shared Privately</th>
+                                      <th>Expiry</th>
                                       <th>Status</th>
                                       <th>Booking</th>
                                     </tr>
@@ -5242,8 +5320,44 @@ function Admin() {
                                           )}
                                         </td>
                                         <td>
-                                          <span className={`status-badge ${code.is_used ? 'used' : (code.email_sent || code.shared_on_socials || code.shared_privately) ? 'sent' : 'pending'}`}>
-                                            {code.is_used ? 'Used' : (code.email_sent || code.shared_on_socials || code.shared_privately) ? 'Shared' : 'Available'}
+                                          {/* Expiry: clickable to set/edit, shows status */}
+                                          <button
+                                            onClick={() => openExpiryModal(promo.id, code)}
+                                            style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '6px',
+                                              padding: '4px 10px',
+                                              borderRadius: '12px',
+                                              fontSize: '11px',
+                                              fontWeight: '600',
+                                              border: 'none',
+                                              cursor: 'pointer',
+                                              background: code.is_expired
+                                                ? 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)'
+                                                : code.expires_at
+                                                  ? 'linear-gradient(135deg, #ffc107 0%, #e0a800 100%)'
+                                                  : '#e9ecef',
+                                              color: code.is_expired || code.expires_at ? 'white' : '#666',
+                                              transition: 'all 0.2s ease'
+                                            }}
+                                            title={code.expires_at
+                                              ? `Expires: ${new Date(code.expires_at).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                                              : 'Click to set expiry'
+                                            }
+                                          >
+                                            {code.is_expired ? (
+                                              <>⏰ Expired</>
+                                            ) : code.expires_at ? (
+                                              <>⏰ {new Date(code.expires_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: '2-digit' })} {new Date(code.expires_at).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' })}</>
+                                            ) : (
+                                              <>Set Expiry</>
+                                            )}
+                                          </button>
+                                        </td>
+                                        <td>
+                                          <span className={`status-badge ${code.is_used ? 'used' : code.is_expired ? 'expired' : (code.email_sent || code.shared_on_socials || code.shared_privately) ? 'sent' : 'pending'}`}>
+                                            {code.is_used ? 'Used' : code.is_expired ? 'Expired' : (code.email_sent || code.shared_on_socials || code.shared_privately) ? 'Shared' : 'Available'}
                                           </span>
                                         </td>
                                         <td>
@@ -5726,6 +5840,68 @@ function Admin() {
                       disabled={sendingPromoEmails || promoEmailRecipients.length === 0 || promoEmailRecipients.length > sendPromoEmailData.availableCodes.length}
                     >
                       {sendingPromoEmails ? 'Sending...' : `Send ${promoEmailRecipients.length} Email${promoEmailRecipients.length !== 1 ? 's' : ''}`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Set Expiry Modal */}
+            {showExpiryModal && expiryModalData && (
+              <div className="modal-overlay" onClick={() => setShowExpiryModal(false)}>
+                <div className="modal-content" style={{ maxWidth: '400px' }} onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h3>Set Code Expiry</h3>
+                    <button className="modal-close" onClick={() => setShowExpiryModal(false)}>&times;</button>
+                  </div>
+                  <div className="modal-body">
+                    <p style={{ marginBottom: '15px', color: '#666' }}>
+                      Code: <code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px' }}>{expiryModalData.code.code}</code>
+                    </p>
+                    {expiryModalData.code.is_expired && (
+                      <p style={{ marginBottom: '15px', color: '#dc3545', fontWeight: '600' }}>
+                        ⚠️ This code has expired
+                      </p>
+                    )}
+                    <div className="form-group" style={{ marginBottom: '15px' }}>
+                      <label>Expiry Date (DD/MM/YYYY)</label>
+                      <input
+                        type="text"
+                        value={expiryDate}
+                        onChange={(e) => setExpiryDate(e.target.value)}
+                        placeholder="28/03/2026"
+                        className="admin-input"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: '15px' }}>
+                      <label>Expiry Time (HH:MM - 24hr UK time)</label>
+                      <input
+                        type="text"
+                        value={expiryTime}
+                        onChange={(e) => setExpiryTime(e.target.value)}
+                        placeholder="14:30"
+                        className="admin-input"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                    <p style={{ fontSize: '12px', color: '#999' }}>
+                      Leave both fields empty to remove expiry (code never expires)
+                    </p>
+                  </div>
+                  <div className="modal-actions">
+                    <button
+                      className="modal-btn modal-btn-secondary"
+                      onClick={() => setShowExpiryModal(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="modal-btn modal-btn-primary"
+                      onClick={updatePromoCodeExpiry}
+                      disabled={updatingExpiry}
+                    >
+                      {updatingExpiry ? 'Saving...' : 'Save Expiry'}
                     </button>
                   </div>
                 </div>
