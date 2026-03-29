@@ -7061,6 +7061,7 @@ function Admin() {
                         {bookingStats.last_month > 0 && (
                           <div className={`stats-card-change ${bookingStats.this_month >= bookingStats.last_month ? 'positive' : 'negative'}`}>
                             {bookingStats.this_month >= bookingStats.last_month ? '+' : ''}{bookingStats.this_month - bookingStats.last_month} vs last month
+                            {' '}({bookingStats.this_month >= bookingStats.last_month ? '+' : ''}{Math.round(((bookingStats.this_month - bookingStats.last_month) / bookingStats.last_month) * 100)}%)
                           </div>
                         )}
                       </div>
@@ -7070,6 +7071,7 @@ function Admin() {
                         {bookingStats.last_week > 0 && (
                           <div className={`stats-card-change ${bookingStats.this_week >= bookingStats.last_week ? 'positive' : 'negative'}`}>
                             {bookingStats.this_week >= bookingStats.last_week ? '+' : ''}{bookingStats.this_week - bookingStats.last_week} vs last week
+                            {' '}({bookingStats.this_week >= bookingStats.last_week ? '+' : ''}{Math.round(((bookingStats.this_week - bookingStats.last_week) / bookingStats.last_week) * 100)}%)
                           </div>
                         )}
                       </div>
