@@ -5970,6 +5970,19 @@ async def update_customer(
         db.commit()
         db.refresh(customer)
 
+        # Log audit event for customer update
+        log_audit_event(
+            db=db,
+            event=AuditLogEvent.CUSTOMER_ENTERED,
+            request=http_request,
+            session_id=request.session_id,
+            event_data={
+                "customer_id": customer.id,
+                "email": request.email,
+                "is_new_customer": False,
+            },
+        )
+
         return {
             "success": True,
             "customer_id": customer.id,
@@ -6271,6 +6284,22 @@ async def update_vehicle(
         vehicle.colour = request.colour
         db.commit()
         db.refresh(vehicle)
+
+        # Log audit event for vehicle update
+        log_audit_event(
+            db=db,
+            event=AuditLogEvent.VEHICLE_ENTERED,
+            request=http_request,
+            session_id=request.session_id,
+            event_data={
+                "vehicle_id": vehicle.id,
+                "customer_id": request.customer_id,
+                "registration": vehicle.registration,
+                "make": vehicle.make,
+                "model": vehicle.model,
+                "is_new_vehicle": False,
+            },
+        )
 
         return {
             "success": True,
