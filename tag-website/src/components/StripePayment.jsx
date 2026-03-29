@@ -269,6 +269,9 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
         }}
         options={{
           layout: 'tabs',
+          wallets: {
+            link: 'never',  // Disable Stripe Link autofill to avoid customer confusion
+          },
           fields: {
             billingDetails: {
               address: {
