@@ -4226,20 +4226,24 @@ async def get_session_tracking_report(
         ("booking_confirmed", "Booking Confirmed"),
     ]
 
+    # Feature deployment date - only show data from this date onwards
+    # dates_selected tracking was deployed on 29 Mar 2026
+    feature_deploy_date = uk_tz.localize(datetime(2026, 3, 29, 0, 0, 0))
+
     # Calculate date range based on period
     if period == "daily":
-        # Last 30 days
-        start_date = now - timedelta(days=30)
+        # Last 30 days (but not before deployment)
+        start_date = max(now - timedelta(days=30), feature_deploy_date)
         date_format = "%Y-%m-%d"
         display_format = "%d %b"
     elif period == "weekly":
-        # Last 12 weeks
-        start_date = now - timedelta(weeks=12)
+        # Last 12 weeks (but not before deployment)
+        start_date = max(now - timedelta(weeks=12), feature_deploy_date)
         date_format = "%Y-W%W"
         display_format = "W%W %Y"
     else:  # monthly
-        # Last 12 months
-        start_date = now - timedelta(days=365)
+        # Last 12 months (but not before deployment)
+        start_date = max(now - timedelta(days=365), feature_deploy_date)
         date_format = "%Y-%m"
         display_format = "%b %Y"
 
@@ -4292,14 +4296,17 @@ async def get_session_tracking_report(
         # Format display label
         try:
             if period == "weekly":
+                # Convert week number to start date of that week (Monday)
                 year, week = period_key.split("-W")
-                display_label = f"W{week} {year}"
+                # Get first day of the week (Monday)
+                first_day = datetime.strptime(f"{year}-W{week}-1", "%Y-W%W-%w")
+                display_label = first_day.strftime("%d/%m")
             elif period == "monthly":
                 dt = datetime.strptime(period_key, "%Y-%m")
                 display_label = dt.strftime("%b %Y")
             else:
                 dt = datetime.strptime(period_key, "%Y-%m-%d")
-                display_label = dt.strftime("%d %b")
+                display_label = dt.strftime("%d/%m")
         except:
             display_label = period_key
 
