@@ -431,6 +431,7 @@ class AuditLogEvent(enum.Enum):
     """Types of booking audit events."""
     # Booking flow events
     BOOKING_STARTED = "booking_started"
+    DATES_SELECTED = "dates_selected"  # User selected drop-off and pick-up dates
     FLIGHT_SELECTED = "flight_selected"
     SLOT_SELECTED = "slot_selected"
     VEHICLE_ENTERED = "vehicle_entered"

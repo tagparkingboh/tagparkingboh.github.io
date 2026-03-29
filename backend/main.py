@@ -4191,6 +4191,158 @@ async def export_financial_report(
     )
 
 
+@app.get("/api/admin/reports/session-tracking")
+async def get_session_tracking_report(
+    period: str = Query("daily", description="Time period: daily, weekly, monthly"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get session tracking statistics showing funnel progression.
+
+    Returns counts for each funnel stage:
+    - dates_selected: Users who selected travel dates
+    - flight_selected: Users who completed flight selection
+    - customer_entered: Users who entered contact details
+    - payment_initiated: Users who started payment
+    - booking_confirmed: Users who completed booking
+
+    Grouped by day, week, or month with conversion rates.
+    """
+    from db_models import AuditLog, AuditLogEvent
+    from datetime import datetime, timedelta
+    from collections import defaultdict
+    import pytz
+
+    uk_tz = pytz.timezone('Europe/London')
+    now = datetime.now(uk_tz)
+
+    # Define funnel stages in order
+    funnel_stages = [
+        ("dates_selected", "Dates Selected"),
+        ("flight_selected", "Flight Selected"),
+        ("customer_entered", "Details Entered"),
+        ("payment_initiated", "Payment Started"),
+        ("booking_confirmed", "Booking Confirmed"),
+    ]
+
+    # Calculate date range based on period
+    if period == "daily":
+        # Last 30 days
+        start_date = now - timedelta(days=30)
+        date_format = "%Y-%m-%d"
+        display_format = "%d %b"
+    elif period == "weekly":
+        # Last 12 weeks
+        start_date = now - timedelta(weeks=12)
+        date_format = "%Y-W%W"
+        display_format = "W%W %Y"
+    else:  # monthly
+        # Last 12 months
+        start_date = now - timedelta(days=365)
+        date_format = "%Y-%m"
+        display_format = "%b %Y"
+
+    # Query audit logs for funnel events
+    audit_logs = db.query(AuditLog).filter(
+        AuditLog.created_at >= start_date,
+        AuditLog.event.in_([
+            AuditLogEvent.DATES_SELECTED,
+            AuditLogEvent.FLIGHT_SELECTED,
+            AuditLogEvent.CUSTOMER_ENTERED,
+            AuditLogEvent.PAYMENT_INITIATED,
+            AuditLogEvent.BOOKING_CONFIRMED,
+        ])
+    ).all()
+
+    # Group by period and count unique sessions per event type
+    period_data = defaultdict(lambda: defaultdict(set))
+
+    for log in audit_logs:
+        if log.created_at:
+            log_time = log.created_at
+            if log_time.tzinfo is None:
+                log_time = uk_tz.localize(log_time)
+            else:
+                log_time = log_time.astimezone(uk_tz)
+
+            if period == "weekly":
+                period_key = log_time.strftime("%Y-W%W")
+            elif period == "monthly":
+                period_key = log_time.strftime("%Y-%m")
+            else:  # daily
+                period_key = log_time.strftime("%Y-%m-%d")
+
+            event_key = log.event.value if hasattr(log.event, 'value') else str(log.event)
+            session_key = log.session_id or f"anon_{log.id}"
+            period_data[period_key][event_key].add(session_key)
+
+    # Build response data
+    periods_list = sorted(period_data.keys())
+
+    # Calculate cumulative totals
+    cumulative = {stage[0]: set() for stage in funnel_stages}
+    for period_key in periods_list:
+        for stage_key, _ in funnel_stages:
+            cumulative[stage_key].update(period_data[period_key].get(stage_key, set()))
+
+    # Format period data for response
+    formatted_periods = []
+    for period_key in periods_list:
+        # Format display label
+        try:
+            if period == "weekly":
+                year, week = period_key.split("-W")
+                display_label = f"W{week} {year}"
+            elif period == "monthly":
+                dt = datetime.strptime(period_key, "%Y-%m")
+                display_label = dt.strftime("%b %Y")
+            else:
+                dt = datetime.strptime(period_key, "%Y-%m-%d")
+                display_label = dt.strftime("%d %b")
+        except:
+            display_label = period_key
+
+        period_counts = {}
+        for stage_key, _ in funnel_stages:
+            period_counts[stage_key] = len(period_data[period_key].get(stage_key, set()))
+
+        formatted_periods.append({
+            "period": period_key,
+            "label": display_label,
+            "counts": period_counts
+        })
+
+    # Calculate conversion rates for cumulative data
+    cumulative_counts = {stage[0]: len(cumulative[stage[0]]) for stage in funnel_stages}
+
+    conversion_rates = {}
+    prev_count = None
+    for stage_key, stage_label in funnel_stages:
+        count = cumulative_counts[stage_key]
+        if prev_count and prev_count > 0:
+            conversion_rates[stage_key] = round((count / prev_count) * 100, 1)
+        else:
+            conversion_rates[stage_key] = 100.0 if count > 0 else 0.0
+        prev_count = count if count > 0 else prev_count
+
+    # Overall conversion rate (dates_selected → booking_confirmed)
+    dates_count = cumulative_counts.get("dates_selected", 0)
+    bookings_count = cumulative_counts.get("booking_confirmed", 0)
+    overall_conversion = round((bookings_count / dates_count) * 100, 1) if dates_count > 0 else 0.0
+
+    return {
+        "period_type": period,
+        "stages": [{"key": s[0], "label": s[1]} for s in funnel_stages],
+        "periods": formatted_periods,
+        "cumulative": {
+            "counts": cumulative_counts,
+            "conversion_rates": conversion_rates,
+            "overall_conversion": overall_conversion
+        }
+    }
+
+
 @app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
 async def send_promo_email_to_subscriber(
     subscriber_id: int,
@@ -6706,10 +6858,14 @@ async def log_checkout_event(
     Log checkout flow events for debugging customer issues.
 
     Events:
+    - dates_selected: User selected drop-off and pick-up dates (early funnel)
+    - flight_selected: User selected flight details (early funnel)
     - tnc_accepted: User checked the T&C checkbox
     - checkout_loaded: Stripe checkout page loaded successfully
     """
     event_map = {
+        "dates_selected": AuditLogEvent.DATES_SELECTED,
+        "flight_selected": AuditLogEvent.FLIGHT_SELECTED,
         "tnc_accepted": AuditLogEvent.TNC_ACCEPTED,
         "checkout_loaded": AuditLogEvent.CHECKOUT_LOADED,
     }

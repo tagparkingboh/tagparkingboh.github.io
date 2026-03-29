@@ -5651,3 +5651,160 @@
 .date-picker-btn:hover {
   background: #e5e7eb;
 }
+
+/* ===========================
+   Session Tracking Styles
+   =========================== */
+
+.period-selector {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.period-btn {
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.period-btn:hover {
+  background: #e5e7eb;
+}
+
+.period-btn.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+/* Funnel Summary */
+.session-funnel-summary {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.session-funnel-summary h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: #334155;
+}
+
+.funnel-cards {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.funnel-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  flex: 1;
+  min-width: 140px;
+  position: relative;
+}
+
+.funnel-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.funnel-step {
+  background: #3b82f6;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.funnel-label {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.funnel-card-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 0.25rem;
+}
+
+.funnel-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.conversion-rate {
+  font-weight: 600;
+}
+
+.conversion-rate.good {
+  color: #22c55e;
+}
+
+.conversion-rate.medium {
+  color: #f59e0b;
+}
+
+.conversion-rate.poor {
+  color: #ef4444;
+}
+
+.drop-off {
+  color: #94a3b8;
+}
+
+.overall-conversion {
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.conversion-label {
+  color: #94a3b8;
+  margin-left: 0.5rem;
+  font-size: 0.8rem;
+}
+
+/* Period Table */
+.session-period-table {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.session-period-table h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: #334155;
+}
+
+/* Make table cells numeric aligned */
+.session-period-table td:not(:first-child) {
+  text-align: center;
+}
+
+.session-period-table th:not(:first-child) {
+  text-align: center;
+}

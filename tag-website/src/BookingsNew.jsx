@@ -255,6 +255,30 @@ function Bookings() {
   // API base URL
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+  // Helper to log funnel events (with deduplication via sessionStorage)
+  const logFunnelEvent = (eventName, eventData) => {
+    const flagKey = `funnel_${eventName}_logged`
+    if (sessionStorage.getItem(flagKey)) {
+      // Already logged this event for this session
+      return
+    }
+    // Mark as logged immediately to prevent duplicate calls
+    sessionStorage.setItem(flagKey, 'true')
+
+    fetch(`${API_BASE_URL}/api/booking/audit-event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionIdRef.current,
+        event: eventName,
+        event_data: {
+          ...eventData,
+          timestamp: new Date().toISOString()
+        }
+      })
+    }).catch(err => console.error(`Failed to log ${eventName}:`, err))
+  }
+
   // Flight data from API
   const [departuresForDate, setDeparturesForDate] = useState([])
   const [arrivalsForDate, setArrivalsForDate] = useState([])
@@ -334,6 +358,17 @@ function Bookings() {
     sessionStorage.setItem('booking_heardAboutUsDetail', JSON.stringify(heardAboutUsDetail))
     sessionStorage.setItem('booking_heardAboutUsAnswered', JSON.stringify(heardAboutUsAnswered))
   }, [heardAboutUsSource, heardAboutUsDetail, heardAboutUsAnswered])
+
+  // Log funnel event when both dates are selected
+  useEffect(() => {
+    if (formData.dropoffDate && formData.pickupDate) {
+      logFunnelEvent('dates_selected', {
+        dropoff_date: format(formData.dropoffDate, 'yyyy-MM-dd'),
+        pickup_date: format(formData.pickupDate, 'yyyy-MM-dd'),
+        days_parking: Math.ceil((formData.pickupDate - formData.dropoffDate) / (1000 * 60 * 60 * 24))
+      })
+    }
+  }, [formData.dropoffDate, formData.pickupDate])
 
   // Check heard-about-us status when customer ID is available and entering Step 4
   useEffect(() => {
@@ -1586,6 +1621,21 @@ function Bookings() {
     try {
       // Step 3 data is saved via saveStep3DataAndAdvance
       // Steps 1, 2 don't need saves (just flight/package selection)
+
+      // Log funnel event when completing Step 1 (flight info)
+      if (currentStep === 1) {
+        logFunnelEvent('flight_selected', {
+          dropoff_date: formData.dropoffDate ? format(formData.dropoffDate, 'yyyy-MM-dd') : null,
+          pickup_date: formData.pickupDate ? format(formData.pickupDate, 'yyyy-MM-dd') : null,
+          departure_airline: manualDepartureData.airlineName || manualDepartureData.customAirline,
+          departure_time: manualDepartureData.flightTime,
+          departure_destination: manualDepartureData.destinationName || manualDepartureData.customDestination,
+          arrival_airline: manualArrivalData.airlineName || manualArrivalData.customAirline,
+          arrival_time: manualArrivalData.flightTime,
+          arrival_origin: manualArrivalData.originName || manualArrivalData.customOrigin,
+          dropoff_slot: manualDepartureData.dropoffSlot
+        })
+      }
 
       // Track booking flow progress in GA
       const stepNames = {

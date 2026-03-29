@@ -55,6 +55,7 @@ const NAV_STRUCTURE = [
     items: [
       { id: 'reports-growth', label: 'Booking Growth' },
       { id: 'reports-financial', label: 'Financial' },
+      { id: 'reports-sessions', label: 'Session Tracking' },
       { id: 'reports-occupancy', label: 'Occupancy' },
       { id: 'reports-routes', label: 'Popular Routes' },
       { id: 'reports-map', label: 'Location Maps' },
@@ -422,6 +423,11 @@ function Admin() {
   const [editingFinancialBooking, setEditingFinancialBooking] = useState(null) // { id, grossPence, discountPence }
   const [savingFinancialOverride, setSavingFinancialOverride] = useState(false)
 
+  // Session tracking report state
+  const [sessionTrackingData, setSessionTrackingData] = useState(null)
+  const [loadingSessionTracking, setLoadingSessionTracking] = useState(false)
+  const [sessionTrackingPeriod, setSessionTrackingPeriod] = useState('daily') // 'daily', 'weekly', 'monthly'
+
   // Marketing Sources report state
   const [marketingSourcesData, setMarketingSourcesData] = useState(null)
   const [loadingMarketingSources, setLoadingMarketingSources] = useState(false)
@@ -591,9 +597,11 @@ function Admin() {
         fetchPopularReport()
       } else if (reportsSubTab === 'financial') {
         fetchFinancialReport()
+      } else if (reportsSubTab === 'sessions') {
+        fetchSessionTracking()
       }
     }
-  }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularTop])
+  }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularTop, sessionTrackingPeriod])
 
   // Fetch test results when QA tab is active
   useEffect(() => {
@@ -1015,6 +1023,25 @@ function Admin() {
       console.error('Failed to fetch financial report:', err)
     } finally {
       setLoadingFinancial(false)
+    }
+  }
+
+  const fetchSessionTracking = async (period = sessionTrackingPeriod) => {
+    setLoadingSessionTracking(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/reports/session-tracking?period=${period}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSessionTrackingData(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch session tracking:', err)
+    } finally {
+      setLoadingSessionTracking(false)
     }
   }
 
@@ -3546,6 +3573,9 @@ function Admin() {
     } else if (tabId === 'reports-financial') {
       setActiveTab('reports')
       setReportsSubTab('financial')
+    } else if (tabId === 'reports-sessions') {
+      setActiveTab('reports')
+      setReportsSubTab('sessions')
     } else {
       setActiveTab(tabId)
     }
@@ -3569,8 +3599,9 @@ function Admin() {
     if (itemId === 'reports-routes' && activeTab === 'reports' && reportsSubTab === 'popular') return true
     if (itemId === 'reports-map' && activeTab === 'reports' && reportsSubTab === 'map') return true
     if (itemId === 'reports-financial' && activeTab === 'reports' && reportsSubTab === 'financial') return true
+    if (itemId === 'reports-sessions' && activeTab === 'reports' && reportsSubTab === 'sessions') return true
     // Standard tabs (exclude marketing and reports sub-tab ids)
-    const subTabIds = ['marketing', 'promotions', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map', 'reports-financial']
+    const subTabIds = ['marketing', 'promotions', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map', 'reports-financial', 'reports-sessions']
     if (!subTabIds.includes(itemId)) {
       return activeTab === itemId
     }
@@ -6991,6 +7022,7 @@ function Admin() {
             <h2>
               {reportsSubTab === 'growth' && 'Booking Growth'}
               {reportsSubTab === 'financial' && 'Financial'}
+              {reportsSubTab === 'sessions' && 'Session Tracking'}
               {reportsSubTab === 'occupancy' && 'Occupancy'}
               {reportsSubTab === 'popular' && 'Popular Routes'}
               {reportsSubTab === 'map' && 'Location Maps'}
@@ -8801,6 +8833,131 @@ function Admin() {
                   </>
                 ) : (
                   <p className="admin-empty">Click "Refresh Page" to load financial data.</p>
+                )}
+              </>
+            )}
+
+            {/* Session Tracking Report */}
+            {reportsSubTab === 'sessions' && (
+              <>
+                <div className="reports-section-header">
+                  <div className="period-selector">
+                    <button
+                      className={`period-btn ${sessionTrackingPeriod === 'daily' ? 'active' : ''}`}
+                      onClick={() => setSessionTrackingPeriod('daily')}
+                    >
+                      Daily
+                    </button>
+                    <button
+                      className={`period-btn ${sessionTrackingPeriod === 'weekly' ? 'active' : ''}`}
+                      onClick={() => setSessionTrackingPeriod('weekly')}
+                    >
+                      Weekly
+                    </button>
+                    <button
+                      className={`period-btn ${sessionTrackingPeriod === 'monthly' ? 'active' : ''}`}
+                      onClick={() => setSessionTrackingPeriod('monthly')}
+                    >
+                      Monthly
+                    </button>
+                  </div>
+                  <button
+                    className="refresh-page-btn"
+                    onClick={() => fetchSessionTracking()}
+                    disabled={loadingSessionTracking}
+                  >
+                    {loadingSessionTracking ? 'Refreshing...' : 'Refresh Page'}
+                  </button>
+                </div>
+
+                {loadingSessionTracking ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading session tracking data...</span>
+                  </div>
+                ) : sessionTrackingData ? (
+                  <>
+                    {/* Cumulative Funnel Summary */}
+                    <div className="session-funnel-summary">
+                      <h3>Booking Funnel (Cumulative)</h3>
+                      <div className="funnel-cards">
+                        {sessionTrackingData.stages?.map((stage, index) => {
+                          const count = sessionTrackingData.cumulative?.counts?.[stage.key] || 0
+                          const conversionRate = sessionTrackingData.cumulative?.conversion_rates?.[stage.key] || 0
+                          const prevCount = index > 0
+                            ? sessionTrackingData.cumulative?.counts?.[sessionTrackingData.stages[index - 1].key] || 0
+                            : count
+                          const dropOff = index > 0 && prevCount > 0
+                            ? prevCount - count
+                            : 0
+
+                          return (
+                            <div key={stage.key} className="funnel-card">
+                              <div className="funnel-card-header">
+                                <span className="funnel-step">{index + 1}</span>
+                                <span className="funnel-label">{stage.label}</span>
+                              </div>
+                              <div className="funnel-card-value">{count.toLocaleString()}</div>
+                              {index > 0 && (
+                                <div className="funnel-card-meta">
+                                  <span className={`conversion-rate ${conversionRate >= 50 ? 'good' : conversionRate >= 25 ? 'medium' : 'poor'}`}>
+                                    {conversionRate}% conversion
+                                  </span>
+                                  {dropOff > 0 && (
+                                    <span className="drop-off">-{dropOff} dropped</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <div className="overall-conversion">
+                        <strong>Overall Conversion Rate:</strong>{' '}
+                        <span className={`conversion-rate ${(sessionTrackingData.cumulative?.overall_conversion || 0) >= 10 ? 'good' : 'medium'}`}>
+                          {sessionTrackingData.cumulative?.overall_conversion || 0}%
+                        </span>
+                        <span className="conversion-label">(Dates Selected → Booking Confirmed)</span>
+                      </div>
+                    </div>
+
+                    {/* Period-by-Period Breakdown */}
+                    <div className="session-period-table">
+                      <h3>
+                        {sessionTrackingPeriod === 'daily' && 'Daily Breakdown (Last 30 Days)'}
+                        {sessionTrackingPeriod === 'weekly' && 'Weekly Breakdown (Last 12 Weeks)'}
+                        {sessionTrackingPeriod === 'monthly' && 'Monthly Breakdown (Last 12 Months)'}
+                      </h3>
+                      {sessionTrackingData.periods?.length > 0 ? (
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Period</th>
+                              {sessionTrackingData.stages?.map(stage => (
+                                <th key={stage.key}>{stage.label}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sessionTrackingData.periods?.slice().reverse().map(period => (
+                              <tr key={period.period}>
+                                <td><strong>{period.label}</strong></td>
+                                {sessionTrackingData.stages?.map(stage => (
+                                  <td key={stage.key}>
+                                    {period.counts?.[stage.key] || 0}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <p className="admin-empty">No session data available for this period.</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="admin-empty">Click "Refresh Page" to load session tracking data.</p>
                 )}
               </>
             )}
