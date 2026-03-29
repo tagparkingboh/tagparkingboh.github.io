@@ -483,7 +483,8 @@ function Admin() {
     button_color: '#d9ff00',
     button_text_color: '#343434',
     status: 'inactive',
-    max_subscribers: ''
+    max_subscribers: '',
+    promo_code: ''
   })
   const [savingPromoModal, setSavingPromoModal] = useState(false)
   const [showDeletePromoModal, setShowDeletePromoModal] = useState(false)
@@ -677,7 +678,8 @@ function Admin() {
           button_color: '#d9ff00',
           button_text_color: '#343434',
           status: 'inactive',
-          max_subscribers: ''
+          max_subscribers: '',
+          promo_code: ''
         })
         fetchPromoModals()
       } else {
@@ -743,7 +745,8 @@ function Admin() {
       button_color: modal.buttonColor,
       button_text_color: modal.buttonTextColor || '#ffffff',
       status: modal.status,
-      max_subscribers: modal.maxSubscribers || ''
+      max_subscribers: modal.maxSubscribers || '',
+      promo_code: modal.promoCode || ''
     })
     setShowPromoModalForm(true)
   }
@@ -9244,7 +9247,8 @@ function Admin() {
                       button_color: '#d9ff00',
                       button_text_color: '#343434',
                       status: 'inactive',
-                      max_subscribers: ''
+                      max_subscribers: '',
+                      promo_code: ''
                     })
                     setShowPromoModalForm(true)
                   }}
@@ -9565,6 +9569,20 @@ function Admin() {
                     Auto-deactivates after this many new sign-ups
                   </small>
                 </div>
+
+                <div className="form-group">
+                  <label>Promo Code (Single Use)</label>
+                  <input
+                    type="text"
+                    value={promoModalForm.promo_code}
+                    onChange={(e) => setPromoModalForm({ ...promoModalForm, promo_code: e.target.value.toUpperCase() })}
+                    placeholder="e.g. TAG-SPECIAL-10"
+                    style={{ textTransform: 'uppercase' }}
+                  />
+                  <small style={{ color: '#666', fontSize: '0.8rem' }}>
+                    Auto-deactivates when this code is used on a confirmed booking
+                  </small>
+                </div>
               </div>
 
               {/* Preview */}
@@ -9581,6 +9599,18 @@ function Admin() {
                 >
                   <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>{promoModalForm.title || 'Title'}</h4>
                   <p style={{ margin: '0 0 1rem 0', opacity: 0.9, whiteSpace: 'pre-line' }}>{promoModalForm.message || 'Your message here...'}</p>
+                  {promoModalForm.promo_code && (
+                    <div style={{
+                      backgroundColor: 'rgba(255,255,255,0.15)',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '6px',
+                      marginBottom: '1rem',
+                      border: '2px dashed rgba(255,255,255,0.3)'
+                    }}>
+                      <div style={{ fontSize: '0.75rem', opacity: 0.8, marginBottom: '0.25rem' }}>USE CODE</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 'bold', letterSpacing: '1px' }}>{promoModalForm.promo_code}</div>
+                    </div>
+                  )}
                   <button
                     style={{
                       backgroundColor: promoModalForm.button_color,

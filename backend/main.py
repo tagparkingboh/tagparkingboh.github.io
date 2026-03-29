@@ -8382,6 +8382,12 @@ async def create_payment(
                             subscriber.promo_code_used_booking_id = booking_id
                         db.commit()
 
+                # Check if this promo code is linked to a promo modal and deactivate it
+                try:
+                    check_promo_modal_code_used(db, promo_code_applied)
+                except Exception as e:
+                    print(f"[FREE BOOKING] Failed to check promo modal code usage: {e}")
+
             # Book the slot immediately for free bookings
             if request.departure_id and request.drop_off_slot:
                 slot_type = 'early' if request.drop_off_slot == "165" else 'late'
@@ -8872,6 +8878,12 @@ async def stripe_webhook(
                     booking_reference=booking_reference,
                     stack_trace=traceback.format_exc(),
                 )
+
+            # Check if this promo code is linked to a promo modal and deactivate it
+            try:
+                check_promo_modal_code_used(db, promo_code)
+            except Exception as e:
+                print(f"[WEBHOOK] Failed to check promo modal code usage: {e}")
 
         # Send booking confirmation email
         print(f"[EMAIL] Starting to send confirmation email for booking: {booking_reference}")
@@ -11382,6 +11394,7 @@ class PromoModalCreate(BaseModel):
     button_color: str = "#22c55e"
     button_text_color: str = "#ffffff"
     status: str = "inactive"
+    promo_code: Optional[str] = None  # Promo code to display - auto-deactivates when used
 
 
 class PromoModalUpdate(BaseModel):
@@ -11399,6 +11412,7 @@ class PromoModalUpdate(BaseModel):
     button_text_color: Optional[str] = None
     status: Optional[str] = None
     max_subscribers: Optional[int] = None
+    promo_code: Optional[str] = None  # Promo code to display - auto-deactivates when used
 
 
 def check_promo_modal_subscriber_limits(db: Session):
@@ -11426,6 +11440,29 @@ def check_promo_modal_subscriber_limits(db: Session):
     db.commit()
 
 
+def check_promo_modal_code_used(db: Session, promo_code: str):
+    """
+    Check if any active promo modal has this promo code.
+    If so, auto-deactivate it (the code has been used on a confirmed booking).
+    """
+    from db_models import PromoModal, PromoModalStatus
+
+    if not promo_code:
+        return
+
+    # Find active modal with this promo code (case-insensitive)
+    modal = db.query(PromoModal).filter(
+        PromoModal.status == PromoModalStatus.ACTIVE,
+        PromoModal.promo_code.isnot(None),
+        func.upper(PromoModal.promo_code) == promo_code.upper(),
+    ).first()
+
+    if modal:
+        modal.status = PromoModalStatus.INACTIVE
+        db.commit()
+        print(f"Auto-deactivated promo modal '{modal.title}' - promo code '{promo_code}' used on confirmed booking")
+
+
 def format_promo_modal(modal):
     """Format a promo modal for API response."""
     return {
@@ -11447,6 +11484,7 @@ def format_promo_modal(modal):
         "clickCount": modal.click_count or 0,
         "maxSubscribers": modal.max_subscribers,
         "subscribersAtActivation": modal.subscribers_at_activation,
+        "promoCode": modal.promo_code,
     }
 
 
@@ -11518,6 +11556,7 @@ async def create_promo_modal(
         button_color=request.button_color,
         button_text_color=request.button_text_color,
         status=status_enum,
+        promo_code=request.promo_code,
     )
 
     db.add(modal)
@@ -11586,6 +11625,10 @@ async def update_promo_modal(
     # Handle max_subscribers
     if request.max_subscribers is not None:
         modal.max_subscribers = request.max_subscribers if request.max_subscribers > 0 else None
+
+    # Handle promo_code
+    if request.promo_code is not None:
+        modal.promo_code = request.promo_code if request.promo_code.strip() else None
 
     # Parse status and capture subscriber count if activating
     old_status = modal.status

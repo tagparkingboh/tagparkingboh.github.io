@@ -857,6 +857,9 @@ class PromoModal(Base):
     max_subscribers = Column(Integer, nullable=True)  # null = unlimited
     subscribers_at_activation = Column(Integer, nullable=True)  # Count when activated
 
+    # Promo code tracking (auto-deactivate when this promo code is used on a confirmed booking)
+    promo_code = Column(String(50), nullable=True)  # The promo code displayed in the modal
+
     # Tracking
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -80,6 +80,30 @@
   margin: 0 0 1.5rem 0;
 }
 
+/* Promo Code Display */
+.promo-modal-code {
+  background-color: rgba(255, 255, 255, 0.15);
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin: 1rem 0 1.5rem 0;
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+  text-align: center;
+}
+
+.promo-modal-code-label {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.promo-modal-code-value {
+  font-size: 1.25rem;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
 /* CTA Button */
 .promo-modal-button {
   display: block;

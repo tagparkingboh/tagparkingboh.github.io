@@ -92,6 +92,13 @@ function PromoModal() {
             </p>
           )}
 
+          {promo.promoCode && (
+            <div className="promo-modal-code">
+              <div className="promo-modal-code-label">USE CODE</div>
+              <div className="promo-modal-code-value">{promo.promoCode}</div>
+            </div>
+          )}
+
           <button
             className="promo-modal-button"
             onClick={handleButtonClick}
