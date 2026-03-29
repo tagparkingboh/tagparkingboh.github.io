@@ -4750,6 +4750,8 @@ async def create_promotion(
     discount_percent = request.get("discount_percent")
     total_codes = request.get("total_codes")
     code_prefix = request.get("code_prefix", "").strip().upper()
+    expiry_date = request.get("expiry_date")  # DD/MM/YYYY
+    expiry_time = request.get("expiry_time")  # HH:MM
 
     # Validate and sanitize prefix - only allow alphanumeric, max 10 chars
     if code_prefix:
@@ -4757,7 +4759,22 @@ async def create_promotion(
     if not code_prefix:
         code_prefix = "TAG"
 
-    log_promo("CREATE_PROMOTION request", {"name": name, "discount_percent": discount_percent, "total_codes": total_codes, "code_prefix": code_prefix, "user": current_user.email})
+    # Parse expiry if provided
+    expires_at = None
+    if expiry_date and expiry_time:
+        import pytz
+        try:
+            day, month, year = expiry_date.strip().split("/")
+            hour, minute = expiry_time.strip().split(":")
+            uk_tz = pytz.timezone("Europe/London")
+            from datetime import datetime as dt
+            naive_dt = dt(int(year), int(month), int(day), int(hour), int(minute), 0)
+            expires_at = uk_tz.localize(naive_dt)
+        except (ValueError, AttributeError) as e:
+            log_promo("CREATE_PROMOTION invalid expiry format", {"expiry_date": expiry_date, "expiry_time": expiry_time, "error": str(e)})
+            raise HTTPException(status_code=400, detail="Invalid expiry format. Use DD/MM/YYYY for date and HH:MM for time")
+
+    log_promo("CREATE_PROMOTION request", {"name": name, "discount_percent": discount_percent, "total_codes": total_codes, "code_prefix": code_prefix, "expires_at": str(expires_at) if expires_at else None, "user": current_user.email})
 
     if not name or not discount_percent or not total_codes:
         log_promo("CREATE_PROMOTION failed - missing required fields")
@@ -4802,6 +4819,7 @@ async def create_promotion(
         promo_code = PromoCode(
             promotion_id=promotion.id,
             code=code,
+            expires_at=expires_at,
         )
         db.add(promo_code)
         codes_created += 1
@@ -4809,7 +4827,7 @@ async def create_promotion(
     db.commit()
     db.refresh(promotion)
 
-    log_promo("CREATE_PROMOTION success", {"promotion_id": promotion.id, "codes_created": codes_created, "attempts": attempts})
+    log_promo("CREATE_PROMOTION success", {"promotion_id": promotion.id, "codes_created": codes_created, "expires_at": str(expires_at) if expires_at else None, "attempts": attempts})
 
     return {
         "id": promotion.id,
@@ -5135,13 +5153,32 @@ async def generate_more_codes(
         raise HTTPException(status_code=404, detail="Promotion not found")
 
     count = request.get("count")
+    expiry_date = request.get("expiry_date")  # DD/MM/YYYY
+    expiry_time = request.get("expiry_time")  # HH:MM
+
     if not count or count < 1 or count > 1000:
         raise HTTPException(status_code=400, detail="count must be between 1 and 1000")
+
+    # Parse expiry if provided
+    expires_at = None
+    if expiry_date and expiry_time:
+        import pytz
+        try:
+            day, month, year = expiry_date.strip().split("/")
+            hour, minute = expiry_time.strip().split(":")
+            uk_tz = pytz.timezone("Europe/London")
+            from datetime import datetime as dt
+            naive_dt = dt(int(year), int(month), int(day), int(hour), int(minute), 0)
+            expires_at = uk_tz.localize(naive_dt)
+        except (ValueError, AttributeError) as e:
+            log_promo("GENERATE_MORE_CODES invalid expiry format", {"expiry_date": expiry_date, "expiry_time": expiry_time, "error": str(e)})
+            raise HTTPException(status_code=400, detail="Invalid expiry format. Use DD/MM/YYYY for date and HH:MM for time")
 
     log_promo("GENERATE_MORE_CODES request", {
         "promotion_id": promotion_id,
         "promotion_name": promotion.name,
         "count": count,
+        "expires_at": str(expires_at) if expires_at else None,
         "user": current_user.email
     })
 
@@ -5166,6 +5203,7 @@ async def generate_more_codes(
         promo_code = PromoCode(
             promotion_id=promotion.id,
             code=code,
+            expires_at=expires_at,
         )
         db.add(promo_code)
         codes_created += 1
@@ -5178,6 +5216,7 @@ async def generate_more_codes(
     log_promo("GENERATE_MORE_CODES success", {
         "promotion_id": promotion_id,
         "codes_created": codes_created,
+        "expires_at": str(expires_at) if expires_at else None,
         "new_total": promotion.total_codes
     })
 
@@ -5464,6 +5503,128 @@ async def update_promo_code_expiry(
         "expires_at": expires_at.isoformat(),
         "is_expired": is_expired,
         "message": f"Expiry set to {request.expiry_date} at {request.expiry_time} UK time" + (" (already expired)" if is_expired else "")
+    }
+
+
+class BulkPromoCodeExpiryUpdate(BaseModel):
+    """Request model for bulk updating promo code expiry."""
+    code_ids: List[int]
+    # If both are None, removes the expiry (codes never expire)
+    expiry_date: Optional[str] = None  # DD/MM/YYYY
+    expiry_time: Optional[str] = None  # HH:MM (24hr format)
+
+
+@app.patch("/api/admin/promo-codes/bulk-expiry")
+async def bulk_update_promo_code_expiry(
+    request: BulkPromoCodeExpiryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Bulk update promo codes' expiry date/time.
+
+    Accepts date in DD/MM/YYYY format and time in 24hr HH:MM format.
+    Both date and time must be provided together, or both must be None to remove expiry.
+    The expiry is stored in UK timezone.
+    """
+    from db_models import PromoCode
+    import pytz
+
+    if not request.code_ids:
+        raise HTTPException(status_code=400, detail="No code IDs provided")
+
+    if len(request.code_ids) > 500:
+        raise HTTPException(status_code=400, detail="Maximum 500 codes can be updated at once")
+
+    # Parse expiry date/time if provided
+    expires_at = None
+    if request.expiry_date is not None or request.expiry_time is not None:
+        # Both must be provided together
+        if request.expiry_date is None or request.expiry_time is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Both expiry_date and expiry_time must be provided together, or both must be null to remove expiry"
+            )
+
+        # Parse date (DD/MM/YYYY format)
+        try:
+            day, month, year = request.expiry_date.strip().split("/")
+            day = int(day)
+            month = int(month)
+            year = int(year)
+        except (ValueError, AttributeError):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid date format. Use DD/MM/YYYY (e.g., 25/12/2024)"
+            )
+
+        # Parse time (HH:MM 24hr format)
+        try:
+            hour, minute = request.expiry_time.strip().split(":")
+            hour = int(hour)
+            minute = int(minute)
+        except (ValueError, AttributeError):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid time format. Use HH:MM 24hr format (e.g., 14:30)"
+            )
+
+        # Validate ranges
+        if not (1 <= day <= 31 and 1 <= month <= 12 and 2020 <= year <= 2100):
+            raise HTTPException(status_code=400, detail="Invalid date values")
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise HTTPException(status_code=400, detail="Invalid time values")
+
+        # Create UK timezone aware datetime
+        uk_tz = pytz.timezone("Europe/London")
+        try:
+            from datetime import datetime as dt
+            naive_dt = dt(year, month, day, hour, minute, 0)
+            # Localize to UK timezone
+            expires_at = uk_tz.localize(naive_dt)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid date/time: {str(e)}")
+
+    # Fetch all codes
+    promo_codes = db.query(PromoCode).filter(PromoCode.id.in_(request.code_ids)).all()
+
+    if len(promo_codes) != len(request.code_ids):
+        found_ids = {c.id for c in promo_codes}
+        missing_ids = [cid for cid in request.code_ids if cid not in found_ids]
+        raise HTTPException(status_code=404, detail=f"Some promo codes not found: {missing_ids[:10]}")
+
+    # Update all codes
+    uk_now = get_uk_now()
+    updated_codes = []
+    for promo_code in promo_codes:
+        promo_code.expires_at = expires_at
+        is_expired = expires_at is not None and uk_now >= expires_at
+        updated_codes.append({
+            "code_id": promo_code.id,
+            "code": promo_code.code,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+            "is_expired": is_expired
+        })
+
+    db.commit()
+
+    log_promo("Bulk promo code expiry updated", {
+        "code_ids": request.code_ids,
+        "codes_count": len(promo_codes),
+        "expires_at": str(expires_at) if expires_at else None,
+        "user": current_user.email
+    })
+
+    if expires_at:
+        message = f"Expiry set to {request.expiry_date} at {request.expiry_time} UK time for {len(promo_codes)} codes"
+    else:
+        message = f"Expiry removed from {len(promo_codes)} codes"
+
+    return {
+        "success": True,
+        "updated_count": len(promo_codes),
+        "codes": updated_codes,
+        "message": message
     }
 
 

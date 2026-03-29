@@ -590,3 +590,426 @@ class TestMultipleCodesExpiryStates:
         response = await client.post("/api/promo/validate", json={"code": "TAG-MC04-0019"})
         assert response.json()["valid"] is False
         assert "already been used" in response.json()["message"].lower()
+
+
+# =============================================================================
+# Integration Tests - Bulk Expiry Update
+# =============================================================================
+
+class TestBulkExpiryUpdate:
+    """Integration tests for bulk updating promo code expiry."""
+
+    @pytest.mark.asyncio
+    async def test_bulk_set_expiry_multiple_codes(self, client):
+        """Admin can set expiry for multiple codes at once."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc1 = _mock_store.add_promo_code("TAG-BLK1-0020", promotion.id)
+        pc2 = _mock_store.add_promo_code("TAG-BLK2-0021", promotion.id)
+        pc3 = _mock_store.add_promo_code("TAG-BLK3-0022", promotion.id)
+
+        response = await client.patch(
+            "/api/admin/promo-codes/bulk-expiry",
+            json={
+                "code_ids": [pc1.id, pc2.id, pc3.id],
+                "expiry_date": "31/12/2025",
+                "expiry_time": "23:59"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["updated_count"] == 3
+        assert len(data["codes"]) == 3
+        assert "31/12/2025" in data["message"]
+        assert "23:59" in data["message"]
+
+    @pytest.mark.asyncio
+    async def test_bulk_remove_expiry_multiple_codes(self, client):
+        """Admin can remove expiry from multiple codes at once."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        expired = get_uk_now() - timedelta(days=1)
+        pc1 = _mock_store.add_promo_code("TAG-BRM1-0023", promotion.id, expires_at=expired)
+        pc2 = _mock_store.add_promo_code("TAG-BRM2-0024", promotion.id, expires_at=expired)
+
+        response = await client.patch(
+            "/api/admin/promo-codes/bulk-expiry",
+            json={
+                "code_ids": [pc1.id, pc2.id],
+                "expiry_date": None,
+                "expiry_time": None
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["updated_count"] == 2
+        # All codes should have null expires_at
+        for code in data["codes"]:
+            assert code["expires_at"] is None
+            assert code["is_expired"] is False
+
+    @pytest.mark.asyncio
+    async def test_bulk_expiry_empty_code_ids(self, client):
+        """Bulk expiry with empty code_ids should return error."""
+        response = await client.patch(
+            "/api/admin/promo-codes/bulk-expiry",
+            json={
+                "code_ids": [],
+                "expiry_date": "31/12/2025",
+                "expiry_time": "23:59"
+            }
+        )
+        assert response.status_code == 400
+        assert "no code ids" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_bulk_expiry_invalid_date_format(self, client):
+        """Bulk expiry with invalid date format should return error."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc = _mock_store.add_promo_code("TAG-BINV-0025", promotion.id)
+
+        response = await client.patch(
+            "/api/admin/promo-codes/bulk-expiry",
+            json={
+                "code_ids": [pc.id],
+                "expiry_date": "2025-12-31",  # Wrong format
+                "expiry_time": "23:59"
+            }
+        )
+        assert response.status_code == 400
+        assert "DD/MM/YYYY" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_bulk_expiry_date_without_time(self, client):
+        """Bulk expiry with date but no time should return error."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc = _mock_store.add_promo_code("TAG-BDT1-0026", promotion.id)
+
+        response = await client.patch(
+            "/api/admin/promo-codes/bulk-expiry",
+            json={
+                "code_ids": [pc.id],
+                "expiry_date": "31/12/2025",
+                "expiry_time": None
+            }
+        )
+        assert response.status_code == 400
+        assert "together" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_bulk_expiry_nonexistent_code(self, client):
+        """Bulk expiry with non-existent code ID should return error."""
+        response = await client.patch(
+            "/api/admin/promo-codes/bulk-expiry",
+            json={
+                "code_ids": [99999],
+                "expiry_date": "31/12/2025",
+                "expiry_time": "23:59"
+            }
+        )
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_bulk_expiry_mixed_valid_invalid_codes(self, client):
+        """Bulk expiry with some valid and some invalid codes should fail."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc = _mock_store.add_promo_code("TAG-BMIX-0027", promotion.id)
+
+        response = await client.patch(
+            "/api/admin/promo-codes/bulk-expiry",
+            json={
+                "code_ids": [pc.id, 99999],  # One valid, one invalid
+                "expiry_date": "31/12/2025",
+                "expiry_time": "23:59"
+            }
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_bulk_expiry_single_code(self, client):
+        """Bulk expiry endpoint works for single code too."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc = _mock_store.add_promo_code("TAG-BSNG-0028", promotion.id)
+
+        response = await client.patch(
+            "/api/admin/promo-codes/bulk-expiry",
+            json={
+                "code_ids": [pc.id],
+                "expiry_date": "15/06/2025",
+                "expiry_time": "12:00"
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["updated_count"] == 1
+        assert "1 codes" in data["message"] or "1 code" in data["message"]
+
+
+# =============================================================================
+# Integration Tests - Flash Sale Scenario
+# =============================================================================
+
+class TestFlashSaleScenario:
+    """Integration tests for flash sale scenarios with short expiry windows."""
+
+    @pytest.mark.asyncio
+    async def test_flash_sale_24_hour_window(self, client):
+        """Test promo code valid for exactly 24 hours."""
+        promotion = _mock_store.add_promotion(discount_percent=50)
+        now = get_uk_now()
+        expires_24h = now + timedelta(hours=24)
+        _mock_store.add_promo_code("TAG-FLASH24", promotion.id, expires_at=expires_24h)
+
+        # Should be valid now
+        response = await client.post(
+            "/api/promo/validate",
+            json={"code": "TAG-FLASH24"}
+        )
+        assert response.json()["valid"] is True
+        assert response.json()["discount_percent"] == 50
+
+    @pytest.mark.asyncio
+    async def test_flash_sale_1_hour_window(self, client):
+        """Test promo code valid for just 1 hour."""
+        promotion = _mock_store.add_promotion(discount_percent=75)
+        now = get_uk_now()
+        expires_1h = now + timedelta(hours=1)
+        _mock_store.add_promo_code("TAG-FLASH1H", promotion.id, expires_at=expires_1h)
+
+        # Should be valid now
+        response = await client.post(
+            "/api/promo/validate",
+            json={"code": "TAG-FLASH1H"}
+        )
+        assert response.json()["valid"] is True
+
+    @pytest.mark.asyncio
+    async def test_flash_sale_expired_1_minute_ago(self, client):
+        """Test promo code that just expired (1 minute ago)."""
+        promotion = _mock_store.add_promotion(discount_percent=50)
+        now = get_uk_now()
+        expired_1m = now - timedelta(minutes=1)
+        _mock_store.add_promo_code("TAG-FLASHEXP", promotion.id, expires_at=expired_1m)
+
+        # Should be expired
+        response = await client.post(
+            "/api/promo/validate",
+            json={"code": "TAG-FLASHEXP"}
+        )
+        assert response.json()["valid"] is False
+        assert "expired" in response.json()["message"].lower()
+
+
+# =============================================================================
+# Integration Tests - Concurrent Validation and Expiry
+# =============================================================================
+
+class TestConcurrentValidationExpiry:
+    """Tests for edge cases around concurrent validation and expiry transitions."""
+
+    @pytest.mark.asyncio
+    async def test_code_expiring_between_validation_and_use(self, client):
+        """
+        Test scenario where code expires between validation and actual use.
+        This simulates race condition where code is valid at start but expires mid-checkout.
+        """
+        promotion = _mock_store.add_promotion(discount_percent=20)
+        now = get_uk_now()
+
+        # Code expires in 5 seconds
+        expires_soon = now + timedelta(seconds=5)
+        pc = _mock_store.add_promo_code("TAG-RACE01", promotion.id, expires_at=expires_soon)
+
+        # First validation - should be valid
+        response = await client.post(
+            "/api/promo/validate",
+            json={"code": "TAG-RACE01"}
+        )
+        assert response.json()["valid"] is True
+
+        # Simulate time passing - code now expired
+        pc.expires_at = now - timedelta(seconds=1)
+
+        # Second validation - should be expired
+        response = await client.post(
+            "/api/promo/validate",
+            json={"code": "TAG-RACE01"}
+        )
+        assert response.json()["valid"] is False
+
+
+# =============================================================================
+# Unit Tests - Additional Edge Cases for Expiry Parsing
+# =============================================================================
+
+class TestExpiryDateParsing:
+    """Tests for edge cases in date/time parsing for expiry."""
+
+    @pytest.mark.asyncio
+    async def test_set_expiry_midnight(self, client):
+        """Setting expiry to midnight (00:00) should work."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc = _mock_store.add_promo_code("TAG-MDNT-0029", promotion.id)
+
+        response = await client.patch(
+            f"/api/admin/promo-codes/{pc.id}/expiry",
+            json={
+                "expiry_date": "01/01/2026",
+                "expiry_time": "00:00"
+            }
+        )
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_set_expiry_23_59(self, client):
+        """Setting expiry to 23:59 (end of day) should work."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc = _mock_store.add_promo_code("TAG-2359-0030", promotion.id)
+
+        response = await client.patch(
+            f"/api/admin/promo-codes/{pc.id}/expiry",
+            json={
+                "expiry_date": "31/12/2025",
+                "expiry_time": "23:59"
+            }
+        )
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_set_expiry_single_digit_day_month(self, client):
+        """Setting expiry with single digit day/month should work (with leading zero)."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc = _mock_store.add_promo_code("TAG-SDIG-0031", promotion.id)
+
+        response = await client.patch(
+            f"/api/admin/promo-codes/{pc.id}/expiry",
+            json={
+                "expiry_date": "01/01/2026",
+                "expiry_time": "09:05"
+            }
+        )
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_set_expiry_leap_year_feb_29(self, client):
+        """Setting expiry on Feb 29 in leap year should work."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc = _mock_store.add_promo_code("TAG-LEAP-0032", promotion.id)
+
+        response = await client.patch(
+            f"/api/admin/promo-codes/{pc.id}/expiry",
+            json={
+                "expiry_date": "29/02/2028",  # 2028 is a leap year
+                "expiry_time": "12:00"
+            }
+        )
+        assert response.status_code == 200
+        assert response.json()["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_set_expiry_non_leap_year_feb_29_fails(self, client):
+        """Setting expiry on Feb 29 in non-leap year should fail."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc = _mock_store.add_promo_code("TAG-NLEP-0033", promotion.id)
+
+        response = await client.patch(
+            f"/api/admin/promo-codes/{pc.id}/expiry",
+            json={
+                "expiry_date": "29/02/2025",  # 2025 is not a leap year
+                "expiry_time": "12:00"
+            }
+        )
+        assert response.status_code == 400
+        assert "invalid" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_set_expiry_invalid_hour_24(self, client):
+        """Setting expiry with hour 24 should fail."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc = _mock_store.add_promo_code("TAG-H24-0034", promotion.id)
+
+        response = await client.patch(
+            f"/api/admin/promo-codes/{pc.id}/expiry",
+            json={
+                "expiry_date": "01/01/2026",
+                "expiry_time": "24:00"  # Invalid - should be 00:00
+            }
+        )
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_set_expiry_invalid_minute_60(self, client):
+        """Setting expiry with minute 60 should fail."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        pc = _mock_store.add_promo_code("TAG-M60-0035", promotion.id)
+
+        response = await client.patch(
+            f"/api/admin/promo-codes/{pc.id}/expiry",
+            json={
+                "expiry_date": "01/01/2026",
+                "expiry_time": "12:60"  # Invalid minute
+            }
+        )
+        assert response.status_code == 400
+
+
+# =============================================================================
+# Integration Tests - Expiry Coexistence with Other States
+# =============================================================================
+
+class TestExpiryCoexistenceWithOtherStates:
+    """Tests for expiry interacting with other promo code states."""
+
+    @pytest.mark.asyncio
+    async def test_shared_on_socials_code_with_expiry(self, client):
+        """Code shared on socials with expiry should respect expiry."""
+        promotion = _mock_store.add_promotion(discount_percent=15)
+        future = get_uk_now() + timedelta(days=1)
+        pc = _mock_store.add_promo_code("TAG-SOCS-0036", promotion.id, expires_at=future)
+        pc.shared_on_socials = True
+        pc.shared_on_socials_at = get_uk_now()
+
+        # Should be valid (not expired, not used)
+        response = await client.post(
+            "/api/promo/validate",
+            json={"code": "TAG-SOCS-0036"}
+        )
+        assert response.json()["valid"] is True
+
+    @pytest.mark.asyncio
+    async def test_emailed_code_with_expiry(self, client):
+        """Emailed code with expiry should respect expiry."""
+        promotion = _mock_store.add_promotion(discount_percent=10)
+        expired = get_uk_now() - timedelta(hours=1)
+        pc = _mock_store.add_promo_code("TAG-EMEX-0037", promotion.id, expires_at=expired)
+        pc.email_sent = True
+        pc.email_sent_at = get_uk_now() - timedelta(days=2)
+        pc.recipient_email = "customer@test.com"
+
+        # Should be expired
+        response = await client.post(
+            "/api/promo/validate",
+            json={"code": "TAG-EMEX-0037"}
+        )
+        assert response.json()["valid"] is False
+        assert "expired" in response.json()["message"].lower()
+
+    @pytest.mark.asyncio
+    async def test_privately_shared_code_with_expiry(self, client):
+        """Privately shared code with expiry should respect expiry."""
+        promotion = _mock_store.add_promotion(discount_percent=20)
+        future = get_uk_now() + timedelta(days=7)
+        pc = _mock_store.add_promo_code("TAG-PRIV-0038", promotion.id, expires_at=future)
+        pc.shared_privately = True
+        pc.shared_privately_at = get_uk_now()
+
+        # Should be valid
+        response = await client.post(
+            "/api/promo/validate",
+            json={"code": "TAG-PRIV-0038"}
+        )
+        assert response.json()["valid"] is True
