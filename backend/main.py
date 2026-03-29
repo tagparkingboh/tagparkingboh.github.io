@@ -8908,6 +8908,51 @@ async def stripe_webhook(
 
         return {"status": "refunded", "payment_intent_id": payment_intent_id}
 
+    elif event_type in ("refund.updated", "refund.created"):
+        # Handle refund events directly (alternative to charge.refunded)
+        refund_id = data.get("id")
+        refund_amount = data.get("amount", 0)
+        refund_status = data.get("status")
+        payment_intent_id = data.get("payment_intent")
+
+        # Only process successful refunds
+        if refund_status == "succeeded" and payment_intent_id:
+            payment = db.query(Payment).filter(
+                Payment.stripe_payment_intent_id == payment_intent_id
+            ).first()
+
+            if payment:
+                # Update refund amount (accumulate if partial refunds)
+                current_refund = payment.refund_amount_pence or 0
+                # For refund.updated, the amount is the total refund amount
+                payment.refund_amount_pence = refund_amount
+                payment.refunded_at = datetime.utcnow()
+                payment.refund_id = refund_id
+
+                # Set status based on refund amount vs original
+                if payment.amount_pence and refund_amount >= payment.amount_pence:
+                    payment.status = PaymentStatus.REFUNDED
+                else:
+                    payment.status = PaymentStatus.PARTIALLY_REFUNDED
+
+                db.commit()
+
+                log_audit_event(
+                    db=db,
+                    event=AuditLogEvent.BOOKING_REFUNDED,
+                    request=request,
+                    event_data={
+                        "refund_id": refund_id,
+                        "payment_intent_id": payment_intent_id,
+                        "refund_amount_pence": refund_amount,
+                        "source": event_type,
+                    },
+                )
+
+                return {"status": "refunded", "payment_intent_id": payment_intent_id}
+
+        return {"status": "received", "type": event_type, "refund_status": refund_status}
+
     # Return success for other event types (we don't need to handle them)
     return {"status": "received", "type": event_type}
 
