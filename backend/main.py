@@ -11667,7 +11667,7 @@ async def verify_sql_pin(
 
     # Generate session token valid for 2 hours
     token = generate_sql_session_token()
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=2)
+    expires_at = get_uk_now() + timedelta(hours=2)
 
     sql_session_tokens[current_user.id] = {
         "token": token,
@@ -11695,7 +11695,7 @@ async def get_sql_session_status(
     if not session:
         return {"valid": False, "reason": "no_session"}
 
-    if datetime.now(timezone.utc) > session["expires_at"]:
+    if get_uk_now() > session["expires_at"]:
         # Session expired, clean up
         del sql_session_tokens[current_user.id]
         return {"valid": False, "reason": "expired"}
@@ -11730,7 +11730,7 @@ async def execute_sql_query(
     if not session or session["token"] != request.session_token:
         raise HTTPException(status_code=401, detail="Invalid or missing SQL session. Please verify PIN.")
 
-    if datetime.now(timezone.utc) > session["expires_at"]:
+    if get_uk_now() > session["expires_at"]:
         del sql_session_tokens[current_user.id]
         raise HTTPException(status_code=401, detail="SQL session expired. Please verify PIN again.")
 
@@ -11765,7 +11765,7 @@ async def execute_sql_query(
                 "query": query[:1000],  # Truncate long queries
                 "is_write": is_write,
             }),
-            created_at=datetime.now(timezone.utc),
+            created_at=get_uk_now(),
         )
         # We'll add this after execution to include results
     except Exception as e:
