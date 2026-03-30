@@ -9683,7 +9683,7 @@ function Admin() {
                 </div>
 
                 <div className="form-group">
-                  <label>Promo Code {promoCodeIsMultiUse ? '(Multi-Use)' : '(Single Use)'}</label>
+                  <label>Promo Code</label>
                   <input
                     type="text"
                     value={promoModalForm.promo_code}
@@ -9696,13 +9696,13 @@ function Admin() {
                         checkPromoCodeIsMultiUse(newCode)
                       }, 500)
                     }}
-                    placeholder="e.g. TAG-SPECIAL-10"
+                    placeholder="e.g. SUMMER10"
                     style={{ textTransform: 'uppercase' }}
                   />
-                  <small style={{ color: '#666', fontSize: '0.8rem' }}>
+                  <small style={{ color: promoCodeIsMultiUse ? '#16a34a' : '#666', fontSize: '0.8rem' }}>
                     {promoCodeIsMultiUse
-                      ? 'Multi-use code - modal expires by end date, not when code is used'
-                      : 'Auto-deactivates when this code is used on a confirmed booking'
+                      ? 'Multi-use code detected - modal expires by end date'
+                      : 'Enter an existing promo code from a promotion'
                     }
                   </small>
                 </div>
