@@ -145,6 +145,59 @@ class TestPromoCodeChangeDetection:
 
         assert existing_promo is None
 
+    def test_existing_empty_string_promo_normalized_to_none(self):
+        """Empty string promo from Stripe metadata should be normalized to None.
+
+        This fixes a bug where toggling T&Cs would create a new PaymentIntent
+        because "" != None was evaluating to True.
+        """
+        mock_intent = MagicMock()
+        mock_intent.metadata = {'promo_code': '', 'booking_reference': 'TAG-TEST01'}
+
+        # Get the promo code from metadata (returns empty string)
+        existing_promo = mock_intent.metadata.get('promo_code') if mock_intent.metadata else None
+        # Normalize empty string to None
+        existing_promo = existing_promo if existing_promo else None
+
+        assert existing_promo is None
+
+    def test_empty_string_promo_equals_none_promo_no_change(self):
+        """Empty string existing promo should equal None new promo (no change).
+
+        When customer toggles T&Cs without a promo code:
+        - existing_promo from Stripe = "" (empty string)
+        - new_promo from request = None
+        These should be treated as equal (no promo change).
+        """
+        mock_intent = MagicMock()
+        mock_intent.metadata = {'promo_code': '', 'booking_reference': 'TAG-TEST01'}
+
+        # Simulate the normalized comparison logic from main.py
+        existing_promo = mock_intent.metadata.get('promo_code') if mock_intent.metadata else None
+        existing_promo = existing_promo if existing_promo else None  # Normalize "" to None
+
+        request_promo_code = None  # No promo in request
+        new_promo = request_promo_code.strip().upper() if request_promo_code else None
+
+        promo_changed = existing_promo != new_promo
+
+        assert promo_changed is False, "Empty string and None should be treated as equal (no change)"
+
+    def test_none_existing_promo_equals_empty_request_no_change(self):
+        """None existing promo should equal empty string request promo (no change)."""
+        mock_intent = MagicMock()
+        mock_intent.metadata = {'booking_reference': 'TAG-TEST01'}  # No promo_code key
+
+        existing_promo = mock_intent.metadata.get('promo_code') if mock_intent.metadata else None
+        existing_promo = existing_promo if existing_promo else None
+
+        request_promo_code = ""  # Empty string in request
+        new_promo = request_promo_code.strip().upper() if request_promo_code else None
+
+        promo_changed = existing_promo != new_promo
+
+        assert promo_changed is False
+
 
 # =============================================================================
 # UNIT TESTS: PaymentIntent Cancellation Logic

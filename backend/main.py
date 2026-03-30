@@ -7973,6 +7973,8 @@ async def create_payment(
                         # Stripe returns StripeObject - use getattr, not .get()
                         metadata = getattr(intent, "metadata", None)
                         existing_promo = getattr(metadata, "promo_code", None) if metadata else None
+                        # Normalize empty string to None so "" and None are treated the same
+                        existing_promo = existing_promo if existing_promo else None
                         new_promo = request.promo_code.strip().upper() if request.promo_code else None
                         promo_changed = existing_promo != new_promo
                         print(f"[DEDUP] Existing promo: {existing_promo}, New promo: {new_promo}, Changed: {promo_changed}")
