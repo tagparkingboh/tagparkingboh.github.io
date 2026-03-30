@@ -34,6 +34,7 @@ function HomePage() {
   const [heroBannerIndex, setHeroBannerIndex] = useState(0)
   const [bannerFading, setBannerFading] = useState(false)
   const [prices, setPrices] = useState({ days4: 65, week1: 89, week2: 140 })
+  const [hasActivePromo, setHasActivePromo] = useState(false)
 
   // Alternate hero banner every 10 seconds
   useEffect(() => {
@@ -100,6 +101,17 @@ function HomePage() {
       }
     }
     return () => channel.close()
+  }, [])
+
+  // Check if there's an active promo section
+  useEffect(() => {
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    fetch(`${API_URL}/api/promo-section`)
+      .then(res => res.json())
+      .then(data => {
+        setHasActivePromo(!!(data.promoSection && data.promoSection.promoCode))
+      })
+      .catch(() => setHasActivePromo(false))
   }, [])
 
   const isValidEmail = (email) => {
@@ -237,7 +249,7 @@ function HomePage() {
           <div className={`menu-overlay ${menuOpen ? 'open' : ''}`} onClick={closeMenu}></div>
           <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
             <li><a href="#pricing" onClick={closeMenu}>Pricing</a></li>
-            <li><a href="#promotions" onClick={closeMenu}>Promotions</a></li>
+            {hasActivePromo && <li><a href="#promotions" onClick={closeMenu}>Promotions</a></li>}
             <li><a href="#how-it-works" onClick={closeMenu}>Meet & Greet</a></li>
             <li><a href="#testimonials" onClick={closeMenu}>Testimonials</a></li>
             <li><a href="#subscribe" onClick={closeMenu}>Subscribe</a></li>
