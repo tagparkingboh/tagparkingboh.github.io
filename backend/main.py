@@ -324,6 +324,30 @@ def run_migrations():
         else:
             print("Migration check: promo_modals type column already exists")
 
+        # Migration 7: Add new audit log events for T&C and promo tracking
+        result = db.execute(text("""
+            SELECT enumlabel FROM pg_enum
+            WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'auditlogevent')
+            AND enumlabel = 'tnc_unchecked'
+        """))
+
+        if not result.fetchone():
+            print("Running migration: Adding new audit log events...")
+            new_events = [
+                'tnc_unchecked',
+                'promo_code_added',
+                'promo_code_removed',
+            ]
+            for value in new_events:
+                try:
+                    db.execute(text(f"ALTER TYPE auditlogevent ADD VALUE IF NOT EXISTS '{value}'"))
+                    db.commit()
+                except Exception:
+                    db.rollback()
+            print("Migration completed: new audit log events added")
+        else:
+            print("Migration check: new audit log events already exist")
+
     except Exception as e:
         print(f"Migration error (non-fatal): {e}")
         db.rollback()
@@ -6985,12 +7009,18 @@ async def log_checkout_event(
     - dates_selected: User selected drop-off and pick-up dates (early funnel)
     - flight_selected: User selected flight details (early funnel)
     - tnc_accepted: User checked the T&C checkbox
+    - tnc_unchecked: User unchecked the T&C checkbox
+    - promo_code_added: User added a promo code
+    - promo_code_removed: User removed a promo code
     - checkout_loaded: Stripe checkout page loaded successfully
     """
     event_map = {
         "dates_selected": AuditLogEvent.DATES_SELECTED,
         "flight_selected": AuditLogEvent.FLIGHT_SELECTED,
         "tnc_accepted": AuditLogEvent.TNC_ACCEPTED,
+        "tnc_unchecked": AuditLogEvent.TNC_UNCHECKED,
+        "promo_code_added": AuditLogEvent.PROMO_CODE_ADDED,
+        "promo_code_removed": AuditLogEvent.PROMO_CODE_REMOVED,
         "checkout_loaded": AuditLogEvent.CHECKOUT_LOADED,
         "payment_processing": AuditLogEvent.PAYMENT_PROCESSING,
     }

@@ -438,6 +438,9 @@ class AuditLogEvent(enum.Enum):
     CUSTOMER_ENTERED = "customer_entered"
     BILLING_ENTERED = "billing_entered"
     TNC_ACCEPTED = "tnc_accepted"  # T&C checkbox checked
+    TNC_UNCHECKED = "tnc_unchecked"  # T&C checkbox unchecked
+    PROMO_CODE_ADDED = "promo_code_added"  # User added a promo code
+    PROMO_CODE_REMOVED = "promo_code_removed"  # User removed a promo code
     CHECKOUT_LOADED = "checkout_loaded"  # Stripe checkout page loaded
     STRIPE_FORM_READY = "stripe_form_ready"  # Stripe PaymentElement rendered
     STRIPE_FORM_ERROR = "stripe_form_error"  # Stripe PaymentElement failed to render
