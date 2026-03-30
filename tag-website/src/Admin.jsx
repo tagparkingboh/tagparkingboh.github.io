@@ -93,6 +93,19 @@ const PHOTO_SLOTS = [
   { key: 'additional_2', label: 'Additional 2' },
 ]
 
+// Get datetime-local format for 2 hours ago (for QA logs default filter)
+const getTwoHoursAgoLocalDateTime = () => {
+  const now = new Date()
+  const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000)
+  // Format as YYYY-MM-DDTHH:MM for datetime-local input
+  const year = twoHoursAgo.getFullYear()
+  const month = String(twoHoursAgo.getMonth() + 1).padStart(2, '0')
+  const day = String(twoHoursAgo.getDate()).padStart(2, '0')
+  const hours = String(twoHoursAgo.getHours()).padStart(2, '0')
+  const minutes = String(twoHoursAgo.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
 // UK date format helpers (DD/MM/YYYY)
 const isoToUkDate = (isoDate) => {
   if (!isoDate) return ''
@@ -462,7 +475,7 @@ function Admin() {
     search: '',
     booking_reference: '',
     event: '',
-    date_from: '',
+    date_from: getTwoHoursAgoLocalDateTime(),
     date_to: '',
   })
   const [auditLogsOffset, setAuditLogsOffset] = useState(0)
@@ -477,7 +490,7 @@ function Admin() {
     booking_reference: '',
     severity: '',
     error_type: '',
-    date_from: '',
+    date_from: getTwoHoursAgoLocalDateTime(),
     date_to: '',
   })
   const [errorLogsOffset, setErrorLogsOffset] = useState(0)
@@ -9695,7 +9708,7 @@ function Admin() {
                           return (
                             <Fragment key={log.id}>
                               <tr onClick={() => setExpandedAuditLog(isExpanded ? null : log.id)} className="qa-log-row">
-                                <td>{new Date(log.created_at).toLocaleString()}</td>
+                                <td>{new Date(log.created_at).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} UK</td>
                                 <td><span className="qa-event-badge">{log.event}</span></td>
                                 <td>{log.booking_reference || '-'}</td>
                                 <td className="qa-session-cell">{log.session_id ? log.session_id.substring(0, 20) + '...' : '-'}</td>
@@ -9836,7 +9849,7 @@ function Admin() {
                           return (
                             <Fragment key={log.id}>
                               <tr onClick={() => setExpandedErrorLog(isExpanded ? null : log.id)} className={`qa-log-row qa-severity-${log.severity}`}>
-                                <td>{new Date(log.created_at).toLocaleString()}</td>
+                                <td>{new Date(log.created_at).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} UK</td>
                                 <td><span className={`qa-severity-badge qa-severity-${log.severity}`}>{log.severity}</span></td>
                                 <td>{log.error_type || '-'}</td>
                                 <td className="qa-message-cell">{log.message ? (log.message.length > 80 ? log.message.substring(0, 80) + '...' : log.message) : '-'}</td>
