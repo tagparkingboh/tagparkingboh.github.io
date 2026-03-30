@@ -43,6 +43,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends, Bod
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import text
 
 from models import (
     BookingRequest,
