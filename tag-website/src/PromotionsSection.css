@@ -160,7 +160,7 @@
 /* Bottom bar separator */
 .promotions-bottom-bar {
   height: 80px;
-  background: var(--dark-gray);
+  background: #343434;
 }
 
 /* ===== RESPONSIVE DESIGN ===== */
