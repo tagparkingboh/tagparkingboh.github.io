@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import DatePicker from 'react-datepicker'
@@ -9712,7 +9712,7 @@ function Admin() {
                           const email = eventData.customer_email || eventData.email || ''
                           const isExpanded = expandedAuditLog === log.id
                           return (
-                            <React.Fragment key={log.id}>
+                            <Fragment key={log.id}>
                               <tr onClick={() => setExpandedAuditLog(isExpanded ? null : log.id)} className="qa-log-row">
                                 <td>{new Date(log.created_at).toLocaleString()}</td>
                                 <td><span className="qa-event-badge">{log.event}</span></td>
@@ -9731,7 +9731,7 @@ function Admin() {
                                   </td>
                                 </tr>
                               )}
-                            </React.Fragment>
+                            </Fragment>
                           )
                         })}
                       </tbody>
@@ -9853,7 +9853,7 @@ function Admin() {
                         {errorLogs.map((log) => {
                           const isExpanded = expandedErrorLog === log.id
                           return (
-                            <React.Fragment key={log.id}>
+                            <Fragment key={log.id}>
                               <tr onClick={() => setExpandedErrorLog(isExpanded ? null : log.id)} className={`qa-log-row qa-severity-${log.severity}`}>
                                 <td>{new Date(log.created_at).toLocaleString()}</td>
                                 <td><span className={`qa-severity-badge qa-severity-${log.severity}`}>{log.severity}</span></td>
@@ -9887,7 +9887,7 @@ function Admin() {
                                   </td>
                                 </tr>
                               )}
-                            </React.Fragment>
+                            </Fragment>
                           )
                         })}
                       </tbody>
