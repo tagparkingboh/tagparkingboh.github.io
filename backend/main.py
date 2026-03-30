@@ -11353,6 +11353,245 @@ async def create_test_result(
 
 
 # =============================================================================
+# QA Dashboard - Audit Logs & Error Logs Endpoints
+# =============================================================================
+
+@app.get("/api/admin/audit-logs")
+async def get_audit_logs(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    search: Optional[str] = None,
+    booking_reference: Optional[str] = None,
+    event: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get audit logs for the QA Dashboard with filtering.
+
+    Filters:
+    - search: Search in email, customer name, session_id, booking_reference
+    - booking_reference: Exact match on booking reference
+    - event: Filter by event type
+    - date_from/date_to: Date range filter (ISO format)
+    """
+    from db_models import AuditLog
+    from sqlalchemy import or_, cast, String
+
+    query = db.query(AuditLog).order_by(AuditLog.created_at.desc())
+
+    # Filter by booking reference
+    if booking_reference:
+        query = query.filter(AuditLog.booking_reference.ilike(f"%{booking_reference}%"))
+
+    # Filter by event type
+    if event:
+        query = query.filter(AuditLog.event == event)
+
+    # Search across multiple fields
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                AuditLog.booking_reference.ilike(search_term),
+                AuditLog.session_id.ilike(search_term),
+                cast(AuditLog.event_data, String).ilike(search_term),
+            )
+        )
+
+    # Date range filter
+    if date_from:
+        try:
+            from_dt = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+            query = query.filter(AuditLog.created_at >= from_dt)
+        except ValueError:
+            pass
+
+    if date_to:
+        try:
+            to_dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+            query = query.filter(AuditLog.created_at <= to_dt)
+        except ValueError:
+            pass
+
+    # Get total count before pagination
+    total_count = query.count()
+
+    # Apply pagination
+    audit_logs = query.offset(offset).limit(limit).all()
+
+    return {
+        "audit_logs": [
+            {
+                "id": log.id,
+                "session_id": log.session_id,
+                "booking_reference": log.booking_reference,
+                "event": log.event.value if log.event else None,
+                "event_data": log.event_data,
+                "ip_address": log.ip_address,
+                "user_agent": log.user_agent,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in audit_logs
+        ],
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.get("/api/admin/audit-logs/events")
+async def get_audit_log_events(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get list of all audit event types for filter dropdown.
+    """
+    from db_models import AuditLogEvent
+
+    return {
+        "events": [e.value for e in AuditLogEvent]
+    }
+
+
+@app.get("/api/admin/error-logs")
+async def get_error_logs(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    search: Optional[str] = None,
+    booking_reference: Optional[str] = None,
+    severity: Optional[str] = None,
+    error_type: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get error logs for the QA Dashboard with filtering.
+
+    Filters:
+    - search: Search in message, endpoint, session_id, booking_reference
+    - booking_reference: Filter by booking reference
+    - severity: Filter by severity (info, warning, error, critical)
+    - error_type: Filter by error type
+    - date_from/date_to: Date range filter (ISO format)
+    """
+    from db_models import ErrorLog
+    from sqlalchemy import or_, cast, String
+
+    query = db.query(ErrorLog).order_by(ErrorLog.created_at.desc())
+
+    # Filter by booking reference
+    if booking_reference:
+        query = query.filter(ErrorLog.booking_reference.ilike(f"%{booking_reference}%"))
+
+    # Filter by severity
+    if severity:
+        query = query.filter(ErrorLog.severity == severity)
+
+    # Filter by error type
+    if error_type:
+        query = query.filter(ErrorLog.error_type.ilike(f"%{error_type}%"))
+
+    # Search across multiple fields
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                ErrorLog.booking_reference.ilike(search_term),
+                ErrorLog.session_id.ilike(search_term),
+                ErrorLog.message.ilike(search_term),
+                ErrorLog.endpoint.ilike(search_term),
+                ErrorLog.error_type.ilike(search_term),
+            )
+        )
+
+    # Date range filter
+    if date_from:
+        try:
+            from_dt = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+            query = query.filter(ErrorLog.created_at >= from_dt)
+        except ValueError:
+            pass
+
+    if date_to:
+        try:
+            to_dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+            query = query.filter(ErrorLog.created_at <= to_dt)
+        except ValueError:
+            pass
+
+    # Get total count before pagination
+    total_count = query.count()
+
+    # Apply pagination
+    error_logs = query.offset(offset).limit(limit).all()
+
+    return {
+        "error_logs": [
+            {
+                "id": log.id,
+                "severity": log.severity.value if log.severity else None,
+                "error_type": log.error_type,
+                "error_code": log.error_code,
+                "message": log.message,
+                "stack_trace": log.stack_trace,
+                "request_data": log.request_data,
+                "endpoint": log.endpoint,
+                "booking_reference": log.booking_reference,
+                "session_id": log.session_id,
+                "ip_address": log.ip_address,
+                "user_agent": log.user_agent,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in error_logs
+        ],
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.get("/api/admin/error-logs/severities")
+async def get_error_log_severities(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get list of all error severity levels for filter dropdown.
+    """
+    from db_models import ErrorSeverity
+
+    return {
+        "severities": [s.value for s in ErrorSeverity]
+    }
+
+
+@app.get("/api/admin/error-logs/types")
+async def get_error_log_types(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get list of all error types currently in the database for filter dropdown.
+    """
+    from db_models import ErrorLog
+    from sqlalchemy import distinct
+
+    types = db.query(distinct(ErrorLog.error_type)).filter(
+        ErrorLog.error_type.isnot(None)
+    ).all()
+
+    return {
+        "error_types": [t[0] for t in types if t[0]]
+    }
+
+
+# =============================================================================
 # Testimonials Endpoints
 # =============================================================================
 

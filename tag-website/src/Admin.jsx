@@ -444,6 +444,43 @@ function Admin() {
   const [latestTestRun, setLatestTestRun] = useState(null)
   const [loadingTestResults, setLoadingTestResults] = useState(false)
 
+  // QA Dashboard - Audit Logs state
+  const [auditLogs, setAuditLogs] = useState([])
+  const [auditLogsTotalCount, setAuditLogsTotalCount] = useState(0)
+  const [loadingAuditLogs, setLoadingAuditLogs] = useState(false)
+  const [auditLogsFilters, setAuditLogsFilters] = useState({
+    search: '',
+    booking_reference: '',
+    event: '',
+    date_from: '',
+    date_to: '',
+  })
+  const [auditLogsOffset, setAuditLogsOffset] = useState(0)
+  const [auditEventTypes, setAuditEventTypes] = useState([])
+
+  // QA Dashboard - Error Logs state
+  const [errorLogs, setErrorLogs] = useState([])
+  const [errorLogsTotalCount, setErrorLogsTotalCount] = useState(0)
+  const [loadingErrorLogs, setLoadingErrorLogs] = useState(false)
+  const [errorLogsFilters, setErrorLogsFilters] = useState({
+    search: '',
+    booking_reference: '',
+    severity: '',
+    error_type: '',
+    date_from: '',
+    date_to: '',
+  })
+  const [errorLogsOffset, setErrorLogsOffset] = useState(0)
+  const [errorSeverities, setErrorSeverities] = useState([])
+  const [errorTypes, setErrorTypes] = useState([])
+
+  // QA Dashboard - Sub-tab state
+  const [qaSubTab, setQaSubTab] = useState('tests')
+
+  // QA Dashboard - Expanded rows for details
+  const [expandedAuditLog, setExpandedAuditLog] = useState(null)
+  const [expandedErrorLog, setExpandedErrorLog] = useState(null)
+
   // Testimonials state
   const [testimonials, setTestimonials] = useState([])
   const [loadingTestimonials, setLoadingTestimonials] = useState(false)
@@ -614,8 +651,24 @@ function Admin() {
   useEffect(() => {
     if (activeTab === 'qa' && token) {
       fetchTestResults()
+      fetchAuditEventTypes()
+      fetchErrorLogMeta()
     }
   }, [activeTab, token])
+
+  // Fetch audit logs when QA tab is active and sub-tab is audit
+  useEffect(() => {
+    if (activeTab === 'qa' && qaSubTab === 'audit' && token) {
+      fetchAuditLogs(true)
+    }
+  }, [activeTab, qaSubTab, token, auditLogsFilters])
+
+  // Fetch error logs when QA tab is active and sub-tab is errors
+  useEffect(() => {
+    if (activeTab === 'qa' && qaSubTab === 'errors' && token) {
+      fetchErrorLogs(true)
+    }
+  }, [activeTab, qaSubTab, token, errorLogsFilters])
 
   // Fetch testimonials when testimonials tab is active
   useEffect(() => {
@@ -1017,6 +1070,108 @@ function Admin() {
       console.error('Failed to fetch test results:', err)
     } finally {
       setLoadingTestResults(false)
+    }
+  }
+
+  const fetchAuditLogs = async (resetOffset = false) => {
+    setLoadingAuditLogs(true)
+    if (resetOffset) {
+      setAuditLogsOffset(0)
+    }
+    const currentOffset = resetOffset ? 0 : auditLogsOffset
+    try {
+      const params = new URLSearchParams({
+        limit: '50',
+        offset: currentOffset.toString(),
+      })
+      if (auditLogsFilters.search) params.append('search', auditLogsFilters.search)
+      if (auditLogsFilters.booking_reference) params.append('booking_reference', auditLogsFilters.booking_reference)
+      if (auditLogsFilters.event) params.append('event', auditLogsFilters.event)
+      if (auditLogsFilters.date_from) params.append('date_from', auditLogsFilters.date_from)
+      if (auditLogsFilters.date_to) params.append('date_to', auditLogsFilters.date_to)
+
+      const response = await fetch(`${API_URL}/api/admin/audit-logs?${params}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setAuditLogs(data.audit_logs || [])
+        setAuditLogsTotalCount(data.total_count || 0)
+      }
+    } catch (err) {
+      console.error('Failed to fetch audit logs:', err)
+    } finally {
+      setLoadingAuditLogs(false)
+    }
+  }
+
+  const fetchAuditEventTypes = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/audit-logs/events`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setAuditEventTypes(data.events || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch audit event types:', err)
+    }
+  }
+
+  const fetchErrorLogs = async (resetOffset = false) => {
+    setLoadingErrorLogs(true)
+    if (resetOffset) {
+      setErrorLogsOffset(0)
+    }
+    const currentOffset = resetOffset ? 0 : errorLogsOffset
+    try {
+      const params = new URLSearchParams({
+        limit: '50',
+        offset: currentOffset.toString(),
+      })
+      if (errorLogsFilters.search) params.append('search', errorLogsFilters.search)
+      if (errorLogsFilters.booking_reference) params.append('booking_reference', errorLogsFilters.booking_reference)
+      if (errorLogsFilters.severity) params.append('severity', errorLogsFilters.severity)
+      if (errorLogsFilters.error_type) params.append('error_type', errorLogsFilters.error_type)
+      if (errorLogsFilters.date_from) params.append('date_from', errorLogsFilters.date_from)
+      if (errorLogsFilters.date_to) params.append('date_to', errorLogsFilters.date_to)
+
+      const response = await fetch(`${API_URL}/api/admin/error-logs?${params}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setErrorLogs(data.error_logs || [])
+        setErrorLogsTotalCount(data.total_count || 0)
+      }
+    } catch (err) {
+      console.error('Failed to fetch error logs:', err)
+    } finally {
+      setLoadingErrorLogs(false)
+    }
+  }
+
+  const fetchErrorLogMeta = async () => {
+    try {
+      const [sevRes, typesRes] = await Promise.all([
+        fetch(`${API_URL}/api/admin/error-logs/severities`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }),
+        fetch(`${API_URL}/api/admin/error-logs/types`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        }),
+      ])
+      if (sevRes.ok) {
+        const data = await sevRes.json()
+        setErrorSeverities(data.severities || [])
+      }
+      if (typesRes.ok) {
+        const data = await typesRes.json()
+        setErrorTypes(data.error_types || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch error log metadata:', err)
     }
   }
 
@@ -9145,125 +9300,445 @@ function Admin() {
           <div className="admin-section">
             <div className="admin-section-header">
               <h2>QA Dashboard</h2>
-              <button onClick={fetchTestResults} className="admin-refresh" disabled={loadingTestResults}>
-                {loadingTestResults ? 'Loading...' : 'Refresh'}
+            </div>
+
+            {/* Sub-tabs */}
+            <div className="admin-sub-tabs">
+              <button
+                className={`admin-sub-tab ${qaSubTab === 'tests' ? 'active' : ''}`}
+                onClick={() => setQaSubTab('tests')}
+              >
+                Test Results
+              </button>
+              <button
+                className={`admin-sub-tab ${qaSubTab === 'audit' ? 'active' : ''}`}
+                onClick={() => setQaSubTab('audit')}
+              >
+                Audit Logs
+              </button>
+              <button
+                className={`admin-sub-tab ${qaSubTab === 'errors' ? 'active' : ''}`}
+                onClick={() => setQaSubTab('errors')}
+              >
+                Error Logs
               </button>
             </div>
 
-            {loadingTestResults ? (
-              <div className="admin-loading-inline">
-                <div className="spinner-small"></div>
-                <span>Loading test results...</span>
-              </div>
-            ) : (
+            {/* Test Results Sub-tab */}
+            {qaSubTab === 'tests' && (
               <>
-                {/* Latest Run Summary */}
-                {latestTestRun && (
-                  <div className="qa-latest-run">
-                    <h3>Latest Test Run</h3>
-                    <div className="stats-summary-cards">
-                      <div className={`stats-card ${latestTestRun.status === 'passed' ? 'status-confirmed' : latestTestRun.status === 'failed' ? 'status-cancelled' : 'status-pending'}`}>
-                        <div className="stats-card-value" style={{ textTransform: 'uppercase' }}>
-                          {latestTestRun.status}
-                        </div>
-                        <div className="stats-card-label">Status</div>
-                      </div>
-                      <div className="stats-card">
-                        <div className="stats-card-value" style={{ color: '#22c55e' }}>{latestTestRun.tests_passed}</div>
-                        <div className="stats-card-label">Passed</div>
-                      </div>
-                      <div className="stats-card">
-                        <div className="stats-card-value" style={{ color: latestTestRun.tests_failed > 0 ? '#ef4444' : '#22c55e' }}>{latestTestRun.tests_failed}</div>
-                        <div className="stats-card-label">Failed</div>
-                      </div>
-                      <div className="stats-card">
-                        <div className="stats-card-value">{latestTestRun.tests_skipped}</div>
-                        <div className="stats-card-label">Skipped</div>
-                      </div>
-                      <div className="stats-card">
-                        <div className="stats-card-value">{latestTestRun.pass_rate?.toFixed(1) || 0}%</div>
-                        <div className="stats-card-label">Pass Rate</div>
-                      </div>
-                      {latestTestRun.coverage_percent !== null && (
-                        <div className="stats-card">
-                          <div className="stats-card-value">{latestTestRun.coverage_percent?.toFixed(1)}%</div>
-                          <div className="stats-card-label">Coverage</div>
-                        </div>
-                      )}
-                    </div>
-                    <div className="qa-run-details">
-                      <p><strong>Environment:</strong> {latestTestRun.environment}</p>
-                      <p><strong>Run Type:</strong> {latestTestRun.run_type}</p>
-                      <p><strong>Duration:</strong> {latestTestRun.duration_seconds ? `${latestTestRun.duration_seconds}s` : 'N/A'}</p>
-                      <p><strong>Started:</strong> {new Date(latestTestRun.started_at).toLocaleString()}</p>
-                      {latestTestRun.branch && <p><strong>Branch:</strong> {latestTestRun.branch}</p>}
-                      {latestTestRun.commit_sha && <p><strong>Commit:</strong> {latestTestRun.commit_sha.substring(0, 7)}</p>}
-                      {latestTestRun.logs_url && (
-                        <p><a href={latestTestRun.logs_url} target="_blank" rel="noopener noreferrer" className="admin-link">View Logs</a></p>
-                      )}
-                    </div>
-                  </div>
-                )}
+                <div className="admin-section-header" style={{ marginTop: '1rem' }}>
+                  <h3>Test Results</h3>
+                  <button onClick={fetchTestResults} className="admin-refresh" disabled={loadingTestResults}>
+                    {loadingTestResults ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
 
-                {/* Historical Results */}
-                <div className="qa-history">
-                  <h3>Test Run History</h3>
-                  {testResults.length === 0 ? (
-                    <p className="admin-empty">No test runs recorded yet.</p>
-                  ) : (
-                    <table className="admin-table">
+                {loadingTestResults ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading test results...</span>
+                  </div>
+                ) : (
+                  <>
+                    {/* Latest Run Summary */}
+                    {latestTestRun && (
+                      <div className="qa-latest-run">
+                        <h4>Latest Test Run</h4>
+                        <div className="stats-summary-cards">
+                          <div className={`stats-card ${latestTestRun.status === 'passed' ? 'status-confirmed' : latestTestRun.status === 'failed' ? 'status-cancelled' : 'status-pending'}`}>
+                            <div className="stats-card-value" style={{ textTransform: 'uppercase' }}>
+                              {latestTestRun.status}
+                            </div>
+                            <div className="stats-card-label">Status</div>
+                          </div>
+                          <div className="stats-card">
+                            <div className="stats-card-value" style={{ color: '#22c55e' }}>{latestTestRun.tests_passed}</div>
+                            <div className="stats-card-label">Passed</div>
+                          </div>
+                          <div className="stats-card">
+                            <div className="stats-card-value" style={{ color: latestTestRun.tests_failed > 0 ? '#ef4444' : '#22c55e' }}>{latestTestRun.tests_failed}</div>
+                            <div className="stats-card-label">Failed</div>
+                          </div>
+                          <div className="stats-card">
+                            <div className="stats-card-value">{latestTestRun.tests_skipped}</div>
+                            <div className="stats-card-label">Skipped</div>
+                          </div>
+                          <div className="stats-card">
+                            <div className="stats-card-value">{latestTestRun.pass_rate?.toFixed(1) || 0}%</div>
+                            <div className="stats-card-label">Pass Rate</div>
+                          </div>
+                          {latestTestRun.coverage_percent !== null && (
+                            <div className="stats-card">
+                              <div className="stats-card-value">{latestTestRun.coverage_percent?.toFixed(1)}%</div>
+                              <div className="stats-card-label">Coverage</div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="qa-run-details">
+                          <p><strong>Environment:</strong> {latestTestRun.environment}</p>
+                          <p><strong>Run Type:</strong> {latestTestRun.run_type}</p>
+                          <p><strong>Duration:</strong> {latestTestRun.duration_seconds ? `${latestTestRun.duration_seconds}s` : 'N/A'}</p>
+                          <p><strong>Started:</strong> {new Date(latestTestRun.started_at).toLocaleString()}</p>
+                          {latestTestRun.branch && <p><strong>Branch:</strong> {latestTestRun.branch}</p>}
+                          {latestTestRun.commit_sha && <p><strong>Commit:</strong> {latestTestRun.commit_sha.substring(0, 7)}</p>}
+                          {latestTestRun.logs_url && (
+                            <p><a href={latestTestRun.logs_url} target="_blank" rel="noopener noreferrer" className="admin-link">View Logs</a></p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Historical Results */}
+                    <div className="qa-history">
+                      <h4>Test Run History</h4>
+                      {testResults.length === 0 ? (
+                        <p className="admin-empty">No test runs recorded yet.</p>
+                      ) : (
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Status</th>
+                              <th>Passed</th>
+                              <th>Failed</th>
+                              <th>Total</th>
+                              <th>Pass Rate</th>
+                              <th>Coverage</th>
+                              <th>Duration</th>
+                              <th>Branch</th>
+                              <th>Logs</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {testResults.map((run) => (
+                              <tr key={run.id} className={run.status === 'failed' ? 'row-warning' : ''}>
+                                <td>{new Date(run.started_at).toLocaleDateString()}</td>
+                                <td>
+                                  <span className={`status-badge status-${run.status === 'passed' ? 'confirmed' : run.status === 'failed' ? 'cancelled' : 'pending'}`}>
+                                    {run.status}
+                                  </span>
+                                </td>
+                                <td style={{ color: '#22c55e' }}>{run.tests_passed}</td>
+                                <td style={{ color: run.tests_failed > 0 ? '#ef4444' : '#22c55e' }}>{run.tests_failed}</td>
+                                <td>{run.tests_total}</td>
+                                <td>{run.pass_rate?.toFixed(1) || 0}%</td>
+                                <td>{run.coverage_percent !== null ? `${run.coverage_percent?.toFixed(1)}%` : '-'}</td>
+                                <td>{run.duration_seconds ? `${run.duration_seconds}s` : '-'}</td>
+                                <td>{run.branch || '-'}</td>
+                                <td>
+                                  {run.logs_url ? (
+                                    <a href={run.logs_url} target="_blank" rel="noopener noreferrer" className="admin-link">View</a>
+                                  ) : '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+
+                    {/* Schedule Info */}
+                    <div className="qa-schedule-info">
+                      <h4>Scheduled Tests</h4>
+                      <p>Automated tests run twice per week:</p>
+                      <ul>
+                        <li>Monday at 6:00 AM UTC</li>
+                        <li>Thursday at 6:00 AM UTC</li>
+                      </ul>
+                      <p>Tests are run against the <strong>staging</strong> environment.</p>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Audit Logs Sub-tab */}
+            {qaSubTab === 'audit' && (
+              <>
+                <div className="admin-section-header" style={{ marginTop: '1rem' }}>
+                  <h3>Audit Logs</h3>
+                  <button onClick={() => fetchAuditLogs(true)} className="admin-refresh" disabled={loadingAuditLogs}>
+                    {loadingAuditLogs ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
+
+                {/* Filters */}
+                <div className="qa-logs-filters">
+                  <input
+                    type="text"
+                    placeholder="Search (email, name, session)..."
+                    value={auditLogsFilters.search}
+                    onChange={(e) => setAuditLogsFilters({ ...auditLogsFilters, search: e.target.value })}
+                    className="admin-filter-input"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Booking Reference..."
+                    value={auditLogsFilters.booking_reference}
+                    onChange={(e) => setAuditLogsFilters({ ...auditLogsFilters, booking_reference: e.target.value })}
+                    className="admin-filter-input"
+                  />
+                  <select
+                    value={auditLogsFilters.event}
+                    onChange={(e) => setAuditLogsFilters({ ...auditLogsFilters, event: e.target.value })}
+                    className="admin-filter-select"
+                  >
+                    <option value="">All Events</option>
+                    {auditEventTypes.map((evt) => (
+                      <option key={evt} value={evt}>{evt}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="datetime-local"
+                    value={auditLogsFilters.date_from}
+                    onChange={(e) => setAuditLogsFilters({ ...auditLogsFilters, date_from: e.target.value })}
+                    className="admin-filter-input"
+                    title="From Date"
+                  />
+                  <input
+                    type="datetime-local"
+                    value={auditLogsFilters.date_to}
+                    onChange={(e) => setAuditLogsFilters({ ...auditLogsFilters, date_to: e.target.value })}
+                    className="admin-filter-input"
+                    title="To Date"
+                  />
+                  <button
+                    onClick={() => setAuditLogsFilters({ search: '', booking_reference: '', event: '', date_from: '', date_to: '' })}
+                    className="admin-btn"
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                <p className="qa-logs-count">Showing {auditLogs.length} of {auditLogsTotalCount} logs</p>
+
+                {loadingAuditLogs ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading audit logs...</span>
+                  </div>
+                ) : auditLogs.length === 0 ? (
+                  <p className="admin-empty">No audit logs found.</p>
+                ) : (
+                  <>
+                    <table className="admin-table qa-logs-table">
                       <thead>
                         <tr>
-                          <th>Date</th>
-                          <th>Status</th>
-                          <th>Passed</th>
-                          <th>Failed</th>
-                          <th>Total</th>
-                          <th>Pass Rate</th>
-                          <th>Coverage</th>
-                          <th>Duration</th>
-                          <th>Branch</th>
-                          <th>Logs</th>
+                          <th>Time</th>
+                          <th>Event</th>
+                          <th>Booking Ref</th>
+                          <th>Session</th>
+                          <th>Details</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {testResults.map((run) => (
-                          <tr key={run.id} className={run.status === 'failed' ? 'row-warning' : ''}>
-                            <td>{new Date(run.started_at).toLocaleDateString()}</td>
-                            <td>
-                              <span className={`status-badge status-${run.status === 'passed' ? 'confirmed' : run.status === 'failed' ? 'cancelled' : 'pending'}`}>
-                                {run.status}
-                              </span>
-                            </td>
-                            <td style={{ color: '#22c55e' }}>{run.tests_passed}</td>
-                            <td style={{ color: run.tests_failed > 0 ? '#ef4444' : '#22c55e' }}>{run.tests_failed}</td>
-                            <td>{run.tests_total}</td>
-                            <td>{run.pass_rate?.toFixed(1) || 0}%</td>
-                            <td>{run.coverage_percent !== null ? `${run.coverage_percent?.toFixed(1)}%` : '-'}</td>
-                            <td>{run.duration_seconds ? `${run.duration_seconds}s` : '-'}</td>
-                            <td>{run.branch || '-'}</td>
-                            <td>
-                              {run.logs_url ? (
-                                <a href={run.logs_url} target="_blank" rel="noopener noreferrer" className="admin-link">View</a>
-                              ) : '-'}
-                            </td>
-                          </tr>
-                        ))}
+                        {auditLogs.map((log) => {
+                          const eventData = typeof log.event_data === 'string' ? JSON.parse(log.event_data || '{}') : (log.event_data || {})
+                          const email = eventData.customer_email || eventData.email || ''
+                          const isExpanded = expandedAuditLog === log.id
+                          return (
+                            <React.Fragment key={log.id}>
+                              <tr onClick={() => setExpandedAuditLog(isExpanded ? null : log.id)} className="qa-log-row">
+                                <td>{new Date(log.created_at).toLocaleString()}</td>
+                                <td><span className="qa-event-badge">{log.event}</span></td>
+                                <td>{log.booking_reference || '-'}</td>
+                                <td className="qa-session-cell">{log.session_id ? log.session_id.substring(0, 20) + '...' : '-'}</td>
+                                <td>{email || (eventData.amount ? `£${(eventData.amount / 100).toFixed(2)}` : '-')}</td>
+                              </tr>
+                              {isExpanded && (
+                                <tr className="qa-log-expanded">
+                                  <td colSpan="5">
+                                    <div className="qa-log-details">
+                                      <pre>{JSON.stringify(eventData, null, 2)}</pre>
+                                      {log.ip_address && <p><strong>IP:</strong> {log.ip_address}</p>}
+                                      {log.user_agent && <p><strong>User Agent:</strong> {log.user_agent}</p>}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          )
+                        })}
                       </tbody>
                     </table>
-                  )}
+
+                    {/* Pagination */}
+                    <div className="qa-logs-pagination">
+                      <button
+                        onClick={() => { setAuditLogsOffset(Math.max(0, auditLogsOffset - 50)); fetchAuditLogs() }}
+                        disabled={auditLogsOffset === 0 || loadingAuditLogs}
+                        className="admin-btn"
+                      >
+                        Previous
+                      </button>
+                      <span>Page {Math.floor(auditLogsOffset / 50) + 1} of {Math.ceil(auditLogsTotalCount / 50)}</span>
+                      <button
+                        onClick={() => { setAuditLogsOffset(auditLogsOffset + 50); fetchAuditLogs() }}
+                        disabled={auditLogsOffset + 50 >= auditLogsTotalCount || loadingAuditLogs}
+                        className="admin-btn"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Error Logs Sub-tab */}
+            {qaSubTab === 'errors' && (
+              <>
+                <div className="admin-section-header" style={{ marginTop: '1rem' }}>
+                  <h3>Error Logs</h3>
+                  <button onClick={() => fetchErrorLogs(true)} className="admin-refresh" disabled={loadingErrorLogs}>
+                    {loadingErrorLogs ? 'Loading...' : 'Refresh'}
+                  </button>
                 </div>
 
-                {/* Schedule Info */}
-                <div className="qa-schedule-info">
-                  <h3>Scheduled Tests</h3>
-                  <p>Automated tests run twice per week:</p>
-                  <ul>
-                    <li>Monday at 6:00 AM UTC</li>
-                    <li>Thursday at 6:00 AM UTC</li>
-                  </ul>
-                  <p>Tests are run against the <strong>staging</strong> environment.</p>
+                {/* Filters */}
+                <div className="qa-logs-filters">
+                  <input
+                    type="text"
+                    placeholder="Search (message, endpoint, session)..."
+                    value={errorLogsFilters.search}
+                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, search: e.target.value })}
+                    className="admin-filter-input"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Booking Reference..."
+                    value={errorLogsFilters.booking_reference}
+                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, booking_reference: e.target.value })}
+                    className="admin-filter-input"
+                  />
+                  <select
+                    value={errorLogsFilters.severity}
+                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, severity: e.target.value })}
+                    className="admin-filter-select"
+                  >
+                    <option value="">All Severities</option>
+                    {errorSeverities.map((sev) => (
+                      <option key={sev} value={sev}>{sev}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={errorLogsFilters.error_type}
+                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, error_type: e.target.value })}
+                    className="admin-filter-select"
+                  >
+                    <option value="">All Types</option>
+                    {errorTypes.map((type) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="datetime-local"
+                    value={errorLogsFilters.date_from}
+                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, date_from: e.target.value })}
+                    className="admin-filter-input"
+                    title="From Date"
+                  />
+                  <input
+                    type="datetime-local"
+                    value={errorLogsFilters.date_to}
+                    onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, date_to: e.target.value })}
+                    className="admin-filter-input"
+                    title="To Date"
+                  />
+                  <button
+                    onClick={() => setErrorLogsFilters({ search: '', booking_reference: '', severity: '', error_type: '', date_from: '', date_to: '' })}
+                    className="admin-btn"
+                  >
+                    Clear
+                  </button>
                 </div>
+
+                <p className="qa-logs-count">Showing {errorLogs.length} of {errorLogsTotalCount} logs</p>
+
+                {loadingErrorLogs ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading error logs...</span>
+                  </div>
+                ) : errorLogs.length === 0 ? (
+                  <p className="admin-empty">No error logs found.</p>
+                ) : (
+                  <>
+                    <table className="admin-table qa-logs-table">
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>Severity</th>
+                          <th>Type</th>
+                          <th>Message</th>
+                          <th>Booking Ref</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {errorLogs.map((log) => {
+                          const isExpanded = expandedErrorLog === log.id
+                          return (
+                            <React.Fragment key={log.id}>
+                              <tr onClick={() => setExpandedErrorLog(isExpanded ? null : log.id)} className={`qa-log-row qa-severity-${log.severity}`}>
+                                <td>{new Date(log.created_at).toLocaleString()}</td>
+                                <td><span className={`qa-severity-badge qa-severity-${log.severity}`}>{log.severity}</span></td>
+                                <td>{log.error_type || '-'}</td>
+                                <td className="qa-message-cell">{log.message ? (log.message.length > 80 ? log.message.substring(0, 80) + '...' : log.message) : '-'}</td>
+                                <td>{log.booking_reference || '-'}</td>
+                              </tr>
+                              {isExpanded && (
+                                <tr className="qa-log-expanded">
+                                  <td colSpan="5">
+                                    <div className="qa-log-details">
+                                      <p><strong>Full Message:</strong></p>
+                                      <pre>{log.message}</pre>
+                                      {log.stack_trace && (
+                                        <>
+                                          <p><strong>Stack Trace:</strong></p>
+                                          <pre className="qa-stack-trace">{log.stack_trace}</pre>
+                                        </>
+                                      )}
+                                      {log.endpoint && <p><strong>Endpoint:</strong> {log.endpoint}</p>}
+                                      {log.error_code && <p><strong>Error Code:</strong> {log.error_code}</p>}
+                                      {log.session_id && <p><strong>Session:</strong> {log.session_id}</p>}
+                                      {log.ip_address && <p><strong>IP:</strong> {log.ip_address}</p>}
+                                      {log.request_data && (
+                                        <>
+                                          <p><strong>Request Data:</strong></p>
+                                          <pre>{typeof log.request_data === 'string' ? log.request_data : JSON.stringify(log.request_data, null, 2)}</pre>
+                                        </>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+
+                    {/* Pagination */}
+                    <div className="qa-logs-pagination">
+                      <button
+                        onClick={() => { setErrorLogsOffset(Math.max(0, errorLogsOffset - 50)); fetchErrorLogs() }}
+                        disabled={errorLogsOffset === 0 || loadingErrorLogs}
+                        className="admin-btn"
+                      >
+                        Previous
+                      </button>
+                      <span>Page {Math.floor(errorLogsOffset / 50) + 1} of {Math.ceil(errorLogsTotalCount / 50)}</span>
+                      <button
+                        onClick={() => { setErrorLogsOffset(errorLogsOffset + 50); fetchErrorLogs() }}
+                        disabled={errorLogsOffset + 50 >= errorLogsTotalCount || loadingErrorLogs}
+                        className="admin-btn"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>

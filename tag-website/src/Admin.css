@@ -4826,7 +4826,10 @@
 
 .qa-latest-run h3,
 .qa-history h3,
-.qa-schedule-info h3 {
+.qa-schedule-info h3,
+.qa-latest-run h4,
+.qa-history h4,
+.qa-schedule-info h4 {
   font-size: 18px;
   font-weight: 600;
   margin-bottom: 16px;
@@ -4894,6 +4897,159 @@
 .qa-schedule-info li {
   color: #0c4a6e;
   margin: 4px 0;
+}
+
+/* QA Dashboard - Logs Section */
+.qa-logs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 15px;
+  padding: 15px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.qa-logs-filters .admin-filter-input,
+.qa-logs-filters .admin-filter-select {
+  min-width: 150px;
+  flex: 1;
+  max-width: 200px;
+}
+
+.qa-logs-count {
+  color: #6b7280;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.qa-logs-table {
+  font-size: 13px;
+}
+
+.qa-logs-table th,
+.qa-logs-table td {
+  padding: 10px 12px;
+  vertical-align: top;
+}
+
+.qa-log-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.qa-log-row:hover {
+  background: #f3f4f6;
+}
+
+.qa-session-cell {
+  font-family: monospace;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.qa-message-cell {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qa-event-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.qa-severity-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.qa-severity-badge.qa-severity-info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.qa-severity-badge.qa-severity-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.qa-severity-badge.qa-severity-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.qa-severity-badge.qa-severity-critical {
+  background: #7f1d1d;
+  color: #fff;
+}
+
+.qa-log-row.qa-severity-error {
+  background: #fef2f2;
+}
+
+.qa-log-row.qa-severity-critical {
+  background: #fee2e2;
+}
+
+.qa-log-row.qa-severity-warning {
+  background: #fffbeb;
+}
+
+.qa-log-expanded {
+  background: #f9fafb;
+}
+
+.qa-log-details {
+  padding: 15px;
+  font-size: 13px;
+}
+
+.qa-log-details pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 12px;
+  margin: 10px 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.qa-log-details p {
+  margin: 8px 0;
+}
+
+.qa-stack-trace {
+  max-height: 200px;
+  font-size: 11px !important;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.qa-logs-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 20px;
+  padding: 15px;
+}
+
+.qa-logs-pagination span {
+  color: #6b7280;
+  font-size: 14px;
 }
 
 .admin-empty {
