@@ -1044,3 +1044,81 @@ class TestPromoModalAutoDeactivation:
         assert datetime.now(uk_tz) > past_date
 
         # The modal visibility is controlled by end_date, not promo code usage
+
+
+# =============================================================================
+# Validate API Returns is_multi_use Field Tests
+# =============================================================================
+
+class TestValidateApiReturnsIsMultiUse:
+    """Tests that the validate promo code API returns is_multi_use field correctly."""
+
+    def test_validate_returns_is_multi_use_true_for_unlimited_code(self):
+        """Validate API should return is_multi_use=True for unlimited codes."""
+        from db_models import PromoCode
+
+        code = PromoCode(
+            promotion_id=1,
+            code="MULTI10OFF",
+            max_uses=0,  # Unlimited
+            use_count=5,
+            is_used=False
+        )
+
+        assert code.is_multi_use == True
+
+    def test_validate_returns_is_multi_use_true_for_limited_multi_use_code(self):
+        """Validate API should return is_multi_use=True for limited multi-use codes."""
+        from db_models import PromoCode
+
+        code = PromoCode(
+            promotion_id=1,
+            code="LIMITED10",
+            max_uses=10,  # Limited to 10 uses
+            use_count=3,
+            is_used=False
+        )
+
+        assert code.is_multi_use == True
+
+    def test_validate_returns_is_multi_use_false_for_single_use_code(self):
+        """Validate API should return is_multi_use=False for single-use codes."""
+        from db_models import PromoCode
+
+        code = PromoCode(
+            promotion_id=1,
+            code="SINGLE123",
+            max_uses=None,  # Single-use
+            use_count=0,
+            is_used=False
+        )
+
+        assert code.is_multi_use == False
+
+    def test_validate_response_includes_uses_remaining_for_multi_use(self):
+        """Validate API should return uses_remaining for multi-use codes."""
+        from db_models import PromoCode
+
+        code = PromoCode(
+            promotion_id=1,
+            code="LIMITED5",
+            max_uses=5,
+            use_count=3,
+            is_used=False
+        )
+
+        assert code.uses_remaining == 2
+
+    def test_validate_response_includes_none_uses_remaining_for_unlimited(self):
+        """Validate API should return None for uses_remaining on unlimited codes."""
+        from db_models import PromoCode
+
+        code = PromoCode(
+            promotion_id=1,
+            code="UNLIMITED",
+            max_uses=0,
+            use_count=1000,
+            is_used=False
+        )
+
+        assert code.uses_remaining is None
