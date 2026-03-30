@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # OS Places API (Ordnance Survey address lookup)
     os_places_api_key: str = ""
 
+    # Admin SQL Interface PIN (for secure database access)
+    admin_sql_pin: str = ""
+
     # Environment
     environment: str = "development"
 

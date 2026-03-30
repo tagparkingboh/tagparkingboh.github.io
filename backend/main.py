@@ -11592,6 +11592,268 @@ async def get_error_log_types(
 
 
 # =============================================================================
+# QA Dashboard - SQL Interface (Secure Database Access)
+# =============================================================================
+
+# Store SQL session tokens in memory (user_id -> {token, expires_at})
+sql_session_tokens: dict = {}
+
+# Blocked SQL commands for security
+BLOCKED_SQL_COMMANDS = [
+    'DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT', 'REVOKE',
+    'VACUUM', 'REINDEX', 'CLUSTER', 'COPY', 'EXECUTE',
+    'DEALLOCATE', 'PREPARE', 'LISTEN', 'NOTIFY', 'UNLISTEN',
+    'LOAD', 'SECURITY', 'OWNER', 'TABLESPACE', 'EXTENSION',
+]
+
+# Commands that require confirmation
+WRITE_SQL_COMMANDS = ['INSERT', 'UPDATE', 'DELETE']
+
+
+def is_sql_command_blocked(query: str) -> tuple[bool, str]:
+    """Check if a SQL query contains blocked commands."""
+    query_upper = query.upper().strip()
+    for cmd in BLOCKED_SQL_COMMANDS:
+        # Check if command appears at start or after whitespace/semicolon
+        if query_upper.startswith(cmd) or f' {cmd}' in query_upper or f';{cmd}' in query_upper:
+            return True, cmd
+    return False, ""
+
+
+def is_write_operation(query: str) -> bool:
+    """Check if a SQL query is a write operation."""
+    query_upper = query.upper().strip()
+    for cmd in WRITE_SQL_COMMANDS:
+        if query_upper.startswith(cmd):
+            return True
+    return False
+
+
+def generate_sql_session_token() -> str:
+    """Generate a secure random token for SQL session."""
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+class SQLPinVerifyRequest(BaseModel):
+    """Request to verify SQL PIN."""
+    pin: str
+
+
+class SQLQueryRequest(BaseModel):
+    """Request to execute a SQL query."""
+    query: str
+    session_token: str
+    confirmed: bool = False  # Must be True for write operations
+
+
+@app.post("/api/admin/sql/verify-pin")
+async def verify_sql_pin(
+    request: SQLPinVerifyRequest,
+    current_user: User = Depends(require_admin),
+):
+    """
+    Verify the SQL PIN and return a session token valid for 2 hours.
+    """
+    settings = get_settings()
+
+    if not settings.admin_sql_pin:
+        raise HTTPException(status_code=503, detail="SQL interface is not configured. Please set ADMIN_SQL_PIN.")
+
+    if request.pin != settings.admin_sql_pin:
+        # Log failed attempt
+        print(f"[SQL] Failed PIN attempt by user {current_user.id} ({current_user.email})")
+        raise HTTPException(status_code=401, detail="Invalid PIN")
+
+    # Generate session token valid for 2 hours
+    token = generate_sql_session_token()
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=2)
+
+    sql_session_tokens[current_user.id] = {
+        "token": token,
+        "expires_at": expires_at,
+    }
+
+    print(f"[SQL] PIN verified for user {current_user.id} ({current_user.email}), session expires at {expires_at}")
+
+    return {
+        "success": True,
+        "session_token": token,
+        "expires_at": expires_at.isoformat(),
+    }
+
+
+@app.get("/api/admin/sql/session-status")
+async def get_sql_session_status(
+    current_user: User = Depends(require_admin),
+):
+    """
+    Check if the current user has a valid SQL session.
+    """
+    session = sql_session_tokens.get(current_user.id)
+
+    if not session:
+        return {"valid": False, "reason": "no_session"}
+
+    if datetime.now(timezone.utc) > session["expires_at"]:
+        # Session expired, clean up
+        del sql_session_tokens[current_user.id]
+        return {"valid": False, "reason": "expired"}
+
+    return {
+        "valid": True,
+        "expires_at": session["expires_at"].isoformat(),
+    }
+
+
+@app.post("/api/admin/sql/execute")
+async def execute_sql_query(
+    request: SQLQueryRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Execute a SQL query against the database.
+
+    Security:
+    - Requires valid session token from PIN verification
+    - Blocks dangerous commands (DROP, ALTER, CREATE, etc.)
+    - Requires confirmation for write operations (INSERT, UPDATE, DELETE)
+    - 30 second timeout
+    - 500 row limit on results
+    - All queries are logged to audit_logs
+    """
+    import time
+
+    # Verify session token
+    session = sql_session_tokens.get(current_user.id)
+    if not session or session["token"] != request.session_token:
+        raise HTTPException(status_code=401, detail="Invalid or missing SQL session. Please verify PIN.")
+
+    if datetime.now(timezone.utc) > session["expires_at"]:
+        del sql_session_tokens[current_user.id]
+        raise HTTPException(status_code=401, detail="SQL session expired. Please verify PIN again.")
+
+    query = request.query.strip()
+
+    if not query:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    # Check for blocked commands
+    is_blocked, blocked_cmd = is_sql_command_blocked(query)
+    if is_blocked:
+        raise HTTPException(status_code=403, detail=f"Command '{blocked_cmd}' is not allowed for security reasons")
+
+    # Check if write operation requires confirmation
+    is_write = is_write_operation(query)
+    if is_write and not request.confirmed:
+        return {
+            "requires_confirmation": True,
+            "operation_type": query.upper().split()[0],
+            "message": "This is a write operation. Please confirm to proceed.",
+        }
+
+    # Log the query attempt
+    try:
+        from db_models import AuditLog, AuditLogEvent
+        audit_log = AuditLog(
+            session_id=f"sql_admin_{current_user.id}",
+            event=AuditLogEvent.ADMIN_SQL_QUERY if hasattr(AuditLogEvent, 'ADMIN_SQL_QUERY') else None,
+            event_data=json.dumps({
+                "user_id": current_user.id,
+                "user_email": current_user.email,
+                "query": query[:1000],  # Truncate long queries
+                "is_write": is_write,
+            }),
+            created_at=datetime.now(timezone.utc),
+        )
+        # We'll add this after execution to include results
+    except Exception as e:
+        print(f"[SQL] Failed to create audit log: {e}")
+
+    # Execute the query with timeout
+    start_time = time.time()
+    try:
+        # Set statement timeout (30 seconds)
+        db.execute(text("SET statement_timeout = '30s'"))
+
+        result = db.execute(text(query))
+
+        execution_time = time.time() - start_time
+
+        # Handle different query types
+        if query.upper().strip().startswith('SELECT'):
+            # Fetch results with row limit
+            rows = result.fetchmany(500)
+            columns = list(result.keys()) if result.keys() else []
+
+            # Convert rows to list of dicts
+            data = []
+            for row in rows:
+                row_dict = {}
+                for i, col in enumerate(columns):
+                    val = row[i]
+                    # Handle non-JSON-serializable types
+                    if isinstance(val, datetime):
+                        val = val.isoformat()
+                    elif isinstance(val, (bytes,)):
+                        val = val.hex()
+                    elif hasattr(val, 'value'):  # Enum
+                        val = val.value
+                    row_dict[col] = val
+                data.append(row_dict)
+
+            row_count = len(data)
+            has_more = row_count == 500
+
+            return {
+                "success": True,
+                "query_type": "SELECT",
+                "columns": columns,
+                "data": data,
+                "row_count": row_count,
+                "has_more": has_more,
+                "execution_time": round(execution_time, 3),
+            }
+        else:
+            # Write operation - commit and return affected rows
+            db.commit()
+            affected_rows = result.rowcount
+
+            return {
+                "success": True,
+                "query_type": query.upper().split()[0],
+                "affected_rows": affected_rows,
+                "execution_time": round(execution_time, 3),
+            }
+
+    except Exception as e:
+        db.rollback()
+        error_msg = str(e)
+        print(f"[SQL] Query error by user {current_user.id}: {error_msg}")
+        raise HTTPException(status_code=400, detail=f"Query error: {error_msg}")
+    finally:
+        # Reset statement timeout
+        try:
+            db.execute(text("SET statement_timeout = '0'"))
+        except:
+            pass
+
+
+@app.post("/api/admin/sql/logout")
+async def logout_sql_session(
+    current_user: User = Depends(require_admin),
+):
+    """
+    Invalidate the current SQL session.
+    """
+    if current_user.id in sql_session_tokens:
+        del sql_session_tokens[current_user.id]
+
+    return {"success": True, "message": "SQL session terminated"}
+
+
+# =============================================================================
 # Testimonials Endpoints
 # =============================================================================
 

@@ -5052,6 +5052,274 @@
   font-size: 14px;
 }
 
+/* SQL Interface */
+.sql-session-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.sql-session-active {
+  background: #dcfce7;
+  color: #166534;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sql-session-expires {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.sql-locked {
+  text-align: center;
+  padding: 60px 20px;
+  background: #f9fafb;
+  border-radius: 12px;
+  margin-top: 20px;
+}
+
+.sql-locked-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.sql-locked h4 {
+  font-size: 20px;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.sql-locked p {
+  color: #6b7280;
+  margin-bottom: 20px;
+}
+
+.sql-interface {
+  margin-top: 20px;
+}
+
+.sql-editor {
+  margin-bottom: 20px;
+}
+
+.sql-textarea {
+  width: 100%;
+  min-height: 180px;
+  padding: 16px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.sql-textarea::placeholder {
+  color: #64748b;
+}
+
+.sql-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.sql-editor-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.sql-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 14px;
+}
+
+.sql-results {
+  margin-bottom: 20px;
+}
+
+.sql-results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.sql-results-meta {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.sql-results-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.sql-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.sql-results-table th {
+  background: #f9fafb;
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.sql-results-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sql-results-table tr:hover td {
+  background: #f9fafb;
+}
+
+.sql-null {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.sql-history {
+  margin-top: 30px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.sql-history h4 {
+  font-size: 14px;
+  color: #374151;
+  margin-bottom: 12px;
+}
+
+.sql-history ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sql-history li {
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: border-color 0.15s;
+}
+
+.sql-history li:hover {
+  border-color: #3b82f6;
+}
+
+.sql-history code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  color: #1e293b;
+}
+
+.sql-history-meta {
+  color: #9ca3af;
+  font-size: 11px;
+}
+
+.sql-security-notice {
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #92400e;
+}
+
+/* SQL PIN Modal */
+.sql-pin-modal {
+  max-width: 400px;
+}
+
+.sql-pin-notice {
+  color: #6b7280;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.sql-pin-input {
+  width: 100%;
+  padding: 12px;
+  font-size: 18px;
+  text-align: center;
+  letter-spacing: 4px;
+  margin-top: 16px;
+}
+
+.sql-pin-error {
+  color: #dc2626;
+  font-size: 13px;
+  margin-top: 8px;
+  text-align: center;
+}
+
+/* SQL Confirm Modal */
+.sql-confirm-modal {
+  max-width: 500px;
+}
+
+.sql-confirm-warning {
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.sql-confirm-query {
+  background: #1e293b;
+  padding: 12px;
+  border-radius: 6px;
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
+.sql-confirm-query code {
+  color: #e2e8f0;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.admin-btn-danger {
+  background: #dc2626;
+  color: #fff;
+}
+
+.admin-btn-danger:hover {
+  background: #b91c1c;
+}
+
 .admin-empty {
   color: #6b7280;
   font-style: italic;

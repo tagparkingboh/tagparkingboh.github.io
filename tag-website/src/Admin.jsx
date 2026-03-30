@@ -481,6 +481,19 @@ function Admin() {
   const [expandedAuditLog, setExpandedAuditLog] = useState(null)
   const [expandedErrorLog, setExpandedErrorLog] = useState(null)
 
+  // QA Dashboard - SQL Interface state
+  const [sqlSessionToken, setSqlSessionToken] = useState(null)
+  const [sqlSessionExpires, setSqlSessionExpires] = useState(null)
+  const [sqlPinModalOpen, setSqlPinModalOpen] = useState(false)
+  const [sqlPin, setSqlPin] = useState('')
+  const [sqlPinError, setSqlPinError] = useState('')
+  const [sqlQuery, setSqlQuery] = useState('')
+  const [sqlResults, setSqlResults] = useState(null)
+  const [sqlError, setSqlError] = useState('')
+  const [sqlLoading, setSqlLoading] = useState(false)
+  const [sqlConfirmModal, setSqlConfirmModal] = useState(null)
+  const [sqlHistory, setSqlHistory] = useState([])
+
   // Testimonials state
   const [testimonials, setTestimonials] = useState([])
   const [loadingTestimonials, setLoadingTestimonials] = useState(false)
@@ -669,6 +682,27 @@ function Admin() {
       fetchErrorLogs(true)
     }
   }, [activeTab, qaSubTab, token, errorLogsFilters])
+
+  // Check SQL session when SQL sub-tab is opened
+  useEffect(() => {
+    if (activeTab === 'qa' && qaSubTab === 'sql' && token) {
+      checkSqlSession()
+    }
+  }, [activeTab, qaSubTab, token])
+
+  // Check if SQL session has expired (every minute)
+  useEffect(() => {
+    if (sqlSessionExpires) {
+      const checkExpiry = setInterval(() => {
+        if (new Date() > sqlSessionExpires) {
+          localStorage.removeItem('sqlSessionToken')
+          setSqlSessionToken(null)
+          setSqlSessionExpires(null)
+        }
+      }, 60000)
+      return () => clearInterval(checkExpiry)
+    }
+  }, [sqlSessionExpires])
 
   // Fetch testimonials when testimonials tab is active
   useEffect(() => {
@@ -1173,6 +1207,140 @@ function Admin() {
     } catch (err) {
       console.error('Failed to fetch error log metadata:', err)
     }
+  }
+
+  // SQL Interface functions
+  const checkSqlSession = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sql/session-status`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.valid) {
+          // Restore session from localStorage if token matches
+          const storedToken = localStorage.getItem('sqlSessionToken')
+          if (storedToken) {
+            setSqlSessionToken(storedToken)
+            setSqlSessionExpires(new Date(data.expires_at))
+          }
+        } else {
+          // Clear expired session
+          localStorage.removeItem('sqlSessionToken')
+          setSqlSessionToken(null)
+          setSqlSessionExpires(null)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check SQL session:', err)
+    }
+  }
+
+  const verifySqlPin = async () => {
+    setSqlPinError('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sql/verify-pin`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ pin: sqlPin }),
+      })
+      const data = await response.json()
+      if (response.ok && data.success) {
+        setSqlSessionToken(data.session_token)
+        setSqlSessionExpires(new Date(data.expires_at))
+        localStorage.setItem('sqlSessionToken', data.session_token)
+        setSqlPinModalOpen(false)
+        setSqlPin('')
+      } else {
+        setSqlPinError(data.detail || 'Invalid PIN')
+      }
+    } catch (err) {
+      setSqlPinError('Failed to verify PIN')
+    }
+  }
+
+  const logoutSqlSession = async () => {
+    try {
+      await fetch(`${API_URL}/api/admin/sql/logout`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+    } catch (err) {
+      console.error('Failed to logout SQL session:', err)
+    }
+    localStorage.removeItem('sqlSessionToken')
+    setSqlSessionToken(null)
+    setSqlSessionExpires(null)
+    setSqlResults(null)
+    setSqlQuery('')
+  }
+
+  const executeSqlQuery = async (confirmed = false) => {
+    if (!sqlQuery.trim()) return
+
+    setSqlLoading(true)
+    setSqlError('')
+    setSqlResults(null)
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sql/execute`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: sqlQuery,
+          session_token: sqlSessionToken,
+          confirmed: confirmed,
+        }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Session expired
+          localStorage.removeItem('sqlSessionToken')
+          setSqlSessionToken(null)
+          setSqlSessionExpires(null)
+          setSqlPinModalOpen(true)
+          setSqlError('Session expired. Please verify PIN again.')
+        } else {
+          setSqlError(data.detail || 'Query failed')
+        }
+        return
+      }
+
+      if (data.requires_confirmation) {
+        setSqlConfirmModal({
+          operation: data.operation_type,
+          message: data.message,
+        })
+        return
+      }
+
+      setSqlResults(data)
+      // Add to history
+      setSqlHistory(prev => [{
+        query: sqlQuery,
+        timestamp: new Date(),
+        success: true,
+        rowCount: data.row_count || data.affected_rows || 0,
+      }, ...prev.slice(0, 19)])
+
+    } catch (err) {
+      setSqlError('Failed to execute query')
+    } finally {
+      setSqlLoading(false)
+    }
+  }
+
+  const confirmSqlWrite = async () => {
+    setSqlConfirmModal(null)
+    await executeSqlQuery(true)
   }
 
   const fetchBookingStats = async () => {
@@ -9322,6 +9490,12 @@ function Admin() {
               >
                 Error Logs
               </button>
+              <button
+                className={`admin-sub-tab ${qaSubTab === 'sql' ? 'active' : ''}`}
+                onClick={() => setQaSubTab('sql')}
+              >
+                SQL Interface
+              </button>
             </div>
 
             {/* Test Results Sub-tab */}
@@ -9738,6 +9912,199 @@ function Admin() {
                       </button>
                     </div>
                   </>
+                )}
+              </>
+            )}
+
+            {/* SQL Interface Sub-tab */}
+            {qaSubTab === 'sql' && (
+              <>
+                <div className="admin-section-header" style={{ marginTop: '1rem' }}>
+                  <h3>SQL Interface</h3>
+                  {sqlSessionToken && (
+                    <div className="sql-session-info">
+                      <span className="sql-session-active">Session Active</span>
+                      <span className="sql-session-expires">
+                        Expires: {sqlSessionExpires?.toLocaleTimeString()}
+                      </span>
+                      <button onClick={logoutSqlSession} className="admin-btn admin-btn-danger">
+                        Lock
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {!sqlSessionToken ? (
+                  <div className="sql-locked">
+                    <div className="sql-locked-icon">🔒</div>
+                    <h4>SQL Interface Locked</h4>
+                    <p>Enter the admin PIN to access the database.</p>
+                    <button onClick={() => setSqlPinModalOpen(true)} className="admin-btn admin-btn-primary">
+                      Unlock SQL Interface
+                    </button>
+                  </div>
+                ) : (
+                  <div className="sql-interface">
+                    {/* Query Editor */}
+                    <div className="sql-editor">
+                      <textarea
+                        value={sqlQuery}
+                        onChange={(e) => setSqlQuery(e.target.value)}
+                        placeholder="Enter your SQL query here...&#10;&#10;Example: SELECT * FROM bookings LIMIT 10"
+                        className="sql-textarea"
+                        rows={8}
+                      />
+                      <div className="sql-editor-actions">
+                        <button
+                          onClick={() => executeSqlQuery(false)}
+                          disabled={sqlLoading || !sqlQuery.trim()}
+                          className="admin-btn admin-btn-primary"
+                        >
+                          {sqlLoading ? 'Executing...' : 'Run Query'}
+                        </button>
+                        <button
+                          onClick={() => { setSqlQuery(''); setSqlResults(null); setSqlError('') }}
+                          className="admin-btn"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Error Display */}
+                    {sqlError && (
+                      <div className="sql-error">
+                        <strong>Error:</strong> {sqlError}
+                      </div>
+                    )}
+
+                    {/* Results Display */}
+                    {sqlResults && (
+                      <div className="sql-results">
+                        <div className="sql-results-header">
+                          <span className="sql-results-meta">
+                            {sqlResults.query_type === 'SELECT' ? (
+                              <>
+                                {sqlResults.row_count} row{sqlResults.row_count !== 1 ? 's' : ''} returned
+                                {sqlResults.has_more && ' (limited to 500)'}
+                              </>
+                            ) : (
+                              <>{sqlResults.affected_rows} row{sqlResults.affected_rows !== 1 ? 's' : ''} affected</>
+                            )}
+                            {' • '}{sqlResults.execution_time}s
+                          </span>
+                        </div>
+
+                        {sqlResults.query_type === 'SELECT' && sqlResults.data && (
+                          <div className="sql-results-table-wrapper">
+                            <table className="sql-results-table">
+                              <thead>
+                                <tr>
+                                  {sqlResults.columns.map((col, i) => (
+                                    <th key={i}>{col}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {sqlResults.data.map((row, rowIdx) => (
+                                  <tr key={rowIdx}>
+                                    {sqlResults.columns.map((col, colIdx) => (
+                                      <td key={colIdx}>
+                                        {row[col] === null ? (
+                                          <span className="sql-null">NULL</span>
+                                        ) : typeof row[col] === 'object' ? (
+                                          JSON.stringify(row[col])
+                                        ) : (
+                                          String(row[col])
+                                        )}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Query History */}
+                    {sqlHistory.length > 0 && (
+                      <div className="sql-history">
+                        <h4>Recent Queries</h4>
+                        <ul>
+                          {sqlHistory.slice(0, 5).map((item, idx) => (
+                            <li key={idx} onClick={() => setSqlQuery(item.query)}>
+                              <code>{item.query.length > 60 ? item.query.substring(0, 60) + '...' : item.query}</code>
+                              <span className="sql-history-meta">
+                                {item.rowCount} rows • {item.timestamp.toLocaleTimeString()}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Security Notice */}
+                    <div className="sql-security-notice">
+                      <strong>Security:</strong> All queries are logged. Blocked commands: DROP, TRUNCATE, ALTER, CREATE, GRANT.
+                      Write operations (INSERT, UPDATE, DELETE) require confirmation.
+                    </div>
+                  </div>
+                )}
+
+                {/* PIN Verification Modal */}
+                {sqlPinModalOpen && (
+                  <div className="admin-modal-overlay" onClick={() => setSqlPinModalOpen(false)}>
+                    <div className="admin-modal sql-pin-modal" onClick={(e) => e.stopPropagation()}>
+                      <div className="admin-modal-header">
+                        <h3>🔐 SQL Interface Authentication</h3>
+                        <button onClick={() => setSqlPinModalOpen(false)} className="admin-modal-close">&times;</button>
+                      </div>
+                      <div className="admin-modal-body">
+                        <p>Enter the admin PIN to unlock the SQL interface.</p>
+                        <p className="sql-pin-notice">This session will expire after 2 hours of inactivity.</p>
+                        <input
+                          type="password"
+                          value={sqlPin}
+                          onChange={(e) => setSqlPin(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && verifySqlPin()}
+                          placeholder="Enter PIN"
+                          className="admin-input sql-pin-input"
+                          autoFocus
+                        />
+                        {sqlPinError && <p className="sql-pin-error">{sqlPinError}</p>}
+                      </div>
+                      <div className="admin-modal-footer">
+                        <button onClick={() => setSqlPinModalOpen(false)} className="admin-btn">Cancel</button>
+                        <button onClick={verifySqlPin} className="admin-btn admin-btn-primary">Unlock</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Write Confirmation Modal */}
+                {sqlConfirmModal && (
+                  <div className="admin-modal-overlay">
+                    <div className="admin-modal sql-confirm-modal">
+                      <div className="admin-modal-header">
+                        <h3>⚠️ Confirm {sqlConfirmModal.operation} Operation</h3>
+                      </div>
+                      <div className="admin-modal-body">
+                        <p>{sqlConfirmModal.message}</p>
+                        <p className="sql-confirm-warning">This action will modify the database. Are you sure?</p>
+                        <div className="sql-confirm-query">
+                          <code>{sqlQuery}</code>
+                        </div>
+                      </div>
+                      <div className="admin-modal-footer">
+                        <button onClick={() => setSqlConfirmModal(null)} className="admin-btn">Cancel</button>
+                        <button onClick={confirmSqlWrite} className="admin-btn admin-btn-danger">
+                          Confirm {sqlConfirmModal.operation}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </>
             )}
