@@ -8913,15 +8913,13 @@ async def stripe_webhook(
                     # Get discount info from promotion
                     promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
                     discount_pct = promotion.discount_percent if promotion else 0
-                    # Get actual discount amount from payment intent metadata if available
+                    # Get actual discount amount from metadata (already extracted from data above)
                     discount_amount = None
-                    if hasattr(payment_intent, 'metadata') and payment_intent.metadata:
-                        discount_amount = payment_intent.metadata.get('discount_amount_pence')
-                        if discount_amount:
-                            try:
-                                discount_amount = int(discount_amount)
-                            except (ValueError, TypeError):
-                                discount_amount = None
+                    if meta_discount_amount:
+                        try:
+                            discount_amount = int(meta_discount_amount)
+                        except (ValueError, TypeError):
+                            discount_amount = None
 
                     mark_promo_code_used(db, promo_code_record, bid, discount_pct, discount_amount)
                     db.commit()
