@@ -138,6 +138,10 @@ def get_payment_status(payment_intent_id: str) -> PaymentStatus:
 
     intent = stripe.PaymentIntent.retrieve(payment_intent_id)
 
+    # Stripe metadata is a StripeObject, not a dict - use getattr instead of .get()
+    metadata = getattr(intent, "metadata", None)
+    booking_reference = getattr(metadata, "booking_reference", None) if metadata else None
+
     return PaymentStatus(
         payment_intent_id=intent.id,
         status=intent.status,
@@ -145,7 +149,7 @@ def get_payment_status(payment_intent_id: str) -> PaymentStatus:
         amount_received=intent.amount_received or 0,
         currency=intent.currency,
         customer_email=intent.receipt_email,
-        booking_reference=intent.metadata.get("booking_reference"),
+        booking_reference=booking_reference,
     )
 
 
