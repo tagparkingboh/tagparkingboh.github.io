@@ -1201,21 +1201,21 @@ function Bookings() {
       [name]: type === 'checkbox' ? checked : processedValue
     }))
 
-    // Log when T&C checkbox is checked (for debugging checkout issues)
-    if (name === 'terms' && checked) {
+    // Log when T&C checkbox is checked/unchecked (for debugging checkout issues)
+    if (name === 'terms') {
       fetch(`${API_BASE_URL}/api/booking/audit-event`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: sessionIdRef.current,
-          event: 'tnc_accepted',
+          event: checked ? 'tnc_accepted' : 'tnc_unchecked',
           event_data: {
             customer_email: formData.email,
             customer_name: `${formData.firstName} ${formData.lastName}`,
             timestamp: new Date().toISOString()
           }
         })
-      }).catch(err => console.error('Failed to log T&C acceptance:', err))
+      }).catch(err => console.error('Failed to log T&C event:', err))
     }
 
     // Reset dependent fields when parent changes
@@ -1830,6 +1830,21 @@ function Bookings() {
         setPromoCodeValid(true)
         setPromoCodeDiscount(data.discount_percent)
         setPromoCodeMessage(data.message)
+        // Log promo code added
+        fetch(`${API_BASE_URL}/api/booking/audit-event`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionIdRef.current,
+            event: 'promo_code_added',
+            event_data: {
+              promo_code: promoCode.trim().toUpperCase(),
+              discount_percent: data.discount_percent,
+              customer_email: formData.email,
+              timestamp: new Date().toISOString()
+            }
+          })
+        }).catch(err => console.error('Failed to log promo code added:', err))
       } else {
         setPromoCodeValid(false)
         setPromoCodeDiscount(0)
@@ -1845,6 +1860,22 @@ function Bookings() {
   }
 
   const clearPromoCode = () => {
+    // Log promo code removed (only if there was a valid promo code)
+    if (promoCodeValid && promoCode.trim()) {
+      fetch(`${API_BASE_URL}/api/booking/audit-event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionIdRef.current,
+          event: 'promo_code_removed',
+          event_data: {
+            promo_code: promoCode.trim().toUpperCase(),
+            customer_email: formData.email,
+            timestamp: new Date().toISOString()
+          }
+        })
+      }).catch(err => console.error('Failed to log promo code removed:', err))
+    }
     setPromoCode('')
     setPromoCodeValid(false)
     setPromoCodeMessage('')
