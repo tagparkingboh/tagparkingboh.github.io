@@ -1,7 +1,7 @@
 /* Promotions Section - Styled like Testimonials with TAG branding */
 .promotions-section {
   background: var(--dark-gray);
-  padding: 6rem 4rem 12rem;
+  padding: 6rem 4rem 8rem;
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -155,6 +155,12 @@
 
 .promo-cta-hint a:hover {
   color: var(--lime-green);
+}
+
+/* Bottom bar separator */
+.promotions-bottom-bar {
+  height: 80px;
+  background: var(--dark-gray);
 }
 
 /* ===== RESPONSIVE DESIGN ===== */
