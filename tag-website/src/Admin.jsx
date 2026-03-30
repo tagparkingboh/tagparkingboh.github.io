@@ -9759,79 +9759,82 @@ function Admin() {
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Background Color</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="color"
-                      value={promoModalForm.background_color}
-                      onChange={(e) => setPromoModalForm({ ...promoModalForm, background_color: e.target.value })}
-                      style={{ width: '50px', height: '35px', cursor: 'pointer' }}
-                    />
-                    <input
-                      type="text"
-                      value={promoModalForm.background_color}
-                      onChange={(e) => setPromoModalForm({ ...promoModalForm, background_color: e.target.value })}
-                      style={{ flex: 1 }}
-                    />
+              {/* Color fields - only for Info Modal type */}
+              {promoModalForm.type === 'info_modal' && (
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Background Color</label>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input
+                        type="color"
+                        value={promoModalForm.background_color}
+                        onChange={(e) => setPromoModalForm({ ...promoModalForm, background_color: e.target.value })}
+                        style={{ width: '50px', height: '35px', cursor: 'pointer' }}
+                      />
+                      <input
+                        type="text"
+                        value={promoModalForm.background_color}
+                        onChange={(e) => setPromoModalForm({ ...promoModalForm, background_color: e.target.value })}
+                        style={{ flex: 1 }}
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div className="form-group">
-                  <label>Text Color</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="color"
-                      value={promoModalForm.text_color}
-                      onChange={(e) => setPromoModalForm({ ...promoModalForm, text_color: e.target.value })}
-                      style={{ width: '50px', height: '35px', cursor: 'pointer' }}
-                    />
-                    <input
-                      type="text"
-                      value={promoModalForm.text_color}
-                      onChange={(e) => setPromoModalForm({ ...promoModalForm, text_color: e.target.value })}
-                      style={{ flex: 1 }}
-                    />
+                  <div className="form-group">
+                    <label>Text Color</label>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input
+                        type="color"
+                        value={promoModalForm.text_color}
+                        onChange={(e) => setPromoModalForm({ ...promoModalForm, text_color: e.target.value })}
+                        style={{ width: '50px', height: '35px', cursor: 'pointer' }}
+                      />
+                      <input
+                        type="text"
+                        value={promoModalForm.text_color}
+                        onChange={(e) => setPromoModalForm({ ...promoModalForm, text_color: e.target.value })}
+                        style={{ flex: 1 }}
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div className="form-group">
-                  <label>Button Color</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="color"
-                      value={promoModalForm.button_color}
-                      onChange={(e) => setPromoModalForm({ ...promoModalForm, button_color: e.target.value })}
-                      style={{ width: '50px', height: '35px', cursor: 'pointer' }}
-                    />
-                    <input
-                      type="text"
-                      value={promoModalForm.button_color}
-                      onChange={(e) => setPromoModalForm({ ...promoModalForm, button_color: e.target.value })}
-                      style={{ flex: 1 }}
-                    />
+                  <div className="form-group">
+                    <label>Button Color</label>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input
+                        type="color"
+                        value={promoModalForm.button_color}
+                        onChange={(e) => setPromoModalForm({ ...promoModalForm, button_color: e.target.value })}
+                        style={{ width: '50px', height: '35px', cursor: 'pointer' }}
+                      />
+                      <input
+                        type="text"
+                        value={promoModalForm.button_color}
+                        onChange={(e) => setPromoModalForm({ ...promoModalForm, button_color: e.target.value })}
+                        style={{ flex: 1 }}
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div className="form-group">
-                  <label>Button Text Color</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <input
-                      type="color"
-                      value={promoModalForm.button_text_color}
-                      onChange={(e) => setPromoModalForm({ ...promoModalForm, button_text_color: e.target.value })}
-                      style={{ width: '50px', height: '35px', cursor: 'pointer' }}
-                    />
-                    <input
-                      type="text"
-                      value={promoModalForm.button_text_color}
-                      onChange={(e) => setPromoModalForm({ ...promoModalForm, button_text_color: e.target.value })}
-                      style={{ flex: 1 }}
-                    />
+                  <div className="form-group">
+                    <label>Button Text Color</label>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <input
+                        type="color"
+                        value={promoModalForm.button_text_color}
+                        onChange={(e) => setPromoModalForm({ ...promoModalForm, button_text_color: e.target.value })}
+                        style={{ width: '50px', height: '35px', cursor: 'pointer' }}
+                      />
+                      <input
+                        type="text"
+                        value={promoModalForm.button_text_color}
+                        onChange={(e) => setPromoModalForm({ ...promoModalForm, button_text_color: e.target.value })}
+                        style={{ flex: 1 }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <div className="form-row">
                 <div className="form-group">
