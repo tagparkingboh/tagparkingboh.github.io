@@ -5125,7 +5125,7 @@ function Admin() {
 
             {/* Promotions Sub-tab */}
             {marketingSubTab === 'promotions' && (
-              <div className="promotions-section">
+              <div className="admin-promotions-section">
                 <div className="admin-section-header">
                   <h2>Promotions</h2>
                   <div className="flights-header-actions">

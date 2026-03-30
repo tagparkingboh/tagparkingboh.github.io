@@ -5193,12 +5193,12 @@
   padding: 8px 10px;
 }
 
-/* Promotions Section */
-.promotions-section {
+/* Promotions Section (Admin) */
+.admin-promotions-section {
   padding: 0;
 }
 
-.promotions-section .btn-primary,
+.admin-promotions-section .btn-primary,
 .create-promotion-form .btn-primary {
   background: #D9FF00;
   border: none;
@@ -5210,18 +5210,18 @@
   transition: background 0.2s ease;
 }
 
-.promotions-section .btn-primary:hover,
+.admin-promotions-section .btn-primary:hover,
 .create-promotion-form .btn-primary:hover {
   background: #c4e600;
 }
 
-.promotions-section .btn-primary:disabled,
+.admin-promotions-section .btn-primary:disabled,
 .create-promotion-form .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.promotions-section .btn-secondary,
+.admin-promotions-section .btn-secondary,
 .create-promotion-form .btn-secondary {
   background: #2a2a2a;
   border: 1px solid #444;
@@ -5233,7 +5233,7 @@
   transition: background 0.2s ease;
 }
 
-.promotions-section .btn-secondary:hover,
+.admin-promotions-section .btn-secondary:hover,
 .create-promotion-form .btn-secondary:hover {
   background: #3a3a3a;
   border-color: #555;
