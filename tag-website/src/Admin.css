@@ -5201,15 +5201,15 @@
 
 .sql-textarea {
   width: 100%;
-  min-height: 180px;
-  padding: 16px;
+  min-height: 300px;
+  padding: 20px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 18px;
+  line-height: 1.6;
   background: #1e293b;
   color: #e2e8f0;
   border: 1px solid #334155;
-  border-radius: 8px;
+  border-radius: 10px;
   resize: vertical;
 }
 
@@ -5231,12 +5231,12 @@
 
 /* Run Query button - matches ManualBooking submit style */
 .sql-run-btn {
-  padding: 0.75rem 1.5rem;
+  padding: 1rem 2rem;
   background: #28a745;
   color: white;
   border: none;
-  border-radius: 6px;
-  font-size: 0.95rem;
+  border-radius: 8px;
+  font-size: 1.1rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
@@ -5253,12 +5253,12 @@
 
 /* Clear button - matches ManualBooking lookup style */
 .sql-clear-btn {
-  padding: 0.75rem 1.25rem;
+  padding: 1rem 1.75rem;
   background: #f7b32b;
   color: #1a1a2e;
   border: none;
-  border-radius: 6px;
-  font-size: 0.9rem;
+  border-radius: 8px;
+  font-size: 1.1rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
