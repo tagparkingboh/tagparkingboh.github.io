@@ -8035,19 +8035,28 @@ async def create_payment(
 
                                     promo_code_record = db.query(DbPromoCode).filter(DbPromoCode.code == new_promo).first()
                                     if promo_code_record:
-                                        promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
-                                        if promotion and promotion.is_active:
-                                            # Check if code can be used (single-use: not used, multi-use: always ok)
-                                            can_use = promo_code_record.is_multi_use or not promo_code_record.is_used
-                                            if can_use:
-                                                discount_percent = promotion.discount_percent
-                                                if discount_percent == 100:
-                                                    new_discount_amount = new_original_amount
-                                                    is_free_booking = True
-                                                else:
-                                                    new_discount_amount = int(new_original_amount * discount_percent / 100)
-                                                new_promo_code_applied = new_promo
-                                                print(f"[DEDUP] New promo {new_promo}: {discount_percent}% = {new_discount_amount} pence discount")
+                                        # Check if code is used or expired
+                                        code_valid = not promo_code_record.is_used
+                                        if promo_code_record.expires_at and get_uk_now() >= promo_code_record.expires_at:
+                                            code_valid = False
+                                        # Multi-use codes can be used even if is_used is True (check use_count vs max_uses)
+                                        if promo_code_record.is_multi_use:
+                                            code_valid = True  # Multi-use codes handled by can_use check below
+
+                                        if code_valid:
+                                            promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
+                                            if promotion:
+                                                # Check if code can be used (single-use: not used, multi-use: always ok)
+                                                can_use = promo_code_record.is_multi_use or not promo_code_record.is_used
+                                                if can_use:
+                                                    discount_percent = promotion.discount_percent
+                                                    if discount_percent == 100:
+                                                        new_discount_amount = new_original_amount
+                                                        is_free_booking = True
+                                                    else:
+                                                        new_discount_amount = int(new_original_amount * discount_percent / 100)
+                                                    new_promo_code_applied = new_promo
+                                                    print(f"[DEDUP] New promo {new_promo}: {discount_percent}% = {new_discount_amount} pence discount")
                                     else:
                                         # Check legacy promotions table
                                         from db_models import Promotion
