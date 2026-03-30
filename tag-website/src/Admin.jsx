@@ -5126,8 +5126,7 @@ function Admin() {
             {/* Promotions Sub-tab */}
             {marketingSubTab === 'promotions' && (
               <div className="admin-promotions-section">
-                <div className="admin-section-header">
-                  <h2>Promotions</h2>
+                <div className="admin-section-header" style={{ justifyContent: 'flex-end' }}>
                   <div className="flights-header-actions">
                     <button
                       className="btn-secondary"
