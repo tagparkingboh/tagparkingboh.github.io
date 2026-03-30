@@ -5260,64 +5260,229 @@
 
 /* SQL PIN Modal */
 .sql-pin-modal {
-  max-width: 400px;
+  max-width: 420px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+.sql-pin-modal .admin-modal-header {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  padding: 24px;
+  border-bottom: none;
+}
+
+.sql-pin-modal .admin-modal-header h3 {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sql-pin-modal .admin-modal-close {
+  color: #94a3b8;
+  font-size: 24px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.sql-pin-modal .admin-modal-close:hover {
+  color: #fff;
+}
+
+.sql-pin-modal .admin-modal-body {
+  padding: 28px 24px;
+  text-align: center;
+}
+
+.sql-pin-modal .admin-modal-body > p:first-child {
+  font-size: 15px;
+  color: #374151;
+  margin-bottom: 8px;
 }
 
 .sql-pin-notice {
   color: #6b7280;
   font-size: 13px;
-  margin-top: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.sql-pin-notice::before {
+  content: "⏱";
 }
 
 .sql-pin-input {
   width: 100%;
-  padding: 12px;
-  font-size: 18px;
+  padding: 16px 20px;
+  font-size: 20px;
   text-align: center;
-  letter-spacing: 4px;
-  margin-top: 16px;
+  letter-spacing: 6px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+  transition: all 0.2s;
+}
+
+.sql-pin-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+.sql-pin-input::placeholder {
+  letter-spacing: normal;
+  color: #9ca3af;
 }
 
 .sql-pin-error {
   color: #dc2626;
   font-size: 13px;
-  margin-top: 8px;
+  margin-top: 12px;
+  background: #fef2f2;
+  padding: 8px 12px;
+  border-radius: 6px;
   text-align: center;
+}
+
+.sql-pin-modal .admin-modal-footer {
+  padding: 16px 24px 24px;
+  display: flex;
+  gap: 12px;
+  border-top: none;
+}
+
+.sql-pin-modal .admin-modal-footer .admin-btn {
+  flex: 1;
+  padding: 14px 20px;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sql-pin-modal .admin-modal-footer .admin-btn:not(.admin-btn-primary) {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.sql-pin-modal .admin-modal-footer .admin-btn:not(.admin-btn-primary):hover {
+  background: #e5e7eb;
+}
+
+.sql-pin-modal .admin-modal-footer .admin-btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+}
+
+.sql-pin-modal .admin-modal-footer .admin-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
 }
 
 /* SQL Confirm Modal */
 .sql-confirm-modal {
-  max-width: 500px;
+  max-width: 520px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+.sql-confirm-modal .admin-modal-header {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  padding: 24px;
+  border-bottom: none;
+}
+
+.sql-confirm-modal .admin-modal-header h3 {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.sql-confirm-modal .admin-modal-body {
+  padding: 24px;
+}
+
+.sql-confirm-modal .admin-modal-body p {
+  font-size: 15px;
+  color: #374151;
+  margin-bottom: 12px;
 }
 
 .sql-confirm-warning {
   color: #dc2626;
-  font-weight: 500;
+  font-weight: 600;
+  background: #fef2f2;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border-left: 4px solid #dc2626;
 }
 
 .sql-confirm-query {
   background: #1e293b;
-  padding: 12px;
-  border-radius: 6px;
-  margin-top: 12px;
+  padding: 16px;
+  border-radius: 10px;
+  margin-top: 16px;
   overflow-x: auto;
 }
 
 .sql-confirm-query code {
   color: #e2e8f0;
   font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 12px;
+  font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;
 }
 
+.sql-confirm-modal .admin-modal-footer {
+  padding: 16px 24px 24px;
+  display: flex;
+  gap: 12px;
+  border-top: none;
+}
+
+.sql-confirm-modal .admin-modal-footer .admin-btn {
+  flex: 1;
+  padding: 14px 20px;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sql-confirm-modal .admin-modal-footer .admin-btn:not(.admin-btn-danger) {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.sql-confirm-modal .admin-modal-footer .admin-btn:not(.admin-btn-danger):hover {
+  background: #e5e7eb;
+}
+
 .admin-btn-danger {
-  background: #dc2626;
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
   color: #fff;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35);
 }
 
 .admin-btn-danger:hover {
-  background: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4);
 }
 
 .admin-empty {
