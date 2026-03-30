@@ -11377,64 +11377,76 @@ async def get_audit_logs(
     - event: Filter by event type
     - date_from/date_to: Date range filter (ISO format)
     """
-    from db_models import AuditLog
-    from sqlalchemy import or_, cast, String
+    # Use raw SQL to avoid enum mapping issues with event type
+    where_clauses = []
+    params = {}
 
-    query = db.query(AuditLog).order_by(AuditLog.created_at.desc())
-
-    # Filter by booking reference
     if booking_reference:
-        query = query.filter(AuditLog.booking_reference.ilike(f"%{booking_reference}%"))
+        where_clauses.append("booking_reference ILIKE :booking_ref")
+        params["booking_ref"] = f"%{booking_reference}%"
 
-    # Filter by event type
     if event:
-        query = query.filter(AuditLog.event == event)
+        where_clauses.append("event::text = :event")
+        params["event"] = event
 
-    # Search across multiple fields
     if search:
-        search_term = f"%{search}%"
-        query = query.filter(
-            or_(
-                AuditLog.booking_reference.ilike(search_term),
-                AuditLog.session_id.ilike(search_term),
-                cast(AuditLog.event_data, String).ilike(search_term),
-            )
-        )
+        where_clauses.append("""(
+            booking_reference ILIKE :search OR
+            session_id ILIKE :search OR
+            event_data::text ILIKE :search
+        )""")
+        params["search"] = f"%{search}%"
 
-    # Date range filter
     if date_from:
         try:
             from_dt = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
-            query = query.filter(AuditLog.created_at >= from_dt)
+            where_clauses.append("created_at >= :date_from")
+            params["date_from"] = from_dt
         except ValueError:
             pass
 
     if date_to:
         try:
             to_dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
-            query = query.filter(AuditLog.created_at <= to_dt)
+            where_clauses.append("created_at <= :date_to")
+            params["date_to"] = to_dt
         except ValueError:
             pass
 
-    # Get total count before pagination
-    total_count = query.count()
+    where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
-    # Apply pagination
-    audit_logs = query.offset(offset).limit(limit).all()
+    # Get total count
+    count_sql = f"SELECT COUNT(*) FROM audit_logs WHERE {where_sql}"
+    total_count = db.execute(text(count_sql), params).scalar()
+
+    # Get paginated results
+    query_sql = f"""
+        SELECT id, session_id, booking_reference, event::text as event,
+               event_data, ip_address, user_agent, created_at
+        FROM audit_logs
+        WHERE {where_sql}
+        ORDER BY created_at DESC
+        LIMIT :limit OFFSET :offset
+    """
+    params["limit"] = limit
+    params["offset"] = offset
+
+    result = db.execute(text(query_sql), params)
+    rows = result.fetchall()
 
     return {
         "audit_logs": [
             {
-                "id": log.id,
-                "session_id": log.session_id,
-                "booking_reference": log.booking_reference,
-                "event": log.event.value if log.event else None,
-                "event_data": log.event_data,
-                "ip_address": log.ip_address,
-                "user_agent": log.user_agent,
-                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "id": row.id,
+                "session_id": row.session_id,
+                "booking_reference": row.booking_reference,
+                "event": row.event,
+                "event_data": row.event_data,
+                "ip_address": row.ip_address,
+                "user_agent": row.user_agent,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
             }
-            for log in audit_logs
+            for row in rows
         ],
         "total_count": total_count,
         "limit": limit,
@@ -11480,75 +11492,89 @@ async def get_error_logs(
     - error_type: Filter by error type
     - date_from/date_to: Date range filter (ISO format)
     """
-    from db_models import ErrorLog
-    from sqlalchemy import or_, cast, String
+    # Use raw SQL to avoid enum mapping issues with severity
+    # Build WHERE clauses
+    where_clauses = []
+    params = {}
 
-    query = db.query(ErrorLog).order_by(ErrorLog.created_at.desc())
-
-    # Filter by booking reference
     if booking_reference:
-        query = query.filter(ErrorLog.booking_reference.ilike(f"%{booking_reference}%"))
+        where_clauses.append("booking_reference ILIKE :booking_ref")
+        params["booking_ref"] = f"%{booking_reference}%"
 
-    # Filter by severity
     if severity:
-        query = query.filter(ErrorLog.severity == severity)
+        where_clauses.append("severity::text = :severity")
+        params["severity"] = severity
 
-    # Filter by error type
     if error_type:
-        query = query.filter(ErrorLog.error_type.ilike(f"%{error_type}%"))
+        where_clauses.append("error_type ILIKE :error_type")
+        params["error_type"] = f"%{error_type}%"
 
-    # Search across multiple fields
     if search:
-        search_term = f"%{search}%"
-        query = query.filter(
-            or_(
-                ErrorLog.booking_reference.ilike(search_term),
-                ErrorLog.session_id.ilike(search_term),
-                ErrorLog.message.ilike(search_term),
-                ErrorLog.endpoint.ilike(search_term),
-                ErrorLog.error_type.ilike(search_term),
-            )
-        )
+        where_clauses.append("""(
+            booking_reference ILIKE :search OR
+            session_id ILIKE :search OR
+            message ILIKE :search OR
+            endpoint ILIKE :search OR
+            error_type ILIKE :search
+        )""")
+        params["search"] = f"%{search}%"
 
-    # Date range filter
     if date_from:
         try:
             from_dt = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
-            query = query.filter(ErrorLog.created_at >= from_dt)
+            where_clauses.append("created_at >= :date_from")
+            params["date_from"] = from_dt
         except ValueError:
             pass
 
     if date_to:
         try:
             to_dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
-            query = query.filter(ErrorLog.created_at <= to_dt)
+            where_clauses.append("created_at <= :date_to")
+            params["date_to"] = to_dt
         except ValueError:
             pass
 
-    # Get total count before pagination
-    total_count = query.count()
+    where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
-    # Apply pagination
-    error_logs = query.offset(offset).limit(limit).all()
+    # Get total count
+    count_sql = f"SELECT COUNT(*) FROM error_logs WHERE {where_sql}"
+    total_count = db.execute(text(count_sql), params).scalar()
+
+    # Get paginated results
+    query_sql = f"""
+        SELECT id, severity::text as severity, error_type, error_code, message,
+               stack_trace, request_data, endpoint, booking_reference,
+               session_id, ip_address, user_agent, created_at
+        FROM error_logs
+        WHERE {where_sql}
+        ORDER BY created_at DESC
+        LIMIT :limit OFFSET :offset
+    """
+    params["limit"] = limit
+    params["offset"] = offset
+
+    result = db.execute(text(query_sql), params)
+    rows = result.fetchall()
 
     return {
         "error_logs": [
             {
-                "id": log.id,
-                "severity": log.severity.value if log.severity else None,
-                "error_type": log.error_type,
-                "error_code": log.error_code,
-                "message": log.message,
-                "stack_trace": log.stack_trace,
-                "request_data": log.request_data,
-                "endpoint": log.endpoint,
-                "booking_reference": log.booking_reference,
-                "session_id": log.session_id,
-                "ip_address": log.ip_address,
-                "user_agent": log.user_agent,
-                "created_at": log.created_at.isoformat() if log.created_at else None,
+                "id": row[0],
+                "severity": row[1],
+                "error_type": row[2],
+                "error_code": row[3],
+                "message": row[4],
+                "stack_trace": row[5],
+                "request_data": row[6],
+                "endpoint": row[7],
+                "booking_reference": row[8],
+                "session_id": row[9],
+                "ip_address": row[10],
+                "user_agent": row[11],
+                "created_at": row[12].isoformat() if row[12] else None,
             }
-            for log in error_logs
+            for row in rows
         ],
         "total_count": total_count,
         "limit": limit,
