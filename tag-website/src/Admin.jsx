@@ -492,6 +492,7 @@ function Admin() {
   const [promoModalToDelete, setPromoModalToDelete] = useState(null)
   const [deletingPromoModal, setDeletingPromoModal] = useState(false)
   const [promoModalSuccessMessage, setPromoModalSuccessMessage] = useState('')
+  const [promoCodeIsMultiUse, setPromoCodeIsMultiUse] = useState(false)
 
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
@@ -749,7 +750,38 @@ function Admin() {
       max_subscribers: modal.maxSubscribers || '',
       promo_code: modal.promoCode || ''
     })
+    // Check if the promo code is multi-use
+    if (modal.promoCode) {
+      checkPromoCodeIsMultiUse(modal.promoCode)
+    } else {
+      setPromoCodeIsMultiUse(false)
+    }
     setShowPromoModalForm(true)
+  }
+
+  // Check if a promo code is multi-use by looking it up in the promo_codes table
+  const checkPromoCodeIsMultiUse = async (code) => {
+    if (!code || !code.trim()) {
+      setPromoCodeIsMultiUse(false)
+      return
+    }
+    try {
+      const response = await fetch(`${API_URL}/api/promo/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code.trim().toUpperCase() })
+      })
+      if (response.ok) {
+        const data = await response.json()
+        // If valid and is_multi_use is true, it's a multi-use code
+        setPromoCodeIsMultiUse(data.valid && data.is_multi_use === true)
+      } else {
+        setPromoCodeIsMultiUse(false)
+      }
+    } catch (err) {
+      console.error('Error checking promo code:', err)
+      setPromoCodeIsMultiUse(false)
+    }
   }
 
   const fetchTestimonials = async () => {
@@ -9329,6 +9361,7 @@ function Admin() {
                       max_subscribers: '',
                       promo_code: ''
                     })
+                    setPromoCodeIsMultiUse(false)
                     setShowPromoModalForm(true)
                   }}
                   className="admin-btn admin-btn-primary"
@@ -9650,16 +9683,27 @@ function Admin() {
                 </div>
 
                 <div className="form-group">
-                  <label>Promo Code (Single Use)</label>
+                  <label>Promo Code {promoCodeIsMultiUse ? '(Multi-Use)' : '(Single Use)'}</label>
                   <input
                     type="text"
                     value={promoModalForm.promo_code}
-                    onChange={(e) => setPromoModalForm({ ...promoModalForm, promo_code: e.target.value.toUpperCase() })}
+                    onChange={(e) => {
+                      const newCode = e.target.value.toUpperCase()
+                      setPromoModalForm({ ...promoModalForm, promo_code: newCode })
+                      // Debounce the check - only check after user stops typing
+                      clearTimeout(window.promoCodeCheckTimeout)
+                      window.promoCodeCheckTimeout = setTimeout(() => {
+                        checkPromoCodeIsMultiUse(newCode)
+                      }, 500)
+                    }}
                     placeholder="e.g. TAG-SPECIAL-10"
                     style={{ textTransform: 'uppercase' }}
                   />
                   <small style={{ color: '#666', fontSize: '0.8rem' }}>
-                    Auto-deactivates when this code is used on a confirmed booking
+                    {promoCodeIsMultiUse
+                      ? 'Multi-use code - modal expires by end date, not when code is used'
+                      : 'Auto-deactivates when this code is used on a confirmed booking'
+                    }
                   </small>
                 </div>
               </div>
