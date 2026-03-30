@@ -7023,6 +7023,9 @@ async def log_checkout_event(
         "promo_code_removed": AuditLogEvent.PROMO_CODE_REMOVED,
         "checkout_loaded": AuditLogEvent.CHECKOUT_LOADED,
         "payment_processing": AuditLogEvent.PAYMENT_PROCESSING,
+        "payment_initiated": AuditLogEvent.PAYMENT_INITIATED,
+        "payment_succeeded": AuditLogEvent.PAYMENT_SUCCEEDED,
+        "payment_failed": AuditLogEvent.PAYMENT_FAILED,
     }
 
     audit_event = event_map.get(request.event)
