@@ -9451,7 +9451,7 @@ function Admin() {
                     fetchPromoCodesForModal()
                     setShowPromoModalForm(true)
                   }}
-                  className="admin-btn admin-btn-secondary"
+                  className="admin-btn admin-btn-primary"
                 >
                   + Add Promo Section
                 </button>
