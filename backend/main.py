@@ -8089,7 +8089,7 @@ async def create_payment(
                                             amount=new_amount,
                                             metadata={
                                                 "booking_reference": existing_booking.reference,
-                                                "customer_name": request.customer_name,
+                                                "customer_name": f"{request.first_name} {request.last_name}",
                                                 "flight_number": request.flight_number,
                                                 "drop_off_date": request.drop_off_date,
                                                 "pickup_date": request.pickup_date,
