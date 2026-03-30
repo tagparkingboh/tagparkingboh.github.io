@@ -5128,7 +5128,7 @@ async def get_promotion(
     current_user: User = Depends(require_admin),
 ):
     """Get promotion details with codes."""
-    from db_models import Promotion, PromoCode, Booking
+    from db_models import Promotion, PromoCode, Booking, PromoCodeUsage
 
     promotion = db.query(Promotion).filter(Promotion.id == promotion_id).first()
     if not promotion:
@@ -5139,11 +5139,23 @@ async def get_promotion(
 
     codes_data = []
     for c in codes:
-        booking_ref = None
-        if c.booking_id:
-            booking = db.query(Booking).filter(Booking.id == c.booking_id).first()
-            if booking:
-                booking_ref = booking.reference
+        # For multi-use codes, get all booking references from usages table
+        booking_references = []
+        if c.is_multi_use:
+            usages = db.query(PromoCodeUsage).filter(PromoCodeUsage.promo_code_id == c.id).order_by(PromoCodeUsage.used_at.asc()).all()
+            for usage in usages:
+                booking = db.query(Booking).filter(Booking.id == usage.booking_id).first()
+                if booking:
+                    booking_references.append(booking.reference)
+        else:
+            # Single-use code - get booking reference from booking_id
+            if c.booking_id:
+                booking = db.query(Booking).filter(Booking.id == c.booking_id).first()
+                if booking:
+                    booking_references.append(booking.reference)
+
+        # For backwards compatibility, also include single booking_reference
+        booking_ref = booking_references[0] if booking_references else None
 
         # Calculate is_expired and convert expires_at to UK timezone for display
         is_expired = False
@@ -5175,6 +5187,7 @@ async def get_promotion(
             "used_at": c.used_at,
             "booking_id": c.booking_id,
             "booking_reference": booking_ref,
+            "booking_references": booking_references,  # All bookings for multi-use codes
             "expires_at": expires_at_uk,
             "is_expired": is_expired,
             "created_at": c.created_at,

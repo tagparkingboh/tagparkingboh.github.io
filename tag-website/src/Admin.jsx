@@ -5653,7 +5653,7 @@ function Admin() {
                                               // Multi-use code - show usage count
                                               code.max_uses === 0 ? (
                                                 // Unlimited uses
-                                                <span>♾️ {code.use_count} uses</span>
+                                                <span>∞ {code.use_count} {code.use_count === 1 ? 'use' : 'uses'}</span>
                                               ) : (
                                                 // Limited uses
                                                 <span>{code.use_count}/{code.max_uses} uses</span>
@@ -5665,7 +5665,13 @@ function Admin() {
                                           </span>
                                         </td>
                                         <td>
-                                          {code.booking_reference ? (
+                                          {code.booking_references && code.booking_references.length > 0 ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                              {code.booking_references.map((ref, idx) => (
+                                                <code key={idx} style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px', fontSize: '0.85em' }}>{ref}</code>
+                                              ))}
+                                            </div>
+                                          ) : code.booking_reference ? (
                                             <code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px' }}>{code.booking_reference}</code>
                                           ) : (
                                             <span style={{ color: '#999' }}>-</span>
