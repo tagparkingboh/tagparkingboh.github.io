@@ -7969,7 +7969,9 @@ async def create_payment(
                         intent = stripe.PaymentIntent.retrieve(existing_payment.stripe_payment_intent_id)
 
                         # Get the promo code from PaymentIntent metadata
-                        existing_promo = intent.metadata.get('promo_code') if intent.metadata else None
+                        # Stripe returns StripeObject - use getattr, not .get()
+                        metadata = getattr(intent, "metadata", None)
+                        existing_promo = getattr(metadata, "promo_code", None) if metadata else None
                         new_promo = request.promo_code.strip().upper() if request.promo_code else None
                         promo_changed = existing_promo != new_promo
                         print(f"[DEDUP] Existing promo: {existing_promo}, New promo: {new_promo}, Changed: {promo_changed}")
