@@ -66,9 +66,19 @@ const NAV_STRUCTURE = [
     icon: '⚙️',
     items: [
       { id: 'pricing', label: 'Pricing' },
-      { id: 'qa', label: 'QA Dashboard' },
       { id: 'testimonials', label: 'Testimonials' },
       { id: 'promo-modals', label: 'Promo Modals' },
+    ]
+  },
+  {
+    category: 'QA',
+    icon: '🔧',
+    restrictToUserId: 1,  // Only visible to user ID 1
+    items: [
+      { id: 'qa-tests', label: 'Test Results' },
+      { id: 'qa-audit', label: 'Audit Logs' },
+      { id: 'qa-errors', label: 'Error Logs' },
+      { id: 'qa-sql', label: 'SQL Interface' },
     ]
   },
 ]
@@ -474,9 +484,6 @@ function Admin() {
   const [errorSeverities, setErrorSeverities] = useState([])
   const [errorTypes, setErrorTypes] = useState([])
 
-  // QA Dashboard - Sub-tab state
-  const [qaSubTab, setQaSubTab] = useState('tests')
-
   // QA Dashboard - Expanded rows for details
   const [expandedAuditLog, setExpandedAuditLog] = useState(null)
   const [expandedErrorLog, setExpandedErrorLog] = useState(null)
@@ -660,35 +667,41 @@ function Admin() {
     }
   }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularTop, sessionTrackingPeriod])
 
-  // Fetch test results when QA tab is active
+  // Fetch test results when QA Tests tab is active
   useEffect(() => {
-    if (activeTab === 'qa' && token) {
+    if (activeTab === 'qa-tests' && token) {
       fetchTestResults()
+    }
+  }, [activeTab, token])
+
+  // Fetch audit event types and error log meta when any QA tab is active
+  useEffect(() => {
+    if (activeTab.startsWith('qa-') && token) {
       fetchAuditEventTypes()
       fetchErrorLogMeta()
     }
   }, [activeTab, token])
 
-  // Fetch audit logs when QA tab is active and sub-tab is audit
+  // Fetch audit logs when QA Audit tab is active
   useEffect(() => {
-    if (activeTab === 'qa' && qaSubTab === 'audit' && token) {
+    if (activeTab === 'qa-audit' && token) {
       fetchAuditLogs(true)
     }
-  }, [activeTab, qaSubTab, token, auditLogsFilters])
+  }, [activeTab, token, auditLogsFilters])
 
-  // Fetch error logs when QA tab is active and sub-tab is errors
+  // Fetch error logs when QA Errors tab is active
   useEffect(() => {
-    if (activeTab === 'qa' && qaSubTab === 'errors' && token) {
+    if (activeTab === 'qa-errors' && token) {
       fetchErrorLogs(true)
     }
-  }, [activeTab, qaSubTab, token, errorLogsFilters])
+  }, [activeTab, token, errorLogsFilters])
 
-  // Check SQL session when SQL sub-tab is opened
+  // Check SQL session when SQL tab is opened
   useEffect(() => {
-    if (activeTab === 'qa' && qaSubTab === 'sql' && token) {
+    if (activeTab === 'qa-sql' && token) {
       checkSqlSession()
     }
-  }, [activeTab, qaSubTab, token])
+  }, [activeTab, token])
 
   // Check if SQL session has expired (every minute)
   useEffect(() => {
@@ -4065,7 +4078,9 @@ function Admin() {
         {/* Sidebar */}
         <aside className="admin-sidebar">
           <nav className="admin-sidebar-nav">
-            {NAV_STRUCTURE.map(cat => (
+            {NAV_STRUCTURE
+              .filter(cat => !cat.restrictToUserId || cat.restrictToUserId === user?.id)
+              .map(cat => (
               <div key={cat.category} className="nav-category">
                 <button
                   className={`nav-category-header ${expandedCategories[cat.category] ? 'expanded' : ''}`}
@@ -9464,45 +9479,11 @@ function Admin() {
           </div>
         )}
 
-        {activeTab === 'qa' && (
+        {/* QA - Test Results */}
+        {activeTab === 'qa-tests' && (
           <div className="admin-section">
             <div className="admin-section-header">
-              <h2>QA Dashboard</h2>
-            </div>
-
-            {/* Sub-tabs */}
-            <div className="qa-subtabs">
-              <button
-                className={`qa-subtab ${qaSubTab === 'tests' ? 'active' : ''}`}
-                onClick={() => setQaSubTab('tests')}
-              >
-                Test Results
-              </button>
-              <button
-                className={`qa-subtab ${qaSubTab === 'audit' ? 'active' : ''}`}
-                onClick={() => setQaSubTab('audit')}
-              >
-                Audit Logs
-              </button>
-              <button
-                className={`qa-subtab ${qaSubTab === 'errors' ? 'active' : ''}`}
-                onClick={() => setQaSubTab('errors')}
-              >
-                Error Logs
-              </button>
-              <button
-                className={`qa-subtab ${qaSubTab === 'sql' ? 'active' : ''}`}
-                onClick={() => setQaSubTab('sql')}
-              >
-                SQL Interface
-              </button>
-            </div>
-
-            {/* Test Results Sub-tab */}
-            {qaSubTab === 'tests' && (
-              <>
-                <div className="admin-section-header" style={{ marginTop: '1rem' }}>
-                  <h3>Test Results</h3>
+              <h2>Test Results</h2>
                   <button onClick={fetchTestResults} className="admin-refresh" disabled={loadingTestResults}>
                     {loadingTestResults ? 'Loading...' : 'Refresh'}
                   </button>
@@ -9624,14 +9605,14 @@ function Admin() {
                     </div>
                   </>
                 )}
-              </>
-            )}
+          </div>
+        )}
 
-            {/* Audit Logs Sub-tab */}
-            {qaSubTab === 'audit' && (
-              <>
-                <div className="admin-section-header" style={{ marginTop: '1rem' }}>
-                  <h3>Audit Logs</h3>
+        {/* QA - Audit Logs */}
+        {activeTab === 'qa-audit' && (
+          <div className="admin-section">
+            <div className="admin-section-header">
+              <h2>Audit Logs</h2>
                   <button onClick={() => fetchAuditLogs(true)} className="admin-refresh" disabled={loadingAuditLogs}>
                     {loadingAuditLogs ? 'Loading...' : 'Refresh'}
                   </button>
@@ -9757,14 +9738,14 @@ function Admin() {
                     </div>
                   </>
                 )}
-              </>
-            )}
+          </div>
+        )}
 
-            {/* Error Logs Sub-tab */}
-            {qaSubTab === 'errors' && (
-              <>
-                <div className="admin-section-header" style={{ marginTop: '1rem' }}>
-                  <h3>Error Logs</h3>
+        {/* QA - Error Logs */}
+        {activeTab === 'qa-errors' && (
+          <div className="admin-section">
+            <div className="admin-section-header">
+              <h2>Error Logs</h2>
                   <button onClick={() => fetchErrorLogs(true)} className="admin-refresh" disabled={loadingErrorLogs}>
                     {loadingErrorLogs ? 'Loading...' : 'Refresh'}
                   </button>
@@ -9913,14 +9894,14 @@ function Admin() {
                     </div>
                   </>
                 )}
-              </>
-            )}
+          </div>
+        )}
 
-            {/* SQL Interface Sub-tab */}
-            {qaSubTab === 'sql' && (
-              <>
-                <div className="admin-section-header" style={{ marginTop: '1rem' }}>
-                  <h3>SQL Interface</h3>
+        {/* QA - SQL Interface */}
+        {activeTab === 'qa-sql' && (
+          <div className="admin-section">
+            <div className="admin-section-header">
+              <h2>SQL Interface</h2>
                   {sqlSessionToken && (
                     <div className="sql-session-info">
                       <span className="sql-session-active">Session Active</span>
@@ -10106,8 +10087,6 @@ function Admin() {
                     </div>
                   </div>
                 )}
-              </>
-            )}
           </div>
         )}
 
