@@ -9471,27 +9471,27 @@ function Admin() {
             </div>
 
             {/* Sub-tabs */}
-            <div className="admin-sub-tabs">
+            <div className="qa-subtabs">
               <button
-                className={`admin-sub-tab ${qaSubTab === 'tests' ? 'active' : ''}`}
+                className={`qa-subtab ${qaSubTab === 'tests' ? 'active' : ''}`}
                 onClick={() => setQaSubTab('tests')}
               >
                 Test Results
               </button>
               <button
-                className={`admin-sub-tab ${qaSubTab === 'audit' ? 'active' : ''}`}
+                className={`qa-subtab ${qaSubTab === 'audit' ? 'active' : ''}`}
                 onClick={() => setQaSubTab('audit')}
               >
                 Audit Logs
               </button>
               <button
-                className={`admin-sub-tab ${qaSubTab === 'errors' ? 'active' : ''}`}
+                className={`qa-subtab ${qaSubTab === 'errors' ? 'active' : ''}`}
                 onClick={() => setQaSubTab('errors')}
               >
                 Error Logs
               </button>
               <button
-                className={`admin-sub-tab ${qaSubTab === 'sql' ? 'active' : ''}`}
+                className={`qa-subtab ${qaSubTab === 'sql' ? 'active' : ''}`}
                 onClick={() => setQaSubTab('sql')}
               >
                 SQL Interface
