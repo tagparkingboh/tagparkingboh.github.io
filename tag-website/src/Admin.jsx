@@ -9841,64 +9841,22 @@ function Admin() {
                   </select>
                 </div>
 
-                <div className="form-group">
-                  <label>Max New Subscribers</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={promoModalForm.max_subscribers}
-                    onChange={(e) => setPromoModalForm({ ...promoModalForm, max_subscribers: e.target.value })}
-                    placeholder="Leave empty for unlimited"
-                  />
-                  <small style={{ color: '#666', fontSize: '0.8rem' }}>
-                    Auto-deactivates after this many new sign-ups
-                  </small>
-                </div>
-
-                <div className="form-group">
-                  <label>Promo Code</label>
-                  <select
-                    value={promoModalForm.promo_code}
-                    onChange={(e) => {
-                      const selectedCode = e.target.value
-                      setPromoModalForm({ ...promoModalForm, promo_code: selectedCode })
-                      // Find the selected code info
-                      const codeInfo = promoCodesForModal.find(c => c.code === selectedCode)
-                      setSelectedPromoCodeInfo(codeInfo || null)
-                      setPromoCodeIsMultiUse(codeInfo?.is_multi_use || false)
-                    }}
-                    style={{ width: '100%', padding: '0.5rem' }}
-                  >
-                    <option value="">-- No promo code --</option>
-                    {loadingPromoCodesForModal ? (
-                      <option disabled>Loading...</option>
-                    ) : (
-                      // Group codes by promotion
-                      [...new Set(promoCodesForModal.map(c => c.promotion_name))].map(promoName => (
-                        <optgroup key={promoName} label={promoName}>
-                          {promoCodesForModal
-                            .filter(c => c.promotion_name === promoName)
-                            .map(c => (
-                              <option key={c.id} value={c.code}>
-                                {c.code} ({c.promotion_discount}% off{c.is_multi_use ? ', multi-use' : ''}{c.is_used && !c.is_multi_use ? ', USED' : ''})
-                              </option>
-                            ))
-                          }
-                        </optgroup>
-                      ))
-                    )}
-                  </select>
-                  {selectedPromoCodeInfo && (
-                    <small style={{ color: selectedPromoCodeInfo.is_multi_use ? '#16a34a' : '#666', fontSize: '0.8rem', display: 'block', marginTop: '0.25rem' }}>
-                      {selectedPromoCodeInfo.is_multi_use
-                        ? `Multi-use code (${selectedPromoCodeInfo.use_count || 0} uses) - section expires by end date`
-                        : selectedPromoCodeInfo.is_used
-                          ? 'This code has already been used'
-                          : 'Single-use code - section hides when used'
-                      }
+                {/* Max Subscribers - Info Modal only */}
+                {promoModalForm.type === 'info_modal' && (
+                  <div className="form-group">
+                    <label>Max Views</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={promoModalForm.max_subscribers}
+                      onChange={(e) => setPromoModalForm({ ...promoModalForm, max_subscribers: e.target.value })}
+                      placeholder="Leave empty for unlimited"
+                    />
+                    <small style={{ color: '#666', fontSize: '0.8rem' }}>
+                      Auto-deactivates after this many views
                     </small>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
               </div>
 
