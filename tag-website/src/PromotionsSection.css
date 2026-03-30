@@ -1,8 +1,7 @@
 /* Promotions Section - Styled like Testimonials with TAG branding */
 .promotions-section {
   background: var(--dark-gray);
-  padding: 6rem 4rem 8rem;
-  margin-bottom: 4rem;
+  padding: 6rem 4rem 12rem;
   text-align: center;
   position: relative;
   overflow: hidden;
@@ -163,7 +162,7 @@
 /* Tablet */
 @media (max-width: 1024px) {
   .promotions-section {
-    padding: 5rem 3rem 7rem;
+    padding: 5rem 3rem 10rem;
   }
 
   .promotions-section h2 {
@@ -179,7 +178,7 @@
 /* Mobile */
 @media (max-width: 768px) {
   .promotions-section {
-    padding: 4rem 1.5rem 6rem;
+    padding: 4rem 1.5rem 8rem;
   }
 
   .promotions-section h2 {
@@ -222,7 +221,7 @@
 /* Small mobile */
 @media (max-width: 375px) {
   .promotions-section {
-    padding: 3rem 1rem 5rem;
+    padding: 3rem 1rem 6rem;
   }
 
   .promo-card {
