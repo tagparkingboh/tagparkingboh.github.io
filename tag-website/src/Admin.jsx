@@ -9958,13 +9958,13 @@ function Admin() {
                         <button
                           onClick={() => executeSqlQuery(false)}
                           disabled={sqlLoading || !sqlQuery.trim()}
-                          className="admin-btn admin-btn-primary"
+                          className="sql-run-btn"
                         >
                           {sqlLoading ? 'Executing...' : 'Run Query'}
                         </button>
                         <button
                           onClick={() => { setSqlQuery(''); setSqlResults(null); setSqlError('') }}
-                          className="admin-btn"
+                          className="sql-clear-btn"
                         >
                           Clear
                         </button>

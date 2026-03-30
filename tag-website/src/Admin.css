@@ -5131,8 +5131,47 @@
 
 .sql-editor-actions {
   display: flex;
-  gap: 10px;
-  margin-top: 12px;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+/* Run Query button - matches ManualBooking submit style */
+.sql-run-btn {
+  padding: 0.75rem 1.5rem;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.sql-run-btn:hover:not(:disabled) {
+  background: #218838;
+}
+
+.sql-run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Clear button - matches ManualBooking lookup style */
+.sql-clear-btn {
+  padding: 0.75rem 1.25rem;
+  background: #f7b32b;
+  color: #1a1a2e;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.sql-clear-btn:hover {
+  background: #e5a320;
 }
 
 .sql-error {
