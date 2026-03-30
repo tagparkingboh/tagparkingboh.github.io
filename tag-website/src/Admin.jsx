@@ -9916,7 +9916,7 @@ function Admin() {
                     >
                       <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem' }}>{promoModalForm.title || 'Title'}</h4>
                       {promoModalForm.message && (
-                        <p style={{ margin: '0 0 1rem 0', opacity: 0.9, whiteSpace: 'pre-line', fontSize: '0.85rem', color: '#fff' }}>{promoModalForm.message}</p>
+                        <p style={{ margin: '0 0 1rem 0', opacity: 0.9, whiteSpace: 'pre-line', fontSize: '0.85rem' }}>{promoModalForm.message}</p>
                       )}
                       {promoModalForm.promo_code && (
                         <div style={{
