@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import TestimonialsCarousel from './TestimonialsCarousel'
+import PromotionsSection from './PromotionsSection'
 import PromoModal from './PromoModal'
 import './App.css'
 
@@ -236,6 +237,7 @@ function HomePage() {
           <div className={`menu-overlay ${menuOpen ? 'open' : ''}`} onClick={closeMenu}></div>
           <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
             <li><a href="#pricing" onClick={closeMenu}>Pricing</a></li>
+            <li><a href="#promotions" onClick={closeMenu}>Promotions</a></li>
             <li><a href="#how-it-works" onClick={closeMenu}>Meet & Greet</a></li>
             <li><a href="#testimonials" onClick={closeMenu}>Testimonials</a></li>
             <li><a href="#subscribe" onClick={closeMenu}>Subscribe</a></li>
@@ -361,6 +363,9 @@ function HomePage() {
         </div>
         <div className="features-bottom-bar"></div>
       </section>
+
+      {/* Promotions Section - only shows if there's an active promo */}
+      <PromotionsSection />
 
       {/* How TAG Works */}
       <section className="how-it-works" id="how-it-works">

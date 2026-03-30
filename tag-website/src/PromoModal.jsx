@@ -53,6 +53,13 @@ function PromoModal() {
         subscribeSection.scrollIntoView({ behavior: 'smooth' })
       }
       handleClose()
+    } else if (promo.buttonAction === 'promotions') {
+      // Scroll to promotions section
+      const promotionsSection = document.getElementById('promotions')
+      if (promotionsSection) {
+        promotionsSection.scrollIntoView({ behavior: 'smooth' })
+      }
+      handleClose()
     } else if (promo.buttonAction === 'link' && promo.buttonLink) {
       window.open(promo.buttonLink, '_blank')
       handleClose()
@@ -85,19 +92,6 @@ function PromoModal() {
         <div className="promo-modal-content">
           <h2 className="promo-modal-title">{promo.title}</h2>
           <p className="promo-modal-message" style={{ whiteSpace: 'pre-line' }}>{promo.message}</p>
-
-          {promo.startDate && promo.endDate && (
-            <p className="promo-modal-dates">
-              Valid: {promo.startDate} - {promo.endDate}
-            </p>
-          )}
-
-          {promo.promoCode && (
-            <div className="promo-modal-code">
-              <div className="promo-modal-code-label">USE CODE</div>
-              <div className="promo-modal-code-value">{promo.promoCode}</div>
-            </div>
-          )}
 
           <button
             className="promo-modal-button"

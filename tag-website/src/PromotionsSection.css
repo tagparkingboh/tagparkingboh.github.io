@@ -1,0 +1,235 @@
+/* Promotions Section - Styled like Testimonials with TAG branding */
+.promotions-section {
+  background: var(--dark-gray);
+  padding: 5rem 4rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle background pattern */
+.promotions-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(204, 255, 0, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 80% 50%, rgba(204, 255, 0, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.promotions-section h2 {
+  font-size: 48px;
+  color: #D9FF00;
+  margin-bottom: 1rem;
+  font-weight: 700;
+  position: relative;
+}
+
+.promotions-section .section-subtitle {
+  font-size: 18px;
+  font-weight: 500;
+  color: #FFFFFF;
+  margin-bottom: 2.5rem;
+  line-height: 1.6;
+  opacity: 0.9;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  white-space: pre-line;
+}
+
+/* Promo card - premium feel like testimonial card */
+.promo-card {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 3rem;
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+  text-align: center;
+  position: relative;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.promo-card-header {
+  margin-bottom: 1.5rem;
+}
+
+.promo-discount-badge {
+  display: inline-block;
+  background: var(--lime-green);
+  color: var(--dark-gray);
+  font-size: 1.5rem;
+  font-weight: 800;
+  padding: 0.5rem 1.5rem;
+  border-radius: 30px;
+  margin-bottom: 1rem;
+}
+
+.promo-card-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #343434;
+  margin: 0 0 0.5rem 0;
+}
+
+.promo-card-message {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: #555;
+  margin: 0 0 1.5rem 0;
+  white-space: pre-line;
+}
+
+/* Promo code box */
+.promo-code-box {
+  background: #f5f5f5;
+  border: 2px dashed var(--lime-green);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.promo-code-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 0.5rem;
+}
+
+.promo-code-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--dark-gray);
+  letter-spacing: 2px;
+  font-family: monospace;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.promo-code-value:hover {
+  color: var(--lime-green);
+}
+
+.promo-code-copy-icon {
+  font-size: 1.25rem;
+  opacity: 0.6;
+}
+
+.promo-code-copied {
+  font-size: 0.85rem;
+  color: #16a34a;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+/* Valid dates */
+.promo-dates {
+  font-size: 0.9rem;
+  color: #888;
+  margin-top: 1rem;
+}
+
+/* CTA hint */
+.promo-cta-hint {
+  margin-top: 1.5rem;
+  font-size: 0.95rem;
+  color: #666;
+}
+
+.promo-cta-hint a {
+  color: var(--dark-gray);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.promo-cta-hint a:hover {
+  color: var(--lime-green);
+}
+
+/* ===== RESPONSIVE DESIGN ===== */
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .promotions-section {
+    padding: 4rem 3rem;
+  }
+
+  .promotions-section h2 {
+    font-size: 36px;
+  }
+
+  .promo-card {
+    padding: 2.5rem;
+    max-width: 500px;
+  }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .promotions-section {
+    padding: 3rem 1.5rem;
+  }
+
+  .promotions-section h2 {
+    font-size: 28px;
+    margin-bottom: 0.75rem;
+  }
+
+  .promotions-section .section-subtitle {
+    font-size: 16px;
+    margin-bottom: 2rem;
+  }
+
+  .promo-card {
+    padding: 2rem 1.5rem;
+    border-radius: 12px;
+  }
+
+  .promo-discount-badge {
+    font-size: 1.25rem;
+    padding: 0.4rem 1.25rem;
+  }
+
+  .promo-card-title {
+    font-size: 1.5rem;
+  }
+
+  .promo-card-message {
+    font-size: 1rem;
+  }
+
+  .promo-code-value {
+    font-size: 1.5rem;
+  }
+
+  .promo-code-box {
+    padding: 1.25rem;
+  }
+}
+
+/* Small mobile */
+@media (max-width: 375px) {
+  .promotions-section {
+    padding: 2.5rem 1rem;
+  }
+
+  .promo-card {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .promo-code-value {
+    font-size: 1.25rem;
+    letter-spacing: 1px;
+  }
+}
