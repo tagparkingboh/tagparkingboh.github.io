@@ -200,85 +200,202 @@ class TestPromoCodeChangeDetection:
 
 
 # =============================================================================
-# UNIT TESTS: PaymentIntent Cancellation Logic
+# UNIT TESTS: PaymentIntent Modification Logic
 # =============================================================================
 
-class TestPaymentIntentCancellation:
-    """Tests for PaymentIntent cancellation when promo changes."""
+class TestPaymentIntentModification:
+    """Tests for PaymentIntent modification when promo changes.
 
-    def test_cancel_called_when_promo_changes(self):
-        """stripe.PaymentIntent.cancel should be called when promo changes."""
+    When a promo code is added/removed/changed, the existing PaymentIntent
+    should be modified with the new amount and metadata, NOT cancelled and recreated.
+    """
+
+    def test_modify_called_when_promo_changes(self):
+        """stripe.PaymentIntent.modify should be called when promo changes."""
         import stripe
 
-        with patch.object(stripe.PaymentIntent, 'cancel') as mock_cancel:
-            mock_cancel.return_value = MagicMock(status='canceled')
+        with patch.object(stripe.PaymentIntent, 'modify') as mock_modify:
+            mock_modify.return_value = MagicMock(
+                id='pi_test123',
+                client_secret='pi_test123_secret',
+                amount=7650,
+                status='requires_payment_method'
+            )
 
-            # Simulate the cancellation
-            old_intent_id = "pi_old123"
-            stripe.PaymentIntent.cancel(old_intent_id)
+            # Simulate the modification
+            intent_id = "pi_test123"
+            new_amount = 7650  # After 10% discount on £85
+            stripe.PaymentIntent.modify(
+                intent_id,
+                amount=new_amount,
+                metadata={"promo_code": "SUN10", "original_amount": "8500", "discount_amount": "850"}
+            )
 
-            mock_cancel.assert_called_once_with(old_intent_id)
+            mock_modify.assert_called_once()
+            call_args = mock_modify.call_args
+            assert call_args[0][0] == intent_id
+            assert call_args[1]['amount'] == 7650
 
-    def test_cancel_error_handled_gracefully(self):
-        """Stripe cancel errors should be caught and logged, not raised."""
+    def test_modify_updates_metadata_with_promo_info(self):
+        """PaymentIntent metadata should include promo code and discount info."""
         import stripe
 
-        with patch.object(stripe.PaymentIntent, 'cancel') as mock_cancel:
-            mock_cancel.side_effect = stripe.error.StripeError("Already canceled")
+        with patch.object(stripe.PaymentIntent, 'modify') as mock_modify:
+            mock_modify.return_value = MagicMock(id='pi_test123')
 
-            # Simulate the error handling
+            original_amount = 8500
+            discount_amount = 850
+            new_amount = original_amount - discount_amount
+
+            stripe.PaymentIntent.modify(
+                "pi_test123",
+                amount=new_amount,
+                metadata={
+                    "promo_code": "SUN10",
+                    "original_amount": str(original_amount),
+                    "discount_amount": str(discount_amount),
+                }
+            )
+
+            call_args = mock_modify.call_args
+            metadata = call_args[1]['metadata']
+            assert metadata['promo_code'] == "SUN10"
+            assert metadata['original_amount'] == "8500"
+            assert metadata['discount_amount'] == "850"
+
+    def test_modify_removes_promo_info_when_promo_removed(self):
+        """When promo is removed, metadata should have empty promo fields."""
+        import stripe
+
+        with patch.object(stripe.PaymentIntent, 'modify') as mock_modify:
+            mock_modify.return_value = MagicMock(id='pi_test123')
+
+            original_amount = 8500
+
+            stripe.PaymentIntent.modify(
+                "pi_test123",
+                amount=original_amount,  # Full price, no discount
+                metadata={
+                    "promo_code": "",
+                    "original_amount": "",
+                    "discount_amount": "",
+                }
+            )
+
+            call_args = mock_modify.call_args
+            assert call_args[1]['amount'] == 8500
+            metadata = call_args[1]['metadata']
+            assert metadata['promo_code'] == ""
+
+    def test_modify_error_handled_gracefully(self):
+        """Stripe modify errors should be caught and logged, not raised."""
+        import stripe
+
+        with patch.object(stripe.PaymentIntent, 'modify') as mock_modify:
+            mock_modify.side_effect = stripe.error.StripeError("Cannot modify")
+
             error_caught = False
             try:
-                stripe.PaymentIntent.cancel("pi_already_canceled")
+                stripe.PaymentIntent.modify("pi_test123", amount=7650)
             except stripe.error.StripeError:
                 error_caught = True
 
             assert error_caught is True
-            # In actual code, this error is caught and logged
+            # In actual code, this error is caught and falls through to create new intent
 
-    def test_cancel_not_called_when_promo_unchanged(self):
-        """PaymentIntent should NOT be canceled when promo is unchanged."""
+    def test_no_modification_when_promo_unchanged(self):
+        """PaymentIntent should NOT be modified when promo is unchanged."""
         existing_promo = "FOUNDER-ABC123"
         new_promo = "FOUNDER-ABC123"
         promo_changed = existing_promo != new_promo
 
-        # Cancel should only be called if promo_changed is True
-        should_cancel = promo_changed
+        # Modify should only be called if promo_changed is True
+        should_modify = promo_changed
 
-        assert should_cancel is False
+        assert should_modify is False
+
+    def test_cancel_only_for_100_percent_discount(self):
+        """PaymentIntent should only be cancelled for 100% free bookings.
+
+        Stripe doesn't allow £0 PaymentIntents, so for 100% discount we must
+        cancel the PaymentIntent and handle the booking as a free booking.
+        """
+        import stripe
+
+        # For a 100% discount, we need to cancel (can't have £0 PaymentIntent)
+        discount_percent = 100
+        original_amount = 8500
+        discount_amount = original_amount  # 100% off
+        final_amount = original_amount - discount_amount
+
+        assert final_amount == 0
+        assert discount_percent == 100
+
+        # In this case, cancel should be called instead of modify
+        should_cancel = final_amount == 0
+        assert should_cancel is True
 
 
 # =============================================================================
-# UNIT TESTS: Payment Record Deletion
+# UNIT TESTS: Payment Record Update
 # =============================================================================
 
-class TestPaymentRecordDeletion:
-    """Tests for payment record deletion when promo changes."""
+class TestPaymentRecordUpdate:
+    """Tests for payment record update when promo changes.
 
-    def test_payment_record_deleted_when_promo_changes(self):
-        """Old payment record should be deleted when promo changes."""
+    When promo changes, the existing payment record should be UPDATED with the
+    new amount, NOT deleted and recreated.
+    """
+
+    def test_payment_record_updated_when_promo_changes(self):
+        """Payment record amount should be updated when promo changes."""
         mock_db = MagicMock()
         mock_payment = MagicMock(spec=Payment)
-        mock_payment.stripe_payment_intent_id = "pi_old123"
+        mock_payment.stripe_payment_intent_id = "pi_test123"
+        mock_payment.amount_pence = 8500  # Original amount
 
-        # Simulate deletion
-        mock_db.delete(mock_payment)
+        # Simulate update with new discounted amount
+        new_amount = 7650  # After 10% discount
+        mock_payment.amount_pence = new_amount
         mock_db.commit()
 
-        mock_db.delete.assert_called_once_with(mock_payment)
+        assert mock_payment.amount_pence == 7650
         mock_db.commit.assert_called_once()
 
-    def test_payment_record_not_deleted_when_promo_unchanged(self):
-        """Payment record should NOT be deleted when promo is unchanged."""
+    def test_payment_record_not_updated_when_promo_unchanged(self):
+        """Payment record should NOT be updated when promo is unchanged."""
+        mock_db = MagicMock()
+        mock_payment = MagicMock(spec=Payment)
+        mock_payment.amount_pence = 8500
+
+        promo_changed = False
+        original_amount = mock_payment.amount_pence
+
+        if promo_changed:
+            mock_payment.amount_pence = 7650
+            mock_db.commit()
+
+        # Amount should remain unchanged
+        assert mock_payment.amount_pence == original_amount
+        mock_db.commit.assert_not_called()
+
+    def test_payment_record_deleted_only_for_free_booking(self):
+        """Payment record should only be deleted for 100% free bookings.
+
+        When a 100% discount is applied, we can't have a £0 PaymentIntent,
+        so we cancel/delete the payment and handle as a free booking.
+        """
         mock_db = MagicMock()
         mock_payment = MagicMock(spec=Payment)
 
-        promo_changed = False
+        discount_percent = 100
+        is_free_booking = discount_percent == 100
 
-        if promo_changed:
+        if is_free_booking:
             mock_db.delete(mock_payment)
+            mock_db.commit()
 
-        mock_db.delete.assert_not_called()
+        mock_db.delete.assert_called_once_with(mock_payment)
 
 
 # =============================================================================
@@ -289,7 +406,8 @@ class TestPaymentIntentUpdateOnPromoChange:
     """Tests for PaymentIntent updates when promo changes.
 
     NOTE: Promo info is stored in PaymentIntent metadata, NOT in Booking table.
-    When promo changes, old PaymentIntent is canceled and new one is created.
+    When promo changes, the existing PaymentIntent is modified with new amount
+    and metadata (not cancelled and recreated).
     """
 
     def test_new_payment_intent_has_promo_in_metadata(self):

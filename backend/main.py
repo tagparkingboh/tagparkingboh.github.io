@@ -7979,31 +7979,141 @@ async def create_payment(
                         promo_changed = existing_promo != new_promo
                         print(f"[DEDUP] Existing promo: {existing_promo}, New promo: {new_promo}, Changed: {promo_changed}")
 
-                        if promo_changed:
-                            # Promo code changed - cancel old PaymentIntent and delete old payment record
-                            print(f"[DEDUP] Promo code changed - canceling old PaymentIntent and creating new one")
-                            try:
-                                stripe.PaymentIntent.cancel(existing_payment.stripe_payment_intent_id)
-                                print(f"[DEDUP] Canceled old PaymentIntent: {existing_payment.stripe_payment_intent_id}")
-                            except stripe.error.StripeError as e:
-                                print(f"[DEDUP] Could not cancel old PaymentIntent (may already be canceled): {e}")
-                            # Delete the old payment record so we can create a fresh one
-                            db.delete(existing_payment)
-                            db.commit()
-                            print(f"[DEDUP] Deleted old payment record")
-                            # Continue to create new payment intent below, will reuse existing booking
-                        elif intent.status in ['requires_payment_method', 'requires_confirmation', 'requires_action']:
-                            # PaymentIntent is still usable and promo hasn't changed - return it
-                            print(f"[DEDUP] Reusing existing PaymentIntent {intent.id} (status: {intent.status})")
-                            settings = get_settings()
-                            return CreatePaymentResponse(
-                                client_secret=intent.client_secret,
-                                payment_intent_id=intent.id,
-                                booking_reference=existing_booking.reference,
-                                amount=intent.amount,
-                                amount_display=f"£{intent.amount / 100:.2f}",
-                                publishable_key=settings.stripe_publishable_key,
-                            )
+                        if intent.status in ['requires_payment_method', 'requires_confirmation', 'requires_action']:
+                            if promo_changed:
+                                # Promo code changed - modify existing PaymentIntent instead of cancel/create
+                                print(f"[DEDUP] Promo code changed - modifying existing PaymentIntent")
+
+                                # Calculate new amount with the new promo code
+                                dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
+                                pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
+                                duration_days = (pickup_date - dropoff_date).days
+
+                                new_original_amount = calculate_price_in_pence(
+                                    package=request.package,
+                                    drop_off_date=dropoff_date,
+                                    duration_days=duration_days
+                                )
+
+                                new_discount_amount = 0
+                                new_promo_code_applied = None
+                                is_free_booking = False
+
+                                if new_promo:
+                                    # Validate and calculate discount for the new promo code
+                                    from db_models import PromoCode as DbPromoCode, Promotion as DbPromotion
+
+                                    promo_code_record = db.query(DbPromoCode).filter(DbPromoCode.code == new_promo).first()
+                                    if promo_code_record and promo_code_record.is_active:
+                                        promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
+                                        if promotion:
+                                            # Check if code can be used (single-use: not used, multi-use: always ok)
+                                            can_use = promo_code_record.is_multi_use or not promo_code_record.used
+                                            if can_use:
+                                                discount_percent = promotion.discount_percent
+                                                if discount_percent == 100:
+                                                    new_discount_amount = new_original_amount
+                                                    is_free_booking = True
+                                                else:
+                                                    new_discount_amount = int(new_original_amount * discount_percent / 100)
+                                                new_promo_code_applied = new_promo
+                                                print(f"[DEDUP] New promo {new_promo}: {discount_percent}% = {new_discount_amount} pence discount")
+                                    else:
+                                        # Check legacy promotions table
+                                        from db_models import Promotion
+                                        promo_record = db.query(Promotion).filter(
+                                            Promotion.promo_code == new_promo,
+                                            Promotion.is_active == True
+                                        ).first()
+                                        if promo_record and not promo_record.used:
+                                            discount_percent = promo_record.discount_percent
+                                            if discount_percent == 100:
+                                                if duration_days <= 7:
+                                                    new_discount_amount = new_original_amount
+                                                    is_free_booking = True
+                                                else:
+                                                    week1_base_pence = int(get_base_price_for_duration(7) * 100)
+                                                    new_discount_amount = min(week1_base_pence, new_original_amount)
+                                            else:
+                                                new_discount_amount = int(new_original_amount * discount_percent / 100)
+                                            new_promo_code_applied = new_promo
+                                            print(f"[DEDUP] Legacy promo {new_promo}: {discount_percent}% = {new_discount_amount} pence discount")
+
+                                new_amount = new_original_amount - new_discount_amount
+
+                                # Handle 100% discount (free booking) - can't have £0 PaymentIntent
+                                if is_free_booking:
+                                    print(f"[DEDUP] 100% discount - canceling PaymentIntent for free booking")
+                                    try:
+                                        stripe.PaymentIntent.cancel(existing_payment.stripe_payment_intent_id)
+                                    except stripe.error.StripeError as e:
+                                        print(f"[DEDUP] Could not cancel PaymentIntent: {e}")
+                                    db.delete(existing_payment)
+                                    db.commit()
+                                    # Fall through to create free booking flow below
+                                else:
+                                    # Modify the existing PaymentIntent with new amount and metadata
+                                    try:
+                                        modified_intent = stripe.PaymentIntent.modify(
+                                            existing_payment.stripe_payment_intent_id,
+                                            amount=new_amount,
+                                            metadata={
+                                                "booking_reference": existing_booking.reference,
+                                                "customer_name": request.customer_name,
+                                                "flight_number": request.flight_number,
+                                                "drop_off_date": request.drop_off_date,
+                                                "pickup_date": request.pickup_date,
+                                                "flight_date": request.flight_date,
+                                                "drop_off_slot": request.drop_off_slot,
+                                                "departure_id": request.departure_id or "",
+                                                "promo_code": new_promo_code_applied or "",
+                                                "original_amount": str(new_original_amount) if new_promo_code_applied else "",
+                                                "discount_amount": str(new_discount_amount) if new_promo_code_applied else "",
+                                            }
+                                        )
+                                        print(f"[DEDUP] Modified PaymentIntent {modified_intent.id} - new amount: {new_amount}")
+
+                                        # Update payment record in DB
+                                        existing_payment.amount_pence = new_amount
+                                        db.commit()
+                                        print(f"[DEDUP] Updated payment record amount to {new_amount}")
+
+                                        # Return the modified PaymentIntent
+                                        settings = get_settings()
+                                        response = CreatePaymentResponse(
+                                            client_secret=modified_intent.client_secret,
+                                            payment_intent_id=modified_intent.id,
+                                            booking_reference=existing_booking.reference,
+                                            amount=new_amount,
+                                            amount_display=f"£{new_amount / 100:.2f}",
+                                            publishable_key=settings.stripe_publishable_key,
+                                        )
+
+                                        # Add discount info if promo code was applied
+                                        if new_promo_code_applied:
+                                            response.original_amount = new_original_amount
+                                            response.original_amount_display = f"£{new_original_amount / 100:.2f}"
+                                            response.discount_amount = new_discount_amount
+                                            response.discount_amount_display = f"£{new_discount_amount / 100:.2f}"
+                                            response.promo_code_applied = new_promo_code_applied
+
+                                        return response
+
+                                    except stripe.error.StripeError as e:
+                                        print(f"[DEDUP] Could not modify PaymentIntent: {e}")
+                                        # Fall through to create new one
+                            else:
+                                # PaymentIntent is still usable and promo hasn't changed - return it
+                                print(f"[DEDUP] Reusing existing PaymentIntent {intent.id} (status: {intent.status})")
+                                settings = get_settings()
+                                return CreatePaymentResponse(
+                                    client_secret=intent.client_secret,
+                                    payment_intent_id=intent.id,
+                                    booking_reference=existing_booking.reference,
+                                    amount=intent.amount,
+                                    amount_display=f"£{intent.amount / 100:.2f}",
+                                    publishable_key=settings.stripe_publishable_key,
+                                )
                         else:
                             print(f"[DEDUP] Existing PaymentIntent {intent.id} not usable (status: {intent.status})")
                     except stripe.error.StripeError as e:
