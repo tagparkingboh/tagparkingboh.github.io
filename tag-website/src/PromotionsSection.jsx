@@ -40,12 +40,6 @@ function PromotionsSection() {
       )}
 
       <div className="promo-card">
-        <div className="promo-card-header">
-          <div className="promo-discount-badge">
-            Limited Time Offer
-          </div>
-        </div>
-
         <div className="promo-code-box">
           <div className="promo-code-label">Use code at checkout</div>
           <div className="promo-code-value" onClick={handleCopyCode} title="Click to copy">
@@ -62,7 +56,7 @@ function PromotionsSection() {
         )}
 
         <div className="promo-cta-hint">
-          Enter this code in the promo section when <a href="#pricing">booking</a>
+          Enter this code in the promo section when <a href="/tag-it">booking</a>
         </div>
       </div>
     </section>
