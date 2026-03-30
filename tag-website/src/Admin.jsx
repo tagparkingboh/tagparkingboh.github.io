@@ -472,6 +472,7 @@ function Admin() {
   const [showPromoModalForm, setShowPromoModalForm] = useState(false)
   const [editingPromoModal, setEditingPromoModal] = useState(null)
   const [promoModalForm, setPromoModalForm] = useState({
+    type: 'info_modal',  // info_modal or promo_section
     title: '',
     message: '',
     button_text: 'Subscribe',
@@ -666,11 +667,13 @@ function Admin() {
       })
 
       if (response.ok) {
-        setPromoModalSuccessMessage(editingPromoModal ? 'Promo modal updated!' : 'Promo modal created!')
+        const typeLabel = promoModalForm.type === 'promo_section' ? 'Promo section' : 'Info modal'
+        setPromoModalSuccessMessage(editingPromoModal ? `${typeLabel} updated!` : `${typeLabel} created!`)
         setTimeout(() => setPromoModalSuccessMessage(''), 3000)
         setShowPromoModalForm(false)
         setEditingPromoModal(null)
         setPromoModalForm({
+          type: 'info_modal',
           title: '',
           message: '',
           button_text: 'Subscribe',
@@ -738,6 +741,7 @@ function Admin() {
   const openEditPromoModal = (modal) => {
     setEditingPromoModal(modal)
     setPromoModalForm({
+      type: modal.type || 'info_modal',
       title: modal.title,
       message: modal.message,
       button_text: modal.buttonText,
@@ -9392,12 +9396,13 @@ function Admin() {
         {activeTab === 'promo-modals' && (
           <div className="admin-section">
             <div className="admin-section-header">
-              <h2>Promo Modals</h2>
+              <h2>Info Modals & Promo Sections</h2>
               <div className="admin-header-actions">
                 <button
                   onClick={() => {
                     setEditingPromoModal(null)
                     setPromoModalForm({
+                      type: 'info_modal',
                       title: '',
                       message: '',
                       button_text: 'Subscribe',
@@ -9415,12 +9420,40 @@ function Admin() {
                     })
                     setPromoCodeIsMultiUse(false)
                     setSelectedPromoCodeInfo(null)
-                    fetchPromoCodesForModal()
                     setShowPromoModalForm(true)
                   }}
                   className="admin-btn admin-btn-primary"
                 >
-                  + Add Promo Modal
+                  + Add Info Modal
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingPromoModal(null)
+                    setPromoModalForm({
+                      type: 'promo_section',
+                      title: '',
+                      message: '',
+                      button_text: '',
+                      button_action: 'close',
+                      button_link: '',
+                      start_date: '',
+                      end_date: '',
+                      background_color: '#343434',
+                      text_color: '#d9ff00',
+                      button_color: '#d9ff00',
+                      button_text_color: '#343434',
+                      status: 'inactive',
+                      max_subscribers: '',
+                      promo_code: ''
+                    })
+                    setPromoCodeIsMultiUse(false)
+                    setSelectedPromoCodeInfo(null)
+                    fetchPromoCodesForModal()
+                    setShowPromoModalForm(true)
+                  }}
+                  className="admin-btn admin-btn-secondary"
+                >
+                  + Add Promo Section
                 </button>
                 <button onClick={fetchPromoModals} className="admin-refresh" disabled={loadingPromoModals}>
                   {loadingPromoModals ? 'Loading...' : 'Refresh'}
@@ -9433,8 +9466,9 @@ function Admin() {
             )}
 
             <p className="reports-description">
-              Create promotional popups that display when users first visit the homepage.
-              Only one active modal within its date range will be shown at a time.
+              <strong>Info Modal:</strong> A popup that appears when users first visit the site (title + message + button).
+              <br />
+              <strong>Promo Section:</strong> A section on the homepage showing a promo code (title + message + copyable code).
             </p>
 
             {loadingPromoModals ? (
@@ -9448,6 +9482,7 @@ function Admin() {
               <table className="admin-table">
                 <thead>
                   <tr>
+                    <th>Type</th>
                     <th>Title</th>
                     <th>Status</th>
                     <th>Date Range</th>
@@ -9460,8 +9495,22 @@ function Admin() {
                 <tbody>
                   {promoModals.map(modal => {
                     const ctr = modal.viewCount > 0 ? ((modal.clickCount / modal.viewCount) * 100).toFixed(1) : '0.0'
+                    const typeLabel = modal.type === 'promo_section' ? 'Promo Section' : 'Info Modal'
+                    const typeColor = modal.type === 'promo_section' ? '#16a34a' : '#3b82f6'
                     return (
                       <tr key={modal.id}>
+                        <td>
+                          <span style={{
+                            backgroundColor: typeColor,
+                            color: '#fff',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            fontWeight: '600'
+                          }}>
+                            {typeLabel}
+                          </span>
+                        </td>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <span
@@ -9533,16 +9582,18 @@ function Admin() {
       {showPromoModalForm && (
         <div className="modal-overlay" onClick={() => setShowPromoModalForm(false)}>
           <div className="modal-content modal-content-wide" onClick={(e) => e.stopPropagation()}>
-            <h3>{editingPromoModal ? 'Edit Promo Modal' : 'Add Promo Modal'}</h3>
+            <h3>{editingPromoModal ? `Edit ${promoModalForm.type === 'promo_section' ? 'Promo Section' : 'Info Modal'}` : `Add ${promoModalForm.type === 'promo_section' ? 'Promo Section' : 'Info Modal'}`}</h3>
 
             <div className="modal-form">
-              {/* Info Modal Settings */}
+              {/* Common Settings */}
               <div style={{ background: '#f8f9fa', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
                 <h4 style={{ margin: '0 0 1rem 0', color: '#343434', fontSize: '1rem', borderBottom: '2px solid #d9ff00', paddingBottom: '0.5rem' }}>
-                  Info Modal Settings
+                  {promoModalForm.type === 'promo_section' ? 'Promo Section Settings' : 'Info Modal Settings'}
                 </h4>
                 <p style={{ fontSize: '0.85rem', color: '#666', margin: '0 0 1rem 0' }}>
-                  This appears as a popup when users first visit the site
+                  {promoModalForm.type === 'promo_section'
+                    ? 'This appears as a section on the homepage with a copyable promo code'
+                    : 'This appears as a popup when users first visit the site'}
                 </p>
 
               <div className="form-group">
@@ -9566,52 +9617,100 @@ function Admin() {
                 />
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Button Text</label>
-                  <input
-                    type="text"
-                    value={promoModalForm.button_text}
-                    onChange={(e) => setPromoModalForm({ ...promoModalForm, button_text: e.target.value })}
-                    placeholder="Subscribe"
-                  />
-                </div>
+              {/* Button fields - Info Modal only */}
+              {promoModalForm.type === 'info_modal' && (
+                <>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Button Text</label>
+                      <input
+                        type="text"
+                        value={promoModalForm.button_text}
+                        onChange={(e) => setPromoModalForm({ ...promoModalForm, button_text: e.target.value })}
+                        placeholder="Subscribe"
+                      />
+                    </div>
 
+                    <div className="form-group">
+                      <label>Button Action</label>
+                      <select
+                        value={promoModalForm.button_action}
+                        onChange={(e) => setPromoModalForm({ ...promoModalForm, button_action: e.target.value })}
+                      >
+                        <option value="promotions">Scroll to Promotions</option>
+                        <option value="subscribe">Scroll to Subscribe</option>
+                        <option value="link">Open Link</option>
+                        <option value="close">Just Close</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {promoModalForm.button_action === 'link' && (
+                    <div className="form-group">
+                      <label>Button Link</label>
+                      <input
+                        type="url"
+                        value={promoModalForm.button_link}
+                        onChange={(e) => setPromoModalForm({ ...promoModalForm, button_link: e.target.value })}
+                        placeholder="https://..."
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Promo Code - Promo Section only */}
+              {promoModalForm.type === 'promo_section' && (
                 <div className="form-group">
-                  <label>Button Action</label>
+                  <label>Promo Code *</label>
                   <select
-                    value={promoModalForm.button_action}
-                    onChange={(e) => setPromoModalForm({ ...promoModalForm, button_action: e.target.value })}
+                    value={promoModalForm.promo_code}
+                    onChange={(e) => {
+                      const selectedCode = e.target.value
+                      setPromoModalForm({ ...promoModalForm, promo_code: selectedCode })
+                      const codeInfo = promoCodesForModal.find(c => c.code === selectedCode)
+                      setSelectedPromoCodeInfo(codeInfo || null)
+                      setPromoCodeIsMultiUse(codeInfo?.is_multi_use || false)
+                    }}
+                    style={{ width: '100%', padding: '0.5rem' }}
                   >
-                    <option value="promotions">Scroll to Promotions</option>
-                    <option value="subscribe">Scroll to Subscribe</option>
-                    <option value="link">Open Link</option>
-                    <option value="close">Just Close</option>
+                    <option value="">-- Select a promo code --</option>
+                    {loadingPromoCodesForModal ? (
+                      <option disabled>Loading...</option>
+                    ) : (
+                      [...new Set(promoCodesForModal.map(c => c.promotion_name))].map(promoName => (
+                        <optgroup key={promoName} label={promoName}>
+                          {promoCodesForModal
+                            .filter(c => c.promotion_name === promoName)
+                            .map(c => (
+                              <option key={c.id} value={c.code}>
+                                {c.code} ({c.promotion_discount}% off{c.is_multi_use ? ', multi-use' : ''}{c.is_used && !c.is_multi_use ? ', USED' : ''})
+                              </option>
+                            ))
+                          }
+                        </optgroup>
+                      ))
+                    )}
                   </select>
-                </div>
-              </div>
-
-              {promoModalForm.button_action === 'link' && (
-                <div className="form-group">
-                  <label>Button Link</label>
-                  <input
-                    type="url"
-                    value={promoModalForm.button_link}
-                    onChange={(e) => setPromoModalForm({ ...promoModalForm, button_link: e.target.value })}
-                    placeholder="https://..."
-                  />
+                  {selectedPromoCodeInfo && (
+                    <small style={{ color: selectedPromoCodeInfo.is_multi_use ? '#16a34a' : '#666', fontSize: '0.8rem', display: 'block', marginTop: '0.25rem' }}>
+                      {selectedPromoCodeInfo.is_multi_use
+                        ? `Multi-use code (${selectedPromoCodeInfo.use_count || 0} uses) - section expires by end date`
+                        : selectedPromoCodeInfo.is_used
+                          ? 'This code has already been used'
+                          : 'Single-use code - section hides when used'
+                      }
+                    </small>
+                  )}
                 </div>
               )}
               </div>
 
-              {/* Promotions Section Settings */}
+              {/* Date & Status Settings */}
               <div style={{ background: '#f8f9fa', padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
                 <h4 style={{ margin: '0 0 1rem 0', color: '#343434', fontSize: '1rem', borderBottom: '2px solid #d9ff00', paddingBottom: '0.5rem' }}>
-                  Promotions Section Settings
+                  Schedule & Status
                 </h4>
-                <p style={{ fontSize: '0.85rem', color: '#666', margin: '0 0 1rem 0' }}>
-                  This appears as a section on the homepage (only if a promo code is set)
-                </p>
 
               <div className="form-row">
                 <div className="form-group">

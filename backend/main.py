@@ -296,6 +296,34 @@ def run_migrations():
         else:
             print("Migration check: audit_logs enum already has lowercase values")
 
+        # Migration 6: Add type column to promo_modals table
+        result = db.execute(text("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'promo_modals'
+            AND column_name = 'type'
+        """))
+
+        if not result.fetchone():
+            print("Running migration: Adding type column to promo_modals...")
+            # Create enum type first
+            db.execute(text("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'promomodaltype') THEN
+                        CREATE TYPE promomodaltype AS ENUM ('info_modal', 'promo_section');
+                    END IF;
+                END$$;
+            """))
+            db.execute(text("""
+                ALTER TABLE promo_modals
+                ADD COLUMN type promomodaltype NOT NULL DEFAULT 'info_modal'
+            """))
+            db.commit()
+            print("Migration completed: type column added to promo_modals")
+        else:
+            print("Migration check: promo_modals type column already exists")
+
     except Exception as e:
         print(f"Migration error (non-fatal): {e}")
         db.rollback()
@@ -11463,11 +11491,12 @@ async def get_active_testimonials(
 # =============================================================================
 
 class PromoModalCreate(BaseModel):
-    """Request to create a promo modal."""
+    """Request to create a promo modal or promo section."""
+    type: str = "info_modal"  # info_modal or promo_section
     title: str
     message: str
     button_text: str = "Subscribe"
-    button_action: str = "subscribe"  # subscribe, link, close
+    button_action: str = "subscribe"  # subscribe, link, close, promotions
     button_link: Optional[str] = None
     start_date: Optional[str] = None  # DD/MM/YYYY format
     end_date: Optional[str] = None  # DD/MM/YYYY format
@@ -11476,11 +11505,12 @@ class PromoModalCreate(BaseModel):
     button_color: str = "#22c55e"
     button_text_color: str = "#ffffff"
     status: str = "inactive"
-    promo_code: Optional[str] = None  # Promo code to display - auto-deactivates when used
+    promo_code: Optional[str] = None  # Promo code to display (promo_section only)
 
 
 class PromoModalUpdate(BaseModel):
-    """Request to update a promo modal."""
+    """Request to update a promo modal or promo section."""
+    type: Optional[str] = None  # info_modal or promo_section
     title: Optional[str] = None
     message: Optional[str] = None
     button_text: Optional[str] = None
@@ -11494,7 +11524,7 @@ class PromoModalUpdate(BaseModel):
     button_text_color: Optional[str] = None
     status: Optional[str] = None
     max_subscribers: Optional[int] = None
-    promo_code: Optional[str] = None  # Promo code to display - auto-deactivates when used
+    promo_code: Optional[str] = None  # Promo code to display (promo_section only)
 
 
 def check_promo_modal_subscriber_limits(db: Session):
@@ -11638,6 +11668,7 @@ def format_promo_modal(modal):
     """Format a promo modal for API response."""
     return {
         "id": modal.id,
+        "type": modal.type.value if modal.type else "info_modal",
         "title": modal.title,
         "message": modal.message,
         "buttonText": modal.button_text,
@@ -11662,11 +11693,12 @@ def format_promo_modal(modal):
 @app.get("/api/admin/promo-modals")
 async def get_all_promo_modals(
     status: Optional[str] = None,
+    type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Get all promo modals for admin management."""
-    from db_models import PromoModal, PromoModalStatus
+    """Get all promo modals and sections for admin management."""
+    from db_models import PromoModal, PromoModalStatus, PromoModalType
 
     query = db.query(PromoModal)
 
@@ -11674,6 +11706,13 @@ async def get_all_promo_modals(
         try:
             status_enum = PromoModalStatus(status)
             query = query.filter(PromoModal.status == status_enum)
+        except ValueError:
+            pass
+
+    if type:
+        try:
+            type_enum = PromoModalType(type)
+            query = query.filter(PromoModal.type == type_enum)
         except ValueError:
             pass
 
@@ -11691,8 +11730,8 @@ async def create_promo_modal(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Create a new promo modal."""
-    from db_models import PromoModal, PromoModalStatus
+    """Create a new promo modal or promo section."""
+    from db_models import PromoModal, PromoModalStatus, PromoModalType
 
     # Parse dates
     start_date = None
@@ -11714,7 +11753,14 @@ async def create_promo_modal(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid status. Use active, inactive, or scheduled")
 
+    # Validate type
+    try:
+        type_enum = PromoModalType(request.type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid type. Use info_modal or promo_section")
+
     modal = PromoModal(
+        type=type_enum,
         title=request.title,
         message=request.message,
         button_text=request.button_text,
@@ -11747,12 +11793,19 @@ async def update_promo_modal(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """Update an existing promo modal."""
-    from db_models import PromoModal, PromoModalStatus, MarketingSubscriber
+    """Update an existing promo modal or promo section."""
+    from db_models import PromoModal, PromoModalStatus, PromoModalType, MarketingSubscriber
 
     modal = db.query(PromoModal).filter(PromoModal.id == modal_id).first()
     if not modal:
         raise HTTPException(status_code=404, detail="Promo modal not found")
+
+    # Update type if provided
+    if request.type is not None:
+        try:
+            modal.type = PromoModalType(request.type)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid type. Use info_modal or promo_section")
 
     # Update fields
     if request.title is not None:
@@ -11887,21 +11940,22 @@ async def get_active_promo_modal(
     db: Session = Depends(get_db),
 ):
     """
-    Get the currently active promo modal for public display.
-    Returns the first active modal that's within its date range (UK timezone).
+    Get the currently active info modal for public display (popup).
+    Returns the first active info_modal type that's within its date range (UK timezone).
 
     Date boundaries are inclusive:
     - start_date: Modal shows from 00:00:00 UK time on this date
     - end_date: Modal shows until 23:59:59 UK time on this date
     """
-    from db_models import PromoModal, PromoModalStatus
+    from db_models import PromoModal, PromoModalStatus, PromoModalType
 
     # Use UK timezone for date comparison
     today_uk = get_uk_now().date()
 
-    # Find active modals within date range
+    # Find active info modals (type = info_modal) within date range
     modals = db.query(PromoModal).filter(
-        PromoModal.status == PromoModalStatus.ACTIVE
+        PromoModal.status == PromoModalStatus.ACTIVE,
+        PromoModal.type == PromoModalType.INFO_MODAL
     ).all()
 
     for modal in modals:
@@ -11918,6 +11972,46 @@ async def get_active_promo_modal(
     # No active modal found
     return {
         "promoModal": None,
+    }
+
+
+@app.get("/api/promo-section")
+async def get_active_promo_section(
+    db: Session = Depends(get_db),
+):
+    """
+    Get the currently active promo section for public display (homepage section).
+    Returns the first active promo_section type that's within its date range (UK timezone).
+
+    Date boundaries are inclusive:
+    - start_date: Section shows from 00:00:00 UK time on this date
+    - end_date: Section shows until 23:59:59 UK time on this date
+    """
+    from db_models import PromoModal, PromoModalStatus, PromoModalType
+
+    # Use UK timezone for date comparison
+    today_uk = get_uk_now().date()
+
+    # Find active promo sections (type = promo_section) within date range
+    modals = db.query(PromoModal).filter(
+        PromoModal.status == PromoModalStatus.ACTIVE,
+        PromoModal.type == PromoModalType.PROMO_SECTION
+    ).all()
+
+    for modal in modals:
+        # Check date range (inclusive on both ends)
+        if modal.start_date and today_uk < modal.start_date:
+            continue
+        if modal.end_date and today_uk > modal.end_date:
+            continue
+        # This section is valid
+        return {
+            "promoSection": format_promo_modal(modal),
+        }
+
+    # No active section found
+    return {
+        "promoSection": None,
     }
 
 

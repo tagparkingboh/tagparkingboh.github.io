@@ -8,12 +8,12 @@ function PromotionsSection() {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    // Fetch active promo (reuses the same endpoint as promo modal)
-    fetch(`${API_URL}/api/promo-modal`)
+    // Fetch active promo section
+    fetch(`${API_URL}/api/promo-section`)
       .then(res => res.json())
       .then(data => {
-        if (data.promoModal && data.promoModal.promoCode) {
-          setPromo(data.promoModal)
+        if (data.promoSection && data.promoSection.promoCode) {
+          setPromo(data.promoSection)
         }
       })
       .catch(err => console.error('Failed to fetch promotion:', err))

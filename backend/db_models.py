@@ -825,15 +825,29 @@ class PromoModalStatus(enum.Enum):
     SCHEDULED = "scheduled"
 
 
+class PromoModalType(enum.Enum):
+    """Type of promo entry - info modal popup or promotions section on homepage."""
+    INFO_MODAL = "info_modal"
+    PROMO_SECTION = "promo_section"
+
+
 class PromoModal(Base):
-    """Promotional modals/popups for the homepage."""
+    """Promotional modals/popups and promo sections for the homepage."""
     __tablename__ = "promo_modals"
 
     id = Column(Integer, primary_key=True, index=True)
+
+    # Type: info_modal (popup) or promo_section (homepage section)
+    type = Column(
+        Enum(PromoModalType, values_callable=lambda x: [e.value for e in x]),
+        default=PromoModalType.INFO_MODAL,
+        nullable=False
+    )
+
     title = Column(String(100), nullable=False)  # e.g. "Spring Sale!"
     message = Column(Text, nullable=False)  # Main promotional message
-    button_text = Column(String(50), default="Subscribe")  # CTA button text
-    button_action = Column(String(50), default="subscribe")  # subscribe, link, close
+    button_text = Column(String(50), default="Subscribe")  # CTA button text (info_modal only)
+    button_action = Column(String(50), default="subscribe")  # subscribe, link, close, promotions (info_modal only)
     button_link = Column(String(500), nullable=True)  # If button_action is "link"
 
     # Date range when promo is valid
