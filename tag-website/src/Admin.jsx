@@ -9859,40 +9859,42 @@ function Admin() {
               </div>
               </div>
 
-              {/* Previews */}
+              {/* Previews - show only the relevant preview based on type */}
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                {/* Info Modal Preview */}
-                <div className="form-group" style={{ flex: '1', minWidth: '250px' }}>
-                  <label>Info Modal Preview</label>
-                  <div
-                    style={{
-                      backgroundColor: promoModalForm.background_color,
-                      color: promoModalForm.text_color,
-                      padding: '1.5rem',
-                      borderRadius: '8px',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>{promoModalForm.title || 'Title'}</h4>
-                    <p style={{ margin: '0 0 1rem 0', opacity: 0.9, whiteSpace: 'pre-line', fontSize: '0.9rem' }}>{promoModalForm.message || 'Your message here...'}</p>
-                    <button
+                {/* Info Modal Preview - only for info_modal type */}
+                {promoModalForm.type === 'info_modal' && (
+                  <div className="form-group" style={{ flex: '1', minWidth: '250px' }}>
+                    <label>Info Modal Preview</label>
+                    <div
                       style={{
-                        backgroundColor: promoModalForm.button_color,
-                        color: promoModalForm.button_text_color,
-                        border: 'none',
-                        padding: '0.5rem 1.5rem',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
+                        backgroundColor: promoModalForm.background_color,
+                        color: promoModalForm.text_color,
+                        padding: '1.5rem',
+                        borderRadius: '8px',
+                        textAlign: 'center',
                       }}
                     >
-                      {promoModalForm.button_text || 'Subscribe'}
-                    </button>
+                      <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>{promoModalForm.title || 'Title'}</h4>
+                      <p style={{ margin: '0 0 1rem 0', opacity: 0.9, whiteSpace: 'pre-line', fontSize: '0.9rem' }}>{promoModalForm.message || 'Your message here...'}</p>
+                      <button
+                        style={{
+                          backgroundColor: promoModalForm.button_color,
+                          color: promoModalForm.button_text_color,
+                          border: 'none',
+                          padding: '0.5rem 1.5rem',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {promoModalForm.button_text || 'Subscribe'}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* Promotions Section Preview - only show if promo code is set */}
-                {promoModalForm.promo_code && (
-                  <div className="form-group" style={{ flex: '1', minWidth: '250px' }}>
+                {/* Promotions Section Preview - only for promo_section type */}
+                {promoModalForm.type === 'promo_section' && (
+                  <div className="form-group" style={{ flex: '1', minWidth: '300px' }}>
                     <label>Promotions Section Preview</label>
                     <div
                       style={{
@@ -9904,17 +9906,22 @@ function Admin() {
                       }}
                     >
                       <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1.1rem' }}>{promoModalForm.title || 'Title'}</h4>
-                      <div style={{
-                        backgroundColor: '#fff',
-                        color: '#343434',
-                        padding: '0.75rem 1rem',
-                        borderRadius: '6px',
-                        marginTop: '0.5rem',
-                        border: '2px dashed #d9ff00'
-                      }}>
-                        <div style={{ fontSize: '0.7rem', color: '#888' }}>USE CODE</div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: 'bold', letterSpacing: '1px' }}>{promoModalForm.promo_code}</div>
-                      </div>
+                      {promoModalForm.message && (
+                        <p style={{ margin: '0 0 1rem 0', opacity: 0.9, whiteSpace: 'pre-line', fontSize: '0.85rem', color: '#fff' }}>{promoModalForm.message}</p>
+                      )}
+                      {promoModalForm.promo_code && (
+                        <div style={{
+                          backgroundColor: '#fff',
+                          color: '#343434',
+                          padding: '0.75rem 1rem',
+                          borderRadius: '6px',
+                          marginTop: '0.5rem',
+                          border: '2px dashed #d9ff00'
+                        }}>
+                          <div style={{ fontSize: '0.7rem', color: '#888' }}>USE CODE</div>
+                          <div style={{ fontSize: '1.1rem', fontWeight: 'bold', letterSpacing: '1px' }}>{promoModalForm.promo_code}</div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
