@@ -8864,7 +8864,7 @@ async def stripe_webhook(
                 booking_reference=booking_reference,
                 event_data={
                     "payment_intent_id": payment_intent_id,
-                    "amount_pence": data.get("amount"),
+                    "amount_pence": data["amount"] if "amount" in data else None,
                 },
             )
         except Exception as e:
@@ -9045,8 +9045,8 @@ async def stripe_webhook(
                 duration_days = (booking.pickup_date - booking.dropoff_date).days
                 package_name = f"{duration_days} day{'s' if duration_days != 1 else ''}"
 
-                # Amount paid
-                amount_pence = data.get("amount", 0)
+                # Amount paid - use bracket notation for Stripe object
+                amount_pence = data["amount"] if "amount" in data else 0
                 amount_paid = f"£{amount_pence / 100:.2f}"
 
                 # Calculate discount from Stripe metadata (original_amount & discount_amount in pence)
@@ -9110,9 +9110,11 @@ async def stripe_webhook(
 
     elif event_type == "payment_intent.payment_failed":
         payment_intent_id = data["id"]
-        metadata = data.get("metadata", {})
-        booking_reference = metadata.get("booking_reference")
-        error_message = data.get("last_payment_error", {}).get("message", "Unknown error")
+        # Stripe returns StripeObject, not dict - use getattr for attributes
+        metadata = getattr(data, "metadata", {}) or {}
+        booking_reference = metadata.get("booking_reference") if isinstance(metadata, dict) else getattr(metadata, "booking_reference", None)
+        last_payment_error = getattr(data, "last_payment_error", None)
+        error_message = getattr(last_payment_error, "message", "Unknown error") if last_payment_error else "Unknown error"
 
         # Update payment status to failed
         db_service.update_payment_status(
@@ -9147,16 +9149,17 @@ async def stripe_webhook(
 
     elif event_type == "charge.refunded":
         charge_id = data["id"]
-        refund_amount = data.get("amount_refunded", 0)
-        original_amount = data.get("amount", 0)
-        payment_intent_id = data.get("payment_intent")
-        metadata = data.get("metadata", {})
-        booking_reference = metadata.get("booking_reference")
+        # Stripe returns StripeObject - use bracket notation or getattr
+        refund_amount = data["amount_refunded"] if "amount_refunded" in data else 0
+        original_amount = data["amount"] if "amount" in data else 0
+        payment_intent_id = data["payment_intent"] if "payment_intent" in data else None
+        metadata = getattr(data, "metadata", {}) or {}
+        booking_reference = metadata.get("booking_reference") if isinstance(metadata, dict) else getattr(metadata, "booking_reference", None)
 
         # Get refund details from the refunds list
-        refunds_data = data.get("refunds", {})
-        refunds_list = refunds_data.get("data", []) if isinstance(refunds_data, dict) else []
-        latest_refund_id = refunds_list[0].get("id") if refunds_list else None
+        refunds_obj = getattr(data, "refunds", None)
+        refunds_list = refunds_obj.data if refunds_obj and hasattr(refunds_obj, 'data') else []
+        latest_refund_id = refunds_list[0]["id"] if refunds_list and len(refunds_list) > 0 else None
 
         # Update Payment record with refund information
         if payment_intent_id:
@@ -9195,10 +9198,11 @@ async def stripe_webhook(
 
     elif event_type in ("refund.updated", "refund.created"):
         # Handle refund events directly (alternative to charge.refunded)
-        refund_id = data.get("id")
-        refund_amount = data.get("amount", 0)
-        refund_status = data.get("status")
-        payment_intent_id = data.get("payment_intent")
+        # Stripe returns StripeObject - use bracket notation
+        refund_id = data["id"]
+        refund_amount = data["amount"] if "amount" in data else 0
+        refund_status = data["status"] if "status" in data else None
+        payment_intent_id = data["payment_intent"] if "payment_intent" in data else None
 
         # Only process successful refunds
         if refund_status == "succeeded" and payment_intent_id:
