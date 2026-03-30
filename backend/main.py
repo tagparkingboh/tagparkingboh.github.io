@@ -11639,10 +11639,13 @@ WRITE_SQL_COMMANDS = ['INSERT', 'UPDATE', 'DELETE']
 
 def is_sql_command_blocked(query: str) -> tuple[bool, str]:
     """Check if a SQL query contains blocked commands."""
+    import re
     query_upper = query.upper().strip()
     for cmd in BLOCKED_SQL_COMMANDS:
-        # Check if command appears at start or after whitespace/semicolon
-        if query_upper.startswith(cmd) or f' {cmd}' in query_upper or f';{cmd}' in query_upper:
+        # Use word boundary regex to match whole command words only
+        # This prevents false positives like 'created_at' matching 'CREATE'
+        pattern = rf'\b{cmd}\b'
+        if re.search(pattern, query_upper):
             return True, cmd
     return False, ""
 
