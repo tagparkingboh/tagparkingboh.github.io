@@ -657,13 +657,19 @@ function Admin() {
         : `${API_URL}/api/admin/promo-modals`
       const method = editingPromoModal ? 'PUT' : 'POST'
 
+      // Convert empty strings to null for optional integer fields
+      const payload = {
+        ...promoModalForm,
+        max_subscribers: promoModalForm.max_subscribers === '' ? null : parseInt(promoModalForm.max_subscribers, 10) || null,
+      }
+
       const response = await fetch(url, {
         method,
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(promoModalForm),
+        body: JSON.stringify(payload),
       })
 
       if (response.ok) {
