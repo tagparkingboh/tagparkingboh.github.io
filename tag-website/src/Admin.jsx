@@ -493,6 +493,9 @@ function Admin() {
   const [deletingPromoModal, setDeletingPromoModal] = useState(false)
   const [promoModalSuccessMessage, setPromoModalSuccessMessage] = useState('')
   const [promoCodeIsMultiUse, setPromoCodeIsMultiUse] = useState(false)
+  const [promoCodesForModal, setPromoCodesForModal] = useState([]) // Available promo codes for selection
+  const [loadingPromoCodesForModal, setLoadingPromoCodesForModal] = useState(false)
+  const [selectedPromoCodeInfo, setSelectedPromoCodeInfo] = useState(null) // Info about selected code
 
   // Test email domains to filter out
   const testEmailDomains = ['yopmail.com', 'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'fakeinbox.com', 'test.com', 'example.com', 'staging.tag.com']
@@ -750,12 +753,18 @@ function Admin() {
       max_subscribers: modal.maxSubscribers || '',
       promo_code: modal.promoCode || ''
     })
-    // Check if the promo code is multi-use
-    if (modal.promoCode) {
-      checkPromoCodeIsMultiUse(modal.promoCode)
-    } else {
-      setPromoCodeIsMultiUse(false)
-    }
+    // Fetch promo codes for dropdown and set selected info
+    fetchPromoCodesForModal().then(() => {
+      if (modal.promoCode) {
+        // Find the code info from the loaded codes
+        const codeInfo = promoCodesForModal.find(c => c.code === modal.promoCode)
+        setSelectedPromoCodeInfo(codeInfo || null)
+        setPromoCodeIsMultiUse(codeInfo?.is_multi_use || false)
+      } else {
+        setSelectedPromoCodeInfo(null)
+        setPromoCodeIsMultiUse(false)
+      }
+    })
     setShowPromoModalForm(true)
   }
 
@@ -781,6 +790,49 @@ function Admin() {
     } catch (err) {
       console.error('Error checking promo code:', err)
       setPromoCodeIsMultiUse(false)
+    }
+  }
+
+  // Fetch all promo codes from all promotions for the dropdown
+  const fetchPromoCodesForModal = async () => {
+    setLoadingPromoCodesForModal(true)
+    try {
+      // Get all promotions first
+      const promoResponse = await fetch(`${API_URL}/api/admin/promotions`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (!promoResponse.ok) {
+        setPromoCodesForModal([])
+        return
+      }
+      const promoData = await promoResponse.json()
+      const allPromotions = promoData.promotions || []
+
+      // For each promotion, get its codes
+      const allCodes = []
+      for (const promo of allPromotions) {
+        const detailResponse = await fetch(`${API_URL}/api/admin/promotions/${promo.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        })
+        if (detailResponse.ok) {
+          const detailData = await detailResponse.json()
+          const codes = detailData.codes || []
+          // Add promotion info to each code
+          codes.forEach(code => {
+            allCodes.push({
+              ...code,
+              promotion_name: promo.name,
+              promotion_discount: promo.discount_percent,
+            })
+          })
+        }
+      }
+      setPromoCodesForModal(allCodes)
+    } catch (err) {
+      console.error('Failed to fetch promo codes:', err)
+      setPromoCodesForModal([])
+    } finally {
+      setLoadingPromoCodesForModal(false)
     }
   }
 
@@ -9362,6 +9414,8 @@ function Admin() {
                       promo_code: ''
                     })
                     setPromoCodeIsMultiUse(false)
+                    setSelectedPromoCodeInfo(null)
+                    fetchPromoCodesForModal()
                     setShowPromoModalForm(true)
                   }}
                   className="admin-btn admin-btn-primary"
@@ -9684,27 +9738,47 @@ function Admin() {
 
                 <div className="form-group">
                   <label>Promo Code</label>
-                  <input
-                    type="text"
+                  <select
                     value={promoModalForm.promo_code}
                     onChange={(e) => {
-                      const newCode = e.target.value.toUpperCase()
-                      setPromoModalForm({ ...promoModalForm, promo_code: newCode })
-                      // Debounce the check - only check after user stops typing
-                      clearTimeout(window.promoCodeCheckTimeout)
-                      window.promoCodeCheckTimeout = setTimeout(() => {
-                        checkPromoCodeIsMultiUse(newCode)
-                      }, 500)
+                      const selectedCode = e.target.value
+                      setPromoModalForm({ ...promoModalForm, promo_code: selectedCode })
+                      // Find the selected code info
+                      const codeInfo = promoCodesForModal.find(c => c.code === selectedCode)
+                      setSelectedPromoCodeInfo(codeInfo || null)
+                      setPromoCodeIsMultiUse(codeInfo?.is_multi_use || false)
                     }}
-                    placeholder="e.g. SUMMER10"
-                    style={{ textTransform: 'uppercase' }}
-                  />
-                  <small style={{ color: promoCodeIsMultiUse ? '#16a34a' : '#666', fontSize: '0.8rem' }}>
-                    {promoCodeIsMultiUse
-                      ? 'Multi-use code detected - modal expires by end date'
-                      : 'Enter an existing promo code from a promotion'
-                    }
-                  </small>
+                    style={{ width: '100%', padding: '0.5rem' }}
+                  >
+                    <option value="">-- No promo code --</option>
+                    {loadingPromoCodesForModal ? (
+                      <option disabled>Loading...</option>
+                    ) : (
+                      // Group codes by promotion
+                      [...new Set(promoCodesForModal.map(c => c.promotion_name))].map(promoName => (
+                        <optgroup key={promoName} label={promoName}>
+                          {promoCodesForModal
+                            .filter(c => c.promotion_name === promoName)
+                            .map(c => (
+                              <option key={c.id} value={c.code}>
+                                {c.code} ({c.promotion_discount}% off{c.is_multi_use ? ', multi-use' : ''}{c.is_used && !c.is_multi_use ? ', USED' : ''})
+                              </option>
+                            ))
+                          }
+                        </optgroup>
+                      ))
+                    )}
+                  </select>
+                  {selectedPromoCodeInfo && (
+                    <small style={{ color: selectedPromoCodeInfo.is_multi_use ? '#16a34a' : '#666', fontSize: '0.8rem', display: 'block', marginTop: '0.25rem' }}>
+                      {selectedPromoCodeInfo.is_multi_use
+                        ? `Multi-use code (${selectedPromoCodeInfo.use_count || 0} uses) - modal expires by end date`
+                        : selectedPromoCodeInfo.is_used
+                          ? 'This code has already been used'
+                          : 'Single-use code - modal deactivates when used'
+                      }
+                    </small>
+                  )}
                 </div>
               </div>
 
