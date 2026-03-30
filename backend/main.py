@@ -11527,15 +11527,28 @@ def check_promo_modal_subscriber_limits(db: Session):
 def check_promo_modal_code_used(db: Session, promo_code: str):
     """
     Check if any active promo modal has this promo code.
-    If so, auto-deactivate it (the code has been used on a confirmed booking).
+
+    For single-use codes: auto-deactivate the modal when code is used.
+    For multi-use codes: keep the modal active (expires by end_date instead).
     """
-    from db_models import PromoModal, PromoModalStatus
+    from db_models import PromoModal, PromoModalStatus, PromoCode as DbPromoCode
     from sqlalchemy import func as sql_func
 
     if not promo_code:
         return
 
-    # Find active modal with this promo code (case-insensitive)
+    # First check if this is a multi-use code
+    promo_code_record = db.query(DbPromoCode).filter(
+        DbPromoCode.code == promo_code.strip().upper()
+    ).first()
+
+    if promo_code_record and promo_code_record.is_multi_use:
+        # Multi-use code - don't auto-deactivate the modal
+        # The modal should expire based on its end_date instead
+        print(f"Promo code '{promo_code}' is multi-use - keeping promo modal active")
+        return
+
+    # Single-use code - find and deactivate the modal
     modal = db.query(PromoModal).filter(
         PromoModal.status == PromoModalStatus.ACTIVE,
         PromoModal.promo_code.isnot(None),
@@ -11545,7 +11558,7 @@ def check_promo_modal_code_used(db: Session, promo_code: str):
     if modal:
         modal.status = PromoModalStatus.INACTIVE
         db.commit()
-        print(f"Auto-deactivated promo modal '{modal.title}' - promo code '{promo_code}' used on confirmed booking")
+        print(f"Auto-deactivated promo modal '{modal.title}' - single-use promo code '{promo_code}' used")
 
 
 def mark_promo_code_used(db: Session, promo_code_record, booking_id: int, discount_percent: int, discount_amount_pence: int = None):

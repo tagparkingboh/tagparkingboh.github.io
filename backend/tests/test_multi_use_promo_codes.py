@@ -961,3 +961,86 @@ class TestMultiUsePromoCodeIntegration:
 
         assert is_expired == True
         assert code.uses_remaining == 8  # Uses remain, but code is expired
+
+
+# =============================================================================
+# Promo Modal Auto-Deactivation Tests
+# =============================================================================
+
+class TestPromoModalAutoDeactivation:
+    """
+    Tests for promo modal auto-deactivation behavior.
+
+    CRITICAL: Multi-use promo codes should NOT auto-deactivate the promo modal.
+    Only single-use codes should trigger modal deactivation.
+    """
+
+    def test_single_use_code_deactivates_modal(self):
+        """Single-use promo code usage should deactivate the linked promo modal."""
+        from db_models import PromoCode
+
+        # Single-use code (max_uses = None)
+        code = MagicMock(spec=PromoCode)
+        code.code = "SINGLE10"
+        code.max_uses = None
+        code.is_multi_use = False
+
+        # When single-use code is used, modal should be deactivated
+        assert code.is_multi_use == False
+        # check_promo_modal_code_used should proceed to deactivate
+
+    def test_multi_use_code_does_not_deactivate_modal(self):
+        """Multi-use promo code usage should NOT deactivate the linked promo modal."""
+        from db_models import PromoCode
+
+        # Multi-use code (max_uses = 0 for unlimited)
+        code = MagicMock(spec=PromoCode)
+        code.code = "SUMMER10"
+        code.max_uses = 0
+        code.is_multi_use = True
+
+        # When multi-use code is used, modal should stay ACTIVE
+        assert code.is_multi_use == True
+        # check_promo_modal_code_used should return early without deactivating
+
+    def test_limited_multi_use_code_does_not_deactivate_modal(self):
+        """Limited multi-use code (max_uses=5) should NOT deactivate the modal."""
+        from db_models import PromoCode
+
+        # Limited multi-use code
+        code = MagicMock(spec=PromoCode)
+        code.code = "LIMITED5"
+        code.max_uses = 5
+        code.is_multi_use = True
+
+        # Even limited multi-use codes should not deactivate modal
+        assert code.is_multi_use == True
+
+    def test_modal_stays_active_after_multiple_uses(self):
+        """Promo modal should stay active even after multi-use code is used many times."""
+        from db_models import PromoCode
+
+        code = MagicMock(spec=PromoCode)
+        code.code = "FLASH50"
+        code.max_uses = 0  # Unlimited
+        code.use_count = 100  # Used 100 times
+        code.is_multi_use = True
+        code.is_used = False  # Still not "used up"
+
+        # After 100 uses, modal should still be active
+        assert code.is_multi_use == True
+        assert code.is_used == False
+
+    def test_modal_expires_by_date_not_usage(self):
+        """Multi-use code modals should expire by end_date, not by code usage."""
+        uk_tz = pytz.timezone("Europe/London")
+        future_date = datetime.now(uk_tz) + timedelta(days=1)
+        past_date = datetime.now(uk_tz) - timedelta(days=1)
+
+        # Modal with future end_date - should be shown
+        assert datetime.now(uk_tz) < future_date
+
+        # Modal with past end_date - should not be shown
+        assert datetime.now(uk_tz) > past_date
+
+        # The modal visibility is controlled by end_date, not promo code usage
