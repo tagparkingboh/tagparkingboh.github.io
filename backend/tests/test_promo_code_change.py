@@ -200,6 +200,53 @@ class TestPromoCodeChangeDetection:
 
 
 # =============================================================================
+# UNIT TESTS: Model Field Validation
+# =============================================================================
+
+class TestModelFields:
+    """Verify models have the fields we access in the PaymentIntent modification code.
+
+    These tests catch AttributeError bugs before deployment by checking that
+    the fields we use actually exist on the models.
+    """
+
+    def test_promo_code_model_has_required_fields(self):
+        """Verify PromoCode model has fields we access."""
+        from db_models import PromoCode
+
+        # Fields we access in the modification code
+        assert hasattr(PromoCode, 'is_used'), "PromoCode missing is_used field"
+        assert hasattr(PromoCode, 'is_multi_use'), "PromoCode missing is_multi_use property"
+        assert hasattr(PromoCode, 'expires_at'), "PromoCode missing expires_at field"
+        assert hasattr(PromoCode, 'promotion_id'), "PromoCode missing promotion_id field"
+        assert hasattr(PromoCode, 'code'), "PromoCode missing code field"
+
+    def test_promo_code_does_not_have_is_active(self):
+        """Verify is_active is NOT on PromoCode - it doesn't exist."""
+        from db_models import PromoCode
+
+        # is_active does not exist on PromoCode - don't use it!
+        assert not hasattr(PromoCode, 'is_active'), \
+            "PromoCode should NOT have is_active - use is_used instead"
+
+    def test_promotion_model_has_required_fields(self):
+        """Verify Promotion model has fields we access."""
+        from db_models import Promotion
+
+        assert hasattr(Promotion, 'discount_percent'), "Promotion missing discount_percent field"
+        assert hasattr(Promotion, 'id'), "Promotion missing id field"
+        assert hasattr(Promotion, 'name'), "Promotion missing name field"
+
+    def test_promotion_does_not_have_is_active(self):
+        """Verify is_active is NOT on Promotion - it doesn't exist."""
+        from db_models import Promotion
+
+        # is_active does not exist on Promotion - don't use it!
+        assert not hasattr(Promotion, 'is_active'), \
+            "Promotion should NOT have is_active - check PromoCode.is_used instead"
+
+
+# =============================================================================
 # UNIT TESTS: CreatePaymentRequest Field Validation
 # =============================================================================
 
