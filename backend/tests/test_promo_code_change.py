@@ -200,6 +200,80 @@ class TestPromoCodeChangeDetection:
 
 
 # =============================================================================
+# UNIT TESTS: CreatePaymentRequest Field Validation
+# =============================================================================
+
+class TestCreatePaymentRequestFields:
+    """Verify CreatePaymentRequest has all fields used in PaymentIntent modification.
+
+    This test ensures we don't access non-existent attributes on the request object,
+    which would cause runtime errors like:
+    "'CreatePaymentRequest' object has no attribute 'customer_name'"
+    """
+
+    def test_create_payment_request_has_required_fields_for_modification(self):
+        """CreatePaymentRequest must have all fields accessed during PaymentIntent.modify()."""
+        from main import CreatePaymentRequest
+
+        # Create a valid request with minimum required fields
+        request = CreatePaymentRequest(
+            first_name="Test",
+            last_name="User",
+            email="test@example.com",
+            phone="07777777777",
+            flight_number="FR1234",
+            drop_off_date="2026-04-01",
+            pickup_date="2026-04-08",
+            flight_date="2026-04-01",
+            drop_off_slot="120",
+            package="quick",
+            registration="AB12CDE",
+            make="Ford",
+            colour="Blue",
+        )
+
+        # These are the fields accessed in the PaymentIntent.modify() metadata
+        # If any of these fail, the modify call will crash at runtime
+        assert hasattr(request, 'first_name'), "Missing first_name field"
+        assert hasattr(request, 'last_name'), "Missing last_name field"
+        assert hasattr(request, 'flight_number'), "Missing flight_number field"
+        assert hasattr(request, 'drop_off_date'), "Missing drop_off_date field"
+        assert hasattr(request, 'pickup_date'), "Missing pickup_date field"
+        assert hasattr(request, 'flight_date'), "Missing flight_date field"
+        assert hasattr(request, 'drop_off_slot'), "Missing drop_off_slot field"
+        assert hasattr(request, 'departure_id'), "Missing departure_id field"
+        assert hasattr(request, 'package'), "Missing package field"
+        assert hasattr(request, 'promo_code'), "Missing promo_code field"
+
+        # Verify we can construct customer_name from first_name + last_name
+        customer_name = f"{request.first_name} {request.last_name}"
+        assert customer_name == "Test User"
+
+    def test_create_payment_request_does_not_have_customer_name(self):
+        """Verify customer_name is NOT a field - must use first_name + last_name."""
+        from main import CreatePaymentRequest
+
+        request = CreatePaymentRequest(
+            first_name="Test",
+            last_name="User",
+            email="test@example.com",
+            flight_number="FR1234",
+            drop_off_date="2026-04-01",
+            pickup_date="2026-04-08",
+            flight_date="2026-04-01",
+            drop_off_slot="120",
+            package="quick",
+            registration="AB12CDE",
+            make="Ford",
+            colour="Blue",
+        )
+
+        # This was the bug - accessing request.customer_name would fail
+        assert not hasattr(request, 'customer_name'), \
+            "customer_name should NOT exist - use first_name + last_name instead"
+
+
+# =============================================================================
 # UNIT TESTS: PaymentIntent Modification Logic
 # =============================================================================
 
