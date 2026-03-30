@@ -6992,6 +6992,7 @@ async def log_checkout_event(
         "flight_selected": AuditLogEvent.FLIGHT_SELECTED,
         "tnc_accepted": AuditLogEvent.TNC_ACCEPTED,
         "checkout_loaded": AuditLogEvent.CHECKOUT_LOADED,
+        "payment_processing": AuditLogEvent.PAYMENT_PROCESSING,
     }
 
     audit_event = event_map.get(request.event)
