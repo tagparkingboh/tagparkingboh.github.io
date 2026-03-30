@@ -8034,11 +8034,11 @@ async def create_payment(
                                     from db_models import PromoCode as DbPromoCode, Promotion as DbPromotion
 
                                     promo_code_record = db.query(DbPromoCode).filter(DbPromoCode.code == new_promo).first()
-                                    if promo_code_record and promo_code_record.is_active:
+                                    if promo_code_record:
                                         promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
-                                        if promotion:
+                                        if promotion and promotion.is_active:
                                             # Check if code can be used (single-use: not used, multi-use: always ok)
-                                            can_use = promo_code_record.is_multi_use or not promo_code_record.used
+                                            can_use = promo_code_record.is_multi_use or not promo_code_record.is_used
                                             if can_use:
                                                 discount_percent = promotion.discount_percent
                                                 if discount_percent == 100:
