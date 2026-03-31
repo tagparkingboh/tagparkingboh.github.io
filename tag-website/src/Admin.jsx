@@ -513,6 +513,61 @@ function Admin() {
   const [sqlLoading, setSqlLoading] = useState(false)
   const [sqlConfirmModal, setSqlConfirmModal] = useState(null)
   const [sqlHistory, setSqlHistory] = useState([])
+  const [sqlTemplatesExpanded, setSqlTemplatesExpanded] = useState({})
+
+  // SQL Templates organized by category
+  const sqlTemplates = {
+    'Customers': [
+      { name: 'Find customer by ID', query: 'SELECT * FROM customers WHERE id = {id}', note: 'Replace {id} with customer ID' },
+      { name: 'Find customer by email', query: "SELECT * FROM customers WHERE email = '{email}'", note: 'Replace {email} with customer email' },
+      { name: 'Recent customers', query: 'SELECT id, first_name, last_name, email, phone, created_at FROM customers ORDER BY created_at DESC LIMIT 20', note: 'Last 20 customers' },
+      { name: 'Search customer by name', query: "SELECT id, first_name, last_name, email, phone FROM customers WHERE first_name ILIKE '%{name}%' OR last_name ILIKE '%{name}%'", note: 'Partial name search' },
+    ],
+    'Vehicles': [
+      { name: 'Find vehicle by ID', query: 'SELECT * FROM vehicles WHERE id = {id}', note: 'Replace {id} with vehicle ID' },
+      { name: 'Find vehicle by registration', query: "SELECT * FROM vehicles WHERE registration = '{reg}'", note: 'Replace {reg} with registration' },
+      { name: 'Customer + Vehicle', query: 'SELECT c.id AS customer_id, c.first_name, c.last_name, c.email, v.id AS vehicle_id, v.registration, v.make, v.model, v.colour FROM customers c JOIN vehicles v ON v.customer_id = c.id WHERE c.id = {id}', note: 'Replace {id} with customer ID' },
+    ],
+    'Bookings': [
+      { name: 'Find booking by ID', query: 'SELECT * FROM bookings WHERE id = {id}', note: 'Replace {id} with booking ID' },
+      { name: 'Find booking by reference', query: "SELECT * FROM bookings WHERE reference = '{ref}'", note: 'Replace {ref} with booking reference' },
+      { name: 'Recent bookings', query: 'SELECT id, reference, status, dropoff_date, pickup_date, created_at FROM bookings ORDER BY created_at DESC LIMIT 20', note: 'Last 20 bookings' },
+      { name: 'Customer + Vehicle + Booking', query: 'SELECT c.id AS customer_id, c.first_name, c.last_name, c.email, v.id AS vehicle_id, v.registration, v.make, v.model, b.id AS booking_id, b.reference, b.status, b.dropoff_date, b.pickup_date FROM customers c JOIN vehicles v ON v.customer_id = c.id JOIN bookings b ON b.customer_id = c.id AND b.vehicle_id = v.id WHERE c.id = {id} ORDER BY b.created_at DESC', note: 'Full customer journey by customer ID' },
+      { name: 'Bookings by date range', query: "SELECT id, reference, status, dropoff_date, pickup_date FROM bookings WHERE dropoff_date BETWEEN '{start}' AND '{end}' ORDER BY dropoff_date", note: 'Replace {start} and {end} with dates (YYYY-MM-DD)' },
+      { name: 'Confirmed bookings today', query: "SELECT b.id, b.reference, c.first_name, c.last_name, v.registration, b.dropoff_date, b.dropoff_time FROM bookings b JOIN customers c ON c.id = b.customer_id JOIN vehicles v ON v.id = b.vehicle_id WHERE b.status = 'confirmed' AND b.dropoff_date = CURRENT_DATE ORDER BY b.dropoff_time", note: "Today's drop-offs" },
+    ],
+    'Payments': [
+      { name: 'Find payment by booking ID', query: 'SELECT * FROM payments WHERE booking_id = {id}', note: 'Replace {id} with booking ID' },
+      { name: 'Find payment by Stripe ID', query: "SELECT * FROM payments WHERE stripe_payment_intent_id = '{pi}'", note: 'Replace {pi} with payment intent ID' },
+      { name: 'Customer + Booking + Payment', query: 'SELECT c.id AS customer_id, c.first_name, c.last_name, c.email, b.id AS booking_id, b.reference, b.status, p.id AS payment_id, p.amount_pence, p.status AS payment_status, p.stripe_payment_intent_id FROM customers c JOIN bookings b ON b.customer_id = c.id JOIN payments p ON p.booking_id = b.id WHERE c.id = {id}', note: 'Full payment history by customer ID' },
+      { name: 'Recent payments', query: 'SELECT p.id, b.reference, p.amount_pence, p.status, p.created_at, p.paid_at FROM payments p JOIN bookings b ON b.id = p.booking_id ORDER BY p.created_at DESC LIMIT 20', note: 'Last 20 payments' },
+    ],
+    'Promo Codes': [
+      { name: 'Find promo code', query: "SELECT pc.*, p.name AS promotion_name, p.discount_percent FROM promo_codes pc JOIN promotions p ON p.id = pc.promotion_id WHERE pc.code = '{code}'", note: 'Replace {code} with promo code' },
+      { name: 'Promo codes for customer', query: 'SELECT pc.code, p.name, p.discount_percent, pc.is_used, pc.email_sent, pc.created_at FROM promo_codes pc JOIN promotions p ON p.id = pc.promotion_id WHERE pc.customer_id = {id}', note: 'Replace {id} with customer ID' },
+      { name: 'Full journey with promo', query: 'SELECT c.id AS customer_id, c.first_name, c.last_name, c.email, b.id AS booking_id, b.reference, b.status, p.amount_pence, pc.code AS promo_code, pr.discount_percent FROM customers c JOIN bookings b ON b.customer_id = c.id JOIN payments p ON p.booking_id = b.id LEFT JOIN promo_codes pc ON pc.booking_id = b.id LEFT JOIN promotions pr ON pr.id = pc.promotion_id WHERE c.id = {id}', note: 'Complete customer journey with promo by customer ID' },
+      { name: 'Recent promo usage', query: 'SELECT pc.code, pr.name, pr.discount_percent, pc.used_at, b.reference FROM promo_codes pc JOIN promotions pr ON pr.id = pc.promotion_id JOIN bookings b ON b.id = pc.booking_id WHERE pc.is_used = true ORDER BY pc.used_at DESC LIMIT 20', note: 'Last 20 promo usages' },
+      { name: 'Active promotions', query: 'SELECT id, name, discount_percent, code_prefix, total_codes, codes_sent, codes_used, created_at FROM promotions ORDER BY created_at DESC', note: 'All promotions' },
+    ],
+    'Flights': [
+      { name: 'Departures by date', query: "SELECT * FROM flight_departures WHERE date = '{date}' ORDER BY departure_time", note: 'Replace {date} with date (YYYY-MM-DD)' },
+      { name: 'Arrivals by date', query: "SELECT * FROM flight_arrivals WHERE date = '{date}' ORDER BY arrival_time", note: 'Replace {date} with date (YYYY-MM-DD)' },
+      { name: 'Departure slots available', query: "SELECT id, flight_number, departure_time, destination_name, capacity_tier, slots_booked_early, slots_booked_late FROM flight_departures WHERE date = '{date}' AND capacity_tier > 0 ORDER BY departure_time", note: 'Flights with availability' },
+    ],
+    'Marketing': [
+      { name: 'Find subscriber by email', query: "SELECT * FROM marketing_subscribers WHERE email = '{email}'", note: 'Replace {email} with email' },
+      { name: 'Recent subscribers', query: 'SELECT id, first_name, last_name, email, source, subscribed_at FROM marketing_subscribers ORDER BY subscribed_at DESC LIMIT 20', note: 'Last 20 subscribers' },
+      { name: 'Marketing sources', query: 'SELECT source, COUNT(*) as count FROM marketing_sources GROUP BY source ORDER BY count DESC', note: 'Source breakdown' },
+    ],
+    'Staff & Roster': [
+      { name: 'All users', query: 'SELECT id, first_name, last_name, email, is_admin, is_active, last_login FROM users ORDER BY id', note: 'All staff members' },
+      { name: 'Shifts by date', query: "SELECT rs.*, u.first_name, u.last_name FROM roster_shifts rs LEFT JOIN users u ON u.id = rs.staff_id WHERE rs.date = '{date}' ORDER BY rs.start_time", note: 'Replace {date} with date (YYYY-MM-DD)' },
+    ],
+    'Inspections': [
+      { name: 'Inspection by booking ID', query: 'SELECT * FROM vehicle_inspections WHERE booking_id = {id}', note: 'Replace {id} with booking ID' },
+      { name: 'Recent inspections', query: 'SELECT vi.id, b.reference, vi.inspection_type, vi.customer_name, vi.mileage, vi.created_at FROM vehicle_inspections vi JOIN bookings b ON b.id = vi.booking_id ORDER BY vi.created_at DESC LIMIT 20', note: 'Last 20 inspections' },
+    ],
+  }
 
   // Testimonials state
   const [testimonials, setTestimonials] = useState([])
@@ -9962,6 +10017,39 @@ function Admin() {
                         >
                           Clear
                         </button>
+                      </div>
+                    </div>
+
+                    {/* SQL Templates */}
+                    <div className="sql-templates">
+                      <h4>Query Templates</h4>
+                      <div className="sql-templates-grid">
+                        {Object.entries(sqlTemplates).map(([category, templates]) => (
+                          <div key={category} className="sql-template-category">
+                            <div
+                              className={`sql-template-category-header ${sqlTemplatesExpanded[category] ? 'expanded' : ''}`}
+                              onClick={() => setSqlTemplatesExpanded(prev => ({ ...prev, [category]: !prev[category] }))}
+                            >
+                              <span className="sql-template-category-icon">{sqlTemplatesExpanded[category] ? '▼' : '▶'}</span>
+                              <span className="sql-template-category-name">{category}</span>
+                              <span className="sql-template-count">{templates.length}</span>
+                            </div>
+                            {sqlTemplatesExpanded[category] && (
+                              <div className="sql-template-list">
+                                {templates.map((template, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="sql-template-item"
+                                    onClick={() => setSqlQuery(template.query)}
+                                  >
+                                    <div className="sql-template-name">{template.name}</div>
+                                    <div className="sql-template-note">{template.note}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
 
