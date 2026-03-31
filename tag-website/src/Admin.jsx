@@ -600,6 +600,20 @@ function Admin() {
       { name: 'By booking (full)', query: 'SELECT * FROM vehicle_inspections WHERE booking_id = {id}', note: 'All columns' },
       { name: 'Recent inspections', query: 'SELECT vi.id, b.reference, vi.inspection_type, vi.customer_name, vi.mileage FROM vehicle_inspections vi JOIN bookings b ON b.id = vi.booking_id ORDER BY vi.created_at DESC LIMIT 20', note: 'Last 20' },
     ],
+    '🔍 Debug': [
+      { name: '🔴 Payment not found by PI', query: "SELECT * FROM payments WHERE stripe_payment_intent_id = '{pi}'", note: 'Check if payment exists for intent' },
+      { name: '🔴 Search PI partial match', query: "SELECT id, booking_id, stripe_payment_intent_id, status, created_at FROM payments WHERE stripe_payment_intent_id LIKE '%{partial}%'", note: 'Partial PI search' },
+      { name: '🔴 Recent failed payments', query: "SELECT p.id, b.reference, p.stripe_payment_intent_id, p.status, p.created_at FROM payments p JOIN bookings b ON b.id = p.booking_id WHERE p.status = 'failed' ORDER BY p.created_at DESC LIMIT 20", note: 'Failed payments' },
+      { name: '🔴 Pending payments', query: "SELECT p.id, b.reference, p.stripe_payment_intent_id, p.amount_pence, p.created_at FROM payments p JOIN bookings b ON b.id = p.booking_id WHERE p.status = 'pending' ORDER BY p.created_at DESC LIMIT 20", note: 'Awaiting completion' },
+      { name: '🔴 Orphaned payments', query: "SELECT p.* FROM payments p LEFT JOIN bookings b ON b.id = p.booking_id WHERE b.id IS NULL", note: 'Payments without booking' },
+      { name: '🔴 Booking without payment', query: "SELECT b.id, b.reference, b.status, b.created_at FROM bookings b LEFT JOIN payments p ON p.booking_id = b.id WHERE p.id IS NULL AND b.status != 'pending' ORDER BY b.created_at DESC LIMIT 20", note: 'Missing payment records' },
+      { name: '🔴 Payment audit by PI', query: "SELECT al.* FROM audit_logs al WHERE al.event_data LIKE '%{pi}%' ORDER BY al.created_at DESC", note: 'Audit trail for payment intent' },
+      { name: '🔴 Error logs by PI', query: "SELECT * FROM error_logs WHERE message LIKE '%{pi}%' OR request_data LIKE '%{pi}%' ORDER BY created_at DESC", note: 'Errors mentioning payment intent' },
+      { name: '🔴 Recent payment errors', query: "SELECT id, error_type, message, endpoint, created_at FROM error_logs WHERE error_type LIKE '%payment%' OR error_type LIKE '%stripe%' ORDER BY created_at DESC LIMIT 20", note: 'Payment-related errors' },
+      { name: '🔴 Booking status mismatch', query: "SELECT b.id, b.reference, b.status AS booking_status, p.status AS payment_status FROM bookings b JOIN payments p ON p.booking_id = b.id WHERE (b.status = 'confirmed' AND p.status != 'succeeded') OR (b.status = 'pending' AND p.status = 'succeeded')", note: 'Status inconsistencies' },
+      { name: '🔴 Duplicate payment intents', query: "SELECT stripe_payment_intent_id, COUNT(*) as count FROM payments GROUP BY stripe_payment_intent_id HAVING COUNT(*) > 1", note: 'Duplicate PI records' },
+      { name: '🔴 Session audit trail', query: "SELECT * FROM audit_logs WHERE session_id = '{session}' ORDER BY created_at", note: 'Full session history' },
+    ],
   }
 
   // Testimonials state
