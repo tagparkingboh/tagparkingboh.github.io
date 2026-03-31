@@ -17,7 +17,14 @@ if not DATABASE_URL:
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=10,          # Base number of connections to keep open
+    max_overflow=20,       # Extra connections when pool is exhausted
+    pool_timeout=30,       # Seconds to wait for a connection before timeout
+    pool_recycle=1800,     # Recycle connections after 30 minutes
+    pool_pre_ping=True,    # Test connections before using them
+)
 
 # Set timezone to UK for all database connections
 from sqlalchemy import event
