@@ -6676,3 +6676,61 @@
 .session-period-table th:not(:first-child) {
   text-align: center;
 }
+
+/* Abandoned Carts Analytics */
+.abandoned-carts-summary {
+  margin-bottom: 1.5rem;
+}
+
+.abandoned-analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.abandoned-analytics-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.abandoned-analytics-card h4 {
+  margin: 0 0 1rem 0;
+  font-size: 0.95rem;
+  color: #334155;
+}
+
+.abandoned-analytics-card .admin-table.compact {
+  font-size: 0.85rem;
+}
+
+.abandoned-analytics-card .admin-table.compact th,
+.abandoned-analytics-card .admin-table.compact td {
+  padding: 0.5rem 0.75rem;
+}
+
+.abandoned-period-table,
+.abandoned-recent-table {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.abandoned-period-table h3,
+.abandoned-recent-table h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: #334155;
+}
+
+.abandoned-period-table td:last-child {
+  text-align: center;
+}
+
+.abandoned-period-table th:last-child {
+  text-align: center;
+}

@@ -56,6 +56,7 @@ const NAV_STRUCTURE = [
       { id: 'reports-growth', label: 'Booking Growth' },
       { id: 'reports-financial', label: 'Financial' },
       { id: 'reports-sessions', label: 'Session Tracking' },
+      { id: 'reports-analytics', label: 'Abandoned Carts' },
       { id: 'reports-occupancy', label: 'Occupancy' },
       { id: 'reports-routes', label: 'Popular Routes' },
       { id: 'reports-map', label: 'Location Maps' },
@@ -452,6 +453,11 @@ function Admin() {
   const [loadingSessionTracking, setLoadingSessionTracking] = useState(false)
   const [sessionTrackingPeriod, setSessionTrackingPeriod] = useState('daily') // 'daily', 'weekly', 'monthly'
 
+  // Abandoned carts report state
+  const [abandonedCartsData, setAbandonedCartsData] = useState(null)
+  const [loadingAbandonedCarts, setLoadingAbandonedCarts] = useState(false)
+  const [abandonedCartsPeriod, setAbandonedCartsPeriod] = useState('daily') // 'daily', 'weekly', 'monthly'
+
   // Marketing Sources report state
   const [marketingSourcesData, setMarketingSourcesData] = useState(null)
   const [loadingMarketingSources, setLoadingMarketingSources] = useState(false)
@@ -797,9 +803,11 @@ function Admin() {
         fetchFinancialReport()
       } else if (reportsSubTab === 'sessions') {
         fetchSessionTracking()
+      } else if (reportsSubTab === 'analytics') {
+        fetchAbandonedCarts()
       }
     }
-  }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularTop, sessionTrackingPeriod])
+  }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularTop, sessionTrackingPeriod, abandonedCartsPeriod])
 
   // Fetch test results when QA Tests tab is active
   useEffect(() => {
@@ -1708,6 +1716,25 @@ function Admin() {
       console.error('Failed to fetch session tracking:', err)
     } finally {
       setLoadingSessionTracking(false)
+    }
+  }
+
+  const fetchAbandonedCarts = async (period = abandonedCartsPeriod) => {
+    setLoadingAbandonedCarts(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/reports/abandoned-carts?period=${period}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setAbandonedCartsData(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch abandoned carts:', err)
+    } finally {
+      setLoadingAbandonedCarts(false)
     }
   }
 
@@ -4247,6 +4274,9 @@ function Admin() {
     } else if (tabId === 'reports-sessions') {
       setActiveTab('reports')
       setReportsSubTab('sessions')
+    } else if (tabId === 'reports-analytics') {
+      setActiveTab('reports')
+      setReportsSubTab('analytics')
     } else {
       setActiveTab(tabId)
     }
@@ -4271,8 +4301,9 @@ function Admin() {
     if (itemId === 'reports-map' && activeTab === 'reports' && reportsSubTab === 'map') return true
     if (itemId === 'reports-financial' && activeTab === 'reports' && reportsSubTab === 'financial') return true
     if (itemId === 'reports-sessions' && activeTab === 'reports' && reportsSubTab === 'sessions') return true
+    if (itemId === 'reports-analytics' && activeTab === 'reports' && reportsSubTab === 'analytics') return true
     // Standard tabs (exclude marketing and reports sub-tab ids)
-    const subTabIds = ['marketing', 'promotions', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map', 'reports-financial', 'reports-sessions']
+    const subTabIds = ['marketing', 'promotions', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map', 'reports-financial', 'reports-sessions', 'reports-analytics']
     if (!subTabIds.includes(itemId)) {
       return activeTab === itemId
     }
@@ -7768,6 +7799,7 @@ function Admin() {
               {reportsSubTab === 'growth' && 'Booking Growth'}
               {reportsSubTab === 'financial' && 'Financial'}
               {reportsSubTab === 'sessions' && 'Session Tracking'}
+              {reportsSubTab === 'analytics' && 'Abandoned Carts'}
               {reportsSubTab === 'occupancy' && 'Occupancy'}
               {reportsSubTab === 'popular' && 'Popular Routes'}
               {reportsSubTab === 'map' && 'Location Maps'}
@@ -9705,6 +9737,181 @@ function Admin() {
                   </>
                 ) : (
                   <p className="admin-empty">Click "Refresh Page" to load session tracking data.</p>
+                )}
+              </>
+            )}
+
+            {/* Abandoned Carts Analytics */}
+            {reportsSubTab === 'analytics' && (
+              <>
+                <div className="reports-section-header">
+                  <div className="period-selector">
+                    <button
+                      className={`period-btn ${abandonedCartsPeriod === 'daily' ? 'active' : ''}`}
+                      onClick={() => { setAbandonedCartsPeriod('daily'); fetchAbandonedCarts('daily'); }}
+                    >
+                      Daily
+                    </button>
+                    <button
+                      className={`period-btn ${abandonedCartsPeriod === 'weekly' ? 'active' : ''}`}
+                      onClick={() => { setAbandonedCartsPeriod('weekly'); fetchAbandonedCarts('weekly'); }}
+                    >
+                      Weekly
+                    </button>
+                    <button
+                      className={`period-btn ${abandonedCartsPeriod === 'monthly' ? 'active' : ''}`}
+                      onClick={() => { setAbandonedCartsPeriod('monthly'); fetchAbandonedCarts('monthly'); }}
+                    >
+                      Monthly
+                    </button>
+                  </div>
+                  <button
+                    className="refresh-page-btn"
+                    onClick={() => fetchAbandonedCarts()}
+                    disabled={loadingAbandonedCarts}
+                  >
+                    {loadingAbandonedCarts ? 'Refreshing...' : 'Refresh Page'}
+                  </button>
+                </div>
+
+                {loadingAbandonedCarts ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading abandoned carts data...</span>
+                  </div>
+                ) : abandonedCartsData ? (
+                  <>
+                    {/* Cumulative Summary */}
+                    <div className="abandoned-carts-summary">
+                      <div className="stats-summary-cards">
+                        <div className="stats-card">
+                          <div className="stats-card-value">{abandonedCartsData.cumulative?.total_abandoned || 0}</div>
+                          <div className="stats-card-label">Total Abandoned</div>
+                        </div>
+                      </div>
+
+                      {/* Top Destinations */}
+                      <div className="abandoned-analytics-grid">
+                        <div className="abandoned-analytics-card">
+                          <h4>Top Destinations (Abandoned)</h4>
+                          {abandonedCartsData.cumulative?.top_destinations?.length > 0 ? (
+                            <table className="admin-table compact">
+                              <thead>
+                                <tr>
+                                  <th>Destination</th>
+                                  <th>Count</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {abandonedCartsData.cumulative.top_destinations.map((item, idx) => (
+                                  <tr key={idx}>
+                                    <td>{item.destination}</td>
+                                    <td>{item.count}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <p className="admin-empty">No destination data</p>
+                          )}
+                        </div>
+
+                        <div className="abandoned-analytics-card">
+                          <h4>Top Trip Lengths (Abandoned)</h4>
+                          {abandonedCartsData.cumulative?.top_days?.length > 0 ? (
+                            <table className="admin-table compact">
+                              <thead>
+                                <tr>
+                                  <th>Days</th>
+                                  <th>Count</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {abandonedCartsData.cumulative.top_days.map((item, idx) => (
+                                  <tr key={idx}>
+                                    <td>{item.days} days</td>
+                                    <td>{item.count}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <p className="admin-empty">No trip length data</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Period-by-Period Breakdown */}
+                    <div className="abandoned-period-table">
+                      <h3>
+                        {abandonedCartsPeriod === 'daily' && 'Daily Breakdown'}
+                        {abandonedCartsPeriod === 'weekly' && 'Weekly Breakdown'}
+                        {abandonedCartsPeriod === 'monthly' && 'Monthly Breakdown'}
+                      </h3>
+                      {abandonedCartsData.periods?.length > 0 ? (
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Period</th>
+                              <th>Abandoned Sessions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {abandonedCartsData.periods?.slice().reverse().map(period => (
+                              <tr key={period.period}>
+                                <td><strong>{period.label}</strong></td>
+                                <td>{period.abandoned_count}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <p className="admin-empty">No abandoned cart data available for this period.</p>
+                      )}
+                    </div>
+
+                    {/* Recent Abandoned Carts */}
+                    <div className="abandoned-recent-table">
+                      <h3>Recent Abandoned Carts (with flight details)</h3>
+                      {abandonedCartsData.recent_abandoned?.length > 0 ? (
+                        <div className="sql-results-table-wrapper">
+                          <table className="admin-table">
+                            <thead>
+                              <tr>
+                                <th>Date/Time</th>
+                                <th>Drop-off</th>
+                                <th>Departure</th>
+                                <th>Pick-up</th>
+                                <th>Arrival</th>
+                                <th>Destination</th>
+                                <th>Days</th>
+                                <th>Airline</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {abandonedCartsData.recent_abandoned.map((item, idx) => (
+                                <tr key={idx}>
+                                  <td>{new Date(item.created_at).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                                  <td>{item.dropoff_date}</td>
+                                  <td>{item.departure_time}</td>
+                                  <td>{item.pickup_date}</td>
+                                  <td>{item.arrival_time}</td>
+                                  <td>{item.destination}</td>
+                                  <td>{item.days}</td>
+                                  <td>{item.airline}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="admin-empty">No recent abandoned carts with flight details.</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="admin-empty">Click "Refresh Page" to load abandoned carts data.</p>
                 )}
               </>
             )}

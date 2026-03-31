@@ -4418,6 +4418,188 @@ async def get_session_tracking_report(
     }
 
 
+@app.get("/api/admin/reports/abandoned-carts")
+async def get_abandoned_carts_report(
+    period: str = Query("daily", description="Time period: daily, weekly, monthly"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get abandoned cart analytics showing sessions that didn't convert.
+
+    Shows:
+    - Total abandoned sessions by period
+    - Top destinations people searched for but didn't book
+    - Top trip lengths (days) that were abandoned
+    - Recent abandoned cart details with flight info
+    """
+    from db_models import AuditLog, AuditLogEvent
+    from datetime import datetime, timedelta
+    from collections import defaultdict
+    import pytz
+    import json
+
+    uk_tz = pytz.timezone('Europe/London')
+    now = datetime.now(uk_tz)
+
+    # Feature deployment date
+    feature_deploy_date = uk_tz.localize(datetime(2026, 3, 29, 17, 0, 0))
+
+    # Calculate date range based on period
+    if period == "daily":
+        start_date = max(now - timedelta(days=30), feature_deploy_date)
+    elif period == "weekly":
+        start_date = max(now - timedelta(weeks=12), feature_deploy_date)
+    else:  # monthly
+        start_date = max(now - timedelta(days=365), feature_deploy_date)
+
+    # Get all sessions that selected dates or flights
+    started_sessions = db.query(AuditLog).filter(
+        AuditLog.created_at >= start_date,
+        AuditLog.event.in_([
+            AuditLogEvent.DATES_SELECTED,
+            AuditLogEvent.FLIGHT_SELECTED,
+        ]),
+        AuditLog.session_id.isnot(None)
+    ).all()
+
+    # Get all sessions that completed booking
+    completed_sessions = db.query(AuditLog.session_id).filter(
+        AuditLog.created_at >= start_date,
+        AuditLog.event.in_([
+            AuditLogEvent.PAYMENT_SUCCEEDED,
+            AuditLogEvent.BOOKING_CONFIRMED,
+        ]),
+        AuditLog.session_id.isnot(None)
+    ).distinct().all()
+    completed_session_ids = {s[0] for s in completed_sessions}
+
+    # Group abandoned sessions by period
+    period_data = defaultdict(set)
+    destination_counts = defaultdict(int)
+    days_counts = defaultdict(int)
+    recent_abandoned = []
+
+    for log in started_sessions:
+        if log.session_id in completed_session_ids:
+            continue  # Skip completed sessions
+
+        if log.created_at:
+            log_time = log.created_at
+            if log_time.tzinfo is None:
+                log_time = uk_tz.localize(log_time)
+            else:
+                log_time = log_time.astimezone(uk_tz)
+
+            if period == "weekly":
+                period_key = log_time.strftime("%Y-W%W")
+            elif period == "monthly":
+                period_key = log_time.strftime("%Y-%m")
+            else:  # daily
+                period_key = log_time.strftime("%Y-%m-%d")
+
+            period_data[period_key].add(log.session_id)
+
+            # Extract event data for analytics
+            if log.event_data:
+                try:
+                    data = json.loads(log.event_data) if isinstance(log.event_data, str) else log.event_data
+
+                    # Count destinations
+                    destination = data.get('departure_destination')
+                    if destination:
+                        destination_counts[destination] += 1
+
+                    # Count trip lengths
+                    dropoff = data.get('dropoff_date')
+                    pickup = data.get('pickup_date')
+                    if dropoff and pickup:
+                        try:
+                            d1 = datetime.strptime(dropoff, "%Y-%m-%d")
+                            d2 = datetime.strptime(pickup, "%Y-%m-%d")
+                            days = (d2 - d1).days
+                            if days > 0:
+                                days_counts[days] += 1
+                        except:
+                            pass
+
+                    # Collect recent abandoned with flight details
+                    if log.event == AuditLogEvent.FLIGHT_SELECTED and len(recent_abandoned) < 100:
+                        recent_abandoned.append({
+                            "created_at": log_time.isoformat(),
+                            "session_id": log.session_id,
+                            "dropoff_date": data.get('dropoff_date'),
+                            "pickup_date": data.get('pickup_date'),
+                            "departure_time": data.get('departure_time'),
+                            "arrival_time": data.get('arrival_time'),
+                            "destination": data.get('departure_destination'),
+                            "airline": data.get('departure_airline'),
+                            "days": (datetime.strptime(data.get('pickup_date'), "%Y-%m-%d") -
+                                    datetime.strptime(data.get('dropoff_date'), "%Y-%m-%d")).days
+                                    if data.get('pickup_date') and data.get('dropoff_date') else None
+                        })
+                except:
+                    pass
+
+    # Sort recent abandoned by created_at descending
+    recent_abandoned.sort(key=lambda x: x['created_at'], reverse=True)
+
+    # Build period response
+    periods_list = sorted(period_data.keys())
+    formatted_periods = []
+    total_abandoned = 0
+
+    for period_key in periods_list:
+        count = len(period_data[period_key])
+        total_abandoned += count
+
+        # Format display label
+        try:
+            if period == "weekly":
+                year, week = period_key.split("-W")
+                first_day = datetime.strptime(f"{year}-W{week}-1", "%Y-W%W-%w")
+                display_label = first_day.strftime("%d/%m")
+            elif period == "monthly":
+                dt = datetime.strptime(period_key, "%Y-%m")
+                display_label = dt.strftime("%b %Y")
+            else:
+                dt = datetime.strptime(period_key, "%Y-%m-%d")
+                display_label = dt.strftime("%d/%m")
+        except:
+            display_label = period_key
+
+        formatted_periods.append({
+            "period": period_key,
+            "label": display_label,
+            "abandoned_count": count
+        })
+
+    # Top destinations (sorted by count)
+    top_destinations = sorted(
+        [{"destination": k, "count": v} for k, v in destination_counts.items()],
+        key=lambda x: x['count'],
+        reverse=True
+    )[:10]
+
+    # Top trip lengths (sorted by count)
+    top_days = sorted(
+        [{"days": k, "count": v} for k, v in days_counts.items()],
+        key=lambda x: x['count'],
+        reverse=True
+    )[:10]
+
+    return {
+        "period_type": period,
+        "periods": formatted_periods,
+        "cumulative": {
+            "total_abandoned": total_abandoned,
+            "top_destinations": top_destinations,
+            "top_days": top_days,
+        },
+        "recent_abandoned": recent_abandoned[:50]  # Limit to 50 for response size
+    }
+
+
 @app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
 async def send_promo_email_to_subscriber(
     subscriber_id: int,
