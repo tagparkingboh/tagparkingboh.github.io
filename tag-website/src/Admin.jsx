@@ -10067,39 +10067,6 @@ function Admin() {
                       </div>
                     </div>
 
-                    {/* SQL Templates */}
-                    <div className="sql-templates">
-                      <h4>Query Templates</h4>
-                      <div className="sql-templates-grid">
-                        {Object.entries(sqlTemplates).map(([category, templates]) => (
-                          <div key={category} className="sql-template-category">
-                            <div
-                              className={`sql-template-category-header ${sqlTemplatesExpanded[category] ? 'expanded' : ''}`}
-                              onClick={() => setSqlTemplatesExpanded(prev => ({ ...prev, [category]: !prev[category] }))}
-                            >
-                              <span className="sql-template-category-icon">{sqlTemplatesExpanded[category] ? '▼' : '▶'}</span>
-                              <span className="sql-template-category-name">{category}</span>
-                              <span className="sql-template-count">{templates.length}</span>
-                            </div>
-                            {sqlTemplatesExpanded[category] && (
-                              <div className="sql-template-list">
-                                {templates.map((template, idx) => (
-                                  <div
-                                    key={idx}
-                                    className="sql-template-item"
-                                    onClick={() => setSqlQuery(template.query)}
-                                  >
-                                    <div className="sql-template-name">{template.name}</div>
-                                    <div className="sql-template-note">{template.note}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
                     {/* Error Display */}
                     {sqlError && (
                       <div className="sql-error">
@@ -10173,6 +10140,39 @@ function Admin() {
                         </ul>
                       </div>
                     )}
+
+                    {/* SQL Templates */}
+                    <div className="sql-templates">
+                      <h4>Query Templates</h4>
+                      <div className="sql-templates-grid">
+                        {Object.entries(sqlTemplates).map(([category, templates]) => (
+                          <div key={category} className="sql-template-category">
+                            <div
+                              className={`sql-template-category-header ${sqlTemplatesExpanded[category] ? 'expanded' : ''}`}
+                              onClick={() => setSqlTemplatesExpanded(prev => ({ ...prev, [category]: !prev[category] }))}
+                            >
+                              <span className="sql-template-category-icon">{sqlTemplatesExpanded[category] ? '▼' : '▶'}</span>
+                              <span className="sql-template-category-name">{category}</span>
+                              <span className="sql-template-count">{templates.length}</span>
+                            </div>
+                            {sqlTemplatesExpanded[category] && (
+                              <div className="sql-template-list">
+                                {templates.map((template, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="sql-template-item"
+                                    onClick={() => setSqlQuery(template.query)}
+                                  >
+                                    <div className="sql-template-name">{template.name}</div>
+                                    <div className="sql-template-note">{template.note}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
 
                     {/* Security Notice */}
                     <div className="sql-security-notice">
