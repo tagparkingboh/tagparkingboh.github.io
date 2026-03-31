@@ -11372,6 +11372,36 @@ async def delete_admin_arrival(
 # QA Dashboard - Test Results Endpoints
 # =============================================================================
 
+@app.get("/api/admin/db-health")
+async def get_database_health(
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get database connection pool health status for monitoring.
+    Shows current pool usage and warns if connections are running low.
+    """
+    from database import get_pool_status
+
+    status = get_pool_status()
+
+    # Determine health status
+    if status["usage_percent"] >= 90:
+        health = "critical"
+        message = "Connection pool nearly exhausted!"
+    elif status["usage_percent"] >= 70:
+        health = "warning"
+        message = "Connection pool usage is high"
+    else:
+        health = "healthy"
+        message = "Connection pool is healthy"
+
+    return {
+        "health": health,
+        "message": message,
+        **status
+    }
+
+
 @app.get("/api/admin/test-results")
 async def get_test_results(
     limit: int = Query(10, ge=1, le=100),

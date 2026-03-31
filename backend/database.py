@@ -5,7 +5,11 @@ Uses PostgreSQL via Railway.
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import event
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Get database URL from environment (PostgreSQL required)
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -17,17 +21,20 @@ if not DATABASE_URL:
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# Pool configuration
+POOL_SIZE = 10
+MAX_OVERFLOW = 20
+POOL_WARNING_THRESHOLD = 0.7  # Warn when 70% of pool is in use
+
 engine = create_engine(
     DATABASE_URL,
-    pool_size=10,          # Base number of connections to keep open
-    max_overflow=20,       # Extra connections when pool is exhausted
-    pool_timeout=30,       # Seconds to wait for a connection before timeout
-    pool_recycle=1800,     # Recycle connections after 30 minutes
-    pool_pre_ping=True,    # Test connections before using them
+    pool_size=POOL_SIZE,       # Base number of connections to keep open
+    max_overflow=MAX_OVERFLOW, # Extra connections when pool is exhausted
+    pool_timeout=30,           # Seconds to wait for a connection before timeout
+    pool_recycle=1800,         # Recycle connections after 30 minutes
+    pool_pre_ping=True,        # Test connections before using them
 )
 
-# Set timezone to UK for all database connections
-from sqlalchemy import event
 
 @event.listens_for(engine, "connect")
 def set_timezone(dbapi_connection, connection_record):
@@ -35,6 +42,53 @@ def set_timezone(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     cursor.execute("SET timezone TO 'Europe/London'")
     cursor.close()
+
+
+@event.listens_for(engine, "checkout")
+def check_pool_usage(dbapi_connection, connection_record, connection_proxy):
+    """Log warning when connection pool usage is high."""
+    pool = engine.pool
+    pool_size = pool.size()
+    checked_out = pool.checkedout()
+    overflow = pool.overflow()
+
+    total_possible = POOL_SIZE + MAX_OVERFLOW
+    current_usage = checked_out + overflow
+    usage_percent = current_usage / total_possible if total_possible > 0 else 0
+
+    if usage_percent >= POOL_WARNING_THRESHOLD:
+        logger.warning(
+            f"[DB POOL WARNING] High connection usage: {current_usage}/{total_possible} "
+            f"({usage_percent:.0%}) - checked_out={checked_out}, overflow={overflow}"
+        )
+
+    if usage_percent >= 0.9:
+        logger.error(
+            f"[DB POOL CRITICAL] Connection pool nearly exhausted: {current_usage}/{total_possible} "
+            f"({usage_percent:.0%}) - checked_out={checked_out}, overflow={overflow}"
+        )
+
+
+@event.listens_for(engine, "checkin")
+def log_checkin(dbapi_connection, connection_record):
+    """Log when connections are returned to pool (debug level)."""
+    pool = engine.pool
+    logger.debug(
+        f"[DB POOL] Connection returned - checked_out={pool.checkedout()}, overflow={pool.overflow()}"
+    )
+
+
+@event.listens_for(engine, "invalidate")
+def log_invalidate(dbapi_connection, connection_record, exception):
+    """Log when a connection is invalidated."""
+    logger.warning(f"[DB POOL] Connection invalidated: {exception}")
+
+
+@event.listens_for(engine, "soft_invalidate")
+def log_soft_invalidate(dbapi_connection, connection_record):
+    """Log when a connection is soft invalidated (will be recycled)."""
+    logger.info("[DB POOL] Connection marked for recycle")
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -48,6 +102,21 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def get_pool_status():
+    """Get current connection pool status for monitoring."""
+    pool = engine.pool
+    return {
+        "pool_size": POOL_SIZE,
+        "max_overflow": MAX_OVERFLOW,
+        "checked_out": pool.checkedout(),
+        "overflow": pool.overflow(),
+        "checked_in": pool.checkedin(),
+        "total_connections": pool.checkedout() + pool.overflow(),
+        "max_connections": POOL_SIZE + MAX_OVERFLOW,
+        "usage_percent": round((pool.checkedout() + pool.overflow()) / (POOL_SIZE + MAX_OVERFLOW) * 100, 1),
+    }
 
 
 def init_db():
