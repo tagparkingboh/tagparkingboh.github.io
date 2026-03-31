@@ -600,6 +600,14 @@ function Admin() {
       { name: 'By booking (full)', query: 'SELECT * FROM vehicle_inspections WHERE booking_id = {id}', note: 'All columns' },
       { name: 'Recent inspections', query: 'SELECT vi.id, b.reference, vi.inspection_type, vi.customer_name, vi.mileage FROM vehicle_inspections vi JOIN bookings b ON b.id = vi.booking_id ORDER BY vi.created_at DESC LIMIT 20', note: 'Last 20' },
     ],
+    '📊 Analytics': [
+      { name: 'Top 5 drop-off hours', query: "SELECT EXTRACT(HOUR FROM dropoff_time)::int || ':00 - ' || (EXTRACT(HOUR FROM dropoff_time)::int + 1) || ':00' AS time_window, COUNT(*) AS count FROM bookings WHERE dropoff_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM dropoff_time) ORDER BY count DESC LIMIT 5", note: 'Most popular drop-off times' },
+      { name: 'Top 5 pickup hours', query: "SELECT EXTRACT(HOUR FROM pickup_time)::int || ':00 - ' || (EXTRACT(HOUR FROM pickup_time)::int + 1) || ':00' AS time_window, COUNT(*) AS count FROM bookings WHERE pickup_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM pickup_time) ORDER BY count DESC LIMIT 5", note: 'Most popular pickup times' },
+      { name: 'Drop-off hours (all)', query: "SELECT EXTRACT(HOUR FROM dropoff_time)::int || ':00 - ' || (EXTRACT(HOUR FROM dropoff_time)::int + 1) || ':00' AS time_window, COUNT(*) AS count FROM bookings WHERE dropoff_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM dropoff_time) ORDER BY EXTRACT(HOUR FROM dropoff_time)", note: 'All drop-off hours' },
+      { name: 'Pickup hours (all)', query: "SELECT EXTRACT(HOUR FROM pickup_time)::int || ':00 - ' || (EXTRACT(HOUR FROM pickup_time)::int + 1) || ':00' AS time_window, COUNT(*) AS count FROM bookings WHERE pickup_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM pickup_time) ORDER BY EXTRACT(HOUR FROM pickup_time)", note: 'All pickup hours' },
+      { name: 'Bookings by day of week', query: "SELECT TO_CHAR(dropoff_date, 'Day') AS day_name, EXTRACT(DOW FROM dropoff_date) AS day_num, COUNT(*) AS count FROM bookings GROUP BY day_name, day_num ORDER BY day_num", note: 'Busiest days' },
+      { name: 'Bookings by month', query: "SELECT TO_CHAR(dropoff_date, 'YYYY-MM') AS month, COUNT(*) AS count FROM bookings GROUP BY month ORDER BY month DESC LIMIT 12", note: 'Last 12 months' },
+    ],
     '🔍 Debug': [
       { name: '🔴 Payment not found by PI', query: "SELECT * FROM payments WHERE stripe_payment_intent_id = '{pi}'", note: 'Check if payment exists for intent' },
       { name: '🔴 Search PI partial match', query: "SELECT id, booking_id, stripe_payment_intent_id, status, created_at FROM payments WHERE stripe_payment_intent_id LIKE '%{partial}%'", note: 'Partial PI search' },
