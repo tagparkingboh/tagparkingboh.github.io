@@ -1,10 +1,12 @@
 name: Scheduled Test Suite
 
 on:
-  # Run twice per week: Monday and Thursday at 6am UTC
+  # Run 4 times per week: Monday, Wednesday, Friday, Sunday at 6am UTC
   schedule:
     - cron: '0 6 * * 1'  # Monday at 6am UTC
-    - cron: '0 6 * * 4'  # Thursday at 6am UTC
+    - cron: '0 6 * * 3'  # Wednesday at 6am UTC
+    - cron: '0 6 * * 5'  # Friday at 6am UTC
+    - cron: '0 6 * * 0'  # Sunday at 6am UTC
 
   # Allow manual triggering
   workflow_dispatch:
