@@ -4476,9 +4476,10 @@ async def get_abandoned_carts_report(
 
     # Group abandoned sessions by period
     period_data = defaultdict(set)
-    destination_counts = defaultdict(int)
-    days_counts = defaultdict(int)
+    destination_sessions = defaultdict(set)  # Track unique sessions per destination
+    days_sessions = defaultdict(set)  # Track unique sessions per trip length
     recent_abandoned = []
+    seen_sessions = set()  # Track sessions we've already added to recent_abandoned
 
     for log in started_sessions:
         if log.session_id in completed_session_ids:
@@ -4505,12 +4506,12 @@ async def get_abandoned_carts_report(
                 try:
                     data = json.loads(log.event_data) if isinstance(log.event_data, str) else log.event_data
 
-                    # Count destinations
+                    # Count unique sessions per destination
                     destination = data.get('departure_destination')
                     if destination:
-                        destination_counts[destination] += 1
+                        destination_sessions[destination].add(log.session_id)
 
-                    # Count trip lengths
+                    # Count unique sessions per trip length
                     dropoff = data.get('dropoff_date')
                     pickup = data.get('pickup_date')
                     if dropoff and pickup:
@@ -4519,12 +4520,13 @@ async def get_abandoned_carts_report(
                             d2 = datetime.strptime(pickup, "%Y-%m-%d")
                             days = (d2 - d1).days
                             if days > 0:
-                                days_counts[days] += 1
+                                days_sessions[days].add(log.session_id)
                         except:
                             pass
 
-                    # Collect recent abandoned with flight details
-                    if log.event == AuditLogEvent.FLIGHT_SELECTED and len(recent_abandoned) < 100:
+                    # Collect recent abandoned with flight details (one per session)
+                    if log.event == AuditLogEvent.FLIGHT_SELECTED and log.session_id not in seen_sessions and len(recent_abandoned) < 100:
+                        seen_sessions.add(log.session_id)
                         recent_abandoned.append({
                             "created_at": log_time.isoformat(),
                             "session_id": log.session_id,
@@ -4574,16 +4576,16 @@ async def get_abandoned_carts_report(
             "abandoned_count": count
         })
 
-    # Top destinations (sorted by count)
+    # Top destinations (sorted by unique session count)
     top_destinations = sorted(
-        [{"destination": k, "count": v} for k, v in destination_counts.items()],
+        [{"destination": k, "count": len(v)} for k, v in destination_sessions.items()],
         key=lambda x: x['count'],
         reverse=True
     )[:10]
 
-    # Top trip lengths (sorted by count)
+    # Top trip lengths (sorted by unique session count)
     top_days = sorted(
-        [{"days": k, "count": v} for k, v in days_counts.items()],
+        [{"days": k, "count": len(v)} for k, v in days_sessions.items()],
         key=lambda x: x['count'],
         reverse=True
     )[:10]
