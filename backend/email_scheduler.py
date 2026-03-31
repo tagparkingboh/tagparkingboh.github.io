@@ -36,15 +36,11 @@ def get_db() -> Session:
     return SessionLocal()
 
 
-def process_pending_welcome_emails():
+def process_pending_welcome_emails(db: Session):
     """
     Find subscribers who signed up more than WELCOME_EMAIL_DELAY_MINUTES ago
     and haven't received their welcome email yet.
     """
-    if not is_email_enabled():
-        return
-
-    db = get_db()
     try:
         cutoff_time = datetime.utcnow() - timedelta(minutes=WELCOME_EMAIL_DELAY_MINUTES)
 
@@ -78,19 +74,13 @@ def process_pending_welcome_emails():
     except Exception as e:
         logger.error(f"Error processing welcome emails: {str(e)}")
         db.rollback()
-    finally:
-        db.close()
 
 
-def process_pending_promo_emails():
+def process_pending_promo_emails(db: Session):
     """
     Find subscribers who received their welcome email more than
     PROMO_EMAIL_DELAY_HOURS ago and haven't received their promo code yet.
     """
-    if not is_email_enabled():
-        return
-
-    db = get_db()
     try:
         cutoff_time = datetime.utcnow() - timedelta(hours=PROMO_EMAIL_DELAY_HOURS)
 
@@ -136,19 +126,13 @@ def process_pending_promo_emails():
     except Exception as e:
         logger.error(f"Error processing promo emails: {str(e)}")
         db.rollback()
-    finally:
-        db.close()
 
 
-def process_pending_2day_reminders():
+def process_pending_2day_reminders(db: Session):
     """
     Find confirmed bookings that are within 48 hours of their dropoff date
     (UK time) and haven't received the 2-day reminder yet.
     """
-    if not is_email_enabled():
-        return
-
-    db = get_db()
     try:
         # Get current time in UK timezone
         uk_tz = pytz.timezone('Europe/London')
@@ -208,19 +192,13 @@ def process_pending_2day_reminders():
     except Exception as e:
         logger.error(f"Error processing 2-day reminders: {str(e)}")
         db.rollback()
-    finally:
-        db.close()
 
 
-def process_pending_thankyou_emails():
+def process_pending_thankyou_emails(db: Session):
     """
     Find completed bookings that were completed more than 2 hours ago
     and haven't received the thank you email yet.
     """
-    if not is_email_enabled():
-        return
-
-    db = get_db()
     try:
         # Calculate cutoff: 2 hours ago
         cutoff_time = datetime.utcnow() - timedelta(hours=THANK_YOU_EMAIL_DELAY_HOURS)
@@ -258,11 +236,9 @@ def process_pending_thankyou_emails():
     except Exception as e:
         logger.error(f"Error processing thank you emails: {str(e)}")
         db.rollback()
-    finally:
-        db.close()
 
 
-def process_pending_founder_followups():
+def process_pending_founder_followups(db: Session):
     """
     Find customers who abandoned at the contact details stage (no bookings).
     Sends a personal follow-up email from the founder.
@@ -278,10 +254,6 @@ def process_pending_founder_followups():
        - New customers: created_at >= March 1st 2026
        - Existing customers: updated_at >= March 1st 2026
     """
-    if not is_email_enabled():
-        return
-
-    db = get_db()
     try:
         # Calculate cutoff: 1 hour ago (UK time, timezone-aware)
         uk_tz = pytz.timezone('Europe/London')
@@ -354,19 +326,26 @@ def process_pending_founder_followups():
     except Exception as e:
         logger.error(f"Error processing founder followups: {str(e)}")
         db.rollback()
-    finally:
-        db.close()
 
 
 def process_all_pending_emails():
-    """Main job that processes all pending emails."""
+    """Main job that processes all pending emails using a single DB connection."""
+    if not is_email_enabled():
+        return
+
     logger.debug("Checking for pending emails...")
-    process_pending_welcome_emails()
-    process_pending_2day_reminders()
-    process_pending_thankyou_emails()
-    process_pending_founder_followups()
-    # PAUSED: Promo code emails - uncomment when ready to send
-    # process_pending_promo_emails()
+
+    # Use a single database connection for all email processing
+    db = get_db()
+    try:
+        process_pending_welcome_emails(db)
+        process_pending_2day_reminders(db)
+        process_pending_thankyou_emails(db)
+        process_pending_founder_followups(db)
+        # PAUSED: Promo code emails - uncomment when ready to send
+        # process_pending_promo_emails(db)
+    finally:
+        db.close()
 
 
 def start_scheduler():
@@ -398,3 +377,44 @@ def stop_scheduler():
 def trigger_immediate_check():
     """Trigger an immediate check for pending emails (useful for testing)."""
     process_all_pending_emails()
+
+
+# Legacy function wrappers for backward compatibility (if called directly)
+def _process_welcome_emails_standalone():
+    if not is_email_enabled():
+        return
+    db = get_db()
+    try:
+        process_pending_welcome_emails(db)
+    finally:
+        db.close()
+
+
+def _process_2day_reminders_standalone():
+    if not is_email_enabled():
+        return
+    db = get_db()
+    try:
+        process_pending_2day_reminders(db)
+    finally:
+        db.close()
+
+
+def _process_thankyou_emails_standalone():
+    if not is_email_enabled():
+        return
+    db = get_db()
+    try:
+        process_pending_thankyou_emails(db)
+    finally:
+        db.close()
+
+
+def _process_founder_followups_standalone():
+    if not is_email_enabled():
+        return
+    db = get_db()
+    try:
+        process_pending_founder_followups(db)
+    finally:
+        db.close()
