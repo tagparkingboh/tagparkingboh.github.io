@@ -15,14 +15,14 @@
 
 @font-face {
   font-family: 'Gilroy';
-  src: url('/Gilroy/Radomir Tinkov - Gilroy-Medium.otf') format('opentype');
+  src: url('/Gilroy/Radomir Tinkov - Gilroy-SemiBold.otf') format('opentype');
   font-weight: 500;
   font-style: normal;
 }
 
 @font-face {
   font-family: 'Gilroy';
-  src: url('/Gilroy/Radomir Tinkov - Gilroy-Regular.otf') format('opentype');
+  src: url('/Gilroy/Radomir Tinkov - Gilroy-SemiBold.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
 }
