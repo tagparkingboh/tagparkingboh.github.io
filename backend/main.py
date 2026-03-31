@@ -8993,14 +8993,9 @@ async def stripe_webhook(
                 paid_at=datetime.utcnow(),
             )
             if not payment:
-                # Payment not found in database - log but continue
-                log_error(
-                    db=db,
-                    error_type="webhook_payment_not_found",
-                    message=f"Payment record not found for intent: {payment_intent_id}",
-                    request=request,
-                    booking_reference=booking_reference,
-                )
+                # Payment not found - likely a manual booking where admin confirms payment separately
+                # Don't log as error, just print info for debugging
+                print(f"[WEBHOOK] Payment intent {payment_intent_id} not found in database - likely a manual booking payment link (admin confirms manually)")
             elif was_already_processed:
                 print(f"[WEBHOOK] Duplicate webhook - already processed for {booking_reference}")
         except Exception as e:
