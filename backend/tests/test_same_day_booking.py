@@ -19,7 +19,8 @@ from freezegun import freeze_time
 
 # Import the app
 import sys
-sys.path.insert(0, '/Users/qaorca/Downloads/Projects/Tag/backend')
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from main import app
 from models import SlotType
