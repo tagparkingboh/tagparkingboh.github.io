@@ -522,11 +522,16 @@ function Admin() {
       { name: 'Find customer by email', query: "SELECT * FROM customers WHERE email = '{email}'", note: 'Replace {email} with customer email' },
       { name: 'Recent customers', query: 'SELECT id, first_name, last_name, email, phone, created_at FROM customers ORDER BY created_at DESC LIMIT 20', note: 'Last 20 customers' },
       { name: 'Search customer by name', query: "SELECT id, first_name, last_name, email, phone FROM customers WHERE first_name ILIKE '%{name}%' OR last_name ILIKE '%{name}%'", note: 'Partial name search' },
+      { name: '✏️ Update customer contact', query: "UPDATE customers SET first_name = '{first}', last_name = '{last}', phone = '{phone}' WHERE id = {id}", note: 'Update name/phone' },
+      { name: '✏️ Update customer email', query: "UPDATE customers SET email = '{email}' WHERE id = {id}", note: 'Change email address' },
+      { name: '✏️ Update billing address', query: "UPDATE customers SET billing_address1 = '{addr1}', billing_city = '{city}', billing_postcode = '{postcode}' WHERE id = {id}", note: 'Update billing info' },
     ],
     'Vehicles': [
       { name: 'Find vehicle by ID', query: 'SELECT * FROM vehicles WHERE id = {id}', note: 'Replace {id} with vehicle ID' },
       { name: 'Find vehicle by registration', query: "SELECT * FROM vehicles WHERE registration = '{reg}'", note: 'Replace {reg} with registration' },
       { name: 'Customer + Vehicle', query: 'SELECT c.id AS customer_id, c.first_name, c.last_name, c.email, v.id AS vehicle_id, v.registration, v.make, v.model, v.colour FROM customers c JOIN vehicles v ON v.customer_id = c.id WHERE c.id = {id}', note: 'Replace {id} with customer ID' },
+      { name: '➕ Add vehicle to customer', query: "INSERT INTO vehicles (customer_id, registration, make, model, colour) VALUES ({customer_id}, '{reg}', '{make}', '{model}', '{colour}')", note: 'Add new vehicle for existing customer' },
+      { name: '✏️ Update vehicle details', query: "UPDATE vehicles SET registration = '{reg}', make = '{make}', model = '{model}', colour = '{colour}' WHERE id = {id}", note: 'Update vehicle by ID' },
     ],
     'Bookings': [
       { name: 'Find booking by ID', query: 'SELECT * FROM bookings WHERE id = {id}', note: 'Replace {id} with booking ID' },
@@ -535,12 +540,19 @@ function Admin() {
       { name: 'Customer + Vehicle + Booking', query: 'SELECT c.id AS customer_id, c.first_name, c.last_name, c.email, v.id AS vehicle_id, v.registration, v.make, v.model, b.id AS booking_id, b.reference, b.status, b.dropoff_date, b.pickup_date FROM customers c JOIN vehicles v ON v.customer_id = c.id JOIN bookings b ON b.customer_id = c.id AND b.vehicle_id = v.id WHERE c.id = {id} ORDER BY b.created_at DESC', note: 'Full customer journey by customer ID' },
       { name: 'Bookings by date range', query: "SELECT id, reference, status, dropoff_date, pickup_date FROM bookings WHERE dropoff_date BETWEEN '{start}' AND '{end}' ORDER BY dropoff_date", note: 'Replace {start} and {end} with dates (YYYY-MM-DD)' },
       { name: 'Confirmed bookings today', query: "SELECT b.id, b.reference, c.first_name, c.last_name, v.registration, b.dropoff_date, b.dropoff_time FROM bookings b JOIN customers c ON c.id = b.customer_id JOIN vehicles v ON v.id = b.vehicle_id WHERE b.status = 'confirmed' AND b.dropoff_date = CURRENT_DATE ORDER BY b.dropoff_time", note: "Today's drop-offs" },
+      { name: '🔄 Switch vehicle on booking', query: 'UPDATE bookings SET vehicle_id = {new_vehicle_id} WHERE id = {booking_id}', note: 'Change vehicle for a booking' },
+      { name: '✏️ Update booking status', query: "UPDATE bookings SET status = '{status}' WHERE id = {id}", note: 'Status: pending, confirmed, cancelled, completed, refunded' },
+      { name: '✏️ Update booking dates', query: "UPDATE bookings SET dropoff_date = '{dropoff}', pickup_date = '{pickup}' WHERE id = {id}", note: 'Change dates (YYYY-MM-DD)' },
+      { name: '✏️ Update booking times', query: "UPDATE bookings SET dropoff_time = '{dropoff_time}', pickup_time = '{pickup_time}' WHERE id = {id}", note: 'Change times (HH:MM:SS)' },
+      { name: '✏️ Add admin notes', query: "UPDATE bookings SET admin_notes = '{notes}' WHERE id = {id}", note: 'Add internal admin notes' },
     ],
     'Payments': [
       { name: 'Find payment by booking ID', query: 'SELECT * FROM payments WHERE booking_id = {id}', note: 'Replace {id} with booking ID' },
       { name: 'Find payment by Stripe ID', query: "SELECT * FROM payments WHERE stripe_payment_intent_id = '{pi}'", note: 'Replace {pi} with payment intent ID' },
       { name: 'Customer + Booking + Payment', query: 'SELECT c.id AS customer_id, c.first_name, c.last_name, c.email, b.id AS booking_id, b.reference, b.status, p.id AS payment_id, p.amount_pence, p.status AS payment_status, p.stripe_payment_intent_id FROM customers c JOIN bookings b ON b.customer_id = c.id JOIN payments p ON p.booking_id = b.id WHERE c.id = {id}', note: 'Full payment history by customer ID' },
       { name: 'Recent payments', query: 'SELECT p.id, b.reference, p.amount_pence, p.status, p.created_at, p.paid_at FROM payments p JOIN bookings b ON b.id = p.booking_id ORDER BY p.created_at DESC LIMIT 20', note: 'Last 20 payments' },
+      { name: '✏️ Update payment status', query: "UPDATE payments SET status = '{status}' WHERE booking_id = {id}", note: 'Status: pending, processing, succeeded, failed, refunded' },
+      { name: '✏️ Record refund', query: "UPDATE payments SET status = 'refunded', refund_amount_pence = {amount}, refund_reason = '{reason}', refunded_at = NOW() WHERE booking_id = {id}", note: 'Mark payment as refunded' },
     ],
     'Promo Codes': [
       { name: 'Find promo code', query: "SELECT pc.*, p.name AS promotion_name, p.discount_percent FROM promo_codes pc JOIN promotions p ON p.id = pc.promotion_id WHERE pc.code = '{code}'", note: 'Replace {code} with promo code' },
@@ -548,11 +560,15 @@ function Admin() {
       { name: 'Full journey with promo', query: 'SELECT c.id AS customer_id, c.first_name, c.last_name, c.email, b.id AS booking_id, b.reference, b.status, p.amount_pence, pc.code AS promo_code, pr.discount_percent FROM customers c JOIN bookings b ON b.customer_id = c.id JOIN payments p ON p.booking_id = b.id LEFT JOIN promo_codes pc ON pc.booking_id = b.id LEFT JOIN promotions pr ON pr.id = pc.promotion_id WHERE c.id = {id}', note: 'Complete customer journey with promo by customer ID' },
       { name: 'Recent promo usage', query: 'SELECT pc.code, pr.name, pr.discount_percent, pc.used_at, b.reference FROM promo_codes pc JOIN promotions pr ON pr.id = pc.promotion_id JOIN bookings b ON b.id = pc.booking_id WHERE pc.is_used = true ORDER BY pc.used_at DESC LIMIT 20', note: 'Last 20 promo usages' },
       { name: 'Active promotions', query: 'SELECT id, name, discount_percent, code_prefix, total_codes, codes_sent, codes_used, created_at FROM promotions ORDER BY created_at DESC', note: 'All promotions' },
+      { name: '✏️ Mark promo as used', query: "UPDATE promo_codes SET is_used = true, used_at = NOW(), booking_id = {booking_id} WHERE code = '{code}'", note: 'Link promo to booking' },
+      { name: '✏️ Reset promo code', query: "UPDATE promo_codes SET is_used = false, used_at = NULL, booking_id = NULL WHERE code = '{code}'", note: 'Unmark promo as used' },
     ],
     'Flights': [
       { name: 'Departures by date', query: "SELECT * FROM flight_departures WHERE date = '{date}' ORDER BY departure_time", note: 'Replace {date} with date (YYYY-MM-DD)' },
       { name: 'Arrivals by date', query: "SELECT * FROM flight_arrivals WHERE date = '{date}' ORDER BY arrival_time", note: 'Replace {date} with date (YYYY-MM-DD)' },
       { name: 'Departure slots available', query: "SELECT id, flight_number, departure_time, destination_name, capacity_tier, slots_booked_early, slots_booked_late FROM flight_departures WHERE date = '{date}' AND capacity_tier > 0 ORDER BY departure_time", note: 'Flights with availability' },
+      { name: '✏️ Update departure capacity', query: 'UPDATE flight_departures SET capacity_tier = {tier} WHERE id = {id}', note: 'Tier: 0=Call Us, 2=1+1, 4=2+2, 6=3+3, 8=4+4' },
+      { name: '✏️ Adjust slots booked', query: 'UPDATE flight_departures SET slots_booked_early = {early}, slots_booked_late = {late} WHERE id = {id}', note: 'Manually adjust slot counts' },
     ],
     'Marketing': [
       { name: 'Find subscriber by email', query: "SELECT * FROM marketing_subscribers WHERE email = '{email}'", note: 'Replace {email} with email' },
@@ -562,6 +578,8 @@ function Admin() {
     'Staff & Roster': [
       { name: 'All users', query: 'SELECT id, first_name, last_name, email, is_admin, is_active, last_login FROM users ORDER BY id', note: 'All staff members' },
       { name: 'Shifts by date', query: "SELECT rs.*, u.first_name, u.last_name FROM roster_shifts rs LEFT JOIN users u ON u.id = rs.staff_id WHERE rs.date = '{date}' ORDER BY rs.start_time", note: 'Replace {date} with date (YYYY-MM-DD)' },
+      { name: '✏️ Assign staff to shift', query: 'UPDATE roster_shifts SET staff_id = {staff_id} WHERE id = {shift_id}', note: 'Assign user to shift' },
+      { name: '✏️ Update shift status', query: "UPDATE roster_shifts SET status = '{status}' WHERE id = {id}", note: 'Status: scheduled, confirmed, in_progress, completed, cancelled, no_show' },
     ],
     'Inspections': [
       { name: 'Inspection by booking ID', query: 'SELECT * FROM vehicle_inspections WHERE booking_id = {id}', note: 'Replace {id} with booking ID' },
