@@ -601,12 +601,16 @@ function Admin() {
       { name: 'Recent inspections', query: 'SELECT vi.id, b.reference, vi.inspection_type, vi.customer_name, vi.mileage FROM vehicle_inspections vi JOIN bookings b ON b.id = vi.booking_id ORDER BY vi.created_at DESC LIMIT 20', note: 'Last 20' },
     ],
     '📊 Analytics': [
-      { name: 'Top 5 drop-off hours', query: "SELECT EXTRACT(HOUR FROM dropoff_time)::int || ':00 - ' || (EXTRACT(HOUR FROM dropoff_time)::int + 1) || ':00' AS time_window, COUNT(*) AS count FROM bookings WHERE dropoff_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM dropoff_time) ORDER BY count DESC LIMIT 5", note: 'Most popular drop-off times' },
-      { name: 'Top 5 pickup hours', query: "SELECT EXTRACT(HOUR FROM pickup_time)::int || ':00 - ' || (EXTRACT(HOUR FROM pickup_time)::int + 1) || ':00' AS time_window, COUNT(*) AS count FROM bookings WHERE pickup_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM pickup_time) ORDER BY count DESC LIMIT 5", note: 'Most popular pickup times' },
-      { name: 'Drop-off hours (all)', query: "SELECT EXTRACT(HOUR FROM dropoff_time)::int || ':00 - ' || (EXTRACT(HOUR FROM dropoff_time)::int + 1) || ':00' AS time_window, COUNT(*) AS count FROM bookings WHERE dropoff_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM dropoff_time) ORDER BY EXTRACT(HOUR FROM dropoff_time)", note: 'All drop-off hours' },
-      { name: 'Pickup hours (all)', query: "SELECT EXTRACT(HOUR FROM pickup_time)::int || ':00 - ' || (EXTRACT(HOUR FROM pickup_time)::int + 1) || ':00' AS time_window, COUNT(*) AS count FROM bookings WHERE pickup_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM pickup_time) ORDER BY EXTRACT(HOUR FROM pickup_time)", note: 'All pickup hours' },
+      { name: 'Top 5 drop-off hours', query: "SELECT EXTRACT(HOUR FROM dropoff_time)::int AS hour_start, (EXTRACT(HOUR FROM dropoff_time)::int + 1) AS hour_end, COUNT(*) AS count FROM bookings WHERE dropoff_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM dropoff_time) ORDER BY count DESC LIMIT 5", note: 'Most popular drop-off times' },
+      { name: 'Top 5 pickup hours', query: "SELECT EXTRACT(HOUR FROM pickup_time)::int AS hour_start, (EXTRACT(HOUR FROM pickup_time)::int + 1) AS hour_end, COUNT(*) AS count FROM bookings WHERE pickup_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM pickup_time) ORDER BY count DESC LIMIT 5", note: 'Most popular pickup times' },
+      { name: 'Drop-off hours (all)', query: "SELECT EXTRACT(HOUR FROM dropoff_time)::int AS hour_start, (EXTRACT(HOUR FROM dropoff_time)::int + 1) AS hour_end, COUNT(*) AS count FROM bookings WHERE dropoff_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM dropoff_time) ORDER BY EXTRACT(HOUR FROM dropoff_time)", note: 'All drop-off hours' },
+      { name: 'Pickup hours (all)', query: "SELECT EXTRACT(HOUR FROM pickup_time)::int AS hour_start, (EXTRACT(HOUR FROM pickup_time)::int + 1) AS hour_end, COUNT(*) AS count FROM bookings WHERE pickup_time IS NOT NULL GROUP BY EXTRACT(HOUR FROM pickup_time) ORDER BY EXTRACT(HOUR FROM pickup_time)", note: 'All pickup hours' },
       { name: 'Bookings by day of week', query: "SELECT TO_CHAR(dropoff_date, 'Day') AS day_name, EXTRACT(DOW FROM dropoff_date) AS day_num, COUNT(*) AS count FROM bookings GROUP BY day_name, day_num ORDER BY day_num", note: 'Busiest days' },
       { name: 'Bookings by month', query: "SELECT TO_CHAR(dropoff_date, 'YYYY-MM') AS month, COUNT(*) AS count FROM bookings GROUP BY month ORDER BY month DESC LIMIT 12", note: 'Last 12 months' },
+      { name: 'Top 20 abandoned dates', query: "SELECT DATE(a.created_at) AS date, COUNT(DISTINCT a.session_id) AS abandoned_sessions FROM audit_logs a WHERE a.event = 'dates_selected' AND a.session_id NOT IN (SELECT DISTINCT session_id FROM audit_logs WHERE event IN ('payment_succeeded', 'booking_confirmed') AND session_id IS NOT NULL) AND a.session_id IS NOT NULL GROUP BY DATE(a.created_at) ORDER BY abandoned_sessions DESC LIMIT 20", note: 'Dates with most abandoned sessions' },
+      { name: 'Top 20 abandoned hours', query: "SELECT EXTRACT(HOUR FROM a.created_at)::int AS hour_start, (EXTRACT(HOUR FROM a.created_at)::int + 1) AS hour_end, COUNT(DISTINCT a.session_id) AS abandoned_sessions FROM audit_logs a WHERE a.event = 'dates_selected' AND a.session_id NOT IN (SELECT DISTINCT session_id FROM audit_logs WHERE event IN ('payment_succeeded', 'booking_confirmed') AND session_id IS NOT NULL) AND a.session_id IS NOT NULL GROUP BY EXTRACT(HOUR FROM a.created_at) ORDER BY abandoned_sessions DESC LIMIT 20", note: 'Hours with most abandoned sessions' },
+      { name: 'Abandoned by date+hour', query: "SELECT DATE(a.created_at) AS date, EXTRACT(HOUR FROM a.created_at)::int AS hour, COUNT(DISTINCT a.session_id) AS abandoned FROM audit_logs a WHERE a.event = 'dates_selected' AND a.session_id NOT IN (SELECT DISTINCT session_id FROM audit_logs WHERE event IN ('payment_succeeded', 'booking_confirmed') AND session_id IS NOT NULL) AND a.session_id IS NOT NULL GROUP BY DATE(a.created_at), EXTRACT(HOUR FROM a.created_at) ORDER BY abandoned DESC LIMIT 20", note: 'Top 20 date+hour combinations' },
+      { name: 'Abandoned by day of week', query: "SELECT TO_CHAR(a.created_at, 'Day') AS day_name, EXTRACT(DOW FROM a.created_at) AS day_num, COUNT(DISTINCT a.session_id) AS abandoned FROM audit_logs a WHERE a.event = 'dates_selected' AND a.session_id NOT IN (SELECT DISTINCT session_id FROM audit_logs WHERE event IN ('payment_succeeded', 'booking_confirmed') AND session_id IS NOT NULL) AND a.session_id IS NOT NULL GROUP BY day_name, day_num ORDER BY day_num", note: 'Which days see most abandonment' },
     ],
     '🔍 Debug': [
       { name: '🔴 Payment not found by PI', query: "SELECT * FROM payments WHERE stripe_payment_intent_id = '{pi}'", note: 'Check if payment exists for intent' },
@@ -1477,6 +1481,104 @@ function Admin() {
   const confirmSqlWrite = async () => {
     setSqlConfirmModal(null)
     await executeSqlQuery(true)
+  }
+
+  const exportSqlResultsCSV = () => {
+    if (!sqlResults || !sqlResults.data || sqlResults.data.length === 0) return
+
+    const columns = sqlResults.columns
+    const rows = sqlResults.data
+
+    // Build CSV content
+    const csvContent = [
+      columns.join(','),
+      ...rows.map(row =>
+        columns.map(col => {
+          const value = row[col]
+          if (value === null) return ''
+          if (typeof value === 'object') return `"${JSON.stringify(value).replace(/"/g, '""')}"`
+          const strValue = String(value)
+          // Escape quotes and wrap in quotes if contains comma, quote, or newline
+          if (strValue.includes(',') || strValue.includes('"') || strValue.includes('\n')) {
+            return `"${strValue.replace(/"/g, '""')}"`
+          }
+          return strValue
+        }).join(',')
+      )
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `sql-results-${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportSqlResultsPDF = () => {
+    if (!sqlResults || !sqlResults.data || sqlResults.data.length === 0) return
+
+    const columns = sqlResults.columns
+    const rows = sqlResults.data
+
+    // Create printable HTML
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>SQL Results - ${new Date().toLocaleDateString()}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          h1 { font-size: 18px; margin-bottom: 10px; }
+          .meta { color: #666; font-size: 12px; margin-bottom: 20px; }
+          table { border-collapse: collapse; width: 100%; font-size: 11px; }
+          th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+          th { background-color: #f5f5f5; font-weight: bold; }
+          tr:nth-child(even) { background-color: #fafafa; }
+          .null { color: #999; font-style: italic; }
+          @media print {
+            body { margin: 10px; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>SQL Query Results</h1>
+        <div class="meta">
+          Generated: ${new Date().toLocaleString()} |
+          Rows: ${rows.length}${sqlResults.has_more ? ' (limited to 500)' : ''}
+        </div>
+        <table>
+          <thead>
+            <tr>
+              ${columns.map(col => `<th>${col}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(row => `
+              <tr>
+                ${columns.map(col => {
+                  const value = row[col]
+                  if (value === null) return '<td class="null">NULL</td>'
+                  if (typeof value === 'object') return `<td>${JSON.stringify(value)}</td>`
+                  return `<td>${String(value).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>`
+                }).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `
+
+    const printWindow = window.open('', '_blank')
+    printWindow.document.write(printContent)
+    printWindow.document.close()
+    printWindow.onload = () => {
+      printWindow.print()
+    }
   }
 
   const fetchBookingStats = async () => {
@@ -10097,6 +10199,24 @@ function Admin() {
                             )}
                             {' • '}{sqlResults.execution_time}s
                           </span>
+                          {sqlResults.query_type === 'SELECT' && sqlResults.data && sqlResults.data.length > 0 && (
+                            <div className="sql-export-buttons">
+                              <button
+                                className="sql-export-btn"
+                                onClick={exportSqlResultsCSV}
+                                title="Download as CSV"
+                              >
+                                CSV
+                              </button>
+                              <button
+                                className="sql-export-btn"
+                                onClick={exportSqlResultsPDF}
+                                title="Print / Save as PDF"
+                              >
+                                PDF
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {sqlResults.query_type === 'SELECT' && sqlResults.data && (

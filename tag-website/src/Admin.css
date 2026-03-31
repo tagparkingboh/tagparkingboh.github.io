@@ -5307,6 +5307,28 @@
   font-size: 13px;
 }
 
+.sql-export-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.sql-export-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sql-export-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
 .sql-results-table-wrapper {
   overflow-x: auto;
   border: 1px solid #e5e7eb;
