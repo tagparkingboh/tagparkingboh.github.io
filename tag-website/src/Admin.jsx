@@ -73,7 +73,7 @@ const NAV_STRUCTURE = [
   {
     category: 'QA',
     icon: '🔧',
-    restrictToUserId: 1,  // Only visible to user ID 1
+    restrictToUserIds: [1, 2],  // Only visible to these user IDs
     items: [
       { id: 'qa-tests', label: 'Test Results' },
       { id: 'qa-audit', label: 'Audit Logs' },
@@ -4180,7 +4180,7 @@ function Admin() {
         <aside className="admin-sidebar">
           <nav className="admin-sidebar-nav">
             {NAV_STRUCTURE
-              .filter(cat => !cat.restrictToUserId || cat.restrictToUserId === user?.id)
+              .filter(cat => !cat.restrictToUserIds || cat.restrictToUserIds.includes(user?.id))
               .map(cat => (
               <div key={cat.category} className="nav-category">
                 <button
