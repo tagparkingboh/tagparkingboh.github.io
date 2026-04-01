@@ -3545,6 +3545,14 @@ function Admin() {
                 </button>
               )}
 
+              {/* Confirmation Email Status Indicator */}
+              <div className="reminder-status-indicator">
+                <span className="reminder-label">Confirmation</span>
+                <span className={`reminder-badge ${booking.confirmation_email_sent ? 'sent' : 'pending'}`}>
+                  {booking.confirmation_email_sent ? 'Sent ✓' : 'Pending'}
+                </span>
+              </div>
+
               {/* 2-Day Reminder Status Indicator */}
               <div className="reminder-status-indicator">
                 <span className="reminder-label">2-Day Reminder</span>

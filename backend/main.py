@@ -1162,6 +1162,8 @@ async def get_all_bookings(
             "pickup_airline_code": b.pickup_airline_code,
             "pickup_origin": b.pickup_origin,
             "notes": b.notes,
+            "confirmation_email_sent": b.confirmation_email_sent,
+            "confirmation_email_sent_at": b.confirmation_email_sent_at.isoformat() if b.confirmation_email_sent_at else None,
             "reminder_2day_sent": b.reminder_2day_sent,
             "reminder_2day_sent_at": b.reminder_2day_sent_at.isoformat() if b.reminder_2day_sent_at else None,
             "created_at": b.created_at.isoformat() if b.created_at else None,
