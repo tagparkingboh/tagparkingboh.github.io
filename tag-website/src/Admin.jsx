@@ -9992,43 +9992,76 @@ function Admin() {
                       <p>Based on <strong>{forecastData.data_range?.total_bookings_analyzed || 0}</strong> bookings (last 6 months) and <strong>{forecastData.data_range?.total_abandoned_sessions || 0}</strong> abandoned searches (last 30 days)</p>
                     </div>
 
+                    {/* Multi-Model Destination Predictions */}
+                    <div className="forecast-section full-width">
+                      <h4>Destination Predictions (3 Models)</h4>
+                      <p className="forecast-subtitle">
+                        <strong>Balanced:</strong> 60% bookings + 40% searches |
+                        <strong> Momentum:</strong> 30% bookings + 70% searches (emerging trends) |
+                        <strong> Established:</strong> 80% bookings + 20% searches (proven demand)
+                      </p>
+                      {forecastData.destinations?.length > 0 ? (
+                        <table className="forecast-table multi-model">
+                          <thead>
+                            <tr>
+                              <th>Destination</th>
+                              <th>Bookings</th>
+                              <th>Searches</th>
+                              <th>Balanced</th>
+                              <th>Momentum</th>
+                              <th>Established</th>
+                              <th>Confidence</th>
+                              <th>Trend</th>
+                              <th>Best Day</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {forecastData.destinations.slice(0, 15).map((item, idx) => (
+                              <tr key={idx} className={item.status === 'high_demand' ? 'row-highlight' : ''}>
+                                <td><strong>{item.destination}</strong></td>
+                                <td>{item.bookings_6m}</td>
+                                <td>{item.searches_30d}</td>
+                                <td>
+                                  <span className={`model-score balanced ${item.status}`}>
+                                    {item.score_balanced}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className={`model-score momentum ${item.score_momentum > item.score_balanced ? 'higher' : ''}`}>
+                                    {item.score_momentum}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className={`model-score established ${item.score_established > item.score_balanced ? 'higher' : ''}`}>
+                                    {item.score_established}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className={`confidence-badge ${item.confidence}`}>
+                                    {item.confidence_icon}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className={`trend-badge ${item.trend}`}>
+                                    {item.trend === 'rising' ? '📈' : item.trend === 'stable' ? '📊' : '➖'}
+                                  </span>
+                                </td>
+                                <td>{item.best_day || '-'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <p className="admin-empty">No destination data available</p>
+                      )}
+                      <div className="model-legend">
+                        <span><strong>Confidence:</strong> ✓✓✓ High (models agree) | ✓✓ Medium | ⚠️ Low (investigate)</span>
+                        <span><strong>Trend:</strong> 📈 Rising (momentum {'>'} established) | 📊 Stable | ➖ Neutral</span>
+                      </div>
+                    </div>
+
                     {/* Summary Cards */}
                     <div className="forecast-grid">
-                      {/* Top Destinations */}
-                      <div className="forecast-card">
-                        <h4>Top Destinations by Demand</h4>
-                        <p className="forecast-subtitle">Combining historical bookings + recent searches</p>
-                        {forecastData.destinations?.length > 0 ? (
-                          <table className="forecast-table">
-                            <thead>
-                              <tr>
-                                <th>Destination</th>
-                                <th>Bookings (6m)</th>
-                                <th>Searches (30d)</th>
-                                <th>Score</th>
-                                <th>Best Day</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {forecastData.destinations.slice(0, 10).map((item, idx) => (
-                                <tr key={idx} className={item.status === 'high_demand' ? 'row-highlight' : ''}>
-                                  <td><strong>{item.destination}</strong></td>
-                                  <td>{item.bookings_6m}</td>
-                                  <td>{item.searches_30d}</td>
-                                  <td>
-                                    <span className={`demand-score ${item.status}`}>
-                                      {item.demand_score}
-                                    </span>
-                                  </td>
-                                  <td>{item.best_day || '-'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        ) : (
-                          <p className="admin-empty">No destination data available</p>
-                        )}
-                      </div>
 
                       {/* Day of Week Analysis */}
                       <div className="forecast-card">

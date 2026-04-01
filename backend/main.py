@@ -4736,12 +4736,31 @@ async def get_bookings_forecast(
         bookings_count = destination_bookings.get(dest, 0)
         search_count = len(searched_destinations.get(dest, set()))
 
-        # Calculate scores (normalized 0-100)
+        # Calculate base scores (normalized 0-100)
         booking_score = min(100, (bookings_count / total_bookings) * 500)  # Historical booking strength
         search_score = min(100, (search_count / total_searches) * 300)  # Recent search interest
 
-        # Combined demand score (weighted average)
-        demand_score = round((booking_score * 0.6) + (search_score * 0.4), 1)
+        # Model 1: Balanced (60% bookings, 40% searches)
+        score_balanced = round((booking_score * 0.6) + (search_score * 0.4), 1)
+
+        # Model 2: Momentum (30% bookings, 70% searches) - catches emerging trends
+        score_momentum = round((booking_score * 0.3) + (search_score * 0.7), 1)
+
+        # Model 3: Established (80% bookings, 20% searches) - conservative, proven patterns
+        score_established = round((booking_score * 0.8) + (search_score * 0.2), 1)
+
+        # Calculate model agreement/confidence
+        scores = [score_balanced, score_momentum, score_established]
+        score_range = max(scores) - min(scores)
+        if score_range <= 10:
+            confidence = "high"
+            confidence_icon = "✓✓✓"
+        elif score_range <= 25:
+            confidence = "medium"
+            confidence_icon = "✓✓"
+        else:
+            confidence = "low"
+            confidence_icon = "⚠️"
 
         # Conversion indicator
         if bookings_count > 0 and search_count > 0:
@@ -4756,14 +4775,27 @@ async def get_bookings_forecast(
         best_dow = max(dest_dow.keys(), key=lambda x: dest_dow[x]) if dest_dow else None
         dow_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
+        # Determine trend: is momentum higher or lower than established?
+        if score_momentum > score_established + 10:
+            trend = "rising"  # Gaining popularity
+        elif score_established > score_momentum + 10:
+            trend = "stable"  # Reliable but not trending
+        else:
+            trend = "neutral"
+
         destination_forecast.append({
             "destination": dest,
             "bookings_6m": bookings_count,
             "searches_30d": search_count,
-            "demand_score": demand_score,
+            "score_balanced": score_balanced,
+            "score_momentum": score_momentum,
+            "score_established": score_established,
+            "confidence": confidence,
+            "confidence_icon": confidence_icon,
+            "trend": trend,
             "conversion_rate": conversion_rate,
             "best_day": dow_names[best_dow] if best_dow is not None else None,
-            "status": "high_demand" if demand_score >= 50 else "moderate" if demand_score >= 20 else "low"
+            "status": "high_demand" if score_balanced >= 50 else "moderate" if score_balanced >= 20 else "low"
         })
 
     # Sort by demand score
