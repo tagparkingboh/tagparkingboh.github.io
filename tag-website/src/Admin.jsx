@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from 'react'
+import { useState, useEffect, useMemo, Fragment, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 import DatePicker from 'react-datepicker'
@@ -456,6 +456,23 @@ function Admin() {
   const [expandedMessageId, setExpandedMessageId] = useState(null)
   const [smsDirectionFilter, setSmsDirectionFilter] = useState('all') // 'all', 'inbound', 'outbound'
   const [smsStatusFilter, setSmsStatusFilter] = useState('all') // 'all', 'pending', 'sent', 'delivered', 'failed'
+
+  // SMS textarea refs for variable insertion
+  const sendSmsTextareaRef = useRef(null)
+  const newTemplateTextareaRef = useRef(null)
+  const editTemplateTextareaRef = useRef(null)
+
+  // Available SMS variables
+  const smsVariables = [
+    { label: 'First Name', value: '{{first_name}}' },
+    { label: 'Last Name', value: '{{last_name}}' },
+    { label: 'Booking Ref', value: '{{booking_reference}}' },
+    { label: 'Drop-off Date', value: '{{dropoff_date}}' },
+    { label: 'Drop-off Time', value: '{{dropoff_time}}' },
+    { label: 'Pickup Date', value: '{{pickup_date}}' },
+    { label: 'Pickup Time', value: '{{pickup_time}}' },
+    { label: 'Vehicle Reg', value: '{{vehicle_registration}}' },
+  ]
 
   // Reports / Booking Locations state
   const [mapType, setMapType] = useState('bookings') // 'bookings' or 'origins'
@@ -3800,6 +3817,27 @@ function Admin() {
     }
   }
 
+  // Insert SMS variable at cursor position
+  const insertSmsVariable = (variable, textareaRef, currentValue, setValue) => {
+    const textarea = textareaRef.current
+    if (!textarea) {
+      // Fallback: append to end
+      setValue(prev => ({ ...prev, content: prev.content + variable }))
+      return
+    }
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const newContent = currentValue.substring(0, start) + variable + currentValue.substring(end)
+    setValue(prev => ({ ...prev, content: newContent }))
+
+    // Restore cursor position after the inserted variable
+    setTimeout(() => {
+      textarea.focus()
+      textarea.setSelectionRange(start + variable.length, start + variable.length)
+    }, 0)
+  }
+
   // SMS Message functions
   const fetchSmsMessages = async () => {
     setLoadingMessages(true)
@@ -5954,8 +5992,25 @@ function Admin() {
                       />
                     </div>
                     <div className="form-group">
-                      <label>Message *</label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <label style={{ margin: 0 }}>Message *</label>
+                        <select
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              insertSmsVariable(e.target.value, sendSmsTextareaRef, sendSmsForm.content, setSendSmsForm)
+                              e.target.value = ''
+                            }
+                          }}
+                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', cursor: 'pointer' }}
+                        >
+                          <option value="">+ Insert Variable</option>
+                          {smsVariables.map(v => (
+                            <option key={v.value} value={v.value}>{v.label}</option>
+                          ))}
+                        </select>
+                      </div>
                       <textarea
+                        ref={sendSmsTextareaRef}
                         value={sendSmsForm.content}
                         onChange={(e) => setSendSmsForm(prev => ({ ...prev, content: e.target.value }))}
                         placeholder="Enter your message..."
@@ -6013,8 +6068,25 @@ function Admin() {
                       />
                     </div>
                     <div className="form-group">
-                      <label>Content</label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <label style={{ margin: 0 }}>Content</label>
+                        <select
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              insertSmsVariable(e.target.value, editTemplateTextareaRef, editingTemplate.content, setEditingTemplate)
+                              e.target.value = ''
+                            }
+                          }}
+                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', cursor: 'pointer' }}
+                        >
+                          <option value="">+ Insert Variable</option>
+                          {smsVariables.map(v => (
+                            <option key={v.value} value={v.value}>{v.label}</option>
+                          ))}
+                        </select>
+                      </div>
                       <textarea
+                        ref={editTemplateTextareaRef}
                         value={editingTemplate.content}
                         onChange={(e) => setEditingTemplate(prev => ({ ...prev, content: e.target.value }))}
                         rows={4}
@@ -6080,8 +6152,25 @@ function Admin() {
                       />
                     </div>
                     <div className="form-group">
-                      <label>Content *</label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <label style={{ margin: 0 }}>Content *</label>
+                        <select
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              insertSmsVariable(e.target.value, newTemplateTextareaRef, newTemplate.content, setNewTemplate)
+                              e.target.value = ''
+                            }
+                          }}
+                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', cursor: 'pointer' }}
+                        >
+                          <option value="">+ Insert Variable</option>
+                          {smsVariables.map(v => (
+                            <option key={v.value} value={v.value}>{v.label}</option>
+                          ))}
+                        </select>
+                      </div>
                       <textarea
+                        ref={newTemplateTextareaRef}
                         value={newTemplate.content}
                         onChange={(e) => setNewTemplate(prev => ({ ...prev, content: e.target.value }))}
                         placeholder="Hi {{first_name}}, your booking {{booking_reference}} is confirmed..."
