@@ -3998,7 +3998,7 @@ function Admin() {
       if (response.ok) {
         const data = await response.json()
         // Filter to only show bookings with phone numbers
-        const withPhone = (data.bookings || []).filter(b => b.customer_phone)
+        const withPhone = (data.bookings || []).filter(b => b.customer?.phone)
         setSmsBookingResults(withPhone.slice(0, 5))
       }
     } catch (err) {
@@ -4012,9 +4012,9 @@ function Admin() {
     setSelectedSmsBooking(booking)
     setSendSmsForm(prev => ({
       ...prev,
-      phone: booking.customer_phone || '',
+      phone: booking.customer?.phone || '',
       booking_id: booking.id?.toString() || '',
-      customer_id: booking.customer_id?.toString() || '',
+      customer_id: booking.customer?.id?.toString() || '',
     }))
     setSmsBookingSearch('')
     setSmsBookingResults([])
@@ -5932,8 +5932,8 @@ function Admin() {
                                   onClick={() => selectBookingForSms(booking)}
                                 >
                                   <strong>{booking.reference}</strong>
-                                  <span>{booking.customer_first_name} {booking.customer_last_name}</span>
-                                  <small>{booking.customer_phone}</small>
+                                  <span>{booking.customer?.first_name} {booking.customer?.last_name}</span>
+                                  <small>{booking.customer?.phone}</small>
                                 </div>
                               ))}
                             </div>
