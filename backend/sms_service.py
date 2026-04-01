@@ -82,34 +82,41 @@ def get_jwt_token() -> Optional[str]:
 
 def format_phone_number(phone: str) -> str:
     """
-    Format UK phone number to international format (447XXXXXXXXX).
+    Format UK phone number to international format (44XXXXXXXXXX).
 
     Handles:
     - 07... -> 447...
     - +447... -> 447...
+    - +44 7... -> 447... (with spaces)
     - 00447... -> 447...
+    - 447... -> 447... (already international)
+    - 08... -> 448... (UK non-geographic)
     """
-    # Remove all non-digit characters
+    # Remove all non-digit characters (spaces, dashes, +, etc.)
     digits = re.sub(r'\D', '', phone)
 
-    # Remove leading 00 or +
+    # Remove leading 00 (international dialing prefix)
     if digits.startswith('00'):
         digits = digits[2:]
 
-    # Convert UK format to international
-    if digits.startswith('07') and len(digits) == 11:
+    # Convert UK national format to international
+    if digits.startswith('0') and len(digits) == 11:
+        # UK national format: 0XXXXXXXXXX -> 44XXXXXXXXXX
         digits = '44' + digits[1:]
     elif digits.startswith('7') and len(digits) == 10:
+        # Missing leading 0: 7XXXXXXXXX -> 447XXXXXXXXX
         digits = '44' + digits
+    # Already starts with 44 - keep as is
 
     return digits
 
 
 def validate_phone_number(phone: str) -> bool:
-    """Validate that phone number is a valid UK mobile."""
+    """Validate that phone number is a valid UK number (mobile or landline)."""
     formatted = format_phone_number(phone)
-    # UK mobile: 447XXXXXXXXX (12 digits)
-    return len(formatted) == 12 and formatted.startswith('447')
+    # UK number: 44XXXXXXXXXX (12 digits starting with 44)
+    # Accept any UK number format, let the SMS provider validate mobile
+    return len(formatted) >= 11 and len(formatted) <= 13 and formatted.startswith('44')
 
 
 def render_template(template_content: str, variables: dict) -> str:
