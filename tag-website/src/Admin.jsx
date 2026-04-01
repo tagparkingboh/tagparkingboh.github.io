@@ -2875,6 +2875,8 @@ function Admin() {
         setEditCustomerForm({ email: '', phone: '' })
         setCustomerMessage('Customer updated successfully')
         setTimeout(() => setCustomerMessage(''), 3000)
+        // Refresh bookings to reflect customer changes
+        fetchBookings()
       } else {
         const error = await response.json()
         setCustomerMessage(`Error: ${error.detail || 'Failed to update customer'}`)
