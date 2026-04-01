@@ -3166,6 +3166,359 @@
   }
 }
 
+/* =============================================================================
+   SMS Messages Tab Styles
+   ============================================================================= */
+
+.messages-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.messages-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #fff;
+}
+
+.messages-header-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.messages-header-actions button {
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.messages-header-actions .btn-secondary {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #fff;
+}
+
+.messages-header-actions .btn-secondary:hover {
+  background: #3a3a3a;
+  border-color: #555;
+}
+
+.messages-header-actions .btn-primary {
+  background: #D9FF00;
+  border: none;
+  color: #000;
+}
+
+.messages-header-actions .btn-primary:hover {
+  background: #c4e600;
+}
+
+.messages-message {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.messages-message.success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.messages-message.warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+/* SMS Stats Grid */
+.sms-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.sms-stat-card {
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 1.25rem;
+  text-align: center;
+  border: 1px solid #333;
+}
+
+.sms-stat-value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: #D9FF00;
+  margin-bottom: 0.25rem;
+}
+
+.sms-stat-label {
+  font-size: 0.85rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Messages Sub-tabs */
+.messages-subtabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  background: #1a1a1a;
+  padding: 0.5rem;
+  border-radius: 12px;
+  width: fit-content;
+}
+
+.messages-subtab {
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.messages-subtab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.messages-subtab.active {
+  background: #D9FF00;
+  color: #000;
+}
+
+/* Messages Filters */
+.messages-filters {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.messages-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.messages-filter-group label {
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.messages-filter-group select {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #2a2a2a;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+/* Direction Badge */
+.direction-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.direction-badge.inbound {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+}
+
+.direction-badge.outbound {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+/* Message Content Cell */
+.message-content {
+  cursor: pointer;
+  max-width: 300px;
+}
+
+.message-content:hover {
+  color: #D9FF00;
+}
+
+/* Templates Grid */
+.templates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.template-card {
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid #333;
+  transition: all 0.2s ease;
+}
+
+.template-card:hover {
+  border-color: #555;
+}
+
+.template-card.inactive {
+  opacity: 0.6;
+}
+
+.template-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.template-header h4 {
+  margin: 0;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.template-badges {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.template-badges .badge {
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.template-badges .badge.automated {
+  background: rgba(217, 255, 0, 0.2);
+  color: #D9FF00;
+}
+
+.template-badges .badge.inactive {
+  background: rgba(156, 163, 175, 0.2);
+  color: #9ca3af;
+}
+
+.template-description {
+  color: #888;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.template-content {
+  background: #0a0a0a;
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.template-content pre {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #ccc;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+}
+
+.template-trigger {
+  font-size: 0.8rem;
+  color: #666;
+  margin-bottom: 0.75rem;
+}
+
+.template-trigger code {
+  background: rgba(217, 255, 0, 0.1);
+  color: #D9FF00;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+.template-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.template-actions .btn-sm {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+}
+
+/* Template Variables Reference */
+.template-variables-ref {
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid #333;
+}
+
+.template-variables-ref h4 {
+  margin: 0 0 1rem 0;
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.variables-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.variables-list code {
+  background: #0a0a0a;
+  color: #D9FF00;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sms-stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .messages-subtabs {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .messages-filters {
+    flex-direction: column;
+  }
+
+  .templates-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .sms-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* ============================================================================
    BOOKING GROWTH CHARTS & STATS
    ============================================================================ */

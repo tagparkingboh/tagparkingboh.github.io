@@ -22,6 +22,7 @@ const NAV_STRUCTURE = [
       { id: 'calendar', label: 'Calendar' },
       { id: 'manual-booking', label: 'Manual Booking' },
       { id: 'flights', label: 'Flights' },
+      { id: 'messages', label: 'Messages' },
     ]
   },
   {
@@ -426,6 +427,29 @@ function Admin() {
   const [showDeleteFlightModal, setShowDeleteFlightModal] = useState(false)
   const [flightToDelete, setFlightToDelete] = useState(null)
 
+  // SMS Messages state
+  const [messagesSubTab, setMessagesSubTab] = useState('inbox') // 'inbox', 'sent', 'templates', 'bulk'
+  const [smsMessages, setSmsMessages] = useState([])
+  const [smsTemplates, setSmsTemplates] = useState([])
+  const [smsStats, setSmsStats] = useState(null)
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [loadingTemplates, setLoadingTemplates] = useState(false)
+  const [messagesMessage, setMessagesMessage] = useState('')
+  const [selectedTemplate, setSelectedTemplate] = useState(null)
+  const [showSendSmsModal, setShowSendSmsModal] = useState(false)
+  const [sendSmsForm, setSendSmsForm] = useState({ phone: '', content: '', booking_id: '', customer_id: '' })
+  const [sendingSms, setSendingSms] = useState(false)
+  const [showBulkSmsModal, setShowBulkSmsModal] = useState(false)
+  const [bulkSmsForm, setBulkSmsForm] = useState({ template_id: '', filter_status: 'confirmed', custom_content: '' })
+  const [sendingBulkSms, setSendingBulkSms] = useState(false)
+  const [bulkSmsPreview, setBulkSmsPreview] = useState(null)
+  const [showEditTemplateModal, setShowEditTemplateModal] = useState(false)
+  const [editingTemplate, setEditingTemplate] = useState(null)
+  const [savingTemplate, setSavingTemplate] = useState(false)
+  const [expandedMessageId, setExpandedMessageId] = useState(null)
+  const [smsDirectionFilter, setSmsDirectionFilter] = useState('all') // 'all', 'inbound', 'outbound'
+  const [smsStatusFilter, setSmsStatusFilter] = useState('all') // 'all', 'pending', 'sent', 'delivered', 'failed'
+
   // Reports / Booking Locations state
   const [mapType, setMapType] = useState('bookings') // 'bookings' or 'origins'
   const [bookingLocations, setBookingLocations] = useState([])
@@ -817,6 +841,22 @@ function Admin() {
       fetchFlights()
     }
   }, [flightsSubTab, flightsSortAsc, flightDestFilter, flightOriginFilter, flightAirlineFilter, flightMonthFilter, flightNumberFilter])
+
+  // Fetch SMS messages when messages tab is active
+  useEffect(() => {
+    if (activeTab === 'messages' && token) {
+      fetchSmsMessages()
+      fetchSmsTemplates()
+      fetchSmsStats()
+    }
+  }, [activeTab, token])
+
+  // Re-fetch messages when filters change
+  useEffect(() => {
+    if (activeTab === 'messages' && token) {
+      fetchSmsMessages()
+    }
+  }, [messagesSubTab, smsDirectionFilter, smsStatusFilter])
 
   // Fetch booking locations when reports tab is active or map type changes
   useEffect(() => {
@@ -3751,6 +3791,148 @@ function Admin() {
     }
   }
 
+  // SMS Message functions
+  const fetchSmsMessages = async () => {
+    setLoadingMessages(true)
+    try {
+      const params = new URLSearchParams()
+      if (smsDirectionFilter !== 'all') params.append('direction', smsDirectionFilter)
+      if (smsStatusFilter !== 'all') params.append('status', smsStatusFilter)
+      params.append('limit', '100')
+
+      const response = await fetch(`${API_URL}/api/admin/sms/messages?${params}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSmsMessages(data.messages || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch SMS messages:', err)
+    } finally {
+      setLoadingMessages(false)
+    }
+  }
+
+  const fetchSmsTemplates = async () => {
+    setLoadingTemplates(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/templates`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSmsTemplates(data.templates || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch SMS templates:', err)
+    } finally {
+      setLoadingTemplates(false)
+    }
+  }
+
+  const fetchSmsStats = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/stats`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSmsStats(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch SMS stats:', err)
+    }
+  }
+
+  const handleSendSms = async () => {
+    setSendingSms(true)
+    setMessagesMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/send`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phone: sendSmsForm.phone,
+          content: sendSmsForm.content,
+          booking_id: sendSmsForm.booking_id ? parseInt(sendSmsForm.booking_id) : null,
+          customer_id: sendSmsForm.customer_id ? parseInt(sendSmsForm.customer_id) : null,
+        }),
+      })
+
+      if (response.ok) {
+        setMessagesMessage('SMS sent successfully!')
+        setShowSendSmsModal(false)
+        setSendSmsForm({ phone: '', content: '', booking_id: '', customer_id: '' })
+        fetchSmsMessages()
+        fetchSmsStats()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to send SMS'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setSendingSms(false)
+    }
+  }
+
+  const handleSaveTemplate = async () => {
+    setSavingTemplate(true)
+    setMessagesMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/templates/${editingTemplate.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: editingTemplate.name,
+          content: editingTemplate.content,
+          description: editingTemplate.description,
+          is_active: editingTemplate.is_active,
+        }),
+      })
+
+      if (response.ok) {
+        setMessagesMessage('Template saved successfully!')
+        setShowEditTemplateModal(false)
+        setEditingTemplate(null)
+        fetchSmsTemplates()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to save template'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setSavingTemplate(false)
+    }
+  }
+
+  const formatPhoneForDisplay = (phone) => {
+    if (!phone) return '-'
+    // Format 447XXXXXXXXX as +44 7XXX XXX XXX
+    if (phone.startsWith('44') && phone.length === 12) {
+      return `+44 ${phone.slice(2, 6)} ${phone.slice(6, 9)} ${phone.slice(9)}`
+    }
+    return phone
+  }
+
+  const getSmsStatusBadge = (status) => {
+    const statusColors = {
+      pending: 'status-pending',
+      sent: 'status-confirmed',
+      delivered: 'status-completed',
+      failed: 'status-cancelled',
+    }
+    return statusColors[status] || 'status-pending'
+  }
+
   // Filter subscribers
   const filteredSubscribers = useMemo(() => {
     let filtered = [...subscribers]
@@ -5354,6 +5536,350 @@ function Admin() {
                     <button className="modal-btn modal-btn-secondary" onClick={() => { setShowDeleteFlightModal(false); setFlightToDelete(null); }}>Cancel</button>
                     <button className="modal-btn modal-btn-danger" onClick={handleDeleteFlight} disabled={deletingFlightId}>
                       {deletingFlightId ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'messages' && (
+          <div className="admin-section">
+            <div className="messages-header">
+              <h2>SMS Messages</h2>
+              <div className="messages-header-actions">
+                <button
+                  className="btn-secondary"
+                  onClick={() => { fetchSmsMessages(); fetchSmsStats(); }}
+                  disabled={loadingMessages}
+                >
+                  ↻ Refresh
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={() => setShowSendSmsModal(true)}
+                >
+                  + Send SMS
+                </button>
+              </div>
+            </div>
+
+            {messagesMessage && (
+              <div className={`messages-message ${messagesMessage.includes('Error') ? 'warning' : 'success'}`}>
+                {messagesMessage}
+              </div>
+            )}
+
+            {/* Stats Cards */}
+            {smsStats && (
+              <div className="sms-stats-grid">
+                <div className="sms-stat-card">
+                  <div className="sms-stat-value">{smsStats.total_sent || 0}</div>
+                  <div className="sms-stat-label">Total Sent</div>
+                </div>
+                <div className="sms-stat-card">
+                  <div className="sms-stat-value">{smsStats.delivered || 0}</div>
+                  <div className="sms-stat-label">Delivered</div>
+                </div>
+                <div className="sms-stat-card">
+                  <div className="sms-stat-value">{smsStats.pending || 0}</div>
+                  <div className="sms-stat-label">Pending</div>
+                </div>
+                <div className="sms-stat-card">
+                  <div className="sms-stat-value">{smsStats.failed || 0}</div>
+                  <div className="sms-stat-label">Failed</div>
+                </div>
+                <div className="sms-stat-card">
+                  <div className="sms-stat-value">{smsStats.inbound || 0}</div>
+                  <div className="sms-stat-label">Received</div>
+                </div>
+              </div>
+            )}
+
+            {/* Sub-tabs */}
+            <div className="messages-subtabs">
+              <button
+                className={`messages-subtab ${messagesSubTab === 'inbox' ? 'active' : ''}`}
+                onClick={() => setMessagesSubTab('inbox')}
+              >
+                Inbox
+              </button>
+              <button
+                className={`messages-subtab ${messagesSubTab === 'sent' ? 'active' : ''}`}
+                onClick={() => setMessagesSubTab('sent')}
+              >
+                Sent
+              </button>
+              <button
+                className={`messages-subtab ${messagesSubTab === 'templates' ? 'active' : ''}`}
+                onClick={() => setMessagesSubTab('templates')}
+              >
+                Templates
+              </button>
+            </div>
+
+            {/* Filters for Inbox/Sent */}
+            {(messagesSubTab === 'inbox' || messagesSubTab === 'sent') && (
+              <div className="messages-filters">
+                <div className="messages-filter-group">
+                  <label>Direction:</label>
+                  <select
+                    value={smsDirectionFilter}
+                    onChange={(e) => setSmsDirectionFilter(e.target.value)}
+                  >
+                    <option value="all">All</option>
+                    <option value="inbound">Inbound</option>
+                    <option value="outbound">Outbound</option>
+                  </select>
+                </div>
+                <div className="messages-filter-group">
+                  <label>Status:</label>
+                  <select
+                    value={smsStatusFilter}
+                    onChange={(e) => setSmsStatusFilter(e.target.value)}
+                  >
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="sent">Sent</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Messages List */}
+            {(messagesSubTab === 'inbox' || messagesSubTab === 'sent') && (
+              <div className="messages-list">
+                {loadingMessages ? (
+                  <p className="loading-text">Loading messages...</p>
+                ) : smsMessages.length === 0 ? (
+                  <p className="no-data">No messages found</p>
+                ) : (
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Direction</th>
+                        <th>Phone</th>
+                        <th>Content</th>
+                        <th>Status</th>
+                        <th>Booking</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {smsMessages.map(msg => (
+                        <tr key={msg.id} className={expandedMessageId === msg.id ? 'expanded' : ''}>
+                          <td>{msg.created_at ? new Date(msg.created_at).toLocaleString('en-GB') : '-'}</td>
+                          <td>
+                            <span className={`direction-badge ${msg.direction}`}>
+                              {msg.direction === 'inbound' ? '← In' : '→ Out'}
+                            </span>
+                          </td>
+                          <td>{formatPhoneForDisplay(msg.phone_number)}</td>
+                          <td className="message-content" onClick={() => setExpandedMessageId(expandedMessageId === msg.id ? null : msg.id)}>
+                            {expandedMessageId === msg.id ? msg.content : (msg.content?.substring(0, 50) + (msg.content?.length > 50 ? '...' : ''))}
+                          </td>
+                          <td>
+                            <span className={`status-badge ${getSmsStatusBadge(msg.status)}`}>
+                              {msg.status}
+                            </span>
+                          </td>
+                          <td>{msg.booking_reference || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {/* Templates List */}
+            {messagesSubTab === 'templates' && (
+              <div className="templates-list">
+                {loadingTemplates ? (
+                  <p className="loading-text">Loading templates...</p>
+                ) : smsTemplates.length === 0 ? (
+                  <p className="no-data">No templates found</p>
+                ) : (
+                  <div className="templates-grid">
+                    {smsTemplates.map(template => (
+                      <div key={template.id} className={`template-card ${!template.is_active ? 'inactive' : ''}`}>
+                        <div className="template-header">
+                          <h4>{template.name}</h4>
+                          <div className="template-badges">
+                            {template.is_automated && (
+                              <span className="badge automated">Auto</span>
+                            )}
+                            {!template.is_active && (
+                              <span className="badge inactive">Inactive</span>
+                            )}
+                          </div>
+                        </div>
+                        {template.description && (
+                          <p className="template-description">{template.description}</p>
+                        )}
+                        <div className="template-content">
+                          <pre>{template.content}</pre>
+                        </div>
+                        {template.trigger_event && (
+                          <div className="template-trigger">
+                            Trigger: <code>{template.trigger_event}</code>
+                          </div>
+                        )}
+                        <div className="template-actions">
+                          <button
+                            className="btn-secondary btn-sm"
+                            onClick={() => {
+                              setEditingTemplate({ ...template })
+                              setShowEditTemplateModal(true)
+                            }}
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Template Variables Reference */}
+                <div className="template-variables-ref">
+                  <h4>Available Variables</h4>
+                  <div className="variables-list">
+                    <code>{'{{first_name}}'}</code>
+                    <code>{'{{last_name}}'}</code>
+                    <code>{'{{booking_reference}}'}</code>
+                    <code>{'{{dropoff_date}}'}</code>
+                    <code>{'{{dropoff_time}}'}</code>
+                    <code>{'{{pickup_date}}'}</code>
+                    <code>{'{{pickup_time}}'}</code>
+                    <code>{'{{destination}}'}</code>
+                    <code>{'{{vehicle_reg}}'}</code>
+                    <code>{'{{total_price}}'}</code>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Send SMS Modal */}
+            {showSendSmsModal && (
+              <div className="modal-overlay">
+                <div className="modal-content modal-medium">
+                  <h3>Send SMS</h3>
+                  <div className="modal-form">
+                    <div className="form-group">
+                      <label>Phone Number *</label>
+                      <input
+                        type="tel"
+                        value={sendSmsForm.phone}
+                        onChange={(e) => setSendSmsForm(prev => ({ ...prev, phone: e.target.value }))}
+                        placeholder="07XXX XXXXXX"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Message *</label>
+                      <textarea
+                        value={sendSmsForm.content}
+                        onChange={(e) => setSendSmsForm(prev => ({ ...prev, content: e.target.value }))}
+                        placeholder="Enter your message..."
+                        rows={4}
+                        maxLength={480}
+                      />
+                      <small>{sendSmsForm.content.length}/480 characters ({Math.ceil(sendSmsForm.content.length / 160) || 0} SMS)</small>
+                    </div>
+                    <div className="form-group">
+                      <label>Booking ID (optional)</label>
+                      <input
+                        type="text"
+                        value={sendSmsForm.booking_id}
+                        onChange={(e) => setSendSmsForm(prev => ({ ...prev, booking_id: e.target.value }))}
+                        placeholder="Link to booking..."
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-actions">
+                    <button
+                      className="modal-btn modal-btn-secondary"
+                      onClick={() => {
+                        setShowSendSmsModal(false)
+                        setSendSmsForm({ phone: '', content: '', booking_id: '', customer_id: '' })
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="modal-btn modal-btn-primary"
+                      onClick={handleSendSms}
+                      disabled={sendingSms || !sendSmsForm.phone || !sendSmsForm.content}
+                    >
+                      {sendingSms ? 'Sending...' : 'Send SMS'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Edit Template Modal */}
+            {showEditTemplateModal && editingTemplate && (
+              <div className="modal-overlay">
+                <div className="modal-content modal-medium">
+                  <h3>Edit Template: {editingTemplate.name}</h3>
+                  <div className="modal-form">
+                    <div className="form-group">
+                      <label>Name</label>
+                      <input
+                        type="text"
+                        value={editingTemplate.name}
+                        onChange={(e) => setEditingTemplate(prev => ({ ...prev, name: e.target.value }))}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Description</label>
+                      <input
+                        type="text"
+                        value={editingTemplate.description || ''}
+                        onChange={(e) => setEditingTemplate(prev => ({ ...prev, description: e.target.value }))}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Content</label>
+                      <textarea
+                        value={editingTemplate.content}
+                        onChange={(e) => setEditingTemplate(prev => ({ ...prev, content: e.target.value }))}
+                        rows={4}
+                        maxLength={480}
+                      />
+                      <small>{editingTemplate.content.length}/480 characters</small>
+                    </div>
+                    <div className="form-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={editingTemplate.is_active}
+                          onChange={(e) => setEditingTemplate(prev => ({ ...prev, is_active: e.target.checked }))}
+                        />
+                        Active
+                      </label>
+                    </div>
+                  </div>
+                  <div className="modal-actions">
+                    <button
+                      className="modal-btn modal-btn-secondary"
+                      onClick={() => {
+                        setShowEditTemplateModal(false)
+                        setEditingTemplate(null)
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="modal-btn modal-btn-primary"
+                      onClick={handleSaveTemplate}
+                      disabled={savingTemplate}
+                    >
+                      {savingTemplate ? 'Saving...' : 'Save Template'}
                     </button>
                   </div>
                 </div>
