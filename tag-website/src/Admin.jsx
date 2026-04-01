@@ -57,6 +57,7 @@ const NAV_STRUCTURE = [
       { id: 'reports-financial', label: 'Financial' },
       { id: 'reports-sessions', label: 'Session Tracking' },
       { id: 'reports-analytics', label: 'Abandoned Carts' },
+      { id: 'reports-forecast', label: 'Bookings Forecast' },
       { id: 'reports-occupancy', label: 'Occupancy' },
       { id: 'reports-routes', label: 'Popular Routes' },
       { id: 'reports-map', label: 'Location Maps' },
@@ -458,6 +459,10 @@ function Admin() {
   const [loadingAbandonedCarts, setLoadingAbandonedCarts] = useState(false)
   const [abandonedCartsPeriod, setAbandonedCartsPeriod] = useState('daily') // 'daily', 'weekly', 'monthly'
 
+  // Bookings forecast report state
+  const [forecastData, setForecastData] = useState(null)
+  const [loadingForecast, setLoadingForecast] = useState(false)
+
   // Marketing Sources report state
   const [marketingSourcesData, setMarketingSourcesData] = useState(null)
   const [loadingMarketingSources, setLoadingMarketingSources] = useState(false)
@@ -807,6 +812,8 @@ function Admin() {
         fetchSessionTracking()
       } else if (reportsSubTab === 'analytics') {
         fetchAbandonedCarts()
+      } else if (reportsSubTab === 'forecast') {
+        fetchBookingsForecast()
       }
     }
   }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularTop, sessionTrackingPeriod, abandonedCartsPeriod])
@@ -1755,6 +1762,25 @@ function Admin() {
       console.error('Failed to fetch abandoned carts:', err)
     } finally {
       setLoadingAbandonedCarts(false)
+    }
+  }
+
+  const fetchBookingsForecast = async () => {
+    setLoadingForecast(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/reports/bookings-forecast`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setForecastData(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch bookings forecast:', err)
+    } finally {
+      setLoadingForecast(false)
     }
   }
 
@@ -4297,6 +4323,9 @@ function Admin() {
     } else if (tabId === 'reports-analytics') {
       setActiveTab('reports')
       setReportsSubTab('analytics')
+    } else if (tabId === 'reports-forecast') {
+      setActiveTab('reports')
+      setReportsSubTab('forecast')
     } else {
       setActiveTab(tabId)
     }
@@ -4322,8 +4351,9 @@ function Admin() {
     if (itemId === 'reports-financial' && activeTab === 'reports' && reportsSubTab === 'financial') return true
     if (itemId === 'reports-sessions' && activeTab === 'reports' && reportsSubTab === 'sessions') return true
     if (itemId === 'reports-analytics' && activeTab === 'reports' && reportsSubTab === 'analytics') return true
+    if (itemId === 'reports-forecast' && activeTab === 'reports' && reportsSubTab === 'forecast') return true
     // Standard tabs (exclude marketing and reports sub-tab ids)
-    const subTabIds = ['marketing', 'promotions', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map', 'reports-financial', 'reports-sessions', 'reports-analytics']
+    const subTabIds = ['marketing', 'promotions', 'sources', 'reports-growth', 'reports-occupancy', 'reports-routes', 'reports-map', 'reports-financial', 'reports-sessions', 'reports-analytics', 'reports-forecast']
     if (!subTabIds.includes(itemId)) {
       return activeTab === itemId
     }
@@ -7820,6 +7850,7 @@ function Admin() {
               {reportsSubTab === 'financial' && 'Financial'}
               {reportsSubTab === 'sessions' && 'Session Tracking'}
               {reportsSubTab === 'analytics' && 'Abandoned Carts'}
+              {reportsSubTab === 'forecast' && 'Bookings Forecast'}
               {reportsSubTab === 'occupancy' && 'Occupancy'}
               {reportsSubTab === 'popular' && 'Popular Routes'}
               {reportsSubTab === 'map' && 'Location Maps'}
@@ -9932,6 +9963,201 @@ function Admin() {
                   </>
                 ) : (
                   <p className="admin-empty">Click "Refresh Page" to load abandoned carts data.</p>
+                )}
+              </>
+            )}
+
+            {/* Bookings Forecast */}
+            {reportsSubTab === 'forecast' && (
+              <>
+                <div className="forecast-header">
+                  <button
+                    className="admin-refresh"
+                    onClick={fetchBookingsForecast}
+                    disabled={loadingForecast}
+                  >
+                    {loadingForecast ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
+
+                {loadingForecast ? (
+                  <div className="admin-loading-inline">
+                    <div className="spinner-small"></div>
+                    <span>Loading forecast data...</span>
+                  </div>
+                ) : forecastData ? (
+                  <>
+                    {/* Data Range Info */}
+                    <div className="forecast-info">
+                      <p>Based on <strong>{forecastData.data_range?.total_bookings_analyzed || 0}</strong> bookings (last 6 months) and <strong>{forecastData.data_range?.total_abandoned_sessions || 0}</strong> abandoned searches (last 30 days)</p>
+                    </div>
+
+                    {/* Summary Cards */}
+                    <div className="forecast-grid">
+                      {/* Top Destinations */}
+                      <div className="forecast-card">
+                        <h4>Top Destinations by Demand</h4>
+                        <p className="forecast-subtitle">Combining historical bookings + recent searches</p>
+                        {forecastData.destinations?.length > 0 ? (
+                          <table className="forecast-table">
+                            <thead>
+                              <tr>
+                                <th>Destination</th>
+                                <th>Bookings (6m)</th>
+                                <th>Searches (30d)</th>
+                                <th>Score</th>
+                                <th>Best Day</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {forecastData.destinations.slice(0, 10).map((item, idx) => (
+                                <tr key={idx} className={item.status === 'high_demand' ? 'row-highlight' : ''}>
+                                  <td><strong>{item.destination}</strong></td>
+                                  <td>{item.bookings_6m}</td>
+                                  <td>{item.searches_30d}</td>
+                                  <td>
+                                    <span className={`demand-score ${item.status}`}>
+                                      {item.demand_score}
+                                    </span>
+                                  </td>
+                                  <td>{item.best_day || '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p className="admin-empty">No destination data available</p>
+                        )}
+                      </div>
+
+                      {/* Day of Week Analysis */}
+                      <div className="forecast-card">
+                        <h4>Busiest Days of Week</h4>
+                        <p className="forecast-subtitle">When do customers drop off?</p>
+                        {forecastData.day_of_week?.length > 0 ? (
+                          <div className="dow-chart">
+                            {forecastData.day_of_week.map((day, idx) => (
+                              <div key={idx} className="dow-bar-container">
+                                <span className="dow-label">{day.day_short}</span>
+                                <div className="dow-bar-wrapper">
+                                  <div
+                                    className="dow-bar"
+                                    style={{ width: `${Math.min(day.percentage * 5, 100)}%` }}
+                                  ></div>
+                                </div>
+                                <span className="dow-value">{day.bookings} ({day.percentage}%)</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="admin-empty">No day-of-week data available</p>
+                        )}
+                      </div>
+
+                      {/* Seasonality */}
+                      <div className="forecast-card">
+                        <h4>Monthly Seasonality</h4>
+                        <p className="forecast-subtitle">Historical booking patterns by month</p>
+                        {forecastData.seasonality?.length > 0 ? (
+                          <div className="seasonality-chart">
+                            {forecastData.seasonality.map((month, idx) => (
+                              <div key={idx} className="season-bar-container">
+                                <span className="season-label">{month.month}</span>
+                                <div className="season-bar-wrapper">
+                                  <div
+                                    className="season-bar"
+                                    style={{ width: `${Math.min(month.percentage * 5, 100)}%` }}
+                                  ></div>
+                                </div>
+                                <span className="season-value">{month.bookings}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="admin-empty">No seasonality data available</p>
+                        )}
+                      </div>
+
+                      {/* Top Airlines */}
+                      <div className="forecast-card">
+                        <h4>Top Airlines</h4>
+                        <p className="forecast-subtitle">Most popular carriers</p>
+                        {forecastData.airlines?.length > 0 ? (
+                          <table className="forecast-table compact">
+                            <thead>
+                              <tr>
+                                <th>Airline</th>
+                                <th>Bookings</th>
+                                <th>Searches</th>
+                                <th>%</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {forecastData.airlines.map((item, idx) => (
+                                <tr key={idx}>
+                                  <td>{item.airline}</td>
+                                  <td>{item.bookings_6m}</td>
+                                  <td>{item.searches_30d}</td>
+                                  <td>{item.percentage}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p className="admin-empty">No airline data available</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Opportunity Gaps */}
+                    {forecastData.opportunity_gaps?.length > 0 && (
+                      <div className="forecast-section">
+                        <h4>Opportunity Gaps</h4>
+                        <p className="forecast-subtitle">High search interest but low conversion - potential untapped demand</p>
+                        <table className="forecast-table">
+                          <thead>
+                            <tr>
+                              <th>Destination</th>
+                              <th>Searches (30d)</th>
+                              <th>Bookings (6m)</th>
+                              <th>Gap Score</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {forecastData.opportunity_gaps.map((item, idx) => (
+                              <tr key={idx}>
+                                <td><strong>{item.destination}</strong></td>
+                                <td>{item.searches}</td>
+                                <td>{item.bookings}</td>
+                                <td>
+                                  <span className="opportunity-score">{item.gap_score.toFixed(1)}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Upcoming Demand */}
+                    {forecastData.upcoming_demand?.length > 0 && (
+                      <div className="forecast-section">
+                        <h4>Upcoming Dates with Search Interest</h4>
+                        <p className="forecast-subtitle">Dates people are searching for in the next 30 days</p>
+                        <div className="upcoming-demand-grid">
+                          {forecastData.upcoming_demand.map((item, idx) => (
+                            <div key={idx} className="upcoming-demand-card">
+                              <div className="upcoming-date">{item.display_date}</div>
+                              <div className="upcoming-day">{item.day_of_week}</div>
+                              <div className="upcoming-searches">{item.searches} searches</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="admin-empty">No forecast data available. Click Refresh to load.</p>
                 )}
               </>
             )}

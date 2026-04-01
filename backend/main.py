@@ -4602,6 +4602,238 @@ async def get_abandoned_carts_report(
     }
 
 
+@app.get("/api/admin/reports/bookings-forecast")
+async def get_bookings_forecast(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Predict future booking demand based on historical patterns and abandoned cart signals.
+
+    Analyzes:
+    - Historical bookings by destination, day of week, airline
+    - Abandoned cart searches (demand signals)
+    - Compares what's being searched vs what's being booked
+
+    Returns predictions for the next 30 days.
+    """
+    from db_models import Booking, BookingStatus, AuditLog, AuditLogEvent
+    from datetime import datetime, timedelta
+    from collections import defaultdict
+    import pytz
+    import json
+
+    uk_tz = pytz.timezone('Europe/London')
+    now = datetime.now(uk_tz)
+    today = now.date()
+
+    # Get historical bookings (last 6 months of completed/confirmed bookings)
+    six_months_ago = now - timedelta(days=180)
+
+    historical_bookings = db.query(Booking).filter(
+        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]),
+        Booking.created_at >= six_months_ago
+    ).all()
+
+    # Analyze booking patterns
+    destination_bookings = defaultdict(int)
+    day_of_week_bookings = defaultdict(int)  # 0=Monday, 6=Sunday
+    airline_bookings = defaultdict(int)
+    month_bookings = defaultdict(int)
+    destination_by_dow = defaultdict(lambda: defaultdict(int))  # destination -> dow -> count
+
+    for booking in historical_bookings:
+        # Departure destination
+        if booking.dropoff_destination:
+            dest = booking.dropoff_destination.strip().title()
+            destination_bookings[dest] += 1
+
+            # Track day of week for this destination
+            if booking.dropoff_date:
+                dow = booking.dropoff_date.weekday()
+                destination_by_dow[dest][dow] += 1
+
+        # Day of week patterns
+        if booking.dropoff_date:
+            dow = booking.dropoff_date.weekday()
+            day_of_week_bookings[dow] += 1
+            month_bookings[booking.dropoff_date.month] += 1
+
+        # Airline patterns
+        if booking.dropoff_airline_name:
+            airline_bookings[booking.dropoff_airline_name] += 1
+
+    # Get abandoned cart data (last 30 days)
+    thirty_days_ago = now - timedelta(days=30)
+
+    abandoned_logs = db.query(AuditLog).filter(
+        AuditLog.created_at >= thirty_days_ago,
+        AuditLog.event == AuditLogEvent.FLIGHT_SELECTED,
+        AuditLog.session_id.isnot(None)
+    ).all()
+
+    # Get completed sessions to exclude
+    completed_sessions = db.query(AuditLog.session_id).filter(
+        AuditLog.created_at >= thirty_days_ago,
+        AuditLog.event.in_([AuditLogEvent.PAYMENT_SUCCEEDED, AuditLogEvent.BOOKING_CONFIRMED]),
+        AuditLog.session_id.isnot(None)
+    ).distinct().all()
+    completed_session_ids = {s[0] for s in completed_sessions}
+
+    # Analyze abandoned cart searches
+    searched_destinations = defaultdict(set)  # destination -> set of session_ids
+    searched_dates = defaultdict(set)  # date string -> set of session_ids
+    searched_airlines = defaultdict(set)
+
+    for log in abandoned_logs:
+        if log.session_id in completed_session_ids:
+            continue
+
+        if log.event_data:
+            try:
+                data = json.loads(log.event_data) if isinstance(log.event_data, str) else log.event_data
+
+                dest = data.get('departure_destination')
+                if dest:
+                    searched_destinations[dest.strip().title()].add(log.session_id)
+
+                dropoff_date = data.get('dropoff_date')
+                if dropoff_date:
+                    searched_dates[dropoff_date].add(log.session_id)
+
+                airline = data.get('departure_airline')
+                if airline:
+                    searched_airlines[airline].add(log.session_id)
+            except:
+                pass
+
+    # Calculate totals for normalization
+    total_bookings = len(historical_bookings) or 1
+    total_searches = len(set(s for sessions in searched_destinations.values() for s in sessions)) or 1
+
+    # Build destination forecast with demand scores
+    destination_forecast = []
+    all_destinations = set(destination_bookings.keys()) | set(searched_destinations.keys())
+
+    for dest in all_destinations:
+        bookings_count = destination_bookings.get(dest, 0)
+        search_count = len(searched_destinations.get(dest, set()))
+
+        # Calculate scores (normalized 0-100)
+        booking_score = min(100, (bookings_count / total_bookings) * 500)  # Historical booking strength
+        search_score = min(100, (search_count / total_searches) * 300)  # Recent search interest
+
+        # Combined demand score (weighted average)
+        demand_score = round((booking_score * 0.6) + (search_score * 0.4), 1)
+
+        # Conversion indicator
+        if bookings_count > 0 and search_count > 0:
+            conversion_rate = round((bookings_count / (bookings_count + search_count)) * 100, 1)
+        elif bookings_count > 0:
+            conversion_rate = 100
+        else:
+            conversion_rate = 0
+
+        # Best day of week for this destination
+        dest_dow = destination_by_dow.get(dest, {})
+        best_dow = max(dest_dow.keys(), key=lambda x: dest_dow[x]) if dest_dow else None
+        dow_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+        destination_forecast.append({
+            "destination": dest,
+            "bookings_6m": bookings_count,
+            "searches_30d": search_count,
+            "demand_score": demand_score,
+            "conversion_rate": conversion_rate,
+            "best_day": dow_names[best_dow] if best_dow is not None else None,
+            "status": "high_demand" if demand_score >= 50 else "moderate" if demand_score >= 20 else "low"
+        })
+
+    # Sort by demand score
+    destination_forecast.sort(key=lambda x: x['demand_score'], reverse=True)
+
+    # Day of week analysis
+    dow_names_full = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    dow_forecast = []
+    for dow in range(7):
+        count = day_of_week_bookings.get(dow, 0)
+        dow_forecast.append({
+            "day": dow_names_full[dow],
+            "day_short": dow_names_full[dow][:3],
+            "bookings": count,
+            "percentage": round((count / total_bookings) * 100, 1) if total_bookings else 0
+        })
+
+    # Airline analysis
+    airline_forecast = []
+    for airline, count in sorted(airline_bookings.items(), key=lambda x: x[1], reverse=True)[:10]:
+        search_count = len(searched_airlines.get(airline, set()))
+        airline_forecast.append({
+            "airline": airline,
+            "bookings_6m": count,
+            "searches_30d": search_count,
+            "percentage": round((count / total_bookings) * 100, 1) if total_bookings else 0
+        })
+
+    # Month analysis (seasonality)
+    month_names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    month_forecast = []
+    for month in range(1, 13):
+        count = month_bookings.get(month, 0)
+        month_forecast.append({
+            "month": month_names[month],
+            "month_num": month,
+            "bookings": count,
+            "percentage": round((count / total_bookings) * 100, 1) if total_bookings else 0
+        })
+
+    # Upcoming dates with search interest (next 30 days)
+    upcoming_demand = []
+    for i in range(30):
+        future_date = today + timedelta(days=i)
+        date_str = future_date.strftime("%Y-%m-%d")
+        search_count = len(searched_dates.get(date_str, set()))
+
+        if search_count > 0:
+            upcoming_demand.append({
+                "date": date_str,
+                "display_date": future_date.strftime("%a %d %b"),
+                "searches": search_count,
+                "day_of_week": dow_names_full[future_date.weekday()]
+            })
+
+    # Sort by search count
+    upcoming_demand.sort(key=lambda x: x['searches'], reverse=True)
+
+    # Search vs booking gap (high searches, low conversions = opportunity)
+    opportunity_gaps = []
+    for dest in destination_forecast:
+        if dest['searches_30d'] >= 2 and dest['conversion_rate'] < 50:
+            opportunity_gaps.append({
+                "destination": dest['destination'],
+                "searches": dest['searches_30d'],
+                "bookings": dest['bookings_6m'],
+                "gap_score": dest['searches_30d'] * (100 - dest['conversion_rate']) / 100
+            })
+    opportunity_gaps.sort(key=lambda x: x['gap_score'], reverse=True)
+
+    return {
+        "generated_at": now.isoformat(),
+        "data_range": {
+            "bookings_from": six_months_ago.strftime("%Y-%m-%d"),
+            "searches_from": thirty_days_ago.strftime("%Y-%m-%d"),
+            "total_bookings_analyzed": total_bookings,
+            "total_abandoned_sessions": total_searches
+        },
+        "destinations": destination_forecast[:20],
+        "day_of_week": dow_forecast,
+        "airlines": airline_forecast,
+        "seasonality": month_forecast,
+        "upcoming_demand": upcoming_demand[:15],
+        "opportunity_gaps": opportunity_gaps[:10]
+    }
+
+
 @app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
 async def send_promo_email_to_subscriber(
     subscriber_id: int,

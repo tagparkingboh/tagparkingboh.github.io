@@ -6767,3 +6767,258 @@
 .abandoned-period-table th:last-child {
   text-align: center;
 }
+
+/* Bookings Forecast Styles */
+.forecast-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
+.forecast-info {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.forecast-info p {
+  margin: 0;
+  color: #0369a1;
+  font-size: 0.9rem;
+}
+
+.forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 1200px) {
+  .forecast-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.forecast-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.forecast-card h4 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1rem;
+  color: #1e293b;
+}
+
+.forecast-subtitle {
+  margin: 0 0 1rem 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.forecast-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.forecast-table th,
+.forecast-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.forecast-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.forecast-table.compact th,
+.forecast-table.compact td {
+  padding: 0.4rem 0.5rem;
+}
+
+.forecast-table tr.row-highlight {
+  background: #f0fdf4;
+}
+
+.demand-score {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.demand-score.high_demand {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.demand-score.moderate {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.demand-score.low {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.opportunity-score {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+/* Day of Week Chart */
+.dow-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dow-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dow-label {
+  width: 35px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.dow-bar-wrapper {
+  flex: 1;
+  height: 20px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dow-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.dow-value {
+  font-size: 0.75rem;
+  color: #64748b;
+  min-width: 70px;
+  text-align: right;
+}
+
+/* Seasonality Chart */
+.seasonality-chart {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+@media (max-width: 600px) {
+  .seasonality-chart {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.season-bar-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.season-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.season-bar-wrapper {
+  width: 100%;
+  height: 60px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.season-bar {
+  width: 100%;
+  background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+  border-radius: 4px 4px 0 0;
+  transition: height 0.3s ease;
+}
+
+.season-value {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+/* Forecast Section */
+.forecast-section {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.forecast-section h4 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1rem;
+  color: #1e293b;
+}
+
+/* Upcoming Demand Grid */
+.upcoming-demand-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.upcoming-demand-card {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  min-width: 100px;
+  text-align: center;
+}
+
+.upcoming-date {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #92400e;
+}
+
+.upcoming-day {
+  font-size: 0.75rem;
+  color: #b45309;
+}
+
+.upcoming-searches {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #78350f;
+}
