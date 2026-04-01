@@ -10297,6 +10297,33 @@ function Admin() {
                           <p className="admin-empty">No departure time data available</p>
                         )}
                       </div>
+
+                      {/* Arrival Times */}
+                      <div className="forecast-card">
+                        <h4>Arrival Times</h4>
+                        <p className="forecast-subtitle">Most popular flight arrival times</p>
+                        {forecastData.arrival_times?.length > 0 ? (
+                          <div className="departure-time-chart">
+                            {(() => {
+                              const maxBookings = Math.max(...forecastData.arrival_times.map(t => t.bookings)) || 1;
+                              return forecastData.arrival_times.map((slot, idx) => (
+                                <div key={idx} className="time-bar-container">
+                                  <span className="time-label">{slot.time}</span>
+                                  <div className="time-bar-wrapper">
+                                    <div
+                                      className="time-bar arrival"
+                                      style={{ width: `${(slot.bookings / maxBookings) * 100}%` }}
+                                    ></div>
+                                  </div>
+                                  <span className="time-value">{slot.bookings}</span>
+                                </div>
+                              ));
+                            })()}
+                          </div>
+                        ) : (
+                          <p className="admin-empty">No arrival time data available</p>
+                        )}
+                      </div>
                     </div>
 
                     {/* Predicted Dates */}

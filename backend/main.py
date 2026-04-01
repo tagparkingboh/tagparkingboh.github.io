@@ -4733,6 +4733,7 @@ async def get_bookings_forecast(
     booking_month_bookings = defaultdict(int)  # Month of booking creation (when they booked)
     destination_by_dow = defaultdict(lambda: defaultdict(int))  # destination -> dow -> count
     departure_time_bookings = defaultdict(int)  # Hour of departure (0-23)
+    arrival_time_bookings = defaultdict(int)  # Hour of arrival (0-23)
 
     for booking in historical_bookings:
         # Departure destination
@@ -4771,6 +4772,11 @@ async def get_bookings_forecast(
         if booking.flight_departure_time:
             hour = booking.flight_departure_time.hour
             departure_time_bookings[hour] += 1
+
+        # Arrival time patterns
+        if booking.flight_arrival_time:
+            hour = booking.flight_arrival_time.hour
+            arrival_time_bookings[hour] += 1
 
     # Get abandoned cart data (last 30 days)
     thirty_days_ago = now - timedelta(days=30)
@@ -5023,6 +5029,18 @@ async def get_bookings_forecast(
             "percentage": round((count / total_bookings) * 100, 1) if total_bookings else 0
         })
 
+    # Arrival time analysis
+    arrival_time_forecast = []
+    for hour in range(5, 24):  # 5am to 11pm typical arrival range
+        count = arrival_time_bookings.get(hour, 0)
+        time_label = f"{hour:02d}:00"
+        arrival_time_forecast.append({
+            "hour": hour,
+            "time": time_label,
+            "bookings": count,
+            "percentage": round((count / total_bookings) * 100, 1) if total_bookings else 0
+        })
+
     # Search vs booking gap (high searches, low conversions = opportunity)
     opportunity_gaps = []
     for dest in destination_forecast:
@@ -5051,6 +5069,7 @@ async def get_bookings_forecast(
         "seasonality_booking": booking_month_forecast,
         "seasonality_abandoned": abandoned_month_forecast,
         "departure_times": departure_time_forecast,
+        "arrival_times": arrival_time_forecast,
         "predicted_dates": predicted_dates[:15],
         "upcoming_demand": upcoming_demand[:15],
         "opportunity_gaps": opportunity_gaps[:10]

@@ -7407,6 +7407,10 @@
   transition: width 0.3s ease;
 }
 
+.time-bar.arrival {
+  background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+}
+
 .time-value {
   font-size: 0.75rem;
   color: #64748b;
