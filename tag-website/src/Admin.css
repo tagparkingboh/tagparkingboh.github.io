@@ -3357,7 +3357,8 @@
 }
 
 .message-content:hover {
-  color: #D9FF00;
+  color: #1a1a2e;
+  text-decoration: underline;
 }
 
 /* Templates Header */
