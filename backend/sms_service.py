@@ -513,6 +513,101 @@ def handle_delivery_report(payload: dict, db_session) -> bool:
     return False
 
 
+async def check_message_status(provider_message_id: str) -> Optional[dict]:
+    """
+    Check message status from SMS Works API.
+
+    Args:
+        provider_message_id: The message ID from SMS Works
+
+    Returns:
+        Dict with status info or None if failed
+    """
+    if not is_sms_enabled():
+        return None
+
+    token = get_jwt_token()
+    if not token:
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{SMS_API_BASE_URL}/messages/{provider_message_id}",
+                headers={
+                    "Authorization": f"JWT {token}",
+                },
+            )
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"Failed to get message status: {response.status_code}")
+                return None
+
+    except Exception as e:
+        logger.error(f"Error checking message status: {str(e)}")
+        return None
+
+
+async def refresh_message_statuses(db_session) -> dict:
+    """
+    Refresh status of all SENT messages from SMS Works API.
+
+    Returns:
+        Dict with counts of updated messages
+    """
+    from db_models import SMSMessage, SMSStatus, SMSDirection
+
+    if not is_sms_enabled():
+        return {"success": False, "error": "SMS disabled"}
+
+    # Get all outbound messages with SENT status
+    pending_messages = db_session.query(SMSMessage).filter(
+        SMSMessage.direction == SMSDirection.OUTBOUND,
+        SMSMessage.status == SMSStatus.SENT,
+        SMSMessage.provider_message_id != None,
+    ).all()
+
+    updated = 0
+    failed = 0
+
+    for msg in pending_messages:
+        result = await check_message_status(msg.provider_message_id)
+        if result:
+            status = result.get("status", "").lower()
+            status_map = {
+                "delivered": SMSStatus.DELIVERED,
+                "sent": SMSStatus.SENT,
+                "failed": SMSStatus.FAILED,
+                "rejected": SMSStatus.FAILED,
+                "expired": SMSStatus.FAILED,
+                "undeliverable": SMSStatus.FAILED,
+            }
+
+            new_status = status_map.get(status)
+            if new_status and new_status != msg.status:
+                msg.status = new_status
+                if new_status == SMSStatus.DELIVERED:
+                    msg.delivered_at = datetime.now(UK_TZ)
+                elif new_status == SMSStatus.FAILED:
+                    failure = result.get("failurereason", {})
+                    if isinstance(failure, dict):
+                        msg.status_detail = failure.get("details", "")[:255]
+                    else:
+                        msg.status_detail = str(failure)[:255]
+                updated += 1
+            else:
+                # Status unchanged
+                pass
+        else:
+            failed += 1
+
+    db_session.commit()
+
+    return {"success": True, "updated": updated, "failed": failed, "total": len(pending_messages)}
+
+
 def handle_incoming_sms(payload: dict, db_session) -> bool:
     """
     Handle incoming SMS webhook from SMS Works.

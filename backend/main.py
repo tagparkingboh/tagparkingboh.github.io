@@ -14668,6 +14668,16 @@ async def get_sms_status(
     }
 
 
+@app.post("/api/admin/sms/refresh-statuses")
+async def refresh_sms_statuses(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Refresh delivery statuses of all sent messages from SMS Works API."""
+    result = await sms_service.refresh_message_statuses(db)
+    return result
+
+
 # SMS Webhooks (no auth - public endpoints for SMS Works callbacks)
 @app.post("/api/webhooks/sms/incoming")
 async def webhook_sms_incoming(
