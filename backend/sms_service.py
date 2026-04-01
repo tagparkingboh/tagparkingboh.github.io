@@ -15,8 +15,8 @@ import pytz
 logger = logging.getLogger(__name__)
 
 # SMS Works configuration
-SMS_API_KEY = os.getenv("SMS_API_KEY")
-SMS_API_SECRET = os.getenv("SMS_API_SECRET")
+# JWT token is pre-generated in SMS Works dashboard (not via login endpoint)
+SMS_JWT_TOKEN = os.getenv("SMS_API_KEY")  # The JWT token from SMS Works dashboard
 SMS_SENDER_ID = os.getenv("SMS_SENDER_ID", "TAGParking")
 SMS_ENABLED = os.getenv("SMS_ENABLED", "false").lower() == "true"
 SMS_WEBHOOK_SECRET = os.getenv("SMS_WEBHOOK_SECRET")
@@ -44,40 +44,21 @@ TEMPLATE_VARIABLES = {
 
 
 def is_sms_enabled() -> bool:
-    """Check if SMS sending is enabled (API credentials configured)."""
-    return SMS_ENABLED and bool(SMS_API_KEY) and bool(SMS_API_SECRET)
+    """Check if SMS sending is enabled (JWT token configured)."""
+    return SMS_ENABLED and bool(SMS_JWT_TOKEN)
 
 
 def get_jwt_token() -> Optional[str]:
     """
-    Generate JWT token from API key and secret.
+    Get the pre-generated JWT token from environment.
 
-    The SMS Works uses a simple login endpoint that returns a JWT.
+    SMS Works tokens are generated in the dashboard, not via API login.
     """
-    if not SMS_API_KEY or not SMS_API_SECRET:
-        logger.warning("SMS API credentials not configured")
+    if not SMS_JWT_TOKEN:
+        logger.warning("SMS JWT token not configured")
         return None
 
-    try:
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(
-                f"{SMS_API_BASE_URL}/auth/token",
-                json={
-                    "customerid": SMS_API_KEY,
-                    "key": SMS_API_SECRET
-                }
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                return data.get("token")
-            else:
-                logger.error(f"Failed to get SMS JWT token: {response.status_code} - {response.text}")
-                return None
-
-    except Exception as e:
-        logger.error(f"Error getting SMS JWT token: {str(e)}")
-        return None
+    return SMS_JWT_TOKEN
 
 
 def format_phone_number(phone: str) -> str:

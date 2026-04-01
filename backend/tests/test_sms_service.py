@@ -395,61 +395,37 @@ class TestTemplateVariablesList:
 
 
 # =============================================================================
-# Unit Tests: JWT Token Generation (Mocked)
+# Unit Tests: JWT Token (from environment)
 # =============================================================================
 
 class TestJWTTokenGeneration:
-    """Unit tests for JWT token generation."""
+    """Unit tests for JWT token retrieval from environment."""
 
-    @patch('sms_service.httpx.Client')
-    @patch.dict('os.environ', {
-        'SMS_API_KEY': 'test_key',
-        'SMS_API_SECRET': 'test_secret'
-    })
-    def test_get_jwt_token_success(self, mock_client):
-        """Test successful JWT token generation."""
+    @patch.dict('os.environ', {'SMS_API_KEY': 'test_jwt_token_123'})
+    def test_get_jwt_token_success(self):
+        """Test JWT token retrieval when configured."""
         import importlib
         import sms_service
         importlib.reload(sms_service)
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"token": "test_jwt_token"}
-
-        mock_client_instance = MagicMock()
-        mock_client_instance.__enter__.return_value.post.return_value = mock_response
-        mock_client.return_value = mock_client_instance
 
         token = sms_service.get_jwt_token()
 
-        assert token == "test_jwt_token"
+        assert token == "test_jwt_token_123"
 
-    @patch('sms_service.httpx.Client')
-    @patch.dict('os.environ', {
-        'SMS_API_KEY': 'test_key',
-        'SMS_API_SECRET': 'test_secret'
-    })
-    def test_get_jwt_token_failure(self, mock_client):
-        """Test JWT token generation failure."""
+    @patch.dict('os.environ', {'SMS_API_KEY': ''})
+    def test_get_jwt_token_empty(self):
+        """Test JWT token retrieval when empty."""
         import importlib
         import sms_service
         importlib.reload(sms_service)
-
-        mock_response = MagicMock()
-        mock_response.status_code = 401
-        mock_response.text = "Unauthorized"
-
-        mock_client_instance = MagicMock()
-        mock_client_instance.__enter__.return_value.post.return_value = mock_response
-        mock_client.return_value = mock_client_instance
 
         token = sms_service.get_jwt_token()
 
         assert token is None
 
-    @patch.dict('os.environ', {'SMS_API_KEY': '', 'SMS_API_SECRET': ''})
-    def test_get_jwt_token_no_credentials(self):
-        """Test JWT token generation with no credentials."""
+    @patch.dict('os.environ', {}, clear=True)
+    def test_get_jwt_token_not_configured(self):
+        """Test JWT token retrieval when not configured."""
         import importlib
         import sms_service
         importlib.reload(sms_service)
