@@ -14687,7 +14687,9 @@ async def webhook_sms_delivery(
 ):
     """Handle delivery report webhook from SMS Works."""
     payload = await request.json()
+    print(f"[SMS WEBHOOK] Received delivery report: {payload}")
     success = sms_service.handle_delivery_report(payload, db)
+    print(f"[SMS WEBHOOK] Processing result: {success}")
     return {"success": success}
 
 
