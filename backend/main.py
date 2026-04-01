@@ -4793,6 +4793,7 @@ async def get_bookings_forecast(
     searched_destinations = defaultdict(set)  # destination -> set of session_ids
     searched_dates = defaultdict(set)  # date string -> set of session_ids
     searched_airlines = defaultdict(set)
+    abandoned_month_sessions = defaultdict(set)  # month (1-12) -> set of session_ids
 
     for log in abandoned_logs:
         if log.session_id in completed_session_ids:
@@ -4809,6 +4810,12 @@ async def get_bookings_forecast(
                 dropoff_date = data.get('dropoff_date')
                 if dropoff_date:
                     searched_dates[dropoff_date].add(log.session_id)
+                    # Track abandoned by month of intended travel
+                    try:
+                        month = int(dropoff_date.split('-')[1])
+                        abandoned_month_sessions[month].add(log.session_id)
+                    except:
+                        pass
 
                 airline = data.get('departure_airline')
                 if airline:
@@ -4930,13 +4937,15 @@ async def get_bookings_forecast(
             "percentage": round((count / total_bookings) * 100, 1) if total_bookings else 0
         })
 
-    # Month analysis (seasonality) - both travel month and booking month
+    # Month analysis (seasonality) - travel month, booking month, and abandoned month
     month_names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     travel_month_forecast = []
     booking_month_forecast = []
+    abandoned_month_forecast = []
     for month in range(1, 13):
         travel_count = travel_month_bookings.get(month, 0)
         booking_count = booking_month_bookings.get(month, 0)
+        abandoned_count = len(abandoned_month_sessions.get(month, set()))
         travel_month_forecast.append({
             "month": month_names[month],
             "month_num": month,
@@ -4948,6 +4957,12 @@ async def get_bookings_forecast(
             "month_num": month,
             "bookings": booking_count,
             "percentage": round((booking_count / total_bookings) * 100, 1) if total_bookings else 0
+        })
+        abandoned_month_forecast.append({
+            "month": month_names[month],
+            "month_num": month,
+            "count": abandoned_count,
+            "percentage": round((abandoned_count / total_searches) * 100, 1) if total_searches else 0
         })
 
     # Upcoming dates with search interest (next 30 days)
@@ -5034,6 +5049,7 @@ async def get_bookings_forecast(
         "airlines": airline_forecast,
         "seasonality_travel": travel_month_forecast,
         "seasonality_booking": booking_month_forecast,
+        "seasonality_abandoned": abandoned_month_forecast,
         "departure_times": departure_time_forecast,
         "predicted_dates": predicted_dates[:15],
         "upcoming_demand": upcoming_demand[:15],

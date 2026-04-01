@@ -10190,44 +10190,50 @@ function Admin() {
                         )}
                       </div>
 
-                      {/* Combined Seasonality - Travel vs Booking Month */}
+                      {/* Combined Seasonality - Booking, Travel & Abandoned Month */}
                       <div className="forecast-card wide">
                         <h4>Monthly Patterns</h4>
-                        <p className="forecast-subtitle">Travel month (blue) vs Booking month (green)</p>
+                        <p className="forecast-subtitle">Booked (green) · Traveled (blue) · Abandoned (red)</p>
                         {forecastData.seasonality_travel?.length > 0 ? (
-                          <div className="combined-seasonality-chart">
+                          <div className="monthly-patterns-chart">
                             {(() => {
                               const maxTravel = Math.max(...forecastData.seasonality_travel.map(m => m.bookings)) || 1;
                               const maxBooking = Math.max(...(forecastData.seasonality_booking || []).map(m => m.bookings)) || 1;
-                              const maxAll = Math.max(maxTravel, maxBooking);
+                              const maxAbandoned = Math.max(...(forecastData.seasonality_abandoned || []).map(m => m.count)) || 1;
+                              const maxAll = Math.max(maxTravel, maxBooking, maxAbandoned);
                               return forecastData.seasonality_travel.map((travelMonth, idx) => {
                                 const bookingMonth = forecastData.seasonality_booking?.[idx] || { bookings: 0 };
+                                const abandonedMonth = forecastData.seasonality_abandoned?.[idx] || { count: 0 };
                                 return (
-                                  <div key={idx} className="combined-month-row">
-                                    <span className="combined-month-label">{travelMonth.month}</span>
-                                    <div className="combined-bars">
-                                      <div className="combined-bar-wrapper">
+                                  <div key={idx} className="monthly-column">
+                                    <div className="monthly-bars">
+                                      <div className="monthly-bar-group">
                                         <div
-                                          className="combined-bar travel"
-                                          style={{ width: `${(travelMonth.bookings / maxAll) * 100}%` }}
+                                          className="monthly-bar booking"
+                                          style={{ height: `${(bookingMonth.bookings / maxAll) * 100}%` }}
+                                          title={`Booked: ${bookingMonth.bookings}`}
                                         ></div>
-                                        <span className="combined-bar-value">{travelMonth.bookings}</span>
-                                      </div>
-                                      <div className="combined-bar-wrapper">
                                         <div
-                                          className="combined-bar booking"
-                                          style={{ width: `${(bookingMonth.bookings / maxAll) * 100}%` }}
+                                          className="monthly-bar travel"
+                                          style={{ height: `${(travelMonth.bookings / maxAll) * 100}%` }}
+                                          title={`Traveled: ${travelMonth.bookings}`}
                                         ></div>
-                                        <span className="combined-bar-value">{bookingMonth.bookings}</span>
+                                        <div
+                                          className="monthly-bar abandoned"
+                                          style={{ height: `${(abandonedMonth.count / maxAll) * 100}%` }}
+                                          title={`Abandoned: ${abandonedMonth.count}`}
+                                        ></div>
                                       </div>
                                     </div>
+                                    <span className="monthly-label">{travelMonth.month}</span>
                                   </div>
                                 );
                               });
                             })()}
                             <div className="combined-legend">
-                              <span className="legend-item"><span className="legend-color travel"></span> Travel Month</span>
-                              <span className="legend-item"><span className="legend-color booking"></span> Booking Month</span>
+                              <span className="legend-item"><span className="legend-color booking"></span> Booked</span>
+                              <span className="legend-item"><span className="legend-color travel"></span> Traveled</span>
+                              <span className="legend-item"><span className="legend-color abandoned"></span> Abandoned</span>
                             </div>
                           </div>
                         ) : (
