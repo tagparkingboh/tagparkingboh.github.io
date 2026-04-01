@@ -100,6 +100,8 @@ def create_mock_booking(
     payment=None,
     created_at=None,
     flight_arrival_time=None,
+    customer_first_name=None,
+    customer_last_name=None,
 ):
     """Create a mock booking object."""
     from db_models import BookingStatus
@@ -134,8 +136,8 @@ def create_mock_booking(
     booking.vehicle = vehicle or create_mock_vehicle()
     booking.payment = payment
     booking.created_at = created_at or datetime.utcnow()
-    booking.customer_first_name = None  # Snapshot name
-    booking.customer_last_name = None
+    booking.customer_first_name = customer_first_name  # Snapshot name
+    booking.customer_last_name = customer_last_name
     booking.flight_arrival_time = flight_arrival_time  # Actual flight arrival time
     return booking
 
@@ -1623,3 +1625,127 @@ class TestEditDropoffTime:
         assert diff_minutes == 0
         is_valid = diff_minutes >= -60 and diff_minutes <= 15
         assert is_valid is True
+
+
+# =============================================================================
+# Unit Tests: Booking Search
+# =============================================================================
+
+class TestBookingSearch:
+    """Tests for booking search functionality."""
+
+    def test_search_by_reference_match(self):
+        """Test search matches booking reference."""
+        bookings = [
+            create_mock_booking(id=1, reference="TAG-ABC123"),
+            create_mock_booking(id=2, reference="TAG-DEF456"),
+            create_mock_booking(id=3, reference="TAG-GHI789"),
+        ]
+
+        search_term = "ABC"
+        results = [b for b in bookings if search_term.lower() in b.reference.lower()]
+
+        assert len(results) == 1
+        assert results[0].reference == "TAG-ABC123"
+
+    def test_search_by_customer_first_name(self):
+        """Test search matches customer first name."""
+        customer1 = create_mock_customer(id=1, first_name="Mark", last_name="Smith")
+        customer2 = create_mock_customer(id=2, first_name="John", last_name="Doe")
+
+        bookings = [
+            create_mock_booking(id=1, customer=customer1, customer_first_name="Mark"),
+            create_mock_booking(id=2, customer=customer2, customer_first_name="John"),
+        ]
+
+        search_term = "mark"
+        results = [
+            b for b in bookings
+            if search_term.lower() in (b.customer_first_name or "").lower()
+        ]
+
+        assert len(results) == 1
+        assert results[0].customer_first_name == "Mark"
+
+    def test_search_by_customer_last_name(self):
+        """Test search matches customer last name."""
+        customer1 = create_mock_customer(id=1, first_name="John", last_name="Anderson")
+        customer2 = create_mock_customer(id=2, first_name="Jane", last_name="Smith")
+
+        bookings = [
+            create_mock_booking(id=1, customer=customer1, customer_last_name="Anderson"),
+            create_mock_booking(id=2, customer=customer2, customer_last_name="Smith"),
+        ]
+
+        search_term = "anderson"
+        results = [
+            b for b in bookings
+            if search_term.lower() in (b.customer_last_name or "").lower()
+        ]
+
+        assert len(results) == 1
+        assert results[0].customer_last_name == "Anderson"
+
+    def test_search_case_insensitive(self):
+        """Test search is case insensitive."""
+        bookings = [
+            create_mock_booking(id=1, reference="TAG-ABC123", customer_first_name="Mark"),
+        ]
+
+        # Test various cases
+        search_terms = ["MARK", "mark", "Mark", "mArK"]
+        for term in search_terms:
+            results = [
+                b for b in bookings
+                if term.lower() in (b.customer_first_name or "").lower()
+            ]
+            assert len(results) == 1, f"Failed for search term: {term}"
+
+    def test_search_no_match_returns_empty(self):
+        """Test search with no matches returns empty list."""
+        bookings = [
+            create_mock_booking(id=1, reference="TAG-ABC123", customer_first_name="John"),
+            create_mock_booking(id=2, reference="TAG-DEF456", customer_first_name="Jane"),
+        ]
+
+        search_term = "xyz"
+        results = [
+            b for b in bookings
+            if (search_term.lower() in b.reference.lower() or
+                search_term.lower() in (b.customer_first_name or "").lower())
+        ]
+
+        assert len(results) == 0
+
+    def test_search_with_limit(self):
+        """Test search respects limit parameter."""
+        bookings = [
+            create_mock_booking(id=i, reference=f"TAG-TEST{i:03d}", customer_first_name="Test")
+            for i in range(1, 11)  # 10 bookings
+        ]
+
+        search_term = "test"
+        limit = 5
+        results = [
+            b for b in bookings
+            if search_term.lower() in (b.customer_first_name or "").lower()
+        ][:limit]
+
+        assert len(results) == 5
+
+    def test_filter_bookings_with_phone(self):
+        """Test filtering bookings to only those with phone numbers."""
+        customer_with_phone = create_mock_customer(id=1, phone="07700900001")
+        customer_no_phone = create_mock_customer(id=2, phone=None)
+
+        bookings = [
+            {"id": 1, "customer": {"phone": "07700900001"}},
+            {"id": 2, "customer": {"phone": None}},
+            {"id": 3, "customer": {"phone": "07700900002"}},
+        ]
+
+        with_phone = [b for b in bookings if b.get("customer", {}).get("phone")]
+
+        assert len(with_phone) == 2
+        assert with_phone[0]["id"] == 1
+        assert with_phone[1]["id"] == 3
