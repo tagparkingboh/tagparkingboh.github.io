@@ -528,16 +528,6 @@ class TestDeliveryReportWebhook:
         assert message.status == SMSStatus.FAILED
         assert message.status_detail == "Number not reachable"
 
-    def test_webhook_invalid_secret(self):
-        """Test webhook rejects invalid secret."""
-        expected_secret = "correct_secret"
-        provided_secret = "wrong_secret"
-
-        is_valid = expected_secret == provided_secret
-
-        assert is_valid is False
-
-
 # =============================================================================
 # Integration Tests: Webhook - Incoming SMS
 # =============================================================================
@@ -730,16 +720,6 @@ class TestAuthentication:
         status_code = 200 if user and user.is_admin else 403
 
         assert status_code == 200
-
-    def test_webhooks_validate_secret(self):
-        """Test webhooks validate secret header."""
-        expected_secret = "webhook_secret_123"
-        provided_secret = "webhook_secret_123"
-
-        is_valid = expected_secret == provided_secret
-
-        assert is_valid is True
-
 
 # =============================================================================
 # Run tests if executed directly
