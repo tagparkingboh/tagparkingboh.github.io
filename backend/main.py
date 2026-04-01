@@ -5019,7 +5019,7 @@ async def get_bookings_forecast(
 
     # Departure time analysis
     departure_time_forecast = []
-    for hour in range(5, 23):  # 5am to 10pm typical flight range
+    for hour in range(0, 24):  # Full day coverage
         count = departure_time_bookings.get(hour, 0)
         time_label = f"{hour:02d}:00"
         departure_time_forecast.append({
@@ -5031,7 +5031,7 @@ async def get_bookings_forecast(
 
     # Arrival time analysis
     arrival_time_forecast = []
-    for hour in range(5, 24):  # 5am to 11pm typical arrival range
+    for hour in range(0, 24):  # Full day coverage
         count = arrival_time_bookings.get(hour, 0)
         time_label = f"{hour:02d}:00"
         arrival_time_forecast.append({

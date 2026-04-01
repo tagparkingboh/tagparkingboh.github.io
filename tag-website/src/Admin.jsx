@@ -10241,33 +10241,30 @@ function Admin() {
                         )}
                       </div>
 
-                      {/* Top Airlines */}
+                      {/* Arrival Times */}
                       <div className="forecast-card">
-                        <h4>Top Airlines</h4>
-                        <p className="forecast-subtitle">Most popular carriers</p>
-                        {forecastData.airlines?.length > 0 ? (
-                          <table className="forecast-table compact">
-                            <thead>
-                              <tr>
-                                <th>Airline</th>
-                                <th>Bookings</th>
-                                <th>Searches</th>
-                                <th>%</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {forecastData.airlines.map((item, idx) => (
-                                <tr key={idx}>
-                                  <td>{item.airline}</td>
-                                  <td>{item.bookings_6m}</td>
-                                  <td>{item.searches_30d}</td>
-                                  <td>{item.percentage}%</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                        <h4>Arrival Times</h4>
+                        <p className="forecast-subtitle">Most popular flight arrival times</p>
+                        {forecastData.arrival_times?.length > 0 ? (
+                          <div className="departure-time-chart">
+                            {(() => {
+                              const maxBookings = Math.max(...forecastData.arrival_times.map(t => t.bookings)) || 1;
+                              return forecastData.arrival_times.map((slot, idx) => (
+                                <div key={idx} className="time-bar-container">
+                                  <span className="time-label">{slot.time}</span>
+                                  <div className="time-bar-wrapper">
+                                    <div
+                                      className="time-bar arrival"
+                                      style={{ width: `${(slot.bookings / maxBookings) * 100}%` }}
+                                    ></div>
+                                  </div>
+                                  <span className="time-value">{slot.bookings}</span>
+                                </div>
+                              ));
+                            })()}
+                          </div>
                         ) : (
-                          <p className="admin-empty">No airline data available</p>
+                          <p className="admin-empty">No arrival time data available</p>
                         )}
                       </div>
 
@@ -10298,30 +10295,33 @@ function Admin() {
                         )}
                       </div>
 
-                      {/* Arrival Times */}
+                      {/* Top Airlines */}
                       <div className="forecast-card">
-                        <h4>Arrival Times</h4>
-                        <p className="forecast-subtitle">Most popular flight arrival times</p>
-                        {forecastData.arrival_times?.length > 0 ? (
-                          <div className="departure-time-chart">
-                            {(() => {
-                              const maxBookings = Math.max(...forecastData.arrival_times.map(t => t.bookings)) || 1;
-                              return forecastData.arrival_times.map((slot, idx) => (
-                                <div key={idx} className="time-bar-container">
-                                  <span className="time-label">{slot.time}</span>
-                                  <div className="time-bar-wrapper">
-                                    <div
-                                      className="time-bar arrival"
-                                      style={{ width: `${(slot.bookings / maxBookings) * 100}%` }}
-                                    ></div>
-                                  </div>
-                                  <span className="time-value">{slot.bookings}</span>
-                                </div>
-                              ));
-                            })()}
-                          </div>
+                        <h4>Top Airlines</h4>
+                        <p className="forecast-subtitle">Most popular carriers</p>
+                        {forecastData.airlines?.length > 0 ? (
+                          <table className="forecast-table compact">
+                            <thead>
+                              <tr>
+                                <th>Airline</th>
+                                <th>Bookings</th>
+                                <th>Searches</th>
+                                <th>%</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {forecastData.airlines.map((item, idx) => (
+                                <tr key={idx}>
+                                  <td>{item.airline}</td>
+                                  <td>{item.bookings_6m}</td>
+                                  <td>{item.searches_30d}</td>
+                                  <td>{item.percentage}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         ) : (
-                          <p className="admin-empty">No arrival time data available</p>
+                          <p className="admin-empty">No airline data available</p>
                         )}
                       </div>
                     </div>
