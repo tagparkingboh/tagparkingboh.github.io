@@ -454,7 +454,7 @@ function Admin() {
   const [newTemplate, setNewTemplate] = useState({ name: '', content: '', description: '', is_active: true })
   const [creatingTemplate, setCreatingTemplate] = useState(false)
   const [expandedMessageId, setExpandedMessageId] = useState(null)
-  const [smsDirectionFilter, setSmsDirectionFilter] = useState('all') // 'all', 'inbound', 'outbound'
+  const [smsDirectionFilter, setSmsDirectionFilter] = useState('inbound') // 'inbound', 'outbound'
   const [smsStatusFilter, setSmsStatusFilter] = useState('all') // 'all', 'pending', 'sent', 'delivered', 'failed'
 
   // SMS textarea refs for variable insertion
@@ -5765,13 +5765,13 @@ function Admin() {
             <div className="messages-subtabs">
               <button
                 className={`messages-subtab ${messagesSubTab === 'inbox' ? 'active' : ''}`}
-                onClick={() => setMessagesSubTab('inbox')}
+                onClick={() => { setMessagesSubTab('inbox'); setSmsDirectionFilter('inbound') }}
               >
                 Inbox
               </button>
               <button
                 className={`messages-subtab ${messagesSubTab === 'sent' ? 'active' : ''}`}
-                onClick={() => setMessagesSubTab('sent')}
+                onClick={() => { setMessagesSubTab('sent'); setSmsDirectionFilter('outbound') }}
               >
                 Sent
               </button>
@@ -5786,17 +5786,6 @@ function Admin() {
             {/* Filters for Inbox/Sent */}
             {(messagesSubTab === 'inbox' || messagesSubTab === 'sent') && (
               <div className="messages-filters">
-                <div className="messages-filter-group">
-                  <label>Direction:</label>
-                  <select
-                    value={smsDirectionFilter}
-                    onChange={(e) => setSmsDirectionFilter(e.target.value)}
-                  >
-                    <option value="all">All</option>
-                    <option value="inbound">Inbound</option>
-                    <option value="outbound">Outbound</option>
-                  </select>
-                </div>
                 <div className="messages-filter-group">
                   <label>Status:</label>
                   <select
@@ -6001,7 +5990,7 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', cursor: 'pointer' }}
+                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '500' }}
                         >
                           <option value="">+ Insert Variable</option>
                           {smsVariables.map(v => (
@@ -6077,7 +6066,7 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', cursor: 'pointer' }}
+                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '500' }}
                         >
                           <option value="">+ Insert Variable</option>
                           {smsVariables.map(v => (
@@ -6161,7 +6150,7 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#2a2a2a', color: '#fff', border: '1px solid #444', cursor: 'pointer' }}
+                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '500' }}
                         >
                           <option value="">+ Insert Variable</option>
                           {smsVariables.map(v => (
