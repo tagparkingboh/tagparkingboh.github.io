@@ -10164,6 +10164,15 @@ async def stripe_webhook(
                     booking.confirmation_email_sent = True
                     booking.confirmation_email_sent_at = datetime.utcnow()
                     db.commit()
+
+                    # Also send SMS confirmation if enabled
+                    if sms_service.is_sms_enabled():
+                        try:
+                            import asyncio
+                            asyncio.run(sms_service.send_booking_confirmation_sms(booking, db))
+                            print(f"[SMS] Confirmation SMS sent for booking {booking_reference}")
+                        except Exception as sms_error:
+                            print(f"[SMS] Failed to send confirmation SMS: {str(sms_error)}")
         except Exception as e:
             # Log error but don't fail the webhook - payment was successful
             log_error(
@@ -14324,6 +14333,413 @@ async def check_blocked_date(
                 result["pickup_reason"] = reason
 
     return result
+
+
+# =============================================================================
+# SMS MESSAGING ENDPOINTS
+# =============================================================================
+
+from db_models import SMSTemplate, SMSMessage, SMSDirection, SMSStatus
+import sms_service
+
+
+@app.get("/api/admin/sms/templates")
+async def get_sms_templates(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get all SMS templates."""
+    templates = db.query(SMSTemplate).order_by(SMSTemplate.name).all()
+    return [
+        {
+            "id": t.id,
+            "name": t.name,
+            "content": t.content,
+            "description": t.description,
+            "is_active": t.is_active,
+            "is_automated": t.is_automated,
+            "trigger_event": t.trigger_event,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+        }
+        for t in templates
+    ]
+
+
+@app.post("/api/admin/sms/templates")
+async def create_sms_template(
+    data: dict,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Create a new SMS template."""
+    template = SMSTemplate(
+        name=data.get("name"),
+        content=data.get("content"),
+        description=data.get("description"),
+        is_active=data.get("is_active", True),
+        is_automated=data.get("is_automated", False),
+        trigger_event=data.get("trigger_event"),
+    )
+    db.add(template)
+    db.commit()
+    db.refresh(template)
+
+    return {
+        "id": template.id,
+        "name": template.name,
+        "content": template.content,
+        "description": template.description,
+        "is_active": template.is_active,
+        "is_automated": template.is_automated,
+        "trigger_event": template.trigger_event,
+    }
+
+
+@app.put("/api/admin/sms/templates/{template_id}")
+async def update_sms_template(
+    template_id: int,
+    data: dict,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Update an SMS template."""
+    template = db.query(SMSTemplate).filter(SMSTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    if "name" in data:
+        template.name = data["name"]
+    if "content" in data:
+        template.content = data["content"]
+    if "description" in data:
+        template.description = data["description"]
+    if "is_active" in data:
+        template.is_active = data["is_active"]
+    if "is_automated" in data:
+        template.is_automated = data["is_automated"]
+    if "trigger_event" in data:
+        template.trigger_event = data["trigger_event"]
+
+    db.commit()
+    db.refresh(template)
+
+    return {
+        "id": template.id,
+        "name": template.name,
+        "content": template.content,
+        "description": template.description,
+        "is_active": template.is_active,
+        "is_automated": template.is_automated,
+        "trigger_event": template.trigger_event,
+    }
+
+
+@app.delete("/api/admin/sms/templates/{template_id}")
+async def delete_sms_template(
+    template_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Delete an SMS template."""
+    template = db.query(SMSTemplate).filter(SMSTemplate.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    db.delete(template)
+    db.commit()
+
+    return {"success": True, "message": "Template deleted"}
+
+
+@app.get("/api/admin/sms/templates/variables")
+async def get_sms_template_variables(
+    current_user: User = Depends(require_admin),
+):
+    """Get available template variables."""
+    return sms_service.get_template_variables_list()
+
+
+@app.get("/api/admin/sms/messages")
+async def get_sms_messages(
+    phone: str = None,
+    booking_id: int = None,
+    direction: str = None,
+    status: str = None,
+    limit: int = 100,
+    offset: int = 0,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get SMS messages with optional filters."""
+    query = db.query(SMSMessage).order_by(SMSMessage.created_at.desc())
+
+    if phone:
+        query = query.filter(SMSMessage.phone_number.ilike(f"%{phone}%"))
+    if booking_id:
+        query = query.filter(SMSMessage.booking_id == booking_id)
+    if direction:
+        query = query.filter(SMSMessage.direction == SMSDirection(direction))
+    if status:
+        query = query.filter(SMSMessage.status == SMSStatus(status))
+
+    total = query.count()
+    messages = query.offset(offset).limit(limit).all()
+
+    return {
+        "total": total,
+        "messages": [
+            {
+                "id": m.id,
+                "phone_number": m.phone_number,
+                "booking_id": m.booking_id,
+                "booking_reference": m.booking.reference if m.booking else None,
+                "customer_id": m.customer_id,
+                "customer_name": f"{m.customer.first_name} {m.customer.last_name}" if m.customer else None,
+                "direction": m.direction.value,
+                "content": m.content,
+                "status": m.status.value,
+                "status_detail": m.status_detail,
+                "is_bulk": m.is_bulk,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+                "delivered_at": m.delivered_at.isoformat() if m.delivered_at else None,
+            }
+            for m in messages
+        ],
+    }
+
+
+@app.get("/api/admin/sms/messages/conversation/{phone}")
+async def get_sms_conversation(
+    phone: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get all messages for a specific phone number (conversation thread)."""
+    formatted_phone = sms_service.format_phone_number(phone)
+
+    messages = db.query(SMSMessage).filter(
+        SMSMessage.phone_number.ilike(f"%{formatted_phone[-10:]}%")
+    ).order_by(SMSMessage.created_at.asc()).all()
+
+    # Get customer info if linked
+    customer = None
+    for m in messages:
+        if m.customer:
+            customer = {
+                "id": m.customer.id,
+                "name": f"{m.customer.first_name} {m.customer.last_name}",
+                "email": m.customer.email,
+            }
+            break
+
+    return {
+        "phone_number": formatted_phone,
+        "customer": customer,
+        "messages": [
+            {
+                "id": m.id,
+                "direction": m.direction.value,
+                "content": m.content,
+                "status": m.status.value,
+                "booking_id": m.booking_id,
+                "booking_reference": m.booking.reference if m.booking else None,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in messages
+        ],
+    }
+
+
+@app.post("/api/admin/sms/send")
+async def send_sms_message(
+    data: dict,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Send a single SMS message."""
+    phone = data.get("phone")
+    content = data.get("content")
+    booking_id = data.get("booking_id")
+    customer_id = data.get("customer_id")
+    template_id = data.get("template_id")
+
+    if not phone or not content:
+        raise HTTPException(status_code=400, detail="Phone and content are required")
+
+    # If template_id provided, render template with booking data
+    if template_id and booking_id:
+        template = db.query(SMSTemplate).filter(SMSTemplate.id == template_id).first()
+        booking = db.query(Booking).filter(Booking.id == booking_id).first()
+        if template and booking:
+            variables = sms_service.get_booking_variables(booking)
+            content = sms_service.render_template(template.content, variables)
+
+    result = await sms_service.send_sms(
+        phone=phone,
+        content=content,
+        booking_id=booking_id,
+        customer_id=customer_id,
+        template_id=template_id,
+        sent_by=current_user.id,
+        db_session=db,
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error"))
+
+    return result
+
+
+@app.post("/api/admin/sms/send-bulk")
+async def send_bulk_sms(
+    data: dict,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Send SMS to multiple recipients."""
+    booking_ids = data.get("booking_ids", [])
+    template_id = data.get("template_id")
+    custom_content = data.get("content")
+
+    if not booking_ids:
+        raise HTTPException(status_code=400, detail="No bookings selected")
+
+    if not template_id and not custom_content:
+        raise HTTPException(status_code=400, detail="Template or custom content required")
+
+    # Get template if specified
+    template = None
+    if template_id:
+        template = db.query(SMSTemplate).filter(SMSTemplate.id == template_id).first()
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
+
+    # Build messages list
+    messages = []
+    for booking_id in booking_ids:
+        booking = db.query(Booking).filter(Booking.id == booking_id).first()
+        if not booking or not booking.customer or not booking.customer.phone:
+            continue
+
+        # Render content
+        if template:
+            variables = sms_service.get_booking_variables(booking)
+            content = sms_service.render_template(template.content, variables)
+        else:
+            content = custom_content
+
+        messages.append({
+            "phone": booking.customer.phone,
+            "content": content,
+            "booking_id": booking.id,
+            "customer_id": booking.customer.id,
+            "template_id": template_id,
+        })
+
+    if not messages:
+        raise HTTPException(status_code=400, detail="No valid recipients found")
+
+    result = await sms_service.send_bulk_sms(
+        messages=messages,
+        db_session=db,
+        sent_by=current_user.id,
+    )
+
+    return result
+
+
+@app.get("/api/admin/sms/messages/{message_id}/status")
+async def get_sms_status(
+    message_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get delivery status of a message."""
+    message = db.query(SMSMessage).filter(SMSMessage.id == message_id).first()
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    return {
+        "id": message.id,
+        "status": message.status.value,
+        "status_detail": message.status_detail,
+        "delivered_at": message.delivered_at.isoformat() if message.delivered_at else None,
+    }
+
+
+# SMS Webhooks (no auth - secured by webhook secret)
+@app.post("/api/webhooks/sms/incoming")
+async def webhook_sms_incoming(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Handle incoming SMS webhook from SMS Works."""
+    payload = await request.json()
+
+    # Verify webhook secret if configured
+    webhook_secret = request.headers.get("X-Webhook-Secret")
+    if sms_service.SMS_WEBHOOK_SECRET:
+        if webhook_secret != sms_service.SMS_WEBHOOK_SECRET:
+            raise HTTPException(status_code=401, detail="Invalid webhook secret")
+
+    success = sms_service.handle_incoming_sms(payload, db)
+
+    return {"success": success}
+
+
+@app.post("/api/webhooks/sms/delivery-report")
+async def webhook_sms_delivery(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Handle delivery report webhook from SMS Works."""
+    payload = await request.json()
+
+    # Verify webhook secret if configured
+    webhook_secret = request.headers.get("X-Webhook-Secret")
+    if sms_service.SMS_WEBHOOK_SECRET:
+        if webhook_secret != sms_service.SMS_WEBHOOK_SECRET:
+            raise HTTPException(status_code=401, detail="Invalid webhook secret")
+
+    success = sms_service.handle_delivery_report(payload, db)
+
+    return {"success": success}
+
+
+@app.get("/api/admin/sms/stats")
+async def get_sms_stats(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get SMS usage statistics."""
+    total_sent = db.query(SMSMessage).filter(
+        SMSMessage.direction == SMSDirection.OUTBOUND
+    ).count()
+
+    total_received = db.query(SMSMessage).filter(
+        SMSMessage.direction == SMSDirection.INBOUND
+    ).count()
+
+    delivered = db.query(SMSMessage).filter(
+        SMSMessage.status == SMSStatus.DELIVERED
+    ).count()
+
+    failed = db.query(SMSMessage).filter(
+        SMSMessage.status == SMSStatus.FAILED
+    ).count()
+
+    # Get unique conversations (phone numbers)
+    conversations = db.query(SMSMessage.phone_number).distinct().count()
+
+    return {
+        "total_sent": total_sent,
+        "total_received": total_received,
+        "delivered": delivered,
+        "failed": failed,
+        "conversations": conversations,
+        "sms_enabled": sms_service.is_sms_enabled(),
+    }
 
 
 if __name__ == "__main__":

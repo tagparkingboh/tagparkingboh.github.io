@@ -60,6 +60,20 @@ class PaymentStatus(enum.Enum):
     PARTIALLY_REFUNDED = "partially_refunded"
 
 
+class SMSDirection(enum.Enum):
+    """Direction of an SMS message."""
+    OUTBOUND = "outbound"   # Sent by us to customer
+    INBOUND = "inbound"     # Received from customer
+
+
+class SMSStatus(enum.Enum):
+    """Status of an SMS message."""
+    PENDING = "pending"       # Queued for sending
+    SENT = "sent"             # Sent to provider
+    DELIVERED = "delivered"   # Confirmed delivered
+    FAILED = "failed"         # Failed to send/deliver
+
+
 class Customer(Base):
     """Customer contact and billing information."""
     __tablename__ = "customers"
@@ -1237,3 +1251,72 @@ class BlockedTimeSlot(Base):
         if self.block_pickups:
             block_type.append("pickups")
         return f"<BlockedTimeSlot {self.start_time}-{self.end_time} ({', '.join(block_type)})>"
+
+
+class SMSTemplate(Base):
+    """SMS message templates with variable placeholders."""
+    __tablename__ = "sms_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False, unique=True)  # e.g., "booking_confirmation"
+    content = Column(Text, nullable=False)  # Template with {{VARIABLES}}
+    description = Column(String(255), nullable=True)  # Admin description
+
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_automated = Column(Boolean, default=False, nullable=False)  # True for system-triggered templates
+    trigger_event = Column(String(50), nullable=True)  # 'booking_confirmed', 'reminder_2day', etc.
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<SMSTemplate {self.name} ({'automated' if self.is_automated else 'manual'})>"
+
+
+class SMSMessage(Base):
+    """Individual SMS messages sent or received."""
+    __tablename__ = "sms_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    phone_number = Column(String(20), nullable=False, index=True)  # Recipient/sender phone
+
+    # Links to booking/customer (optional)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    template_id = Column(Integer, ForeignKey("sms_templates.id"), nullable=True)
+
+    # Message direction and content
+    direction = Column(
+        Enum(SMSDirection, values_callable=lambda x: [e.value for e in x]),
+        nullable=False
+    )
+    content = Column(Text, nullable=False)
+
+    # Provider tracking (The SMS Works)
+    provider_message_id = Column(String(100), nullable=True, index=True)  # SMS Works message ID
+    status = Column(
+        Enum(SMSStatus, values_callable=lambda x: [e.value for e in x]),
+        default=SMSStatus.PENDING,
+        nullable=False
+    )
+    status_detail = Column(String(255), nullable=True)  # Error message if failed
+
+    # Bulk send metadata
+    is_bulk = Column(Boolean, default=False, nullable=False)
+    bulk_batch_id = Column(String(50), nullable=True, index=True)  # Groups bulk messages
+
+    # Admin who sent (null for automated/inbound)
+    sent_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    booking = relationship("Booking", backref="sms_messages")
+    customer = relationship("Customer", backref="sms_messages")
+    template = relationship("SMSTemplate")
+    sender = relationship("User")
+
+    def __repr__(self):
+        return f"<SMSMessage {self.id} {self.direction.value} to {self.phone_number} ({self.status.value})>"

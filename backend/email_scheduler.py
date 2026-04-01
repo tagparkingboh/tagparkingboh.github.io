@@ -6,6 +6,7 @@ Checks for subscribers who need welcome or promo emails and sends them.
 - Promo code email: Sent 1 hour after welcome email (2 hours after subscription)
 """
 import logging
+import asyncio
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from db_models import MarketingSubscriber, Booking, BookingStatus, Customer
 from email_service import send_welcome_email, send_promo_code_email, send_2_day_reminder_email, send_thank_you_email, send_founder_followup_email, is_email_enabled, generate_promo_code
+import sms_service
 from datetime import date as date_type
 import pytz
 
@@ -186,6 +188,14 @@ def process_pending_2day_reminders(db: Session):
                 booking.reminder_2day_sent_at = datetime.utcnow()
                 db.commit()
                 logger.info(f"2-day reminder sent to {customer.email} for booking {booking.reference}")
+
+                # Also send SMS reminder if enabled
+                if sms_service.is_sms_enabled():
+                    try:
+                        asyncio.run(sms_service.send_reminder_2day_sms(booking, db))
+                        logger.info(f"2-day reminder SMS sent for booking {booking.reference}")
+                    except Exception as sms_error:
+                        logger.error(f"Failed to send 2-day reminder SMS: {str(sms_error)}")
             else:
                 logger.error(f"Failed to send 2-day reminder to {customer.email}")
 
