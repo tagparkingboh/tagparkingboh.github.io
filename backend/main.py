@@ -1235,6 +1235,8 @@ async def get_all_bookings(
             "confirmation_email_sent_at": b.confirmation_email_sent_at.isoformat() if b.confirmation_email_sent_at else None,
             "reminder_2day_sent": b.reminder_2day_sent,
             "reminder_2day_sent_at": b.reminder_2day_sent_at.isoformat() if b.reminder_2day_sent_at else None,
+            "thank_you_email_sent": b.thank_you_email_sent,
+            "thank_you_email_sent_at": b.thank_you_email_sent_at.isoformat() if b.thank_you_email_sent_at else None,
             "created_at": b.created_at.isoformat() if b.created_at else None,
             "customer": {
                 "id": b.customer.id,
