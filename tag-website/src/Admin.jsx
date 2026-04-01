@@ -6000,9 +6000,9 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto', flexShrink: 0 }}
+                          style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto', flexShrink: 0, textAlign: 'center', textAlignLast: 'center' }}
                         >
-                          <option value="">+ Variable</option>
+                          <option value="">Add Variable</option>
                           {smsVariables.map(v => (
                             <option key={v.value} value={v.value}>{v.label}</option>
                           ))}
@@ -6076,9 +6076,9 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto', flexShrink: 0 }}
+                          style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto', flexShrink: 0, textAlign: 'center', textAlignLast: 'center' }}
                         >
-                          <option value="">+ Variable</option>
+                          <option value="">Add Variable</option>
                           {smsVariables.map(v => (
                             <option key={v.value} value={v.value}>{v.label}</option>
                           ))}
@@ -6160,9 +6160,9 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto', flexShrink: 0 }}
+                          style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto', flexShrink: 0, textAlign: 'center', textAlignLast: 'center' }}
                         >
-                          <option value="">+ Variable</option>
+                          <option value="">Add Variable</option>
                           {smsVariables.map(v => (
                             <option key={v.value} value={v.value}>{v.label}</option>
                           ))}
