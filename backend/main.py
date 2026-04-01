@@ -4726,7 +4726,8 @@ async def get_bookings_forecast(
 
     # Analyze booking patterns
     destination_bookings = defaultdict(int)
-    day_of_week_bookings = defaultdict(int)  # 0=Monday, 6=Sunday
+    day_of_week_bookings = defaultdict(int)  # 0=Monday, 6=Sunday (dropoff/travel day)
+    pickup_day_of_week_bookings = defaultdict(int)  # 0=Monday, 6=Sunday (pickup/return day)
     airline_bookings = defaultdict(int)
     travel_month_bookings = defaultdict(int)  # Month of dropoff (when they travel)
     booking_month_bookings = defaultdict(int)  # Month of booking creation (when they booked)
@@ -4744,11 +4745,16 @@ async def get_bookings_forecast(
                 dow = booking.dropoff_date.weekday()
                 destination_by_dow[dest][dow] += 1
 
-        # Day of week patterns
+        # Day of week patterns (dropoff = travel day)
         if booking.dropoff_date:
             dow = booking.dropoff_date.weekday()
             day_of_week_bookings[dow] += 1
             travel_month_bookings[booking.dropoff_date.month] += 1
+
+        # Day of week patterns (pickup = return day)
+        if booking.pickup_date:
+            pickup_dow = booking.pickup_date.weekday()
+            pickup_day_of_week_bookings[pickup_dow] += 1
 
         # Month booking was created
         if booking.created_at:
@@ -4902,6 +4908,17 @@ async def get_bookings_forecast(
             "percentage": round((count / total_bookings) * 100, 1) if total_bookings else 0
         })
 
+    # Pickup day of week analysis (when do customers return?)
+    pickup_dow_forecast = []
+    for dow in range(7):
+        count = pickup_day_of_week_bookings.get(dow, 0)
+        pickup_dow_forecast.append({
+            "day": dow_names_full[dow],
+            "day_short": dow_names_full[dow][:3],
+            "bookings": count,
+            "percentage": round((count / total_bookings) * 100, 1) if total_bookings else 0
+        })
+
     # Airline analysis
     airline_forecast = []
     for airline, count in sorted(airline_bookings.items(), key=lambda x: x[1], reverse=True)[:10]:
@@ -5013,6 +5030,7 @@ async def get_bookings_forecast(
         },
         "destinations": destination_forecast[:20],
         "day_of_week": dow_forecast,
+        "pickup_day_of_week": pickup_dow_forecast,
         "airlines": airline_forecast,
         "seasonality_travel": travel_month_forecast,
         "seasonality_booking": booking_month_forecast,

@@ -10142,7 +10142,7 @@ function Admin() {
                     {/* Summary Cards */}
                     <div className="forecast-grid">
 
-                      {/* Day of Week Analysis */}
+                      {/* Day of Week Analysis - Drop-offs */}
                       <div className="forecast-card">
                         <h4>Busiest Days of Week</h4>
                         <p className="forecast-subtitle">When do customers drop off?</p>
@@ -10166,54 +10166,69 @@ function Admin() {
                         )}
                       </div>
 
-                      {/* Travel Month Seasonality */}
+                      {/* Day of Week Analysis - Pick-ups */}
                       <div className="forecast-card">
-                        <h4>Travel Month</h4>
-                        <p className="forecast-subtitle">When do customers travel? (dropoff date)</p>
-                        {forecastData.seasonality_travel?.length > 0 ? (
-                          <div className="seasonality-chart">
-                            {(() => {
-                              const maxBookings = Math.max(...forecastData.seasonality_travel.map(m => m.bookings)) || 1;
-                              return forecastData.seasonality_travel.map((month, idx) => (
-                                <div key={idx} className="season-bar-container">
-                                  <span className="season-label">{month.month}</span>
-                                  <div className="season-bar-wrapper">
-                                    <div
-                                      className="season-bar travel"
-                                      style={{ height: `${(month.bookings / maxBookings) * 100}%` }}
-                                    ></div>
-                                  </div>
-                                  <span className="season-value">{month.bookings}</span>
+                        <h4>Busiest Pickup Days</h4>
+                        <p className="forecast-subtitle">When do customers pick up?</p>
+                        {forecastData.pickup_day_of_week?.length > 0 ? (
+                          <div className="dow-chart">
+                            {forecastData.pickup_day_of_week.map((day, idx) => (
+                              <div key={idx} className="dow-bar-container">
+                                <span className="dow-label">{day.day_short}</span>
+                                <div className="dow-bar-wrapper">
+                                  <div
+                                    className="dow-bar pickup"
+                                    style={{ width: `${Math.min(day.percentage * 5, 100)}%` }}
+                                  ></div>
                                 </div>
-                              ));
-                            })()}
+                                <span className="dow-value">{day.bookings} ({day.percentage}%)</span>
+                              </div>
+                            ))}
                           </div>
                         ) : (
-                          <p className="admin-empty">No data available</p>
+                          <p className="admin-empty">No pickup day data available</p>
                         )}
                       </div>
 
-                      {/* Booking Month Seasonality */}
-                      <div className="forecast-card">
-                        <h4>Booking Month</h4>
-                        <p className="forecast-subtitle">When do customers book? (booking created)</p>
-                        {forecastData.seasonality_booking?.length > 0 ? (
-                          <div className="seasonality-chart">
+                      {/* Combined Seasonality - Travel vs Booking Month */}
+                      <div className="forecast-card wide">
+                        <h4>Monthly Patterns</h4>
+                        <p className="forecast-subtitle">Travel month (blue) vs Booking month (green)</p>
+                        {forecastData.seasonality_travel?.length > 0 ? (
+                          <div className="combined-seasonality-chart">
                             {(() => {
-                              const maxBookings = Math.max(...forecastData.seasonality_booking.map(m => m.bookings)) || 1;
-                              return forecastData.seasonality_booking.map((month, idx) => (
-                                <div key={idx} className="season-bar-container">
-                                  <span className="season-label">{month.month}</span>
-                                  <div className="season-bar-wrapper">
-                                    <div
-                                      className="season-bar booking"
-                                      style={{ height: `${(month.bookings / maxBookings) * 100}%` }}
-                                    ></div>
+                              const maxTravel = Math.max(...forecastData.seasonality_travel.map(m => m.bookings)) || 1;
+                              const maxBooking = Math.max(...(forecastData.seasonality_booking || []).map(m => m.bookings)) || 1;
+                              const maxAll = Math.max(maxTravel, maxBooking);
+                              return forecastData.seasonality_travel.map((travelMonth, idx) => {
+                                const bookingMonth = forecastData.seasonality_booking?.[idx] || { bookings: 0 };
+                                return (
+                                  <div key={idx} className="combined-month-row">
+                                    <span className="combined-month-label">{travelMonth.month}</span>
+                                    <div className="combined-bars">
+                                      <div className="combined-bar-wrapper">
+                                        <div
+                                          className="combined-bar travel"
+                                          style={{ width: `${(travelMonth.bookings / maxAll) * 100}%` }}
+                                        ></div>
+                                        <span className="combined-bar-value">{travelMonth.bookings}</span>
+                                      </div>
+                                      <div className="combined-bar-wrapper">
+                                        <div
+                                          className="combined-bar booking"
+                                          style={{ width: `${(bookingMonth.bookings / maxAll) * 100}%` }}
+                                        ></div>
+                                        <span className="combined-bar-value">{bookingMonth.bookings}</span>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <span className="season-value">{month.bookings}</span>
-                                </div>
-                              ));
+                                );
+                              });
                             })()}
+                            <div className="combined-legend">
+                              <span className="legend-item"><span className="legend-color travel"></span> Travel Month</span>
+                              <span className="legend-item"><span className="legend-color booking"></span> Booking Month</span>
+                            </div>
                           </div>
                         ) : (
                           <p className="admin-empty">No data available</p>

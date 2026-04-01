@@ -7080,6 +7080,10 @@
   transition: width 0.3s ease;
 }
 
+.dow-bar.pickup {
+  background: linear-gradient(90deg, #22c55e 0%, #4ade80 100%);
+}
+
 .dow-value {
   font-size: 0.75rem;
   color: #64748b;
@@ -7141,6 +7145,102 @@
 .season-value {
   font-size: 0.7rem;
   color: #64748b;
+}
+
+/* Combined Seasonality Chart (horizontal bars) */
+.combined-seasonality-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.combined-month-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.combined-month-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+  width: 32px;
+  flex-shrink: 0;
+}
+
+.combined-bars {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.combined-bar-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 14px;
+}
+
+.combined-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  min-width: 2px;
+}
+
+.combined-bar.travel {
+  background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
+}
+
+.combined-bar.booking {
+  background: linear-gradient(90deg, #22c55e 0%, #4ade80 100%);
+}
+
+.combined-bar-value {
+  font-size: 0.65rem;
+  color: #64748b;
+  min-width: 20px;
+}
+
+.combined-legend {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+.legend-color {
+  width: 12px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.legend-color.travel {
+  background: #3b82f6;
+}
+
+.legend-color.booking {
+  background: #22c55e;
+}
+
+.forecast-card.wide {
+  grid-column: span 2;
+}
+
+@media (max-width: 800px) {
+  .forecast-card.wide {
+    grid-column: span 1;
+  }
 }
 
 /* Forecast Section */
