@@ -3529,6 +3529,14 @@ function Admin() {
                   {deletingId === booking.id ? 'Deleting...' : 'Delete'}
                 </button>
               )}
+
+              {/* 2-Day Reminder Status Indicator */}
+              <div className="reminder-status-indicator">
+                <span className="reminder-label">2-Day Reminder</span>
+                <span className={`reminder-badge ${booking.reminder_2day_sent ? 'sent' : 'pending'}`}>
+                  {booking.reminder_2day_sent ? 'Sent ✓' : 'Pending'}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -7993,6 +8001,35 @@ function Admin() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Busiest Booking Days (when customers make bookings) */}
+                    {bookingStats.booking_days_of_week && bookingStats.booking_days_of_week.length > 0 && (
+                      <div className="booking-days-section">
+                        <h3>Busiest Booking Days</h3>
+                        <p className="section-subtitle">When customers make their bookings</p>
+                        <div className="day-of-week-chart">
+                          {(() => {
+                            const maxCount = Math.max(...bookingStats.booking_days_of_week.map(d => d.count));
+                            return bookingStats.booking_days_of_week.map((day, index) => (
+                              <div key={index} className="day-bar-container">
+                                <div className="day-label">{day.day.substring(0, 3)}</div>
+                                <div className="day-bar-wrapper">
+                                  <div
+                                    className="day-bar"
+                                    style={{
+                                      height: `${maxCount > 0 ? (day.count / maxCount) * 100 : 0}%`,
+                                      backgroundColor: day.count === maxCount ? '#22c55e' : '#3b82f6'
+                                    }}
+                                  />
+                                </div>
+                                <div className="day-count">{day.count}</div>
+                                <div className="day-percent">{day.percent}%</div>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Fun Facts */}
                     {funFacts && (

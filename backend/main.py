@@ -1162,6 +1162,8 @@ async def get_all_bookings(
             "pickup_airline_code": b.pickup_airline_code,
             "pickup_origin": b.pickup_origin,
             "notes": b.notes,
+            "reminder_2day_sent": b.reminder_2day_sent,
+            "reminder_2day_sent_at": b.reminder_2day_sent_at.isoformat() if b.reminder_2day_sent_at else None,
             "created_at": b.created_at.isoformat() if b.created_at else None,
             "customer": {
                 "id": b.customer.id,
@@ -1424,6 +1426,27 @@ async def get_booking_stats(
     else:
         pickup_range = {"am": 0, "pm": 0, "am_busiest": [], "pm_busiest": []}
 
+    # Day of week booking creation analysis (when customers make bookings)
+    day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    booking_days_of_week = {day: 0 for day in day_names}
+
+    for booking in successful_bookings:
+        if booking.created_at:
+            day_name = day_names[booking.created_at.weekday()]
+            booking_days_of_week[day_name] += 1
+
+    # Convert to list format with percentages
+    total_bookings_with_dates = sum(booking_days_of_week.values())
+    booking_days_list = []
+    for day in day_names:
+        count = booking_days_of_week[day]
+        percent = round(count / total_bookings_with_dates * 100, 1) if total_bookings_with_dates > 0 else 0
+        booking_days_list.append({
+            "day": day,
+            "count": count,
+            "percent": percent
+        })
+
     return {
         "total_bookings": len(all_bookings),
         "total_successful": total_successful,
@@ -1446,6 +1469,7 @@ async def get_booking_stats(
         "top_durations": top_durations,
         "dropoff_range": dropoff_range,
         "pickup_range": pickup_range,
+        "booking_days_of_week": booking_days_list,
     }
 
 
