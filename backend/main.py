@@ -4639,7 +4639,8 @@ async def get_bookings_forecast(
     destination_bookings = defaultdict(int)
     day_of_week_bookings = defaultdict(int)  # 0=Monday, 6=Sunday
     airline_bookings = defaultdict(int)
-    month_bookings = defaultdict(int)
+    travel_month_bookings = defaultdict(int)  # Month of dropoff (when they travel)
+    booking_month_bookings = defaultdict(int)  # Month of booking creation (when they booked)
     destination_by_dow = defaultdict(lambda: defaultdict(int))  # destination -> dow -> count
 
     for booking in historical_bookings:
@@ -4657,7 +4658,11 @@ async def get_bookings_forecast(
         if booking.dropoff_date:
             dow = booking.dropoff_date.weekday()
             day_of_week_bookings[dow] += 1
-            month_bookings[booking.dropoff_date.month] += 1
+            travel_month_bookings[booking.dropoff_date.month] += 1
+
+        # Month booking was created
+        if booking.created_at:
+            booking_month_bookings[booking.created_at.month] += 1
 
         # Airline patterns
         if booking.dropoff_airline_name:
@@ -4775,16 +4780,24 @@ async def get_bookings_forecast(
             "percentage": round((count / total_bookings) * 100, 1) if total_bookings else 0
         })
 
-    # Month analysis (seasonality)
+    # Month analysis (seasonality) - both travel month and booking month
     month_names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    month_forecast = []
+    travel_month_forecast = []
+    booking_month_forecast = []
     for month in range(1, 13):
-        count = month_bookings.get(month, 0)
-        month_forecast.append({
+        travel_count = travel_month_bookings.get(month, 0)
+        booking_count = booking_month_bookings.get(month, 0)
+        travel_month_forecast.append({
             "month": month_names[month],
             "month_num": month,
-            "bookings": count,
-            "percentage": round((count / total_bookings) * 100, 1) if total_bookings else 0
+            "bookings": travel_count,
+            "percentage": round((travel_count / total_bookings) * 100, 1) if total_bookings else 0
+        })
+        booking_month_forecast.append({
+            "month": month_names[month],
+            "month_num": month,
+            "bookings": booking_count,
+            "percentage": round((booking_count / total_bookings) * 100, 1) if total_bookings else 0
         })
 
     # Upcoming dates with search interest (next 30 days)
@@ -4828,7 +4841,8 @@ async def get_bookings_forecast(
         "destinations": destination_forecast[:20],
         "day_of_week": dow_forecast,
         "airlines": airline_forecast,
-        "seasonality": month_forecast,
+        "seasonality_travel": travel_month_forecast,
+        "seasonality_booking": booking_month_forecast,
         "upcoming_demand": upcoming_demand[:15],
         "opportunity_gaps": opportunity_gaps[:10]
     }

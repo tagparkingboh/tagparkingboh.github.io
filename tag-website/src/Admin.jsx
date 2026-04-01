@@ -10054,20 +10054,20 @@ function Admin() {
                         )}
                       </div>
 
-                      {/* Seasonality */}
+                      {/* Travel Month Seasonality */}
                       <div className="forecast-card">
-                        <h4>Monthly Seasonality</h4>
-                        <p className="forecast-subtitle">Historical booking patterns by month</p>
-                        {forecastData.seasonality?.length > 0 ? (
+                        <h4>Travel Month</h4>
+                        <p className="forecast-subtitle">When do customers travel? (dropoff date)</p>
+                        {forecastData.seasonality_travel?.length > 0 ? (
                           <div className="seasonality-chart">
                             {(() => {
-                              const maxBookings = Math.max(...forecastData.seasonality.map(m => m.bookings)) || 1;
-                              return forecastData.seasonality.map((month, idx) => (
+                              const maxBookings = Math.max(...forecastData.seasonality_travel.map(m => m.bookings)) || 1;
+                              return forecastData.seasonality_travel.map((month, idx) => (
                                 <div key={idx} className="season-bar-container">
                                   <span className="season-label">{month.month}</span>
                                   <div className="season-bar-wrapper">
                                     <div
-                                      className="season-bar"
+                                      className="season-bar travel"
                                       style={{ height: `${(month.bookings / maxBookings) * 100}%` }}
                                     ></div>
                                   </div>
@@ -10077,7 +10077,34 @@ function Admin() {
                             })()}
                           </div>
                         ) : (
-                          <p className="admin-empty">No seasonality data available</p>
+                          <p className="admin-empty">No data available</p>
+                        )}
+                      </div>
+
+                      {/* Booking Month Seasonality */}
+                      <div className="forecast-card">
+                        <h4>Booking Month</h4>
+                        <p className="forecast-subtitle">When do customers book? (booking created)</p>
+                        {forecastData.seasonality_booking?.length > 0 ? (
+                          <div className="seasonality-chart">
+                            {(() => {
+                              const maxBookings = Math.max(...forecastData.seasonality_booking.map(m => m.bookings)) || 1;
+                              return forecastData.seasonality_booking.map((month, idx) => (
+                                <div key={idx} className="season-bar-container">
+                                  <span className="season-label">{month.month}</span>
+                                  <div className="season-bar-wrapper">
+                                    <div
+                                      className="season-bar booking"
+                                      style={{ height: `${(month.bookings / maxBookings) * 100}%` }}
+                                    ></div>
+                                  </div>
+                                  <span className="season-value">{month.bookings}</span>
+                                </div>
+                              ));
+                            })()}
+                          </div>
+                        ) : (
+                          <p className="admin-empty">No data available</p>
                         )}
                       </div>
 
