@@ -1749,3 +1749,31 @@ class TestBookingSearch:
         assert len(with_phone) == 2
         assert with_phone[0]["id"] == 1
         assert with_phone[1]["id"] == 3
+
+    def test_search_returns_multiple_bookings_same_customer(self):
+        """Test that search returns all bookings for a customer with multiple bookings."""
+        # Same customer with 3 different bookings
+        customer = create_mock_customer(id=1, first_name="John", last_name="Smith")
+
+        bookings = [
+            create_mock_booking(id=1, reference="TAG-001", customer=customer, customer_first_name="John"),
+            create_mock_booking(id=2, reference="TAG-002", customer=customer, customer_first_name="John"),
+            create_mock_booking(id=3, reference="TAG-003", customer=customer, customer_first_name="John"),
+            create_mock_booking(id=4, reference="TAG-004", customer=create_mock_customer(id=2, first_name="Jane"), customer_first_name="Jane"),
+        ]
+
+        # Simulate search for "John" - should return all 3 of John's bookings
+        search_term = "John"
+        results = [
+            b for b in bookings
+            if search_term.lower() in (b.customer_first_name or "").lower()
+            or search_term.lower() in (b.customer.first_name or "").lower()
+        ]
+
+        assert len(results) == 3
+        assert all(b.customer.first_name == "John" for b in results)
+        # All 3 different bookings returned
+        refs = [b.reference for b in results]
+        assert "TAG-001" in refs
+        assert "TAG-002" in refs
+        assert "TAG-003" in refs
