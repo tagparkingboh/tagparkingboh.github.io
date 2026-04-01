@@ -1628,11 +1628,11 @@ class TestEditDropoffTime:
 
 
 # =============================================================================
-# Unit Tests: Booking Search
+# Unit Tests: Booking Search (by reference only)
 # =============================================================================
 
 class TestBookingSearch:
-    """Tests for booking search functionality."""
+    """Tests for booking search functionality (reference only)."""
 
     def test_search_by_reference_match(self):
         """Test search matches booking reference."""
@@ -1648,96 +1648,59 @@ class TestBookingSearch:
         assert len(results) == 1
         assert results[0].reference == "TAG-ABC123"
 
-    def test_search_by_customer_first_name(self):
-        """Test search matches customer first name."""
-        customer1 = create_mock_customer(id=1, first_name="Mark", last_name="Smith")
-        customer2 = create_mock_customer(id=2, first_name="John", last_name="Doe")
-
+    def test_search_by_partial_reference(self):
+        """Test search matches partial booking reference."""
         bookings = [
-            create_mock_booking(id=1, customer=customer1, customer_first_name="Mark"),
-            create_mock_booking(id=2, customer=customer2, customer_first_name="John"),
+            create_mock_booking(id=1, reference="TAG-MNF73277"),
+            create_mock_booking(id=2, reference="TAG-SEO26370"),
+            create_mock_booking(id=3, reference="TAG-EYU62172"),
         ]
 
-        search_term = "mark"
-        results = [
-            b for b in bookings
-            if search_term.lower() in (b.customer_first_name or "").lower()
-        ]
+        search_term = "MNF"
+        results = [b for b in bookings if search_term.lower() in b.reference.lower()]
 
         assert len(results) == 1
-        assert results[0].customer_first_name == "Mark"
-
-    def test_search_by_customer_last_name(self):
-        """Test search matches customer last name."""
-        customer1 = create_mock_customer(id=1, first_name="John", last_name="Anderson")
-        customer2 = create_mock_customer(id=2, first_name="Jane", last_name="Smith")
-
-        bookings = [
-            create_mock_booking(id=1, customer=customer1, customer_last_name="Anderson"),
-            create_mock_booking(id=2, customer=customer2, customer_last_name="Smith"),
-        ]
-
-        search_term = "anderson"
-        results = [
-            b for b in bookings
-            if search_term.lower() in (b.customer_last_name or "").lower()
-        ]
-
-        assert len(results) == 1
-        assert results[0].customer_last_name == "Anderson"
+        assert results[0].reference == "TAG-MNF73277"
 
     def test_search_case_insensitive(self):
-        """Test search is case insensitive."""
+        """Test reference search is case insensitive."""
         bookings = [
-            create_mock_booking(id=1, reference="TAG-ABC123", customer_first_name="Mark"),
+            create_mock_booking(id=1, reference="TAG-ABC123"),
         ]
 
         # Test various cases
-        search_terms = ["MARK", "mark", "Mark", "mArK"]
+        search_terms = ["TAG-ABC", "tag-abc", "Tag-Abc", "tAg-AbC"]
         for term in search_terms:
-            results = [
-                b for b in bookings
-                if term.lower() in (b.customer_first_name or "").lower()
-            ]
+            results = [b for b in bookings if term.lower() in b.reference.lower()]
             assert len(results) == 1, f"Failed for search term: {term}"
 
     def test_search_no_match_returns_empty(self):
         """Test search with no matches returns empty list."""
         bookings = [
-            create_mock_booking(id=1, reference="TAG-ABC123", customer_first_name="John"),
-            create_mock_booking(id=2, reference="TAG-DEF456", customer_first_name="Jane"),
+            create_mock_booking(id=1, reference="TAG-ABC123"),
+            create_mock_booking(id=2, reference="TAG-DEF456"),
         ]
 
-        search_term = "xyz"
-        results = [
-            b for b in bookings
-            if (search_term.lower() in b.reference.lower() or
-                search_term.lower() in (b.customer_first_name or "").lower())
-        ]
+        search_term = "XYZ"
+        results = [b for b in bookings if search_term.lower() in b.reference.lower()]
 
         assert len(results) == 0
 
     def test_search_with_limit(self):
         """Test search respects limit parameter."""
         bookings = [
-            create_mock_booking(id=i, reference=f"TAG-TEST{i:03d}", customer_first_name="Test")
-            for i in range(1, 11)  # 10 bookings
+            create_mock_booking(id=i, reference=f"TAG-TEST{i:03d}")
+            for i in range(1, 11)  # 10 bookings with TEST in reference
         ]
 
-        search_term = "test"
+        search_term = "TEST"
         limit = 5
-        results = [
-            b for b in bookings
-            if search_term.lower() in (b.customer_first_name or "").lower()
-        ][:limit]
+        results = [b for b in bookings if search_term.lower() in b.reference.lower()][:limit]
 
         assert len(results) == 5
 
     def test_filter_bookings_with_phone(self):
         """Test filtering bookings to only those with phone numbers."""
-        customer_with_phone = create_mock_customer(id=1, phone="07700900001")
-        customer_no_phone = create_mock_customer(id=2, phone=None)
-
         bookings = [
             {"id": 1, "customer": {"phone": "07700900001"}},
             {"id": 2, "customer": {"phone": None}},
@@ -1750,30 +1713,15 @@ class TestBookingSearch:
         assert with_phone[0]["id"] == 1
         assert with_phone[1]["id"] == 3
 
-    def test_search_returns_multiple_bookings_same_customer(self):
-        """Test that search returns all bookings for a customer with multiple bookings."""
-        # Same customer with 3 different bookings
-        customer = create_mock_customer(id=1, first_name="John", last_name="Smith")
-
+    def test_search_does_not_match_customer_name(self):
+        """Test that search does NOT match customer name (reference only)."""
+        customer = create_mock_customer(id=1, first_name="Mark", last_name="Smith")
         bookings = [
-            create_mock_booking(id=1, reference="TAG-001", customer=customer, customer_first_name="John"),
-            create_mock_booking(id=2, reference="TAG-002", customer=customer, customer_first_name="John"),
-            create_mock_booking(id=3, reference="TAG-003", customer=customer, customer_first_name="John"),
-            create_mock_booking(id=4, reference="TAG-004", customer=create_mock_customer(id=2, first_name="Jane"), customer_first_name="Jane"),
+            create_mock_booking(id=1, reference="TAG-ABC123", customer=customer, customer_first_name="Mark"),
         ]
 
-        # Simulate search for "John" - should return all 3 of John's bookings
-        search_term = "John"
-        results = [
-            b for b in bookings
-            if search_term.lower() in (b.customer_first_name or "").lower()
-            or search_term.lower() in (b.customer.first_name or "").lower()
-        ]
+        # Search for customer name should return nothing (reference only)
+        search_term = "Mark"
+        results = [b for b in bookings if search_term.lower() in b.reference.lower()]
 
-        assert len(results) == 3
-        assert all(b.customer.first_name == "John" for b in results)
-        # All 3 different bookings returned
-        refs = [b.reference for b in results]
-        assert "TAG-001" in refs
-        assert "TAG-002" in refs
-        assert "TAG-003" in refs
+        assert len(results) == 0

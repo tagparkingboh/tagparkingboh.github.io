@@ -1184,18 +1184,10 @@ async def get_all_bookings(
     if not include_cancelled:
         query = query.filter(Booking.status != BookingStatus.CANCELLED)
 
-    # Search filter - search by reference, customer name
+    # Search filter - search by booking reference only
     if search:
         search_term = f"%{search}%"
-        query = query.filter(
-            or_(
-                Booking.reference.ilike(search_term),
-                Booking.customer_first_name.ilike(search_term),
-                Booking.customer_last_name.ilike(search_term),
-                Customer.first_name.ilike(search_term),
-                Customer.last_name.ilike(search_term),
-            )
-        )
+        query = query.filter(Booking.reference.ilike(search_term))
 
     # Sort: today's bookings first (by dropoff_date), then by dropoff_date ascending
     query = query.order_by(

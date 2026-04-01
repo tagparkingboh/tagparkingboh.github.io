@@ -5903,7 +5903,7 @@ function Admin() {
                   <div className="modal-form">
                     {/* Booking Search */}
                     <div className="form-group">
-                      <label>Search Booking (by name or reference)</label>
+                      <label>Search Booking (by reference)</label>
                       {selectedSmsBooking ? (
                         <div className="selected-booking-chip">
                           <span>
@@ -5920,7 +5920,7 @@ function Admin() {
                               setSmsBookingSearch(e.target.value)
                               searchBookingsForSms(e.target.value)
                             }}
-                            placeholder="Type name or TAG-XXXXXX..."
+                            placeholder="TAG-XXXXXX..."
                           />
                           {searchingSmsBookings && <span className="search-spinner">...</span>}
                           {smsBookingResults.length > 0 && (
