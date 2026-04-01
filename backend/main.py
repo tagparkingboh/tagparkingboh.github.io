@@ -13283,6 +13283,9 @@ async def get_active_promo_modal(
         if modal.start_date and today_uk < modal.start_date:
             continue
         if modal.end_date and today_uk > modal.end_date:
+            # Auto-deactivate expired modal
+            modal.status = PromoModalStatus.INACTIVE
+            db.commit()
             continue
         # This modal is valid
         return {
@@ -13323,6 +13326,9 @@ async def get_active_promo_section(
         if modal.start_date and today_uk < modal.start_date:
             continue
         if modal.end_date and today_uk > modal.end_date:
+            # Auto-deactivate expired section
+            modal.status = PromoModalStatus.INACTIVE
+            db.commit()
             continue
         # This section is valid
         return {
