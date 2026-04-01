@@ -4430,6 +4430,38 @@ async def get_session_tracking_report(
     bookings_count = cumulative_counts.get("booking_confirmed", 0)
     overall_conversion = round((bookings_count / dates_count) * 100, 1) if dates_count > 0 else 0.0
 
+    # Count manual/admin bookings per period (these bypass the checkout flow)
+    from db_models import Booking as DbBooking, BookingStatus
+    manual_bookings = db.query(DbBooking).filter(
+        DbBooking.created_at >= start_date,
+        DbBooking.booking_source.in_(['manual', 'admin']),
+        DbBooking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED])
+    ).all()
+
+    manual_by_period = defaultdict(int)
+    manual_cumulative = 0
+    for booking in manual_bookings:
+        if booking.created_at:
+            booking_time = booking.created_at
+            if booking_time.tzinfo is None:
+                booking_time = uk_tz.localize(booking_time)
+            else:
+                booking_time = booking_time.astimezone(uk_tz)
+
+            if period == "weekly":
+                period_key = booking_time.strftime("%Y-W%W")
+            elif period == "monthly":
+                period_key = booking_time.strftime("%Y-%m")
+            else:  # daily
+                period_key = booking_time.strftime("%Y-%m-%d")
+
+            manual_by_period[period_key] += 1
+            manual_cumulative += 1
+
+    # Add manual counts to formatted periods
+    for p in formatted_periods:
+        p["manual_bookings"] = manual_by_period.get(p["period"], 0)
+
     return {
         "period_type": period,
         "stages": [{"key": s[0], "label": s[1]} for s in funnel_stages],
@@ -4437,7 +4469,8 @@ async def get_session_tracking_report(
         "cumulative": {
             "counts": cumulative_counts,
             "conversion_rates": conversion_rates,
-            "overall_conversion": overall_conversion
+            "overall_conversion": overall_conversion,
+            "manual_bookings": manual_cumulative
         }
     }
 

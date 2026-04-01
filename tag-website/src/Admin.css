@@ -6853,6 +6853,18 @@
   text-align: center;
 }
 
+.manual-booking-cell {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.manual-bookings-note {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #6b7280;
+  font-style: italic;
+}
+
 /* Abandoned Carts Analytics */
 .abandoned-carts-summary {
   margin-bottom: 1.5rem;

@@ -9803,6 +9803,7 @@ function Admin() {
                               {sessionTrackingData.stages?.map(stage => (
                                 <th key={stage.key}>{stage.label}</th>
                               ))}
+                              <th>Manual</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -9814,12 +9815,20 @@ function Admin() {
                                     {period.counts?.[stage.key] || 0}
                                   </td>
                                 ))}
+                                <td className="manual-booking-cell">
+                                  {period.manual_bookings > 0 ? `+${period.manual_bookings}` : '-'}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       ) : (
                         <p className="admin-empty">No session data available for this period.</p>
+                      )}
+                      {sessionTrackingData.cumulative?.manual_bookings > 0 && (
+                        <p className="manual-bookings-note">
+                          * Manual column shows {sessionTrackingData.cumulative.manual_bookings} booking{sessionTrackingData.cumulative.manual_bookings !== 1 ? 's' : ''} created via Admin (phone/walk-in) that bypassed the checkout flow.
+                        </p>
                       )}
                     </div>
                   </>
