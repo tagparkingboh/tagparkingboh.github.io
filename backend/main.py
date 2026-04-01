@@ -3016,7 +3016,7 @@ async def get_booking_locations(
         # Shows customers who either:
         #   1. Have no bookings (pure leads), OR
         #   2. Started a new booking flow AFTER their last booking (returning customer lead)
-        from datetime import datetime, timezone
+        from datetime import timezone
         from sqlalchemy import func, and_, or_
         feature_launch_date = datetime(2026, 2, 16, 20, 0, 0, tzinfo=timezone.utc)
 
@@ -3514,7 +3514,6 @@ async def get_popular_airlines_destinations(
         query = query.filter(Booking.created_at >= start_date)
     if end_date:
         # Include the entire end date
-        from datetime import datetime, timedelta
         end_datetime = datetime.combine(end_date, datetime.max.time())
         query = query.filter(Booking.created_at <= end_datetime)
 
@@ -3861,7 +3860,6 @@ async def get_financial_report(
 
     from db_models import Booking, BookingStatus, Payment, PaymentStatus, PromoCode
     from collections import defaultdict
-    from datetime import datetime, timedelta
     import calendar
 
     # Build query for bookings with successful payments
