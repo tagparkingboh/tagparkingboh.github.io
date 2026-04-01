@@ -3879,7 +3879,7 @@ function Admin() {
       })
       if (response.ok) {
         const data = await response.json()
-        setSmsTemplates(data.templates || [])
+        setSmsTemplates(Array.isArray(data) ? data : [])
       }
     } catch (err) {
       console.error('Failed to fetch SMS templates:', err)
