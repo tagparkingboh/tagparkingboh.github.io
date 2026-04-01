@@ -446,6 +446,9 @@ function Admin() {
   const [showEditTemplateModal, setShowEditTemplateModal] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState(null)
   const [savingTemplate, setSavingTemplate] = useState(false)
+  const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false)
+  const [newTemplate, setNewTemplate] = useState({ name: '', content: '', description: '', is_active: true })
+  const [creatingTemplate, setCreatingTemplate] = useState(false)
   const [expandedMessageId, setExpandedMessageId] = useState(null)
   const [smsDirectionFilter, setSmsDirectionFilter] = useState('all') // 'all', 'inbound', 'outbound'
   const [smsStatusFilter, setSmsStatusFilter] = useState('all') // 'all', 'pending', 'sent', 'delivered', 'failed'
@@ -3914,6 +3917,40 @@ function Admin() {
     }
   }
 
+  const handleCreateTemplate = async () => {
+    setCreatingTemplate(true)
+    setMessagesMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/templates`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newTemplate.name,
+          content: newTemplate.content,
+          description: newTemplate.description,
+          is_active: newTemplate.is_active,
+        }),
+      })
+
+      if (response.ok) {
+        setMessagesMessage('Template created successfully!')
+        setShowCreateTemplateModal(false)
+        setNewTemplate({ name: '', content: '', description: '', is_active: true })
+        fetchSmsTemplates()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to create template'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setCreatingTemplate(false)
+    }
+  }
+
   const formatPhoneForDisplay = (phone) => {
     if (!phone) return '-'
     // Format 447XXXXXXXXX as +44 7XXX XXX XXX
@@ -5698,10 +5735,18 @@ function Admin() {
             {/* Templates List */}
             {messagesSubTab === 'templates' && (
               <div className="templates-list">
+                <div className="templates-header">
+                  <button
+                    className="btn-primary"
+                    onClick={() => setShowCreateTemplateModal(true)}
+                  >
+                    + Create Template
+                  </button>
+                </div>
                 {loadingTemplates ? (
                   <p className="loading-text">Loading templates...</p>
                 ) : smsTemplates.length === 0 ? (
-                  <p className="no-data">No templates found</p>
+                  <p className="no-data">No templates found. Create one to get started!</p>
                 ) : (
                   <div className="templates-grid">
                     {smsTemplates.map(template => (
@@ -5880,6 +5925,74 @@ function Admin() {
                       disabled={savingTemplate}
                     >
                       {savingTemplate ? 'Saving...' : 'Save Template'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Create Template Modal */}
+            {showCreateTemplateModal && (
+              <div className="modal-overlay">
+                <div className="modal-content modal-medium">
+                  <h3>Create SMS Template</h3>
+                  <div className="modal-form">
+                    <div className="form-group">
+                      <label>Name *</label>
+                      <input
+                        type="text"
+                        value={newTemplate.name}
+                        onChange={(e) => setNewTemplate(prev => ({ ...prev, name: e.target.value }))}
+                        placeholder="e.g., Booking Reminder"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Description</label>
+                      <input
+                        type="text"
+                        value={newTemplate.description}
+                        onChange={(e) => setNewTemplate(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="Brief description of the template"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Content *</label>
+                      <textarea
+                        value={newTemplate.content}
+                        onChange={(e) => setNewTemplate(prev => ({ ...prev, content: e.target.value }))}
+                        placeholder="Hi {{first_name}}, your booking {{booking_reference}} is confirmed..."
+                        rows={4}
+                        maxLength={480}
+                      />
+                      <small>{newTemplate.content.length}/480 characters. Use {'{{variable}}'} for dynamic content.</small>
+                    </div>
+                    <div className="form-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={newTemplate.is_active}
+                          onChange={(e) => setNewTemplate(prev => ({ ...prev, is_active: e.target.checked }))}
+                        />
+                        Active
+                      </label>
+                    </div>
+                  </div>
+                  <div className="modal-actions">
+                    <button
+                      className="modal-btn modal-btn-secondary"
+                      onClick={() => {
+                        setShowCreateTemplateModal(false)
+                        setNewTemplate({ name: '', content: '', description: '', is_active: true })
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="modal-btn modal-btn-primary"
+                      onClick={handleCreateTemplate}
+                      disabled={creatingTemplate || !newTemplate.name || !newTemplate.content}
+                    >
+                      {creatingTemplate ? 'Creating...' : 'Create Template'}
                     </button>
                   </div>
                 </div>

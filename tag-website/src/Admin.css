@@ -3360,6 +3360,29 @@
   color: #D9FF00;
 }
 
+/* Templates Header */
+.templates-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+
+.templates-header .btn-primary {
+  padding: 0.6rem 1.2rem;
+  background: #D9FF00;
+  border: none;
+  color: #000;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.templates-header .btn-primary:hover {
+  background: #c4e600;
+}
+
 /* Templates Grid */
 .templates-grid {
   display: grid;
