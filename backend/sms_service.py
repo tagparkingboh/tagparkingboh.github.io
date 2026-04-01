@@ -15,9 +15,8 @@ import pytz
 logger = logging.getLogger(__name__)
 
 # SMS Works configuration
-# JWT token is pre-generated in SMS Works dashboard (not via login endpoint)
-_raw_token = os.getenv("SMS_API_KEY", "")
-SMS_JWT_TOKEN = _raw_token.strip() if _raw_token else None  # Strip whitespace/newlines
+SMS_API_KEY = os.getenv("SMS_API_KEY", "").strip()  # Customer ID from SMS Works
+SMS_API_SECRET = os.getenv("SMS_API_SECRET", "").strip()  # API Secret from SMS Works
 SMS_SENDER_ID = os.getenv("SMS_SENDER_ID", "TAGParking")
 SMS_ENABLED = os.getenv("SMS_ENABLED", "false").lower() == "true"
 SMS_WEBHOOK_SECRET = os.getenv("SMS_WEBHOOK_SECRET")
@@ -45,21 +44,60 @@ TEMPLATE_VARIABLES = {
 
 
 def is_sms_enabled() -> bool:
-    """Check if SMS sending is enabled (JWT token configured)."""
-    return SMS_ENABLED and bool(SMS_JWT_TOKEN)
+    """Check if SMS sending is enabled (API credentials configured)."""
+    return SMS_ENABLED and bool(SMS_API_KEY) and bool(SMS_API_SECRET)
+
+
+# Cache the JWT token to avoid repeated login calls
+_cached_jwt_token: Optional[str] = None
+_token_timestamp: Optional[datetime] = None
+TOKEN_CACHE_HOURS = 23  # Refresh token after 23 hours (tokens typically last 24h)
 
 
 def get_jwt_token() -> Optional[str]:
     """
-    Get the pre-generated JWT token from environment.
+    Get JWT token by logging in with customerid and key.
 
-    SMS Works tokens are generated in the dashboard, not via API login.
+    Uses the /auth/token endpoint to exchange credentials for a JWT.
+    Caches the token to avoid repeated login calls.
     """
-    if not SMS_JWT_TOKEN:
-        logger.warning("SMS JWT token not configured")
+    global _cached_jwt_token, _token_timestamp
+
+    if not SMS_API_KEY or not SMS_API_SECRET:
+        logger.warning("SMS API credentials not configured")
         return None
 
-    return SMS_JWT_TOKEN
+    # Check if we have a valid cached token
+    if _cached_jwt_token and _token_timestamp:
+        age_hours = (datetime.utcnow() - _token_timestamp).total_seconds() / 3600
+        if age_hours < TOKEN_CACHE_HOURS:
+            return _cached_jwt_token
+
+    # Get new token via login endpoint
+    try:
+        import httpx
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(
+                f"{SMS_API_BASE_URL}/auth/token",
+                json={
+                    "customerid": SMS_API_KEY,
+                    "key": SMS_API_SECRET,
+                }
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                _cached_jwt_token = data.get("token")
+                _token_timestamp = datetime.utcnow()
+                logger.info("Successfully obtained SMS API token")
+                return _cached_jwt_token
+            else:
+                logger.error(f"Failed to get SMS token: {response.status_code} - {response.text}")
+                return None
+
+    except Exception as e:
+        logger.error(f"Error getting SMS token: {str(e)}")
+        return None
 
 
 def format_phone_number(phone: str) -> str:
