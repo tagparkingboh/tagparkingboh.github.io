@@ -5990,9 +5990,9 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '500' }}
+                          style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '20px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto' }}
                         >
-                          <option value="">+ Insert Variable</option>
+                          <option value="">+ Variable</option>
                           {smsVariables.map(v => (
                             <option key={v.value} value={v.value}>{v.label}</option>
                           ))}
@@ -6066,9 +6066,9 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '500' }}
+                          style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '20px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto' }}
                         >
-                          <option value="">+ Insert Variable</option>
+                          <option value="">+ Variable</option>
                           {smsVariables.map(v => (
                             <option key={v.value} value={v.value}>{v.label}</option>
                           ))}
@@ -6150,9 +6150,9 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '4px 8px', fontSize: '0.85rem', borderRadius: '4px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '500' }}
+                          style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '20px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto' }}
                         >
-                          <option value="">+ Insert Variable</option>
+                          <option value="">+ Variable</option>
                           {smsVariables.map(v => (
                             <option key={v.value} value={v.value}>{v.label}</option>
                           ))}
