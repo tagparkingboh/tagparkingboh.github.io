@@ -4853,6 +4853,39 @@
   color: #111827;
 }
 
+.qa-db-health {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 32px;
+  border: 1px solid #bbf7d0;
+}
+
+.qa-db-health-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.qa-db-health h4 {
+  margin: 0;
+  color: #166534;
+}
+
+.admin-refresh-small {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.admin-refresh-small:hover {
+  background: #f3f4f6;
+}
+
 .qa-history {
   margin-bottom: 32px;
 }

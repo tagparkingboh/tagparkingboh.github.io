@@ -472,6 +472,8 @@ function Admin() {
   const [testResults, setTestResults] = useState([])
   const [latestTestRun, setLatestTestRun] = useState(null)
   const [loadingTestResults, setLoadingTestResults] = useState(false)
+  const [dbHealth, setDbHealth] = useState(null)
+  const [loadingDbHealth, setLoadingDbHealth] = useState(false)
 
   // QA Dashboard - Audit Logs state
   const [auditLogs, setAuditLogs] = useState([])
@@ -809,10 +811,11 @@ function Admin() {
     }
   }, [activeTab, token, mapType, reportsSubTab, occupancyView, popularTop, sessionTrackingPeriod, abandonedCartsPeriod])
 
-  // Fetch test results when QA Tests tab is active
+  // Fetch test results and DB health when QA Tests tab is active
   useEffect(() => {
     if (activeTab === 'qa-tests' && token) {
       fetchTestResults()
+      fetchDbHealth()
     }
   }, [activeTab, token])
 
@@ -1259,6 +1262,23 @@ function Admin() {
       console.error('Failed to fetch test results:', err)
     } finally {
       setLoadingTestResults(false)
+    }
+  }
+
+  const fetchDbHealth = async () => {
+    setLoadingDbHealth(true)
+    try {
+      const res = await fetch(`${API_URL}/api/admin/db-health`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setDbHealth(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch DB health:', err)
+    } finally {
+      setLoadingDbHealth(false)
     }
   }
 
@@ -9982,6 +10002,46 @@ function Admin() {
                         </div>
                       </div>
                     )}
+
+                    {/* Database Health */}
+                    <div className="qa-db-health">
+                      <div className="qa-db-health-header">
+                        <h4>Database Connection Pool</h4>
+                        <button onClick={fetchDbHealth} className="admin-refresh-small" disabled={loadingDbHealth}>
+                          {loadingDbHealth ? '...' : 'Refresh'}
+                        </button>
+                      </div>
+                      {dbHealth ? (
+                        <div className="stats-summary-cards">
+                          <div className={`stats-card ${dbHealth.health === 'healthy' ? 'status-confirmed' : dbHealth.health === 'warning' ? 'status-pending' : 'status-cancelled'}`}>
+                            <div className="stats-card-value" style={{ textTransform: 'uppercase' }}>
+                              {dbHealth.health}
+                            </div>
+                            <div className="stats-card-label">Status</div>
+                          </div>
+                          <div className="stats-card">
+                            <div className="stats-card-value" style={{ color: dbHealth.usage_percent >= 70 ? (dbHealth.usage_percent >= 90 ? '#ef4444' : '#f59e0b') : '#22c55e' }}>
+                              {dbHealth.usage_percent}%
+                            </div>
+                            <div className="stats-card-label">Pool Usage</div>
+                          </div>
+                          <div className="stats-card">
+                            <div className="stats-card-value">{dbHealth.checked_out}</div>
+                            <div className="stats-card-label">Active</div>
+                          </div>
+                          <div className="stats-card">
+                            <div className="stats-card-value">{dbHealth.overflow}</div>
+                            <div className="stats-card-label">Overflow</div>
+                          </div>
+                          <div className="stats-card">
+                            <div className="stats-card-value">{dbHealth.max_connections}</div>
+                            <div className="stats-card-label">Max</div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="admin-empty">Unable to fetch database health</p>
+                      )}
+                    </div>
 
                     {/* Historical Results */}
                     <div className="qa-history">
