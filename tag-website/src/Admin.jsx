@@ -220,6 +220,7 @@ function Admin() {
     return expanded
   })
   const [bookings, setBookings] = useState([])
+  const [bookingsLoadAll, setBookingsLoadAll] = useState(false)
   const [loadingData, setLoadingData] = useState(false)
   const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -3075,11 +3076,15 @@ function Admin() {
     }
   }
 
-  const fetchBookings = async () => {
+  const fetchBookings = async (loadAll = false) => {
     setLoadingData(true)
     setError('')
     try {
-      const response = await fetch(`${API_URL}/api/admin/bookings`, {
+      const params = new URLSearchParams()
+      if (loadAll) {
+        params.append('days', '0')
+      }
+      const response = await fetch(`${API_URL}/api/admin/bookings?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -3087,6 +3092,7 @@ function Admin() {
       if (response.ok) {
         const data = await response.json()
         setBookings(data.bookings || data || [])
+        setBookingsLoadAll(loadAll)
       } else {
         setError('Failed to load bookings')
       }
@@ -4474,10 +4480,22 @@ function Admin() {
         {activeTab === 'bookings' && (
           <div className="admin-section">
             <div className="admin-section-header">
-              <h2>Bookings</h2>
-              <button onClick={fetchBookings} className="admin-refresh" disabled={loadingData}>
-                {loadingData ? 'Loading...' : 'Refresh'}
-              </button>
+              <h2>Bookings {!bookingsLoadAll && <span className="filter-badge">Last 30 days</span>}</h2>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {!bookingsLoadAll && (
+                  <button onClick={() => fetchBookings(true)} className="admin-refresh" disabled={loadingData}>
+                    {loadingData ? 'Loading...' : 'Load All'}
+                  </button>
+                )}
+                {bookingsLoadAll && (
+                  <button onClick={() => fetchBookings(false)} className="admin-refresh" disabled={loadingData}>
+                    {loadingData ? 'Loading...' : 'Last 30 Days'}
+                  </button>
+                )}
+                <button onClick={() => fetchBookings(bookingsLoadAll)} className="admin-refresh" disabled={loadingData}>
+                  {loadingData ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
             </div>
 
             {/* Today's Bookings */}

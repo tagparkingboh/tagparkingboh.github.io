@@ -43,7 +43,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends, Bod
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import text
+from sqlalchemy import text, or_, case
 
 from models import (
     BookingRequest,
@@ -86,6 +86,13 @@ from email_service import send_booking_confirmation_email, send_login_code_email
 
 # Routers
 from routers.roster import router as roster_router
+
+# Simple in-memory cache for expensive reports
+_forecast_cache = {
+    "data": None,
+    "cached_at": None,
+}
+FORECAST_CACHE_DURATION_SECONDS = 3600  # 1 hour
 
 
 # Initialize FastAPI app
@@ -1100,19 +1107,26 @@ async def require_admin(
 async def get_all_bookings(
     date_filter: Optional[date] = Query(None, description="Filter by parking date"),
     include_cancelled: bool = Query(True, description="Include cancelled bookings"),
+    days: Optional[int] = Query(30, description="Number of days to include (None or 0 for all)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
-    Admin endpoint: Get all bookings from database.
+    Admin endpoint: Get bookings from database.
 
     Returns bookings with full details including:
     - Customer info (name, email, phone)
     - Vehicle info (registration, make, model, colour)
     - Booking dates and times
     - Payment info (status, amount, stripe_payment_intent_id)
+
+    By default returns last 30 days of bookings. Set days=0 for all bookings.
     """
     from db_models import Booking, Customer, Vehicle, Payment, BookingStatus
+    import pytz
+
+    uk_tz = pytz.timezone('Europe/London')
+    today = datetime.now(uk_tz).date()
 
     query = db.query(Booking).options(
         joinedload(Booking.customer),
@@ -1127,11 +1141,25 @@ async def get_all_bookings(
             Booking.dropoff_date <= date_filter,
             Booking.pickup_date >= date_filter,
         )
+    elif days and days > 0:
+        # Default: filter to last N days (based on dropoff or pickup date)
+        cutoff_date = today - timedelta(days=days)
+        query = query.filter(
+            or_(
+                Booking.dropoff_date >= cutoff_date,
+                Booking.pickup_date >= cutoff_date,
+            )
+        )
 
     if not include_cancelled:
         query = query.filter(Booking.status != BookingStatus.CANCELLED)
 
-    bookings = query.order_by(Booking.dropoff_date.asc()).all()
+    # Sort: today's bookings first (by dropoff_date), then by dropoff_date ascending
+    bookings = query.order_by(
+        # Today's bookings first (0 for today, 1 for others)
+        case((Booking.dropoff_date == today, 0), else_=1),
+        Booking.dropoff_date.asc()
+    ).all()
 
     # Format bookings for frontend
     result = []
@@ -1209,6 +1237,7 @@ async def get_all_bookings(
     return {
         "count": len(result),
         "date_filter": date_filter.isoformat() if date_filter else None,
+        "days_filter": days if days and days > 0 else None,
         "bookings": result,
     }
 
@@ -4693,6 +4722,7 @@ async def get_abandoned_carts_report(
 
 @app.get("/api/admin/reports/bookings-forecast")
 async def get_bookings_forecast(
+    refresh: bool = Query(False, description="Force refresh cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -4705,6 +4735,7 @@ async def get_bookings_forecast(
     - Compares what's being searched vs what's being booked
 
     Returns predictions for the next 30 days.
+    Results are cached for 1 hour to improve performance.
     """
     from db_models import Booking, BookingStatus, AuditLog, AuditLogEvent
     from datetime import datetime, timedelta
@@ -4715,6 +4746,17 @@ async def get_bookings_forecast(
     uk_tz = pytz.timezone('Europe/London')
     now = datetime.now(uk_tz)
     today = now.date()
+
+    # Check cache (unless refresh is requested)
+    global _forecast_cache
+    if not refresh and _forecast_cache["data"] is not None and _forecast_cache["cached_at"] is not None:
+        cache_age = (now - _forecast_cache["cached_at"]).total_seconds()
+        if cache_age < FORECAST_CACHE_DURATION_SECONDS:
+            # Return cached data with cache info
+            cached_response = _forecast_cache["data"].copy()
+            cached_response["cached"] = True
+            cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
+            return cached_response
 
     # Get historical bookings (last 6 months of completed/confirmed bookings)
     six_months_ago = now - timedelta(days=180)
@@ -5053,7 +5095,7 @@ async def get_bookings_forecast(
             })
     opportunity_gaps.sort(key=lambda x: x['gap_score'], reverse=True)
 
-    return {
+    result = {
         "generated_at": now.isoformat(),
         "data_range": {
             "bookings_from": six_months_ago.strftime("%Y-%m-%d"),
@@ -5074,6 +5116,14 @@ async def get_bookings_forecast(
         "upcoming_demand": upcoming_demand[:15],
         "opportunity_gaps": opportunity_gaps[:10]
     }
+
+    # Store in cache
+    _forecast_cache["data"] = result
+    _forecast_cache["cached_at"] = now
+
+    # Return fresh data
+    result["cached"] = False
+    return result
 
 
 @app.post("/api/admin/marketing-subscribers/{subscriber_id}/send-promo")
