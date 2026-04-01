@@ -439,6 +439,10 @@ function Admin() {
   const [showSendSmsModal, setShowSendSmsModal] = useState(false)
   const [sendSmsForm, setSendSmsForm] = useState({ phone: '', content: '', booking_id: '', customer_id: '' })
   const [sendingSms, setSendingSms] = useState(false)
+  const [smsBookingSearch, setSmsBookingSearch] = useState('')
+  const [smsBookingResults, setSmsBookingResults] = useState([])
+  const [searchingSmsBookings, setSearchingSmsBookings] = useState(false)
+  const [selectedSmsBooking, setSelectedSmsBooking] = useState(null)
   const [showBulkSmsModal, setShowBulkSmsModal] = useState(false)
   const [bulkSmsForm, setBulkSmsForm] = useState({ template_id: '', filter_status: 'confirmed', custom_content: '' })
   const [sendingBulkSms, setSendingBulkSms] = useState(false)
@@ -3951,6 +3955,52 @@ function Admin() {
     }
   }
 
+  const searchBookingsForSms = async (searchTerm) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setSmsBookingResults([])
+      return
+    }
+
+    setSearchingSmsBookings(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings?search=${encodeURIComponent(searchTerm)}&limit=10`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        // Filter to only show bookings with phone numbers
+        const withPhone = (data.bookings || []).filter(b => b.customer_phone)
+        setSmsBookingResults(withPhone.slice(0, 5))
+      }
+    } catch (err) {
+      console.error('Failed to search bookings:', err)
+    } finally {
+      setSearchingSmsBookings(false)
+    }
+  }
+
+  const selectBookingForSms = (booking) => {
+    setSelectedSmsBooking(booking)
+    setSendSmsForm(prev => ({
+      ...prev,
+      phone: booking.customer_phone || '',
+      booking_id: booking.id?.toString() || '',
+      customer_id: booking.customer_id?.toString() || '',
+    }))
+    setSmsBookingSearch('')
+    setSmsBookingResults([])
+  }
+
+  const clearSelectedBooking = () => {
+    setSelectedSmsBooking(null)
+    setSendSmsForm(prev => ({
+      ...prev,
+      phone: '',
+      booking_id: '',
+      customer_id: '',
+    }))
+  }
+
   const formatPhoneForDisplay = (phone) => {
     if (!phone) return '-'
     // Format 447XXXXXXXXX as +44 7XXX XXX XXX
@@ -5814,6 +5864,47 @@ function Admin() {
                 <div className="modal-content modal-medium">
                   <h3>Send SMS</h3>
                   <div className="modal-form">
+                    {/* Booking Search */}
+                    <div className="form-group">
+                      <label>Search Booking (by name or reference)</label>
+                      {selectedSmsBooking ? (
+                        <div className="selected-booking-chip">
+                          <span>
+                            <strong>{selectedSmsBooking.reference}</strong> - {selectedSmsBooking.customer_first_name} {selectedSmsBooking.customer_last_name}
+                          </span>
+                          <button type="button" onClick={clearSelectedBooking} className="chip-remove">×</button>
+                        </div>
+                      ) : (
+                        <div className="booking-search-container">
+                          <input
+                            type="text"
+                            value={smsBookingSearch}
+                            onChange={(e) => {
+                              setSmsBookingSearch(e.target.value)
+                              searchBookingsForSms(e.target.value)
+                            }}
+                            placeholder="Type name or TAG-XXXXXX..."
+                          />
+                          {searchingSmsBookings && <span className="search-spinner">...</span>}
+                          {smsBookingResults.length > 0 && (
+                            <div className="booking-search-results">
+                              {smsBookingResults.map(booking => (
+                                <div
+                                  key={booking.id}
+                                  className="booking-search-result"
+                                  onClick={() => selectBookingForSms(booking)}
+                                >
+                                  <strong>{booking.reference}</strong>
+                                  <span>{booking.customer_first_name} {booking.customer_last_name}</span>
+                                  <small>{booking.customer_phone}</small>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     <div className="form-group">
                       <label>Phone Number *</label>
                       <input
@@ -5834,15 +5925,6 @@ function Admin() {
                       />
                       <small>{sendSmsForm.content.length}/480 characters ({Math.ceil(sendSmsForm.content.length / 160) || 0} SMS)</small>
                     </div>
-                    <div className="form-group">
-                      <label>Booking ID (optional)</label>
-                      <input
-                        type="text"
-                        value={sendSmsForm.booking_id}
-                        onChange={(e) => setSendSmsForm(prev => ({ ...prev, booking_id: e.target.value }))}
-                        placeholder="Link to booking..."
-                      />
-                    </div>
                   </div>
                   <div className="modal-actions">
                     <button
@@ -5850,6 +5932,9 @@ function Admin() {
                       onClick={() => {
                         setShowSendSmsModal(false)
                         setSendSmsForm({ phone: '', content: '', booking_id: '', customer_id: '' })
+                        setSelectedSmsBooking(null)
+                        setSmsBookingSearch('')
+                        setSmsBookingResults([])
                       }}
                     >
                       Cancel
