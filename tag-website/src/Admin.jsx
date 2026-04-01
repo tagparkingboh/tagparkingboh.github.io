@@ -97,17 +97,25 @@ const PHOTO_SLOTS = [
 
 // Get UK datetime format (DD/MM/YYYY HH:MM) for 2 hours ago (for QA logs default filter)
 const getTwoHoursAgoUkDateTime = () => {
-  // Get current UK time
   const now = new Date()
-  const ukNow = new Date(now.toLocaleString('en-GB', { timeZone: 'Europe/London' }))
-  const twoHoursAgo = new Date(ukNow.getTime() - 2 * 60 * 60 * 1000)
-  // Format as DD/MM/YYYY HH:MM for UK format input
-  const day = String(twoHoursAgo.getDate()).padStart(2, '0')
-  const month = String(twoHoursAgo.getMonth() + 1).padStart(2, '0')
-  const year = twoHoursAgo.getFullYear()
-  const hours = String(twoHoursAgo.getHours()).padStart(2, '0')
-  const minutes = String(twoHoursAgo.getMinutes()).padStart(2, '0')
-  return `${day}/${month}/${year} ${hours}:${minutes}`
+  const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000)
+  // Use Intl.DateTimeFormat to properly format in UK timezone regardless of user's locale
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+  const parts = formatter.formatToParts(twoHoursAgo)
+  const day = parts.find(p => p.type === 'day').value
+  const month = parts.find(p => p.type === 'month').value
+  const year = parts.find(p => p.type === 'year').value
+  const hour = parts.find(p => p.type === 'hour').value
+  const minute = parts.find(p => p.type === 'minute').value
+  return `${day}/${month}/${year} ${hour}:${minute}`
 }
 
 // Convert UK datetime (DD/MM/YYYY HH:MM) to ISO format for API
