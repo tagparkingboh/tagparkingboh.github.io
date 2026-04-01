@@ -3852,6 +3852,35 @@ function Admin() {
     }
   }
 
+  const refreshSmsStatuses = async () => {
+    setLoadingMessages(true)
+    setMessagesMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/refresh-statuses`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.updated > 0) {
+          setMessagesMessage(`Updated ${data.updated} message status${data.updated > 1 ? 'es' : ''}`)
+        } else {
+          setMessagesMessage('All statuses are up to date')
+        }
+        fetchSmsMessages()
+        fetchSmsStats()
+      } else {
+        const err = await response.json()
+        setMessagesMessage(`Error: ${err.detail || 'Failed to refresh statuses'}`)
+      }
+    } catch (err) {
+      console.error('Failed to refresh SMS statuses:', err)
+      setMessagesMessage('Error: Failed to refresh statuses')
+    } finally {
+      setLoadingMessages(false)
+    }
+  }
+
   const handleSendSms = async () => {
     setSendingSms(true)
     setMessagesMessage('')
@@ -5642,6 +5671,14 @@ function Admin() {
                   disabled={loadingMessages}
                 >
                   ↻ Refresh
+                </button>
+                <button
+                  className="btn-secondary"
+                  onClick={refreshSmsStatuses}
+                  disabled={loadingMessages}
+                  title="Check delivery status from SMS provider"
+                >
+                  ✓ Update Statuses
                 </button>
                 <button
                   className="btn-primary"
