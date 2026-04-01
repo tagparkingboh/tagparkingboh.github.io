@@ -14668,7 +14668,7 @@ async def get_sms_status(
     }
 
 
-# SMS Webhooks (no auth - secured by webhook secret)
+# SMS Webhooks (no auth - public endpoints for SMS Works callbacks)
 @app.post("/api/webhooks/sms/incoming")
 async def webhook_sms_incoming(
     request: Request,
@@ -14676,15 +14676,7 @@ async def webhook_sms_incoming(
 ):
     """Handle incoming SMS webhook from SMS Works."""
     payload = await request.json()
-
-    # Verify webhook secret if configured
-    webhook_secret = request.headers.get("X-Webhook-Secret")
-    if sms_service.SMS_WEBHOOK_SECRET:
-        if webhook_secret != sms_service.SMS_WEBHOOK_SECRET:
-            raise HTTPException(status_code=401, detail="Invalid webhook secret")
-
     success = sms_service.handle_incoming_sms(payload, db)
-
     return {"success": success}
 
 
@@ -14695,15 +14687,7 @@ async def webhook_sms_delivery(
 ):
     """Handle delivery report webhook from SMS Works."""
     payload = await request.json()
-
-    # Verify webhook secret if configured
-    webhook_secret = request.headers.get("X-Webhook-Secret")
-    if sms_service.SMS_WEBHOOK_SECRET:
-        if webhook_secret != sms_service.SMS_WEBHOOK_SECRET:
-            raise HTTPException(status_code=401, detail="Invalid webhook secret")
-
     success = sms_service.handle_delivery_report(payload, db)
-
     return {"success": success}
 
 

@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 SMS_JWT_TOKEN = os.getenv("SMS_JWT_TOKEN", "").strip()
 SMS_SENDER_ID = os.getenv("SMS_SENDER_ID", "TAGParking")
 SMS_ENABLED = os.getenv("SMS_ENABLED", "false").lower() == "true"
-SMS_WEBHOOK_SECRET = os.getenv("SMS_WEBHOOK_SECRET")
 
 # API base URL
 SMS_API_BASE_URL = "https://api.thesmsworks.co.uk/v1"
