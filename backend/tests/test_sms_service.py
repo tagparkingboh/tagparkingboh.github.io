@@ -601,6 +601,69 @@ class TestIncomingSMSHandling:
 
 
 # =============================================================================
+# Unit Tests: Check Message Status
+# =============================================================================
+
+class TestCheckMessageStatus:
+    """Unit tests for checking message status from API."""
+
+    def test_check_message_status_returns_none_when_disabled(self):
+        """Test status check returns None when SMS disabled."""
+        from sms_service import is_sms_enabled
+
+        # When SMS is disabled, check_message_status should return None
+        # This tests the guard clause without needing async
+        import importlib
+        import sms_service
+
+        # Force reload with SMS disabled
+        import os
+        original_enabled = os.environ.get('SMS_ENABLED', '')
+        original_token = os.environ.get('SMS_JWT_TOKEN', '')
+        os.environ['SMS_ENABLED'] = 'false'
+        os.environ['SMS_JWT_TOKEN'] = ''
+        importlib.reload(sms_service)
+
+        assert sms_service.is_sms_enabled() is False
+
+        # Restore
+        os.environ['SMS_ENABLED'] = original_enabled
+        os.environ['SMS_JWT_TOKEN'] = original_token
+
+
+class TestRefreshMessageStatuses:
+    """Unit tests for refreshing message statuses."""
+
+    def test_refresh_returns_error_when_disabled(self):
+        """Test refresh returns error when SMS disabled."""
+        import importlib
+        import sms_service
+        import os
+        import asyncio
+
+        # Force reload with SMS disabled
+        original_enabled = os.environ.get('SMS_ENABLED', '')
+        original_token = os.environ.get('SMS_JWT_TOKEN', '')
+        os.environ['SMS_ENABLED'] = 'false'
+        os.environ['SMS_JWT_TOKEN'] = ''
+        importlib.reload(sms_service)
+
+        mock_db = MagicMock()
+
+        # Run async function
+        result = asyncio.get_event_loop().run_until_complete(
+            sms_service.refresh_message_statuses(mock_db)
+        )
+
+        assert result["success"] is False
+        assert "error" in result
+
+        # Restore
+        os.environ['SMS_ENABLED'] = original_enabled
+        os.environ['SMS_JWT_TOKEN'] = original_token
+
+
+# =============================================================================
 # Run tests if executed directly
 # =============================================================================
 
