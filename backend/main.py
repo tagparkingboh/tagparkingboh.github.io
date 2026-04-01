@@ -4665,9 +4665,12 @@ async def get_bookings_forecast(
         if booking.created_at:
             booking_month_bookings[booking.created_at.month] += 1
 
-        # Airline patterns
+        # Airline patterns (merge Ryanair UK into Ryanair)
         if booking.dropoff_airline_name:
-            airline_bookings[booking.dropoff_airline_name] += 1
+            airline_name = booking.dropoff_airline_name
+            if airline_name.lower() in ['ryanair uk', 'ryanair uk ltd']:
+                airline_name = 'Ryanair'
+            airline_bookings[airline_name] += 1
 
         # Departure time patterns
         if booking.flight_departure_time:
@@ -4714,6 +4717,9 @@ async def get_bookings_forecast(
 
                 airline = data.get('departure_airline')
                 if airline:
+                    # Merge Ryanair UK into Ryanair
+                    if airline.lower() in ['ryanair uk', 'ryanair uk ltd']:
+                        airline = 'Ryanair'
                     searched_airlines[airline].add(log.session_id)
             except:
                 pass
