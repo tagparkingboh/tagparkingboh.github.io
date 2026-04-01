@@ -95,17 +95,32 @@ const PHOTO_SLOTS = [
   { key: 'additional_2', label: 'Additional 2' },
 ]
 
-// Get datetime-local format for 2 hours ago (for QA logs default filter)
-const getTwoHoursAgoLocalDateTime = () => {
+// Get UK datetime format (DD/MM/YYYY HH:MM) for 2 hours ago (for QA logs default filter)
+const getTwoHoursAgoUkDateTime = () => {
+  // Get current UK time
   const now = new Date()
-  const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000)
-  // Format as YYYY-MM-DDTHH:MM for datetime-local input
-  const year = twoHoursAgo.getFullYear()
-  const month = String(twoHoursAgo.getMonth() + 1).padStart(2, '0')
+  const ukNow = new Date(now.toLocaleString('en-GB', { timeZone: 'Europe/London' }))
+  const twoHoursAgo = new Date(ukNow.getTime() - 2 * 60 * 60 * 1000)
+  // Format as DD/MM/YYYY HH:MM for UK format input
   const day = String(twoHoursAgo.getDate()).padStart(2, '0')
+  const month = String(twoHoursAgo.getMonth() + 1).padStart(2, '0')
+  const year = twoHoursAgo.getFullYear()
   const hours = String(twoHoursAgo.getHours()).padStart(2, '0')
   const minutes = String(twoHoursAgo.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hours}:${minutes}`
+  return `${day}/${month}/${year} ${hours}:${minutes}`
+}
+
+// Convert UK datetime (DD/MM/YYYY HH:MM) to ISO format for API
+const ukDateTimeToIso = (ukDateTime) => {
+  if (!ukDateTime) return ''
+  // Handle "DD/MM/YYYY HH:MM" format
+  const parts = ukDateTime.trim().split(' ')
+  if (parts.length < 1) return ''
+  const datePart = parts[0]
+  const timePart = parts[1] || '00:00'
+  const [day, month, year] = datePart.split('/')
+  if (!day || !month || !year) return ''
+  return `${year}-${month}-${day}T${timePart}`
 }
 
 // UK date format helpers (DD/MM/YYYY)
@@ -488,7 +503,7 @@ function Admin() {
     search: '',
     booking_reference: '',
     event: '',
-    date_from: getTwoHoursAgoLocalDateTime(),
+    date_from: getTwoHoursAgoUkDateTime(),
     date_to: '',
   })
   const [auditLogsOffset, setAuditLogsOffset] = useState(0)
@@ -503,7 +518,7 @@ function Admin() {
     booking_reference: '',
     severity: '',
     error_type: '',
-    date_from: getTwoHoursAgoLocalDateTime(),
+    date_from: getTwoHoursAgoUkDateTime(),
     date_to: '',
   })
   const [errorLogsOffset, setErrorLogsOffset] = useState(0)
@@ -1303,8 +1318,8 @@ function Admin() {
       if (auditLogsFilters.search) params.append('search', auditLogsFilters.search)
       if (auditLogsFilters.booking_reference) params.append('booking_reference', auditLogsFilters.booking_reference)
       if (auditLogsFilters.event) params.append('event', auditLogsFilters.event)
-      if (auditLogsFilters.date_from) params.append('date_from', auditLogsFilters.date_from)
-      if (auditLogsFilters.date_to) params.append('date_to', auditLogsFilters.date_to)
+      if (auditLogsFilters.date_from) params.append('date_from', ukDateTimeToIso(auditLogsFilters.date_from))
+      if (auditLogsFilters.date_to) params.append('date_to', ukDateTimeToIso(auditLogsFilters.date_to))
 
       const response = await fetch(`${API_URL}/api/admin/audit-logs?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` },
@@ -1350,8 +1365,8 @@ function Admin() {
       if (errorLogsFilters.booking_reference) params.append('booking_reference', errorLogsFilters.booking_reference)
       if (errorLogsFilters.severity) params.append('severity', errorLogsFilters.severity)
       if (errorLogsFilters.error_type) params.append('error_type', errorLogsFilters.error_type)
-      if (errorLogsFilters.date_from) params.append('date_from', errorLogsFilters.date_from)
-      if (errorLogsFilters.date_to) params.append('date_to', errorLogsFilters.date_to)
+      if (errorLogsFilters.date_from) params.append('date_from', ukDateTimeToIso(errorLogsFilters.date_from))
+      if (errorLogsFilters.date_to) params.append('date_to', ukDateTimeToIso(errorLogsFilters.date_to))
 
       const response = await fetch(`${API_URL}/api/admin/error-logs?${params}`, {
         headers: { 'Authorization': `Bearer ${token}` },
@@ -10536,17 +10551,19 @@ function Admin() {
                     ))}
                   </select>
                   <input
-                    type="datetime-local"
+                    type="text"
+                    placeholder="From: DD/MM/YYYY HH:MM"
                     value={auditLogsFilters.date_from}
                     onChange={(e) => setAuditLogsFilters({ ...auditLogsFilters, date_from: e.target.value })}
-                    className="admin-filter-input"
-                    title="From Date"
+                    className="admin-filter-input datetime-uk"
+                    title="From Date (UK timezone)"
                   />
                   <input
-                    type="datetime-local"
+                    type="text"
+                    placeholder="To: DD/MM/YYYY HH:MM"
                     value={auditLogsFilters.date_to}
                     onChange={(e) => setAuditLogsFilters({ ...auditLogsFilters, date_to: e.target.value })}
-                    className="admin-filter-input"
+                    className="admin-filter-input datetime-uk"
                     title="To Date"
                   />
                   <button
@@ -10679,18 +10696,20 @@ function Admin() {
                     ))}
                   </select>
                   <input
-                    type="datetime-local"
+                    type="text"
+                    placeholder="From: DD/MM/YYYY HH:MM"
                     value={errorLogsFilters.date_from}
                     onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, date_from: e.target.value })}
-                    className="admin-filter-input"
-                    title="From Date"
+                    className="admin-filter-input datetime-uk"
+                    title="From Date (UK timezone)"
                   />
                   <input
-                    type="datetime-local"
+                    type="text"
+                    placeholder="To: DD/MM/YYYY HH:MM"
                     value={errorLogsFilters.date_to}
                     onChange={(e) => setErrorLogsFilters({ ...errorLogsFilters, date_to: e.target.value })}
-                    className="admin-filter-input"
-                    title="To Date"
+                    className="admin-filter-input datetime-uk"
+                    title="To Date (UK timezone)"
                   />
                   <button
                     onClick={() => setErrorLogsFilters({ search: '', booking_reference: '', severity: '', error_type: '', date_from: '', date_to: '' })}

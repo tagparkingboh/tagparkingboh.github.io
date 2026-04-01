@@ -5141,6 +5141,11 @@
   color: #9ca3af;
 }
 
+.qa-logs-filters .admin-filter-input.datetime-uk {
+  min-width: 180px;
+  max-width: 200px;
+}
+
 .qa-logs-filters .admin-btn {
   padding: 10px 20px;
   background: #f7b32b;
