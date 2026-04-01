@@ -7030,3 +7030,103 @@
   font-weight: 600;
   color: #78350f;
 }
+
+/* Departure Time Chart */
+.departure-time-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.time-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.time-label {
+  width: 45px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.time-bar-wrapper {
+  flex: 1;
+  height: 16px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.time-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #8b5cf6 0%, #a78bfa 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.time-value {
+  font-size: 0.75rem;
+  color: #64748b;
+  min-width: 30px;
+  text-align: right;
+}
+
+/* Predicted Dates Grid */
+.predicted-dates-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.predicted-date-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  min-width: 110px;
+  text-align: center;
+}
+
+.predicted-date-card.high {
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  border-color: #22c55e;
+}
+
+.predicted-date-card.medium {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #f59e0b;
+}
+
+.predicted-date-card.low {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.predicted-date {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #1e293b;
+}
+
+.predicted-day {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.predicted-score {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.predicted-searches {
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  color: #22c55e;
+  font-weight: 500;
+}

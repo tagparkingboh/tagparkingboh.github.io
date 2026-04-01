@@ -10137,7 +10137,54 @@ function Admin() {
                           <p className="admin-empty">No airline data available</p>
                         )}
                       </div>
+
+                      {/* Departure Times */}
+                      <div className="forecast-card">
+                        <h4>Departure Times</h4>
+                        <p className="forecast-subtitle">Most popular flight departure times</p>
+                        {forecastData.departure_times?.length > 0 ? (
+                          <div className="departure-time-chart">
+                            {(() => {
+                              const maxBookings = Math.max(...forecastData.departure_times.map(t => t.bookings)) || 1;
+                              return forecastData.departure_times.map((slot, idx) => (
+                                <div key={idx} className="time-bar-container">
+                                  <span className="time-label">{slot.time}</span>
+                                  <div className="time-bar-wrapper">
+                                    <div
+                                      className="time-bar"
+                                      style={{ width: `${(slot.bookings / maxBookings) * 100}%` }}
+                                    ></div>
+                                  </div>
+                                  <span className="time-value">{slot.bookings}</span>
+                                </div>
+                              ));
+                            })()}
+                          </div>
+                        ) : (
+                          <p className="admin-empty">No departure time data available</p>
+                        )}
+                      </div>
                     </div>
+
+                    {/* Predicted Dates */}
+                    {forecastData.predicted_dates?.length > 0 && (
+                      <div className="forecast-section">
+                        <h4>Predicted Busy Dates</h4>
+                        <p className="forecast-subtitle">Next 30 days ranked by likelihood of bookings</p>
+                        <div className="predicted-dates-grid">
+                          {forecastData.predicted_dates.slice(0, 10).map((item, idx) => (
+                            <div key={idx} className={`predicted-date-card ${item.likelihood}`}>
+                              <div className="predicted-date">{item.display_date}</div>
+                              <div className="predicted-day">{item.day_of_week}</div>
+                              <div className="predicted-score">Score: {item.prediction_score}</div>
+                              {item.searches > 0 && (
+                                <div className="predicted-searches">{item.searches} active searches</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Opportunity Gaps */}
                     {forecastData.opportunity_gaps?.length > 0 && (

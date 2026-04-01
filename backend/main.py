@@ -4642,6 +4642,7 @@ async def get_bookings_forecast(
     travel_month_bookings = defaultdict(int)  # Month of dropoff (when they travel)
     booking_month_bookings = defaultdict(int)  # Month of booking creation (when they booked)
     destination_by_dow = defaultdict(lambda: defaultdict(int))  # destination -> dow -> count
+    departure_time_bookings = defaultdict(int)  # Hour of departure (0-23)
 
     for booking in historical_bookings:
         # Departure destination
@@ -4667,6 +4668,11 @@ async def get_bookings_forecast(
         # Airline patterns
         if booking.dropoff_airline_name:
             airline_bookings[booking.dropoff_airline_name] += 1
+
+        # Departure time patterns
+        if booking.flight_departure_time:
+            hour = booking.flight_departure_time.hour
+            departure_time_bookings[hour] += 1
 
     # Get abandoned cart data (last 30 days)
     thirty_days_ago = now - timedelta(days=30)
@@ -4818,6 +4824,46 @@ async def get_bookings_forecast(
     # Sort by search count
     upcoming_demand.sort(key=lambda x: x['searches'], reverse=True)
 
+    # Predicted dates - next 30 days scored by day-of-week pattern + month pattern + searches
+    predicted_dates = []
+    for i in range(30):
+        future_date = today + timedelta(days=i)
+        date_str = future_date.strftime("%Y-%m-%d")
+        dow = future_date.weekday()
+        month = future_date.month
+
+        # Score based on historical patterns
+        dow_score = (day_of_week_bookings.get(dow, 0) / total_bookings * 100) if total_bookings else 0
+        month_score = (travel_month_bookings.get(month, 0) / total_bookings * 100) if total_bookings else 0
+        search_score = len(searched_dates.get(date_str, set())) * 10  # Boost for active searches
+
+        # Combined prediction score
+        prediction_score = round((dow_score * 0.4) + (month_score * 0.3) + (search_score * 0.3), 1)
+
+        predicted_dates.append({
+            "date": date_str,
+            "display_date": future_date.strftime("%a %d %b"),
+            "day_of_week": dow_names_full[dow],
+            "prediction_score": prediction_score,
+            "searches": len(searched_dates.get(date_str, set())),
+            "likelihood": "high" if prediction_score >= 15 else "medium" if prediction_score >= 8 else "low"
+        })
+
+    # Sort by prediction score
+    predicted_dates.sort(key=lambda x: x['prediction_score'], reverse=True)
+
+    # Departure time analysis
+    departure_time_forecast = []
+    for hour in range(5, 23):  # 5am to 10pm typical flight range
+        count = departure_time_bookings.get(hour, 0)
+        time_label = f"{hour:02d}:00"
+        departure_time_forecast.append({
+            "hour": hour,
+            "time": time_label,
+            "bookings": count,
+            "percentage": round((count / total_bookings) * 100, 1) if total_bookings else 0
+        })
+
     # Search vs booking gap (high searches, low conversions = opportunity)
     opportunity_gaps = []
     for dest in destination_forecast:
@@ -4843,6 +4889,8 @@ async def get_bookings_forecast(
         "airlines": airline_forecast,
         "seasonality_travel": travel_month_forecast,
         "seasonality_booking": booking_month_forecast,
+        "departure_times": departure_time_forecast,
+        "predicted_dates": predicted_dates[:15],
         "upcoming_demand": upcoming_demand[:15],
         "opportunity_gaps": opportunity_gaps[:10]
     }
