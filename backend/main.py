@@ -4799,7 +4799,7 @@ async def get_bookings_forecast(
         })
 
     # Sort by demand score
-    destination_forecast.sort(key=lambda x: x['demand_score'], reverse=True)
+    destination_forecast.sort(key=lambda x: x['score_balanced'], reverse=True)
 
     # Day of week analysis
     dow_names_full = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
