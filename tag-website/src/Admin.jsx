@@ -9943,7 +9943,7 @@ function Admin() {
                             <tbody>
                               {abandonedCartsData.recent_abandoned.map((item, idx) => (
                                 <tr key={idx}>
-                                  <td>{new Date(item.created_at).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+                                  <td>{new Date(item.created_at).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' })}</td>
                                   <td>{item.dropoff_date}</td>
                                   <td>{item.departure_time}</td>
                                   <td>{item.pickup_date}</td>
