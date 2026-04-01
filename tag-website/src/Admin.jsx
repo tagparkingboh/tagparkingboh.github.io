@@ -3640,6 +3640,16 @@ function Admin() {
                   {booking.reminder_2day_sent ? 'Sent ✓' : 'Pending'}
                 </span>
               </div>
+
+              {/* Thank You Email Status Indicator - only for completed bookings */}
+              {booking.status?.toLowerCase() === 'completed' && (
+                <div className="reminder-status-indicator">
+                  <span className="reminder-label">Thank You</span>
+                  <span className={`reminder-badge ${booking.thank_you_email_sent ? 'sent' : 'pending'}`}>
+                    {booking.thank_you_email_sent ? 'Sent ✓' : 'Pending'}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
