@@ -9804,6 +9804,7 @@ function Admin() {
                                 <th key={stage.key}>{stage.label}</th>
                               ))}
                               <th>Manual</th>
+                              <th>Free</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -9818,6 +9819,9 @@ function Admin() {
                                 <td className="manual-booking-cell">
                                   {period.manual_bookings > 0 ? `+${period.manual_bookings}` : '-'}
                                 </td>
+                                <td className="free-booking-cell">
+                                  {period.free_bookings > 0 ? `+${period.free_bookings}` : '-'}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -9825,9 +9829,15 @@ function Admin() {
                       ) : (
                         <p className="admin-empty">No session data available for this period.</p>
                       )}
-                      {sessionTrackingData.cumulative?.manual_bookings > 0 && (
+                      {(sessionTrackingData.cumulative?.manual_bookings > 0 || sessionTrackingData.cumulative?.free_bookings > 0) && (
                         <p className="manual-bookings-note">
-                          * Manual column shows {sessionTrackingData.cumulative.manual_bookings} booking{sessionTrackingData.cumulative.manual_bookings !== 1 ? 's' : ''} created via Admin (phone/walk-in) that bypassed the checkout flow.
+                          {sessionTrackingData.cumulative?.manual_bookings > 0 && (
+                            <>* Manual: {sessionTrackingData.cumulative.manual_bookings} booking{sessionTrackingData.cumulative.manual_bookings !== 1 ? 's' : ''} via Admin (phone/walk-in). </>
+                          )}
+                          {sessionTrackingData.cumulative?.free_bookings > 0 && (
+                            <>* Free: {sessionTrackingData.cumulative.free_bookings} booking{sessionTrackingData.cumulative.free_bookings !== 1 ? 's' : ''} with 100% promo code. </>
+                          )}
+                          These bypass the payment step.
                         </p>
                       )}
                     </div>

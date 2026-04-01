@@ -6853,7 +6853,8 @@
   text-align: center;
 }
 
-.manual-booking-cell {
+.manual-booking-cell,
+.free-booking-cell {
   color: #6b7280;
   font-style: italic;
 }
