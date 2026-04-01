@@ -94,6 +94,34 @@ _forecast_cache = {
 }
 FORECAST_CACHE_DURATION_SECONDS = 3600  # 1 hour
 
+# Flight data cache (3 months - reference only, rarely changes)
+_flight_departures_cache = {
+    "data": None,
+    "cached_at": None,
+}
+_flight_arrivals_cache = {
+    "data": None,
+    "cached_at": None,
+}
+_flight_filters_cache = {
+    "data": None,
+    "cached_at": None,
+}
+FLIGHT_CACHE_DURATION_SECONDS = 7776000  # 3 months (90 days)
+
+# Reports cache (1 hour - same as forecast)
+_booking_locations_cache = {
+    "bookings": {"data": None, "cached_at": None},
+    "origins": {"data": None, "cached_at": None},
+}
+_occupancy_cache = {"data": None, "cached_at": None}
+_popular_cache = {"data": None, "cached_at": None}
+_fun_facts_cache = {"data": None, "cached_at": None}
+_financial_cache = {"data": None, "cached_at": None}
+_session_tracking_cache = {"data": None, "cached_at": None}
+_abandoned_carts_cache = {"data": None, "cached_at": None}
+REPORT_CACHE_DURATION_SECONDS = 3600  # 1 hour
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -2952,15 +2980,34 @@ async def delete_customer(
 @app.get("/api/admin/reports/booking-locations")
 async def get_booking_locations(
     map_type: str = Query("bookings", description="Map type: 'bookings' for confirmed bookings, 'origins' for all leads"),
+    refresh: bool = Query(False, description="Force refresh cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Get locations for map visualization.
+    Cached for 1 hour.
 
     map_type='bookings': Returns confirmed bookings with geocoded billing postcodes.
     map_type='origins': Returns all customers (leads) from booking flow Page 1 with geocoded billing postcodes.
     """
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+    now = datetime.now(uk_tz)
+
+    # Check cache
+    global _booking_locations_cache
+    cache_key = map_type if map_type in ["bookings", "origins"] else "bookings"
+    if not refresh:
+        cache_entry = _booking_locations_cache.get(cache_key, {})
+        if cache_entry.get("data") is not None and cache_entry.get("cached_at") is not None:
+            cache_age = (now - cache_entry["cached_at"]).total_seconds()
+            if cache_age < REPORT_CACHE_DURATION_SECONDS:
+                cached_response = cache_entry["data"].copy()
+                cached_response["cached"] = True
+                cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
+                return cached_response
+
     from db_models import Booking, Customer
 
     if map_type == "origins":
@@ -3068,7 +3115,7 @@ async def get_booking_locations(
                 "has_booking": has_booking,
             })
 
-        return {
+        result = {
             "count": len(locations),
             "total_customers": len(customers),
             "skipped_count": len(skipped),
@@ -3076,6 +3123,11 @@ async def get_booking_locations(
             "locations": locations,
             "map_type": map_type,
         }
+
+        # Store in cache
+        _booking_locations_cache[cache_key] = {"data": result.copy(), "cached_at": now}
+        result["cached"] = False
+        return result
 
     # Default: map_type="bookings" - Query all bookings
     bookings = (
@@ -3154,7 +3206,7 @@ async def get_booking_locations(
             "status": b.status.value if b.status else None,
         })
 
-    return {
+    result = {
         "count": len(locations),
         "total_bookings": len(bookings),
         "skipped_count": len(skipped),
@@ -3163,17 +3215,24 @@ async def get_booking_locations(
         "map_type": map_type,
     }
 
+    # Store in cache
+    _booking_locations_cache[cache_key] = {"data": result.copy(), "cached_at": now}
+    result["cached"] = False
+    return result
+
 
 @app.get("/api/admin/reports/occupancy")
 async def get_occupancy_report(
     view: str = Query("daily", description="View type: 'daily', 'weekly', or 'monthly'"),
     start_date: Optional[date] = Query(None, description="Start date for the report (defaults to 30 days ago for daily, 12 weeks for weekly, 6 months for monthly)"),
     end_date: Optional[date] = Query(None, description="End date for the report (defaults to 60 days from now)"),
+    refresh: bool = Query(False, description="Force refresh cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Get occupancy report showing parking space utilization by date, week, or month.
+    Cached for 1 hour (default parameters only).
 
     For each time period, calculates:
     - occupied: Number of vehicles parked (active bookings for that date/period)
@@ -3183,6 +3242,24 @@ async def get_occupancy_report(
     A vehicle is counted as "occupied" on any date between dropoff_date and pickup_date (inclusive).
     Only confirmed and completed bookings are counted.
     """
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+    now = datetime.now(uk_tz)
+
+    # Only cache default requests (no custom date range)
+    is_default_request = start_date is None and end_date is None
+
+    # Check cache
+    global _occupancy_cache
+    if is_default_request and not refresh:
+        if _occupancy_cache.get("data") is not None and _occupancy_cache.get("cached_at") is not None:
+            cache_age = (now - _occupancy_cache["cached_at"]).total_seconds()
+            if cache_age < REPORT_CACHE_DURATION_SECONDS:
+                cached_response = _occupancy_cache["data"].copy()
+                cached_response["cached"] = True
+                cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
+                return cached_response
+
     from db_models import Booking, BookingStatus
     from datetime import timedelta
     from collections import defaultdict
@@ -3248,13 +3325,18 @@ async def get_occupancy_report(
             })
             current_date += timedelta(days=1)
 
-        return {
+        result = {
             "view": "daily",
             "max_capacity": MAX_CAPACITY,
             "start_date": report_start.isoformat(),
             "end_date": report_end.isoformat(),
             "data": data,
         }
+        if is_default_request:
+            _occupancy_cache["data"] = result.copy()
+            _occupancy_cache["cached_at"] = now
+        result["cached"] = False
+        return result
 
     elif view == "weekly":
         # Calculate weekly occupancy (ISO week format)
@@ -3302,13 +3384,18 @@ async def get_occupancy_report(
                 "is_past": week_end < today,
             })
 
-        return {
+        result = {
             "view": "weekly",
             "max_capacity": MAX_CAPACITY,
             "start_date": report_start.isoformat(),
             "end_date": report_end.isoformat(),
             "data": data,
         }
+        if is_default_request:
+            _occupancy_cache["data"] = result.copy()
+            _occupancy_cache["cached_at"] = now
+        result["cached"] = False
+        return result
 
     elif view == "monthly":
         # Calculate monthly occupancy
@@ -3356,13 +3443,18 @@ async def get_occupancy_report(
                 "is_past": is_past and not is_current,
             })
 
-        return {
+        result = {
             "view": "monthly",
             "max_capacity": MAX_CAPACITY,
             "start_date": report_start.isoformat(),
             "end_date": report_end.isoformat(),
             "data": data,
         }
+        if is_default_request:
+            _occupancy_cache["data"] = result.copy()
+            _occupancy_cache["cached_at"] = now
+        result["cached"] = False
+        return result
 
     else:
         raise HTTPException(status_code=400, detail="Invalid view type. Use 'daily', 'weekly', or 'monthly'.")
@@ -3373,11 +3465,13 @@ async def get_popular_airlines_destinations(
     start_date: Optional[date] = Query(None, description="Start date filter (defaults to all time)"),
     end_date: Optional[date] = Query(None, description="End date filter (defaults to today)"),
     top: int = Query(10, description="Number of top results to return (5, 10, or 20)"),
+    refresh: bool = Query(False, description="Force refresh cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Get most popular airlines and destinations based on confirmed and completed bookings.
+    Cached for 1 hour (default parameters only).
 
     Returns ranked lists of:
     - Top airlines by booking count (each booking counted once per unique airline)
@@ -3387,6 +3481,24 @@ async def get_popular_airlines_destinations(
     - start_date/end_date: Date range for bookings (based on created_at)
     - top: Number of results (5, 10, or 20)
     """
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+    now = datetime.now(uk_tz)
+
+    # Only cache default requests
+    is_default_request = start_date is None and end_date is None and top == 10
+
+    # Check cache
+    global _popular_cache
+    if is_default_request and not refresh:
+        if _popular_cache.get("data") is not None and _popular_cache.get("cached_at") is not None:
+            cache_age = (now - _popular_cache["cached_at"]).total_seconds()
+            if cache_age < REPORT_CACHE_DURATION_SECONDS:
+                cached_response = _popular_cache["data"].copy()
+                cached_response["cached"] = True
+                cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
+                return cached_response
+
     from db_models import Booking, BookingStatus
     from collections import Counter
 
@@ -3495,7 +3607,7 @@ async def get_popular_airlines_destinations(
             "percent": percent,
         })
 
-    return {
+    result = {
         "meta": {
             "startDate": start_date.isoformat() if start_date else None,
             "endDate": end_date.isoformat() if end_date else None,
@@ -3510,14 +3622,22 @@ async def get_popular_airlines_destinations(
         "popularRoutes": top_routes,
     }
 
+    if is_default_request:
+        _popular_cache["data"] = result.copy()
+        _popular_cache["cached_at"] = now
+    result["cached"] = False
+    return result
+
 
 @app.get("/api/admin/reports/fun-facts")
 async def get_fun_facts(
+    refresh: bool = Query(False, description="Force refresh cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Get fun facts/records for the business.
+    Cached for 1 hour.
 
     Returns:
     - Busiest Day: Day with most confirmed bookings (by payment date)
@@ -3527,6 +3647,21 @@ async def get_fun_facts(
 
     Only considers confirmed and completed bookings.
     """
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+    now = datetime.now(uk_tz)
+
+    # Check cache
+    global _fun_facts_cache
+    if not refresh:
+        if _fun_facts_cache.get("data") is not None and _fun_facts_cache.get("cached_at") is not None:
+            cache_age = (now - _fun_facts_cache["cached_at"]).total_seconds()
+            if cache_age < REPORT_CACHE_DURATION_SECONDS:
+                cached_response = _fun_facts_cache["data"].copy()
+                cached_response["cached"] = True
+                cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
+                return cached_response
+
     from db_models import Booking, BookingStatus
     from collections import Counter
     from datetime import timedelta
@@ -3544,6 +3679,7 @@ async def get_fun_facts(
     }
 
     if not bookings:
+        result["cached"] = False
         return result
 
     # === Busiest Day ===
@@ -3649,6 +3785,10 @@ async def get_fun_facts(
             "days": (highest_booking.pickup_date - highest_booking.dropoff_date).days if highest_booking.pickup_date and highest_booking.dropoff_date else None,
         }
 
+    # Store in cache
+    _fun_facts_cache["data"] = result.copy()
+    _fun_facts_cache["cached_at"] = now
+    result["cached"] = False
     return result
 
 
@@ -3689,16 +3829,36 @@ async def get_financial_report(
     to_date: str = Query(None, description="End date DD/MM/YYYY"),
     status_filter: str = Query("all", description="Filter by status: all, confirmed, completed, refunded"),
     promo_filter: str = Query("all", description="Filter by promo usage: all, yes, no"),
+    refresh: bool = Query(False, description="Force refresh cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Get financial report data for the admin dashboard.
+    Cached for 1 hour (default parameters only).
 
     Returns:
     - Revenue fun facts (most revenue day/week/month)
     - Bookings with financial details grouped by month
     """
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+    now = datetime.now(uk_tz)
+
+    # Only cache default requests
+    is_default_request = from_date is None and to_date is None and status_filter == "all" and promo_filter == "all"
+
+    # Check cache
+    global _financial_cache
+    if is_default_request and not refresh:
+        if _financial_cache.get("data") is not None and _financial_cache.get("cached_at") is not None:
+            cache_age = (now - _financial_cache["cached_at"]).total_seconds()
+            if cache_age < REPORT_CACHE_DURATION_SECONDS:
+                cached_response = _financial_cache["data"].copy()
+                cached_response["cached"] = True
+                cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
+                return cached_response
+
     from db_models import Booking, BookingStatus, Payment, PaymentStatus, PromoCode
     from collections import defaultdict
     from datetime import datetime, timedelta
@@ -4086,7 +4246,7 @@ async def get_financial_report(
             "totalPounds": round(running_total / 100, 2),
         })
 
-    return {
+    result = {
         "funFacts": fun_facts,
         "monthlyData": monthly_data,
         "chartData": {
@@ -4104,6 +4264,12 @@ async def get_financial_report(
             "totalRevenue": f"£{total_revenue / 100:.2f}",
         }
     }
+
+    if is_default_request:
+        _financial_cache["data"] = result.copy()
+        _financial_cache["cached_at"] = now
+    result["cached"] = False
+    return result
 
 
 @app.get("/api/admin/reports/financial/export")
@@ -4317,11 +4483,13 @@ async def export_financial_report(
 @app.get("/api/admin/reports/session-tracking")
 async def get_session_tracking_report(
     period: str = Query("daily", description="Time period: daily, weekly, monthly"),
+    refresh: bool = Query(False, description="Force refresh cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Get session tracking statistics showing funnel progression.
+    Cached for 1 hour (default parameters only).
 
     Returns counts for each funnel stage:
     - dates_selected: Users who selected travel dates
@@ -4339,6 +4507,20 @@ async def get_session_tracking_report(
 
     uk_tz = pytz.timezone('Europe/London')
     now = datetime.now(uk_tz)
+
+    # Only cache default requests (daily period)
+    is_default_request = period == "daily"
+
+    # Check cache
+    global _session_tracking_cache
+    if is_default_request and not refresh:
+        if _session_tracking_cache.get("data") is not None and _session_tracking_cache.get("cached_at") is not None:
+            cache_age = (now - _session_tracking_cache["cached_at"]).total_seconds()
+            if cache_age < REPORT_CACHE_DURATION_SECONDS:
+                cached_response = _session_tracking_cache["data"].copy()
+                cached_response["cached"] = True
+                cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
+                return cached_response
 
     # Define funnel stages in order
     funnel_stages = [
@@ -4522,7 +4704,7 @@ async def get_session_tracking_report(
         p["manual_bookings"] = manual_by_period.get(p["period"], 0)
         p["free_bookings"] = free_by_period.get(p["period"], 0)
 
-    return {
+    result = {
         "period_type": period,
         "stages": [{"key": s[0], "label": s[1]} for s in funnel_stages],
         "periods": formatted_periods,
@@ -4535,15 +4717,23 @@ async def get_session_tracking_report(
         }
     }
 
+    if is_default_request:
+        _session_tracking_cache["data"] = result.copy()
+        _session_tracking_cache["cached_at"] = now
+    result["cached"] = False
+    return result
+
 
 @app.get("/api/admin/reports/abandoned-carts")
 async def get_abandoned_carts_report(
     period: str = Query("daily", description="Time period: daily, weekly, monthly"),
+    refresh: bool = Query(False, description="Force refresh cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Get abandoned cart analytics showing sessions that didn't convert.
+    Cached for 1 hour (default parameters only).
 
     Shows:
     - Total abandoned sessions by period
@@ -4559,6 +4749,20 @@ async def get_abandoned_carts_report(
 
     uk_tz = pytz.timezone('Europe/London')
     now = datetime.now(uk_tz)
+
+    # Only cache default requests (daily period)
+    is_default_request = period == "daily"
+
+    # Check cache
+    global _abandoned_carts_cache
+    if is_default_request and not refresh:
+        if _abandoned_carts_cache.get("data") is not None and _abandoned_carts_cache.get("cached_at") is not None:
+            cache_age = (now - _abandoned_carts_cache["cached_at"]).total_seconds()
+            if cache_age < REPORT_CACHE_DURATION_SECONDS:
+                cached_response = _abandoned_carts_cache["data"].copy()
+                cached_response["cached"] = True
+                cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
+                return cached_response
 
     # Feature deployment date
     feature_deploy_date = uk_tz.localize(datetime(2026, 3, 29, 17, 0, 0))
@@ -4708,7 +4912,7 @@ async def get_abandoned_carts_report(
         reverse=True
     )[:10]
 
-    return {
+    result = {
         "period_type": period,
         "periods": formatted_periods,
         "cumulative": {
@@ -4718,6 +4922,12 @@ async def get_abandoned_carts_report(
         },
         "recent_abandoned": recent_abandoned[:50]  # Limit to 50 for response size
     }
+
+    if is_default_request:
+        _abandoned_carts_cache["data"] = result.copy()
+        _abandoned_carts_cache["cached_at"] = now
+    result["cached"] = False
+    return result
 
 
 @app.get("/api/admin/reports/bookings-forecast")
@@ -11215,6 +11425,7 @@ async def get_admin_departures(
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = None,
     start_date: Optional[date] = Query(None, description="Filter flights from this date onwards (default: 2026-01-01)"),
+    refresh: bool = Query(False, description="Force refresh cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -11222,7 +11433,34 @@ async def get_admin_departures(
     Get all departure flights with optional filters.
     Sorted by date (ASC by default, DESC optional).
     Default start_date is 2026-01-01 if not specified.
+    Cached for 3 months (reference data only).
     """
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+    now = datetime.now(uk_tz)
+
+    # Check if using default params (cacheable)
+    is_default_request = (
+        sort_order == "asc" and
+        destination is None and
+        airline is None and
+        flight_number is None and
+        month is None and
+        year is None and
+        start_date is None
+    )
+
+    # Check cache for default requests
+    global _flight_departures_cache
+    if is_default_request and not refresh:
+        if _flight_departures_cache["data"] is not None and _flight_departures_cache["cached_at"] is not None:
+            cache_age = (now - _flight_departures_cache["cached_at"]).total_seconds()
+            if cache_age < FLIGHT_CACHE_DURATION_SECONDS:
+                cached_response = _flight_departures_cache["data"].copy()
+                cached_response["cached"] = True
+                cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
+                return cached_response
+
     query = db.query(FlightDeparture)
 
     # Apply start_date filter (default to 2026-01-01)
@@ -11261,7 +11499,7 @@ async def get_admin_departures(
 
     departures = query.all()
 
-    return {
+    result = {
         "departures": [
             {
                 "id": d.id,
@@ -11286,6 +11524,14 @@ async def get_admin_departures(
         "total": len(departures),
     }
 
+    # Store in cache for default requests
+    if is_default_request:
+        _flight_departures_cache["data"] = result.copy()
+        _flight_departures_cache["cached_at"] = now
+
+    result["cached"] = False
+    return result
+
 
 @app.get("/api/admin/flights/arrivals")
 async def get_admin_arrivals(
@@ -11296,6 +11542,7 @@ async def get_admin_arrivals(
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = None,
     start_date: Optional[date] = Query(None, description="Filter flights from this date onwards (default: 2026-01-01)"),
+    refresh: bool = Query(False, description="Force refresh cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -11303,7 +11550,34 @@ async def get_admin_arrivals(
     Get all arrival flights with optional filters.
     Sorted by date (ASC by default, DESC optional).
     Default start_date is 2026-01-01 if not specified.
+    Cached for 3 months (reference data only).
     """
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+    now = datetime.now(uk_tz)
+
+    # Check if using default params (cacheable)
+    is_default_request = (
+        sort_order == "asc" and
+        origin is None and
+        airline is None and
+        flight_number is None and
+        month is None and
+        year is None and
+        start_date is None
+    )
+
+    # Check cache for default requests
+    global _flight_arrivals_cache
+    if is_default_request and not refresh:
+        if _flight_arrivals_cache["data"] is not None and _flight_arrivals_cache["cached_at"] is not None:
+            cache_age = (now - _flight_arrivals_cache["cached_at"]).total_seconds()
+            if cache_age < FLIGHT_CACHE_DURATION_SECONDS:
+                cached_response = _flight_arrivals_cache["data"].copy()
+                cached_response["cached"] = True
+                cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
+                return cached_response
+
     query = db.query(FlightArrival)
 
     # Apply start_date filter (default to 2026-01-01)
@@ -11342,7 +11616,7 @@ async def get_admin_arrivals(
 
     arrivals = query.all()
 
-    return {
+    result = {
         "arrivals": [
             {
                 "id": a.id,
@@ -11362,15 +11636,40 @@ async def get_admin_arrivals(
         "total": len(arrivals),
     }
 
+    # Store in cache for default requests
+    if is_default_request:
+        _flight_arrivals_cache["data"] = result.copy()
+        _flight_arrivals_cache["cached_at"] = now
+
+    result["cached"] = False
+    return result
+
 
 @app.get("/api/admin/flights/filters")
 async def get_admin_flight_filters(
+    refresh: bool = Query(False, description="Force refresh cache"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Get unique filter options for flights (airlines, destinations, origins, months).
+    Cached for 3 months (reference data only).
     """
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+    now = datetime.now(uk_tz)
+
+    # Check cache
+    global _flight_filters_cache
+    if not refresh:
+        if _flight_filters_cache["data"] is not None and _flight_filters_cache["cached_at"] is not None:
+            cache_age = (now - _flight_filters_cache["cached_at"]).total_seconds()
+            if cache_age < FLIGHT_CACHE_DURATION_SECONDS:
+                cached_response = _flight_filters_cache["data"].copy()
+                cached_response["cached"] = True
+                cached_response["cache_age_minutes"] = round(cache_age / 60, 1)
+                return cached_response
+
     from sqlalchemy import distinct, extract
 
     # Get unique airlines from both departures and arrivals
@@ -11425,12 +11724,19 @@ async def get_admin_flight_filters(
         for year, month in sorted(months_set)
     ]
 
-    return {
+    result = {
         "airlines": airlines,
         "destinations": destinations,
         "origins": origins,
         "months": months,
     }
+
+    # Store in cache
+    _flight_filters_cache["data"] = result.copy()
+    _flight_filters_cache["cached_at"] = now
+
+    result["cached"] = False
+    return result
 
 
 @app.get("/api/admin/flights/export")
