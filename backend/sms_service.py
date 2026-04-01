@@ -239,7 +239,7 @@ async def send_sms(
             response = await client.post(
                 f"{SMS_API_BASE_URL}/message/send",
                 headers={
-                    "Authorization": token,
+                    "Authorization": f"JWT {token}",
                     "Content-Type": "application/json",
                 },
                 json={
