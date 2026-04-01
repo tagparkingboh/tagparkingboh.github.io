@@ -10060,18 +10060,21 @@ function Admin() {
                         <p className="forecast-subtitle">Historical booking patterns by month</p>
                         {forecastData.seasonality?.length > 0 ? (
                           <div className="seasonality-chart">
-                            {forecastData.seasonality.map((month, idx) => (
-                              <div key={idx} className="season-bar-container">
-                                <span className="season-label">{month.month}</span>
-                                <div className="season-bar-wrapper">
-                                  <div
-                                    className="season-bar"
-                                    style={{ width: `${Math.min(month.percentage * 5, 100)}%` }}
-                                  ></div>
+                            {(() => {
+                              const maxBookings = Math.max(...forecastData.seasonality.map(m => m.bookings)) || 1;
+                              return forecastData.seasonality.map((month, idx) => (
+                                <div key={idx} className="season-bar-container">
+                                  <span className="season-label">{month.month}</span>
+                                  <div className="season-bar-wrapper">
+                                    <div
+                                      className="season-bar"
+                                      style={{ height: `${(month.bookings / maxBookings) * 100}%` }}
+                                    ></div>
+                                  </div>
+                                  <span className="season-value">{month.bookings}</span>
                                 </div>
-                                <span className="season-value">{month.bookings}</span>
-                              </div>
-                            ))}
+                              ));
+                            })()}
                           </div>
                         ) : (
                           <p className="admin-empty">No seasonality data available</p>
