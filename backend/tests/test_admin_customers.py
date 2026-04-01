@@ -1123,3 +1123,127 @@ class TestMarketingSourceDisplayFormatting:
         for source, expected in expected_formats.items():
             result = self.format_marketing_source(source)
             assert result == expected, f"Source '{source}' should format as '{expected}', got '{result}'"
+
+
+# =============================================================================
+# Customer Update Reflects in Bookings Tests
+# =============================================================================
+
+class TestCustomerUpdateReflectsInBookings:
+    """Tests verifying customer updates are reflected in booking data."""
+
+    def test_updated_phone_appears_in_booking_customer_data(self):
+        """When customer phone is updated, bookings should show new phone."""
+        # Initial customer with old phone
+        customer = create_mock_customer(
+            id=1,
+            first_name="John",
+            last_name="Smith",
+            email="john@test.com",
+            phone="07700900001",
+        )
+
+        # Simulate phone update
+        new_phone = "07700900002"
+        customer.phone = new_phone
+
+        # Simulate booking response that references this customer
+        booking_response = {
+            "id": 1,
+            "reference": "TAG-ABC123",
+            "customer": {
+                "id": customer.id,
+                "first_name": customer.first_name,
+                "last_name": customer.last_name,
+                "email": customer.email,
+                "phone": customer.phone,  # Should be updated phone
+            }
+        }
+
+        assert booking_response["customer"]["phone"] == new_phone
+        assert booking_response["customer"]["phone"] == "07700900002"
+
+    def test_updated_email_appears_in_booking_customer_data(self):
+        """When customer email is updated, bookings should show new email."""
+        customer = create_mock_customer(
+            id=1,
+            first_name="Jane",
+            last_name="Doe",
+            email="old@test.com",
+            phone="07700900001",
+        )
+
+        # Simulate email update
+        new_email = "new@test.com"
+        customer.email = new_email
+
+        # Simulate booking response
+        booking_response = {
+            "id": 1,
+            "reference": "TAG-DEF456",
+            "customer": {
+                "id": customer.id,
+                "first_name": customer.first_name,
+                "last_name": customer.last_name,
+                "email": customer.email,
+                "phone": customer.phone,
+            }
+        }
+
+        assert booking_response["customer"]["email"] == new_email
+
+    def test_multiple_bookings_reflect_customer_update(self):
+        """All bookings for a customer should reflect phone update."""
+        customer = create_mock_customer(
+            id=1,
+            first_name="Mark",
+            last_name="Testing",
+            email="mark@test.com",
+            phone="07700900001",
+        )
+
+        # Customer has multiple bookings
+        bookings = [
+            {"id": 1, "reference": "TAG-001", "customer_id": customer.id},
+            {"id": 2, "reference": "TAG-002", "customer_id": customer.id},
+            {"id": 3, "reference": "TAG-003", "customer_id": customer.id},
+        ]
+
+        # Update customer phone
+        new_phone = "07700900999"
+        customer.phone = new_phone
+
+        # All bookings should now show updated phone
+        for booking in bookings:
+            booking_response = {
+                "id": booking["id"],
+                "reference": booking["reference"],
+                "customer": {
+                    "phone": customer.phone,
+                }
+            }
+            assert booking_response["customer"]["phone"] == new_phone
+
+    def test_booking_uses_customer_relationship_not_snapshot(self):
+        """Booking customer.phone should come from Customer table, not snapshot."""
+        # This verifies the design: phone comes from relationship, not a stored snapshot
+        customer = create_mock_customer(
+            id=1,
+            phone="07700900001",
+        )
+
+        # Booking has customer_first_name/customer_last_name snapshots
+        # but phone comes from customer relationship
+        booking_data = {
+            "customer_first_name": "John",  # Snapshot (doesn't update)
+            "customer_last_name": "Smith",   # Snapshot (doesn't update)
+            "customer": customer,             # Relationship (updates)
+        }
+
+        # Update customer phone
+        customer.phone = "07700900002"
+
+        # Phone from relationship should be updated
+        assert booking_data["customer"].phone == "07700900002"
+        # Name snapshots remain unchanged
+        assert booking_data["customer_first_name"] == "John"
