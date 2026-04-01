@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 # SMS Works configuration
 # JWT token is pre-generated in SMS Works dashboard (not via login endpoint)
-SMS_JWT_TOKEN = os.getenv("SMS_API_KEY")  # The JWT token from SMS Works dashboard
+_raw_token = os.getenv("SMS_API_KEY", "")
+SMS_JWT_TOKEN = _raw_token.strip() if _raw_token else None  # Strip whitespace/newlines
 SMS_SENDER_ID = os.getenv("SMS_SENDER_ID", "TAGParking")
 SMS_ENABLED = os.getenv("SMS_ENABLED", "false").lower() == "true"
 SMS_WEBHOOK_SECRET = os.getenv("SMS_WEBHOOK_SECRET")
