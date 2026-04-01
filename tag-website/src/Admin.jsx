@@ -6000,7 +6000,7 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '20px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto' }}
+                          style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', textAlign: 'center' }}
                         >
                           <option value="">+ Variable</option>
                           {smsVariables.map(v => (
@@ -6076,7 +6076,7 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '20px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto' }}
+                          style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', textAlign: 'center' }}
                         >
                           <option value="">+ Variable</option>
                           {smsVariables.map(v => (
@@ -6160,7 +6160,7 @@ function Admin() {
                               e.target.value = ''
                             }
                           }}
-                          style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '20px', background: '#D9FF00', color: '#000', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto' }}
+                          style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', textAlign: 'center' }}
                         >
                           <option value="">+ Variable</option>
                           {smsVariables.map(v => (
