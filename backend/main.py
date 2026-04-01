@@ -1136,6 +1136,8 @@ async def get_all_bookings(
     date_filter: Optional[date] = Query(None, description="Filter by parking date"),
     include_cancelled: bool = Query(True, description="Include cancelled bookings"),
     days: Optional[int] = Query(30, description="Number of days to include (None or 0 for all)"),
+    search: Optional[str] = Query(None, description="Search by name or booking reference"),
+    limit: Optional[int] = Query(None, description="Limit number of results"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -1182,12 +1184,31 @@ async def get_all_bookings(
     if not include_cancelled:
         query = query.filter(Booking.status != BookingStatus.CANCELLED)
 
+    # Search filter - search by reference, customer name
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                Booking.reference.ilike(search_term),
+                Booking.customer_first_name.ilike(search_term),
+                Booking.customer_last_name.ilike(search_term),
+                Customer.first_name.ilike(search_term),
+                Customer.last_name.ilike(search_term),
+            )
+        )
+
     # Sort: today's bookings first (by dropoff_date), then by dropoff_date ascending
-    bookings = query.order_by(
+    query = query.order_by(
         # Today's bookings first (0 for today, 1 for others)
         case((Booking.dropoff_date == today, 0), else_=1),
         Booking.dropoff_date.asc()
-    ).all()
+    )
+
+    # Apply limit if specified
+    if limit:
+        query = query.limit(limit)
+
+    bookings = query.all()
 
     # Format bookings for frontend
     result = []
