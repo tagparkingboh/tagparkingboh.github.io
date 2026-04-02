@@ -107,15 +107,24 @@ def get_db():
 def get_pool_status():
     """Get current connection pool status for monitoring."""
     pool = engine.pool
+    checked_out = pool.checkedout()
+    # overflow() can be negative when pool hasn't grown beyond base size - clamp to 0
+    overflow = max(0, pool.overflow())
+    checked_in = pool.checkedin()
+    total_connections = checked_out + overflow
+    max_connections = POOL_SIZE + MAX_OVERFLOW
+    # Ensure usage percent is never negative
+    usage_percent = max(0, round(total_connections / max_connections * 100, 1))
+
     return {
         "pool_size": POOL_SIZE,
         "max_overflow": MAX_OVERFLOW,
-        "checked_out": pool.checkedout(),
-        "overflow": pool.overflow(),
-        "checked_in": pool.checkedin(),
-        "total_connections": pool.checkedout() + pool.overflow(),
-        "max_connections": POOL_SIZE + MAX_OVERFLOW,
-        "usage_percent": round((pool.checkedout() + pool.overflow()) / (POOL_SIZE + MAX_OVERFLOW) * 100, 1),
+        "checked_out": checked_out,
+        "overflow": overflow,
+        "checked_in": checked_in,
+        "total_connections": total_connections,
+        "max_connections": max_connections,
+        "usage_percent": usage_percent,
     }
 
 
