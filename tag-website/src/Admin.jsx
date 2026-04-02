@@ -9433,23 +9433,23 @@ function Admin() {
                               </div>
                             </div>
                           )}
-                          {funFacts.earliestBooking && (
+                          {funFacts.latestTimeOfNight && (
                             <div className="fun-fact-card">
-                              <span className="fun-fact-icon">🏁</span>
+                              <span className="fun-fact-icon">🌙</span>
                               <div className="fun-fact-content">
-                                <span className="fun-fact-label">First Ever Booking</span>
-                                <span className="fun-fact-value">{funFacts.earliestBooking.date}</span>
-                                <span className="fun-fact-detail">at {funFacts.earliestBooking.time}</span>
+                                <span className="fun-fact-label">Latest Night Owl</span>
+                                <span className="fun-fact-value">{funFacts.latestTimeOfNight.time}</span>
+                                <span className="fun-fact-detail">{funFacts.latestTimeOfNight.date}</span>
                               </div>
                             </div>
                           )}
-                          {funFacts.latestBooking && (
+                          {funFacts.earliestTimeOfDay && (
                             <div className="fun-fact-card">
-                              <span className="fun-fact-icon">🆕</span>
+                              <span className="fun-fact-icon">🌅</span>
                               <div className="fun-fact-content">
-                                <span className="fun-fact-label">Most Recent Booking</span>
-                                <span className="fun-fact-value">{funFacts.latestBooking.date}</span>
-                                <span className="fun-fact-detail">at {funFacts.latestBooking.time}</span>
+                                <span className="fun-fact-label">Earliest Riser</span>
+                                <span className="fun-fact-value">{funFacts.earliestTimeOfDay.time}</span>
+                                <span className="fun-fact-detail">{funFacts.earliestTimeOfDay.date}</span>
                               </div>
                             </div>
                           )}
@@ -9473,6 +9473,24 @@ function Admin() {
                               </div>
                             </div>
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Milestones */}
+                    {funFacts?.milestones?.length > 0 && (
+                      <div className="milestones-section">
+                        <h3>Booking Milestones</h3>
+                        <div className="milestones-grid">
+                          {funFacts.milestones.map((milestone) => (
+                            <div key={milestone.number} className="milestone-card">
+                              <span className="milestone-number">{milestone.label}</span>
+                              <div className="milestone-content">
+                                <span className="milestone-date">{milestone.date}</span>
+                                <span className="milestone-time">{milestone.time}</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}

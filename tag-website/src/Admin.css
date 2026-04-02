@@ -4039,6 +4039,63 @@
   color: #6b7280;
 }
 
+/* Milestones Section */
+.milestones-section {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e5e7eb;
+}
+
+.milestones-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 16px 0;
+}
+
+.milestones-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.milestone-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 1px solid #fcd34d;
+  min-width: 140px;
+}
+
+.milestone-number {
+  font-size: 20px;
+  font-weight: 800;
+  color: #92400e;
+}
+
+.milestone-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.milestone-date {
+  font-size: 13px;
+  font-weight: 600;
+  color: #78350f;
+}
+
+.milestone-time {
+  font-size: 11px;
+  color: #a16207;
+}
+
 /* Trip Insights Section */
 .trip-insights-section {
   background: white;

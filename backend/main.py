@@ -3808,10 +3808,11 @@ async def get_fun_facts(
         "busiestStreak": None,
         "longestTrip": None,
         "highestTransaction": None,
-        "earliestBooking": None,
-        "latestBooking": None,
+        "latestTimeOfNight": None,
+        "earliestTimeOfDay": None,
         "lastMinuteBooking": None,
         "advanceBooking": None,
+        "milestones": [],
     }
 
     if not bookings:
@@ -3921,22 +3922,45 @@ async def get_fun_facts(
             "days": (highest_booking.pickup_date - highest_booking.dropoff_date).days if highest_booking.pickup_date and highest_booking.dropoff_date else None,
         }
 
-    # === Earliest & Latest Booking (by created_at) ===
+    # === Latest Time of Night & Earliest Time of Day ===
+    # Find bookings by time of day (not date) - who books latest at night, earliest in morning
     bookings_with_created = [b for b in bookings if b.created_at]
     if bookings_with_created:
-        earliest = min(bookings_with_created, key=lambda b: b.created_at)
-        latest = max(bookings_with_created, key=lambda b: b.created_at)
+        # Latest time of night (e.g., 23:58)
+        latest_time = max(bookings_with_created, key=lambda b: b.created_at.time())
+        result["latestTimeOfNight"] = {
+            "time": latest_time.created_at.strftime("%H:%M"),
+            "date": latest_time.created_at.strftime("%d %b %Y"),
+            "reference": latest_time.reference,
+        }
 
-        result["earliestBooking"] = {
-            "date": earliest.created_at.strftime("%d %b %Y"),
-            "time": earliest.created_at.strftime("%H:%M"),
-            "reference": earliest.reference,
+        # Earliest time of day (e.g., 03:02)
+        earliest_time = min(bookings_with_created, key=lambda b: b.created_at.time())
+        result["earliestTimeOfDay"] = {
+            "time": earliest_time.created_at.strftime("%H:%M"),
+            "date": earliest_time.created_at.strftime("%d %b %Y"),
+            "reference": earliest_time.reference,
         }
-        result["latestBooking"] = {
-            "date": latest.created_at.strftime("%d %b %Y"),
-            "time": latest.created_at.strftime("%H:%M"),
-            "reference": latest.reference,
-        }
+
+    # === Milestones ===
+    # Sort bookings by created_at to get order
+    sorted_bookings = sorted(bookings_with_created, key=lambda b: b.created_at)
+    milestone_numbers = [1, 25, 50, 75, 100, 125, 150]
+    milestones = []
+
+    for num in milestone_numbers:
+        if len(sorted_bookings) >= num:
+            booking = sorted_bookings[num - 1]  # 0-indexed
+            label = "1st" if num == 1 else f"{num}th"
+            milestones.append({
+                "number": num,
+                "label": label,
+                "date": booking.created_at.strftime("%d %b %Y"),
+                "time": booking.created_at.strftime("%H:%M"),
+                "reference": booking.reference,
+            })
+
+    result["milestones"] = milestones
 
     # === Last Minute & Advance Booking ===
     # Calculate gap between created_at and dropoff_date
