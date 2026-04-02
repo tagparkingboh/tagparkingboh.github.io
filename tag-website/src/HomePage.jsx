@@ -251,6 +251,7 @@ function HomePage() {
             <li><a href="#pricing" onClick={closeMenu}>Pricing</a></li>
             {hasActivePromo && <li><a href="#promotions" onClick={closeMenu}>Promotions</a></li>}
             <li><a href="#how-it-works" onClick={closeMenu}>Meet & Greet</a></li>
+            <li><a href="#secure-carpark" onClick={closeMenu}>Car Park</a></li>
             <li><a href="#testimonials" onClick={closeMenu}>Testimonials</a></li>
             <li><a href="#subscribe" onClick={closeMenu}>Subscribe</a></li>
             <li><a href="#contact" onClick={closeMenu}>Contact</a></li>
@@ -447,6 +448,29 @@ function HomePage() {
           <div className="card-content">
             <h3>Transparent, competitive pricing</h3>
             <p>Clear pricing with no hidden fees. What you see is what you pay.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Secure Car Park Section */}
+      <section className="secure-carpark" id="secure-carpark">
+        <div className="secure-carpark-container">
+          <div className="secure-carpark-image">
+            <img
+              src="/assets/secure-carpark.webp"
+              alt="TAG Parking secure car park with CCTV and barrier control"
+              loading="lazy"
+            />
+          </div>
+          <div className="secure-carpark-content">
+            <h2>Our Secure Car Park</h2>
+            <p className="secure-carpark-subtitle">Your car never leaves our premises</p>
+            <ul className="secure-carpark-features">
+              <li>24/7 CCTV monitoring</li>
+              <li>Secure perimeter fencing</li>
+              <li>Barrier-controlled entry & exit</li>
+            </ul>
+            <p className="secure-carpark-tagline">Peace of mind while you're away</p>
           </div>
         </div>
       </section>

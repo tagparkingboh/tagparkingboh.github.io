@@ -541,6 +541,83 @@
   font-weight: 600;
 }
 
+/* Secure Car Park Section */
+.secure-carpark {
+  background: #343434;
+  padding: 5rem 4rem;
+  scroll-margin-top: 80px;
+}
+
+.secure-carpark-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4rem;
+}
+
+.secure-carpark-image {
+  flex: 1;
+  max-width: 50%;
+}
+
+.secure-carpark-image img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.secure-carpark-content {
+  flex: 1;
+  color: #fff;
+}
+
+.secure-carpark-content h2 {
+  font-size: 48px;
+  color: #d9ff00;
+  margin-bottom: 1rem;
+  font-weight: 700;
+}
+
+.secure-carpark-subtitle {
+  font-size: 20px;
+  color: #fff;
+  margin-bottom: 2rem;
+  font-weight: 600;
+}
+
+.secure-carpark-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 2rem 0;
+}
+
+.secure-carpark-features li {
+  font-size: 18px;
+  color: #fff;
+  padding: 0.75rem 0;
+  padding-left: 2rem;
+  position: relative;
+  font-weight: 500;
+}
+
+.secure-carpark-features li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: #d9ff00;
+  font-weight: 700;
+}
+
+.secure-carpark-tagline {
+  font-size: 18px;
+  color: #d9ff00;
+  font-style: italic;
+  font-weight: 600;
+  margin-top: 1.5rem;
+}
+
 /* Pricing Section */
 .pricing-section {
   background: var(--dark-gray);
@@ -1421,7 +1498,8 @@
   #how-it-works,
   #pricing,
   #subscribe,
-  #contact {
+  #contact,
+  #secure-carpark {
     scroll-margin-top: 80px;
   }
 
@@ -1660,6 +1738,22 @@
   .hero-title {
     font-size: 2.5rem;
   }
+
+  .secure-carpark {
+    padding: 4rem 2rem;
+  }
+
+  .secure-carpark-container {
+    gap: 3rem;
+  }
+
+  .secure-carpark-content h2 {
+    font-size: 36px;
+  }
+
+  .secure-carpark-subtitle {
+    font-size: 18px;
+  }
 }
 
 /* Responsive - Mobile */
@@ -1677,7 +1771,8 @@
   #how-it-works,
   #pricing,
   #subscribe,
-  #contact {
+  #contact,
+  #secure-carpark {
     scroll-margin-top: 70px;
   }
 
@@ -1950,6 +2045,43 @@
   .logo-svg {
     height: 60px;
   }
+
+  .secure-carpark {
+    padding: 3rem 1.5rem;
+  }
+
+  .secure-carpark-container {
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .secure-carpark-image {
+    max-width: 100%;
+  }
+
+  .secure-carpark-content h2 {
+    font-size: 32px;
+    text-align: center;
+  }
+
+  .secure-carpark-subtitle {
+    font-size: 16px;
+    text-align: center;
+  }
+
+  .secure-carpark-features {
+    max-width: 280px;
+    margin: 0 auto 2rem;
+  }
+
+  .secure-carpark-features li {
+    font-size: 16px;
+  }
+
+  .secure-carpark-tagline {
+    text-align: center;
+    font-size: 16px;
+  }
 }
 
 /* Responsive - Small Mobile */
@@ -1981,5 +2113,27 @@
 
   .pricing-amount .price {
     font-size: 2.5rem;
+  }
+
+  .secure-carpark {
+    padding: 2.5rem 1rem;
+  }
+
+  .secure-carpark-content h2 {
+    font-size: 28px;
+  }
+
+  .secure-carpark-subtitle {
+    font-size: 15px;
+    margin-bottom: 1.5rem;
+  }
+
+  .secure-carpark-features li {
+    font-size: 15px;
+    padding: 0.5rem 0;
+  }
+
+  .secure-carpark-tagline {
+    font-size: 15px;
   }
 }
