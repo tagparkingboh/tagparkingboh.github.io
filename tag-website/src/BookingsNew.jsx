@@ -3131,6 +3131,7 @@ function Bookings() {
                       <option value="newspaper">Newspaper</option>
                       <option value="linkedin">LinkedIn</option>
                       <option value="afc_bournemouth">AFC Bournemouth</option>
+                      <option value="expectations_travel">Expectations Travel</option>
                       <option value="other">Other</option>
                     </select>
                   </div>

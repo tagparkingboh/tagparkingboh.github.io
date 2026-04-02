@@ -198,7 +198,11 @@ const formatMarketingSource = (source) => {
     'linkedin': 'LinkedIn',
     'newspaper': 'Newspaper',
     'afc_bournemouth': 'AFC Bournemouth',
-    'word_of_mouth': 'Word of mouth',
+    'word_of_mouth': 'Word of Mouth',
+    'leaflet': 'Leaflet',
+    'tv': 'TV',
+    'radio': 'Radio',
+    'expectations_travel': 'Expectations Travel',
     'other': 'Other',
   }
   return sourceMap[source] || source
@@ -7869,19 +7873,22 @@ function Admin() {
                             <tr>
                               <th>Month</th>
                               {[
-                                { key: 'google', label: 'Google' },
-                                { key: 'facebook', label: 'Facebook' },
-                                { key: 'instagram', label: 'Instagram' },
-                                { key: 'word_of_mouth', label: 'Word of Mouth' },
-                                { key: 'leaflet', label: 'Leaflet' },
-                                { key: 'tv', label: 'TV' },
-                                { key: 'radio', label: 'Radio' },
-                                { key: 'newspaper', label: 'Newspaper' },
-                                { key: 'linkedin', label: 'LinkedIn' },
-                                { key: 'afc_bournemouth', label: 'AFC Bournemouth' },
-                                { key: 'other', label: 'Other' }
+                                { key: 'google', label: 'Google', icon: 'bi bi-google' },
+                                { key: 'facebook', label: 'Facebook', icon: 'bi bi-facebook' },
+                                { key: 'instagram', label: 'Instagram', icon: 'bi bi-instagram' },
+                                { key: 'word_of_mouth', label: 'Word of Mouth', icon: null },
+                                { key: 'leaflet', label: 'Leaflet', icon: 'bi bi-file-text' },
+                                { key: 'tv', label: 'TV', icon: 'bi bi-tv' },
+                                { key: 'radio', label: 'Radio', icon: 'bi bi-broadcast' },
+                                { key: 'newspaper', label: 'Newspaper', icon: 'bi bi-newspaper' },
+                                { key: 'linkedin', label: 'LinkedIn', icon: 'bi bi-linkedin' },
+                                { key: 'afc_bournemouth', label: 'AFCB', icon: null },
+                                { key: 'expectations_travel', label: 'Expect.', icon: null },
+                                { key: 'other', label: 'Other', icon: null }
                               ].map(source => (
-                                <th key={source.key}>{source.label}</th>
+                                <th key={source.key} title={source.label}>
+                                  {source.icon ? <i className={source.icon}></i> : source.label}
+                                </th>
                               ))}
                               <th>Total</th>
                             </tr>
@@ -7892,7 +7899,7 @@ function Admin() {
                               return (
                                 <tr key={idx}>
                                   <td>{month.year_month.split('-').reverse().join('/')}</td>
-                                  {['google', 'facebook', 'instagram', 'word_of_mouth', 'leaflet', 'tv', 'radio', 'newspaper', 'linkedin', 'afc_bournemouth', 'other'].map(source => (
+                                  {['google', 'facebook', 'instagram', 'word_of_mouth', 'leaflet', 'tv', 'radio', 'newspaper', 'linkedin', 'afc_bournemouth', 'expectations_travel', 'other'].map(source => (
                                     <td key={source}>
                                       {month.sources[source] || 0}
                                       {source === 'other' && month.sources.other > 0 && (
@@ -7934,6 +7941,7 @@ function Admin() {
                             newspaper: 'Newspaper',
                             linkedin: 'LinkedIn',
                             afc_bournemouth: 'AFC Bournemouth',
+                            expectations_travel: 'Expectations Travel',
                             other: 'Other'
                           }
                           const percentage = marketingSourcesData.total_responses > 0
@@ -7967,6 +7975,7 @@ function Admin() {
                             newspaper: 'Newspaper',
                             linkedin: 'LinkedIn',
                             afc_bournemouth: 'AFC Bournemouth',
+                            expectations_travel: 'Expectations Travel',
                             other: 'Other'
                           }
                           const percentage = marketingSourcesData.total_responses > 0
