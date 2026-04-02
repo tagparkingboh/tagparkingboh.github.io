@@ -10294,8 +10294,7 @@ async def stripe_webhook(
                     # Also send SMS confirmation if enabled
                     if sms_service.is_sms_enabled():
                         try:
-                            import asyncio
-                            asyncio.run(sms_service.send_booking_confirmation_sms(booking, db))
+                            await sms_service.send_booking_confirmation_sms(booking, db)
                             print(f"[SMS] Confirmation SMS sent for booking {booking_reference}")
                         except Exception as sms_error:
                             print(f"[SMS] Failed to send confirmation SMS: {str(sms_error)}")
