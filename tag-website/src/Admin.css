@@ -3995,15 +3995,33 @@
 
 .fun-facts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 1200px) {
+  .fun-facts-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .fun-facts-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .fun-facts-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .fun-fact-card {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 12px;
   border-radius: 8px;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border: 1px solid #e2e8f0;
@@ -4058,16 +4076,34 @@
 
 .milestones-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 1200px) {
+  .milestones-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .milestones-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .milestones-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .milestone-card {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px 20px;
-  border-radius: 12px;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border: 1px solid #e2e8f0;
   transition: transform 0.2s, box-shadow 0.2s;
@@ -4097,8 +4133,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-width: 56px;
-  height: 56px;
+  min-width: 46px;
+  height: 46px;
   border-radius: 50%;
   background: linear-gradient(135deg, #1a1a2e 0%, #2d2d4a 100%);
   color: white;
@@ -4114,7 +4150,7 @@
 }
 
 .milestone-number {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 800;
   line-height: 1;
 }
@@ -4135,7 +4171,7 @@
 }
 
 .milestone-customer {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #1a1a2e;
   white-space: nowrap;
@@ -4152,7 +4188,7 @@
 }
 
 .milestone-datetime {
-  font-size: 12px;
+  font-size: 11px;
   color: #64748b;
 }
 

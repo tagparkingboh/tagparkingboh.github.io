@@ -3945,7 +3945,7 @@ async def get_fun_facts(
     # === Milestones ===
     # Sort bookings by created_at to get order
     sorted_bookings = sorted(bookings_with_created, key=lambda b: b.created_at)
-    milestone_numbers = [1, 25, 50, 75, 100, 125, 150]
+    milestone_numbers = [1, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350, 400, 450, 500]
     milestones = []
 
     for num in milestone_numbers:
