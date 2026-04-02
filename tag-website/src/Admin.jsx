@@ -587,6 +587,7 @@ function Admin() {
   })
   const [auditLogsOffset, setAuditLogsOffset] = useState(0)
   const [auditEventTypes, setAuditEventTypes] = useState([])
+  const [auditLogsAutoRefresh, setAuditLogsAutoRefresh] = useState(false)
 
   // QA Dashboard - Error Logs state
   const [errorLogs, setErrorLogs] = useState([])
@@ -951,6 +952,15 @@ function Admin() {
       fetchAuditLogs(true)
     }
   }, [activeTab, token, auditLogsFilters])
+
+  // Auto-refresh audit logs every 30 seconds when enabled
+  useEffect(() => {
+    if (!auditLogsAutoRefresh || activeTab !== 'qa-audit' || !token) return
+    const interval = setInterval(() => {
+      fetchAuditLogs(true)
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [auditLogsAutoRefresh, activeTab, token, auditLogsFilters])
 
   // Fetch error logs when QA Errors tab is active
   useEffect(() => {
@@ -11965,6 +11975,14 @@ function Admin() {
           <div className="admin-section">
             <div className="admin-section-header">
               <h2>Audit Logs</h2>
+                  <label className="auto-refresh-toggle">
+                    <input
+                      type="checkbox"
+                      checked={auditLogsAutoRefresh}
+                      onChange={(e) => setAuditLogsAutoRefresh(e.target.checked)}
+                    />
+                    Auto-refresh (30s)
+                  </label>
                   <button onClick={() => fetchAuditLogs(true)} className="admin-refresh" disabled={loadingAuditLogs}>
                     {loadingAuditLogs ? 'Loading...' : 'Refresh'}
                   </button>

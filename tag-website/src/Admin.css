@@ -247,6 +247,21 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
+  gap: 1rem;
+}
+
+.auto-refresh-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 13px;
+  color: #666;
+  cursor: pointer;
+  user-select: none;
+}
+
+.auto-refresh-toggle input {
+  cursor: pointer;
 }
 
 .admin-section h2 {
