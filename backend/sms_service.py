@@ -40,7 +40,11 @@ TEMPLATE_VARIABLES = {
     "vehicle_reg": "Vehicle registration",
     "total_price": "Total price paid",
     "days": "Number of parking days",
+    "google_review_link": "Google Review link",
 }
+
+# Static links
+GOOGLE_REVIEW_LINK = "https://g.page/r/CbA2WXPNrM9fEAE/review"
 
 
 def is_sms_enabled() -> bool:
@@ -171,6 +175,7 @@ def get_booking_variables(booking) -> dict:
         "vehicle_reg": booking.vehicle.registration if booking.vehicle else "",
         "total_price": total_price,
         "days": str(days),
+        "google_review_link": GOOGLE_REVIEW_LINK,
     }
 
 
