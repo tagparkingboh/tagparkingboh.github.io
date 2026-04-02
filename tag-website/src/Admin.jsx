@@ -5928,24 +5928,22 @@ function Admin() {
                           </td>
                           <td>{msg.booking_reference || '-'}</td>
                           <td>
-                            <div style={{ display: 'flex', gap: '4px' }}>
+                            <div style={{ display: 'flex', gap: '6px' }}>
                               {msg.direction === 'outbound' && (
                                 <button
-                                  className="btn-secondary btn-sm"
                                   onClick={() => handleResendMessage(msg.id)}
                                   disabled={resendingMessageId === msg.id}
                                   title="Resend this message"
-                                  style={{ padding: '4px 8px', fontSize: '0.7rem' }}
+                                  style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '20px', background: '#e0e0e0', color: '#333', border: 'none', cursor: 'pointer', fontWeight: '500' }}
                                 >
                                   {resendingMessageId === msg.id ? '...' : 'Resend'}
                                 </button>
                               )}
                               <button
-                                className="btn-danger btn-sm"
                                 onClick={() => setMessageToDelete(msg)}
                                 disabled={deletingMessageId === msg.id}
                                 title="Delete this message"
-                                style={{ padding: '4px 8px', fontSize: '0.7rem' }}
+                                style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '20px', background: '#e0e0e0', color: '#333', border: 'none', cursor: 'pointer', fontWeight: '500' }}
                               >
                                 {deletingMessageId === msg.id ? '...' : 'Delete'}
                               </button>
