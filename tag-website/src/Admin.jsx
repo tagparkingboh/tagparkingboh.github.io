@@ -451,7 +451,7 @@ function Admin() {
   const [editingTemplate, setEditingTemplate] = useState(null)
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false)
-  const [newTemplate, setNewTemplate] = useState({ name: '', content: '', description: '', is_active: true })
+  const [newTemplate, setNewTemplate] = useState({ name: '', content: '', description: '', is_active: true, trigger_event: null })
   const [creatingTemplate, setCreatingTemplate] = useState(false)
   const [expandedMessageId, setExpandedMessageId] = useState(null)
   const [smsDirectionFilter, setSmsDirectionFilter] = useState('inbound') // 'inbound', 'outbound'
@@ -3981,6 +3981,8 @@ function Admin() {
           content: editingTemplate.content,
           description: editingTemplate.description,
           is_active: editingTemplate.is_active,
+          trigger_event: editingTemplate.trigger_event || null,
+          is_automated: !!editingTemplate.trigger_event,
         }),
       })
 
@@ -4015,13 +4017,15 @@ function Admin() {
           content: newTemplate.content,
           description: newTemplate.description,
           is_active: newTemplate.is_active,
+          trigger_event: newTemplate.trigger_event || null,
+          is_automated: !!newTemplate.trigger_event,
         }),
       })
 
       if (response.ok) {
         setMessagesMessage('Template created successfully!')
         setShowCreateTemplateModal(false)
-        setNewTemplate({ name: '', content: '', description: '', is_active: true })
+        setNewTemplate({ name: '', content: '', description: '', is_active: true, trigger_event: null })
         fetchSmsTemplates()
       } else {
         const data = await response.json()
@@ -6094,6 +6098,18 @@ function Admin() {
                       <small>{editingTemplate.content.length}/480 characters</small>
                     </div>
                     <div className="form-group">
+                      <label>Trigger Event</label>
+                      <select
+                        value={editingTemplate.trigger_event || ''}
+                        onChange={(e) => setEditingTemplate(prev => ({ ...prev, trigger_event: e.target.value || null, is_automated: !!e.target.value }))}
+                      >
+                        <option value="">None (Manual Only)</option>
+                        <option value="booking_confirmed">Booking Confirmed</option>
+                        <option value="reminder_2day">2-Day Reminder</option>
+                        <option value="thank_you">Thank You (After Completion)</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
                       <label className="checkbox-label">
                         <input
                           type="checkbox"
@@ -6179,6 +6195,18 @@ function Admin() {
                       <small>{newTemplate.content.length}/480 characters. Use {'{{variable}}'} for dynamic content.</small>
                     </div>
                     <div className="form-group">
+                      <label>Trigger Event</label>
+                      <select
+                        value={newTemplate.trigger_event || ''}
+                        onChange={(e) => setNewTemplate(prev => ({ ...prev, trigger_event: e.target.value || null, is_automated: !!e.target.value }))}
+                      >
+                        <option value="">None (Manual Only)</option>
+                        <option value="booking_confirmed">Booking Confirmed</option>
+                        <option value="reminder_2day">2-Day Reminder</option>
+                        <option value="thank_you">Thank You (After Completion)</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
                       <label className="checkbox-label">
                         <input
                           type="checkbox"
@@ -6194,7 +6222,7 @@ function Admin() {
                       className="modal-btn modal-btn-secondary"
                       onClick={() => {
                         setShowCreateTemplateModal(false)
-                        setNewTemplate({ name: '', content: '', description: '', is_active: true })
+                        setNewTemplate({ name: '', content: '', description: '', is_active: true, trigger_event: null })
                       }}
                     >
                       Cancel
