@@ -14736,7 +14736,10 @@ async def get_sms_drafts(
     db: Session = Depends(get_db)
 ):
     """Get all SMS drafts."""
-    drafts = db.query(SMSMessage).filter(
+    drafts = db.query(SMSMessage).options(
+        joinedload(SMSMessage.booking),
+        joinedload(SMSMessage.customer)
+    ).filter(
         SMSMessage.status == SMSStatus.DRAFT
     ).order_by(SMSMessage.created_at.desc()).all()
 
