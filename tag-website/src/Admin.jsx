@@ -461,6 +461,13 @@ function Admin() {
   const [messageToDelete, setMessageToDelete] = useState(null)
   const [smsDirectionFilter, setSmsDirectionFilter] = useState('inbound') // 'inbound', 'outbound'
   const [smsStatusFilter, setSmsStatusFilter] = useState('all') // 'all', 'pending', 'sent', 'delivered', 'failed'
+  // SMS Drafts state
+  const [smsDrafts, setSmsDrafts] = useState([])
+  const [loadingDrafts, setLoadingDrafts] = useState(false)
+  const [savingDraft, setSavingDraft] = useState(false)
+  const [editingDraft, setEditingDraft] = useState(null)
+  const [sendingDraftId, setSendingDraftId] = useState(null)
+  const [deletingDraftId, setDeletingDraftId] = useState(null)
 
   // SMS textarea refs for variable insertion
   const sendSmsTextareaRef = useRef(null)
@@ -3911,6 +3918,134 @@ function Admin() {
     }
   }
 
+  const fetchSmsDrafts = async () => {
+    setLoadingDrafts(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/drafts`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSmsDrafts(data.drafts || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch SMS drafts:', err)
+    } finally {
+      setLoadingDrafts(false)
+    }
+  }
+
+  const handleSaveDraft = async () => {
+    setSavingDraft(true)
+    setMessagesMessage('')
+    try {
+      const url = editingDraft
+        ? `${API_URL}/api/admin/sms/drafts/${editingDraft.id}`
+        : `${API_URL}/api/admin/sms/drafts`
+      const method = editingDraft ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phone: sendSmsForm.phone,
+          content: sendSmsForm.content,
+          booking_id: sendSmsForm.booking_id ? parseInt(sendSmsForm.booking_id) : null,
+          customer_id: sendSmsForm.customer_id ? parseInt(sendSmsForm.customer_id) : null,
+        }),
+      })
+      if (response.ok) {
+        setMessagesMessage(editingDraft ? 'Draft updated!' : 'Draft saved!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        setShowSendSmsModal(false)
+        setSendSmsForm({ phone: '', content: '', booking_id: '', customer_id: '' })
+        setSelectedSmsBooking(null)
+        setSmsBookingSearch('')
+        setSmsBookingResults([])
+        setEditingDraft(null)
+        fetchSmsDrafts()
+      } else {
+        const err = await response.json()
+        setMessagesMessage(`Error: ${err.detail || 'Failed to save draft'}`)
+      }
+    } catch (err) {
+      console.error('Failed to save draft:', err)
+      setMessagesMessage('Error: Failed to save draft')
+    } finally {
+      setSavingDraft(false)
+    }
+  }
+
+  const handleSendDraft = async (draftId) => {
+    setSendingDraftId(draftId)
+    setMessagesMessage('')
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/drafts/${draftId}/send`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setMessagesMessage('Draft sent successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        fetchSmsDrafts()
+        fetchSmsMessages()
+        fetchSmsStats()
+      } else {
+        const err = await response.json()
+        setMessagesMessage(`Error: ${err.detail || 'Failed to send draft'}`)
+      }
+    } catch (err) {
+      console.error('Failed to send draft:', err)
+      setMessagesMessage('Error: Failed to send draft')
+    } finally {
+      setSendingDraftId(null)
+    }
+  }
+
+  const handleDeleteDraft = async (draftId) => {
+    setDeletingDraftId(draftId)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/drafts/${draftId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setMessagesMessage('Draft deleted!')
+        setTimeout(() => setMessagesMessage(''), 3000)
+        fetchSmsDrafts()
+      } else {
+        const err = await response.json()
+        setMessagesMessage(`Error: ${err.detail || 'Failed to delete draft'}`)
+      }
+    } catch (err) {
+      console.error('Failed to delete draft:', err)
+    } finally {
+      setDeletingDraftId(null)
+    }
+  }
+
+  const handleEditDraft = (draft) => {
+    setEditingDraft(draft)
+    setSendSmsForm({
+      phone: draft.phone_number || '',
+      content: draft.content || '',
+      booking_id: draft.booking_id || '',
+      customer_id: draft.customer_id || '',
+    })
+    if (draft.booking_reference) {
+      setSelectedSmsBooking({
+        id: draft.booking_id,
+        reference: draft.booking_reference,
+        customer_first_name: draft.customer_name?.split(' ')[0] || '',
+        customer_last_name: draft.customer_name?.split(' ').slice(1).join(' ') || '',
+      })
+    }
+    setShowSendSmsModal(true)
+  }
+
   const refreshSmsStatuses = async () => {
     setLoadingMessages(true)
     setMessagesMessage('')
@@ -5878,6 +6013,12 @@ function Admin() {
               >
                 Templates
               </button>
+              <button
+                className={`messages-subtab ${messagesSubTab === 'drafts' ? 'active' : ''}`}
+                onClick={() => { setMessagesSubTab('drafts'); fetchSmsDrafts() }}
+              >
+                Drafts {smsDrafts.length > 0 && <span className="draft-count">({smsDrafts.length})</span>}
+              </button>
             </div>
 
             {/* Filters for Inbox/Sent */}
@@ -6062,11 +6203,61 @@ function Admin() {
               </div>
             )}
 
+            {/* Drafts List */}
+            {messagesSubTab === 'drafts' && (
+              <div className="drafts-section">
+                {loadingDrafts ? (
+                  <p className="loading-text">Loading drafts...</p>
+                ) : smsDrafts.length === 0 ? (
+                  <p className="no-data">No drafts saved</p>
+                ) : (
+                  <div className="drafts-list">
+                    {smsDrafts.map(draft => (
+                      <div key={draft.id} className="draft-card">
+                        <div className="draft-header">
+                          <span className="draft-phone">{draft.phone_number || '(No phone)'}</span>
+                          {draft.booking_reference && (
+                            <span className="draft-booking">{draft.booking_reference}</span>
+                          )}
+                          <span className="draft-date">
+                            {draft.created_at ? new Date(draft.created_at).toLocaleString('en-GB') : ''}
+                          </span>
+                        </div>
+                        <div className="draft-content">{draft.content || '(Empty)'}</div>
+                        <div className="draft-actions">
+                          <button
+                            onClick={() => handleEditDraft(draft)}
+                            style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#e0e0e0', color: '#333', border: 'none', cursor: 'pointer', fontWeight: '600', marginRight: '8px' }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleSendDraft(draft.id)}
+                            disabled={sendingDraftId === draft.id || !draft.phone_number || !draft.content}
+                            style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', marginRight: '8px' }}
+                          >
+                            {sendingDraftId === draft.id ? 'Sending...' : 'Send'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteDraft(draft.id)}
+                            disabled={deletingDraftId === draft.id}
+                            style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#ff6b6b', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: '600' }}
+                          >
+                            {deletingDraftId === draft.id ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Send SMS Modal */}
             {showSendSmsModal && (
               <div className="modal-overlay">
                 <div className="modal-content modal-medium">
-                  <h3>Send SMS</h3>
+                  <h3>{editingDraft ? 'Edit Draft' : 'Send SMS'}</h3>
                   <div className="modal-form">
                     {/* Booking Search */}
                     <div className="form-group">
@@ -6156,9 +6347,18 @@ function Admin() {
                         setSelectedSmsBooking(null)
                         setSmsBookingSearch('')
                         setSmsBookingResults([])
+                        setEditingDraft(null)
                       }}
                     >
                       Cancel
+                    </button>
+                    <button
+                      className="modal-btn"
+                      onClick={handleSaveDraft}
+                      disabled={savingDraft || !sendSmsForm.content}
+                      style={{ backgroundColor: '#e0e0e0', color: '#333', borderRadius: '20px' }}
+                    >
+                      {savingDraft ? 'Saving...' : (editingDraft ? 'Update Draft' : 'Save Draft')}
                     </button>
                     <button
                       className="modal-btn modal-btn-primary"

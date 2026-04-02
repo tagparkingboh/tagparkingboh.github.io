@@ -3517,6 +3517,78 @@
   font-size: 0.8rem;
 }
 
+/* SMS Drafts */
+.drafts-section {
+  margin-top: 1rem;
+}
+
+.drafts-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.draft-card {
+  background: #1a1a1a;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border: 1px solid #333;
+  transition: all 0.2s ease;
+}
+
+.draft-card:hover {
+  border-color: #555;
+}
+
+.draft-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.draft-phone {
+  font-weight: 600;
+  color: #fff;
+}
+
+.draft-booking {
+  background: rgba(217, 255, 0, 0.1);
+  color: #D9FF00;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.draft-date {
+  color: #666;
+  font-size: 0.8rem;
+  margin-left: auto;
+}
+
+.draft-content {
+  background: #0a0a0a;
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  color: #ccc;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.draft-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.draft-count {
+  font-size: 0.75rem;
+  color: #888;
+  margin-left: 0.25rem;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sms-stats-grid {

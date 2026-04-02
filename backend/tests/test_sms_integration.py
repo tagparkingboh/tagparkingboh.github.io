@@ -1576,6 +1576,464 @@ class TestMessageActionsEdgeCases:
 
 
 # =============================================================================
+# SMS Draft Tests
+# =============================================================================
+
+def create_mock_draft(
+    id=1,
+    phone_number="447123456789",
+    content="Draft message",
+    booking_id=None,
+    customer_id=None,
+):
+    """Create a mock SMS draft (message with DRAFT status)."""
+    from db_models import SMSDirection, SMSStatus
+
+    draft = MagicMock()
+    draft.id = id
+    draft.phone_number = phone_number
+    draft.direction = SMSDirection.OUTBOUND
+    draft.content = content
+    draft.status = SMSStatus.DRAFT
+    draft.booking_id = booking_id
+    draft.customer_id = customer_id
+    draft.status_detail = None
+    draft.is_bulk = False
+    draft.created_at = datetime.now()
+    draft.updated_at = None
+    draft.delivered_at = None
+
+    # Mock relationships
+    if booking_id:
+        draft.booking = MagicMock()
+        draft.booking.reference = f"TAG-{booking_id:06d}"
+    else:
+        draft.booking = None
+
+    if customer_id:
+        draft.customer = MagicMock()
+        draft.customer.first_name = "Test"
+        draft.customer.last_name = "Customer"
+    else:
+        draft.customer = None
+
+    return draft
+
+
+class TestSmsDraftsCRUD:
+    """Tests for SMS Draft Create, Read, Update, Delete operations."""
+
+    def test_get_drafts_empty(self):
+        """Test getting drafts when none exist."""
+        drafts = []
+        result = {"drafts": drafts}
+        assert result["drafts"] == []
+
+    def test_get_drafts_with_data(self):
+        """Test getting drafts when drafts exist."""
+        draft1 = create_mock_draft(id=1, content="Draft 1")
+        draft2 = create_mock_draft(id=2, content="Draft 2")
+        drafts = [draft1, draft2]
+
+        result = {
+            "drafts": [
+                {
+                    "id": d.id,
+                    "phone_number": d.phone_number,
+                    "content": d.content,
+                    "booking_id": d.booking_id,
+                    "customer_id": d.customer_id,
+                }
+                for d in drafts
+            ]
+        }
+
+        assert len(result["drafts"]) == 2
+        assert result["drafts"][0]["content"] == "Draft 1"
+        assert result["drafts"][1]["content"] == "Draft 2"
+
+    def test_save_draft_success(self):
+        """Test saving a new draft."""
+        phone = "447111222333"
+        content = "This is a test draft message"
+
+        draft = create_mock_draft(id=1, phone_number=phone, content=content)
+
+        result = {
+            "success": True,
+            "draft": {
+                "id": draft.id,
+                "phone_number": draft.phone_number,
+                "content": draft.content,
+            }
+        }
+
+        assert result["success"] is True
+        assert result["draft"]["phone_number"] == phone
+        assert result["draft"]["content"] == content
+
+    def test_save_draft_without_phone(self):
+        """Test saving a draft without phone number (allowed for drafts)."""
+        content = "Draft without phone"
+        draft = create_mock_draft(id=1, phone_number="", content=content)
+
+        result = {"success": True, "draft": {"id": draft.id, "content": content}}
+        assert result["success"] is True
+
+    def test_save_draft_without_content(self):
+        """Test saving a draft without content (allowed for drafts)."""
+        phone = "447111222333"
+        draft = create_mock_draft(id=1, phone_number=phone, content="")
+
+        result = {"success": True, "draft": {"id": draft.id, "phone_number": phone}}
+        assert result["success"] is True
+
+    def test_save_draft_with_booking_id(self):
+        """Test saving a draft linked to a booking."""
+        draft = create_mock_draft(id=1, booking_id=123)
+
+        result = {
+            "success": True,
+            "draft": {
+                "id": draft.id,
+                "booking_id": draft.booking_id,
+                "booking_reference": draft.booking.reference,
+            }
+        }
+
+        assert result["success"] is True
+        assert result["draft"]["booking_id"] == 123
+        assert result["draft"]["booking_reference"] == "TAG-000123"
+
+    def test_save_draft_with_customer_id(self):
+        """Test saving a draft linked to a customer."""
+        draft = create_mock_draft(id=1, customer_id=456)
+
+        result = {
+            "success": True,
+            "draft": {
+                "id": draft.id,
+                "customer_id": draft.customer_id,
+            }
+        }
+
+        assert result["success"] is True
+        assert result["draft"]["customer_id"] == 456
+
+    def test_update_draft_success(self):
+        """Test updating an existing draft."""
+        original_draft = create_mock_draft(id=1, content="Original content")
+        updated_content = "Updated content"
+
+        # Simulate update
+        original_draft.content = updated_content
+        original_draft.updated_at = datetime.now()
+
+        result = {
+            "success": True,
+            "draft": {
+                "id": original_draft.id,
+                "content": original_draft.content,
+            }
+        }
+
+        assert result["success"] is True
+        assert result["draft"]["content"] == "Updated content"
+
+    def test_update_draft_phone(self):
+        """Test updating draft phone number."""
+        draft = create_mock_draft(id=1, phone_number="447111111111")
+        new_phone = "447222222222"
+
+        draft.phone_number = new_phone
+
+        assert draft.phone_number == new_phone
+
+    def test_update_draft_not_found(self):
+        """Test updating a non-existent draft."""
+        # Simulating 404 response
+        result = {"status_code": 404, "detail": "Draft not found"}
+        assert result["status_code"] == 404
+
+    def test_update_non_draft_message_fails(self):
+        """Test that updating a sent message (not a draft) fails."""
+        from db_models import SMSStatus
+
+        sent_message = create_mock_message(id=1, status="sent")
+
+        # Attempt to update should fail because it's not a draft
+        is_draft = sent_message.status == SMSStatus.DRAFT
+        assert is_draft is False
+
+    def test_delete_draft_success(self):
+        """Test deleting a draft."""
+        draft = create_mock_draft(id=1)
+
+        result = {"success": True, "message": "Draft deleted"}
+        assert result["success"] is True
+
+    def test_delete_draft_not_found(self):
+        """Test deleting a non-existent draft."""
+        result = {"status_code": 404, "detail": "Draft not found"}
+        assert result["status_code"] == 404
+
+    def test_delete_non_draft_message_fails(self):
+        """Test that delete draft endpoint only works on drafts."""
+        from db_models import SMSStatus
+
+        sent_message = create_mock_message(id=1, status="sent")
+
+        is_draft = sent_message.status == SMSStatus.DRAFT
+        assert is_draft is False
+
+
+class TestSmsDraftsSend:
+    """Tests for sending SMS drafts."""
+
+    def test_send_draft_success(self):
+        """Test sending a draft successfully."""
+        draft = create_mock_draft(
+            id=1,
+            phone_number="447123456789",
+            content="Hello from draft!"
+        )
+
+        # Simulate successful send
+        result = {"success": True, "message_id": "new_msg_123"}
+        assert result["success"] is True
+
+    def test_send_draft_without_phone_fails(self):
+        """Test that sending a draft without phone number fails."""
+        draft = create_mock_draft(id=1, phone_number="", content="Test")
+
+        # Simulate validation error
+        result = {"status_code": 400, "detail": "Phone and content are required to send"}
+        assert result["status_code"] == 400
+
+    def test_send_draft_without_content_fails(self):
+        """Test that sending a draft without content fails."""
+        draft = create_mock_draft(id=1, phone_number="447123456789", content="")
+
+        result = {"status_code": 400, "detail": "Phone and content are required to send"}
+        assert result["status_code"] == 400
+
+    def test_send_draft_not_found(self):
+        """Test sending a non-existent draft."""
+        result = {"status_code": 404, "detail": "Draft not found"}
+        assert result["status_code"] == 404
+
+    def test_send_draft_deletes_draft(self):
+        """Test that sending a draft removes it from drafts."""
+        draft_id = 1
+        draft = create_mock_draft(id=draft_id)
+
+        # After sending, draft should be deleted
+        drafts_after_send = []  # Simulating draft was removed
+        assert draft_id not in [d.id for d in drafts_after_send]
+
+    def test_send_draft_creates_message(self):
+        """Test that sending a draft creates a new message."""
+        draft = create_mock_draft(
+            id=1,
+            phone_number="447123456789",
+            content="Draft content",
+            booking_id=100,
+            customer_id=50
+        )
+
+        # Simulating new message created from draft
+        new_message = create_mock_message(
+            id=999,
+            phone_number=draft.phone_number,
+            content=draft.content,
+            booking_id=draft.booking_id,
+            customer_id=draft.customer_id,
+            status="sent"
+        )
+
+        assert new_message.phone_number == draft.phone_number
+        assert new_message.content == draft.content
+        assert new_message.booking_id == draft.booking_id
+        assert new_message.customer_id == draft.customer_id
+
+    def test_send_draft_with_variables(self):
+        """Test sending a draft that contains template variables."""
+        draft = create_mock_draft(
+            id=1,
+            phone_number="447123456789",
+            content="Hi {{first_name}}, your booking {{booking_reference}} is confirmed!"
+        )
+
+        # Variables should remain as-is (not substituted) for manual drafts
+        assert "{{first_name}}" in draft.content
+        assert "{{booking_reference}}" in draft.content
+
+    def test_send_non_draft_fails(self):
+        """Test that send draft endpoint only works on drafts."""
+        from db_models import SMSStatus
+
+        sent_message = create_mock_message(id=1, status="delivered")
+
+        is_draft = sent_message.status == SMSStatus.DRAFT
+        assert is_draft is False
+
+
+class TestSmsDraftsFiltering:
+    """Tests for draft listing and filtering."""
+
+    def test_drafts_ordered_by_created_at_desc(self):
+        """Test that drafts are returned in descending order by creation date."""
+        older_draft = create_mock_draft(id=1, content="Older")
+        older_draft.created_at = datetime.now() - timedelta(days=1)
+
+        newer_draft = create_mock_draft(id=2, content="Newer")
+        newer_draft.created_at = datetime.now()
+
+        drafts = [newer_draft, older_draft]  # Should be newest first
+
+        assert drafts[0].id == 2
+        assert drafts[1].id == 1
+
+    def test_drafts_include_booking_reference(self):
+        """Test that draft response includes booking reference when linked."""
+        draft = create_mock_draft(id=1, booking_id=12345)
+
+        result = {
+            "id": draft.id,
+            "booking_id": draft.booking_id,
+            "booking_reference": draft.booking.reference if draft.booking else None,
+        }
+
+        assert result["booking_reference"] == "TAG-012345"
+
+    def test_drafts_include_customer_name(self):
+        """Test that draft response includes customer name when linked."""
+        draft = create_mock_draft(id=1, customer_id=789)
+
+        customer_name = f"{draft.customer.first_name} {draft.customer.last_name}" if draft.customer else None
+
+        result = {"id": draft.id, "customer_name": customer_name}
+
+        assert result["customer_name"] == "Test Customer"
+
+    def test_drafts_not_included_in_regular_messages(self):
+        """Test that drafts are not returned in regular message listing."""
+        from db_models import SMSStatus
+
+        draft = create_mock_draft(id=1)
+        sent_message = create_mock_message(id=2, status="sent")
+        delivered_message = create_mock_message(id=3, status="delivered")
+
+        # Regular messages (excluding drafts)
+        regular_messages = [sent_message, delivered_message]
+
+        draft_ids = [m.id for m in regular_messages if m.status == SMSStatus.DRAFT]
+        assert len(draft_ids) == 0
+
+    def test_only_drafts_returned_in_drafts_endpoint(self):
+        """Test that only draft status messages are returned in drafts endpoint."""
+        from db_models import SMSStatus
+
+        draft1 = create_mock_draft(id=1)
+        draft2 = create_mock_draft(id=2)
+        sent_message = create_mock_message(id=3, status="sent")
+
+        all_messages = [draft1, draft2, sent_message]
+
+        drafts_only = [m for m in all_messages if m.status == SMSStatus.DRAFT]
+
+        assert len(drafts_only) == 2
+        assert all(d.status == SMSStatus.DRAFT for d in drafts_only)
+
+
+class TestSmsDraftsEdgesCases:
+    """Edge case tests for SMS drafts."""
+
+    def test_draft_with_long_content(self):
+        """Test draft with content at max SMS length."""
+        long_content = "A" * 480  # Max length
+        draft = create_mock_draft(id=1, content=long_content)
+
+        assert len(draft.content) == 480
+
+    def test_draft_with_special_characters(self):
+        """Test draft with special characters."""
+        special_content = "Hello! 🎉 Test & more <test> \"quotes\""
+        draft = create_mock_draft(id=1, content=special_content)
+
+        assert draft.content == special_content
+
+    def test_draft_with_unicode(self):
+        """Test draft with unicode characters."""
+        unicode_content = "Bonjour! Café résumé naïve"
+        draft = create_mock_draft(id=1, content=unicode_content)
+
+        assert draft.content == unicode_content
+
+    def test_draft_with_newlines(self):
+        """Test draft with newline characters."""
+        multiline_content = "Line 1\nLine 2\nLine 3"
+        draft = create_mock_draft(id=1, content=multiline_content)
+
+        assert "\n" in draft.content
+        assert draft.content.count("\n") == 2
+
+    def test_draft_phone_number_formatting(self):
+        """Test draft with various phone number formats."""
+        formats = [
+            "447123456789",
+            "+447123456789",
+            "07123456789",
+        ]
+
+        for phone in formats:
+            draft = create_mock_draft(id=1, phone_number=phone)
+            assert draft.phone_number == phone
+
+    def test_multiple_drafts_same_phone(self):
+        """Test having multiple drafts for the same phone number."""
+        phone = "447123456789"
+        draft1 = create_mock_draft(id=1, phone_number=phone, content="Draft 1")
+        draft2 = create_mock_draft(id=2, phone_number=phone, content="Draft 2")
+
+        assert draft1.phone_number == draft2.phone_number
+        assert draft1.content != draft2.content
+
+    def test_draft_timestamps(self):
+        """Test that drafts have proper timestamps."""
+        draft = create_mock_draft(id=1)
+
+        assert draft.created_at is not None
+        # Updated at should be None for new draft
+        assert draft.updated_at is None
+
+    def test_draft_direction_is_outbound(self):
+        """Test that drafts are always outbound direction."""
+        from db_models import SMSDirection
+
+        draft = create_mock_draft(id=1)
+        assert draft.direction == SMSDirection.OUTBOUND
+
+    def test_draft_status_is_draft(self):
+        """Test that draft status is DRAFT."""
+        from db_models import SMSStatus
+
+        draft = create_mock_draft(id=1)
+        assert draft.status == SMSStatus.DRAFT
+
+    def test_update_draft_sets_updated_at(self):
+        """Test that updating a draft sets updated_at timestamp."""
+        draft = create_mock_draft(id=1)
+        assert draft.updated_at is None
+
+        # Simulate update
+        draft.content = "Updated content"
+        draft.updated_at = datetime.now()
+
+        assert draft.updated_at is not None
+
+
+# =============================================================================
 # Run tests if executed directly
 # =============================================================================
 

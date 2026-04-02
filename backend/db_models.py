@@ -68,6 +68,7 @@ class SMSDirection(enum.Enum):
 
 class SMSStatus(enum.Enum):
     """Status of an SMS message."""
+    DRAFT = "draft"           # Saved as draft, not sent
     PENDING = "pending"       # Queued for sending
     SENT = "sent"             # Sent to provider
     DELIVERED = "delivered"   # Confirmed delivered

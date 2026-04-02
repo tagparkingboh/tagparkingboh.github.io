@@ -14730,6 +14730,173 @@ async def delete_sms_message(
     return {"success": True, "message": "Message deleted"}
 
 
+# SMS Drafts endpoints
+@app.get("/api/admin/sms/drafts")
+async def get_sms_drafts(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Get all SMS drafts."""
+    drafts = db.query(SMSMessage).filter(
+        SMSMessage.status == SMSStatus.DRAFT
+    ).order_by(SMSMessage.created_at.desc()).all()
+
+    return {
+        "drafts": [
+            {
+                "id": d.id,
+                "phone_number": d.phone_number,
+                "content": d.content,
+                "booking_id": d.booking_id,
+                "booking_reference": d.booking.reference if d.booking else None,
+                "customer_id": d.customer_id,
+                "customer_name": f"{d.customer.first_name} {d.customer.last_name}" if d.customer else None,
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+                "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+            }
+            for d in drafts
+        ]
+    }
+
+
+@app.post("/api/admin/sms/drafts")
+async def save_sms_draft(
+    data: dict,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Save a new SMS draft."""
+    phone = data.get("phone", "")
+    content = data.get("content", "")
+    booking_id = data.get("booking_id")
+    customer_id = data.get("customer_id")
+
+    draft = SMSMessage(
+        phone_number=phone,
+        content=content,
+        booking_id=booking_id,
+        customer_id=customer_id,
+        direction=SMSDirection.OUTBOUND,
+        status=SMSStatus.DRAFT,
+        sent_by=current_user.id,
+    )
+    db.add(draft)
+    db.commit()
+    db.refresh(draft)
+
+    return {
+        "success": True,
+        "draft": {
+            "id": draft.id,
+            "phone_number": draft.phone_number,
+            "content": draft.content,
+            "booking_id": draft.booking_id,
+            "customer_id": draft.customer_id,
+            "created_at": draft.created_at.isoformat() if draft.created_at else None,
+        }
+    }
+
+
+@app.put("/api/admin/sms/drafts/{draft_id}")
+async def update_sms_draft(
+    draft_id: int,
+    data: dict,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Update an existing SMS draft."""
+    draft = db.query(SMSMessage).filter(
+        SMSMessage.id == draft_id,
+        SMSMessage.status == SMSStatus.DRAFT
+    ).first()
+
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    if "phone" in data:
+        draft.phone_number = data["phone"]
+    if "content" in data:
+        draft.content = data["content"]
+    if "booking_id" in data:
+        draft.booking_id = data["booking_id"]
+    if "customer_id" in data:
+        draft.customer_id = data["customer_id"]
+
+    db.commit()
+    db.refresh(draft)
+
+    return {
+        "success": True,
+        "draft": {
+            "id": draft.id,
+            "phone_number": draft.phone_number,
+            "content": draft.content,
+            "booking_id": draft.booking_id,
+            "customer_id": draft.customer_id,
+            "updated_at": draft.updated_at.isoformat() if draft.updated_at else None,
+        }
+    }
+
+
+@app.delete("/api/admin/sms/drafts/{draft_id}")
+async def delete_sms_draft(
+    draft_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Delete an SMS draft."""
+    draft = db.query(SMSMessage).filter(
+        SMSMessage.id == draft_id,
+        SMSMessage.status == SMSStatus.DRAFT
+    ).first()
+
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    db.delete(draft)
+    db.commit()
+
+    return {"success": True, "message": "Draft deleted"}
+
+
+@app.post("/api/admin/sms/drafts/{draft_id}/send")
+async def send_sms_draft(
+    draft_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Send an SMS draft."""
+    draft = db.query(SMSMessage).filter(
+        SMSMessage.id == draft_id,
+        SMSMessage.status == SMSStatus.DRAFT
+    ).first()
+
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+
+    if not draft.phone_number or not draft.content:
+        raise HTTPException(status_code=400, detail="Phone and content are required to send")
+
+    # Send the SMS
+    result = await sms_service.send_sms(
+        phone=draft.phone_number,
+        content=draft.content,
+        booking_id=draft.booking_id,
+        customer_id=draft.customer_id,
+        sent_by=current_user.id,
+        db_session=db,
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error"))
+
+    # Delete the draft after successful send
+    db.delete(draft)
+    db.commit()
+
+    return result
+
+
 @app.post("/api/admin/sms/send")
 async def send_sms_message(
     data: dict,
