@@ -1824,10 +1824,22 @@
 
   .secure-carpark-features {
     text-align: left;
+    max-width: 280px;
+    margin: 0 auto 1.5rem;
+  }
+
+  .secure-carpark-features li {
+    padding: 0.75rem 0;
+    padding-left: 2rem;
+  }
+
+  .secure-carpark-features li::before {
+    top: 0.75rem;
   }
 
   .secure-carpark-tagline {
     text-align: center;
+    margin-top: 1rem;
   }
 }
 
@@ -2168,12 +2180,13 @@
   }
 
   .secure-carpark-features {
-    max-width: 300px;
-    margin: 0 auto 2rem;
+    max-width: 280px;
+    margin: 0 auto 1.5rem;
   }
 
   .secure-carpark-features li {
     font-size: 16px;
+    padding: 0.75rem 0;
     padding-left: 1.75rem;
   }
 
@@ -2184,6 +2197,7 @@
   .secure-carpark-tagline {
     text-align: center;
     font-size: 16px;
+    margin-top: 1rem;
   }
 }
 
