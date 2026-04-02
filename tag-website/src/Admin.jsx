@@ -476,7 +476,11 @@ function Admin() {
     { label: 'Drop-off Time', value: '{{dropoff_time}}' },
     { label: 'Pickup Date', value: '{{pickup_date}}' },
     { label: 'Pickup Time', value: '{{pickup_time}}' },
-    { label: 'Vehicle Reg', value: '{{vehicle_registration}}' },
+    { label: 'Destination', value: '{{destination}}' },
+    { label: 'Vehicle Reg', value: '{{vehicle_reg}}' },
+    { label: 'Total Price', value: '{{total_price}}' },
+    { label: 'Days', value: '{{days}}' },
+    { label: 'Google Review', value: '{{google_review_link}}' },
   ]
 
   // Reports / Booking Locations state
