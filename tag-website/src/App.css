@@ -554,17 +554,34 @@
   max-width: 1400px;
   margin: 0 auto;
   display: flex;
-  align-items: center;
-  gap: 4rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 2rem 4rem;
 }
 
-/* Header hidden on desktop - shown on tablet/mobile */
 .secure-carpark-header {
-  display: none;
+  width: 100%;
+  text-align: center;
+  color: #fff;
+  margin-bottom: 1rem;
+}
+
+.secure-carpark-header h2 {
+  font-size: 48px;
+  color: #d9ff00;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.secure-carpark-header .secure-carpark-subtitle {
+  font-size: 20px;
+  color: #fff;
+  font-weight: 600;
+  margin-bottom: 0;
 }
 
 .secure-carpark-image {
-  flex: 1.2;
+  flex: 1;
   max-width: 55%;
 }
 
@@ -583,6 +600,11 @@
 .secure-carpark-content {
   flex: 1;
   color: #fff;
+}
+
+.secure-carpark-content h2,
+.secure-carpark-content .secure-carpark-subtitle {
+  display: none;
 }
 
 .secure-carpark-content h2 {
@@ -1790,7 +1812,9 @@
   }
 
   .secure-carpark-content {
+    display: block;
     order: 3;
+    color: #fff;
   }
 
   .secure-carpark-content h2,
@@ -2133,7 +2157,9 @@
   }
 
   .secure-carpark-content {
+    display: block;
     order: 3;
+    color: #fff;
   }
 
   .secure-carpark-content h2,
