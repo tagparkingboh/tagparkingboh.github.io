@@ -5930,6 +5930,15 @@ function Admin() {
                         )}
                         <div className="template-actions">
                           <button
+                            className="btn-primary btn-sm"
+                            onClick={() => {
+                              setSendSmsForm(prev => ({ ...prev, content: template.content }))
+                              setShowSendSmsModal(true)
+                            }}
+                          >
+                            Use
+                          </button>
+                          <button
                             className="btn-secondary btn-sm"
                             onClick={() => {
                               setEditingTemplate({ ...template })
