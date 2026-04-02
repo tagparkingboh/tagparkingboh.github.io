@@ -11975,18 +11975,23 @@ function Admin() {
           <div className="admin-section">
             <div className="admin-section-header">
               <h2>Audit Logs</h2>
-                  <label className="auto-refresh-toggle">
+              <div className="audit-logs-actions">
+                <label className="auto-refresh-toggle">
+                  <span className="toggle-label">Auto-refresh</span>
+                  <div className="toggle-switch">
                     <input
                       type="checkbox"
                       checked={auditLogsAutoRefresh}
                       onChange={(e) => setAuditLogsAutoRefresh(e.target.checked)}
                     />
-                    Auto-refresh (30s)
-                  </label>
-                  <button onClick={() => fetchAuditLogs(true)} className="admin-refresh" disabled={loadingAuditLogs}>
-                    {loadingAuditLogs ? 'Loading...' : 'Refresh'}
-                  </button>
-                </div>
+                    <span className="toggle-slider"></span>
+                  </div>
+                </label>
+                <button onClick={() => fetchAuditLogs(true)} className="admin-refresh" disabled={loadingAuditLogs}>
+                  {loadingAuditLogs ? 'Loading...' : '↻ Refresh'}
+                </button>
+              </div>
+            </div>
 
                 {/* Filters */}
                 <div className="qa-logs-filters">

@@ -250,18 +250,73 @@
   gap: 1rem;
 }
 
+.audit-logs-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .auto-refresh-toggle {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 13px;
-  color: #666;
+  gap: 8px;
   cursor: pointer;
   user-select: none;
 }
 
-.auto-refresh-toggle input {
+.auto-refresh-toggle .toggle-label {
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+}
+
+.toggle-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
   cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: 0.3s;
+  border-radius: 22px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(18px);
+}
+
+.toggle-switch input:focus + .toggle-slider {
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
 }
 
 .admin-section h2 {

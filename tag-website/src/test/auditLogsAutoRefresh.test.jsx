@@ -62,18 +62,23 @@ const TestAuditLogsComponent = ({ activeTab = 'qa-audit', token = 'test-token', 
 
   return (
     <div>
-      <label className="auto-refresh-toggle">
-        <input
-          type="checkbox"
-          checked={autoRefresh}
-          onChange={(e) => setAutoRefresh(e.target.checked)}
-          data-testid="auto-refresh-toggle"
-        />
-        Auto-refresh (30s)
-      </label>
-      <button onClick={fetchAuditLogs} disabled={loading} data-testid="refresh-btn">
-        {loading ? 'Loading...' : 'Refresh'}
-      </button>
+      <div className="audit-logs-actions">
+        <label className="auto-refresh-toggle">
+          <span className="toggle-label">Auto-refresh</span>
+          <div className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+              data-testid="auto-refresh-toggle"
+            />
+            <span className="toggle-slider"></span>
+          </div>
+        </label>
+        <button onClick={fetchAuditLogs} disabled={loading} data-testid="refresh-btn">
+          {loading ? 'Loading...' : '↻ Refresh'}
+        </button>
+      </div>
       <span data-testid="fetch-count">{fetchCount}</span>
       <span data-testid="auto-refresh-status">{autoRefresh ? 'enabled' : 'disabled'}</span>
       <ul data-testid="audit-logs">
@@ -127,7 +132,7 @@ describe('Audit Logs Auto-Refresh', () => {
     it('should display correct toggle label', () => {
       render(<TestAuditLogsComponent />)
 
-      expect(screen.getByText('Auto-refresh (30s)')).toBeInTheDocument()
+      expect(screen.getByText('Auto-refresh')).toBeInTheDocument()
     })
   })
 
@@ -440,7 +445,7 @@ describe('Auto-Refresh Toggle CSS', () => {
   it('should have auto-refresh-toggle class on label', () => {
     render(<TestAuditLogsComponent />)
 
-    const label = screen.getByText('Auto-refresh (30s)').closest('label')
+    const label = screen.getByText('Auto-refresh').closest('label')
     expect(label).toHaveClass('auto-refresh-toggle')
   })
 
