@@ -3999,12 +3999,32 @@ async def get_fun_facts(
 
         # Longest gap (most advance booking)
         advance = max(bookings_with_gap, key=lambda x: x[1])
-        result["advanceBooking"] = {
+        advance_data = {
             "gapDays": advance[1],
             "reference": advance[0].reference,
             "bookedOn": advance[0].created_at.strftime("%d %b %Y"),
             "dropoffDate": advance[0].dropoff_date.strftime("%d %b %Y"),
         }
+        # Calculate detailed breakdown: months/days/hours/minutes/seconds
+        if advance[0].dropoff_time:
+            dropoff_datetime = datetime.combine(advance[0].dropoff_date, advance[0].dropoff_time)
+            created_naive = advance[0].created_at.replace(tzinfo=None) if advance[0].created_at.tzinfo else advance[0].created_at
+            time_diff = dropoff_datetime - created_naive
+            if time_diff.total_seconds() > 0:
+                total_seconds = int(time_diff.total_seconds())
+                days = time_diff.days
+                months = days // 30
+                remaining_days = days % 30
+                hours, remainder = divmod(total_seconds % 86400, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                advance_data["gapDetailed"] = {
+                    "months": months,
+                    "days": remaining_days,
+                    "hours": hours,
+                    "minutes": minutes,
+                    "seconds": seconds,
+                }
+        result["advanceBooking"] = advance_data
 
     # Store in cache
     _fun_facts_cache["data"] = result.copy()

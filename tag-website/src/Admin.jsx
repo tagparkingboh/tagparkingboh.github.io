@@ -9472,8 +9472,12 @@ function Admin() {
                               <span className="fun-fact-icon">📆</span>
                               <div className="fun-fact-content">
                                 <span className="fun-fact-label">Most Advance Booking</span>
-                                <span className="fun-fact-value">{funFacts.advanceBooking.gapDays} days ahead</span>
-                                <span className="fun-fact-detail">Booked: {funFacts.advanceBooking.bookedOn}</span>
+                                <span className="fun-fact-value">
+                                  {funFacts.advanceBooking.gapDetailed
+                                    ? `${funFacts.advanceBooking.gapDetailed.months}m ${funFacts.advanceBooking.gapDetailed.days}d ${String(funFacts.advanceBooking.gapDetailed.hours).padStart(2, '0')}:${String(funFacts.advanceBooking.gapDetailed.minutes).padStart(2, '0')}:${String(funFacts.advanceBooking.gapDetailed.seconds).padStart(2, '0')}`
+                                    : `${funFacts.advanceBooking.gapDays} days ahead`}
+                                </span>
+                                <span className="fun-fact-detail">before drop-off</span>
                               </div>
                             </div>
                           )}
