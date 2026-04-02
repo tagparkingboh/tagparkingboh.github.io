@@ -23,6 +23,13 @@ def get_uk_now() -> datetime:
     return datetime.now(ZoneInfo("Europe/London"))
 
 
+def title_case_name(name: str) -> str:
+    """Convert name to title case (e.g., 'JOHN DOE' -> 'John Doe', 'jane doe' -> 'Jane Doe')."""
+    if not name:
+        return name
+    return name.strip().title()
+
+
 def log_promo(message: str, data: dict = None):
     """
     Log promotion-related messages to console.
@@ -1610,8 +1617,8 @@ async def create_manual_booking(
         customer = db.query(Customer).filter(Customer.email == request.email).first()
         if not customer:
             customer = Customer(
-                first_name=request.first_name,
-                last_name=request.last_name,
+                first_name=title_case_name(request.first_name),
+                last_name=title_case_name(request.last_name),
                 email=request.email,
                 phone=request.phone or "",  # Phone is required in DB
                 billing_address1=request.billing_address1,
@@ -1625,8 +1632,8 @@ async def create_manual_booking(
             db.flush()
         else:
             # Update customer details
-            customer.first_name = request.first_name
-            customer.last_name = request.last_name
+            customer.first_name = title_case_name(request.first_name)
+            customer.last_name = title_case_name(request.last_name)
             customer.phone = request.phone or customer.phone
             customer.billing_address1 = request.billing_address1
             customer.billing_address2 = request.billing_address2
@@ -1721,8 +1728,8 @@ async def create_manual_booking(
             reference=reference,
             customer_id=customer.id,
             vehicle_id=vehicle.id,
-            customer_first_name=request.first_name,
-            customer_last_name=request.last_name,
+            customer_first_name=title_case_name(request.first_name),
+            customer_last_name=title_case_name(request.last_name),
             dropoff_date=request.dropoff_date,
             dropoff_time=datetime.strptime(request.dropoff_time, "%H:%M").time(),
             pickup_date=request.pickup_date,
@@ -2421,6 +2428,110 @@ async def fix_overnight_arrivals_endpoint(
                     results["bookings_fixed"] += 1
 
     if not dry_run and results["bookings_fixed"] > 0:
+        db.commit()
+
+    return results
+
+
+@app.post("/api/admin/fix-customer-names")
+async def fix_customer_names_endpoint(
+    dry_run: bool = Query(True, description="If true, only report issues without fixing"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Fix customer names to proper title case.
+
+    Converts names like 'JOHN DOE' or 'john doe' to 'John Doe'.
+
+    Updates:
+    - customers.first_name and customers.last_name
+    - bookings.customer_first_name and bookings.customer_last_name
+    - marketing_subscribers.first_name and marketing_subscribers.last_name
+
+    Use dry_run=true (default) to see what would be fixed.
+    Use dry_run=false to actually apply the fixes.
+    """
+    results = {
+        "dry_run": dry_run,
+        "customers_checked": 0,
+        "customers_fixed": 0,
+        "bookings_checked": 0,
+        "bookings_fixed": 0,
+        "subscribers_checked": 0,
+        "subscribers_fixed": 0,
+        "sample_fixes": []
+    }
+
+    # Fix customers
+    customers = db.query(Customer).all()
+    results["customers_checked"] = len(customers)
+
+    for customer in customers:
+        first_fixed = title_case_name(customer.first_name)
+        last_fixed = title_case_name(customer.last_name)
+
+        if first_fixed != customer.first_name or last_fixed != customer.last_name:
+            if len(results["sample_fixes"]) < 10:
+                results["sample_fixes"].append({
+                    "type": "customer",
+                    "id": customer.id,
+                    "before": f"{customer.first_name} {customer.last_name}",
+                    "after": f"{first_fixed} {last_fixed}"
+                })
+
+            if not dry_run:
+                customer.first_name = first_fixed
+                customer.last_name = last_fixed
+            results["customers_fixed"] += 1
+
+    # Fix bookings
+    bookings = db.query(Booking).filter(
+        (Booking.customer_first_name.isnot(None)) | (Booking.customer_last_name.isnot(None))
+    ).all()
+    results["bookings_checked"] = len(bookings)
+
+    for booking in bookings:
+        first_fixed = title_case_name(booking.customer_first_name) if booking.customer_first_name else None
+        last_fixed = title_case_name(booking.customer_last_name) if booking.customer_last_name else None
+
+        if first_fixed != booking.customer_first_name or last_fixed != booking.customer_last_name:
+            if len(results["sample_fixes"]) < 20:
+                results["sample_fixes"].append({
+                    "type": "booking",
+                    "reference": booking.reference,
+                    "before": f"{booking.customer_first_name} {booking.customer_last_name}",
+                    "after": f"{first_fixed} {last_fixed}"
+                })
+
+            if not dry_run:
+                booking.customer_first_name = first_fixed
+                booking.customer_last_name = last_fixed
+            results["bookings_fixed"] += 1
+
+    # Fix marketing subscribers
+    subscribers = db.query(MarketingSubscriber).all()
+    results["subscribers_checked"] = len(subscribers)
+
+    for sub in subscribers:
+        first_fixed = title_case_name(sub.first_name) if sub.first_name else None
+        last_fixed = title_case_name(sub.last_name) if sub.last_name else None
+
+        if first_fixed != sub.first_name or last_fixed != sub.last_name:
+            if len(results["sample_fixes"]) < 30:
+                results["sample_fixes"].append({
+                    "type": "subscriber",
+                    "id": sub.id,
+                    "before": f"{sub.first_name} {sub.last_name}",
+                    "after": f"{first_fixed} {last_fixed}"
+                })
+
+            if not dry_run:
+                sub.first_name = first_fixed
+                sub.last_name = last_fixed
+            results["subscribers_fixed"] += 1
+
+    if not dry_run:
         db.commit()
 
     return results
@@ -7524,8 +7635,8 @@ async def create_or_update_customer(
     try:
         customer, is_new_customer = db_service.create_customer(
             db=db,
-            first_name=request.first_name,
-            last_name=request.last_name,
+            first_name=title_case_name(request.first_name),
+            last_name=title_case_name(request.last_name),
             email=request.email,
             phone=request.phone,
         )
@@ -7569,8 +7680,8 @@ async def update_customer(
         raise HTTPException(status_code=404, detail="Customer not found")
 
     try:
-        customer.first_name = request.first_name
-        customer.last_name = request.last_name
+        customer.first_name = title_case_name(request.first_name)
+        customer.last_name = title_case_name(request.last_name)
         customer.email = request.email
         customer.phone = request.phone
         db.commit()
@@ -8422,8 +8533,8 @@ async def subscribe_to_marketing(
         unsubscribe_token = secrets.token_urlsafe(32)
 
         subscriber = MarketingSubscriber(
-            first_name=request.first_name.strip(),
-            last_name=request.last_name.strip(),
+            first_name=title_case_name(request.first_name),
+            last_name=title_case_name(request.last_name),
             email=request.email.lower().strip(),
             source=request.source,
             unsubscribe_token=unsubscribe_token,
@@ -9427,8 +9538,8 @@ async def create_payment(
             booking_data = db_service.create_full_booking(
                 db=db,
                 # Customer
-                first_name=request.first_name,
-                last_name=request.last_name,
+                first_name=title_case_name(request.first_name),
+                last_name=title_case_name(request.last_name),
                 email=request.email,
                 phone=request.phone or "",
                 # Billing
@@ -10563,8 +10674,8 @@ async def create_user(
     # Create user
     user = User(
         email=email,
-        first_name=request.first_name.strip(),
-        last_name=request.last_name.strip(),
+        first_name=title_case_name(request.first_name),
+        last_name=title_case_name(request.last_name),
         phone=request.phone.strip() if request.phone else None,
         is_admin=request.is_admin,
         is_active=True,
