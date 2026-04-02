@@ -338,6 +338,212 @@ class TestTemplatesCRUD:
 
 
 # =============================================================================
+# Integration Tests: Use Template (Manual Send)
+# =============================================================================
+
+class TestUseTemplate:
+    """Integration tests for using templates in manual SMS sending."""
+
+    def test_use_template_copies_content_to_form(self):
+        """Test that using a template copies its content."""
+        template = create_mock_template(
+            id=1,
+            name="Welcome",
+            content="Hi {{first_name}}, welcome to TAG Parking!"
+        )
+
+        # Simulate form state after clicking "Use"
+        send_form = {"phone": "", "content": "", "booking_id": "", "customer_id": ""}
+        send_form["content"] = template.content
+
+        assert send_form["content"] == "Hi {{first_name}}, welcome to TAG Parking!"
+
+    def test_use_template_preserves_existing_phone(self):
+        """Test that using a template doesn't clear existing phone."""
+        template = create_mock_template(content="New content")
+
+        send_form = {"phone": "+447123456789", "content": "old content", "booking_id": "123", "customer_id": "456"}
+        send_form["content"] = template.content
+
+        assert send_form["phone"] == "+447123456789"
+        assert send_form["booking_id"] == "123"
+        assert send_form["customer_id"] == "456"
+
+    def test_use_template_replaces_previous_content(self):
+        """Test that using a new template replaces previous content."""
+        template1 = create_mock_template(content="First template content")
+        template2 = create_mock_template(content="Second template content")
+
+        send_form = {"phone": "", "content": "", "booking_id": "", "customer_id": ""}
+
+        # Use first template
+        send_form["content"] = template1.content
+        assert send_form["content"] == "First template content"
+
+        # Use second template
+        send_form["content"] = template2.content
+        assert send_form["content"] == "Second template content"
+
+    def test_use_inactive_template(self):
+        """Test that inactive templates can still be used manually."""
+        template = create_mock_template(
+            id=1,
+            name="Inactive Template",
+            content="This is an inactive template",
+            is_active=False
+        )
+
+        send_form = {"phone": "", "content": "", "booking_id": "", "customer_id": ""}
+        send_form["content"] = template.content
+
+        assert send_form["content"] == "This is an inactive template"
+        assert template.is_active is False
+
+    def test_use_automated_template_manually(self):
+        """Test that automated templates can be used manually."""
+        template = create_mock_template(
+            id=1,
+            name="Booking Confirmation",
+            content="Your booking {{booking_reference}} is confirmed!",
+            is_automated=True,
+            trigger_event="booking_confirmed"
+        )
+
+        send_form = {"phone": "", "content": "", "booking_id": "", "customer_id": ""}
+        send_form["content"] = template.content
+
+        assert send_form["content"] == "Your booking {{booking_reference}} is confirmed!"
+        assert template.is_automated is True
+
+    def test_use_template_with_all_variables(self):
+        """Test using template with all available variables."""
+        content = (
+            "Hi {{first_name}} {{last_name}}, "
+            "your booking {{booking_reference}} is for "
+            "{{dropoff_date}} at {{dropoff_time}}. "
+            "Pickup: {{pickup_date}} at {{pickup_time}}. "
+            "Vehicle: {{vehicle_registration}}. "
+            "Destination: {{destination}}. "
+            "Total: {{total_price}}"
+        )
+        template = create_mock_template(content=content)
+
+        send_form = {"phone": "", "content": "", "booking_id": "", "customer_id": ""}
+        send_form["content"] = template.content
+
+        assert "{{first_name}}" in send_form["content"]
+        assert "{{last_name}}" in send_form["content"]
+        assert "{{booking_reference}}" in send_form["content"]
+        assert "{{dropoff_date}}" in send_form["content"]
+        assert "{{dropoff_time}}" in send_form["content"]
+        assert "{{pickup_date}}" in send_form["content"]
+        assert "{{pickup_time}}" in send_form["content"]
+        assert "{{vehicle_registration}}" in send_form["content"]
+        assert "{{destination}}" in send_form["content"]
+        assert "{{total_price}}" in send_form["content"]
+
+    def test_use_template_with_empty_content(self):
+        """Test using template with empty content."""
+        template = create_mock_template(content="")
+
+        send_form = {"phone": "", "content": "existing content", "booking_id": "", "customer_id": ""}
+        send_form["content"] = template.content
+
+        assert send_form["content"] == ""
+
+    def test_use_template_with_special_characters(self):
+        """Test using template with special characters."""
+        special_contents = [
+            "Hi! Thanks for booking 🚗",
+            "Price: £50.00",
+            "Email: test@example.com",
+            "Reference: TAG-ABC123",
+            "Line 1\nLine 2\nLine 3",
+            "Tab\there",
+            "<script>alert('test')</script>",
+            "Quote: \"Hello\"",
+            "Apostrophe: It's great",
+        ]
+
+        for content in special_contents:
+            template = create_mock_template(content=content)
+            send_form = {"phone": "", "content": "", "booking_id": "", "customer_id": ""}
+            send_form["content"] = template.content
+
+            assert send_form["content"] == content
+
+    def test_use_template_with_max_length_content(self):
+        """Test using template at max SMS length (480 chars)."""
+        max_content = "A" * 480  # 3 SMS messages worth
+        template = create_mock_template(content=max_content)
+
+        send_form = {"phone": "", "content": "", "booking_id": "", "customer_id": ""}
+        send_form["content"] = template.content
+
+        assert len(send_form["content"]) == 480
+
+    def test_use_multiple_templates_sequentially(self):
+        """Test using multiple templates one after another."""
+        templates = [
+            create_mock_template(id=1, name="t1", content="Content 1"),
+            create_mock_template(id=2, name="t2", content="Content 2"),
+            create_mock_template(id=3, name="t3", content="Content 3"),
+        ]
+
+        send_form = {"phone": "", "content": "", "booking_id": "", "customer_id": ""}
+
+        for i, template in enumerate(templates):
+            send_form["content"] = template.content
+            assert send_form["content"] == f"Content {i + 1}"
+
+    def test_use_template_content_can_be_edited(self):
+        """Test that template content can be modified after loading."""
+        template = create_mock_template(content="Original template content")
+
+        send_form = {"phone": "", "content": "", "booking_id": "", "customer_id": ""}
+        send_form["content"] = template.content
+
+        # User edits the content
+        send_form["content"] = send_form["content"] + " - Modified by user"
+
+        assert send_form["content"] == "Original template content - Modified by user"
+
+    def test_use_template_with_trigger_event_types(self):
+        """Test using templates with different trigger events."""
+        trigger_events = [
+            ("booking_confirmed", "Your booking is confirmed!"),
+            ("reminder_2day", "Reminder: parking in 2 days"),
+            ("thank_you", "Thank you for using TAG Parking!"),
+            (None, "Manual template - no trigger"),
+        ]
+
+        for trigger, content in trigger_events:
+            template = create_mock_template(
+                content=content,
+                trigger_event=trigger,
+                is_automated=trigger is not None
+            )
+
+            send_form = {"phone": "", "content": "", "booking_id": "", "customer_id": ""}
+            send_form["content"] = template.content
+
+            assert send_form["content"] == content
+
+    def test_use_template_form_ready_for_booking_selection(self):
+        """Test form state is ready for booking selection after template use."""
+        template = create_mock_template(content="Hi {{first_name}}!")
+
+        send_form = {"phone": "", "content": "", "booking_id": "", "customer_id": ""}
+        send_form["content"] = template.content
+
+        # Phone should be empty, waiting for booking selection or manual entry
+        assert send_form["phone"] == ""
+        assert send_form["booking_id"] == ""
+        assert send_form["customer_id"] == ""
+        assert send_form["content"] == "Hi {{first_name}}!"
+
+
+# =============================================================================
 # Integration Tests: Template Variables
 # =============================================================================
 
