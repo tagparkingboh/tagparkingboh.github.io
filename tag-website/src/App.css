@@ -551,13 +551,12 @@
 }
 
 .secure-carpark-container {
-  max-width: 850px;
+  max-width: 900px;
   margin: 0 auto;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: flex-start;
-  gap: 2rem 3rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
 }
 
 .secure-carpark-header {
@@ -582,7 +581,8 @@
 }
 
 .secure-carpark-image {
-  flex: 0 0 500px;
+  width: 100%;
+  max-width: 800px;
 }
 
 .secure-carpark-image img {
@@ -598,8 +598,8 @@
 }
 
 .secure-carpark-content {
-  flex: 0 0 300px;
   color: #fff;
+  text-align: center;
 }
 
 .secure-carpark-content h2,
@@ -622,6 +622,8 @@
 }
 
 .secure-carpark-features {
+  display: inline-block;
+  text-align: left;
   list-style: none;
   padding: 0;
   margin: 0 0 1rem 0;
