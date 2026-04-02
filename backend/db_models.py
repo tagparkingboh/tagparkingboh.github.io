@@ -1321,3 +1321,42 @@ class SMSMessage(Base):
 
     def __repr__(self):
         return f"<SMSMessage {self.id} {self.direction.value} to {self.phone_number} ({self.status.value})>"
+
+
+class PoolHealthStatus(enum.Enum):
+    """Health status of the database connection pool."""
+    HEALTHY = "healthy"       # Usage < 70%
+    WARNING = "warning"       # Usage 70-90%
+    CRITICAL = "critical"     # Usage >= 90%
+
+
+class DbPoolSnapshot(Base):
+    """Historical snapshots of database connection pool metrics for monitoring and debugging."""
+    __tablename__ = "db_pool_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Pool metrics at time of snapshot
+    pool_size = Column(Integer, nullable=False)       # Configured base pool size
+    max_overflow = Column(Integer, nullable=False)    # Configured max overflow
+    checked_out = Column(Integer, nullable=False)     # Active connections
+    overflow = Column(Integer, nullable=False)        # Overflow connections in use
+    checked_in = Column(Integer, nullable=False)      # Available connections
+    usage_percent = Column(Numeric(5, 1), nullable=False)  # Usage percentage
+
+    # Health status at snapshot time
+    health_status = Column(
+        Enum(PoolHealthStatus),
+        default=PoolHealthStatus.HEALTHY,
+        nullable=False,
+        index=True
+    )
+
+    # What triggered the snapshot
+    trigger = Column(String(50), default="scheduled")  # "scheduled", "warning", "critical", "manual"
+
+    # Timestamp
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    def __repr__(self):
+        return f"<DbPoolSnapshot {self.created_at} - {self.health_status.value} ({self.usage_percent}%)>"

@@ -366,6 +366,69 @@ def process_all_pending_emails():
         db.close()
 
 
+def record_pool_snapshot():
+    """Record a periodic snapshot of database connection pool metrics."""
+    from database import get_pool_status
+    from db_models import DbPoolSnapshot, PoolHealthStatus
+
+    try:
+        status = get_pool_status()
+        usage_percent = status["usage_percent"]
+
+        # Determine health status
+        if usage_percent >= 90:
+            health = PoolHealthStatus.CRITICAL
+        elif usage_percent >= 70:
+            health = PoolHealthStatus.WARNING
+        else:
+            health = PoolHealthStatus.HEALTHY
+
+        db = get_db()
+        try:
+            snapshot = DbPoolSnapshot(
+                pool_size=status["pool_size"],
+                max_overflow=status["max_overflow"],
+                checked_out=status["checked_out"],
+                overflow=status["overflow"],
+                checked_in=status["checked_in"],
+                usage_percent=usage_percent,
+                health_status=health,
+                trigger="scheduled",
+            )
+            db.add(snapshot)
+            db.commit()
+
+            # Log only if not healthy (to avoid log spam)
+            if health != PoolHealthStatus.HEALTHY:
+                logger.warning(f"Pool snapshot recorded: {health.value} at {usage_percent}%")
+            else:
+                logger.debug(f"Pool snapshot recorded: {usage_percent}%")
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.error(f"Failed to record pool snapshot: {e}")
+
+
+def cleanup_old_snapshots():
+    """Remove pool snapshots older than 7 days to prevent table bloat."""
+    try:
+        db = get_db()
+        try:
+            from db_models import DbPoolSnapshot
+            cutoff = datetime.utcnow() - timedelta(days=7)
+            deleted = db.query(DbPoolSnapshot).filter(
+                DbPoolSnapshot.created_at < cutoff
+            ).delete()
+            db.commit()
+            if deleted > 0:
+                logger.info(f"Cleaned up {deleted} old pool snapshots")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Failed to cleanup old snapshots: {e}")
+
+
 def start_scheduler():
     """Start the email scheduler."""
     if scheduler.running:
@@ -378,6 +441,24 @@ def start_scheduler():
         trigger=IntervalTrigger(minutes=CHECK_INTERVAL_MINUTES),
         id="process_emails",
         name="Process pending marketing emails",
+        replace_existing=True,
+    )
+
+    # Add job to record pool snapshots every minute
+    scheduler.add_job(
+        record_pool_snapshot,
+        trigger=IntervalTrigger(minutes=1),
+        id="record_pool_snapshot",
+        name="Record database pool snapshot",
+        replace_existing=True,
+    )
+
+    # Add job to cleanup old snapshots once per day
+    scheduler.add_job(
+        cleanup_old_snapshots,
+        trigger=IntervalTrigger(hours=24),
+        id="cleanup_pool_snapshots",
+        name="Cleanup old pool snapshots",
         replace_existing=True,
     )
 

@@ -88,6 +88,9 @@ import traceback
 # Email scheduler
 from email_scheduler import start_scheduler, stop_scheduler
 
+# Circuit breaker for pool protection
+from circuit_breaker import CircuitBreakerMiddleware, get_circuit_breaker_stats
+
 # Email service
 from email_service import send_booking_confirmation_email, send_login_code_email
 
@@ -168,6 +171,10 @@ async def add_cache_control_headers(request: Request, call_next):
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
     return response
+
+
+# Circuit breaker middleware to protect against pool exhaustion
+app.add_middleware(CircuitBreakerMiddleware)
 
 
 # Include routers
@@ -12360,6 +12367,50 @@ async def get_database_health(
         "health": health,
         "message": message,
         **status
+    }
+
+
+@app.get("/api/admin/db-health/history")
+async def get_database_health_history(
+    hours: int = Query(24, ge=1, le=168, description="Number of hours of history to fetch"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get historical database connection pool metrics.
+    Returns snapshots from the last N hours for trend analysis.
+    """
+    from db_models import DbPoolSnapshot
+    from datetime import datetime, timedelta
+
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+
+    snapshots = db.query(DbPoolSnapshot).filter(
+        DbPoolSnapshot.created_at >= cutoff
+    ).order_by(DbPoolSnapshot.created_at.desc()).limit(1000).all()
+
+    # Also include circuit breaker stats
+    cb_stats = get_circuit_breaker_stats()
+
+    return {
+        "circuit_breaker": cb_stats,
+        "hours_requested": hours,
+        "snapshot_count": len(snapshots),
+        "snapshots": [
+            {
+                "id": s.id,
+                "timestamp": s.created_at.isoformat() if s.created_at else None,
+                "pool_size": s.pool_size,
+                "max_overflow": s.max_overflow,
+                "checked_out": s.checked_out,
+                "overflow": s.overflow,
+                "checked_in": s.checked_in,
+                "usage_percent": float(s.usage_percent),
+                "health_status": s.health_status.value,
+                "trigger": s.trigger,
+            }
+            for s in snapshots
+        ],
     }
 
 

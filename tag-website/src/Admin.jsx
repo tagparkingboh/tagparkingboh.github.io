@@ -567,6 +567,8 @@ function Admin() {
   const [loadingTestResults, setLoadingTestResults] = useState(false)
   const [dbHealth, setDbHealth] = useState(null)
   const [loadingDbHealth, setLoadingDbHealth] = useState(false)
+  const [dbPoolHistory, setDbPoolHistory] = useState(null)
+  const [loadingPoolHistory, setLoadingPoolHistory] = useState(false)
 
   // QA Dashboard - Audit Logs state
   const [auditLogs, setAuditLogs] = useState([])
@@ -927,6 +929,7 @@ function Admin() {
     if (activeTab === 'qa-tests' && token) {
       fetchTestResults()
       fetchDbHealth()
+      fetchDbPoolHistory()
     }
   }, [activeTab, token])
 
@@ -1390,6 +1393,23 @@ function Admin() {
       console.error('Failed to fetch DB health:', err)
     } finally {
       setLoadingDbHealth(false)
+    }
+  }
+
+  const fetchDbPoolHistory = async (hours = 24) => {
+    setLoadingPoolHistory(true)
+    try {
+      const res = await fetch(`${API_URL}/api/admin/db-health/history?hours=${hours}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setDbPoolHistory(data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch DB pool history:', err)
+    } finally {
+      setLoadingPoolHistory(false)
     }
   }
 
@@ -11796,6 +11816,74 @@ function Admin() {
                         </div>
                       ) : (
                         <p className="admin-empty">Unable to fetch database health</p>
+                      )}
+                    </div>
+
+                    {/* Pool History */}
+                    <div className="qa-history">
+                      <div className="qa-db-health-header">
+                        <h4>Connection Pool History</h4>
+                        <button onClick={() => fetchDbPoolHistory()} className="admin-refresh-small" disabled={loadingPoolHistory}>
+                          {loadingPoolHistory ? '...' : 'Refresh'}
+                        </button>
+                      </div>
+                      {dbPoolHistory?.circuit_breaker && (
+                        <div className="circuit-breaker-status" style={{ marginBottom: '16px', padding: '12px', background: '#f8fafc', borderRadius: '6px', fontSize: '13px' }}>
+                          <strong>Circuit Breaker:</strong>{' '}
+                          <span style={{
+                            color: dbPoolHistory.circuit_breaker.state === 'CLOSED' ? '#22c55e' :
+                                   dbPoolHistory.circuit_breaker.state === 'HALF_OPEN' ? '#f59e0b' : '#ef4444',
+                            fontWeight: 600
+                          }}>
+                            {dbPoolHistory.circuit_breaker.state}
+                          </span>
+                          {dbPoolHistory.circuit_breaker.rejected_count > 0 && (
+                            <span style={{ marginLeft: '16px', color: '#6b7280' }}>
+                              Rejected: {dbPoolHistory.circuit_breaker.rejected_count} requests
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {!dbPoolHistory || dbPoolHistory.snapshots?.length === 0 ? (
+                        <p className="admin-empty">No pool history recorded yet. Snapshots are taken every minute.</p>
+                      ) : (
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Time</th>
+                              <th>Status</th>
+                              <th>Usage</th>
+                              <th>Active</th>
+                              <th>Overflow</th>
+                              <th>Available</th>
+                              <th>Trigger</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dbPoolHistory.snapshots?.slice(0, 50).map((snapshot) => (
+                              <tr key={snapshot.id} className={snapshot.health_status !== 'healthy' ? 'row-warning' : ''}>
+                                <td>{new Date(snapshot.timestamp).toLocaleString()}</td>
+                                <td>
+                                  <span className={`status-badge status-${snapshot.health_status === 'healthy' ? 'confirmed' : snapshot.health_status === 'warning' ? 'pending' : 'cancelled'}`}>
+                                    {snapshot.health_status}
+                                  </span>
+                                </td>
+                                <td style={{ color: snapshot.usage_percent >= 70 ? (snapshot.usage_percent >= 90 ? '#ef4444' : '#f59e0b') : '#22c55e', fontWeight: 600 }}>
+                                  {snapshot.usage_percent}%
+                                </td>
+                                <td>{snapshot.checked_out}</td>
+                                <td style={{ color: snapshot.overflow > 0 ? '#f59e0b' : 'inherit' }}>{snapshot.overflow}</td>
+                                <td>{snapshot.checked_in}</td>
+                                <td style={{ fontSize: '12px', color: '#6b7280' }}>{snapshot.trigger}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                      {dbPoolHistory?.snapshot_count > 50 && (
+                        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
+                          Showing 50 of {dbPoolHistory.snapshot_count} snapshots from the last 24 hours
+                        </p>
                       )}
                     </div>
 
