@@ -9458,8 +9458,12 @@ function Admin() {
                               <span className="fun-fact-icon">⚡</span>
                               <div className="fun-fact-content">
                                 <span className="fun-fact-label">Last Minute Booking</span>
-                                <span className="fun-fact-value">{funFacts.lastMinuteBooking.gapDays === 0 ? 'Same day' : `${funFacts.lastMinuteBooking.gapDays} day${funFacts.lastMinuteBooking.gapDays !== 1 ? 's' : ''} before`}</span>
-                                <span className="fun-fact-detail">Drop-off: {funFacts.lastMinuteBooking.dropoffDate}</span>
+                                <span className="fun-fact-value">
+                                  {funFacts.lastMinuteBooking.gapDays === 0
+                                    ? (funFacts.lastMinuteBooking.gapTime || 'Same day')
+                                    : `${funFacts.lastMinuteBooking.gapDays} day${funFacts.lastMinuteBooking.gapDays !== 1 ? 's' : ''} before`}
+                                </span>
+                                <span className="fun-fact-detail">{funFacts.lastMinuteBooking.gapDays === 0 ? 'before drop-off' : `Drop-off: ${funFacts.lastMinuteBooking.dropoffDate}`}</span>
                               </div>
                             </div>
                           )}

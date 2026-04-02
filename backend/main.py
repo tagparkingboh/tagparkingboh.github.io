@@ -3980,12 +3980,22 @@ async def get_fun_facts(
     if bookings_with_gap:
         # Shortest gap (last minute booking)
         last_minute = min(bookings_with_gap, key=lambda x: x[1])
-        result["lastMinuteBooking"] = {
+        last_minute_data = {
             "gapDays": last_minute[1],
             "reference": last_minute[0].reference,
             "bookedOn": last_minute[0].created_at.strftime("%d %b %Y"),
             "dropoffDate": last_minute[0].dropoff_date.strftime("%d %b %Y"),
         }
+        # For same-day bookings, calculate hours:minutes:seconds before drop-off
+        if last_minute[1] == 0 and last_minute[0].dropoff_time:
+            dropoff_datetime = datetime.combine(last_minute[0].dropoff_date, last_minute[0].dropoff_time)
+            created_naive = last_minute[0].created_at.replace(tzinfo=None) if last_minute[0].created_at.tzinfo else last_minute[0].created_at
+            time_diff = dropoff_datetime - created_naive
+            if time_diff.total_seconds() > 0:
+                hours, remainder = divmod(int(time_diff.total_seconds()), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                last_minute_data["gapTime"] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        result["lastMinuteBooking"] = last_minute_data
 
         # Longest gap (most advance booking)
         advance = max(bookings_with_gap, key=lambda x: x[1])
