@@ -9483,11 +9483,16 @@ function Admin() {
                         <h3>Booking Milestones</h3>
                         <div className="milestones-grid">
                           {funFacts.milestones.map((milestone) => (
-                            <div key={milestone.number} className="milestone-card">
-                              <span className="milestone-number">{milestone.label}</span>
-                              <div className="milestone-content">
-                                <span className="milestone-date">{milestone.date}</span>
-                                <span className="milestone-time">{milestone.time}</span>
+                            <div key={milestone.number} className={`milestone-card milestone-${milestone.number === 1 ? 'first' : milestone.number >= 100 ? 'century' : 'standard'}`}>
+                              <div className="milestone-badge">
+                                <span className="milestone-number">{milestone.label}</span>
+                                <span className="milestone-label">booking</span>
+                              </div>
+                              <div className="milestone-details">
+                                {milestone.customerName && (
+                                  <span className="milestone-customer">{milestone.customerName}</span>
+                                )}
+                                <span className="milestone-datetime">{milestone.date} at {milestone.time}</span>
                               </div>
                             </div>
                           ))}

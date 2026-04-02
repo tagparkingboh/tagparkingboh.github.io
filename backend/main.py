@@ -3952,12 +3952,17 @@ async def get_fun_facts(
         if len(sorted_bookings) >= num:
             booking = sorted_bookings[num - 1]  # 0-indexed
             label = "1st" if num == 1 else f"{num}th"
+            # Get customer name from snapshot or relationship
+            first_name = booking.customer_first_name or (booking.customer.first_name if booking.customer else None)
+            last_name = booking.customer_last_name or (booking.customer.last_name if booking.customer else None)
             milestones.append({
                 "number": num,
                 "label": label,
                 "date": booking.created_at.strftime("%d %b %Y"),
                 "time": booking.created_at.strftime("%H:%M"),
                 "reference": booking.reference,
+                "customerName": f"{first_name} {last_name}" if first_name and last_name else None,
+                "customerFirstName": first_name,
             })
 
     result["milestones"] = milestones
