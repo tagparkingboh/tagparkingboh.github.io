@@ -6055,6 +6055,8 @@ function Admin() {
                     <code>{'{{destination}}'}</code>
                     <code>{'{{vehicle_reg}}'}</code>
                     <code>{'{{total_price}}'}</code>
+                    <code>{'{{days}}'}</code>
+                    <code>{'{{google_review_link}}'}</code>
                   </div>
                 </div>
               </div>
