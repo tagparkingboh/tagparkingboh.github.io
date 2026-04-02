@@ -70,6 +70,7 @@ function Employee() {
 
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [inspections, setInspections] = useState({}) // { bookingId: [inspections] }
+  const fetchingInspectionsRef = useRef(new Set()) // Track in-flight requests to prevent duplicates
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
 
@@ -230,8 +231,16 @@ function Employee() {
 
   const triggerRefresh = () => setRefreshTrigger(prev => prev + 1)
 
-  // Fetch inspections for a booking
+  // Fetch inspections for a booking (with deduplication)
   const fetchInspections = async (bookingId) => {
+    // Skip if already fetching or already have data
+    if (fetchingInspectionsRef.current.has(bookingId)) {
+      return
+    }
+
+    // Mark as fetching
+    fetchingInspectionsRef.current.add(bookingId)
+
     try {
       const response = await fetch(`${API_URL}/api/employee/inspections/${bookingId}`, {
         headers: { 'Authorization': `Bearer ${token}` },
@@ -242,6 +251,11 @@ function Employee() {
       }
     } catch (err) {
       // Silently fail - inspections just won't show status
+    } finally {
+      // Remove from fetching set after a short delay to prevent immediate re-fetch
+      setTimeout(() => {
+        fetchingInspectionsRef.current.delete(bookingId)
+      }, 1000)
     }
   }
 
@@ -542,7 +556,7 @@ function Employee() {
 
   // Render action buttons for each booking in the calendar
   const renderBookingActions = useCallback((booking, type) => {
-    // Fetch inspections if we haven't yet
+    // Fetch inspections if we haven't yet (deduplication handled in fetchInspections)
     if (!inspections[booking.id]) {
       fetchInspections(booking.id)
     }
