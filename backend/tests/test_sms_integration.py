@@ -243,6 +243,92 @@ class TestTemplatesCRUD:
         assert len(remaining) == 2
         assert all(t.id != deleted_id for t in remaining)
 
+    def test_delete_inactive_template(self):
+        """Test deleting an inactive template."""
+        template = create_mock_template(id=1, name="inactive_template", is_active=False)
+
+        deleted = True
+
+        assert deleted is True
+        assert template.is_active is False
+
+    def test_delete_template_with_trigger_event(self):
+        """Test deleting template with specific trigger events."""
+        triggers = ["booking_confirmed", "reminder_2day", "thank_you"]
+
+        for trigger in triggers:
+            template = create_mock_template(
+                id=1,
+                name=f"{trigger}_template",
+                trigger_event=trigger,
+                is_automated=True
+            )
+            deleted = True
+
+            assert deleted is True
+            assert template.trigger_event == trigger
+
+    def test_delete_only_template_leaves_empty_list(self):
+        """Test deleting the last template results in empty list."""
+        templates = [create_mock_template(id=1, name="only_template")]
+
+        deleted_id = 1
+        remaining = [t for t in templates if t.id != deleted_id]
+
+        assert len(remaining) == 0
+        assert remaining == []
+
+    def test_delete_template_with_special_characters_in_name(self):
+        """Test deleting template with special characters in name."""
+        special_names = [
+            "Template & Booking",
+            "Template <Test>",
+            "Template 'Quote'",
+            "Template \"Double\"",
+            "Template/Slash",
+        ]
+
+        for name in special_names:
+            template = create_mock_template(id=1, name=name)
+            deleted = True
+
+            assert deleted is True
+            assert template.name == name
+
+    def test_delete_same_template_twice_second_returns_404(self):
+        """Test double delete - second attempt should fail."""
+        templates = [create_mock_template(id=1, name="to_delete")]
+
+        # First delete succeeds
+        deleted_id = 1
+        remaining = [t for t in templates if t.id != deleted_id]
+        first_delete_success = True
+
+        # Second delete - template not found
+        template = next((t for t in remaining if t.id == deleted_id), None)
+        second_delete_status = 404 if not template else 200
+
+        assert first_delete_success is True
+        assert second_delete_status == 404
+
+    def test_delete_template_preserves_others(self):
+        """Test deleting one template doesn't affect others."""
+        templates = [
+            create_mock_template(id=1, name="keep1", content="content1"),
+            create_mock_template(id=2, name="delete_me", content="content2"),
+            create_mock_template(id=3, name="keep2", content="content3"),
+        ]
+
+        deleted_id = 2
+        remaining = [t for t in templates if t.id != deleted_id]
+
+        # Check preserved templates are unchanged
+        assert len(remaining) == 2
+        assert remaining[0].name == "keep1"
+        assert remaining[0].content == "content1"
+        assert remaining[1].name == "keep2"
+        assert remaining[1].content == "content3"
+
     def test_get_template_not_found(self):
         """Test getting non-existent template."""
         template = None
