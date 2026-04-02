@@ -455,6 +455,11 @@ function HomePage() {
       {/* Secure Car Park Section */}
       <section className="secure-carpark" id="secure-carpark">
         <div className="secure-carpark-container">
+          {/* Header shown above image on tablet/mobile */}
+          <div className="secure-carpark-header">
+            <h2>Our Secure Car Park</h2>
+            <p className="secure-carpark-subtitle">Your car never leaves our premises</p>
+          </div>
           <div className="secure-carpark-image">
             <img
               src="/assets/secure-carpark.webp"

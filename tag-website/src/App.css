@@ -545,20 +545,27 @@
 .secure-carpark {
   background: #343434;
   padding: 5rem 4rem;
+  padding-bottom: 0;
   scroll-margin-top: 80px;
+  border-bottom: 8px solid #ffffff;
 }
 
 .secure-carpark-container {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   display: flex;
   align-items: center;
   gap: 4rem;
 }
 
+/* Header hidden on desktop - shown on tablet/mobile */
+.secure-carpark-header {
+  display: none;
+}
+
 .secure-carpark-image {
-  flex: 1;
-  max-width: 50%;
+  flex: 1.2;
+  max-width: 55%;
 }
 
 .secure-carpark-image img {
@@ -1741,18 +1748,54 @@
 
   .secure-carpark {
     padding: 4rem 2rem;
+    padding-bottom: 0;
   }
 
   .secure-carpark-container {
-    gap: 3rem;
+    flex-direction: column;
+    gap: 2rem;
   }
 
-  .secure-carpark-content h2 {
+  .secure-carpark-header {
+    display: block;
+    text-align: center;
+    color: #fff;
+  }
+
+  .secure-carpark-header h2 {
     font-size: 36px;
+    color: #d9ff00;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
   }
 
-  .secure-carpark-subtitle {
+  .secure-carpark-header .secure-carpark-subtitle {
     font-size: 18px;
+    color: #fff;
+    font-weight: 600;
+    margin-bottom: 0;
+  }
+
+  .secure-carpark-image {
+    max-width: 85%;
+    order: 2;
+  }
+
+  .secure-carpark-content {
+    order: 3;
+  }
+
+  .secure-carpark-content h2,
+  .secure-carpark-content .secure-carpark-subtitle {
+    display: none;
+  }
+
+  .secure-carpark-features {
+    text-align: left;
+  }
+
+  .secure-carpark-tagline {
+    text-align: center;
   }
 }
 
@@ -2048,25 +2091,46 @@
 
   .secure-carpark {
     padding: 3rem 1.5rem;
+    padding-bottom: 0;
   }
 
   .secure-carpark-container {
     flex-direction: column;
-    gap: 2rem;
+    gap: 1.5rem;
+  }
+
+  .secure-carpark-header {
+    display: block;
+    text-align: center;
+    color: #fff;
+  }
+
+  .secure-carpark-header h2 {
+    font-size: 32px;
+    color: #d9ff00;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+  }
+
+  .secure-carpark-header .secure-carpark-subtitle {
+    font-size: 16px;
+    color: #fff;
+    font-weight: 600;
+    margin-bottom: 0;
   }
 
   .secure-carpark-image {
-    max-width: 100%;
+    max-width: 95%;
+    order: 2;
   }
 
-  .secure-carpark-content h2 {
-    font-size: 32px;
-    text-align: center;
+  .secure-carpark-content {
+    order: 3;
   }
 
-  .secure-carpark-subtitle {
-    font-size: 16px;
-    text-align: center;
+  .secure-carpark-content h2,
+  .secure-carpark-content .secure-carpark-subtitle {
+    display: none;
   }
 
   .secure-carpark-features {
@@ -2117,15 +2181,19 @@
 
   .secure-carpark {
     padding: 2.5rem 1rem;
+    padding-bottom: 0;
   }
 
-  .secure-carpark-content h2 {
+  .secure-carpark-header h2 {
     font-size: 28px;
   }
 
-  .secure-carpark-subtitle {
+  .secure-carpark-header .secure-carpark-subtitle {
     font-size: 15px;
-    margin-bottom: 1.5rem;
+  }
+
+  .secure-carpark-image {
+    max-width: 100%;
   }
 
   .secure-carpark-features li {
