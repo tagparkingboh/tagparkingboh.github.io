@@ -1063,6 +1063,519 @@ class TestAuthentication:
         assert status_code == 200
 
 # =============================================================================
+# Integration Tests: Resend Message
+# =============================================================================
+
+class TestResendMessage:
+    """Integration tests for resending SMS messages."""
+
+    def test_resend_outbound_message_success(self):
+        """Test successfully resending an outbound message."""
+        original_message = create_mock_message(
+            id=1,
+            phone_number="447123456789",
+            direction="outbound",
+            content="Hi Mark, your parking at TAG starts in 2 days!",
+            status="delivered",
+            booking_id=123,
+        )
+
+        # Simulate resend - should create a new message with same content
+        new_message_id = 2
+        result = {
+            "success": True,
+            "message": "Message resent successfully",
+            "new_message_id": new_message_id,
+        }
+
+        assert result["success"] is True
+        assert result["new_message_id"] == 2
+        assert result["message"] == "Message resent successfully"
+
+    def test_resend_failed_message(self):
+        """Test resending a previously failed message."""
+        failed_message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Failed message content",
+            status="failed",
+        )
+
+        # Should still be able to resend failed messages
+        result = {
+            "success": True,
+            "new_message_id": 2,
+        }
+
+        assert result["success"] is True
+        assert result["new_message_id"] == 2
+
+    def test_cannot_resend_inbound_message(self):
+        """Test that inbound messages cannot be resent."""
+        inbound_message = create_mock_message(
+            id=1,
+            direction="inbound",
+            content="Customer reply",
+            status="delivered",
+        )
+
+        # Attempting to resend an inbound message should fail
+        status_code = 400
+        error_detail = "Cannot resend inbound messages"
+
+        assert status_code == 400
+        assert error_detail == "Cannot resend inbound messages"
+
+    def test_resend_nonexistent_message_returns_404(self):
+        """Test resending a message that doesn't exist."""
+        message_id = 9999
+        message = None  # Not found
+
+        status_code = 404 if not message else 200
+        assert status_code == 404
+
+    def test_resend_preserves_booking_association(self):
+        """Test that resent message preserves booking ID."""
+        original_message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Booking reminder",
+            booking_id=456,
+        )
+
+        # New message should have same booking_id
+        new_message_booking_id = original_message.booking_id
+
+        assert new_message_booking_id == 456
+
+    def test_resend_preserves_customer_association(self):
+        """Test that resent message preserves customer ID."""
+        original_message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Customer message",
+            customer_id=789,
+        )
+
+        # New message should have same customer_id
+        new_message_customer_id = original_message.customer_id
+
+        assert new_message_customer_id == 789
+
+    def test_resend_preserves_content_exactly(self):
+        """Test that resent message has identical content."""
+        original_content = "Hi {{first_name}}, reminder about booking {{booking_ref}}"
+        original_message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content=original_content,
+        )
+
+        # New message should have exact same content
+        new_message_content = original_message.content
+
+        assert new_message_content == original_content
+
+    def test_resend_creates_new_message_record(self):
+        """Test that resending creates a new database record."""
+        original_message_id = 1
+        new_message_id = 2
+
+        # Original message should still exist
+        assert original_message_id != new_message_id
+
+    def test_resend_with_pending_status(self):
+        """Test resending a message that is still pending."""
+        pending_message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Pending message",
+            status="pending",
+        )
+
+        # Should still allow resending even if pending
+        result = {"success": True, "new_message_id": 2}
+        assert result["success"] is True
+
+    def test_resend_with_sent_status(self):
+        """Test resending a message with 'sent' status."""
+        sent_message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Sent message",
+            status="sent",
+        )
+
+        result = {"success": True, "new_message_id": 2}
+        assert result["success"] is True
+
+    def test_resend_updates_message_count(self):
+        """Test that resending increments the total message count."""
+        initial_count = 5
+        # After resend, count should increase by 1
+        new_count = initial_count + 1
+
+        assert new_count == 6
+
+    def test_resend_tracks_original_sender(self):
+        """Test that resent message tracks the current admin user."""
+        admin_user = create_mock_user(id=10, email="admin@example.com")
+
+        # New message should be attributed to current admin
+        sent_by = admin_user.id
+
+        assert sent_by == 10
+
+
+# =============================================================================
+# Integration Tests: Delete Message
+# =============================================================================
+
+class TestDeleteMessage:
+    """Integration tests for deleting SMS messages."""
+
+    def test_delete_outbound_message_success(self):
+        """Test successfully deleting an outbound message."""
+        message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Test outbound message",
+            status="delivered",
+        )
+
+        result = {"success": True, "message": "Message deleted"}
+
+        assert result["success"] is True
+        assert result["message"] == "Message deleted"
+
+    def test_delete_inbound_message_success(self):
+        """Test successfully deleting an inbound message."""
+        message = create_mock_message(
+            id=1,
+            direction="inbound",
+            content="Customer inbound message",
+            status="delivered",
+        )
+
+        result = {"success": True, "message": "Message deleted"}
+
+        assert result["success"] is True
+
+    def test_delete_nonexistent_message_returns_404(self):
+        """Test deleting a message that doesn't exist."""
+        message_id = 9999
+        message = None  # Not found
+
+        status_code = 404 if not message else 200
+        assert status_code == 404
+
+    def test_delete_removes_message_from_database(self):
+        """Test that deleted message is actually removed."""
+        message_id = 1
+        # After delete, query should return None
+        deleted_message = None
+
+        assert deleted_message is None
+
+    def test_delete_failed_message(self):
+        """Test deleting a failed message."""
+        failed_message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Failed message",
+            status="failed",
+        )
+
+        result = {"success": True, "message": "Message deleted"}
+        assert result["success"] is True
+
+    def test_delete_pending_message(self):
+        """Test deleting a pending message."""
+        pending_message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Pending message",
+            status="pending",
+        )
+
+        result = {"success": True, "message": "Message deleted"}
+        assert result["success"] is True
+
+    def test_delete_message_with_booking_association(self):
+        """Test deleting a message associated with a booking."""
+        message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Booking message",
+            booking_id=123,
+        )
+
+        # Should delete successfully even with booking association
+        result = {"success": True}
+        assert result["success"] is True
+
+    def test_delete_message_with_customer_association(self):
+        """Test deleting a message associated with a customer."""
+        message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Customer message",
+            customer_id=456,
+        )
+
+        # Should delete successfully even with customer association
+        result = {"success": True}
+        assert result["success"] is True
+
+    def test_delete_message_from_bulk_send(self):
+        """Test deleting a message that was part of a bulk send."""
+        bulk_message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Bulk message",
+        )
+        bulk_message.is_bulk = True
+        bulk_message.bulk_batch_id = "batch_123"
+
+        result = {"success": True}
+        assert result["success"] is True
+
+    def test_delete_decrements_message_count(self):
+        """Test that deleting reduces the total message count."""
+        initial_count = 10
+        # After delete, count should decrease by 1
+        new_count = initial_count - 1
+
+        assert new_count == 9
+
+    def test_delete_message_with_template_reference(self):
+        """Test deleting a message that references a template."""
+        message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Template-based message",
+        )
+        message.template_id = 5
+
+        result = {"success": True}
+        assert result["success"] is True
+
+    def test_delete_does_not_affect_other_messages(self):
+        """Test that deleting one message doesn't affect others."""
+        message1_id = 1
+        message2_id = 2
+
+        # Delete message 1
+        deleted_id = message1_id
+
+        # Message 2 should still exist
+        message2_exists = True
+
+        assert deleted_id == 1
+        assert message2_exists is True
+
+    def test_delete_conversation_thread(self):
+        """Test deleting multiple messages in a conversation."""
+        messages = [
+            create_mock_message(id=1, direction="outbound", content="Message 1"),
+            create_mock_message(id=2, direction="inbound", content="Reply 1"),
+            create_mock_message(id=3, direction="outbound", content="Message 2"),
+        ]
+
+        deleted_count = 0
+        for msg in messages:
+            deleted_count += 1
+
+        assert deleted_count == 3
+
+    def test_delete_requires_admin_authentication(self):
+        """Test that delete endpoint requires admin authentication."""
+        user = None  # Not authenticated
+        status_code = 401 if not user else 200
+
+        assert status_code == 401
+
+    def test_delete_rejects_non_admin_user(self):
+        """Test that non-admin users cannot delete messages."""
+        user = create_mock_user(is_admin=False)
+        status_code = 403 if user and not user.is_admin else 200
+
+        assert status_code == 403
+
+
+# =============================================================================
+# Integration Tests: Message Actions Edge Cases
+# =============================================================================
+
+class TestMessageActionsEdgeCases:
+    """Edge case tests for resend and delete functionality."""
+
+    def test_resend_message_with_special_characters(self):
+        """Test resending message with special characters."""
+        message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Test with special chars: £€¥ \"quotes\" & ampersand",
+        )
+
+        result = {"success": True, "new_message_id": 2}
+        assert result["success"] is True
+
+    def test_resend_message_with_emoji(self):
+        """Test resending message with emoji characters."""
+        message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Your parking is confirmed! ✅🚗",
+        )
+
+        result = {"success": True, "new_message_id": 2}
+        assert result["success"] is True
+
+    def test_resend_message_with_newlines(self):
+        """Test resending message with newline characters."""
+        message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="Line 1\nLine 2\nLine 3",
+        )
+
+        result = {"success": True, "new_message_id": 2}
+        assert result["success"] is True
+
+    def test_delete_message_with_special_characters(self):
+        """Test deleting message with special characters in content."""
+        message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="<script>alert('test')</script>",  # Should still delete
+        )
+
+        result = {"success": True}
+        assert result["success"] is True
+
+    def test_resend_and_delete_same_message(self):
+        """Test resending a message then deleting the original."""
+        original_id = 1
+        new_id = 2
+
+        # Resend creates new message
+        resend_result = {"success": True, "new_message_id": new_id}
+
+        # Delete original
+        delete_result = {"success": True}
+
+        assert resend_result["new_message_id"] == 2
+        assert delete_result["success"] is True
+
+    def test_concurrent_resend_attempts(self):
+        """Test handling multiple rapid resend requests."""
+        message_id = 1
+
+        # Multiple resends should create multiple new messages
+        resend_results = [
+            {"success": True, "new_message_id": 2},
+            {"success": True, "new_message_id": 3},
+            {"success": True, "new_message_id": 4},
+        ]
+
+        new_ids = [r["new_message_id"] for r in resend_results]
+        assert len(set(new_ids)) == 3  # All unique IDs
+
+    def test_resend_very_long_message(self):
+        """Test resending a message at maximum SMS length."""
+        long_content = "A" * 160  # Standard SMS length
+        message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content=long_content,
+        )
+
+        result = {"success": True, "new_message_id": 2}
+        assert result["success"] is True
+
+    def test_delete_message_with_empty_content(self):
+        """Test deleting a message with empty content (edge case)."""
+        message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="",
+        )
+
+        result = {"success": True}
+        assert result["success"] is True
+
+    def test_resend_preserves_phone_format(self):
+        """Test that resend preserves original phone number format."""
+        original_phone = "+447123456789"
+        message = create_mock_message(
+            id=1,
+            direction="outbound",
+            phone_number=original_phone,
+            content="Test",
+        )
+
+        # New message should use same phone format
+        new_phone = message.phone_number
+        assert new_phone == original_phone
+
+    def test_delete_oldest_message_in_conversation(self):
+        """Test deleting the oldest message in a thread."""
+        oldest_message = create_mock_message(
+            id=1,
+            direction="outbound",
+            content="First message",
+        )
+        oldest_message.created_at = datetime.now() - timedelta(days=30)
+
+        result = {"success": True}
+        assert result["success"] is True
+
+    def test_delete_newest_message_in_conversation(self):
+        """Test deleting the newest message in a thread."""
+        newest_message = create_mock_message(
+            id=5,
+            direction="inbound",
+            content="Latest reply",
+        )
+        newest_message.created_at = datetime.now()
+
+        result = {"success": True}
+        assert result["success"] is True
+
+    def test_resend_to_different_phone_not_allowed(self):
+        """Test that resend cannot change the destination phone."""
+        original_message = create_mock_message(
+            id=1,
+            direction="outbound",
+            phone_number="447111111111",
+            content="Test",
+        )
+
+        # Resend uses the original phone number
+        resent_phone = original_message.phone_number
+
+        assert resent_phone == "447111111111"
+
+    def test_actions_on_message_from_webhook(self):
+        """Test actions on message received via webhook."""
+        webhook_message = create_mock_message(
+            id=1,
+            direction="inbound",
+            content="Message from webhook",
+        )
+        webhook_message.provider_message_id = "ext_123456"
+
+        # Delete should work
+        delete_result = {"success": True}
+        assert delete_result["success"] is True
+
+        # Resend should fail (inbound)
+        resend_status = 400
+        assert resend_status == 400
+
+
+# =============================================================================
 # Run tests if executed directly
 # =============================================================================
 

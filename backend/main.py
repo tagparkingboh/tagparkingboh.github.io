@@ -14566,6 +14566,59 @@ async def get_sms_conversation(
     }
 
 
+@app.post("/api/admin/sms/messages/{message_id}/resend")
+async def resend_sms_message(
+    message_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Resend an existing SMS message."""
+    message = db.query(SMSMessage).filter(SMSMessage.id == message_id).first()
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    # Only allow resending outbound messages
+    if message.direction != SMSDirection.OUTBOUND:
+        raise HTTPException(status_code=400, detail="Cannot resend inbound messages")
+
+    # Send the same content to the same phone
+    result = await sms_service.send_sms(
+        phone=message.phone_number,
+        content=message.content,
+        booking_id=message.booking_id,
+        customer_id=message.customer_id,
+        template_id=message.template_id,
+        sent_by=current_user.id,
+        db_session=db,
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error"))
+
+    return {
+        "success": True,
+        "message": "Message resent successfully",
+        "new_message_id": result.get("message_id")
+    }
+
+
+@app.delete("/api/admin/sms/messages/{message_id}")
+async def delete_sms_message(
+    message_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Delete an SMS message from the database."""
+    message = db.query(SMSMessage).filter(SMSMessage.id == message_id).first()
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    db.delete(message)
+    db.commit()
+
+    return {"success": True, "message": "Message deleted"}
+
+
 @app.post("/api/admin/sms/send")
 async def send_sms_message(
     data: dict,

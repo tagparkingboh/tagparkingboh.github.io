@@ -456,6 +456,9 @@ function Admin() {
   const [deletingTemplateId, setDeletingTemplateId] = useState(null)
   const [templateToDelete, setTemplateToDelete] = useState(null)
   const [expandedMessageId, setExpandedMessageId] = useState(null)
+  const [resendingMessageId, setResendingMessageId] = useState(null)
+  const [deletingMessageId, setDeletingMessageId] = useState(null)
+  const [messageToDelete, setMessageToDelete] = useState(null)
   const [smsDirectionFilter, setSmsDirectionFilter] = useState('inbound') // 'inbound', 'outbound'
   const [smsStatusFilter, setSmsStatusFilter] = useState('all') // 'all', 'pending', 'sent', 'delivered', 'failed'
 
@@ -4063,6 +4066,50 @@ function Admin() {
     }
   }
 
+  const handleResendMessage = async (messageId) => {
+    setResendingMessageId(messageId)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/messages/${messageId}/resend`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setMessagesMessage('Message resent successfully!')
+        fetchSmsMessages()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to resend message'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setResendingMessageId(null)
+    }
+  }
+
+  const handleDeleteMessage = async () => {
+    if (!messageToDelete) return
+    setDeletingMessageId(messageToDelete.id)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/messages/${messageToDelete.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setMessagesMessage('Message deleted successfully!')
+        setMessageToDelete(null)
+        fetchSmsMessages()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to delete message'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setDeletingMessageId(null)
+    }
+  }
+
   const searchBookingsForSms = async (searchTerm) => {
     if (!searchTerm || searchTerm.length < 2) {
       setSmsBookingResults([])
@@ -5858,6 +5905,7 @@ function Admin() {
                         <th>Content</th>
                         <th>Status</th>
                         <th>Booking</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -5879,6 +5927,30 @@ function Admin() {
                             </span>
                           </td>
                           <td>{msg.booking_reference || '-'}</td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              {msg.direction === 'outbound' && (
+                                <button
+                                  className="btn-secondary btn-sm"
+                                  onClick={() => handleResendMessage(msg.id)}
+                                  disabled={resendingMessageId === msg.id}
+                                  title="Resend this message"
+                                  style={{ padding: '4px 8px', fontSize: '0.7rem' }}
+                                >
+                                  {resendingMessageId === msg.id ? '...' : 'Resend'}
+                                </button>
+                              )}
+                              <button
+                                className="btn-danger btn-sm"
+                                onClick={() => setMessageToDelete(msg)}
+                                disabled={deletingMessageId === msg.id}
+                                title="Delete this message"
+                                style={{ padding: '4px 8px', fontSize: '0.7rem' }}
+                              >
+                                {deletingMessageId === msg.id ? '...' : 'Delete'}
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -6305,6 +6377,39 @@ function Admin() {
                       disabled={deletingTemplateId === templateToDelete.id}
                     >
                       {deletingTemplateId === templateToDelete.id ? 'Deleting...' : 'Delete'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Delete Message Confirmation Modal */}
+            {messageToDelete && (
+              <div className="modal-overlay" onClick={() => setMessageToDelete(null)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                  <h3>Delete Message</h3>
+                  <p>Are you sure you want to delete this message?</p>
+                  <div className="modal-booking-info">
+                    <p><strong>Phone:</strong> {formatPhoneForDisplay(messageToDelete.phone_number)}</p>
+                    <p><strong>Direction:</strong> {messageToDelete.direction === 'inbound' ? 'Inbound' : 'Outbound'}</p>
+                    <p><strong>Content:</strong> {messageToDelete.content?.substring(0, 100)}{messageToDelete.content?.length > 100 ? '...' : ''}</p>
+                    {messageToDelete.booking_reference && (
+                      <p><strong>Booking:</strong> {messageToDelete.booking_reference}</p>
+                    )}
+                  </div>
+                  <div className="modal-actions">
+                    <button
+                      className="modal-btn modal-btn-secondary"
+                      onClick={() => setMessageToDelete(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="modal-btn modal-btn-danger"
+                      onClick={handleDeleteMessage}
+                      disabled={deletingMessageId === messageToDelete.id}
+                    >
+                      {deletingMessageId === messageToDelete.id ? 'Deleting...' : 'Delete'}
                     </button>
                   </div>
                 </div>
