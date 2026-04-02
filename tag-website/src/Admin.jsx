@@ -9433,6 +9433,46 @@ function Admin() {
                               </div>
                             </div>
                           )}
+                          {funFacts.earliestBooking && (
+                            <div className="fun-fact-card">
+                              <span className="fun-fact-icon">🏁</span>
+                              <div className="fun-fact-content">
+                                <span className="fun-fact-label">First Ever Booking</span>
+                                <span className="fun-fact-value">{funFacts.earliestBooking.date}</span>
+                                <span className="fun-fact-detail">at {funFacts.earliestBooking.time}</span>
+                              </div>
+                            </div>
+                          )}
+                          {funFacts.latestBooking && (
+                            <div className="fun-fact-card">
+                              <span className="fun-fact-icon">🆕</span>
+                              <div className="fun-fact-content">
+                                <span className="fun-fact-label">Most Recent Booking</span>
+                                <span className="fun-fact-value">{funFacts.latestBooking.date}</span>
+                                <span className="fun-fact-detail">at {funFacts.latestBooking.time}</span>
+                              </div>
+                            </div>
+                          )}
+                          {funFacts.lastMinuteBooking && (
+                            <div className="fun-fact-card">
+                              <span className="fun-fact-icon">⚡</span>
+                              <div className="fun-fact-content">
+                                <span className="fun-fact-label">Last Minute Booking</span>
+                                <span className="fun-fact-value">{funFacts.lastMinuteBooking.gapDays === 0 ? 'Same day' : `${funFacts.lastMinuteBooking.gapDays} day${funFacts.lastMinuteBooking.gapDays !== 1 ? 's' : ''} before`}</span>
+                                <span className="fun-fact-detail">Drop-off: {funFacts.lastMinuteBooking.dropoffDate}</span>
+                              </div>
+                            </div>
+                          )}
+                          {funFacts.advanceBooking && (
+                            <div className="fun-fact-card">
+                              <span className="fun-fact-icon">📆</span>
+                              <div className="fun-fact-content">
+                                <span className="fun-fact-label">Most Advance Booking</span>
+                                <span className="fun-fact-value">{funFacts.advanceBooking.gapDays} days ahead</span>
+                                <span className="fun-fact-detail">Booked: {funFacts.advanceBooking.bookedOn}</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}

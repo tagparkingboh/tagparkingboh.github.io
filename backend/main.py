@@ -3808,6 +3808,10 @@ async def get_fun_facts(
         "busiestStreak": None,
         "longestTrip": None,
         "highestTransaction": None,
+        "earliestBooking": None,
+        "latestBooking": None,
+        "lastMinuteBooking": None,
+        "advanceBooking": None,
     }
 
     if not bookings:
@@ -3915,6 +3919,52 @@ async def get_fun_facts(
             "amount": f"£{amount_pounds:.2f}",
             "reference": highest_booking.reference,
             "days": (highest_booking.pickup_date - highest_booking.dropoff_date).days if highest_booking.pickup_date and highest_booking.dropoff_date else None,
+        }
+
+    # === Earliest & Latest Booking (by created_at) ===
+    bookings_with_created = [b for b in bookings if b.created_at]
+    if bookings_with_created:
+        earliest = min(bookings_with_created, key=lambda b: b.created_at)
+        latest = max(bookings_with_created, key=lambda b: b.created_at)
+
+        result["earliestBooking"] = {
+            "date": earliest.created_at.strftime("%d %b %Y"),
+            "time": earliest.created_at.strftime("%H:%M"),
+            "reference": earliest.reference,
+        }
+        result["latestBooking"] = {
+            "date": latest.created_at.strftime("%d %b %Y"),
+            "time": latest.created_at.strftime("%H:%M"),
+            "reference": latest.reference,
+        }
+
+    # === Last Minute & Advance Booking ===
+    # Calculate gap between created_at and dropoff_date
+    bookings_with_gap = []
+    for booking in bookings:
+        if booking.created_at and booking.dropoff_date:
+            # Convert created_at to date for comparison
+            created_date = booking.created_at.date()
+            gap_days = (booking.dropoff_date - created_date).days
+            bookings_with_gap.append((booking, gap_days))
+
+    if bookings_with_gap:
+        # Shortest gap (last minute booking)
+        last_minute = min(bookings_with_gap, key=lambda x: x[1])
+        result["lastMinuteBooking"] = {
+            "gapDays": last_minute[1],
+            "reference": last_minute[0].reference,
+            "bookedOn": last_minute[0].created_at.strftime("%d %b %Y"),
+            "dropoffDate": last_minute[0].dropoff_date.strftime("%d %b %Y"),
+        }
+
+        # Longest gap (most advance booking)
+        advance = max(bookings_with_gap, key=lambda x: x[1])
+        result["advanceBooking"] = {
+            "gapDays": advance[1],
+            "reference": advance[0].reference,
+            "bookedOn": advance[0].created_at.strftime("%d %b %Y"),
+            "dropoffDate": advance[0].dropoff_date.strftime("%d %b %Y"),
         }
 
     # Store in cache
