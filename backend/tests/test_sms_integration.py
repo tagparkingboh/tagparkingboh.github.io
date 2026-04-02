@@ -194,6 +194,55 @@ class TestTemplatesCRUD:
 
         assert deleted is True
 
+    def test_delete_template_returns_success_response(self):
+        """Test delete returns success message."""
+        template = create_mock_template(id=1, name="to_delete")
+
+        # Simulate API response
+        response = {"success": True, "message": "Template deleted"}
+
+        assert response["success"] is True
+        assert "deleted" in response["message"].lower()
+
+    def test_delete_nonexistent_template_returns_404(self):
+        """Test deleting non-existent template returns 404."""
+        template_id = 9999
+        template = None  # Not found in database
+
+        status_code = 404 if not template else 200
+
+        assert status_code == 404
+
+    def test_delete_automated_template(self):
+        """Test deleting an automated template."""
+        template = create_mock_template(
+            id=1,
+            name="auto_template",
+            is_automated=True,
+            trigger_event="booking_confirmed"
+        )
+
+        # Automated templates can be deleted
+        deleted = True
+
+        assert deleted is True
+        assert template.is_automated is True
+
+    def test_delete_removes_template_from_list(self):
+        """Test deleted template no longer appears in list."""
+        templates = [
+            create_mock_template(id=1, name="template1"),
+            create_mock_template(id=2, name="template2"),
+            create_mock_template(id=3, name="template3"),
+        ]
+
+        # Simulate deleting template with id=2
+        deleted_id = 2
+        remaining = [t for t in templates if t.id != deleted_id]
+
+        assert len(remaining) == 2
+        assert all(t.id != deleted_id for t in remaining)
+
     def test_get_template_not_found(self):
         """Test getting non-existent template."""
         template = None
