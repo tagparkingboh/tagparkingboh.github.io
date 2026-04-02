@@ -473,7 +473,8 @@ function HomePage() {
             <ul className="secure-carpark-features">
               <li>24/7 CCTV monitoring</li>
               <li>Secure perimeter fencing</li>
-              <li>Barrier-controlled entry & exit</li>
+              <li>Security barrier</li>
+              <li>Security lighting</li>
             </ul>
             <p className="secure-carpark-tagline">Peace of mind while you're away</p>
           </div>

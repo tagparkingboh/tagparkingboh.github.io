@@ -613,8 +613,11 @@
   content: '✓';
   position: absolute;
   left: 0;
+  top: 0.75rem;
   color: #d9ff00;
   font-weight: 700;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .secure-carpark-tagline {
