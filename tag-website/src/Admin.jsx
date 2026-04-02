@@ -453,6 +453,8 @@ function Admin() {
   const [showCreateTemplateModal, setShowCreateTemplateModal] = useState(false)
   const [newTemplate, setNewTemplate] = useState({ name: '', content: '', description: '', is_active: true, trigger_event: null })
   const [creatingTemplate, setCreatingTemplate] = useState(false)
+  const [deletingTemplateId, setDeletingTemplateId] = useState(null)
+  const [templateToDelete, setTemplateToDelete] = useState(null)
   const [expandedMessageId, setExpandedMessageId] = useState(null)
   const [smsDirectionFilter, setSmsDirectionFilter] = useState('inbound') // 'inbound', 'outbound'
   const [smsStatusFilter, setSmsStatusFilter] = useState('all') // 'all', 'pending', 'sent', 'delivered', 'failed'
@@ -4038,6 +4040,29 @@ function Admin() {
     }
   }
 
+  const handleDeleteTemplate = async () => {
+    if (!templateToDelete) return
+    setDeletingTemplateId(templateToDelete.id)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/templates/${templateToDelete.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setMessagesMessage('Template deleted successfully!')
+        setTemplateToDelete(null)
+        fetchSmsTemplates()
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to delete template'}`)
+      }
+    } catch (err) {
+      setMessagesMessage(`Error: ${err.message}`)
+    } finally {
+      setDeletingTemplateId(null)
+    }
+  }
+
   const searchBookingsForSms = async (searchTerm) => {
     if (!searchTerm || searchTerm.length < 2) {
       setSmsBookingResults([])
@@ -5913,6 +5938,13 @@ function Admin() {
                           >
                             Edit
                           </button>
+                          <button
+                            className="btn-danger btn-sm"
+                            onClick={() => setTemplateToDelete(template)}
+                            disabled={deletingTemplateId === template.id}
+                          >
+                            {deletingTemplateId === template.id ? 'Deleting...' : 'Delete'}
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -6233,6 +6265,37 @@ function Admin() {
                       disabled={creatingTemplate || !newTemplate.name || !newTemplate.content}
                     >
                       {creatingTemplate ? 'Creating...' : 'Create Template'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Delete Template Confirmation Modal */}
+            {templateToDelete && (
+              <div className="modal-overlay" onClick={() => setTemplateToDelete(null)}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                  <h3>Delete Template</h3>
+                  <p>Are you sure you want to delete this template?</p>
+                  <div className="modal-booking-info">
+                    <p><strong>Name:</strong> {templateToDelete.name}</p>
+                    {templateToDelete.trigger_event && (
+                      <p><strong>Trigger:</strong> {templateToDelete.trigger_event}</p>
+                    )}
+                  </div>
+                  <div className="modal-actions">
+                    <button
+                      className="modal-btn modal-btn-secondary"
+                      onClick={() => setTemplateToDelete(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="modal-btn modal-btn-danger"
+                      onClick={handleDeleteTemplate}
+                      disabled={deletingTemplateId === templateToDelete.id}
+                    >
+                      {deletingTemplateId === templateToDelete.id ? 'Deleting...' : 'Delete'}
                     </button>
                   </div>
                 </div>
