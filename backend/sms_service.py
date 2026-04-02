@@ -465,6 +465,59 @@ async def send_reminder_2day_sms(booking, db_session) -> bool:
     return result.get("success", False)
 
 
+async def send_thank_you_sms(booking, db_session) -> bool:
+    """
+    Send thank you SMS using the automated template.
+
+    Called from email_scheduler.py when thank you email is sent.
+
+    Args:
+        booking: Booking model instance
+        db_session: Database session
+
+    Returns:
+        True if sent successfully, False otherwise
+    """
+    from db_models import SMSTemplate
+
+    if not is_sms_enabled():
+        logger.info("SMS disabled - skipping thank you SMS")
+        return False
+
+    # Get customer phone
+    if not booking.customer or not booking.customer.phone:
+        logger.warning(f"No phone number for booking {booking.reference}")
+        return False
+
+    # Get the automated template
+    template = db_session.query(SMSTemplate).filter(
+        SMSTemplate.trigger_event == "thank_you",
+        SMSTemplate.is_active == True,
+        SMSTemplate.is_automated == True,
+    ).first()
+
+    if not template:
+        logger.warning("No active thank_you SMS template found")
+        return False
+
+    # Render template with booking variables
+    variables = get_booking_variables(booking)
+    content = render_template(template.content, variables)
+
+    # Send SMS
+    result = await send_sms(
+        phone=booking.customer.phone,
+        content=content,
+        tag="thank-you",
+        booking_id=booking.id,
+        customer_id=booking.customer.id,
+        template_id=template.id,
+        db_session=db_session,
+    )
+
+    return result.get("success", False)
+
+
 def handle_delivery_report(payload: dict, db_session) -> bool:
     """
     Handle delivery report webhook from SMS Works.

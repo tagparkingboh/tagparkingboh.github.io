@@ -240,6 +240,14 @@ def process_pending_thankyou_emails(db: Session):
                 booking.thank_you_email_sent_at = datetime.utcnow()
                 db.commit()
                 logger.info(f"Thank you email sent to {customer.email} for booking {booking.reference}")
+
+                # Also send SMS if enabled
+                if sms_service.is_sms_enabled():
+                    try:
+                        asyncio.run(sms_service.send_thank_you_sms(booking, db))
+                        logger.info(f"Thank you SMS sent for booking {booking.reference}")
+                    except Exception as sms_error:
+                        logger.error(f"Failed to send thank you SMS: {str(sms_error)}")
             else:
                 logger.error(f"Failed to send thank you email to {customer.email}")
 
