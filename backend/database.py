@@ -11,6 +11,56 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Threshold tracking for event-driven snapshots
+USAGE_THRESHOLDS = [50, 70, 85, 90]  # Percentages to trigger snapshots
+_last_threshold_level = 0  # Track which threshold we're currently at/above
+
+
+def _get_threshold_level(usage_percent: float) -> int:
+    """Return the highest threshold that usage_percent meets or exceeds."""
+    level = 0
+    for threshold in USAGE_THRESHOLDS:
+        if usage_percent >= threshold:
+            level = threshold
+    return level
+
+
+def _record_threshold_snapshot(trigger: str, usage_percent: float, checked_out: int, overflow: int):
+    """Record a pool snapshot when a threshold is crossed."""
+    from db_models import DbPoolSnapshot, PoolHealthStatus
+    from sqlalchemy.orm import Session
+
+    try:
+        # Determine health status
+        if usage_percent >= 90:
+            health = PoolHealthStatus.CRITICAL
+        elif usage_percent >= 70:
+            health = PoolHealthStatus.WARNING
+        else:
+            health = PoolHealthStatus.HEALTHY
+
+        # Use a direct session (not from pool we're monitoring)
+        db = SessionLocal()
+        try:
+            snapshot = DbPoolSnapshot(
+                pool_size=POOL_SIZE,
+                max_overflow=MAX_OVERFLOW,
+                checked_out=checked_out,
+                overflow=overflow,
+                checked_in=engine.pool.checkedin(),
+                usage_percent=usage_percent,
+                health_status=health,
+                trigger=trigger,
+            )
+            db.add(snapshot)
+            db.commit()
+            logger.info(f"Pool snapshot recorded: {trigger} at {usage_percent}%")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Failed to record threshold snapshot: {e}")
+
+
 # Get database URL from environment (PostgreSQL required)
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
@@ -46,35 +96,60 @@ def set_timezone(dbapi_connection, connection_record):
 
 @event.listens_for(engine, "checkout")
 def check_pool_usage(dbapi_connection, connection_record, connection_proxy):
-    """Log warning when connection pool usage is high."""
+    """Log warning when connection pool usage is high and record threshold crossings."""
+    global _last_threshold_level
+
     pool = engine.pool
-    pool_size = pool.size()
     checked_out = pool.checkedout()
-    overflow = pool.overflow()
+    overflow = max(0, pool.overflow())
 
     total_possible = POOL_SIZE + MAX_OVERFLOW
     current_usage = checked_out + overflow
-    usage_percent = current_usage / total_possible if total_possible > 0 else 0
+    usage_percent = (current_usage / total_possible * 100) if total_possible > 0 else 0
 
-    if usage_percent >= POOL_WARNING_THRESHOLD:
+    # Check if we've crossed up to a new threshold
+    current_level = _get_threshold_level(usage_percent)
+    if current_level > _last_threshold_level:
+        _record_threshold_snapshot(f"crossed_{current_level}", usage_percent, checked_out, overflow)
+        _last_threshold_level = current_level
+
+    # Log warnings
+    if usage_percent >= POOL_WARNING_THRESHOLD * 100:
         logger.warning(
             f"[DB POOL WARNING] High connection usage: {current_usage}/{total_possible} "
-            f"({usage_percent:.0%}) - checked_out={checked_out}, overflow={overflow}"
+            f"({usage_percent:.0f}%) - checked_out={checked_out}, overflow={overflow}"
         )
 
-    if usage_percent >= 0.9:
+    if usage_percent >= 90:
         logger.error(
             f"[DB POOL CRITICAL] Connection pool nearly exhausted: {current_usage}/{total_possible} "
-            f"({usage_percent:.0%}) - checked_out={checked_out}, overflow={overflow}"
+            f"({usage_percent:.0f}%) - checked_out={checked_out}, overflow={overflow}"
         )
 
 
 @event.listens_for(engine, "checkin")
 def log_checkin(dbapi_connection, connection_record):
-    """Log when connections are returned to pool (debug level)."""
+    """Log when connections are returned and record threshold drops."""
+    global _last_threshold_level
+
     pool = engine.pool
+    checked_out = pool.checkedout()
+    overflow = max(0, pool.overflow())
+
+    total_possible = POOL_SIZE + MAX_OVERFLOW
+    current_usage = checked_out + overflow
+    usage_percent = (current_usage / total_possible * 100) if total_possible > 0 else 0
+
+    # Check if we've dropped below the current threshold level
+    current_level = _get_threshold_level(usage_percent)
+    if current_level < _last_threshold_level:
+        # Record the drop - use the threshold we dropped below
+        dropped_from = _last_threshold_level
+        _record_threshold_snapshot(f"dropped_below_{dropped_from}", usage_percent, checked_out, overflow)
+        _last_threshold_level = current_level
+
     logger.debug(
-        f"[DB POOL] Connection returned - checked_out={pool.checkedout()}, overflow={pool.overflow()}"
+        f"[DB POOL] Connection returned - checked_out={checked_out}, overflow={overflow}"
     )
 
 
