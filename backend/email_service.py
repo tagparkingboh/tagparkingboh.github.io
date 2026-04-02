@@ -420,7 +420,7 @@ def send_2_day_reminder_email(
     Returns:
         True if sent successfully, False otherwise.
     """
-    subject = f"Information About Your Booking - {booking_reference}"
+    subject = f"Where to Meet Us - {booking_reference}"
 
     # Load the HTML template
     template_path = EMAIL_TEMPLATES_DIR / "2_day_reminder_email.html"
