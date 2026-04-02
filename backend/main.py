@@ -3926,18 +3926,18 @@ async def get_fun_facts(
     # Find bookings by time of day (not date) - who books latest at night, earliest in morning
     bookings_with_created = [b for b in bookings if b.created_at]
     if bookings_with_created:
-        # Latest time of night (e.g., 23:58)
+        # Latest time of night (e.g., 23:58:42)
         latest_time = max(bookings_with_created, key=lambda b: b.created_at.time())
         result["latestTimeOfNight"] = {
-            "time": latest_time.created_at.strftime("%H:%M"),
+            "time": latest_time.created_at.strftime("%H:%M:%S"),
             "date": latest_time.created_at.strftime("%d %b %Y"),
             "reference": latest_time.reference,
         }
 
-        # Earliest time of day (e.g., 03:02)
+        # Earliest time of day (e.g., 03:02:15)
         earliest_time = min(bookings_with_created, key=lambda b: b.created_at.time())
         result["earliestTimeOfDay"] = {
-            "time": earliest_time.created_at.strftime("%H:%M"),
+            "time": earliest_time.created_at.strftime("%H:%M:%S"),
             "date": earliest_time.created_at.strftime("%d %b %Y"),
             "reference": earliest_time.reference,
         }
