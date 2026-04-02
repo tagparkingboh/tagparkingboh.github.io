@@ -545,9 +545,9 @@
 .secure-carpark {
   background: #343434;
   padding: 5rem 4rem;
-  padding-bottom: 0;
+  padding-bottom: 4rem;
   scroll-margin-top: 80px;
-  border-bottom: 8px solid #ffffff;
+  border-bottom: 30px solid #ffffff;
 }
 
 .secure-carpark-container {
@@ -1751,7 +1751,7 @@
 
   .secure-carpark {
     padding: 4rem 2rem;
-    padding-bottom: 0;
+    padding-bottom: 3rem;
   }
 
   .secure-carpark-container {
@@ -2094,7 +2094,7 @@
 
   .secure-carpark {
     padding: 3rem 1.5rem;
-    padding-bottom: 0;
+    padding-bottom: 2.5rem;
   }
 
   .secure-carpark-container {
@@ -2184,7 +2184,7 @@
 
   .secure-carpark {
     padding: 2.5rem 1rem;
-    padding-bottom: 0;
+    padding-bottom: 2rem;
   }
 
   .secure-carpark-header h2 {
