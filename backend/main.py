@@ -11901,7 +11901,6 @@ async def export_admin_flights(
                 "slots_booked_early": d.slots_booked_early,
                 "slots_booked_late": d.slots_booked_late,
                 "created_at": d.created_at.isoformat() if d.created_at else None,
-                "updated_at": d.updated_at.isoformat() if d.updated_at else None,
                 "updated_by": d.updated_by,
             }
             for d in departures
@@ -14754,7 +14753,6 @@ async def get_sms_drafts(
                 "customer_id": d.customer_id,
                 "customer_name": f"{d.customer.first_name} {d.customer.last_name}" if d.customer else None,
                 "created_at": d.created_at.isoformat() if d.created_at else None,
-                "updated_at": d.updated_at.isoformat() if d.updated_at else None,
             }
             for d in drafts
         ]

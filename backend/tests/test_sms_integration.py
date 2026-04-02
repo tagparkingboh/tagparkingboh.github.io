@@ -1600,7 +1600,6 @@ def create_mock_draft(
     draft.status_detail = None
     draft.is_bulk = False
     draft.created_at = datetime.now()
-    draft.updated_at = None
     draft.delivered_at = None
 
     # Mock relationships
@@ -1727,7 +1726,6 @@ class TestSmsDraftsCRUD:
 
         # Simulate update
         original_draft.content = updated_content
-        original_draft.updated_at = datetime.now()
 
         result = {
             "success": True,
@@ -2004,8 +2002,6 @@ class TestSmsDraftsEdgesCases:
         draft = create_mock_draft(id=1)
 
         assert draft.created_at is not None
-        # Updated at should be None for new draft
-        assert draft.updated_at is None
 
     def test_draft_direction_is_outbound(self):
         """Test that drafts are always outbound direction."""
@@ -2020,17 +2016,6 @@ class TestSmsDraftsEdgesCases:
 
         draft = create_mock_draft(id=1)
         assert draft.status == SMSStatus.DRAFT
-
-    def test_update_draft_sets_updated_at(self):
-        """Test that updating a draft sets updated_at timestamp."""
-        draft = create_mock_draft(id=1)
-        assert draft.updated_at is None
-
-        # Simulate update
-        draft.content = "Updated content"
-        draft.updated_at = datetime.now()
-
-        assert draft.updated_at is not None
 
 
 # =============================================================================
