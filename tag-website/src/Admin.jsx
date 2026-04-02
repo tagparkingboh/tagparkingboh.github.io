@@ -3922,6 +3922,7 @@ function Admin() {
         } else {
           setMessagesMessage('All statuses are up to date')
         }
+        setTimeout(() => setMessagesMessage(''), 3000)
         fetchSmsMessages()
         fetchSmsStats()
       } else {
@@ -3956,6 +3957,7 @@ function Admin() {
 
       if (response.ok) {
         setMessagesMessage('SMS sent successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
         setShowSendSmsModal(false)
         setSendSmsForm({ phone: '', content: '', booking_id: '', customer_id: '' })
         fetchSmsMessages()
@@ -3993,6 +3995,7 @@ function Admin() {
 
       if (response.ok) {
         setMessagesMessage('Template saved successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
         setShowEditTemplateModal(false)
         setEditingTemplate(null)
         fetchSmsTemplates()
@@ -4029,6 +4032,7 @@ function Admin() {
 
       if (response.ok) {
         setMessagesMessage('Template created successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
         setShowCreateTemplateModal(false)
         setNewTemplate({ name: '', content: '', description: '', is_active: true, trigger_event: null })
         fetchSmsTemplates()
@@ -4053,6 +4057,7 @@ function Admin() {
       })
       if (response.ok) {
         setMessagesMessage('Template deleted successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
         setTemplateToDelete(null)
         fetchSmsTemplates()
       } else {
@@ -4075,6 +4080,7 @@ function Admin() {
       })
       if (response.ok) {
         setMessagesMessage('Message resent successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
         fetchSmsMessages()
       } else {
         const data = await response.json()
@@ -4097,6 +4103,7 @@ function Admin() {
       })
       if (response.ok) {
         setMessagesMessage('Message deleted successfully!')
+        setTimeout(() => setMessagesMessage(''), 3000)
         setMessageToDelete(null)
         fetchSmsMessages()
       } else {
