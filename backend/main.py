@@ -14857,9 +14857,102 @@ async def get_sms_messages(
     }
 
 
+@app.get("/api/admin/sms/threads")
+async def get_sms_threads(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all SMS conversation threads grouped by phone number.
+    Returns threads sorted by most recent activity, with unread count.
+    """
+    from sqlalchemy import func, case, desc, and_
+
+    # Subquery to get thread-level aggregates
+    thread_data = db.query(
+        SMSMessage.phone_number,
+        func.max(SMSMessage.created_at).label("last_activity"),
+        func.count(SMSMessage.id).label("message_count"),
+        func.sum(
+            case(
+                (and_(SMSMessage.direction == SMSDirection.INBOUND, SMSMessage.is_read == False), 1),
+                else_=0
+            )
+        ).label("unread_count"),
+        func.max(SMSMessage.customer_id).label("customer_id"),
+    ).group_by(SMSMessage.phone_number).subquery()
+
+    # Get customer info for threads
+    results = db.query(
+        thread_data.c.phone_number,
+        thread_data.c.last_activity,
+        thread_data.c.message_count,
+        thread_data.c.unread_count,
+        Customer.id.label("cust_id"),
+        Customer.first_name,
+        Customer.last_name,
+    ).outerjoin(
+        Customer, Customer.id == thread_data.c.customer_id
+    ).order_by(desc(thread_data.c.last_activity)).all()
+
+    # Get the last message for each thread
+    threads = []
+    for r in results:
+        # Get last message for this phone
+        last_msg = db.query(SMSMessage).filter(
+            SMSMessage.phone_number == r.phone_number
+        ).order_by(SMSMessage.created_at.desc()).first()
+
+        threads.append({
+            "phone_number": r.phone_number,
+            "last_activity": r.last_activity.isoformat() if r.last_activity else None,
+            "message_count": r.message_count,
+            "unread_count": r.unread_count or 0,
+            "customer": {
+                "id": r.cust_id,
+                "name": f"{r.first_name} {r.last_name}" if r.first_name else None,
+            } if r.cust_id else None,
+            "last_message": {
+                "content": last_msg.content[:100] + ("..." if len(last_msg.content) > 100 else "") if last_msg else None,
+                "direction": last_msg.direction.value if last_msg else None,
+                "created_at": last_msg.created_at.isoformat() if last_msg and last_msg.created_at else None,
+            } if last_msg else None,
+        })
+
+    # Calculate total unread across all threads
+    total_unread = sum(t["unread_count"] for t in threads)
+
+    return {
+        "threads": threads,
+        "total_unread": total_unread,
+    }
+
+
+@app.put("/api/admin/sms/threads/{phone}/read")
+async def mark_thread_as_read(
+    phone: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Mark all inbound messages in a thread as read."""
+    formatted_phone = sms_service.format_phone_number(phone)
+
+    # Update all unread inbound messages for this phone
+    updated = db.query(SMSMessage).filter(
+        SMSMessage.phone_number.ilike(f"%{formatted_phone[-10:]}%"),
+        SMSMessage.direction == SMSDirection.INBOUND,
+        SMSMessage.is_read == False
+    ).update({"is_read": True}, synchronize_session=False)
+
+    db.commit()
+
+    return {"marked_read": updated}
+
+
 @app.get("/api/admin/sms/messages/conversation/{phone}")
 async def get_sms_conversation(
     phone: str,
+    mark_read: bool = True,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
@@ -14881,6 +14974,15 @@ async def get_sms_conversation(
             }
             break
 
+    # Mark inbound messages as read when viewing the conversation
+    if mark_read:
+        db.query(SMSMessage).filter(
+            SMSMessage.phone_number.ilike(f"%{formatted_phone[-10:]}%"),
+            SMSMessage.direction == SMSDirection.INBOUND,
+            SMSMessage.is_read == False
+        ).update({"is_read": True}, synchronize_session=False)
+        db.commit()
+
     return {
         "phone_number": formatted_phone,
         "customer": customer,
@@ -14893,6 +14995,7 @@ async def get_sms_conversation(
                 "booking_id": m.booking_id,
                 "booking_reference": m.booking.reference if m.booking else None,
                 "created_at": m.created_at.isoformat() if m.created_at else None,
+                "is_read": m.is_read,
             }
             for m in messages
         ],
@@ -15303,11 +15406,25 @@ async def get_sms_stats(
     # Get unique conversations (phone numbers)
     conversations = db.query(SMSMessage.phone_number).distinct().count()
 
+    # Get pending messages
+    pending = db.query(SMSMessage).filter(
+        SMSMessage.status == SMSStatus.PENDING
+    ).count()
+
+    # Get unread inbound messages
+    unread = db.query(SMSMessage).filter(
+        SMSMessage.direction == SMSDirection.INBOUND,
+        SMSMessage.is_read == False
+    ).count()
+
     return {
         "total_sent": total_sent,
         "total_received": total_received,
+        "inbound": total_received,  # Alias for frontend compatibility
         "delivered": delivered,
+        "pending": pending,
         "failed": failed,
+        "unread": unread,
         "conversations": conversations,
         "sms_enabled": sms_service.is_sms_enabled(),
     }

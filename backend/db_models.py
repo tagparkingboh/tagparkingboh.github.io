@@ -1313,6 +1313,9 @@ class SMSMessage(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     delivered_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Read status (for inbox/thread view)
+    is_read = Column(Boolean, default=False, nullable=False)  # Has admin seen this inbound message?
+
     # Relationships
     booking = relationship("Booking", backref="sms_messages")
     customer = relationship("Customer", backref="sms_messages")

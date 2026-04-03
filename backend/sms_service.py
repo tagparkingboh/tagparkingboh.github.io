@@ -696,7 +696,7 @@ def handle_incoming_sms(payload: dict, db_session) -> bool:
         Customer.phone.ilike(f"%{formatted_phone[-10:]}%")
     ).first()
 
-    # Create inbound message record
+    # Create inbound message record (is_read=False so it shows as unread)
     sms_record = SMSMessage(
         phone_number=formatted_phone,
         customer_id=customer.id if customer else None,
@@ -705,6 +705,7 @@ def handle_incoming_sms(payload: dict, db_session) -> bool:
         provider_message_id=message_id,
         status=SMSStatus.DELIVERED,
         delivered_at=datetime.now(UK_TZ),
+        is_read=False,
     )
 
     db_session.add(sms_record)
