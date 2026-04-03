@@ -6285,7 +6285,7 @@ function Admin() {
                               const showDate = index === 0 ||
                                 new Date(msg.created_at).toDateString() !== new Date(threadMessages[index - 1].created_at).toDateString()
                               return (
-                                <React.Fragment key={msg.id}>
+                                <Fragment key={msg.id}>
                                   {showDate && (
                                     <div className="message-date-divider">
                                       {new Date(msg.created_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
@@ -6309,7 +6309,7 @@ function Admin() {
                                       )}
                                     </div>
                                   </div>
-                                </React.Fragment>
+                                </Fragment>
                               )
                             })}
                             <div ref={conversationEndRef} />

@@ -14952,9 +14952,13 @@ async def get_sms_conversation(
     db: Session = Depends(get_db)
 ):
     """Get all messages for a specific phone number (conversation thread)."""
+    from sqlalchemy.orm import joinedload
     formatted_phone = sms_service.format_phone_number(phone)
 
-    messages = db.query(SMSMessage).filter(
+    messages = db.query(SMSMessage).options(
+        joinedload(SMSMessage.customer),
+        joinedload(SMSMessage.booking)
+    ).filter(
         SMSMessage.phone_number.ilike(f"%{formatted_phone[-10:]}%")
     ).order_by(SMSMessage.created_at.asc()).all()
 
