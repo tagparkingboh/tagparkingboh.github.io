@@ -15192,7 +15192,9 @@ async def webhook_sms_incoming(
 ):
     """Handle incoming SMS webhook from SMS Works."""
     payload = await request.json()
+    print(f"[SMS WEBHOOK] Received incoming SMS: {payload}")
     success = sms_service.handle_incoming_sms(payload, db)
+    print(f"[SMS WEBHOOK] Processing result: {success}")
     return {"success": success}
 
 

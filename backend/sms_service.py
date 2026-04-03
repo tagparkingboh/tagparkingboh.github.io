@@ -679,7 +679,8 @@ def handle_incoming_sms(payload: dict, db_session) -> bool:
     """
     from db_models import SMSMessage, SMSDirection, SMSStatus, Customer
 
-    sender = payload.get("sender")
+    # SMS Works uses "from" field, but "sender" as fallback for compatibility
+    sender = payload.get("from") or payload.get("sender")
     content = payload.get("content", "")
     message_id = payload.get("messageid")
 
