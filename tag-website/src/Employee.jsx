@@ -69,8 +69,9 @@ function Employee() {
   const navigate = useNavigate()
 
   const [refreshTrigger, setRefreshTrigger] = useState(0)
-  const [inspections, setInspections] = useState({}) // { bookingId: [inspections] }
-  const fetchingInspectionsRef = useRef(new Set()) // Track in-flight requests to prevent duplicates
+  const [inspectionStatus, setInspectionStatus] = useState({}) // { bookingId: [lightweight status] } - NO photos
+  const pendingBookingIdsRef = useRef(new Set()) // Collect booking IDs for batch fetch
+  const batchFetchTimerRef = useRef(null) // Timer for debounced batch fetch
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
 
@@ -224,6 +225,15 @@ function Employee() {
     }
   }, [loading, isAuthenticated, navigate])
 
+  // Cleanup batch fetch timer on unmount
+  useEffect(() => {
+    return () => {
+      if (batchFetchTimerRef.current) {
+        clearTimeout(batchFetchTimerRef.current)
+      }
+    }
+  }, [])
+
   const handleLogout = async () => {
     await logout()
     navigate('/login', { replace: true })
@@ -231,33 +241,96 @@ function Employee() {
 
   const triggerRefresh = () => setRefreshTrigger(prev => prev + 1)
 
-  // Fetch inspections for a booking (with deduplication)
-  const fetchInspections = async (bookingId) => {
-    // Skip if already fetching or already have data
-    if (fetchingInspectionsRef.current.has(bookingId)) {
-      return
+  // Batch fetch lightweight inspection STATUS for multiple bookings (NO photos/signatures)
+  // This is used for calendar display to show if inspections exist
+  const fetchInspectionStatusBatch = useCallback(async (bookingIds) => {
+    if (!bookingIds || bookingIds.length === 0) return
+
+    try {
+      const response = await fetch(`${API_URL}/api/employee/inspections/status`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ booking_ids: bookingIds }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        // Merge batch results into state
+        setInspectionStatus(prev => ({
+          ...prev,
+          ...Object.fromEntries(
+            Object.entries(data.inspections || {}).map(([id, insp]) => [parseInt(id), insp])
+          )
+        }))
+      }
+    } catch (err) {
+      // Silently fail - inspections just won't show status
+      console.warn('Failed to fetch inspection status batch:', err)
     }
+  }, [token])
 
-    // Mark as fetching
-    fetchingInspectionsRef.current.add(bookingId)
+  // Queue a booking ID for batch status fetching (called when rendering booking actions)
+  const queueInspectionStatusFetch = useCallback((bookingId) => {
+    // Skip if we already have status for this booking
+    if (inspectionStatus[bookingId] !== undefined) return
 
+    // Add to pending set
+    pendingBookingIdsRef.current.add(bookingId)
+
+    // Debounce: wait 100ms for more booking IDs to accumulate, then batch fetch
+    if (batchFetchTimerRef.current) {
+      clearTimeout(batchFetchTimerRef.current)
+    }
+    batchFetchTimerRef.current = setTimeout(() => {
+      const ids = Array.from(pendingBookingIdsRef.current)
+      pendingBookingIdsRef.current.clear()
+      if (ids.length > 0) {
+        fetchInspectionStatusBatch(ids)
+      }
+    }, 100)
+  }, [inspectionStatus, fetchInspectionStatusBatch])
+
+  // Fetch FULL inspection data for a single booking (used when opening modal or after saving)
+  // This includes photos and signatures - only called when needed
+  const fetchFullInspection = useCallback(async (bookingId) => {
     try {
       const response = await fetch(`${API_URL}/api/employee/inspections/${bookingId}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       })
       if (response.ok) {
         const data = await response.json()
-        setInspections(prev => ({ ...prev, [bookingId]: data.inspections || [] }))
+        return data.inspections || []
       }
     } catch (err) {
-      // Silently fail - inspections just won't show status
-    } finally {
-      // Remove from fetching set after a short delay to prevent immediate re-fetch
-      setTimeout(() => {
-        fetchingInspectionsRef.current.delete(bookingId)
-      }, 1000)
+      console.warn('Failed to fetch full inspection:', err)
     }
-  }
+    return []
+  }, [token])
+
+  // Update inspection status after saving (lightweight refresh)
+  const refreshInspectionStatus = useCallback(async (bookingId) => {
+    try {
+      const response = await fetch(`${API_URL}/api/employee/inspections/status`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ booking_ids: [bookingId] }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setInspectionStatus(prev => ({
+          ...prev,
+          [bookingId]: data.inspections?.[String(bookingId)] || []
+        }))
+      }
+    } catch (err) {
+      // Silently fail
+    }
+  }, [token])
 
   // Restore draft data
   const restoreDraft = (draft) => {
@@ -294,40 +367,56 @@ function Employee() {
     setShowInspectionModal(true)
   }
 
-  // Open inspection modal
-  const openInspection = (booking, type) => {
-    const bookingInspections = inspections[booking.id] || []
-    const existing = bookingInspections.find(i => i.inspection_type === type)
+  // Open inspection modal - fetches full inspection data (with photos) only when needed
+  const openInspection = async (booking, type) => {
+    // Check lightweight status to see if inspection exists
+    const statusList = inspectionStatus[booking.id] || []
+    const existingStatus = statusList.find(i => i.inspection_type === type)
 
     setInspectionBooking(booking)
     setInspectionType(type)
 
-    // For return/pickup inspections, find the original drop-off inspection for comparison
-    if (type === 'pickup') {
-      const originalDropoff = bookingInspections.find(i => i.inspection_type === 'dropoff')
-      setDropoffInspection(originalDropoff || null)
-    } else {
-      setDropoffInspection(null)
-    }
+    if (existingStatus) {
+      // Existing inspection - fetch FULL data including photos
+      const fullInspections = await fetchFullInspection(booking.id)
+      const existing = fullInspections.find(i => i.inspection_type === type)
 
-    if (existing) {
-      // Editing existing inspection - load from database
-      setEditingInspection(existing)
-      setInspectionNotes(existing.notes || '')
-      // Handle both old array format and new object format
-      const photos = existing.photos || {}
-      setInspectionPhotos(Array.isArray(photos) ? {} : photos)
-      setCustomerName(existing.customer_name || '')
-      setSignedDate(existing.signed_date || '')
-      setVehicleInspectionRead(existing.vehicle_inspection_read || false)
-      setAcknowledgementConfirmed(existing.acknowledgement_confirmed || false)
-      setInspectionDeclined(existing.declined || false)
-      setSignature(existing.signature || null)
-      setMileage(existing.mileage?.toString() || '')
-      setInspectionPage(1)
-      setShowInspectionModal(true)
+      // For return/pickup inspections, find the original drop-off inspection for comparison
+      if (type === 'pickup') {
+        const originalDropoff = fullInspections.find(i => i.inspection_type === 'dropoff')
+        setDropoffInspection(originalDropoff || null)
+      } else {
+        setDropoffInspection(null)
+      }
+
+      if (existing) {
+        // Editing existing inspection - load from database
+        setEditingInspection(existing)
+        setInspectionNotes(existing.notes || '')
+        // Handle both old array format and new object format
+        const photos = existing.photos || {}
+        setInspectionPhotos(Array.isArray(photos) ? {} : photos)
+        setCustomerName(existing.customer_name || '')
+        setSignedDate(existing.signed_date || '')
+        setVehicleInspectionRead(existing.vehicle_inspection_read || false)
+        setAcknowledgementConfirmed(existing.acknowledgement_confirmed || false)
+        setInspectionDeclined(existing.declined || false)
+        setSignature(existing.signature || null)
+        setMileage(existing.mileage?.toString() || '')
+        setInspectionPage(1)
+        setShowInspectionModal(true)
+      }
     } else {
-      // New inspection - check for draft
+      // New inspection - fetch dropoff data if this is a return inspection
+      if (type === 'pickup') {
+        const fullInspections = await fetchFullInspection(booking.id)
+        const originalDropoff = fullInspections.find(i => i.inspection_type === 'dropoff')
+        setDropoffInspection(originalDropoff || null)
+      } else {
+        setDropoffInspection(null)
+      }
+
+      // Check for draft
       setEditingInspection(null)
       const draft = checkForDraft(booking.id, type)
       if (draft && (Object.keys(draft.photos || {}).length > 0 || draft.notes || draft.signature)) {
@@ -512,7 +601,7 @@ function Employee() {
         setShowInspectionModal(false)
         setSuccessMessage(`${inspectionType === 'dropoff' ? 'Drop-off' : 'Return'} inspection saved`)
         setTimeout(() => setSuccessMessage(''), 3000)
-        fetchInspections(inspectionBooking.id)
+        refreshInspectionStatus(inspectionBooking.id)
       } else {
         const data = await response.json()
         setError(data.detail || 'Failed to save inspection')
@@ -556,12 +645,13 @@ function Employee() {
 
   // Render action buttons for each booking in the calendar
   const renderBookingActions = useCallback((booking, type) => {
-    // Fetch inspections if we haven't yet (deduplication handled in fetchInspections)
-    if (!inspections[booking.id]) {
-      fetchInspections(booking.id)
+    // Queue this booking for batch status fetch (batches multiple bookings into one API call)
+    // Only fetches lightweight status (no photos) for calendar display
+    if (inspectionStatus[booking.id] === undefined) {
+      queueInspectionStatusFetch(booking.id)
     }
 
-    const bookingInspections = inspections[booking.id] || []
+    const bookingInspections = inspectionStatus[booking.id] || []
     const hasInspection = bookingInspections.some(i => i.inspection_type === type)
     const isCompleted = booking.status === 'completed'
 
@@ -608,7 +698,7 @@ function Employee() {
     }
 
     return null
-  }, [inspections, token])
+  }, [inspectionStatus, queueInspectionStatusFetch])
 
   if (loading) {
     return (
