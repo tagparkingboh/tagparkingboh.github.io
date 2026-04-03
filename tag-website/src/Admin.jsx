@@ -9819,7 +9819,7 @@ function Admin() {
                               <div className="fun-fact-content">
                                 <span className="fun-fact-label">Longest Trip</span>
                                 <span className="fun-fact-value">{funFacts.longestTrip.days} days</span>
-                                <span className="fun-fact-detail">{funFacts.longestTrip.destination}</span>
+                                <span className="fun-fact-detail">{funFacts.longestTrip.customerName || funFacts.longestTrip.dates}</span>
                               </div>
                             </div>
                           )}
@@ -9829,7 +9829,7 @@ function Admin() {
                               <div className="fun-fact-content">
                                 <span className="fun-fact-label">Highest Transaction</span>
                                 <span className="fun-fact-value">{funFacts.highestTransaction.amount}</span>
-                                <span className="fun-fact-detail">{funFacts.highestTransaction.days} day trip</span>
+                                <span className="fun-fact-detail">{funFacts.highestTransaction.customerName || `${funFacts.highestTransaction.days} day trip`}</span>
                               </div>
                             </div>
                           )}
@@ -9839,7 +9839,7 @@ function Admin() {
                               <div className="fun-fact-content">
                                 <span className="fun-fact-label">Latest Night Owl</span>
                                 <span className="fun-fact-value">{funFacts.latestTimeOfNight.time}</span>
-                                <span className="fun-fact-detail">{funFacts.latestTimeOfNight.date}</span>
+                                <span className="fun-fact-detail">{funFacts.latestTimeOfNight.customerName || funFacts.latestTimeOfNight.date}</span>
                               </div>
                             </div>
                           )}
@@ -9849,7 +9849,7 @@ function Admin() {
                               <div className="fun-fact-content">
                                 <span className="fun-fact-label">Earliest Riser</span>
                                 <span className="fun-fact-value">{funFacts.earliestTimeOfDay.time}</span>
-                                <span className="fun-fact-detail">{funFacts.earliestTimeOfDay.date}</span>
+                                <span className="fun-fact-detail">{funFacts.earliestTimeOfDay.customerName || funFacts.earliestTimeOfDay.date}</span>
                               </div>
                             </div>
                           )}
@@ -9863,7 +9863,7 @@ function Admin() {
                                     ? (funFacts.lastMinuteBooking.gapTime || 'Same day')
                                     : `${funFacts.lastMinuteBooking.gapDays} day${funFacts.lastMinuteBooking.gapDays !== 1 ? 's' : ''} before`}
                                 </span>
-                                <span className="fun-fact-detail">{funFacts.lastMinuteBooking.gapDays === 0 ? 'before drop-off' : `Drop-off: ${funFacts.lastMinuteBooking.dropoffDate}`}</span>
+                                <span className="fun-fact-detail">{funFacts.lastMinuteBooking.customerName || (funFacts.lastMinuteBooking.gapDays === 0 ? 'before drop-off' : `Drop-off: ${funFacts.lastMinuteBooking.dropoffDate}`)}</span>
                               </div>
                             </div>
                           )}
@@ -9877,7 +9877,7 @@ function Admin() {
                                     ? `${funFacts.advanceBooking.gapDetailed.months}m ${funFacts.advanceBooking.gapDetailed.days}d ${String(funFacts.advanceBooking.gapDetailed.hours).padStart(2, '0')}:${String(funFacts.advanceBooking.gapDetailed.minutes).padStart(2, '0')}:${String(funFacts.advanceBooking.gapDetailed.seconds).padStart(2, '0')}`
                                     : `${funFacts.advanceBooking.gapDays} days ahead`}
                                 </span>
-                                <span className="fun-fact-detail">before drop-off</span>
+                                <span className="fun-fact-detail">{funFacts.advanceBooking.customerName || 'before drop-off'}</span>
                               </div>
                             </div>
                           )}

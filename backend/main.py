@@ -3898,10 +3898,16 @@ async def get_fun_facts(
                 longest_booking = booking
 
     if longest_booking:
+        # Get customer name
+        first_name = longest_booking.customer_first_name or (longest_booking.customer.first_name if longest_booking.customer else None)
+        last_name = longest_booking.customer_last_name or (longest_booking.customer.last_name if longest_booking.customer else None)
+        customer_name = f"{first_name} {last_name}" if first_name and last_name else None
         result["longestTrip"] = {
             "days": longest_days,
             "reference": longest_booking.reference,
             "destination": longest_booking.dropoff_destination or "Unknown",
+            "customerName": customer_name,
+            "dates": f"{longest_booking.dropoff_date.strftime('%d %b')} - {longest_booking.pickup_date.strftime('%d %b %Y')}" if longest_booking.dropoff_date and longest_booking.pickup_date else None,
         }
 
     # === Highest Transaction ===
@@ -3916,10 +3922,15 @@ async def get_fun_facts(
 
     if highest_booking:
         amount_pounds = highest_amount_pence / 100
+        # Get customer name
+        first_name = highest_booking.customer_first_name or (highest_booking.customer.first_name if highest_booking.customer else None)
+        last_name = highest_booking.customer_last_name or (highest_booking.customer.last_name if highest_booking.customer else None)
+        customer_name = f"{first_name} {last_name}" if first_name and last_name else None
         result["highestTransaction"] = {
             "amount": f"£{amount_pounds:.2f}",
             "reference": highest_booking.reference,
             "days": (highest_booking.pickup_date - highest_booking.dropoff_date).days if highest_booking.pickup_date and highest_booking.dropoff_date else None,
+            "customerName": customer_name,
         }
 
     # === Latest Time of Night & Earliest Time of Day ===
@@ -3928,18 +3939,26 @@ async def get_fun_facts(
     if bookings_with_created:
         # Latest time of night (e.g., 23:58:42)
         latest_time = max(bookings_with_created, key=lambda b: b.created_at.time())
+        # Get customer name
+        lt_first = latest_time.customer_first_name or (latest_time.customer.first_name if latest_time.customer else None)
+        lt_last = latest_time.customer_last_name or (latest_time.customer.last_name if latest_time.customer else None)
         result["latestTimeOfNight"] = {
             "time": latest_time.created_at.strftime("%H:%M:%S"),
             "date": latest_time.created_at.strftime("%d %b %Y"),
             "reference": latest_time.reference,
+            "customerName": f"{lt_first} {lt_last}" if lt_first and lt_last else None,
         }
 
         # Earliest time of day (e.g., 03:02:15)
         earliest_time = min(bookings_with_created, key=lambda b: b.created_at.time())
+        # Get customer name
+        et_first = earliest_time.customer_first_name or (earliest_time.customer.first_name if earliest_time.customer else None)
+        et_last = earliest_time.customer_last_name or (earliest_time.customer.last_name if earliest_time.customer else None)
         result["earliestTimeOfDay"] = {
             "time": earliest_time.created_at.strftime("%H:%M:%S"),
             "date": earliest_time.created_at.strftime("%d %b %Y"),
             "reference": earliest_time.reference,
+            "customerName": f"{et_first} {et_last}" if et_first and et_last else None,
         }
 
     # === Milestones ===
@@ -3980,11 +3999,15 @@ async def get_fun_facts(
     if bookings_with_gap:
         # Shortest gap (last minute booking)
         last_minute = min(bookings_with_gap, key=lambda x: x[1])
+        # Get customer name
+        lm_first = last_minute[0].customer_first_name or (last_minute[0].customer.first_name if last_minute[0].customer else None)
+        lm_last = last_minute[0].customer_last_name or (last_minute[0].customer.last_name if last_minute[0].customer else None)
         last_minute_data = {
             "gapDays": last_minute[1],
             "reference": last_minute[0].reference,
             "bookedOn": last_minute[0].created_at.strftime("%d %b %Y"),
             "dropoffDate": last_minute[0].dropoff_date.strftime("%d %b %Y"),
+            "customerName": f"{lm_first} {lm_last}" if lm_first and lm_last else None,
         }
         # For same-day bookings, calculate hours:minutes:seconds before drop-off
         if last_minute[1] == 0 and last_minute[0].dropoff_time:
@@ -3999,11 +4022,15 @@ async def get_fun_facts(
 
         # Longest gap (most advance booking)
         advance = max(bookings_with_gap, key=lambda x: x[1])
+        # Get customer name
+        adv_first = advance[0].customer_first_name or (advance[0].customer.first_name if advance[0].customer else None)
+        adv_last = advance[0].customer_last_name or (advance[0].customer.last_name if advance[0].customer else None)
         advance_data = {
             "gapDays": advance[1],
             "reference": advance[0].reference,
             "bookedOn": advance[0].created_at.strftime("%d %b %Y"),
             "dropoffDate": advance[0].dropoff_date.strftime("%d %b %Y"),
+            "customerName": f"{adv_first} {adv_last}" if adv_first and adv_last else None,
         }
         # Calculate detailed breakdown: months/days/hours/minutes/seconds
         if advance[0].dropoff_time:

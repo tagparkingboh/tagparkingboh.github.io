@@ -7699,23 +7699,38 @@
   margin: 0 0 16px 0;
 }
 
-.fun-fact-card {
+.financial-fun-facts .fun-fact-card,
+.fun-facts-section .fun-fact-card {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white !important;
 }
 
-.fun-fact-card .stats-card-value {
+.financial-fun-facts .fun-fact-card .stats-card-value,
+.fun-facts-section .fun-fact-card .stats-card-value {
   color: white;
 }
 
-.fun-fact-card .stats-card-label {
+.financial-fun-facts .fun-fact-card .stats-card-label,
+.fun-facts-section .fun-fact-card .stats-card-label {
   color: rgba(255, 255, 255, 0.9);
 }
 
-.fun-fact-detail {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.8);
+.financial-fun-facts .fun-fact-card .fun-fact-label,
+.fun-facts-section .fun-fact-card .fun-fact-label {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.financial-fun-facts .fun-fact-card .fun-fact-value,
+.fun-facts-section .fun-fact-card .fun-fact-value {
+  color: white;
+}
+
+.financial-fun-facts .fun-fact-card .fun-fact-detail,
+.fun-facts-section .fun-fact-card .fun-fact-detail {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.95);
   margin-top: 4px;
+  font-weight: 500;
 }
 
 .fun-fact-change {
