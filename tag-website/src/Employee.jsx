@@ -602,6 +602,14 @@ function Employee() {
         setSuccessMessage(`${inspectionType === 'dropoff' ? 'Drop-off' : 'Return'} inspection saved`)
         setTimeout(() => setSuccessMessage(''), 3000)
         refreshInspectionStatus(inspectionBooking.id)
+      } else if (response.status === 409) {
+        // Another employee created this inspection simultaneously - close modal and refresh
+        const data = await response.json()
+        clearDraft(inspectionBooking.id, inspectionType)
+        setShowInspectionModal(false)
+        setError(data.detail || 'Another employee already created this inspection')
+        setTimeout(() => setError(''), 5000)
+        refreshInspectionStatus(inspectionBooking.id)
       } else {
         const data = await response.json()
         setError(data.detail || 'Failed to save inspection')
