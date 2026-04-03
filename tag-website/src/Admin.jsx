@@ -11143,6 +11143,28 @@ function Admin() {
                       </div>
                     </div>
 
+                    {/* Revenue Milestones */}
+                    {financialData.funFacts?.revenueMilestones?.length > 0 && (
+                      <div className="revenue-milestones-section">
+                        <h3>Revenue Milestones</h3>
+                        <div className="revenue-milestones-grid">
+                          {financialData.funFacts.revenueMilestones.map((milestone) => (
+                            <div
+                              key={milestone.amount}
+                              className={`revenue-milestone-card ${milestone.achieved ? 'achieved' : 'pending'} ${milestone.amount >= 50000 ? 'major' : milestone.amount >= 10000 ? 'significant' : ''}`}
+                            >
+                              <div className="milestone-amount">{milestone.label}</div>
+                              {milestone.achieved ? (
+                                <div className="milestone-date">{milestone.date}</div>
+                              ) : (
+                                <div className="milestone-pending">Coming soon...</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Summary Totals */}
                     <div className="financial-summary">
                       <h3>Summary</h3>

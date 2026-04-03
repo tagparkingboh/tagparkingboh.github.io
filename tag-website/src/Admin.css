@@ -7724,6 +7724,84 @@
   margin-top: 4px;
 }
 
+/* Revenue Milestones */
+.revenue-milestones-section {
+  margin-bottom: 24px;
+}
+
+.revenue-milestones-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 16px 0;
+}
+
+.revenue-milestones-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.revenue-milestone-card {
+  background: #f8f9fa;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.revenue-milestone-card.achieved {
+  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+  border-color: #28a745;
+}
+
+.revenue-milestone-card.achieved.significant {
+  background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+  border-color: #ffc107;
+}
+
+.revenue-milestone-card.achieved.major {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: #667eea;
+}
+
+.revenue-milestone-card.pending {
+  opacity: 0.6;
+  border-style: dashed;
+}
+
+.milestone-amount {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin-bottom: 4px;
+}
+
+.revenue-milestone-card.achieved.major .milestone-amount {
+  color: white;
+}
+
+.milestone-date {
+  font-size: 12px;
+  color: #28a745;
+  font-weight: 500;
+}
+
+.revenue-milestone-card.achieved.significant .milestone-date {
+  color: #856404;
+}
+
+.revenue-milestone-card.achieved.major .milestone-date {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.milestone-pending {
+  font-size: 11px;
+  color: #6c757d;
+  font-style: italic;
+}
+
 /* Vertical layout for fun fact cards */
 .fun-fact-vertical {
   display: flex;

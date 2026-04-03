@@ -4486,6 +4486,41 @@ async def get_financial_report(
             "totalPounds": round(running_total / 100, 2),
         })
 
+    # Revenue milestones - when each milestone was first achieved
+    milestone_amounts = [1000, 2000, 3000, 4000, 5000, 10000, 15000, 20000, 25000, 50000, 75000, 100000]
+    revenue_milestones = []
+    running_total_for_milestones = 0
+    milestones_achieved = set()
+
+    for day_date in sorted(revenue_by_day.keys()):
+        running_total_for_milestones += revenue_by_day[day_date]
+        current_pounds = running_total_for_milestones / 100
+
+        for milestone in milestone_amounts:
+            if milestone not in milestones_achieved and current_pounds >= milestone:
+                milestones_achieved.add(milestone)
+                revenue_milestones.append({
+                    "amount": milestone,
+                    "label": f"£{milestone:,}",
+                    "date": day_date.strftime("%d %b %Y"),
+                    "achieved": True,
+                })
+
+    # Add unachieved milestones
+    current_total_pounds = running_total / 100
+    for milestone in milestone_amounts:
+        if milestone not in milestones_achieved:
+            revenue_milestones.append({
+                "amount": milestone,
+                "label": f"£{milestone:,}",
+                "date": None,
+                "achieved": False,
+            })
+
+    # Sort by amount
+    revenue_milestones.sort(key=lambda x: x["amount"])
+    fun_facts["revenueMilestones"] = revenue_milestones
+
     result = {
         "funFacts": fun_facts,
         "monthlyData": monthly_data,
