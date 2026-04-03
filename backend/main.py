@@ -14867,6 +14867,7 @@ async def get_sms_threads(
     Returns threads sorted by most recent activity, with unread count.
     """
     from sqlalchemy import func, desc
+    from db_models import Customer
 
     # Get unique phone numbers with aggregates
     thread_data = db.query(
