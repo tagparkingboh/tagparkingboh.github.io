@@ -6115,6 +6115,23 @@ function Admin() {
                           <td>{msg.booking_reference || '-'}</td>
                           <td>
                             <div style={{ display: 'flex', gap: '6px' }}>
+                              {msg.direction === 'inbound' && (
+                                <button
+                                  onClick={() => {
+                                    setSendSmsForm(prev => ({
+                                      ...prev,
+                                      phone: msg.phone_number || '',
+                                      customer_id: msg.customer_id || '',
+                                      content: ''
+                                    }))
+                                    setShowSendSmsModal(true)
+                                  }}
+                                  title="Reply to this message"
+                                  style={{ padding: '6px 12px', fontSize: '0.75rem', borderRadius: '20px', background: '#7c3aed', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: '500' }}
+                                >
+                                  Reply
+                                </button>
+                              )}
                               {msg.direction === 'outbound' && (
                                 <button
                                   onClick={() => handleResendMessage(msg.id)}
