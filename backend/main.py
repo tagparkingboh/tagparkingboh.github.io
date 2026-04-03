@@ -11120,6 +11120,56 @@ async def get_inspections(
     }
 
 
+@app.post("/api/employee/inspections/status")
+async def get_inspections_status_batch(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get lightweight inspection status for multiple bookings (NO photos or signatures).
+
+    This endpoint is optimized for the calendar view where we only need to know
+    if inspections exist and their basic info - NOT the full data with large
+    base64-encoded photos and signatures.
+
+    Request body: { "booking_ids": [1, 2, 3, ...] }
+    Response: { "inspections": { "1": [{id, type, declined, mileage}], ... } }
+    """
+    body = await request.json()
+    booking_ids = body.get("booking_ids", [])
+
+    if not booking_ids:
+        return {"inspections": {}}
+
+    # Limit to prevent abuse (max 100 bookings per request)
+    booking_ids = booking_ids[:100]
+
+    # Single query for all inspections - only select needed columns
+    inspections = db.query(
+        VehicleInspection.id,
+        VehicleInspection.booking_id,
+        VehicleInspection.inspection_type,
+        VehicleInspection.declined,
+        VehicleInspection.mileage,
+    ).filter(
+        VehicleInspection.booking_id.in_(booking_ids)
+    ).all()
+
+    # Group by booking_id - return lightweight status only
+    result = {str(bid): [] for bid in booking_ids}
+    for i in inspections:
+        inspection_status = {
+            "id": i.id,
+            "booking_id": i.booking_id,
+            "inspection_type": i.inspection_type.value,
+            "declined": i.declined or False,
+            "mileage": i.mileage,
+        }
+        result[str(i.booking_id)].append(inspection_status)
+
+    return {"inspections": result}
+
+
 @app.put("/api/employee/inspections/{inspection_id}")
 async def update_inspection(
     inspection_id: int,
