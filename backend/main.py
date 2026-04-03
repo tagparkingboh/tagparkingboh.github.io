@@ -15185,7 +15185,9 @@ async def refresh_sms_statuses(
 
 
 # SMS Webhooks (no auth - public endpoints for SMS Works callbacks)
+# Note: SMS Works sends requests with trailing slash, so we handle both formats
 @app.post("/api/webhooks/sms/incoming")
+@app.post("/api/webhooks/sms/incoming/")
 async def webhook_sms_incoming(
     request: Request,
     db: Session = Depends(get_db)
@@ -15199,6 +15201,7 @@ async def webhook_sms_incoming(
 
 
 @app.post("/api/webhooks/sms/delivery-report")
+@app.post("/api/webhooks/sms/delivery-report/")
 async def webhook_sms_delivery(
     request: Request,
     db: Session = Depends(get_db)
