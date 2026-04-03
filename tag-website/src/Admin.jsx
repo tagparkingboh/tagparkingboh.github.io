@@ -472,6 +472,15 @@ function Admin() {
   const [editingDraft, setEditingDraft] = useState(null)
   const [sendingDraftId, setSendingDraftId] = useState(null)
   const [deletingDraftId, setDeletingDraftId] = useState(null)
+  // SMS Threads state (conversation view)
+  const [smsThreads, setSmsThreads] = useState([])
+  const [loadingThreads, setLoadingThreads] = useState(false)
+  const [selectedThread, setSelectedThread] = useState(null)
+  const [threadMessages, setThreadMessages] = useState([])
+  const [loadingConversation, setLoadingConversation] = useState(false)
+  const [replyContent, setReplyContent] = useState('')
+  const [sendingReply, setSendingReply] = useState(false)
+  const conversationEndRef = useRef(null)
 
   // SMS textarea refs for variable insertion
   const sendSmsTextareaRef = useRef(null)
@@ -895,13 +904,18 @@ function Admin() {
       fetchSmsMessages()
       fetchSmsTemplates()
       fetchSmsStats()
+      fetchSmsThreads()
     }
   }, [activeTab, token])
 
   // Re-fetch messages when filters change
   useEffect(() => {
     if (activeTab === 'messages' && token) {
-      fetchSmsMessages()
+      if (messagesSubTab === 'conversations') {
+        fetchSmsThreads()
+      } else {
+        fetchSmsMessages()
+      }
     }
   }, [messagesSubTab, smsDirectionFilter, smsStatusFilter])
 
@@ -3952,6 +3966,90 @@ function Admin() {
     }
   }
 
+  // Fetch SMS threads (conversations grouped by phone)
+  const fetchSmsThreads = async () => {
+    setLoadingThreads(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/threads`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSmsThreads(data.threads || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch SMS threads:', err)
+    } finally {
+      setLoadingThreads(false)
+    }
+  }
+
+  // Fetch conversation messages for a specific thread
+  const fetchConversation = async (phoneNumber) => {
+    setLoadingConversation(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/messages/conversation/${encodeURIComponent(phoneNumber)}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setThreadMessages(data.messages || [])
+        // Refresh thread list to update unread counts
+        fetchSmsThreads()
+        fetchSmsStats()
+        // Scroll to bottom of conversation
+        setTimeout(() => {
+          conversationEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        }, 100)
+      }
+    } catch (err) {
+      console.error('Failed to fetch conversation:', err)
+    } finally {
+      setLoadingConversation(false)
+    }
+  }
+
+  // Select a thread and load its messages
+  const selectThread = (thread) => {
+    setSelectedThread(thread)
+    setReplyContent('')
+    fetchConversation(thread.phone_number)
+  }
+
+  // Send a reply in the current conversation
+  const sendReply = async () => {
+    if (!selectedThread || !replyContent.trim()) return
+    setSendingReply(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/send`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phone: selectedThread.phone_number,
+          content: replyContent.trim(),
+          customer_id: selectedThread.customer?.id || null,
+        }),
+      })
+      if (response.ok) {
+        setReplyContent('')
+        fetchConversation(selectedThread.phone_number)
+      } else {
+        const data = await response.json()
+        setMessagesMessage(`Error: ${data.detail || 'Failed to send message'}`)
+        setTimeout(() => setMessagesMessage(''), 5000)
+      }
+    } catch (err) {
+      console.error('Failed to send reply:', err)
+      setMessagesMessage('Error: Failed to send message')
+      setTimeout(() => setMessagesMessage(''), 5000)
+    } finally {
+      setSendingReply(false)
+    }
+  }
+
   const fetchSmsDrafts = async () => {
     setLoadingDrafts(true)
     try {
@@ -6021,14 +6119,24 @@ function Admin() {
                   <div className="sms-stat-label">Failed</div>
                 </div>
                 <div className="sms-stat-card">
-                  <div className="sms-stat-value">{smsStats.inbound || 0}</div>
-                  <div className="sms-stat-label">Received</div>
+                  <div className="sms-stat-value">{smsStats.unread || 0}</div>
+                  <div className="sms-stat-label">Unread</div>
+                </div>
+                <div className="sms-stat-card">
+                  <div className="sms-stat-value">{smsStats.conversations || 0}</div>
+                  <div className="sms-stat-label">Conversations</div>
                 </div>
               </div>
             )}
 
             {/* Sub-tabs */}
             <div className="messages-subtabs">
+              <button
+                className={`messages-subtab ${messagesSubTab === 'conversations' ? 'active' : ''}`}
+                onClick={() => { setMessagesSubTab('conversations'); setSelectedThread(null); fetchSmsThreads() }}
+              >
+                Conversations {smsStats?.unread > 0 && <span className="unread-badge">{smsStats.unread}</span>}
+              </button>
               <button
                 className={`messages-subtab ${messagesSubTab === 'inbox' ? 'active' : ''}`}
                 onClick={() => { setMessagesSubTab('inbox'); setSmsDirectionFilter('inbound') }}
@@ -6070,6 +6178,169 @@ function Admin() {
                     <option value="delivered">Delivered</option>
                     <option value="failed">Failed</option>
                   </select>
+                </div>
+              </div>
+            )}
+
+            {/* Conversations View (Thread-based) */}
+            {messagesSubTab === 'conversations' && (
+              <div className="conversations-container">
+                {/* Thread List (Left Panel) */}
+                <div className="thread-list">
+                  <div className="thread-list-header">
+                    <h4>Conversations</h4>
+                    <button
+                      className="btn-icon"
+                      onClick={fetchSmsThreads}
+                      disabled={loadingThreads}
+                      title="Refresh"
+                    >
+                      ↻
+                    </button>
+                  </div>
+                  {loadingThreads ? (
+                    <div className="thread-loading">Loading...</div>
+                  ) : smsThreads.length === 0 ? (
+                    <div className="no-threads">No conversations yet</div>
+                  ) : (
+                    <div className="thread-items">
+                      {smsThreads.map((thread) => (
+                        <div
+                          key={thread.phone_number}
+                          className={`thread-item ${selectedThread?.phone_number === thread.phone_number ? 'selected' : ''} ${thread.unread_count > 0 ? 'unread' : ''}`}
+                          onClick={() => selectThread(thread)}
+                        >
+                          <div className="thread-avatar">
+                            {thread.customer?.name ? thread.customer.name.charAt(0).toUpperCase() : '?'}
+                          </div>
+                          <div className="thread-info">
+                            <div className="thread-header">
+                              <span className="thread-name">
+                                {thread.customer?.name || formatPhoneForDisplay(thread.phone_number)}
+                              </span>
+                              <span className="thread-time">
+                                {thread.last_activity ? new Date(thread.last_activity).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : ''}
+                              </span>
+                            </div>
+                            <div className="thread-preview">
+                              {thread.last_message?.direction === 'outbound' && <span className="preview-arrow">→ </span>}
+                              {thread.last_message?.content || 'No messages'}
+                            </div>
+                            {thread.customer?.name && (
+                              <div className="thread-phone">{formatPhoneForDisplay(thread.phone_number)}</div>
+                            )}
+                          </div>
+                          {thread.unread_count > 0 && (
+                            <div className="thread-unread-badge">{thread.unread_count}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Conversation Panel (Right Panel) */}
+                <div className="conversation-panel">
+                  {!selectedThread ? (
+                    <div className="no-conversation-selected">
+                      <div className="empty-state-icon">💬</div>
+                      <p>Select a conversation to view messages</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Conversation Header */}
+                      <div className="conversation-header">
+                        <div className="conversation-contact">
+                          <div className="contact-avatar">
+                            {selectedThread.customer?.name ? selectedThread.customer.name.charAt(0).toUpperCase() : '?'}
+                          </div>
+                          <div className="contact-info">
+                            <div className="contact-name">
+                              {selectedThread.customer?.name || 'Unknown'}
+                            </div>
+                            <div className="contact-phone">{formatPhoneForDisplay(selectedThread.phone_number)}</div>
+                          </div>
+                        </div>
+                        <div className="conversation-actions">
+                          <button
+                            className="btn-icon"
+                            onClick={() => fetchConversation(selectedThread.phone_number)}
+                            disabled={loadingConversation}
+                            title="Refresh conversation"
+                          >
+                            ↻
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Messages */}
+                      <div className="conversation-messages">
+                        {loadingConversation ? (
+                          <div className="conversation-loading">Loading messages...</div>
+                        ) : threadMessages.length === 0 ? (
+                          <div className="no-messages">No messages in this conversation</div>
+                        ) : (
+                          <>
+                            {threadMessages.map((msg, index) => {
+                              const showDate = index === 0 ||
+                                new Date(msg.created_at).toDateString() !== new Date(threadMessages[index - 1].created_at).toDateString()
+                              return (
+                                <React.Fragment key={msg.id}>
+                                  {showDate && (
+                                    <div className="message-date-divider">
+                                      {new Date(msg.created_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                                    </div>
+                                  )}
+                                  <div className={`message-bubble ${msg.direction}`}>
+                                    <div className="message-content">{msg.content}</div>
+                                    <div className="message-meta">
+                                      <span className="message-time">
+                                        {new Date(msg.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                      {msg.direction === 'outbound' && (
+                                        <span className={`message-status ${msg.status}`}>
+                                          {msg.status === 'delivered' ? '✓✓' : msg.status === 'sent' ? '✓' : msg.status === 'failed' ? '✗' : '○'}
+                                        </span>
+                                      )}
+                                      {msg.booking_reference && (
+                                        <span className="message-booking" title={`Booking: ${msg.booking_reference}`}>
+                                          📋
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </React.Fragment>
+                              )
+                            })}
+                            <div ref={conversationEndRef} />
+                          </>
+                        )}
+                      </div>
+
+                      {/* Reply Input */}
+                      <div className="conversation-reply">
+                        <textarea
+                          value={replyContent}
+                          onChange={(e) => setReplyContent(e.target.value)}
+                          placeholder="Type a message..."
+                          rows={2}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault()
+                              sendReply()
+                            }
+                          }}
+                        />
+                        <button
+                          className="btn-send"
+                          onClick={sendReply}
+                          disabled={sendingReply || !replyContent.trim()}
+                        >
+                          {sendingReply ? '...' : 'Send'}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
