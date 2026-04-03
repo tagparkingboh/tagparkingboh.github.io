@@ -3472,11 +3472,29 @@
   border-bottom: 1px solid #333;
 }
 
+.thread-list-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.thread-list-title input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
 .thread-list-header h4 {
   margin: 0;
   font-size: 0.9rem;
   font-weight: 600;
   color: #fff;
+}
+
+.thread-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .thread-list-header .btn-icon {
@@ -3491,6 +3509,14 @@
 
 .thread-list-header .btn-icon:hover {
   color: #fff;
+}
+
+.thread-list-header .btn-icon.danger {
+  color: #e74c3c;
+}
+
+.thread-list-header .btn-icon.danger:hover {
+  color: #ff6b6b;
 }
 
 .thread-loading,
@@ -3527,6 +3553,18 @@
 
 .thread-item.unread {
   background: rgba(217, 255, 0, 0.05);
+}
+
+.thread-item.checked {
+  background: rgba(217, 255, 0, 0.1);
+}
+
+.thread-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 0.75rem;
 }
 
 .thread-avatar {
@@ -3690,6 +3728,15 @@
 .conversation-actions .btn-icon:hover {
   background: #333;
   color: #fff;
+}
+
+.conversation-actions .btn-icon.danger {
+  color: #e74c3c;
+}
+
+.conversation-actions .btn-icon.danger:hover {
+  background: rgba(231, 76, 60, 0.2);
+  color: #ff6b6b;
 }
 
 /* Messages Area */

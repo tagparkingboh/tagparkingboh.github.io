@@ -480,6 +480,8 @@ function Admin() {
   const [loadingConversation, setLoadingConversation] = useState(false)
   const [replyContent, setReplyContent] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
+  const [selectedThreads, setSelectedThreads] = useState(new Set())
+  const [deletingThreads, setDeletingThreads] = useState(false)
   const conversationEndRef = useRef(null)
 
   // SMS textarea refs for variable insertion
@@ -4050,6 +4052,82 @@ function Admin() {
     }
   }
 
+  // Toggle thread selection for bulk operations
+  const toggleThreadSelection = (phoneNumber, e) => {
+    e.stopPropagation()
+    setSelectedThreads(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(phoneNumber)) {
+        newSet.delete(phoneNumber)
+      } else {
+        newSet.add(phoneNumber)
+      }
+      return newSet
+    })
+  }
+
+  // Select/deselect all threads
+  const toggleSelectAll = () => {
+    if (selectedThreads.size === smsThreads.length) {
+      setSelectedThreads(new Set())
+    } else {
+      setSelectedThreads(new Set(smsThreads.map(t => t.phone_number)))
+    }
+  }
+
+  // Delete a single thread
+  const deleteThread = async (phoneNumber) => {
+    if (!confirm(`Delete all messages with ${phoneNumber}?`)) return
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/threads/${encodeURIComponent(phoneNumber)}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        if (selectedThread?.phone_number === phoneNumber) {
+          setSelectedThread(null)
+          setThreadMessages([])
+        }
+        fetchSmsThreads()
+        fetchSmsStats()
+      }
+    } catch (err) {
+      console.error('Failed to delete thread:', err)
+    }
+  }
+
+  // Bulk delete selected threads
+  const bulkDeleteThreads = async () => {
+    if (selectedThreads.size === 0) return
+    if (!confirm(`Delete ${selectedThreads.size} conversation(s)?`)) return
+
+    setDeletingThreads(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/sms/threads/bulk-delete`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ phone_numbers: Array.from(selectedThreads) }),
+      })
+      if (response.ok) {
+        if (selectedThread && selectedThreads.has(selectedThread.phone_number)) {
+          setSelectedThread(null)
+          setThreadMessages([])
+        }
+        setSelectedThreads(new Set())
+        fetchSmsThreads()
+        fetchSmsStats()
+      }
+    } catch (err) {
+      console.error('Failed to bulk delete threads:', err)
+    } finally {
+      setDeletingThreads(false)
+    }
+  }
+
   const fetchSmsDrafts = async () => {
     setLoadingDrafts(true)
     try {
@@ -6188,15 +6266,35 @@ function Admin() {
                 {/* Thread List (Left Panel) */}
                 <div className="thread-list">
                   <div className="thread-list-header">
-                    <h4>Conversations</h4>
-                    <button
-                      className="btn-icon"
-                      onClick={fetchSmsThreads}
-                      disabled={loadingThreads}
-                      title="Refresh"
-                    >
-                      ↻
-                    </button>
+                    <div className="thread-list-title">
+                      <input
+                        type="checkbox"
+                        checked={smsThreads.length > 0 && selectedThreads.size === smsThreads.length}
+                        onChange={toggleSelectAll}
+                        title="Select all"
+                      />
+                      <h4>Conversations</h4>
+                    </div>
+                    <div className="thread-list-actions">
+                      {selectedThreads.size > 0 && (
+                        <button
+                          className="btn-icon danger"
+                          onClick={bulkDeleteThreads}
+                          disabled={deletingThreads}
+                          title={`Delete ${selectedThreads.size} selected`}
+                        >
+                          🗑 {selectedThreads.size}
+                        </button>
+                      )}
+                      <button
+                        className="btn-icon"
+                        onClick={fetchSmsThreads}
+                        disabled={loadingThreads}
+                        title="Refresh"
+                      >
+                        ↻
+                      </button>
+                    </div>
                   </div>
                   {loadingThreads ? (
                     <div className="thread-loading">Loading...</div>
@@ -6207,9 +6305,16 @@ function Admin() {
                       {smsThreads.map((thread) => (
                         <div
                           key={thread.phone_number}
-                          className={`thread-item ${selectedThread?.phone_number === thread.phone_number ? 'selected' : ''} ${thread.unread_count > 0 ? 'unread' : ''}`}
+                          className={`thread-item ${selectedThread?.phone_number === thread.phone_number ? 'selected' : ''} ${thread.unread_count > 0 ? 'unread' : ''} ${selectedThreads.has(thread.phone_number) ? 'checked' : ''}`}
                           onClick={() => selectThread(thread)}
                         >
+                          <input
+                            type="checkbox"
+                            checked={selectedThreads.has(thread.phone_number)}
+                            onChange={(e) => toggleThreadSelection(thread.phone_number, e)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="thread-checkbox"
+                          />
                           <div className="thread-avatar">
                             {thread.customer?.name ? thread.customer.name.charAt(0).toUpperCase() : '?'}
                           </div>
@@ -6269,6 +6374,13 @@ function Admin() {
                             title="Refresh conversation"
                           >
                             ↻
+                          </button>
+                          <button
+                            className="btn-icon danger"
+                            onClick={() => deleteThread(selectedThread.phone_number)}
+                            title="Delete conversation"
+                          >
+                            🗑
                           </button>
                         </div>
                       </div>

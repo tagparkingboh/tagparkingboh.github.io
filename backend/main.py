@@ -14944,6 +14944,50 @@ async def mark_thread_as_read(
     return {"marked_read": updated}
 
 
+@app.delete("/api/admin/sms/threads/{phone}")
+async def delete_sms_thread(
+    phone: str,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Delete all messages in a conversation thread."""
+    formatted_phone = sms_service.format_phone_number(phone)
+
+    # Delete all messages for this phone number
+    deleted = db.query(SMSMessage).filter(
+        SMSMessage.phone_number.ilike(f"%{formatted_phone[-10:]}%")
+    ).delete(synchronize_session=False)
+
+    db.commit()
+
+    return {"deleted": deleted}
+
+
+class BulkDeleteThreadsRequest(BaseModel):
+    phone_numbers: List[str]
+
+
+@app.post("/api/admin/sms/threads/bulk-delete")
+async def bulk_delete_sms_threads(
+    request: BulkDeleteThreadsRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Delete multiple conversation threads at once."""
+    total_deleted = 0
+
+    for phone in request.phone_numbers:
+        formatted_phone = sms_service.format_phone_number(phone)
+        deleted = db.query(SMSMessage).filter(
+            SMSMessage.phone_number.ilike(f"%{formatted_phone[-10:]}%")
+        ).delete(synchronize_session=False)
+        total_deleted += deleted
+
+    db.commit()
+
+    return {"deleted": total_deleted, "threads_removed": len(request.phone_numbers)}
+
+
 @app.get("/api/admin/sms/messages/conversation/{phone}")
 async def get_sms_conversation(
     phone: str,
