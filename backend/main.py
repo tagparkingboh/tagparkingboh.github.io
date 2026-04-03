@@ -14875,7 +14875,7 @@ async def get_sms_threads(
         func.count(SMSMessage.id).label("message_count"),
         func.sum(
             case(
-                (and_(SMSMessage.direction == SMSDirection.INBOUND, SMSMessage.is_read == False), 1),
+                [(and_(SMSMessage.direction == SMSDirection.INBOUND, SMSMessage.is_read == False), 1)],
                 else_=0
             )
         ).label("unread_count"),
