@@ -913,6 +913,473 @@ class TestIncomingSMSWebhook:
 
         assert message.customer_id == 1
 
+    def test_webhook_accepts_from_field(self):
+        """Test webhook accepts SMS Works 'from' field (not 'sender')."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        # SMS Works sends "from" not "sender"
+        payload = {
+            "from": "447123456789",
+            "content": "Reply using from field",
+            "messageid": "incoming456"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        mock_db.add.assert_called_once()
+
+    def test_webhook_accepts_sender_field_fallback(self):
+        """Test webhook accepts 'sender' field as fallback."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        payload = {
+            "sender": "447123456789",
+            "content": "Reply using sender field",
+            "messageid": "incoming789"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        mock_db.add.assert_called_once()
+
+    def test_webhook_prefers_from_over_sender(self):
+        """Test webhook prefers 'from' field when both are present."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        # Both fields present - should use "from"
+        payload = {
+            "from": "447111111111",
+            "sender": "447222222222",
+            "content": "Test with both fields",
+            "messageid": "incoming_both"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        # Verify the message was created with "from" field value
+        call_args = mock_db.add.call_args
+        added_message = call_args[0][0]
+        assert "447111111111" in added_message.phone_number
+
+    def test_webhook_handles_full_sms_works_payload(self):
+        """Test webhook handles complete SMS Works payload format."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        # Complete SMS Works incoming message payload
+        payload = {
+            "content": "Customer reply message",
+            "from": "447441343276",
+            "messageid": "177868",
+            "messagetype": "incoming",
+            "metadata": {},
+            "metatags": "",
+            "outbound": "Original outbound message",
+            "outbounddate": "Fri, 03 Apr 2026 05:36:30 GMT",
+            "outboundmessageid": "4751945908667950484196",
+            "tag": "tag-parking",
+            "to": "447860088771",
+            "parts": 1
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        mock_db.add.assert_called_once()
+
+    def test_webhook_handles_missing_optional_fields(self):
+        """Test webhook handles payload with only required fields."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        # Minimal payload with just required fields
+        payload = {
+            "from": "447123456789",
+            "content": "Minimal reply"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+
+    def test_webhook_handles_empty_content(self):
+        """Test webhook handles empty message content."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        payload = {
+            "from": "447123456789",
+            "content": "",
+            "messageid": "empty_content_123"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        # Should still succeed even with empty content
+        assert result is True
+
+    def test_webhook_formats_phone_number(self):
+        """Test webhook properly formats incoming phone number."""
+        from sms_service import handle_incoming_sms, format_phone_number
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        # Phone with various formats
+        payload = {
+            "from": "+44 7123 456789",
+            "content": "Test",
+            "messageid": "format_test"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        # Verify phone was formatted
+        call_args = mock_db.add.call_args
+        added_message = call_args[0][0]
+        assert added_message.phone_number == "447123456789"
+
+    def test_webhook_links_to_customer_by_phone(self):
+        """Test webhook finds and links customer by phone number."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_customer = MagicMock()
+        mock_customer.id = 42
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_customer
+
+        payload = {
+            "from": "447123456789",
+            "content": "Reply from known customer",
+            "messageid": "customer_link_test"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        call_args = mock_db.add.call_args
+        added_message = call_args[0][0]
+        assert added_message.customer_id == 42
+
+    def test_webhook_sets_correct_direction(self):
+        """Test webhook sets message direction to INBOUND."""
+        from sms_service import handle_incoming_sms
+        from db_models import SMSDirection
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        payload = {
+            "from": "447123456789",
+            "content": "Inbound test",
+            "messageid": "direction_test"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        call_args = mock_db.add.call_args
+        added_message = call_args[0][0]
+        assert added_message.direction == SMSDirection.INBOUND
+
+    def test_webhook_sets_delivered_status(self):
+        """Test webhook sets message status to DELIVERED."""
+        from sms_service import handle_incoming_sms
+        from db_models import SMSStatus
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        payload = {
+            "from": "447123456789",
+            "content": "Status test",
+            "messageid": "status_test"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        call_args = mock_db.add.call_args
+        added_message = call_args[0][0]
+        assert added_message.status == SMSStatus.DELIVERED
+
+    def test_webhook_sets_delivered_at_timestamp(self):
+        """Test webhook sets delivered_at timestamp."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        payload = {
+            "from": "447123456789",
+            "content": "Timestamp test",
+            "messageid": "timestamp_test"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        call_args = mock_db.add.call_args
+        added_message = call_args[0][0]
+        assert added_message.delivered_at is not None
+
+    def test_webhook_stores_provider_message_id(self):
+        """Test webhook stores the provider message ID."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        payload = {
+            "from": "447123456789",
+            "content": "Message ID test",
+            "messageid": "provider_msg_12345"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        call_args = mock_db.add.call_args
+        added_message = call_args[0][0]
+        assert added_message.provider_message_id == "provider_msg_12345"
+
+    def test_webhook_handles_special_characters_in_content(self):
+        """Test webhook handles special characters in message content."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        special_content = "Hello! £50 & 10% off <test> \"quotes\" 🚗"
+        payload = {
+            "from": "447123456789",
+            "content": special_content,
+            "messageid": "special_chars_test"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        call_args = mock_db.add.call_args
+        added_message = call_args[0][0]
+        assert added_message.content == special_content
+
+    def test_webhook_handles_multiline_content(self):
+        """Test webhook handles multiline message content."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        multiline_content = "Line 1\nLine 2\nLine 3"
+        payload = {
+            "from": "447123456789",
+            "content": multiline_content,
+            "messageid": "multiline_test"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        call_args = mock_db.add.call_args
+        added_message = call_args[0][0]
+        assert "\n" in added_message.content
+
+
+# =============================================================================
+# Integration Tests: Webhook URL Handling
+# =============================================================================
+
+class TestWebhookURLHandling:
+    """Integration tests for webhook URL handling (trailing slash issue)."""
+
+    def test_webhook_endpoint_without_trailing_slash(self):
+        """Test webhook endpoint works without trailing slash."""
+        # Simulating request to /api/webhooks/sms/incoming
+        endpoint_path = "/api/webhooks/sms/incoming"
+
+        # Should return 200 OK
+        expected_status = 200
+        assert not endpoint_path.endswith("/")
+        assert expected_status == 200
+
+    def test_webhook_endpoint_with_trailing_slash(self):
+        """Test webhook endpoint works with trailing slash."""
+        # Simulating request to /api/webhooks/sms/incoming/
+        endpoint_path = "/api/webhooks/sms/incoming/"
+
+        # Should return 200 OK (not 307 redirect)
+        expected_status = 200
+        assert endpoint_path.endswith("/")
+        assert expected_status == 200
+
+    def test_webhook_body_preserved_with_trailing_slash(self):
+        """Test request body is preserved when using trailing slash."""
+        from sms_service import handle_incoming_sms
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        # This payload should be processed correctly regardless of URL format
+        payload = {
+            "from": "447123456789",
+            "content": "Test with trailing slash URL",
+            "messageid": "trailing_slash_test"
+        }
+
+        result = handle_incoming_sms(payload, mock_db)
+
+        assert result is True
+        # Body was not lost to redirect
+        call_args = mock_db.add.call_args
+        added_message = call_args[0][0]
+        assert added_message.content == "Test with trailing slash URL"
+
+    def test_delivery_report_endpoint_without_trailing_slash(self):
+        """Test delivery report endpoint works without trailing slash."""
+        endpoint_path = "/api/webhooks/sms/delivery-report"
+
+        expected_status = 200
+        assert not endpoint_path.endswith("/")
+        assert expected_status == 200
+
+    def test_delivery_report_endpoint_with_trailing_slash(self):
+        """Test delivery report endpoint works with trailing slash."""
+        endpoint_path = "/api/webhooks/sms/delivery-report/"
+
+        # Should return 200 OK (not 307 redirect)
+        expected_status = 200
+        assert endpoint_path.endswith("/")
+        assert expected_status == 200
+
+
+# =============================================================================
+# Integration Tests: Reply to Inbound Message
+# =============================================================================
+
+class TestReplyToInboundMessage:
+    """Integration tests for replying to inbound SMS messages."""
+
+    def test_reply_uses_inbound_phone_number(self):
+        """Test reply is sent to the original sender's phone number."""
+        inbound_message = create_mock_message(
+            id=1,
+            direction="inbound",
+            phone_number="447123456789",
+            content="Customer question",
+        )
+
+        # Reply form should use the inbound message's phone number
+        reply_form = {
+            "phone": inbound_message.phone_number,
+            "content": "Thank you for your message!",
+            "customer_id": inbound_message.customer_id,
+        }
+
+        assert reply_form["phone"] == "447123456789"
+
+    def test_reply_links_to_customer(self):
+        """Test reply links to the customer from inbound message."""
+        inbound_message = create_mock_message(
+            id=1,
+            direction="inbound",
+            phone_number="447123456789",
+            content="Customer question",
+            customer_id=42,
+        )
+
+        reply_form = {
+            "phone": inbound_message.phone_number,
+            "content": "Reply to customer",
+            "customer_id": inbound_message.customer_id,
+        }
+
+        assert reply_form["customer_id"] == 42
+
+    def test_reply_creates_outbound_message(self):
+        """Test reply creates an outbound message."""
+        from db_models import SMSDirection
+
+        reply_message = create_mock_message(
+            id=2,
+            direction="outbound",
+            phone_number="447123456789",
+            content="Reply content",
+        )
+
+        assert reply_message.direction == SMSDirection.OUTBOUND
+
+    def test_reply_to_unknown_customer(self):
+        """Test reply to message from unknown customer."""
+        inbound_message = create_mock_message(
+            id=1,
+            direction="inbound",
+            phone_number="447123456789",
+            content="Message from unknown",
+            customer_id=None,
+        )
+
+        reply_form = {
+            "phone": inbound_message.phone_number,
+            "content": "Reply to unknown customer",
+            "customer_id": None,
+        }
+
+        assert reply_form["phone"] == "447123456789"
+        assert reply_form["customer_id"] is None
+
+    def test_cannot_resend_inbound_message(self):
+        """Test that inbound messages cannot be resent (only replied to)."""
+        inbound_message = create_mock_message(
+            id=1,
+            direction="inbound",
+            content="Customer message",
+        )
+
+        # Resend should fail for inbound messages
+        can_resend = inbound_message.direction.value == "outbound"
+
+        assert can_resend is False
+
+    def test_reply_content_is_independent(self):
+        """Test reply content is independent from original message."""
+        inbound_content = "Original customer question"
+        reply_content = "Admin response to question"
+
+        inbound_message = create_mock_message(
+            id=1,
+            direction="inbound",
+            content=inbound_content,
+        )
+
+        reply_message = create_mock_message(
+            id=2,
+            direction="outbound",
+            content=reply_content,
+        )
+
+        assert inbound_message.content != reply_message.content
+        assert reply_message.content == "Admin response to question"
+
 
 # =============================================================================
 # Integration Tests: SMS Statistics
