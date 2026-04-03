@@ -14866,38 +14866,38 @@ async def get_sms_threads(
     Get all SMS conversation threads grouped by phone number.
     Returns threads sorted by most recent activity, with unread count.
     """
-    from sqlalchemy import func, case, desc, and_
+    from sqlalchemy import func, desc
 
-    # Subquery to get thread-level aggregates
+    # Get unique phone numbers with aggregates
     thread_data = db.query(
         SMSMessage.phone_number,
         func.max(SMSMessage.created_at).label("last_activity"),
         func.count(SMSMessage.id).label("message_count"),
-        func.sum(
-            case(
-                [(and_(SMSMessage.direction == SMSDirection.INBOUND, SMSMessage.is_read == False), 1)],
-                else_=0
-            )
-        ).label("unread_count"),
         func.max(SMSMessage.customer_id).label("customer_id"),
-    ).group_by(SMSMessage.phone_number).subquery()
+    ).group_by(SMSMessage.phone_number).order_by(desc(func.max(SMSMessage.created_at))).all()
 
-    # Get customer info for threads
-    results = db.query(
-        thread_data.c.phone_number,
-        thread_data.c.last_activity,
-        thread_data.c.message_count,
-        thread_data.c.unread_count,
-        Customer.id.label("cust_id"),
-        Customer.first_name,
-        Customer.last_name,
-    ).outerjoin(
-        Customer, Customer.id == thread_data.c.customer_id
-    ).order_by(desc(thread_data.c.last_activity)).all()
-
-    # Get the last message for each thread
     threads = []
-    for r in results:
+    total_unread = 0
+
+    for r in thread_data:
+        # Get customer info
+        customer = None
+        if r.customer_id:
+            cust = db.query(Customer).filter(Customer.id == r.customer_id).first()
+            if cust:
+                customer = {
+                    "id": cust.id,
+                    "name": f"{cust.first_name} {cust.last_name}",
+                }
+
+        # Get unread count for this thread
+        unread_count = db.query(SMSMessage).filter(
+            SMSMessage.phone_number == r.phone_number,
+            SMSMessage.direction == SMSDirection.INBOUND,
+            SMSMessage.is_read == False
+        ).count()
+        total_unread += unread_count
+
         # Get last message for this phone
         last_msg = db.query(SMSMessage).filter(
             SMSMessage.phone_number == r.phone_number
@@ -14907,20 +14907,14 @@ async def get_sms_threads(
             "phone_number": r.phone_number,
             "last_activity": r.last_activity.isoformat() if r.last_activity else None,
             "message_count": r.message_count,
-            "unread_count": r.unread_count or 0,
-            "customer": {
-                "id": r.cust_id,
-                "name": f"{r.first_name} {r.last_name}" if r.first_name else None,
-            } if r.cust_id else None,
+            "unread_count": unread_count,
+            "customer": customer,
             "last_message": {
                 "content": last_msg.content[:100] + ("..." if len(last_msg.content) > 100 else "") if last_msg else None,
                 "direction": last_msg.direction.value if last_msg else None,
                 "created_at": last_msg.created_at.isoformat() if last_msg and last_msg.created_at else None,
             } if last_msg else None,
         })
-
-    # Calculate total unread across all threads
-    total_unread = sum(t["unread_count"] for t in threads)
 
     return {
         "threads": threads,
