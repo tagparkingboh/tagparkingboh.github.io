@@ -11062,7 +11062,21 @@ async def create_inspection(
         inspector_id=current_user.id,
     )
     db.add(inspection)
-    db.commit()
+
+    # Handle race condition: if another employee created this inspection simultaneously,
+    # the unique constraint will raise IntegrityError
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        # Check if it's a unique constraint violation (race condition)
+        if "uq_inspection_booking_type" in str(e) or "unique constraint" in str(e).lower():
+            raise HTTPException(
+                status_code=409,
+                detail=f"Another employee just created this {request.inspection_type} inspection. Please refresh and view the existing inspection."
+            )
+        raise
+
     db.refresh(inspection)
 
     return {
