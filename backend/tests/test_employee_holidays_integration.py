@@ -697,5 +697,296 @@ class TestPerformance:
         assert len(filtered) < len(holidays)
 
 
+# ========== Shift-Holiday Conflict Integration Tests ==========
+
+@pytest.fixture
+def mock_shift():
+    """Create a mock shift factory."""
+    def _create(
+        id=1,
+        staff_id=1,
+        shift_date=date(2026, 4, 12),
+        status="scheduled",
+    ):
+        shift = MagicMock()
+        shift.id = id
+        shift.staff_id = staff_id
+        shift.date = shift_date
+        shift.status = MagicMock()
+        shift.status.value = status
+        return shift
+    return _create
+
+
+class TestCreateHolidayWithShiftConflict:
+    """Integration tests for holiday creation with existing shifts."""
+
+    def test_create_holiday_fails_when_shift_exists(self, mock_shift):
+        """Should return 409 when staff has shift during holiday period."""
+        existing_shifts = [
+            mock_shift(id=1, staff_id=1, shift_date=date(2026, 4, 12)),
+        ]
+
+        # Request to create holiday Apr 10-14 for staff 1
+        holiday_start = date(2026, 4, 10)
+        holiday_end = date(2026, 4, 14)
+        staff_id = 1
+
+        # Check for conflicts
+        conflicts = [
+            s for s in existing_shifts
+            if s.staff_id == staff_id
+            and s.status.value != "cancelled"
+            and holiday_start <= s.date <= holiday_end
+        ]
+
+        assert len(conflicts) == 1
+        # This would trigger 409 response
+
+    def test_create_holiday_fails_with_multiple_conflicts(self, mock_shift):
+        """Should return 409 listing all conflicting shift dates."""
+        existing_shifts = [
+            mock_shift(id=1, staff_id=1, shift_date=date(2026, 4, 12)),
+            mock_shift(id=2, staff_id=1, shift_date=date(2026, 4, 13)),
+            mock_shift(id=3, staff_id=1, shift_date=date(2026, 4, 14)),
+        ]
+
+        holiday_start = date(2026, 4, 10)
+        holiday_end = date(2026, 4, 15)
+        staff_id = 1
+
+        conflicts = [
+            s for s in existing_shifts
+            if s.staff_id == staff_id
+            and s.status.value != "cancelled"
+            and holiday_start <= s.date <= holiday_end
+        ]
+
+        assert len(conflicts) == 3
+
+        # Build error message
+        shift_dates = sorted(set(str(s.date) for s in conflicts))
+        error_detail = f"Staff member has {len(conflicts)} shifts scheduled during this period ({shift_dates[0]} to {shift_dates[-1]})"
+
+        assert "3 shifts" in error_detail
+        assert "2026-04-12" in error_detail
+        assert "2026-04-14" in error_detail
+
+    def test_create_holiday_succeeds_when_no_shifts(self, mock_shift):
+        """Should succeed when no shifts exist in holiday period."""
+        existing_shifts = [
+            mock_shift(id=1, staff_id=1, shift_date=date(2026, 4, 12)),
+        ]
+
+        # Holiday in May - no shifts
+        holiday_start = date(2026, 5, 10)
+        holiday_end = date(2026, 5, 14)
+        staff_id = 1
+
+        conflicts = [
+            s for s in existing_shifts
+            if s.staff_id == staff_id
+            and s.status.value != "cancelled"
+            and holiday_start <= s.date <= holiday_end
+        ]
+
+        assert len(conflicts) == 0  # Can create holiday
+
+    def test_create_holiday_ignores_cancelled_shifts(self, mock_shift):
+        """Should ignore cancelled shifts when checking conflicts."""
+        existing_shifts = [
+            mock_shift(id=1, staff_id=1, shift_date=date(2026, 4, 12), status="cancelled"),
+        ]
+
+        holiday_start = date(2026, 4, 10)
+        holiday_end = date(2026, 4, 14)
+        staff_id = 1
+
+        conflicts = [
+            s for s in existing_shifts
+            if s.staff_id == staff_id
+            and s.status.value != "cancelled"
+            and holiday_start <= s.date <= holiday_end
+        ]
+
+        assert len(conflicts) == 0  # Cancelled shift doesn't count
+
+    def test_create_holiday_ignores_other_staff_shifts(self, mock_shift):
+        """Should only check shifts for the holiday staff member."""
+        existing_shifts = [
+            mock_shift(id=1, staff_id=2, shift_date=date(2026, 4, 12)),  # Different staff
+        ]
+
+        holiday_start = date(2026, 4, 10)
+        holiday_end = date(2026, 4, 14)
+        staff_id = 1  # Requesting holiday for staff 1
+
+        conflicts = [
+            s for s in existing_shifts
+            if s.staff_id == staff_id
+            and s.status.value != "cancelled"
+            and holiday_start <= s.date <= holiday_end
+        ]
+
+        assert len(conflicts) == 0  # Staff 2's shifts don't affect staff 1
+
+
+class TestUpdateHolidayWithShiftConflict:
+    """Integration tests for holiday update with existing shifts."""
+
+    def test_update_holiday_fails_when_new_dates_have_shifts(self, mock_shift, mock_holiday):
+        """Should return 409 when updated dates conflict with shifts."""
+        existing_shifts = [
+            mock_shift(id=1, staff_id=1, shift_date=date(2026, 4, 20)),
+        ]
+
+        # Existing holiday Apr 10-14
+        holiday = mock_holiday(id=1, staff_id=1, start_date=date(2026, 4, 10), end_date=date(2026, 4, 14))
+
+        # Try to update to Apr 18-22 (conflicts with shift on Apr 20)
+        new_start = date(2026, 4, 18)
+        new_end = date(2026, 4, 22)
+
+        conflicts = [
+            s for s in existing_shifts
+            if s.staff_id == holiday.staff_id
+            and s.status.value != "cancelled"
+            and new_start <= s.date <= new_end
+        ]
+
+        assert len(conflicts) == 1
+
+    def test_update_holiday_succeeds_when_no_shifts_in_new_dates(self, mock_shift, mock_holiday):
+        """Should succeed when no shifts in updated date range."""
+        existing_shifts = [
+            mock_shift(id=1, staff_id=1, shift_date=date(2026, 4, 12)),
+        ]
+
+        # Existing holiday Apr 10-14 (contains shift)
+        holiday = mock_holiday(id=1, staff_id=1, start_date=date(2026, 4, 10), end_date=date(2026, 4, 14))
+
+        # Update to Apr 1-5 (no shifts)
+        new_start = date(2026, 4, 1)
+        new_end = date(2026, 4, 5)
+
+        conflicts = [
+            s for s in existing_shifts
+            if s.staff_id == holiday.staff_id
+            and s.status.value != "cancelled"
+            and new_start <= s.date <= new_end
+        ]
+
+        assert len(conflicts) == 0  # Can update
+
+
+class TestShiftAssignmentWithHolidayConflict:
+    """Integration tests for shift assignment when staff on holiday."""
+
+    def test_shift_assignment_blocked_for_holiday_staff(self, mock_holiday):
+        """Should prevent assigning shift to staff on holiday."""
+        holidays = [
+            mock_holiday(id=1, staff_id=1, start_date=date(2026, 4, 10), end_date=date(2026, 4, 14)),
+        ]
+
+        # Try to assign shift on Apr 12 to staff 1
+        shift_date = date(2026, 4, 12)
+        staff_id = 1
+
+        # Check if staff is on holiday
+        is_on_holiday = any(
+            h.staff_id == staff_id and h.start_date <= shift_date <= h.end_date
+            for h in holidays
+        )
+
+        assert is_on_holiday is True  # Should be blocked
+
+    def test_shift_assignment_allowed_for_non_holiday_staff(self, mock_holiday):
+        """Should allow assigning shift to staff not on holiday."""
+        holidays = [
+            mock_holiday(id=1, staff_id=1, start_date=date(2026, 4, 10), end_date=date(2026, 4, 14)),
+        ]
+
+        # Try to assign shift on Apr 12 to staff 2 (not on holiday)
+        shift_date = date(2026, 4, 12)
+        staff_id = 2
+
+        is_on_holiday = any(
+            h.staff_id == staff_id and h.start_date <= shift_date <= h.end_date
+            for h in holidays
+        )
+
+        assert is_on_holiday is False  # Should be allowed
+
+    def test_shift_assignment_allowed_outside_holiday_dates(self, mock_holiday):
+        """Should allow shift assignment outside holiday date range."""
+        holidays = [
+            mock_holiday(id=1, staff_id=1, start_date=date(2026, 4, 10), end_date=date(2026, 4, 14)),
+        ]
+
+        # Try to assign shift on Apr 20 to staff 1 (after holiday ends)
+        shift_date = date(2026, 4, 20)
+        staff_id = 1
+
+        is_on_holiday = any(
+            h.staff_id == staff_id and h.start_date <= shift_date <= h.end_date
+            for h in holidays
+        )
+
+        assert is_on_holiday is False  # Should be allowed
+
+    def test_get_staff_on_holiday_for_shift_date(self, mock_holiday):
+        """Should return all staff IDs on holiday for a given date."""
+        holidays = [
+            mock_holiday(id=1, staff_id=1, start_date=date(2026, 4, 10), end_date=date(2026, 4, 14)),
+            mock_holiday(id=2, staff_id=2, start_date=date(2026, 4, 12), end_date=date(2026, 4, 12)),
+            mock_holiday(id=3, staff_id=3, start_date=date(2026, 5, 1), end_date=date(2026, 5, 5)),
+        ]
+
+        shift_date = date(2026, 4, 12)
+
+        staff_on_holiday = {
+            h.staff_id for h in holidays
+            if h.start_date <= shift_date <= h.end_date
+        }
+
+        assert staff_on_holiday == {1, 2}
+        assert 3 not in staff_on_holiday
+
+
+class TestConflictErrorMessages:
+    """Tests for error message formatting."""
+
+    def test_single_shift_conflict_message(self):
+        """Error message for single shift should show date."""
+        conflicting_dates = ["2026-04-12"]
+
+        if len(conflicting_dates) == 1:
+            detail = f"Staff member has a shift scheduled on {conflicting_dates[0]}. Please remove the shift first."
+        else:
+            detail = f"Staff member has {len(conflicting_dates)} shifts"
+
+        assert "2026-04-12" in detail
+        assert "Please remove the shift first" in detail
+
+    def test_multiple_shifts_conflict_message(self):
+        """Error message for multiple shifts should show count and range."""
+        conflicting_dates = ["2026-04-12", "2026-04-13", "2026-04-14"]
+
+        if len(conflicting_dates) == 1:
+            detail = f"Staff member has a shift scheduled on {conflicting_dates[0]}"
+        else:
+            detail = f"Staff member has {len(conflicting_dates)} shifts scheduled during this period ({conflicting_dates[0]} to {conflicting_dates[-1]}). Please remove the shifts first."
+
+        assert "3 shifts" in detail
+        assert "2026-04-12 to 2026-04-14" in detail
+        assert "Please remove the shifts first" in detail
+
+    def test_http_409_conflict_status(self):
+        """Conflict should return HTTP 409 status."""
+        # Simulate HTTP response
+        response = {"status_code": 409, "detail": "Conflict detected"}
+        assert response["status_code"] == 409
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

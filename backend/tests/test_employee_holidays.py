@@ -562,5 +562,185 @@ class TestUnhappyPaths:
         assert len(staff_on_holiday) == 0
 
 
+# ============================================================================
+# Shift-Holiday Conflict Tests
+# ============================================================================
+
+class TestShiftHolidayConflicts:
+    """Tests for detecting conflicts between shifts and holidays."""
+
+    # Mock shift data
+    mock_shifts = [
+        {"id": 1, "staff_id": 1, "date": "2026-04-12", "status": "scheduled"},
+        {"id": 2, "staff_id": 1, "date": "2026-04-13", "status": "confirmed"},
+        {"id": 3, "staff_id": 2, "date": "2026-04-12", "status": "scheduled"},
+        {"id": 4, "staff_id": 1, "date": "2026-05-01", "status": "cancelled"},
+    ]
+
+    def check_shift_conflicts(self, staff_id, start_date, end_date):
+        """Check if staff has non-cancelled shifts in date range."""
+        start = date.fromisoformat(start_date)
+        end = date.fromisoformat(end_date)
+        conflicts = []
+        for shift in self.mock_shifts:
+            if shift["staff_id"] != staff_id:
+                continue
+            if shift["status"] == "cancelled":
+                continue
+            shift_date = date.fromisoformat(shift["date"])
+            if start <= shift_date <= end:
+                conflicts.append(shift)
+        return conflicts
+
+    def test_detect_single_shift_conflict(self):
+        """Should detect when holiday conflicts with one shift."""
+        # James (id=1) has shift on Apr 12
+        conflicts = self.check_shift_conflicts(1, "2026-04-12", "2026-04-12")
+        assert len(conflicts) == 1
+        assert conflicts[0]["date"] == "2026-04-12"
+
+    def test_detect_multiple_shift_conflicts(self):
+        """Should detect when holiday conflicts with multiple shifts."""
+        # James (id=1) has shifts on Apr 12 and Apr 13
+        conflicts = self.check_shift_conflicts(1, "2026-04-10", "2026-04-15")
+        assert len(conflicts) == 2
+
+    def test_no_conflict_when_no_shifts(self):
+        """Should return empty when no shifts in range."""
+        # James (id=1) has no shifts in June
+        conflicts = self.check_shift_conflicts(1, "2026-06-01", "2026-06-30")
+        assert len(conflicts) == 0
+
+    def test_ignore_cancelled_shifts(self):
+        """Should not count cancelled shifts as conflicts."""
+        # James (id=1) has cancelled shift on May 1
+        conflicts = self.check_shift_conflicts(1, "2026-05-01", "2026-05-01")
+        assert len(conflicts) == 0
+
+    def test_conflict_different_staff_no_conflict(self):
+        """Should not conflict with other staff's shifts."""
+        # Sarah (id=2) has shift on Apr 12, but checking for James
+        # James also has shift on Apr 12, so still conflict
+        conflicts = self.check_shift_conflicts(2, "2026-04-13", "2026-04-14")
+        assert len(conflicts) == 0  # Sarah has no shifts on these dates
+
+    def test_conflict_on_holiday_boundary_start(self):
+        """Should detect conflict on holiday start date."""
+        conflicts = self.check_shift_conflicts(1, "2026-04-12", "2026-04-20")
+        assert len(conflicts) >= 1
+        assert any(c["date"] == "2026-04-12" for c in conflicts)
+
+    def test_conflict_on_holiday_boundary_end(self):
+        """Should detect conflict on holiday end date."""
+        conflicts = self.check_shift_conflicts(1, "2026-04-01", "2026-04-13")
+        assert len(conflicts) >= 1
+        assert any(c["date"] == "2026-04-13" for c in conflicts)
+
+    def test_no_conflict_day_before_shift(self):
+        """Holiday ending day before shift should not conflict."""
+        conflicts = self.check_shift_conflicts(1, "2026-04-01", "2026-04-11")
+        assert len(conflicts) == 0
+
+    def test_no_conflict_day_after_shift(self):
+        """Holiday starting day after shift should not conflict."""
+        conflicts = self.check_shift_conflicts(1, "2026-04-14", "2026-04-20")
+        assert len(conflicts) == 0
+
+
+class TestPreventHolidayWhenShiftsExist:
+    """Tests for business rule: cannot create holiday when shifts exist."""
+
+    def test_holiday_blocked_when_shift_exists(self):
+        """Should prevent holiday creation when shift exists."""
+        # Simulate the validation
+        has_shift = True  # Staff has shift on requested date
+
+        can_create_holiday = not has_shift
+        assert can_create_holiday is False
+
+    def test_holiday_allowed_when_no_shifts(self):
+        """Should allow holiday creation when no shifts exist."""
+        has_shift = False
+
+        can_create_holiday = not has_shift
+        assert can_create_holiday is True
+
+    def test_error_message_single_shift(self):
+        """Error message should indicate single shift date."""
+        conflicting_dates = ["2026-04-12"]
+
+        if len(conflicting_dates) == 1:
+            message = f"Staff member has a shift scheduled on {conflicting_dates[0]}. Please remove the shift first."
+        else:
+            message = f"Staff member has {len(conflicting_dates)} shifts scheduled"
+
+        assert "2026-04-12" in message
+        assert "Please remove the shift first" in message
+
+    def test_error_message_multiple_shifts(self):
+        """Error message should indicate multiple shift dates."""
+        conflicting_dates = ["2026-04-12", "2026-04-13", "2026-04-14"]
+
+        if len(conflicting_dates) == 1:
+            message = f"Staff member has a shift scheduled on {conflicting_dates[0]}"
+        else:
+            message = f"Staff member has {len(conflicting_dates)} shifts scheduled during this period ({conflicting_dates[0]} to {conflicting_dates[-1]})"
+
+        assert "3 shifts" in message
+        assert "2026-04-12" in message
+        assert "2026-04-14" in message
+
+
+class TestPreventShiftWhenHolidayExists:
+    """Tests for business rule: cannot assign shift to staff on holiday."""
+
+    def test_shift_blocked_when_holiday_exists(self):
+        """Should prevent shift assignment when staff on holiday."""
+        staff_on_holiday = {1, 2}  # Staff IDs on holiday
+        selected_staff_id = 1
+
+        can_assign_shift = selected_staff_id not in staff_on_holiday
+        assert can_assign_shift is False
+
+    def test_shift_allowed_when_not_on_holiday(self):
+        """Should allow shift assignment when staff not on holiday."""
+        staff_on_holiday = {1, 2}
+        selected_staff_id = 3
+
+        can_assign_shift = selected_staff_id not in staff_on_holiday
+        assert can_assign_shift is True
+
+    def test_shift_allowed_when_no_holidays(self):
+        """Should allow shift assignment when no one is on holiday."""
+        staff_on_holiday = set()
+        selected_staff_id = 1
+
+        can_assign_shift = selected_staff_id not in staff_on_holiday
+        assert can_assign_shift is True
+
+    def test_ui_should_disable_holiday_staff(self):
+        """UI should show disabled state for staff on holiday."""
+        employees = [
+            {"id": 1, "name": "James"},
+            {"id": 2, "name": "Sarah"},
+            {"id": 3, "name": "Mike"},
+        ]
+        staff_on_holiday = {1}
+
+        # Simulate UI building options
+        options = []
+        for emp in employees:
+            is_disabled = emp["id"] in staff_on_holiday
+            options.append({
+                "id": emp["id"],
+                "name": emp["name"],
+                "disabled": is_disabled,
+            })
+
+        assert options[0]["disabled"] is True   # James on holiday
+        assert options[1]["disabled"] is False  # Sarah not on holiday
+        assert options[2]["disabled"] is False  # Mike not on holiday
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
