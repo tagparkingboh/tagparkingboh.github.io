@@ -1832,12 +1832,9 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
                   {duplicateMode && (
                     <div className="additional-staff-section">
-                      <label>Select additional staff (up to 6):</label>
+                      <label>Select staff members (up to 6):</label>
                       <div className="additional-staff-grid">
-                        {employees
-                          .filter(emp => String(emp.id) !== shiftForm.staff_id)  // Exclude primary staff
-                          .slice(0, 6)  // Max 6 additional
-                          .map((emp) => {
+                        {employees.map((emp) => {
                             const isSelected = additionalStaffIds.includes(String(emp.id))
                             const isDisabled = !isSelected && additionalStaffIds.length >= 6
                             return (
@@ -1864,7 +1861,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                       </div>
                       {additionalStaffIds.length > 0 && (
                         <div className="duplicate-summary">
-                          Will create {additionalStaffIds.length + (shiftForm.staff_id ? 1 : 0)} shift{(additionalStaffIds.length + (shiftForm.staff_id ? 1 : 0)) > 1 ? 's' : ''}
+                          Will create {additionalStaffIds.length} shift{additionalStaffIds.length > 1 ? 's' : ''} ({additionalStaffIds.length}/6 selected)
                         </div>
                       )}
                     </div>
