@@ -1271,10 +1271,12 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   // Open holiday modal for new holiday
   const openNewHolidayModal = (dateStr = null) => {
     setEditingHoliday(null)
+    // Convert ISO date to UK format (DD/MM/YYYY)
+    const ukDate = dateStr ? formatDateUK(dateStr) : (selectedDate ? formatDateUK(selectedDate) : '')
     setHolidayForm({
       staff_id: '',
-      start_date: dateStr || selectedDate || '',
-      end_date: dateStr || selectedDate || '',
+      start_date: ukDate,
+      end_date: ukDate,
       holiday_type: 'holiday',
       notes: '',
     })
@@ -1284,10 +1286,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   // Open holiday modal for editing
   const openEditHolidayModal = (holiday) => {
     setEditingHoliday(holiday)
+    // Convert ISO dates from API to UK format (DD/MM/YYYY)
     setHolidayForm({
       staff_id: String(holiday.staff_id),
-      start_date: holiday.start_date,
-      end_date: holiday.end_date,
+      start_date: formatDateUK(holiday.start_date),
+      end_date: formatDateUK(holiday.end_date),
       holiday_type: holiday.holiday_type,
       notes: holiday.notes || '',
     })
@@ -1314,14 +1317,23 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       return
     }
 
+    // Convert UK dates (DD/MM/YYYY) to ISO (YYYY-MM-DD) for API
+    const isoStartDate = ukToISO(holidayForm.start_date)
+    const isoEndDate = ukToISO(holidayForm.end_date)
+
+    if (!isoStartDate || isoStartDate.length !== 10 || !isoEndDate || isoEndDate.length !== 10) {
+      setError('Please enter valid dates in DD/MM/YYYY format')
+      return
+    }
+
     setSavingHoliday(true)
     setError('')
 
     try {
       const params = new URLSearchParams({
         staff_id: holidayForm.staff_id,
-        start_date: holidayForm.start_date,
-        end_date: holidayForm.end_date,
+        start_date: isoStartDate,
+        end_date: isoEndDate,
         holiday_type: holidayForm.holiday_type,
       })
       if (holidayForm.notes) {
@@ -2728,19 +2740,21 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
               <div className="modal-form-row">
                 <div className="modal-form-group">
-                  <label>Start Date *</label>
+                  <label>Start Date (DD/MM/YYYY) *</label>
                   <input
-                    type="date"
+                    type="text"
                     value={holidayForm.start_date}
                     onChange={(e) => setHolidayForm({ ...holidayForm, start_date: e.target.value })}
+                    placeholder="DD/MM/YYYY"
                   />
                 </div>
                 <div className="modal-form-group">
-                  <label>End Date *</label>
+                  <label>End Date (DD/MM/YYYY) *</label>
                   <input
-                    type="date"
+                    type="text"
                     value={holidayForm.end_date}
                     onChange={(e) => setHolidayForm({ ...holidayForm, end_date: e.target.value })}
+                    placeholder="DD/MM/YYYY"
                   />
                 </div>
               </div>
