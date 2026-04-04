@@ -1603,6 +1603,27 @@ async def create_holiday(
             detail=f"Holiday overlaps with existing entry ({existing.start_date} to {existing.end_date})"
         )
 
+    # Check for existing shifts during the holiday period
+    conflicting_shifts = db.query(RosterShift).filter(
+        RosterShift.staff_id == staff_id,
+        RosterShift.date >= start_date,
+        RosterShift.date <= end_date,
+        RosterShift.status != ShiftStatus.CANCELLED
+    ).all()
+
+    if conflicting_shifts:
+        shift_dates = sorted(set(str(s.date) for s in conflicting_shifts))
+        if len(shift_dates) == 1:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Staff member has a shift scheduled on {shift_dates[0]}. Please remove the shift first."
+            )
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Staff member has {len(conflicting_shifts)} shifts scheduled during this period ({shift_dates[0]} to {shift_dates[-1]}). Please remove the shifts first."
+            )
+
     new_holiday = EmployeeHoliday(
         staff_id=staff_id,
         start_date=start_date,
@@ -1668,6 +1689,27 @@ async def update_holiday(
             status_code=409,
             detail=f"Holiday overlaps with existing entry ({existing.start_date} to {existing.end_date})"
         )
+
+    # Check for existing shifts during the updated holiday period
+    conflicting_shifts = db.query(RosterShift).filter(
+        RosterShift.staff_id == holiday.staff_id,
+        RosterShift.date >= holiday.start_date,
+        RosterShift.date <= holiday.end_date,
+        RosterShift.status != ShiftStatus.CANCELLED
+    ).all()
+
+    if conflicting_shifts:
+        shift_dates = sorted(set(str(s.date) for s in conflicting_shifts))
+        if len(shift_dates) == 1:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Staff member has a shift scheduled on {shift_dates[0]}. Please remove the shift first."
+            )
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Staff member has {len(conflicting_shifts)} shifts scheduled during this period ({shift_dates[0]} to {shift_dates[-1]}). Please remove the shifts first."
+            )
 
     db.commit()
     db.refresh(holiday)
