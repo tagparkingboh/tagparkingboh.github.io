@@ -2070,25 +2070,42 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 </div>
                 <div className="modal-form-group">
                   <label>Assign Staff</label>
-                  <select
-                    value={shiftForm.staff_id}
-                    onChange={(e) => handleShiftFormChange('staff_id', e.target.value)}
-                  >
-                    <option value="">Unassigned</option>
-                    {employees.map((emp) => {
-                      const staffOnHoliday = shiftForm.date && getStaffOnHolidayForDate(shiftForm.date).has(emp.id)
-                      return (
-                        <option key={emp.id} value={emp.id}>
-                          {staffOnHoliday ? '⚠️ ' : ''}{emp.first_name} {emp.last_name}{staffOnHoliday ? ' (On Leave)' : ''}
-                        </option>
-                      )
-                    })}
-                  </select>
-                  {shiftForm.staff_id && shiftForm.date && getStaffOnHolidayForDate(shiftForm.date).has(parseInt(shiftForm.staff_id)) && (
-                    <div className="staff-on-holiday-warning">
-                      ⚠️ This staff member is on leave on this date
-                    </div>
-                  )}
+                  {(() => {
+                    // Convert UK date to ISO for holiday check
+                    const isoDate = shiftForm.date ? ukToISO(shiftForm.date) : null
+                    const staffOnHolidaySet = isoDate && isoDate.length === 10 ? getStaffOnHolidayForDate(isoDate) : new Set()
+                    const hasStaffOnHoliday = staffOnHolidaySet.size > 0
+
+                    return (
+                      <>
+                        <select
+                          value={shiftForm.staff_id}
+                          onChange={(e) => {
+                            const selectedId = parseInt(e.target.value)
+                            if (selectedId && staffOnHolidaySet.has(selectedId)) {
+                              return // Prevent selection
+                            }
+                            handleShiftFormChange('staff_id', e.target.value)
+                          }}
+                        >
+                          <option value="">Unassigned</option>
+                          {employees.map((emp) => {
+                            const isOnHoliday = staffOnHolidaySet.has(emp.id)
+                            return (
+                              <option key={emp.id} value={emp.id} disabled={isOnHoliday}>
+                                {isOnHoliday ? '🏖️ ' : ''}{emp.first_name} {emp.last_name}{isOnHoliday ? ' (On Leave)' : ''}
+                              </option>
+                            )
+                          })}
+                        </select>
+                        {hasStaffOnHoliday && (
+                          <div className="staff-on-holiday-warning">
+                            ⚠️ Staff on leave are disabled and cannot be assigned
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
               </div>
 
@@ -2112,37 +2129,53 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   {duplicateMode && (
                     <div className="additional-staff-section">
                       <label>Select staff members (up to 6):</label>
-                      <div className="additional-staff-grid">
-                        {employees.map((emp) => {
-                            const isSelected = additionalStaffIds.includes(String(emp.id))
-                            const isDisabled = !isSelected && additionalStaffIds.length >= 6
-                            const staffOnHoliday = shiftForm.date && getStaffOnHolidayForDate(shiftForm.date).has(emp.id)
-                            return (
-                              <label
-                                key={emp.id}
-                                className={`additional-staff-checkbox ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''} ${staffOnHoliday ? 'on-holiday' : ''}`}
-                                title={staffOnHoliday ? 'On leave this date' : ''}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  disabled={isDisabled}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setAdditionalStaffIds([...additionalStaffIds, String(emp.id)])
-                                    } else {
-                                      setAdditionalStaffIds(additionalStaffIds.filter(id => id !== String(emp.id)))
-                                    }
-                                  }}
-                                />
-                                <span className="staff-name">
-                                  {staffOnHoliday && <span className="holiday-indicator">🏖️</span>}
-                                  {emp.first_name} {emp.last_name}
-                                </span>
-                              </label>
-                            )
-                          })}
-                      </div>
+                      {(() => {
+                        // Convert UK date to ISO for holiday check
+                        const isoDate = shiftForm.date ? ukToISO(shiftForm.date) : null
+                        const staffOnHolidaySet = isoDate && isoDate.length === 10 ? getStaffOnHolidayForDate(isoDate) : new Set()
+                        const hasStaffOnHoliday = staffOnHolidaySet.size > 0
+
+                        return (
+                          <>
+                            {hasStaffOnHoliday && (
+                              <div className="staff-on-holiday-warning" style={{ marginBottom: '10px' }}>
+                                ⚠️ Staff on leave (🏖️) are disabled and cannot be selected
+                              </div>
+                            )}
+                            <div className="additional-staff-grid">
+                              {employees.map((emp) => {
+                                const isSelected = additionalStaffIds.includes(String(emp.id))
+                                const isOnHoliday = staffOnHolidaySet.has(emp.id)
+                                const isDisabled = isOnHoliday || (!isSelected && additionalStaffIds.length >= 6)
+                                return (
+                                  <label
+                                    key={emp.id}
+                                    className={`additional-staff-checkbox ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''} ${isOnHoliday ? 'on-holiday' : ''}`}
+                                    title={isOnHoliday ? 'On leave - cannot be assigned' : ''}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      disabled={isDisabled}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setAdditionalStaffIds([...additionalStaffIds, String(emp.id)])
+                                        } else {
+                                          setAdditionalStaffIds(additionalStaffIds.filter(id => id !== String(emp.id)))
+                                        }
+                                      }}
+                                    />
+                                    <span className="staff-name">
+                                      {isOnHoliday && <span className="holiday-indicator">🏖️</span>}
+                                      {emp.first_name} {emp.last_name}
+                                    </span>
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          </>
+                        )
+                      })()}
                       {additionalStaffIds.length > 0 && (
                         <div className="duplicate-summary">
                           Will create {additionalStaffIds.length} shift{additionalStaffIds.length > 1 ? 's' : ''} ({additionalStaffIds.length}/6 selected)
