@@ -726,6 +726,153 @@
   color: #fff;
 }
 
+/* Employee Shift Self-Service Buttons */
+.shift-claim-btn {
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s;
+  flex: 1;
+}
+
+.shift-claim-btn:hover {
+  background: linear-gradient(135deg, #219a52, #27ae60);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+}
+
+.shift-release-btn {
+  background: #2a2a2a;
+  border: 1px solid #f5a623;
+  color: #f5a623;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.shift-release-btn:hover {
+  background: #f5a623;
+  color: #fff;
+}
+
+/* Available Shifts Section */
+.detail-section-title.available-shifts {
+  color: #27ae60;
+}
+
+.available-shift-list {
+  border: 2px dashed rgba(39, 174, 96, 0.3);
+  background: rgba(39, 174, 96, 0.05);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.available-shift-card {
+  border: 1px solid rgba(39, 174, 96, 0.4) !important;
+  background: rgba(39, 174, 96, 0.08) !important;
+}
+
+/* Claim/Release Modal Styles */
+.claim-shift-details,
+.release-shift-details {
+  background: #f8f9fa;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.claim-shift-date,
+.release-shift-date {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.claim-shift-time,
+.release-shift-time {
+  color: #666;
+  font-size: 1rem;
+  margin-bottom: 12px;
+}
+
+.claim-shift-bookings {
+  border-top: 1px solid #e0e0e0;
+  padding-top: 12px;
+}
+
+.claim-bookings-label {
+  font-weight: 600;
+  color: #666;
+  font-size: 0.85rem;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.claim-booking-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 0.9rem;
+}
+
+.claim-booking-item .booking-type-icon {
+  font-size: 1rem;
+}
+
+.claim-booking-item .booking-ref {
+  font-weight: 600;
+  color: #4a90e2;
+}
+
+.claim-booking-item .booking-customer {
+  color: #666;
+}
+
+.claim-confirm-text,
+.release-confirm-text {
+  color: #666;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.release-warning {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.release-warning strong {
+  color: #856404;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.release-warning p {
+  color: #856404;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.modal-btn-danger {
+  background: #e74c3c !important;
+  border-color: #e74c3c !important;
+}
+
+.modal-btn-danger:hover {
+  background: #c0392b !important;
+}
+
 /* Modal Styles - Matching Admin Edit Booking modal */
 .roster-calendar .modal-overlay {
   position: fixed;

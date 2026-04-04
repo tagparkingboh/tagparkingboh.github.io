@@ -1293,6 +1293,144 @@ async def get_employee_weekly_hours(
 
 
 # ============================================================================
+# Employee Shift Self-Service (Claim/Release)
+# ============================================================================
+
+@router.get("/employee/available-shifts", response_model=List[RosterShiftResponse])
+async def get_available_shifts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all unassigned shifts from today onwards.
+    Returns shifts that are available for employees to claim.
+    """
+    today = date_type.today()
+
+    # Get all unassigned shifts from today onwards
+    shifts = db.query(RosterShift).filter(
+        RosterShift.staff_id.is_(None),
+        RosterShift.date >= today,
+        RosterShift.status != ShiftStatus.CANCELLED
+    ).order_by(RosterShift.date, RosterShift.start_time).all()
+
+    return [shift_to_response(shift, db) for shift in shifts]
+
+
+@router.post("/employee/claim-shift/{shift_id}")
+async def claim_shift(
+    shift_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Claim an unassigned shift.
+    Validates:
+    - Shift exists and is unassigned
+    - No overlapping shifts for the employee
+    - Employee is not on holiday that day
+    """
+    # Get the shift
+    shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    # Check if shift is already assigned
+    if shift.staff_id is not None:
+        raise HTTPException(status_code=400, detail="Shift is already assigned to another employee")
+
+    # Check if shift is in the past
+    today = date_type.today()
+    if shift.date < today:
+        raise HTTPException(status_code=400, detail="Cannot claim shifts in the past")
+
+    # Check for overlapping shifts
+    conflicting = check_shift_overlap(
+        db, current_user.id, shift.date, shift.start_time, shift.end_time
+    )
+    if conflicting:
+        raise HTTPException(
+            status_code=409,
+            detail=f"You already have a shift at this time ({format_time(conflicting.start_time)}-{format_time(conflicting.end_time)})"
+        )
+
+    # Check if employee is on holiday that day
+    holiday = db.query(EmployeeHoliday).filter(
+        EmployeeHoliday.staff_id == current_user.id,
+        EmployeeHoliday.start_date <= shift.date,
+        EmployeeHoliday.end_date >= shift.date
+    ).first()
+
+    if holiday:
+        holiday_type = HOLIDAY_TYPE_CONFIG.get(holiday.holiday_type.value, {}).get('label', 'time off')
+        raise HTTPException(
+            status_code=409,
+            detail=f"You have {holiday_type} booked on this date"
+        )
+
+    # Assign the shift to the employee
+    shift.staff_id = current_user.id
+    db.commit()
+    db.refresh(shift)
+
+    return {
+        "success": True,
+        "message": f"Shift claimed successfully",
+        "shift": shift_to_response(shift, db)
+    }
+
+
+# Holiday type config for error messages (matches frontend)
+HOLIDAY_TYPE_CONFIG = {
+    'holiday': {'label': 'Holiday'},
+    'sick': {'label': 'Sick leave'},
+    'personal': {'label': 'Personal leave'},
+    'other': {'label': 'Time off'},
+}
+
+
+@router.post("/employee/release-shift/{shift_id}")
+async def release_shift(
+    shift_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Release a shift that the employee has claimed.
+    Employees can release shifts with at least 48 hours notice.
+    Admin can release any shift (handled by separate admin endpoint).
+    """
+    # Get the shift
+    shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    # Check if this shift belongs to the employee
+    if shift.staff_id != current_user.id:
+        raise HTTPException(status_code=403, detail="This shift is not assigned to you")
+
+    # Check 48 hour notice requirement
+    now = datetime.utcnow()
+    shift_datetime = datetime.combine(shift.date, shift.start_time)
+    hours_until_shift = (shift_datetime - now).total_seconds() / 3600
+
+    if hours_until_shift < 48:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot release shift with less than 48 hours notice. Please contact an administrator."
+        )
+
+    # Release the shift (set staff_id to None)
+    shift.staff_id = None
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Shift released successfully"
+    }
+
+
+# ============================================================================
 # Payroll Endpoints (Admin Only)
 # ============================================================================
 

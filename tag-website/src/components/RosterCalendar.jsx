@@ -179,6 +179,16 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   })
   const [savingHoliday, setSavingHoliday] = useState(false)
 
+  // Available shifts state (employee self-service)
+  const [availableShifts, setAvailableShifts] = useState([])
+  const [loadingAvailableShifts, setLoadingAvailableShifts] = useState(false)
+  const [showClaimModal, setShowClaimModal] = useState(false)
+  const [shiftToClaim, setShiftToClaim] = useState(null)
+  const [claimingShift, setClaimingShift] = useState(false)
+  const [showReleaseModal, setShowReleaseModal] = useState(false)
+  const [shiftToRelease, setShiftToRelease] = useState(null)
+  const [releasingShift, setReleasingShift] = useState(false)
+
   // Fetch bookings
   const fetchBookings = useCallback(async () => {
     if (!token) return
@@ -302,18 +312,133 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }, [token, currentDate, isAdmin])
 
+  // Fetch available shifts (employee self-service)
+  const fetchAvailableShifts = useCallback(async () => {
+    if (!token || isAdmin) return  // Only for employees
+
+    try {
+      setLoadingAvailableShifts(true)
+      const response = await fetch(`${API_URL}/api/employee/available-shifts`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setAvailableShifts(Array.isArray(data) ? data : [])
+      }
+    } catch (err) {
+      console.error('Failed to load available shifts:', err)
+    } finally {
+      setLoadingAvailableShifts(false)
+    }
+  }, [token, isAdmin])
+
+  // Claim a shift
+  const handleClaimShift = async () => {
+    if (!shiftToClaim) return
+
+    setClaimingShift(true)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/employee/claim-shift/${shiftToClaim.id}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setSuccessMessage('Shift claimed successfully!')
+        setShowClaimModal(false)
+        setShiftToClaim(null)
+        // Refresh data
+        fetchShifts()
+        fetchAvailableShifts()
+        setTimeout(() => setSuccessMessage(''), 3000)
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to claim shift')
+        setTimeout(() => setError(''), 5000)
+      }
+    } catch (err) {
+      setError('Network error claiming shift')
+      setTimeout(() => setError(''), 5000)
+    } finally {
+      setClaimingShift(false)
+    }
+  }
+
+  // Release a shift
+  const handleReleaseShift = async () => {
+    if (!shiftToRelease) return
+
+    setReleasingShift(true)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/employee/release-shift/${shiftToRelease.id}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setSuccessMessage('Shift released successfully!')
+        setShowReleaseModal(false)
+        setShiftToRelease(null)
+        // Refresh data
+        fetchShifts()
+        fetchAvailableShifts()
+        setTimeout(() => setSuccessMessage(''), 3000)
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to release shift')
+        setTimeout(() => setError(''), 5000)
+      }
+    } catch (err) {
+      setError('Network error releasing shift')
+      setTimeout(() => setError(''), 5000)
+    } finally {
+      setReleasingShift(false)
+    }
+  }
+
+  // Calculate hours until shift (for release warning)
+  const getHoursUntilShift = (shift) => {
+    const now = new Date()
+    const shiftStart = new Date(`${shift.date}T${shift.start_time}`)
+    return Math.floor((shiftStart - now) / (1000 * 60 * 60))
+  }
+
+  // Open claim modal
+  const openClaimModal = (shift) => {
+    setShiftToClaim(shift)
+    setShowClaimModal(true)
+  }
+
+  // Open release modal
+  const openReleaseModal = (shift) => {
+    setShiftToRelease(shift)
+    setShowReleaseModal(true)
+  }
+
   // Fetch all data
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates(), fetchHolidays()])
+      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates(), fetchHolidays(), fetchAvailableShifts()])
     } catch (err) {
       setError('Failed to load data')
     } finally {
       setLoading(false)
     }
-  }, [fetchBookings, fetchShifts, fetchBlockedDates, fetchHolidays])
+  }, [fetchBookings, fetchShifts, fetchBlockedDates, fetchHolidays, fetchAvailableShifts])
 
   // Fetch all staff (admin only) - includes both admins and employees
   const fetchStaff = useCallback(async () => {
@@ -1971,12 +2096,90 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                             </button>
                           </div>
                         )}
+
+                        {/* Employee: Release own shift */}
+                        {!isAdmin && shift.staff_id && (
+                          <div className="shift-card-actions">
+                            <button
+                              className="shift-release-btn"
+                              onClick={() => openReleaseModal(shift)}
+                            >
+                              {getHoursUntilShift(shift) < 48 ? 'Cannot Release' : 'Release Shift'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
                 </div>
               </div>
             )}
+
+            {/* Available Shifts Section (Employee only) */}
+            {!isAdmin && (() => {
+              // Filter available shifts for selected date
+              const availableForDate = availableShifts.filter(shift => shift.date === selectedDate)
+              if (availableForDate.length === 0) return null
+
+              return (
+                <div className="detail-section">
+                  <h4 className="detail-section-title available-shifts">
+                    ✨ Available Shifts ({availableForDate.length})
+                  </h4>
+                  <div className="shift-list available-shift-list">
+                    {availableForDate.map((shift) => {
+                      const typeConfig = SHIFT_TYPE_CONFIG[shift.shift_type] || SHIFT_TYPE_CONFIG.morning
+
+                      return (
+                        <div key={shift.id} className="shift-card available-shift-card">
+                          <div className="shift-card-header">
+                            <div className="shift-time-range">
+                              <span className="shift-time">{formatTime(shift.start_time)}</span>
+                              <span className="shift-time-separator">to</span>
+                              <span className="shift-time">{formatTime(shift.end_time)}</span>
+                            </div>
+                            <div className="shift-type-badge" style={{ background: typeConfig.color }}>
+                              {typeConfig.icon} {typeConfig.label}
+                            </div>
+                          </div>
+
+                          <div className="shift-card-body">
+                            {shift.bookings && shift.bookings.length > 0 ? (
+                              <div className="shift-bookings-list">
+                                {shift.bookings.map((booking) => (
+                                  <div key={booking.id} className="shift-booking-info">
+                                    <div className="shift-booking-header">
+                                      <span className={`shift-booking-type ${booking.type}`}>
+                                        {booking.type === 'dropoff' ? '🚗' : '🛬'}
+                                      </span>
+                                      <span className="shift-booking-ref">{booking.reference}</span>
+                                      <span className="shift-booking-customer">{booking.customer_name}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="shift-no-bookings">No bookings linked</div>
+                            )}
+
+                            {shift.notes && <div className="shift-notes">{shift.notes}</div>}
+                          </div>
+
+                          <div className="shift-card-actions">
+                            <button
+                              className="shift-claim-btn"
+                              onClick={() => openClaimModal(shift)}
+                            >
+                              Claim Shift
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* No content message */}
             {selectedDateBookings.dropoffs.length === 0 &&
@@ -2828,6 +3031,120 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
               >
                 {savingHoliday ? 'Saving...' : editingHoliday ? 'Update' : 'Add Holiday'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Claim Shift Modal (Employee) */}
+      {showClaimModal && shiftToClaim && !isAdmin && (
+        <div className="modal-overlay" onClick={() => setShowClaimModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Claim Shift</h3>
+
+            <div className="claim-shift-details">
+              <div className="claim-shift-date">
+                {new Date(shiftToClaim.date + 'T00:00:00').toLocaleDateString('en-GB', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+              </div>
+              <div className="claim-shift-time">
+                {formatTime(shiftToClaim.start_time)} - {formatTime(shiftToClaim.end_time)}
+              </div>
+              {shiftToClaim.bookings && shiftToClaim.bookings.length > 0 && (
+                <div className="claim-shift-bookings">
+                  <span className="claim-bookings-label">Linked Bookings:</span>
+                  {shiftToClaim.bookings.map((booking) => (
+                    <div key={booking.id} className="claim-booking-item">
+                      <span className="booking-type-icon">{booking.type === 'dropoff' ? '🚗' : '🛬'}</span>
+                      <span className="booking-ref">{booking.reference}</span>
+                      <span className="booking-customer">{booking.customer_name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <p className="claim-confirm-text">Are you sure you want to claim this shift?</p>
+
+            {error && <div className="modal-error">{error}</div>}
+
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowClaimModal(false)}
+                disabled={claimingShift}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={handleClaimShift}
+                disabled={claimingShift}
+              >
+                {claimingShift ? 'Claiming...' : 'Claim Shift'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Release Shift Modal (Employee) */}
+      {showReleaseModal && shiftToRelease && !isAdmin && (
+        <div className="modal-overlay" onClick={() => setShowReleaseModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Release Shift</h3>
+
+            <div className="release-shift-details">
+              <div className="release-shift-date">
+                {new Date(shiftToRelease.date + 'T00:00:00').toLocaleDateString('en-GB', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+              </div>
+              <div className="release-shift-time">
+                {formatTime(shiftToRelease.start_time)} - {formatTime(shiftToRelease.end_time)}
+              </div>
+
+              {getHoursUntilShift(shiftToRelease) < 48 && (
+                <div className="release-warning">
+                  <strong>Less than 48 hours notice</strong>
+                  <p>This shift starts in less than 48 hours. Please contact an administrator to release it.</p>
+                </div>
+              )}
+            </div>
+
+            <p className="release-confirm-text">
+              {getHoursUntilShift(shiftToRelease) >= 48
+                ? 'Are you sure you want to release this shift? It will become available for other employees.'
+                : 'You cannot release this shift yourself. Please contact an administrator.'
+              }
+            </p>
+
+            {error && <div className="modal-error">{error}</div>}
+
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowReleaseModal(false)}
+                disabled={releasingShift}
+              >
+                Cancel
+              </button>
+              {getHoursUntilShift(shiftToRelease) >= 48 && (
+                <button
+                  className="modal-btn modal-btn-danger"
+                  onClick={handleReleaseShift}
+                  disabled={releasingShift}
+                >
+                  {releasingShift ? 'Releasing...' : 'Release Shift'}
+                </button>
+              )}
             </div>
           </div>
         </div>
