@@ -281,9 +281,9 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }, [token, currentDate, isAdmin])
 
-  // Fetch employee holidays
+  // Fetch employee holidays (admin sees all, employee sees their own)
   const fetchHolidays = useCallback(async () => {
-    if (!token || !isAdmin) return
+    if (!token) return
 
     try {
       const year = currentDate.getFullYear()
@@ -296,7 +296,9 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         date_to: formatDateISO(endDate),
       })
 
-      const response = await fetch(`${API_URL}/api/holidays?${params}`, {
+      // Admin uses /api/holidays (all employees), employee uses /api/employee/holidays (own only)
+      const endpoint = isAdmin ? '/api/holidays' : '/api/employee/holidays'
+      const response = await fetch(`${API_URL}${endpoint}?${params}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -1832,7 +1834,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
             {/* Holidays Section */}
             {selectedDateHolidays.length > 0 && (
               <div className="holidays-section">
-                <h4>Staff on Leave ({selectedDateHolidays.length})</h4>
+                <h4>{isAdmin ? 'Staff on Leave' : 'Your Leave'} ({selectedDateHolidays.length})</h4>
                 <div className="holidays-list">
                   {selectedDateHolidays.map((holiday) => {
                     const typeConfig = HOLIDAY_TYPE_CONFIG[holiday.holiday_type] || HOLIDAY_TYPE_CONFIG.other

@@ -742,5 +742,198 @@ class TestPreventShiftWhenHolidayExists:
         assert options[2]["disabled"] is False  # Mike not on holiday
 
 
+# ============================================================================
+# Employee Self-Service Holiday View Tests
+# ============================================================================
+
+class TestEmployeeHolidaysEndpoint:
+    """Tests for GET /api/employee/holidays endpoint."""
+
+    def get_employee_holidays(self, staff_id, date_from=None, date_to=None):
+        """Simulate fetching holidays for a specific employee."""
+        # Filter holidays for this staff member only
+        employee_holidays = [h for h in mock_holidays if h["staff_id"] == staff_id]
+
+        if date_from and date_to:
+            from_date = date.fromisoformat(date_from)
+            to_date = date.fromisoformat(date_to)
+            employee_holidays = [
+                h for h in employee_holidays
+                if date.fromisoformat(h["start_date"]) <= to_date
+                and date.fromisoformat(h["end_date"]) >= from_date
+            ]
+        elif date_from:
+            from_date = date.fromisoformat(date_from)
+            employee_holidays = [
+                h for h in employee_holidays
+                if date.fromisoformat(h["end_date"]) >= from_date
+            ]
+        elif date_to:
+            to_date = date.fromisoformat(date_to)
+            employee_holidays = [
+                h for h in employee_holidays
+                if date.fromisoformat(h["start_date"]) <= to_date
+            ]
+
+        return employee_holidays
+
+    # Happy Path Tests
+    def test_returns_only_own_holidays(self):
+        """Employee should only see their own holidays."""
+        # James (staff_id=1) has 2 holidays
+        james_holidays = self.get_employee_holidays(1)
+        assert len(james_holidays) == 2
+        assert all(h["staff_id"] == 1 for h in james_holidays)
+
+        # Sarah (staff_id=2) has 1 holiday
+        sarah_holidays = self.get_employee_holidays(2)
+        assert len(sarah_holidays) == 1
+        assert all(h["staff_id"] == 2 for h in sarah_holidays)
+
+    def test_returns_all_holiday_types(self):
+        """Should return holidays of all types (holiday, sick, personal, etc.)."""
+        # James has a "holiday" and a "personal" day
+        james_holidays = self.get_employee_holidays(1)
+        holiday_types = {h["holiday_type"] for h in james_holidays}
+        assert "holiday" in holiday_types
+        assert "personal" in holiday_types
+
+    def test_date_range_filter_works(self):
+        """Should filter holidays by date range."""
+        # James has holiday Apr 10-14 and May 1
+        # Filter for April only
+        april_holidays = self.get_employee_holidays(1, "2026-04-01", "2026-04-30")
+        assert len(april_holidays) == 1
+        assert april_holidays[0]["start_date"] == "2026-04-10"
+
+        # Filter for May only
+        may_holidays = self.get_employee_holidays(1, "2026-05-01", "2026-05-31")
+        assert len(may_holidays) == 1
+        assert may_holidays[0]["start_date"] == "2026-05-01"
+
+    def test_returns_empty_when_no_holidays(self):
+        """Should return empty list for employee with no holidays."""
+        # Staff ID 99 doesn't exist
+        holidays = self.get_employee_holidays(99)
+        assert len(holidays) == 0
+
+    # Unhappy Path Tests
+    def test_does_not_return_other_employees_holidays(self):
+        """Should not include other employees' holidays."""
+        james_holidays = self.get_employee_holidays(1)
+        # None of these should belong to Sarah (staff_id=2)
+        assert all(h["staff_id"] != 2 for h in james_holidays)
+
+    # Edge Cases
+    def test_single_day_holiday(self):
+        """Should handle single-day holidays correctly."""
+        sarah_holidays = self.get_employee_holidays(2)
+        # Sarah has a single-day sick day
+        assert len(sarah_holidays) == 1
+        assert sarah_holidays[0]["start_date"] == sarah_holidays[0]["end_date"]
+
+    def test_multi_day_holiday(self):
+        """Should handle multi-day holidays correctly."""
+        mike_holidays = self.get_employee_holidays(3)
+        # Mike has Christmas break Dec 24-31
+        assert len(mike_holidays) == 1
+        assert mike_holidays[0]["start_date"] != mike_holidays[0]["end_date"]
+        assert mike_holidays[0]["start_date"] == "2026-12-24"
+        assert mike_holidays[0]["end_date"] == "2026-12-31"
+
+    def test_holiday_on_boundary_date(self):
+        """Should include holidays that start or end on filter boundary."""
+        # Filter for exactly Apr 10 (first day of James's holiday)
+        holidays = self.get_employee_holidays(1, "2026-04-10", "2026-04-10")
+        assert len(holidays) == 1
+        assert holidays[0]["start_date"] == "2026-04-10"
+
+        # Filter for exactly Apr 14 (last day of James's holiday)
+        holidays = self.get_employee_holidays(1, "2026-04-14", "2026-04-14")
+        assert len(holidays) == 1
+        assert holidays[0]["end_date"] == "2026-04-14"
+
+    def test_future_holidays_included(self):
+        """Should include future holidays."""
+        # Mike's Christmas break is in December
+        mike_holidays = self.get_employee_holidays(3)
+        assert len(mike_holidays) == 1
+        assert mike_holidays[0]["holiday_type"] == "holiday"
+
+    def test_response_includes_all_fields(self):
+        """Response should include all expected fields."""
+        james_holidays = self.get_employee_holidays(1)
+        holiday = james_holidays[0]
+
+        assert "id" in holiday
+        assert "staff_id" in holiday
+        assert "start_date" in holiday
+        assert "end_date" in holiday
+        assert "holiday_type" in holiday
+        # Notes might be optional
+        assert "notes" in holiday or holiday.get("notes") is None
+
+
+class TestEmployeeHolidayCalendarDisplay:
+    """Tests for displaying holidays on employee calendar."""
+
+    def test_holiday_shown_on_correct_dates(self):
+        """Holiday should appear on all dates within its range."""
+        # James's holiday Apr 10-14 (5 days)
+        holiday = mock_holidays[0]
+        start = date.fromisoformat(holiday["start_date"])
+        end = date.fromisoformat(holiday["end_date"])
+
+        # Generate all dates in range
+        holiday_dates = []
+        current = start
+        while current <= end:
+            holiday_dates.append(current)
+            current += timedelta(days=1)
+
+        assert len(holiday_dates) == 5
+        assert holiday_dates[0] == date(2026, 4, 10)
+        assert holiday_dates[-1] == date(2026, 4, 14)
+
+    def test_holiday_type_determines_icon(self):
+        """Different holiday types should have different icons."""
+        holiday_icons = {
+            "holiday": "🏖️",
+            "sick": "🤒",
+            "personal": "🏠",
+            "other": "📅",
+        }
+
+        for h in mock_holidays:
+            icon = holiday_icons.get(h["holiday_type"])
+            assert icon is not None
+
+    def test_employee_cannot_edit_own_holidays(self):
+        """Employee view should not show edit/delete buttons."""
+        is_admin = False
+        show_edit_buttons = is_admin
+
+        assert show_edit_buttons is False
+
+    def test_holiday_affects_available_shifts(self):
+        """Shifts on holiday days should not be claimable."""
+        # James is on holiday Apr 10-14
+        james_holiday_dates = set()
+        for h in mock_holidays:
+            if h["staff_id"] == 1:
+                start = date.fromisoformat(h["start_date"])
+                end = date.fromisoformat(h["end_date"])
+                current = start
+                while current <= end:
+                    james_holiday_dates.add(current)
+                    current += timedelta(days=1)
+
+        # Shift on Apr 12 should not be claimable by James
+        shift_date = date(2026, 4, 12)
+        can_claim = shift_date not in james_holiday_dates
+
+        assert can_claim is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

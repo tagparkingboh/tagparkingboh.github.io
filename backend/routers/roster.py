@@ -1430,6 +1430,51 @@ async def release_shift(
     }
 
 
+@router.get("/employee/holidays")
+async def get_employee_holidays(
+    date_from: Optional[date_type] = Query(None, description="Filter from date (YYYY-MM-DD)"),
+    date_to: Optional[date_type] = Query(None, description="Filter to date (YYYY-MM-DD)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get holidays for the authenticated employee.
+    Returns only the logged-in user's holidays (sick days, personal days, etc.).
+    """
+    query = db.query(EmployeeHoliday).filter(EmployeeHoliday.staff_id == current_user.id)
+
+    # Apply date filters
+    if date_from and date_to:
+        query = query.filter(
+            EmployeeHoliday.start_date <= date_to,
+            EmployeeHoliday.end_date >= date_from
+        )
+    elif date_from:
+        query = query.filter(EmployeeHoliday.end_date >= date_from)
+    elif date_to:
+        query = query.filter(EmployeeHoliday.start_date <= date_to)
+
+    holidays = query.order_by(EmployeeHoliday.start_date).all()
+
+    # Build response with employee details
+    result = []
+    for holiday in holidays:
+        result.append({
+            "id": holiday.id,
+            "staff_id": holiday.staff_id,
+            "staff_first_name": current_user.first_name or "",
+            "staff_last_name": current_user.last_name or "",
+            "staff_initials": f"{(current_user.first_name or 'X')[0]}{(current_user.last_name or 'X')[0]}".upper(),
+            "start_date": str(holiday.start_date),
+            "end_date": str(holiday.end_date),
+            "holiday_type": holiday.holiday_type.value,
+            "notes": holiday.notes,
+            "created_at": holiday.created_at.isoformat() if holiday.created_at else None,
+        })
+
+    return result
+
+
 # ============================================================================
 # Payroll Endpoints (Admin Only)
 # ============================================================================
