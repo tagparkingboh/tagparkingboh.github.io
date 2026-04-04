@@ -28,6 +28,14 @@ const SHIFT_STATUS_CONFIG = {
   no_show: { label: 'No Show', color: '#e74c3c' },
 }
 
+// Holiday type display config
+const HOLIDAY_TYPE_CONFIG = {
+  holiday: { label: 'Holiday', color: '#f5a623', icon: '🏖️' },
+  sick: { label: 'Sick', color: '#e74c3c', icon: '🤒' },
+  personal: { label: 'Personal', color: '#9b59b6', icon: '🏠' },
+  other: { label: 'Other', color: '#888', icon: '📅' },
+}
+
 // Date format helpers
 const formatDateUK = (isoDate) => {
   if (!isoDate) return ''
@@ -158,6 +166,19 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   })
   const [savingTimeSlot, setSavingTimeSlot] = useState(false)
 
+  // Employee holidays state
+  const [holidays, setHolidays] = useState([])
+  const [showHolidayModal, setShowHolidayModal] = useState(false)
+  const [editingHoliday, setEditingHoliday] = useState(null)
+  const [holidayForm, setHolidayForm] = useState({
+    staff_id: '',
+    start_date: '',
+    end_date: '',
+    holiday_type: 'holiday',
+    notes: '',
+  })
+  const [savingHoliday, setSavingHoliday] = useState(false)
+
   // Fetch bookings
   const fetchBookings = useCallback(async () => {
     if (!token) return
@@ -250,18 +271,49 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }, [token, currentDate, isAdmin])
 
+  // Fetch employee holidays
+  const fetchHolidays = useCallback(async () => {
+    if (!token || !isAdmin) return
+
+    try {
+      const year = currentDate.getFullYear()
+      const month = currentDate.getMonth()
+      const startDate = new Date(year, month, 1)
+      const endDate = new Date(year, month + 1, 0)
+
+      const params = new URLSearchParams({
+        date_from: formatDateISO(startDate),
+        date_to: formatDateISO(endDate),
+      })
+
+      const response = await fetch(`${API_URL}/api/holidays?${params}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setHolidays(Array.isArray(data) ? data : [])
+      }
+    } catch (err) {
+      console.error('Failed to load holidays:', err)
+    }
+  }, [token, currentDate, isAdmin])
+
   // Fetch all data
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates()])
+      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates(), fetchHolidays()])
     } catch (err) {
       setError('Failed to load data')
     } finally {
       setLoading(false)
     }
-  }, [fetchBookings, fetchShifts, fetchBlockedDates])
+  }, [fetchBookings, fetchShifts, fetchBlockedDates, fetchHolidays])
 
   // Fetch all staff (admin only) - includes both admins and employees
   const fetchStaff = useCallback(async () => {
@@ -1216,6 +1268,136 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }
 
+  // Open holiday modal for new holiday
+  const openNewHolidayModal = (dateStr = null) => {
+    setEditingHoliday(null)
+    setHolidayForm({
+      staff_id: '',
+      start_date: dateStr || selectedDate || '',
+      end_date: dateStr || selectedDate || '',
+      holiday_type: 'holiday',
+      notes: '',
+    })
+    setShowHolidayModal(true)
+  }
+
+  // Open holiday modal for editing
+  const openEditHolidayModal = (holiday) => {
+    setEditingHoliday(holiday)
+    setHolidayForm({
+      staff_id: String(holiday.staff_id),
+      start_date: holiday.start_date,
+      end_date: holiday.end_date,
+      holiday_type: holiday.holiday_type,
+      notes: holiday.notes || '',
+    })
+    setShowHolidayModal(true)
+  }
+
+  // Close holiday modal
+  const closeHolidayModal = () => {
+    setShowHolidayModal(false)
+    setEditingHoliday(null)
+    setHolidayForm({
+      staff_id: '',
+      start_date: '',
+      end_date: '',
+      holiday_type: 'holiday',
+      notes: '',
+    })
+  }
+
+  // Save holiday (create or update)
+  const saveHoliday = async () => {
+    if (!holidayForm.staff_id || !holidayForm.start_date || !holidayForm.end_date) {
+      setError('Please select a staff member and dates')
+      return
+    }
+
+    setSavingHoliday(true)
+    setError('')
+
+    try {
+      const params = new URLSearchParams({
+        staff_id: holidayForm.staff_id,
+        start_date: holidayForm.start_date,
+        end_date: holidayForm.end_date,
+        holiday_type: holidayForm.holiday_type,
+      })
+      if (holidayForm.notes) {
+        params.append('notes', holidayForm.notes)
+      }
+
+      const url = editingHoliday
+        ? `${API_URL}/api/holidays/${editingHoliday.id}?${params}`
+        : `${API_URL}/api/holidays?${params}`
+
+      const response = await fetch(url, {
+        method: editingHoliday ? 'PUT' : 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setSuccessMessage(editingHoliday ? 'Holiday updated' : 'Holiday added')
+        setTimeout(() => setSuccessMessage(''), 3000)
+        closeHolidayModal()
+        fetchHolidays()
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.detail || 'Failed to save holiday')
+      }
+    } catch (err) {
+      setError('Network error saving holiday')
+    } finally {
+      setSavingHoliday(false)
+    }
+  }
+
+  // Delete holiday
+  const deleteHoliday = async (holidayId) => {
+    if (!window.confirm('Are you sure you want to delete this holiday?')) return
+
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/holidays/${holidayId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setSuccessMessage('Holiday deleted')
+        setTimeout(() => setSuccessMessage(''), 3000)
+        fetchHolidays()
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.detail || 'Failed to delete holiday')
+      }
+    } catch (err) {
+      setError('Network error deleting holiday')
+    }
+  }
+
+  // Get holidays for a specific date
+  const getHolidaysForDate = (dateStr) => {
+    return holidays.filter(h => {
+      const start = new Date(h.start_date)
+      const end = new Date(h.end_date)
+      const check = new Date(dateStr)
+      return check >= start && check <= end
+    })
+  }
+
+  // Get staff IDs on holiday for a specific date
+  const getStaffOnHolidayForDate = (dateStr) => {
+    const dateHolidays = getHolidaysForDate(dateStr)
+    return new Set(dateHolidays.map(h => h.staff_id))
+  }
+
   // Get blocked date info for selected date
   const selectedDateBlockedInfo = selectedDate ? getBlockedInfoForDay(parseInt(selectedDate.split('-')[2])) : null
 
@@ -1228,6 +1410,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   // Selected date data
   const selectedDateBookings = selectedDate ? (bookingsByDate[selectedDate] || { dropoffs: [], pickups: [] }) : { dropoffs: [], pickups: [] }
   const selectedDateShifts = selectedDate ? (shiftsByDate[selectedDate] || []) : []
+  const selectedDateHolidays = selectedDate ? getHolidaysForDate(selectedDate) : []
 
   return (
     <div className="roster-calendar">
@@ -1253,9 +1436,14 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
             {loading ? 'Loading...' : 'Refresh'}
           </button>
           {isAdmin && (
-            <button className="roster-add-btn" onClick={() => openNewShiftModal()}>
-              + Add Shift
-            </button>
+            <>
+              <button className="roster-add-btn" onClick={() => openNewShiftModal()}>
+                + Add Shift
+              </button>
+              <button className="roster-add-holiday-btn" onClick={() => openNewHolidayModal()}>
+                + Add Holiday
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1282,10 +1470,12 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 const dayShifts = getShiftsForDay(day)
                 const dateKey = getDateKey(day)
                 const blockedInfo = getBlockedInfoForDay(day)
+                const dayHolidays = dateKey ? getHolidaysForDate(dateKey) : []
                 const hasDropoffs = dayBookings.dropoffs.length > 0
                 const hasPickups = dayBookings.pickups.length > 0
                 const hasShifts = dayShifts.length > 0
-                const hasContent = hasDropoffs || hasPickups || hasShifts || blockedInfo
+                const hasHolidays = dayHolidays.length > 0
+                const hasContent = hasDropoffs || hasPickups || hasShifts || blockedInfo || hasHolidays
 
                 return (
                   <div
@@ -1308,6 +1498,19 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                                     blockedInfo.block_dropoffs ? 'No Drop-offs' : 'No Pick-ups')}
                             </div>
                           )}
+                          {/* Holiday indicators */}
+                          {hasHolidays && dayHolidays.map((holiday) => {
+                            const typeConfig = HOLIDAY_TYPE_CONFIG[holiday.holiday_type] || HOLIDAY_TYPE_CONFIG.other
+                            return (
+                              <div
+                                key={holiday.id}
+                                className={`day-badge badge-holiday holiday-${holiday.holiday_type}`}
+                                title={`${holiday.staff_first_name} ${holiday.staff_last_name} - ${typeConfig.label}`}
+                              >
+                                {typeConfig.icon} {holiday.staff_initials}
+                              </div>
+                            )
+                          })}
                           {/* Booking badges */}
                           {hasDropoffs && (
                             <div className="day-badge badge-dropoff">
@@ -1405,6 +1608,12 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   >
                     + Add Shift
                   </button>
+                  <button
+                    className="roster-add-holiday-btn-small"
+                    onClick={() => openNewHolidayModal(selectedDate)}
+                  >
+                    + Holiday
+                  </button>
                   {!selectedDateBlockedInfo && (
                     <button
                       className="blocked-dates-btn"
@@ -1479,6 +1688,56 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                       </button>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Holidays Section */}
+            {selectedDateHolidays.length > 0 && (
+              <div className="holidays-section">
+                <h4>Staff on Leave ({selectedDateHolidays.length})</h4>
+                <div className="holidays-list">
+                  {selectedDateHolidays.map((holiday) => {
+                    const typeConfig = HOLIDAY_TYPE_CONFIG[holiday.holiday_type] || HOLIDAY_TYPE_CONFIG.other
+                    return (
+                      <div key={holiday.id} className={`holiday-card holiday-${holiday.holiday_type}`}>
+                        <div className="holiday-info">
+                          <span className="holiday-icon">{typeConfig.icon}</span>
+                          <span className="holiday-staff-name">
+                            {holiday.staff_first_name} {holiday.staff_last_name}
+                          </span>
+                          <span className="holiday-type-badge" style={{ backgroundColor: typeConfig.color }}>
+                            {typeConfig.label}
+                          </span>
+                        </div>
+                        <div className="holiday-dates">
+                          {holiday.start_date === holiday.end_date
+                            ? formatDateUK(holiday.start_date)
+                            : `${formatDateUK(holiday.start_date)} - ${formatDateUK(holiday.end_date)}`
+                          }
+                        </div>
+                        {holiday.notes && (
+                          <div className="holiday-notes">{holiday.notes}</div>
+                        )}
+                        {isAdmin && (
+                          <div className="holiday-actions">
+                            <button
+                              className="holiday-edit-btn"
+                              onClick={() => openEditHolidayModal(holiday)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="holiday-delete-btn"
+                              onClick={() => deleteHoliday(holiday.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -1804,12 +2063,20 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     onChange={(e) => handleShiftFormChange('staff_id', e.target.value)}
                   >
                     <option value="">Unassigned</option>
-                    {employees.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.first_name} {emp.last_name}
-                      </option>
-                    ))}
+                    {employees.map((emp) => {
+                      const staffOnHoliday = shiftForm.date && getStaffOnHolidayForDate(shiftForm.date).has(emp.id)
+                      return (
+                        <option key={emp.id} value={emp.id}>
+                          {staffOnHoliday ? '⚠️ ' : ''}{emp.first_name} {emp.last_name}{staffOnHoliday ? ' (On Leave)' : ''}
+                        </option>
+                      )
+                    })}
                   </select>
+                  {shiftForm.staff_id && shiftForm.date && getStaffOnHolidayForDate(shiftForm.date).has(parseInt(shiftForm.staff_id)) && (
+                    <div className="staff-on-holiday-warning">
+                      ⚠️ This staff member is on leave on this date
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1837,10 +2104,12 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                         {employees.map((emp) => {
                             const isSelected = additionalStaffIds.includes(String(emp.id))
                             const isDisabled = !isSelected && additionalStaffIds.length >= 6
+                            const staffOnHoliday = shiftForm.date && getStaffOnHolidayForDate(shiftForm.date).has(emp.id)
                             return (
                               <label
                                 key={emp.id}
-                                className={`additional-staff-checkbox ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`}
+                                className={`additional-staff-checkbox ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''} ${staffOnHoliday ? 'on-holiday' : ''}`}
+                                title={staffOnHoliday ? 'On leave this date' : ''}
                               >
                                 <input
                                   type="checkbox"
@@ -1854,7 +2123,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                                     }
                                   }}
                                 />
-                                <span className="staff-name">{emp.first_name} {emp.last_name}</span>
+                                <span className="staff-name">
+                                  {staffOnHoliday && <span className="holiday-indicator">🏖️</span>}
+                                  {emp.first_name} {emp.last_name}
+                                </span>
                               </label>
                             )
                           })}
@@ -2425,6 +2697,89 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 disabled={savingBlockedDate || (!blockedDateForm.block_dropoffs && !blockedDateForm.block_pickups && timeSlots.length === 0)}
               >
                 {savingBlockedDate ? 'Saving...' : editingBlockedDate ? 'Update' : 'Block Date'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Holiday Modal */}
+      {showHolidayModal && isAdmin && (
+        <div className="modal-overlay" onClick={closeHolidayModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>{editingHoliday ? 'Edit Holiday' : 'Add Holiday'}</h3>
+
+            <div className="modal-form">
+              <div className="modal-form-group">
+                <label>Staff Member *</label>
+                <select
+                  value={holidayForm.staff_id}
+                  onChange={(e) => setHolidayForm({ ...holidayForm, staff_id: e.target.value })}
+                  disabled={editingHoliday}
+                >
+                  <option value="">Select staff...</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.first_name} {emp.last_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Start Date *</label>
+                  <input
+                    type="date"
+                    value={holidayForm.start_date}
+                    onChange={(e) => setHolidayForm({ ...holidayForm, start_date: e.target.value })}
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>End Date *</label>
+                  <input
+                    type="date"
+                    value={holidayForm.end_date}
+                    onChange={(e) => setHolidayForm({ ...holidayForm, end_date: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-form-group">
+                <label>Type</label>
+                <select
+                  value={holidayForm.holiday_type}
+                  onChange={(e) => setHolidayForm({ ...holidayForm, holiday_type: e.target.value })}
+                >
+                  {Object.entries(HOLIDAY_TYPE_CONFIG).map(([value, config]) => (
+                    <option key={value} value={value}>
+                      {config.icon} {config.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="modal-form-group">
+                <label>Notes (optional)</label>
+                <input
+                  type="text"
+                  value={holidayForm.notes}
+                  onChange={(e) => setHolidayForm({ ...holidayForm, notes: e.target.value })}
+                  placeholder="e.g., Family vacation, Doctor's appointment"
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={closeHolidayModal}>
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={saveHoliday}
+                disabled={savingHoliday || !holidayForm.staff_id || !holidayForm.start_date || !holidayForm.end_date}
+              >
+                {savingHoliday ? 'Saving...' : editingHoliday ? 'Update' : 'Add Holiday'}
               </button>
             </div>
           </div>
