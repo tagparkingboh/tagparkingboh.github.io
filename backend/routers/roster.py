@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from database import get_db
-from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession, BookingStatus, ShiftBookingLink
+from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession, BookingStatus, ShiftBookingLink, EmployeeHoliday, HolidayType
 from models import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     RosterShiftCreate, RosterShiftUpdate, RosterShiftResponse,
@@ -1472,3 +1472,222 @@ async def get_employee_monthly_payroll(
         "total_hours": round(total_hours, 2),
         "shifts_by_date": sorted(shifts_by_date.values(), key=lambda x: x["date"])
     }
+
+
+# ============================================================================
+# Employee Holidays Endpoints (Admin Only)
+# ============================================================================
+
+def holiday_to_response(holiday: EmployeeHoliday) -> dict:
+    """Convert EmployeeHoliday model to response dict."""
+    return {
+        "id": holiday.id,
+        "staff_id": holiday.staff_id,
+        "staff_first_name": holiday.staff.first_name if holiday.staff else None,
+        "staff_last_name": holiday.staff.last_name if holiday.staff else None,
+        "staff_initials": holiday.staff_initials,
+        "start_date": str(holiday.start_date),
+        "end_date": str(holiday.end_date),
+        "holiday_type": holiday.holiday_type.value,
+        "notes": holiday.notes,
+        "created_at": holiday.created_at.isoformat() if holiday.created_at else None,
+    }
+
+
+@router.get("/holidays")
+async def list_holidays(
+    date_from: Optional[date_type] = Query(None, description="Filter from date (YYYY-MM-DD)"),
+    date_to: Optional[date_type] = Query(None, description="Filter to date (YYYY-MM-DD)"),
+    staff_id: Optional[int] = Query(None, description="Filter by staff member"),
+    db: Session = Depends(get_db)
+):
+    """
+    List employee holidays with optional filters.
+    Returns holidays that overlap with the given date range.
+    """
+    query = db.query(EmployeeHoliday)
+
+    if date_from and date_to:
+        # Find holidays that overlap with the date range
+        query = query.filter(
+            and_(
+                EmployeeHoliday.start_date <= date_to,
+                EmployeeHoliday.end_date >= date_from
+            )
+        )
+    elif date_from:
+        query = query.filter(EmployeeHoliday.end_date >= date_from)
+    elif date_to:
+        query = query.filter(EmployeeHoliday.start_date <= date_to)
+
+    if staff_id:
+        query = query.filter(EmployeeHoliday.staff_id == staff_id)
+
+    holidays = query.order_by(EmployeeHoliday.start_date).all()
+
+    return [holiday_to_response(h) for h in holidays]
+
+
+@router.get("/holidays/for-date")
+async def get_holidays_for_date(
+    date: date_type = Query(..., description="Date to check (YYYY-MM-DD)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all employees on holiday for a specific date.
+    Returns list of staff IDs and their holiday info.
+    """
+    holidays = db.query(EmployeeHoliday).filter(
+        EmployeeHoliday.start_date <= date,
+        EmployeeHoliday.end_date >= date
+    ).all()
+
+    return [holiday_to_response(h) for h in holidays]
+
+
+@router.get("/holidays/{holiday_id}")
+async def get_holiday(
+    holiday_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get a single holiday by ID."""
+    holiday = db.query(EmployeeHoliday).filter(EmployeeHoliday.id == holiday_id).first()
+
+    if not holiday:
+        raise HTTPException(status_code=404, detail="Holiday not found")
+
+    return holiday_to_response(holiday)
+
+
+@router.post("/holidays", status_code=201)
+async def create_holiday(
+    staff_id: int,
+    start_date: date_type,
+    end_date: date_type,
+    holiday_type: str = "holiday",
+    notes: Optional[str] = None,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new employee holiday/time-off record.
+    """
+    # Validate staff exists
+    staff = db.query(User).filter(User.id == staff_id).first()
+    if not staff:
+        raise HTTPException(status_code=404, detail="Staff member not found")
+
+    # Validate dates
+    if end_date < start_date:
+        raise HTTPException(status_code=400, detail="End date must be on or after start date")
+
+    # Validate holiday type
+    try:
+        h_type = HolidayType(holiday_type)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid holiday type. Must be one of: {[t.value for t in HolidayType]}"
+        )
+
+    # Check for overlapping holidays
+    existing = db.query(EmployeeHoliday).filter(
+        EmployeeHoliday.staff_id == staff_id,
+        EmployeeHoliday.start_date <= end_date,
+        EmployeeHoliday.end_date >= start_date
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Holiday overlaps with existing entry ({existing.start_date} to {existing.end_date})"
+        )
+
+    new_holiday = EmployeeHoliday(
+        staff_id=staff_id,
+        start_date=start_date,
+        end_date=end_date,
+        holiday_type=h_type,
+        notes=notes,
+        created_by=current_user.email
+    )
+
+    db.add(new_holiday)
+    db.commit()
+    db.refresh(new_holiday)
+
+    return holiday_to_response(new_holiday)
+
+
+@router.put("/holidays/{holiday_id}")
+async def update_holiday(
+    holiday_id: int,
+    start_date: Optional[date_type] = None,
+    end_date: Optional[date_type] = None,
+    holiday_type: Optional[str] = None,
+    notes: Optional[str] = None,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Update an existing holiday."""
+    holiday = db.query(EmployeeHoliday).filter(EmployeeHoliday.id == holiday_id).first()
+
+    if not holiday:
+        raise HTTPException(status_code=404, detail="Holiday not found")
+
+    # Apply updates
+    if start_date is not None:
+        holiday.start_date = start_date
+    if end_date is not None:
+        holiday.end_date = end_date
+    if holiday_type is not None:
+        try:
+            holiday.holiday_type = HolidayType(holiday_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid holiday type. Must be one of: {[t.value for t in HolidayType]}"
+            )
+    if notes is not None:
+        holiday.notes = notes
+
+    # Validate dates after updates
+    if holiday.end_date < holiday.start_date:
+        raise HTTPException(status_code=400, detail="End date must be on or after start date")
+
+    # Check for overlapping holidays (excluding self)
+    existing = db.query(EmployeeHoliday).filter(
+        EmployeeHoliday.staff_id == holiday.staff_id,
+        EmployeeHoliday.id != holiday_id,
+        EmployeeHoliday.start_date <= holiday.end_date,
+        EmployeeHoliday.end_date >= holiday.start_date
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Holiday overlaps with existing entry ({existing.start_date} to {existing.end_date})"
+        )
+
+    db.commit()
+    db.refresh(holiday)
+
+    return holiday_to_response(holiday)
+
+
+@router.delete("/holidays/{holiday_id}")
+async def delete_holiday(
+    holiday_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Delete a holiday (hard delete)."""
+    holiday = db.query(EmployeeHoliday).filter(EmployeeHoliday.id == holiday_id).first()
+
+    if not holiday:
+        raise HTTPException(status_code=404, detail="Holiday not found")
+
+    db.delete(holiday)
+    db.commit()
+
+    return {"success": True, "message": "Holiday deleted"}

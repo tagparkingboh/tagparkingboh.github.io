@@ -50,6 +50,14 @@ class ShiftStatus(enum.Enum):
     NO_SHOW = "no_show"           # Staff did not show up
 
 
+class HolidayType(enum.Enum):
+    """Type of employee time off."""
+    HOLIDAY = "holiday"           # Annual leave / vacation
+    SICK = "sick"                 # Sick leave
+    PERSONAL = "personal"         # Personal day
+    OTHER = "other"               # Other absence
+
+
 class PaymentStatus(enum.Enum):
     """Status of a payment."""
     PENDING = "pending"           # Payment intent created
@@ -1174,6 +1182,49 @@ class RosterShift(Base):
             # Add 24 hours worth of minutes for overnight shifts
             return (24 * 60 - start_mins) + end_mins
         return end_mins - start_mins
+
+
+class EmployeeHoliday(Base):
+    """Employee time off / holiday records."""
+    __tablename__ = "employee_holidays"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Employee
+    staff_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    # Date range (inclusive)
+    start_date = Column(Date, nullable=False, index=True)
+    end_date = Column(Date, nullable=False, index=True)
+
+    # Type of absence
+    holiday_type = Column(
+        Enum(HolidayType, values_callable=lambda x: [e.value for e in x]),
+        default=HolidayType.HOLIDAY,
+        nullable=False
+    )
+
+    # Notes
+    notes = Column(Text, nullable=True)
+
+    # Admin tracking
+    created_by = Column(String(255), nullable=True)  # Admin email who created
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    staff = relationship("User", foreign_keys=[staff_id])
+
+    def __repr__(self):
+        staff_name = f"{self.staff.first_name} {self.staff.last_name}" if self.staff else "Unknown"
+        return f"<EmployeeHoliday {self.id} - {staff_name} {self.holiday_type.value} {self.start_date} to {self.end_date}>"
+
+    @property
+    def staff_initials(self):
+        """Get staff initials (e.g., 'JC' for James Carter)."""
+        if self.staff:
+            return f"{self.staff.first_name[0]}{self.staff.last_name[0]}".upper()
+        return None
 
 
 class BlockedDate(Base):
