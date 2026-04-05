@@ -3935,28 +3935,43 @@ async def get_fun_facts(
 
     # === Latest Time of Night & Earliest Time of Day ===
     # Find bookings by time of day (not date) - who books latest at night, earliest in morning
+    # Convert to UK time for accurate comparison
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+
+    def to_uk_time(dt):
+        """Convert datetime to UK timezone"""
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            # Assume UTC if no timezone
+            dt = pytz.utc.localize(dt)
+        return dt.astimezone(uk_tz)
+
     bookings_with_created = [b for b in bookings if b.created_at]
     if bookings_with_created:
-        # Latest time of night (e.g., 23:58:42)
-        latest_time = max(bookings_with_created, key=lambda b: b.created_at.time())
+        # Latest time of night (e.g., 23:58:42) - compare UK times
+        latest_time = max(bookings_with_created, key=lambda b: to_uk_time(b.created_at).time())
+        latest_uk = to_uk_time(latest_time.created_at)
         # Get customer name
         lt_first = latest_time.customer_first_name or (latest_time.customer.first_name if latest_time.customer else None)
         lt_last = latest_time.customer_last_name or (latest_time.customer.last_name if latest_time.customer else None)
         result["latestTimeOfNight"] = {
-            "time": latest_time.created_at.strftime("%H:%M:%S"),
-            "date": latest_time.created_at.strftime("%d %b %Y"),
+            "time": latest_uk.strftime("%H:%M:%S"),
+            "date": latest_uk.strftime("%d %b %Y"),
             "reference": latest_time.reference,
             "customerName": f"{lt_first} {lt_last}" if lt_first and lt_last else None,
         }
 
-        # Earliest time of day (e.g., 03:02:15)
-        earliest_time = min(bookings_with_created, key=lambda b: b.created_at.time())
+        # Earliest time of day (e.g., 03:02:15) - compare UK times
+        earliest_time = min(bookings_with_created, key=lambda b: to_uk_time(b.created_at).time())
+        earliest_uk = to_uk_time(earliest_time.created_at)
         # Get customer name
         et_first = earliest_time.customer_first_name or (earliest_time.customer.first_name if earliest_time.customer else None)
         et_last = earliest_time.customer_last_name or (earliest_time.customer.last_name if earliest_time.customer else None)
         result["earliestTimeOfDay"] = {
-            "time": earliest_time.created_at.strftime("%H:%M:%S"),
-            "date": earliest_time.created_at.strftime("%d %b %Y"),
+            "time": earliest_uk.strftime("%H:%M:%S"),
+            "date": earliest_uk.strftime("%d %b %Y"),
             "reference": earliest_time.reference,
             "customerName": f"{et_first} {et_last}" if et_first and et_last else None,
         }
