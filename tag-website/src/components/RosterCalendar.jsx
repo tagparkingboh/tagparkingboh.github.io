@@ -189,13 +189,13 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const [shiftToRelease, setShiftToRelease] = useState(null)
   const [releasingShift, setReleasingShift] = useState(false)
 
-  // Collapsible sections state
+  // Collapsible sections state (collapsed by default)
   const [collapsedSections, setCollapsedSections] = useState({
-    dropoffs: false,
-    pickups: false,
-    shifts: false,
-    availableShifts: false,
-    holidays: false,
+    dropoffs: true,
+    pickups: true,
+    shifts: true,
+    availableShifts: true,
+    holidays: true,
   })
 
   const toggleSection = (section) => {
