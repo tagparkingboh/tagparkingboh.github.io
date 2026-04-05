@@ -1900,10 +1900,10 @@ function Admin() {
     }
   }
 
-  const fetchAbandonedCarts = async (period = abandonedCartsPeriod) => {
+  const fetchAbandonedCarts = async (period = abandonedCartsPeriod, refresh = false) => {
     setLoadingAbandonedCarts(true)
     try {
-      const response = await fetch(`${API_URL}/api/admin/reports/abandoned-carts?period=${period}`, {
+      const response = await fetch(`${API_URL}/api/admin/reports/abandoned-carts?period=${period}&refresh=${refresh}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -11722,10 +11722,10 @@ function Admin() {
                   </div>
                   <button
                     className="refresh-page-btn"
-                    onClick={() => fetchAbandonedCarts()}
+                    onClick={() => fetchAbandonedCarts(abandonedCartsPeriod, true)}
                     disabled={loadingAbandonedCarts}
                   >
-                    {loadingAbandonedCarts ? 'Refreshing...' : 'Refresh Page'}
+                    {loadingAbandonedCarts ? 'Refreshing...' : 'Refresh Data'}
                   </button>
                 </div>
 
