@@ -394,6 +394,46 @@
   border-color: #9b59b6;
 }
 
+/* Collapsible Sections */
+.detail-section-title.clickable,
+.holidays-section h4.clickable {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity 0.2s;
+}
+
+.detail-section-title.clickable:hover,
+.holidays-section h4.clickable:hover {
+  opacity: 0.8;
+}
+
+.collapse-icon {
+  font-size: 0.75rem;
+  color: #888;
+  transition: transform 0.2s;
+  width: 12px;
+  display: inline-block;
+}
+
+.collapsible-content {
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.collapsible-content.hidden {
+  display: none;
+}
+
+.detail-section.collapsed .detail-section-title,
+.holidays-section.collapsed h4 {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
 /* Booking Cards */
 .detail-bookings {
   display: flex;

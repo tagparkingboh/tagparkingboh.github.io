@@ -189,6 +189,22 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const [shiftToRelease, setShiftToRelease] = useState(null)
   const [releasingShift, setReleasingShift] = useState(false)
 
+  // Collapsible sections state
+  const [collapsedSections, setCollapsedSections] = useState({
+    dropoffs: false,
+    pickups: false,
+    shifts: false,
+    availableShifts: false,
+    holidays: false,
+  })
+
+  const toggleSection = (section) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }))
+  }
+
   // Fetch bookings
   const fetchBookings = useCallback(async () => {
     if (!token) return
@@ -1833,9 +1849,15 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
             {/* Holidays Section */}
             {selectedDateHolidays.length > 0 && (
-              <div className="holidays-section">
-                <h4>{isAdmin ? 'Staff on Leave' : 'Your Leave'} ({selectedDateHolidays.length})</h4>
-                <div className="holidays-list">
+              <div className={`holidays-section collapsible ${collapsedSections.holidays ? 'collapsed' : ''}`}>
+                <h4
+                  className="clickable"
+                  onClick={() => toggleSection('holidays')}
+                >
+                  <span className="collapse-icon">{collapsedSections.holidays ? '▶' : '▼'}</span>
+                  {isAdmin ? 'Staff on Leave' : 'Your Leave'} ({selectedDateHolidays.length})
+                </h4>
+                <div className={`holidays-list collapsible-content ${collapsedSections.holidays ? 'hidden' : ''}`}>
                   {selectedDateHolidays.map((holiday) => {
                     const typeConfig = HOLIDAY_TYPE_CONFIG[holiday.holiday_type] || HOLIDAY_TYPE_CONFIG.other
                     return (
@@ -1883,11 +1905,15 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
             {/* Drop-offs Section */}
             {selectedDateBookings.dropoffs.length > 0 && (
-              <div className="detail-section">
-                <h4 className="detail-section-title dropoff">
+              <div className={`detail-section collapsible ${collapsedSections.dropoffs ? 'collapsed' : ''}`}>
+                <h4
+                  className="detail-section-title dropoff clickable"
+                  onClick={() => toggleSection('dropoffs')}
+                >
+                  <span className="collapse-icon">{collapsedSections.dropoffs ? '▶' : '▼'}</span>
                   🚗 Drop-offs ({selectedDateBookings.dropoffs.length})
                 </h4>
-                <div className="detail-bookings">
+                <div className={`detail-bookings collapsible-content ${collapsedSections.dropoffs ? 'hidden' : ''}`}>
                   {selectedDateBookings.dropoffs
                     .sort((a, b) => (a.dropoff_time || '').localeCompare(b.dropoff_time || ''))
                     .map((booking) => (
@@ -1935,11 +1961,15 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
             {/* Pick-ups Section */}
             {selectedDateBookings.pickups.length > 0 && (
-              <div className="detail-section">
-                <h4 className="detail-section-title pickup">
+              <div className={`detail-section collapsible ${collapsedSections.pickups ? 'collapsed' : ''}`}>
+                <h4
+                  className="detail-section-title pickup clickable"
+                  onClick={() => toggleSection('pickups')}
+                >
+                  <span className="collapse-icon">{collapsedSections.pickups ? '▶' : '▼'}</span>
                   🛬 Pick-ups ({selectedDateBookings.pickups.length})
                 </h4>
-                <div className="detail-bookings">
+                <div className={`detail-bookings collapsible-content ${collapsedSections.pickups ? 'hidden' : ''}`}>
                   {selectedDateBookings.pickups
                     .sort((a, b) => (a.pickup_time || '').localeCompare(b.pickup_time || ''))
                     .map((booking) => (
@@ -1987,9 +2017,13 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
             {/* Shifts Section */}
             {selectedDateShifts.length > 0 && (
-              <div className="detail-section">
+              <div className={`detail-section collapsible ${collapsedSections.shifts ? 'collapsed' : ''}`}>
                 <div className="shifts-section-header">
-                  <h4 className="detail-section-title shifts">
+                  <h4
+                    className="detail-section-title shifts clickable"
+                    onClick={() => toggleSection('shifts')}
+                  >
+                    <span className="collapse-icon">{collapsedSections.shifts ? '▶' : '▼'}</span>
                     📅 Shifts ({selectedDateShifts.length})
                   </h4>
                   {isAdmin && selectedShiftIds.length > 0 && (
@@ -2004,7 +2038,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     </div>
                   )}
                 </div>
-                <div className="shift-list">
+                <div className={`shift-list collapsible-content ${collapsedSections.shifts ? 'hidden' : ''}`}>
                   {selectedDateShifts.map((shift) => {
                     const typeConfig = SHIFT_TYPE_CONFIG[shift.shift_type] || SHIFT_TYPE_CONFIG.other
                     const statusConfig = SHIFT_STATUS_CONFIG[shift.status] || SHIFT_STATUS_CONFIG.scheduled
@@ -2124,11 +2158,15 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
               if (availableForDate.length === 0) return null
 
               return (
-                <div className="detail-section">
-                  <h4 className="detail-section-title available-shifts">
+                <div className={`detail-section collapsible ${collapsedSections.availableShifts ? 'collapsed' : ''}`}>
+                  <h4
+                    className="detail-section-title available-shifts clickable"
+                    onClick={() => toggleSection('availableShifts')}
+                  >
+                    <span className="collapse-icon">{collapsedSections.availableShifts ? '▶' : '▼'}</span>
                     ✨ Available Shifts ({availableForDate.length})
                   </h4>
-                  <div className="shift-list available-shift-list">
+                  <div className={`shift-list available-shift-list collapsible-content ${collapsedSections.availableShifts ? 'hidden' : ''}`}>
                     {availableForDate.map((shift) => {
                       const typeConfig = SHIFT_TYPE_CONFIG[shift.shift_type] || SHIFT_TYPE_CONFIG.morning
 
