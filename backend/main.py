@@ -5077,7 +5077,7 @@ async def get_abandoned_carts_report(
     else:  # monthly
         start_date = max(now - timedelta(days=365), feature_deploy_date)
 
-    # Get all sessions that selected dates or flights
+    # Get all sessions that selected dates or flights (ordered by newest first for recent_abandoned)
     started_sessions = db.query(AuditLog).filter(
         AuditLog.created_at >= start_date,
         AuditLog.event.in_([
@@ -5085,7 +5085,7 @@ async def get_abandoned_carts_report(
             AuditLogEvent.FLIGHT_SELECTED,
         ]),
         AuditLog.session_id.isnot(None)
-    ).all()
+    ).order_by(AuditLog.created_at.desc()).all()
 
     # Get all sessions that completed booking
     completed_sessions = db.query(AuditLog.session_id).filter(
