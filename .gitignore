@@ -37,3 +37,6 @@ venv/
 
 # Data files
 *.csv
+
+# Development spec (local only)
+docs/SPEC.md
