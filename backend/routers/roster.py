@@ -113,6 +113,61 @@ def validate_staff_assignment(db: Session, staff_id: int) -> User:
     return user
 
 
+def check_staff_unavailability(
+    db: Session,
+    staff_id: int,
+    shift_date: date_type,
+    shift_start: time,
+    shift_end: time
+) -> Optional[EmployeeHoliday]:
+    """
+    Check if staff member is marked as unavailable during the shift time.
+
+    Returns the conflicting unavailability record if found, None otherwise.
+    Checks both full-day unavailability and partial-day with time ranges.
+    """
+    if not staff_id:
+        return None  # Unassigned shifts don't need unavailability check
+
+    # Find any unavailability records for this staff on this date
+    unavailabilities = db.query(EmployeeHoliday).filter(
+        EmployeeHoliday.staff_id == staff_id,
+        EmployeeHoliday.holiday_type == HolidayType.UNAVAILABLE,
+        EmployeeHoliday.start_date <= shift_date,
+        EmployeeHoliday.end_date >= shift_date
+    ).all()
+
+    for unavail in unavailabilities:
+        # If no times specified, it's a full-day unavailability - conflicts with any shift
+        if unavail.start_time is None and unavail.end_time is None:
+            return unavail
+
+        # If times are specified, check for overlap
+        if unavail.start_time and unavail.end_time:
+            # Convert to minutes for comparison
+            def time_to_mins(t: time) -> int:
+                return t.hour * 60 + t.minute
+
+            unavail_start = time_to_mins(unavail.start_time)
+            unavail_end = time_to_mins(unavail.end_time)
+            shift_start_mins = time_to_mins(shift_start)
+            shift_end_mins = time_to_mins(shift_end)
+
+            # Handle overnight shifts
+            if shift_end < shift_start:
+                shift_end_mins += 24 * 60
+
+            # Handle overnight unavailability
+            if unavail.end_time < unavail.start_time:
+                unavail_end += 24 * 60
+
+            # Check for overlap
+            if shift_start_mins < unavail_end and unavail_start < shift_end_mins:
+                return unavail
+
+    return None
+
+
 def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
     """Convert RosterShift model to response."""
     # Build list of linked bookings
@@ -876,7 +931,7 @@ async def create_shift(
     if shift_data.staff_id:
         validate_staff_assignment(db, shift_data.staff_id)
 
-        # Check for overlap
+        # Check for overlap with existing shifts
         conflicting = check_shift_overlap(
             db, shift_data.staff_id, shift_data.date, start_time, end_time
         )
@@ -885,6 +940,22 @@ async def create_shift(
                 status_code=409,
                 detail=f"Shift overlaps with existing shift ({format_time(conflicting.start_time)}-{format_time(conflicting.end_time)})"
             )
+
+        # Check if staff is marked unavailable during this shift
+        unavail = check_staff_unavailability(
+            db, shift_data.staff_id, shift_data.date, start_time, end_time
+        )
+        if unavail:
+            if unavail.start_time and unavail.end_time:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Staff is unavailable during this time ({unavail.start_time.strftime('%H:%M')}-{unavail.end_time.strftime('%H:%M')})"
+                )
+            else:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Staff is unavailable on {shift_data.date.strftime('%d/%m/%Y')}"
+                )
 
     # Validate bookings exist if provided
     booking_ids_to_link = []
@@ -965,6 +1036,20 @@ async def update_shift(
                 status_code=409,
                 detail=f"Shift overlaps with existing shift ({format_time(conflicting.start_time)}-{format_time(conflicting.end_time)})"
             )
+
+        # Check if staff is marked unavailable during this shift
+        unavail = check_staff_unavailability(db, new_staff_id, new_date, new_start, new_end)
+        if unavail:
+            if unavail.start_time and unavail.end_time:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Staff is unavailable during this time ({unavail.start_time.strftime('%H:%M')}-{unavail.end_time.strftime('%H:%M')})"
+                )
+            else:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Staff is unavailable on {new_date.strftime('%d/%m/%Y')}"
+                )
 
     # Apply updates
     if updates.staff_id_provided:
@@ -1472,12 +1557,238 @@ async def get_employee_holidays(
             "staff_initials": f"{(current_user.first_name or 'X')[0]}{(current_user.last_name or 'X')[0]}".upper(),
             "start_date": str(holiday.start_date),
             "end_date": str(holiday.end_date),
+            "start_time": holiday.start_time.strftime("%H:%M") if holiday.start_time else None,
+            "end_time": holiday.end_time.strftime("%H:%M") if holiday.end_time else None,
             "holiday_type": holiday.holiday_type.value,
             "notes": holiday.notes,
             "created_at": holiday.created_at.isoformat() if holiday.created_at else None,
         })
 
     return result
+
+
+# ============================================================================
+# Employee Unavailability Self-Service
+# ============================================================================
+
+def parse_time_for_unavailability(time_str: Optional[str]) -> Optional[time]:
+    """Parse time string (HH:MM) to time object for unavailability."""
+    if not time_str:
+        return None
+    try:
+        parts = time_str.split(":")
+        return time(int(parts[0]), int(parts[1]))
+    except (ValueError, IndexError):
+        return None
+
+
+def check_shift_conflict_for_unavailability(
+    db: Session,
+    staff_id: int,
+    start_date: date_type,
+    end_date: date_type,
+    start_time: Optional[time],
+    end_time: Optional[time]
+) -> Optional[RosterShift]:
+    """
+    Check if the employee has any shifts during the unavailability period.
+    Returns the conflicting shift if found, None otherwise.
+    """
+    # Get all shifts in the date range
+    shifts = db.query(RosterShift).filter(
+        RosterShift.staff_id == staff_id,
+        RosterShift.date >= start_date,
+        RosterShift.date <= end_date
+    ).all()
+
+    if not shifts:
+        return None
+
+    # If no times specified (full day unavailability), any shift conflicts
+    if start_time is None and end_time is None:
+        return shifts[0] if shifts else None
+
+    # Check for time overlaps
+    for shift in shifts:
+        shift_start = shift.start_time
+        shift_end = shift.end_time
+
+        # For partial day unavailability, check time overlap
+        unavail_start = start_time or time(0, 0)
+        unavail_end = end_time or time(23, 59)
+
+        # Check if shift overlaps with unavailability period
+        # Overlap occurs if shift doesn't end before unavailability starts
+        # AND shift doesn't start after unavailability ends
+        if not (shift_end <= unavail_start or shift_start >= unavail_end):
+            return shift
+
+    return None
+
+
+@router.post("/employee/unavailability")
+async def add_employee_unavailability(
+    start_date: str = Query(..., description="Start date (DD/MM/YYYY)"),
+    end_date: str = Query(..., description="End date (DD/MM/YYYY)"),
+    start_time: Optional[str] = Query(None, description="Start time (HH:MM) for partial day, or omit for full day"),
+    end_time: Optional[str] = Query(None, description="End time (HH:MM) for partial day, or omit for full day"),
+    notes: Optional[str] = Query(None, description="Optional notes"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Employee self-service: Mark yourself as unavailable.
+
+    - Employees can only add unavailability for themselves
+    - Cannot add unavailability if there's a conflicting shift (must release shift first)
+    - Supports full days or partial days with times (UK timezone)
+    - Dates in DD/MM/YYYY format, times in HH:MM 24-hour format
+    """
+    # Parse dates (DD/MM/YYYY format as per spec)
+    try:
+        start_parts = start_date.split("/")
+        parsed_start_date = date_type(int(start_parts[2]), int(start_parts[1]), int(start_parts[0]))
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail="Invalid start_date format. Use DD/MM/YYYY")
+
+    try:
+        end_parts = end_date.split("/")
+        parsed_end_date = date_type(int(end_parts[2]), int(end_parts[1]), int(end_parts[0]))
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail="Invalid end_date format. Use DD/MM/YYYY")
+
+    # Validate date range
+    if parsed_end_date < parsed_start_date:
+        raise HTTPException(status_code=400, detail="End date cannot be before start date")
+
+    # Parse times
+    parsed_start_time = parse_time_for_unavailability(start_time)
+    parsed_end_time = parse_time_for_unavailability(end_time)
+
+    # Validate time range if both provided
+    if parsed_start_time and parsed_end_time and parsed_end_time <= parsed_start_time:
+        raise HTTPException(status_code=400, detail="End time must be after start time")
+
+    # Check for conflicting shifts
+    conflicting_shift = check_shift_conflict_for_unavailability(
+        db, current_user.id, parsed_start_date, parsed_end_date,
+        parsed_start_time, parsed_end_time
+    )
+
+    if conflicting_shift:
+        shift_date = conflicting_shift.date.strftime("%d/%m/%Y")
+        shift_time = f"{conflicting_shift.start_time.strftime('%H:%M')}-{conflicting_shift.end_time.strftime('%H:%M')}"
+        raise HTTPException(
+            status_code=409,
+            detail=f"You have a shift on {shift_date} ({shift_time}). Please release the shift first before marking yourself unavailable."
+        )
+
+    # Create the unavailability record
+    unavailability = EmployeeHoliday(
+        staff_id=current_user.id,
+        start_date=parsed_start_date,
+        end_date=parsed_end_date,
+        start_time=parsed_start_time,
+        end_time=parsed_end_time,
+        holiday_type=HolidayType.UNAVAILABLE,
+        notes=notes,
+        created_by=current_user.email
+    )
+
+    db.add(unavailability)
+    db.commit()
+    db.refresh(unavailability)
+
+    return {
+        "success": True,
+        "message": "Unavailability added successfully",
+        "unavailability": {
+            "id": unavailability.id,
+            "start_date": unavailability.start_date.strftime("%d/%m/%Y"),
+            "end_date": unavailability.end_date.strftime("%d/%m/%Y"),
+            "start_time": unavailability.start_time.strftime("%H:%M") if unavailability.start_time else None,
+            "end_time": unavailability.end_time.strftime("%H:%M") if unavailability.end_time else None,
+            "notes": unavailability.notes
+        }
+    }
+
+
+@router.get("/employee/unavailability")
+async def get_employee_unavailability(
+    date_from: Optional[str] = Query(None, description="Filter from date (DD/MM/YYYY)"),
+    date_to: Optional[str] = Query(None, description="Filter to date (DD/MM/YYYY)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get the authenticated employee's unavailability records.
+    Only returns records with holiday_type = 'unavailable'.
+    """
+    query = db.query(EmployeeHoliday).filter(
+        EmployeeHoliday.staff_id == current_user.id,
+        EmployeeHoliday.holiday_type == HolidayType.UNAVAILABLE
+    )
+
+    # Parse and apply date filters
+    if date_from:
+        try:
+            parts = date_from.split("/")
+            parsed_from = date_type(int(parts[2]), int(parts[1]), int(parts[0]))
+            query = query.filter(EmployeeHoliday.end_date >= parsed_from)
+        except (ValueError, IndexError):
+            pass  # Ignore invalid date filter
+
+    if date_to:
+        try:
+            parts = date_to.split("/")
+            parsed_to = date_type(int(parts[2]), int(parts[1]), int(parts[0]))
+            query = query.filter(EmployeeHoliday.start_date <= parsed_to)
+        except (ValueError, IndexError):
+            pass  # Ignore invalid date filter
+
+    unavailabilities = query.order_by(EmployeeHoliday.start_date).all()
+
+    result = []
+    for u in unavailabilities:
+        result.append({
+            "id": u.id,
+            "start_date": u.start_date.strftime("%d/%m/%Y"),
+            "end_date": u.end_date.strftime("%d/%m/%Y"),
+            "start_time": u.start_time.strftime("%H:%M") if u.start_time else None,
+            "end_time": u.end_time.strftime("%H:%M") if u.end_time else None,
+            "notes": u.notes,
+            "created_at": u.created_at.isoformat() if u.created_at else None
+        })
+
+    return result
+
+
+@router.delete("/employee/unavailability/{unavailability_id}")
+async def delete_employee_unavailability(
+    unavailability_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete an unavailability record.
+    Employees can only delete their own unavailability records.
+    """
+    unavailability = db.query(EmployeeHoliday).filter(
+        EmployeeHoliday.id == unavailability_id,
+        EmployeeHoliday.staff_id == current_user.id,
+        EmployeeHoliday.holiday_type == HolidayType.UNAVAILABLE
+    ).first()
+
+    if not unavailability:
+        raise HTTPException(status_code=404, detail="Unavailability record not found")
+
+    db.delete(unavailability)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Unavailability deleted successfully"
+    }
 
 
 # ============================================================================
@@ -1676,6 +1987,8 @@ def holiday_to_response(holiday: EmployeeHoliday) -> dict:
         "staff_initials": holiday.staff_initials,
         "start_date": str(holiday.start_date),
         "end_date": str(holiday.end_date),
+        "start_time": holiday.start_time.strftime("%H:%M") if holiday.start_time else None,
+        "end_time": holiday.end_time.strftime("%H:%M") if holiday.end_time else None,
         "holiday_type": holiday.holiday_type.value,
         "notes": holiday.notes,
         "created_at": holiday.created_at.isoformat() if holiday.created_at else None,
@@ -1754,11 +2067,14 @@ async def create_holiday(
     end_date: date_type,
     holiday_type: str = "holiday",
     notes: Optional[str] = None,
+    start_time: Optional[str] = Query(None, description="Start time in HH:MM format (for partial day unavailability)"),
+    end_time: Optional[str] = Query(None, description="End time in HH:MM format (for partial day unavailability)"),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
     """
     Create a new employee holiday/time-off record.
+    For partial-day unavailability, include start_time and end_time in HH:MM format.
     """
     # Validate staff exists
     staff = db.query(User).filter(User.id == staff_id).first()
@@ -1812,10 +2128,24 @@ async def create_holiday(
                 detail=f"Staff member has {len(conflicting_shifts)} shifts scheduled during this period ({shift_dates[0]} to {shift_dates[-1]}). Please remove the shifts first."
             )
 
+    # Parse times if provided
+    parsed_start_time = None
+    parsed_end_time = None
+    if start_time:
+        parsed_start_time = parse_time_for_unavailability(start_time)
+        if parsed_start_time is None:
+            raise HTTPException(status_code=400, detail="Invalid start_time format. Use HH:MM")
+    if end_time:
+        parsed_end_time = parse_time_for_unavailability(end_time)
+        if parsed_end_time is None:
+            raise HTTPException(status_code=400, detail="Invalid end_time format. Use HH:MM")
+
     new_holiday = EmployeeHoliday(
         staff_id=staff_id,
         start_date=start_date,
         end_date=end_date,
+        start_time=parsed_start_time,
+        end_time=parsed_end_time,
         holiday_type=h_type,
         notes=notes,
         created_by=current_user.email
@@ -1835,10 +2165,13 @@ async def update_holiday(
     end_date: Optional[date_type] = None,
     holiday_type: Optional[str] = None,
     notes: Optional[str] = None,
+    start_time: Optional[str] = Query(None, description="Start time in HH:MM format (for partial day unavailability)"),
+    end_time: Optional[str] = Query(None, description="End time in HH:MM format (for partial day unavailability)"),
+    clear_times: bool = Query(False, description="Set to true to clear start_time/end_time (make full day)"),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    """Update an existing holiday."""
+    """Update an existing holiday/unavailability record."""
     holiday = db.query(EmployeeHoliday).filter(EmployeeHoliday.id == holiday_id).first()
 
     if not holiday:
@@ -1859,6 +2192,22 @@ async def update_holiday(
             )
     if notes is not None:
         holiday.notes = notes
+
+    # Handle time updates for partial-day unavailability
+    if clear_times:
+        holiday.start_time = None
+        holiday.end_time = None
+    else:
+        if start_time is not None:
+            parsed_start = parse_time_for_unavailability(start_time)
+            if parsed_start is None:
+                raise HTTPException(status_code=400, detail="Invalid start_time format. Use HH:MM")
+            holiday.start_time = parsed_start
+        if end_time is not None:
+            parsed_end = parse_time_for_unavailability(end_time)
+            if parsed_end is None:
+                raise HTTPException(status_code=400, detail="Invalid end_time format. Use HH:MM")
+            holiday.end_time = parsed_end
 
     # Validate dates after updates
     if holiday.end_date < holiday.start_date:

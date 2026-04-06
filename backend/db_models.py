@@ -56,6 +56,7 @@ class HolidayType(enum.Enum):
     SICK = "sick"                 # Sick leave
     PERSONAL = "personal"         # Personal day
     OTHER = "other"               # Other absence
+    UNAVAILABLE = "unavailable"   # Employee self-service unavailability
 
 
 class PaymentStatus(enum.Enum):
@@ -1196,6 +1197,11 @@ class EmployeeHoliday(Base):
     # Date range (inclusive)
     start_date = Column(Date, nullable=False, index=True)
     end_date = Column(Date, nullable=False, index=True)
+
+    # Optional time range for partial day unavailability
+    # If null, means full day(s). Times are in UK timezone (Europe/London)
+    start_time = Column(Time, nullable=True)  # e.g., 14:00 for "unavailable from 2pm"
+    end_time = Column(Time, nullable=True)    # e.g., 18:00 for "unavailable until 6pm"
 
     # Type of absence
     holiday_type = Column(

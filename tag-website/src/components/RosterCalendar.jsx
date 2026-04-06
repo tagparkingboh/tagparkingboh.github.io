@@ -34,6 +34,7 @@ const HOLIDAY_TYPE_CONFIG = {
   sick: { label: 'Sick', color: '#e74c3c', icon: '🤒' },
   personal: { label: 'Personal', color: '#9b59b6', icon: '🏠' },
   other: { label: 'Other', color: '#888', icon: '📅' },
+  unavailable: { label: 'Unavailable', color: '#95a5a6', icon: '🚫' },
 }
 
 // Date format helpers
@@ -176,8 +177,22 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     end_date: '',
     holiday_type: 'holiday',
     notes: '',
+    start_time: '',  // For partial day unavailability
+    end_time: '',    // For partial day unavailability
   })
   const [savingHoliday, setSavingHoliday] = useState(false)
+
+  // Employee unavailability state (employee self-service)
+  const [unavailabilities, setUnavailabilities] = useState([])
+  const [showUnavailModal, setShowUnavailModal] = useState(false)
+  const [unavailForm, setUnavailForm] = useState({
+    start_date: '',
+    end_date: '',
+    start_time: '',  // HH:MM for partial day
+    end_time: '',    // HH:MM for partial day
+    notes: '',
+  })
+  const [savingUnavail, setSavingUnavail] = useState(false)
 
   // Available shifts state (employee self-service)
   const [availableShifts, setAvailableShifts] = useState([])
@@ -196,6 +211,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     shifts: true,
     availableShifts: true,
     holidays: true,
+    unavailability: true,
   })
 
   const toggleSection = (section) => {
@@ -330,6 +346,37 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     }
   }, [token, currentDate, isAdmin])
 
+  // Fetch employee unavailability (employee only)
+  const fetchUnavailabilities = useCallback(async () => {
+    if (!token || isAdmin) return  // Only for employees
+
+    try {
+      const year = currentDate.getFullYear()
+      const month = currentDate.getMonth()
+      const startDate = new Date(year, month, 1)
+      const endDate = new Date(year, month + 1, 0)
+
+      const params = new URLSearchParams({
+        date_from: formatDateISO(startDate),
+        date_to: formatDateISO(endDate),
+      })
+
+      const response = await fetch(`${API_URL}/api/employee/unavailability?${params}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setUnavailabilities(Array.isArray(data) ? data : [])
+      }
+    } catch (err) {
+      console.error('Failed to load unavailabilities:', err)
+    }
+  }, [token, currentDate, isAdmin])
+
   // Fetch available shifts (employee self-service)
   const fetchAvailableShifts = useCallback(async () => {
     if (!token || isAdmin) return  // Only for employees
@@ -450,13 +497,13 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     setLoading(true)
     setError('')
     try {
-      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates(), fetchHolidays(), fetchAvailableShifts()])
+      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates(), fetchHolidays(), fetchAvailableShifts(), fetchUnavailabilities()])
     } catch (err) {
       setError('Failed to load data')
     } finally {
       setLoading(false)
     }
-  }, [fetchBookings, fetchShifts, fetchBlockedDates, fetchHolidays, fetchAvailableShifts])
+  }, [fetchBookings, fetchShifts, fetchBlockedDates, fetchHolidays, fetchAvailableShifts, fetchUnavailabilities])
 
   // Fetch all staff (admin only) - includes both admins and employees
   const fetchStaff = useCallback(async () => {
@@ -1422,6 +1469,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       end_date: ukDate,
       holiday_type: 'holiday',
       notes: '',
+      start_time: '',
+      end_time: '',
     })
     setShowHolidayModal(true)
   }
@@ -1436,6 +1485,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       end_date: formatDateUK(holiday.end_date),
       holiday_type: holiday.holiday_type,
       notes: holiday.notes || '',
+      start_time: formatTime(holiday.start_time) || '',
+      end_time: formatTime(holiday.end_time) || '',
     })
     setShowHolidayModal(true)
   }
@@ -1481,6 +1532,19 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       })
       if (holidayForm.notes) {
         params.append('notes', holidayForm.notes)
+      }
+      // For unavailability type, handle partial day times
+      if (holidayForm.holiday_type === 'unavailable') {
+        if (holidayForm.start_time) {
+          params.append('start_time', holidayForm.start_time)
+        }
+        if (holidayForm.end_time) {
+          params.append('end_time', holidayForm.end_time)
+        }
+        // If editing and times were cleared, signal to clear them
+        if (editingHoliday && !holidayForm.start_time && !holidayForm.end_time) {
+          params.append('clear_times', 'true')
+        }
       }
 
       const url = editingHoliday
@@ -1553,6 +1617,130 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return new Set(dateHolidays.map(h => h.staff_id))
   }
 
+  // ============= EMPLOYEE UNAVAILABILITY FUNCTIONS =============
+
+  // Open unavailability modal
+  const openNewUnavailModal = (dateStr = null) => {
+    const today = new Date()
+    const defaultDate = dateStr ? formatDateUK(dateStr) : formatDateUK(formatDateISO(today))
+    setUnavailForm({
+      start_date: defaultDate,
+      end_date: defaultDate,
+      start_time: '',
+      end_time: '',
+      notes: '',
+    })
+    setShowUnavailModal(true)
+  }
+
+  // Close unavailability modal
+  const closeUnavailModal = () => {
+    setShowUnavailModal(false)
+    setUnavailForm({
+      start_date: '',
+      end_date: '',
+      start_time: '',
+      end_time: '',
+      notes: '',
+    })
+  }
+
+  // Save unavailability
+  const saveUnavailability = async () => {
+    if (!unavailForm.start_date || !unavailForm.end_date) {
+      setError('Please enter start and end dates')
+      return
+    }
+
+    // Convert UK dates to ISO
+    const isoStartDate = ukToISO(unavailForm.start_date)
+    const isoEndDate = ukToISO(unavailForm.end_date)
+
+    if (!isoStartDate || !isoEndDate) {
+      setError('Invalid date format. Use DD/MM/YYYY')
+      return
+    }
+
+    setSavingUnavail(true)
+    setError('')
+
+    try {
+      const params = new URLSearchParams({
+        start_date: isoStartDate,
+        end_date: isoEndDate,
+      })
+      if (unavailForm.start_time) {
+        params.append('start_time', unavailForm.start_time)
+      }
+      if (unavailForm.end_time) {
+        params.append('end_time', unavailForm.end_time)
+      }
+      if (unavailForm.notes) {
+        params.append('notes', unavailForm.notes)
+      }
+
+      const response = await fetch(`${API_URL}/api/employee/unavailability?${params}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setSuccessMessage('Unavailability added')
+        setTimeout(() => setSuccessMessage(''), 3000)
+        closeUnavailModal()
+        fetchUnavailabilities()
+        fetchHolidays()  // Refresh holidays too as they share display
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.detail || 'Failed to add unavailability')
+      }
+    } catch (err) {
+      setError('Network error saving unavailability')
+    } finally {
+      setSavingUnavail(false)
+    }
+  }
+
+  // Delete unavailability
+  const deleteUnavailability = async (unavailId) => {
+    if (!window.confirm('Are you sure you want to delete this unavailability?')) return
+
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/employee/unavailability/${unavailId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setSuccessMessage('Unavailability deleted')
+        setTimeout(() => setSuccessMessage(''), 3000)
+        fetchUnavailabilities()
+        fetchHolidays()  // Refresh holidays too
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.detail || 'Failed to delete unavailability')
+      }
+    } catch (err) {
+      setError('Network error deleting unavailability')
+    }
+  }
+
+  // Get unavailabilities for a specific date
+  const getUnavailabilitiesForDate = (dateStr) => {
+    return unavailabilities.filter(u => {
+      const start = new Date(u.start_date)
+      const end = new Date(u.end_date)
+      const check = new Date(dateStr)
+      return check >= start && check <= end
+    })
+  }
+
   // Get blocked date info for selected date
   const selectedDateBlockedInfo = selectedDate ? getBlockedInfoForDay(parseInt(selectedDate.split('-')[2])) : null
 
@@ -1599,6 +1787,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 + Add Holiday
               </button>
             </>
+          )}
+          {!isAdmin && (
+            <button className="roster-unavail-btn" onClick={() => openNewUnavailModal()}>
+              + Mark Unavailable
+            </button>
           )}
         </div>
       </div>
@@ -1876,6 +2069,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                             ? formatDateUK(holiday.start_date)
                             : `${formatDateUK(holiday.start_date)} - ${formatDateUK(holiday.end_date)}`
                           }
+                          {(holiday.start_time || holiday.end_time) && (
+                            <span className="holiday-times">
+                              {' '}({formatTime(holiday.start_time) || '00:00'} - {formatTime(holiday.end_time) || '23:59'})
+                            </span>
+                          )}
                         </div>
                         {holiday.notes && (
                           <div className="holiday-notes">{holiday.notes}</div>
@@ -2216,6 +2414,51 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                         </div>
                       )
                     })}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Your Unavailability Section (Employee only) */}
+            {!isAdmin && (() => {
+              // Filter unavailabilities for selected date
+              const unavailForDate = getUnavailabilitiesForDate(selectedDate)
+              if (unavailForDate.length === 0) return null
+
+              return (
+                <div className="unavailability-section">
+                  <h4
+                    className="section-title collapsible-header"
+                    onClick={() => toggleSection('unavailability')}
+                  >
+                    <span className="collapse-icon">{collapsedSections.unavailability ? '▶' : '▼'}</span>
+                    🚫 Your Unavailability ({unavailForDate.length})
+                  </h4>
+                  <div className={`unavail-list collapsible-content ${collapsedSections.unavailability ? 'hidden' : ''}`}>
+                    {unavailForDate.map((unavail) => (
+                      <div key={unavail.id} className="unavail-card">
+                        <div className="unavail-card-info">
+                          <div className="unavail-dates">
+                            {formatDateUK(unavail.start_date)}
+                            {unavail.start_date !== unavail.end_date && ` - ${formatDateUK(unavail.end_date)}`}
+                          </div>
+                          {(unavail.start_time || unavail.end_time) && (
+                            <div className="unavail-times">
+                              {formatTime(unavail.start_time) || '00:00'} - {formatTime(unavail.end_time) || '23:59'}
+                            </div>
+                          )}
+                          {unavail.notes && <div className="unavail-notes">{unavail.notes}</div>}
+                        </div>
+                        <div className="unavail-card-actions">
+                          <button
+                            className="unavail-delete-btn"
+                            onClick={() => deleteUnavailability(unavail.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )
@@ -3049,6 +3292,40 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 </select>
               </div>
 
+              {/* Partial Day Times - only for unavailable type */}
+              {holidayForm.holiday_type === 'unavailable' && (
+                <div className="modal-form-row">
+                  <div className="modal-form-group">
+                    <label>Start Time (optional)</label>
+                    <input
+                      type="text"
+                      value={holidayForm.start_time}
+                      onChange={(e) => {
+                        const formatted = formatTimeInput24h(e.target.value)
+                        setHolidayForm({ ...holidayForm, start_time: formatted })
+                      }}
+                      placeholder="HH:MM (e.g., 09:00)"
+                      maxLength={5}
+                    />
+                    <small style={{ color: '#888', fontSize: '0.75rem' }}>Leave blank for full day</small>
+                  </div>
+                  <div className="modal-form-group">
+                    <label>End Time (optional)</label>
+                    <input
+                      type="text"
+                      value={holidayForm.end_time}
+                      onChange={(e) => {
+                        const formatted = formatTimeInput24h(e.target.value)
+                        setHolidayForm({ ...holidayForm, end_time: formatted })
+                      }}
+                      placeholder="HH:MM (e.g., 17:00)"
+                      maxLength={5}
+                    />
+                    <small style={{ color: '#888', fontSize: '0.75rem' }}>Leave blank for full day</small>
+                  </div>
+                </div>
+              )}
+
               <div className="modal-form-group">
                 <label>Notes (optional)</label>
                 <input
@@ -3185,6 +3462,98 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   {releasingShift ? 'Releasing...' : 'Release Shift'}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unavailability Modal (Employee only) */}
+      {showUnavailModal && !isAdmin && (
+        <div className="modal-overlay" onClick={closeUnavailModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Mark Unavailable</h3>
+
+            <p className="modal-info-text">
+              Mark yourself as unavailable for specific dates or times. You cannot be assigned shifts during this period.
+            </p>
+
+            {error && <div className="modal-error">{error}</div>}
+
+            <div className="modal-form">
+              <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Start Date (DD/MM/YYYY) *</label>
+                  <input
+                    type="text"
+                    value={unavailForm.start_date}
+                    onChange={(e) => setUnavailForm({ ...unavailForm, start_date: e.target.value })}
+                    placeholder="DD/MM/YYYY"
+                  />
+                </div>
+                <div className="modal-form-group">
+                  <label>End Date (DD/MM/YYYY) *</label>
+                  <input
+                    type="text"
+                    value={unavailForm.end_date}
+                    onChange={(e) => setUnavailForm({ ...unavailForm, end_date: e.target.value })}
+                    placeholder="DD/MM/YYYY"
+                  />
+                </div>
+              </div>
+
+              <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Start Time (optional)</label>
+                  <input
+                    type="text"
+                    value={unavailForm.start_time}
+                    onChange={(e) => {
+                      const formatted = formatTimeInput24h(e.target.value)
+                      setUnavailForm({ ...unavailForm, start_time: formatted })
+                    }}
+                    placeholder="HH:MM (e.g., 09:00)"
+                    maxLength={5}
+                  />
+                  <small style={{ color: '#888', fontSize: '0.75rem' }}>Leave blank for full day</small>
+                </div>
+                <div className="modal-form-group">
+                  <label>End Time (optional)</label>
+                  <input
+                    type="text"
+                    value={unavailForm.end_time}
+                    onChange={(e) => {
+                      const formatted = formatTimeInput24h(e.target.value)
+                      setUnavailForm({ ...unavailForm, end_time: formatted })
+                    }}
+                    placeholder="HH:MM (e.g., 17:00)"
+                    maxLength={5}
+                  />
+                  <small style={{ color: '#888', fontSize: '0.75rem' }}>Leave blank for full day</small>
+                </div>
+              </div>
+
+              <div className="modal-form-group">
+                <label>Notes (optional)</label>
+                <input
+                  type="text"
+                  value={unavailForm.notes}
+                  onChange={(e) => setUnavailForm({ ...unavailForm, notes: e.target.value })}
+                  placeholder="e.g., Doctor's appointment, Personal commitment"
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={closeUnavailModal}>
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={saveUnavailability}
+                disabled={savingUnavail || !unavailForm.start_date || !unavailForm.end_date}
+              >
+                {savingUnavail ? 'Saving...' : 'Mark Unavailable'}
+              </button>
             </div>
           </div>
         </div>
