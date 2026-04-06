@@ -3,7 +3,7 @@ Data models for the TAG booking system.
 """
 from datetime import date as date_type, time, datetime
 from typing import Optional, Literal, List, Union
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 
 
@@ -517,7 +517,10 @@ class RosterShiftCreate(BaseModel):
 
 class RosterShiftUpdate(BaseModel):
     """Request to update a roster shift."""
+    # Use special marker to distinguish "not provided" from "explicitly set to null"
+    # When staff_id is explicitly set to null in JSON, we want to unassign the shift
     staff_id: Optional[int] = None
+    staff_id_provided: bool = False  # Set to True when staff_id is explicitly in the request
     booking_id: Optional[int] = None  # DEPRECATED - use booking_ids
     booking_ids: Optional[List[int]] = None  # Multiple bookings per shift
     date: Optional[date_type] = None  # Start date
@@ -527,6 +530,14 @@ class RosterShiftUpdate(BaseModel):
     shift_type: Optional[ShiftTypeEnum] = None
     status: Optional[ShiftStatusEnum] = None
     notes: Optional[str] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def check_staff_id_provided(cls, data):
+        """Track if staff_id was explicitly provided in the request."""
+        if isinstance(data, dict) and 'staff_id' in data:
+            data['staff_id_provided'] = True
+        return data
 
 
 class LinkedBookingInfo(BaseModel):

@@ -110,9 +110,31 @@ db.close()
 | Recent abandoned list showing old sessions | DB query had no ORDER BY, so older records filled the 100-slot limit first | Added `.order_by(AuditLog.created_at.desc())` |
 | Fun Facts times not in UK timezone | `created_at` timestamps (UTC) compared/displayed without timezone conversion | Convert to UK timezone before comparing `.time()` and formatting |
 
+### 2026-04-06
+
+| Issue | Root Cause | Fix |
+|-------|------------|-----|
+| Audit logs date filter using user's local timezone | `ukDateTimeToIso()` created ISO string without timezone, interpreted as local time | Convert UK datetime input to UTC using `Intl.DateTimeFormat` to get correct offset |
+| Admin can't unassign shift (set staff_id to null) | `RosterShiftUpdate` model couldn't distinguish "not provided" from "explicitly null" | Added `staff_id_provided` flag with `model_validator` to track explicit null |
+
 ---
 
 ## Session Log
+
+### 2026-04-06
+
+**Features:**
+- Added booking target milestones (55, 60 weekly; 125, 150 monthly)
+
+**Bug Fixes:**
+- Audit logs date filter now correctly uses UK timezone
+- Admin can now unassign shifts by setting staff_id to null
+
+**Tests Added:** 35 new tests
+- `test_shift_unassign.py` (19)
+- `test_shift_unassign_integration.py` (16)
+
+**Commits:** `e4a367c` → (pending)
 
 ### 2026-04-04
 

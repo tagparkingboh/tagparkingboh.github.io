@@ -944,13 +944,18 @@ async def update_shift(
     new_start = parse_time_string(updates.start_time) if updates.start_time else shift.start_time
     new_end = parse_time_string(updates.end_time) if updates.end_time else shift.end_time
     new_date = updates.date if updates.date else shift.date
-    new_staff_id = updates.staff_id if updates.staff_id is not None else shift.staff_id
 
-    # Validate staff assignment if changing
+    # Handle staff_id: use updates.staff_id_provided to detect if it was explicitly set (even to null)
+    if updates.staff_id_provided:
+        new_staff_id = updates.staff_id  # Could be None (unassign) or a valid ID
+    else:
+        new_staff_id = shift.staff_id  # Keep existing
+
+    # Validate staff assignment if changing to a new staff member
     if new_staff_id and new_staff_id != shift.staff_id:
         validate_staff_assignment(db, new_staff_id)
 
-    # Check for overlap if staff, date, or times are changing
+    # Check for overlap if staff, date, or times are changing (only if assigned to someone)
     if new_staff_id:
         conflicting = check_shift_overlap(
             db, new_staff_id, new_date, new_start, new_end, exclude_shift_id=shift_id
@@ -962,8 +967,8 @@ async def update_shift(
             )
 
     # Apply updates
-    if updates.staff_id is not None:
-        shift.staff_id = updates.staff_id
+    if updates.staff_id_provided:
+        shift.staff_id = updates.staff_id  # Can be None to unassign
     if updates.date is not None:
         shift.date = updates.date
     if updates.end_date is not None:
