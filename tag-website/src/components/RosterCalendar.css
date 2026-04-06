@@ -955,6 +955,86 @@
   color: #fff;
 }
 
+/* Light-themed Unavailability Modal - overrides dark Employee theme */
+.unavail-modal-content {
+  background: white !important;
+  color: #333 !important;
+}
+
+.unavail-modal-content h3 {
+  color: #1a1a2e !important;
+  margin: 0 0 16px 0;
+  padding: 0;
+  border-bottom: none;
+}
+
+.unavail-modal-content .modal-form {
+  padding: 0;
+}
+
+.unavail-modal-content .modal-form-group label {
+  color: #333 !important;
+}
+
+.unavail-modal-content .modal-form-group input {
+  background: #f8f9fa !important;
+  border: 1px solid #ddd !important;
+  color: #333 !important;
+}
+
+.unavail-modal-content .modal-form-group input::placeholder {
+  color: #999 !important;
+}
+
+.unavail-modal-content .modal-form-group input:focus {
+  border-color: #4a90e2 !important;
+  background: white !important;
+}
+
+.unavail-modal-content .modal-form-group small {
+  color: #666 !important;
+}
+
+.unavail-modal-content .modal-actions {
+  border-top: 1px solid #eee;
+  padding-top: 16px;
+  margin-top: 16px;
+}
+
+.unavail-modal-content .modal-btn-secondary {
+  background: #e9ecef !important;
+  color: #495057 !important;
+}
+
+.unavail-modal-content .modal-btn-secondary:hover {
+  background: #dee2e6 !important;
+}
+
+.unavail-modal-content .modal-btn-primary {
+  background: #4a90e2 !important;
+  color: white !important;
+}
+
+.unavail-modal-content .modal-btn-primary:hover:not(:disabled) {
+  background: #3a7bc8 !important;
+}
+
+.unavail-modal-content .modal-error {
+  background: #fee;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+}
+
+.unavail-info-text {
+  color: #666;
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #e7f3ff;
+  border-radius: 8px;
+  border-left: 3px solid #4a90e2;
+}
+
 .modal-info-text {
   color: #666;
   font-size: 0.9rem;

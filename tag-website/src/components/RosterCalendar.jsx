@@ -1652,11 +1652,9 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       return
     }
 
-    // Convert UK dates to ISO
-    const isoStartDate = ukToISO(unavailForm.start_date)
-    const isoEndDate = ukToISO(unavailForm.end_date)
-
-    if (!isoStartDate || !isoEndDate) {
+    // Validate UK date format (DD/MM/YYYY)
+    const ukDateRegex = /^\d{2}\/\d{2}\/\d{4}$/
+    if (!ukDateRegex.test(unavailForm.start_date) || !ukDateRegex.test(unavailForm.end_date)) {
       setError('Invalid date format. Use DD/MM/YYYY')
       return
     }
@@ -1665,9 +1663,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     setError('')
 
     try {
+      // Backend expects UK format (DD/MM/YYYY) - send as-is
       const params = new URLSearchParams({
-        start_date: isoStartDate,
-        end_date: isoEndDate,
+        start_date: unavailForm.start_date,
+        end_date: unavailForm.end_date,
       })
       if (unavailForm.start_time) {
         params.append('start_time', unavailForm.start_time)
@@ -3469,11 +3468,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
 
       {/* Unavailability Modal (Employee only) */}
       {showUnavailModal && !isAdmin && (
-        <div className="modal-overlay" onClick={closeUnavailModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay unavail-modal-overlay" onClick={closeUnavailModal}>
+          <div className="modal-content unavail-modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>Mark Unavailable</h3>
 
-            <p className="modal-info-text">
+            <p className="unavail-info-text">
               Mark yourself as unavailable for specific dates or times. You cannot be assigned shifts during this period.
             </p>
 
