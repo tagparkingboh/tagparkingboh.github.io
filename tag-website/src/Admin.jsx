@@ -119,7 +119,7 @@ const getTwoHoursAgoUkDateTime = () => {
   return `${day}/${month}/${year} ${hour}:${minute}`
 }
 
-// Convert UK datetime (DD/MM/YYYY HH:MM) to ISO format for API
+// Convert UK datetime (DD/MM/YYYY HH:MM) to ISO format for API (converts to UTC)
 const ukDateTimeToIso = (ukDateTime) => {
   if (!ukDateTime) return ''
   // Handle "DD/MM/YYYY HH:MM" format
@@ -129,7 +129,36 @@ const ukDateTimeToIso = (ukDateTime) => {
   const timePart = parts[1] || '00:00'
   const [day, month, year] = datePart.split('/')
   if (!day || !month || !year) return ''
-  return `${year}-${month}-${day}T${timePart}`
+
+  // Create a date object interpreting the input as UK time
+  // Format: YYYY-MM-DDTHH:MM with explicit UK timezone
+  const ukDateStr = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${timePart}:00`
+
+  // Use Intl to determine UK offset for this specific date (handles BST/GMT)
+  const tempDate = new Date(ukDateStr + 'Z') // Parse as UTC temporarily
+  const ukFormatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  })
+
+  // Get the UK offset by comparing UTC and UK representations
+  // Create the date as if it were UK time, then convert to UTC
+  const [hours, minutes] = timePart.split(':').map(Number)
+
+  // Create date in UK timezone and get UTC equivalent
+  // Trick: Create a date, format it in UK tz, compare to get offset
+  const testDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day), hours, minutes || 0))
+  const ukParts = ukFormatter.formatToParts(testDate)
+  const ukHour = parseInt(ukParts.find(p => p.type === 'hour').value)
+  const utcHour = testDate.getUTCHours()
+  const ukOffset = ukHour - utcHour // Positive means UK is ahead of UTC
+
+  // Adjust: if user entered UK time, we need to subtract the offset to get UTC
+  const utcDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day), hours - ukOffset, minutes || 0))
+
+  return utcDate.toISOString()
 }
 
 // UK date format helpers (DD/MM/YYYY)
