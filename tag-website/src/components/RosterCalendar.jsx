@@ -3306,7 +3306,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                       placeholder="HH:MM (e.g., 09:00)"
                       maxLength={5}
                     />
-                    <small style={{ color: '#888', fontSize: '0.75rem' }}>Leave blank for full day</small>
+                    <small style={{ color: '#555', fontSize: '0.75rem' }}>Leave blank for full day</small>
                   </div>
                   <div className="modal-form-group">
                     <label>End Time (optional)</label>
@@ -3320,7 +3320,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                       placeholder="HH:MM (e.g., 17:00)"
                       maxLength={5}
                     />
-                    <small style={{ color: '#888', fontSize: '0.75rem' }}>Leave blank for full day</small>
+                    <small style={{ color: '#555', fontSize: '0.75rem' }}>Leave blank for full day</small>
                   </div>
                 </div>
               )}
@@ -3513,7 +3513,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     placeholder="HH:MM (e.g., 09:00)"
                     maxLength={5}
                   />
-                  <small style={{ color: '#888', fontSize: '0.75rem' }}>Leave blank for full day</small>
+                  <small style={{ color: '#555', fontSize: '0.75rem' }}>Leave blank for full day</small>
                 </div>
                 <div className="modal-form-group">
                   <label>End Time (optional)</label>
@@ -3527,7 +3527,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                     placeholder="HH:MM (e.g., 17:00)"
                     maxLength={5}
                   />
-                  <small style={{ color: '#888', fontSize: '0.75rem' }}>Leave blank for full day</small>
+                  <small style={{ color: '#555', fontSize: '0.75rem' }}>Leave blank for full day</small>
                 </div>
               </div>
 
