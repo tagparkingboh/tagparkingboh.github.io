@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
-import { getMakes, getModels } from 'car-info'
+// car-info removed - using DVLA API instead
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import StripePayment from './components/StripePayment'
@@ -168,12 +168,9 @@ function Bookings() {
 
   const isCapacityAvailable = checkAvailability(formData.dropoffDate, formData.pickupDate)
 
-  // Get car makes and models from car-info library
-  const carMakes = useMemo(() => getMakes().sort(), [])
-  const carModels = useMemo(() => {
-    if (!formData.make) return []
-    return getModels(formData.make) || []
-  }, [formData.make])
+  // car-info removed - this file is deprecated, use BookingsNew.jsx
+  const carMakes = []
+  const carModels = []
 
   // Fetch departures when drop-off date changes
   useEffect(() => {
