@@ -1025,8 +1025,10 @@
   color: #721c24;
 }
 
-.unavail-info-text {
-  color: #343434;
+.unavail-info-text,
+.employee-container .modal-content p.unavail-info-text,
+.unavail-modal-content p.unavail-info-text {
+  color: #343434 !important;
   font-size: 0.9rem;
   margin-bottom: 16px;
   padding: 12px;

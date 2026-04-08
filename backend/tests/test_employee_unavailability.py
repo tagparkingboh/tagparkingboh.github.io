@@ -816,3 +816,180 @@ class TestStaffAssignedVsNotAssigned:
         has_shift = staff_shift_id is not None
         can_mark_unavailable = not has_shift
         assert can_mark_unavailable
+
+
+# =============================================================================
+# Helper Function Tests - check_holiday_time_overlap
+# =============================================================================
+
+class TestCheckHolidayTimeOverlap:
+    """
+    Tests for check_holiday_time_overlap helper function.
+
+    This function determines whether two unavailability/holiday entries overlap
+    based on their times. Per SPEC.md: Time format HH:MM (24-hour).
+
+    Rules:
+    - If either entry is full day (no times), they overlap
+    - If both have times, check if the time ranges overlap
+    """
+
+    # -------------------------------------------------------------------------
+    # Happy Path: Non-overlapping time ranges on same day
+    # -------------------------------------------------------------------------
+
+    def test_non_overlapping_morning_afternoon(self):
+        """9:00-12:00 and 14:00-17:00 don't overlap - can have both."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(9, 0), time(12, 0),   # existing: 09:00-12:00
+            time(14, 0), time(17, 0)   # new: 14:00-17:00
+        )
+        assert result is False  # No overlap
+
+    def test_non_overlapping_consecutive_slots(self):
+        """12:00-14:00 and 14:00-16:00 don't overlap (adjacent)."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(12, 0), time(14, 0),  # existing: 12:00-14:00
+            time(14, 0), time(16, 0)   # new: 14:00-16:00
+        )
+        assert result is False  # Adjacent times don't overlap
+
+    def test_non_overlapping_early_late(self):
+        """06:00-08:00 and 20:00-22:00 don't overlap."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(6, 0), time(8, 0),    # existing: 06:00-08:00
+            time(20, 0), time(22, 0)   # new: 20:00-22:00
+        )
+        assert result is False  # No overlap
+
+    # -------------------------------------------------------------------------
+    # Unhappy Path: Overlapping time ranges
+    # -------------------------------------------------------------------------
+
+    def test_overlapping_partial(self):
+        """9:00-12:00 and 11:00-14:00 overlap."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(9, 0), time(12, 0),   # existing: 09:00-12:00
+            time(11, 0), time(14, 0)   # new: 11:00-14:00
+        )
+        assert result is True  # Overlap
+
+    def test_overlapping_contained(self):
+        """9:00-17:00 contains 11:00-14:00."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(9, 0), time(17, 0),   # existing: 09:00-17:00
+            time(11, 0), time(14, 0)   # new: 11:00-14:00 (inside)
+        )
+        assert result is True  # Overlap
+
+    def test_overlapping_exact_same(self):
+        """Exact same times overlap."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(9, 0), time(12, 0),   # existing: 09:00-12:00
+            time(9, 0), time(12, 0)    # new: 09:00-12:00
+        )
+        assert result is True  # Overlap
+
+    def test_overlapping_new_contains_existing(self):
+        """New entry contains existing entry."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(11, 0), time(14, 0),  # existing: 11:00-14:00
+            time(9, 0), time(17, 0)    # new: 09:00-17:00 (contains existing)
+        )
+        assert result is True  # Overlap
+
+    # -------------------------------------------------------------------------
+    # Edge Cases: Full day entries (no times)
+    # -------------------------------------------------------------------------
+
+    def test_existing_full_day_overlaps(self):
+        """Existing is full day, new has times - should overlap."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            None, None,               # existing: full day
+            time(9, 0), time(12, 0)   # new: 09:00-12:00
+        )
+        assert result is True  # Full day covers everything
+
+    def test_new_full_day_overlaps(self):
+        """New is full day, existing has times - should overlap."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(9, 0), time(12, 0),  # existing: 09:00-12:00
+            None, None               # new: full day
+        )
+        assert result is True  # Full day covers everything
+
+    def test_both_full_day_overlap(self):
+        """Both are full day - should overlap."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            None, None,  # existing: full day
+            None, None   # new: full day
+        )
+        assert result is True  # Both full day overlap
+
+    def test_existing_partial_none_overlaps(self):
+        """Existing has start but no end - treated as full day."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(9, 0), None,         # existing: 09:00 to ?
+            time(14, 0), time(16, 0)  # new: 14:00-16:00
+        )
+        assert result is True  # Partial none means overlap
+
+    def test_new_partial_none_overlaps(self):
+        """New has end but no start - treated as full day."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(9, 0), time(12, 0),  # existing: 09:00-12:00
+            None, time(16, 0)         # new: ? to 16:00
+        )
+        assert result is True  # Partial none means overlap
+
+    # -------------------------------------------------------------------------
+    # Boundary Cases: Time edge conditions
+    # -------------------------------------------------------------------------
+
+    def test_boundary_midnight_early_morning(self):
+        """00:00-06:00 and 06:00-12:00 don't overlap."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(0, 0), time(6, 0),   # existing: 00:00-06:00
+            time(6, 0), time(12, 0)   # new: 06:00-12:00
+        )
+        assert result is False  # Adjacent at 06:00
+
+    def test_boundary_end_of_day(self):
+        """20:00-23:59 and 06:00-08:00 don't overlap."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(20, 0), time(23, 59),  # existing: 20:00-23:59
+            time(6, 0), time(8, 0)      # new: 06:00-08:00
+        )
+        assert result is False  # No overlap
+
+    def test_boundary_one_minute_gap(self):
+        """9:00-12:00 and 12:01-15:00 don't overlap (1 minute gap)."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(9, 0), time(12, 0),   # existing: 09:00-12:00
+            time(12, 1), time(15, 0)   # new: 12:01-15:00
+        )
+        assert result is False  # 1 minute gap
+
+    def test_boundary_one_minute_overlap(self):
+        """9:00-12:01 and 12:00-15:00 overlap by 1 minute."""
+        from routers.roster import check_holiday_time_overlap
+        result = check_holiday_time_overlap(
+            time(9, 0), time(12, 1),   # existing: 09:00-12:01
+            time(12, 0), time(15, 0)   # new: 12:00-15:00
+        )
+        assert result is True  # 1 minute overlap

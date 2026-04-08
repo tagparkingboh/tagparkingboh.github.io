@@ -42,6 +42,34 @@ def format_time(t: time) -> str:
     return t.strftime("%H:%M")
 
 
+def check_holiday_time_overlap(
+    existing_start_time: Optional[time],
+    existing_end_time: Optional[time],
+    new_start_time: Optional[time],
+    new_end_time: Optional[time]
+) -> bool:
+    """
+    Check if two holiday/unavailability entries have overlapping times.
+
+    Rules:
+    - If either entry is full day (no times), they overlap
+    - If both have times, check if the time ranges overlap
+
+    Returns True if they overlap, False if they don't.
+    """
+    # If existing entry is full day (no times), it covers entire day → overlap
+    if existing_start_time is None or existing_end_time is None:
+        return True
+
+    # If new entry is full day (no times), it covers entire day → overlap
+    if new_start_time is None or new_end_time is None:
+        return True
+
+    # Both have times - check if time ranges overlap
+    # Overlap if: new_start < existing_end AND new_end > existing_start
+    return new_start_time < existing_end_time and new_end_time > existing_start_time
+
+
 def get_staff_initials(user: User) -> str:
     """Get staff initials from user object."""
     if user:
@@ -2094,18 +2122,40 @@ async def create_holiday(
             detail=f"Invalid holiday type. Must be one of: {[t.value for t in HolidayType]}"
         )
 
-    # Check for overlapping holidays
-    existing = db.query(EmployeeHoliday).filter(
+    # Parse times first (needed for overlap check)
+    parsed_start_time = None
+    parsed_end_time = None
+    if start_time:
+        parsed_start_time = parse_time_for_unavailability(start_time)
+        if parsed_start_time is None:
+            raise HTTPException(status_code=400, detail="Invalid start_time format. Use HH:MM")
+    if end_time:
+        parsed_end_time = parse_time_for_unavailability(end_time)
+        if parsed_end_time is None:
+            raise HTTPException(status_code=400, detail="Invalid end_time format. Use HH:MM")
+
+    # Check for overlapping holidays (considering time ranges)
+    # Get all entries with overlapping dates first
+    overlapping_dates = db.query(EmployeeHoliday).filter(
         EmployeeHoliday.staff_id == staff_id,
         EmployeeHoliday.start_date <= end_date,
         EmployeeHoliday.end_date >= start_date
-    ).first()
+    ).all()
 
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Holiday overlaps with existing entry ({existing.start_date} to {existing.end_date})"
-        )
+    # Check each one for actual time overlap
+    for existing in overlapping_dates:
+        if check_holiday_time_overlap(
+            existing.start_time, existing.end_time,
+            parsed_start_time, parsed_end_time
+        ):
+            # Format the error message with time info if applicable
+            time_info = ""
+            if existing.start_time and existing.end_time:
+                time_info = f" {format_time(existing.start_time)}-{format_time(existing.end_time)}"
+            raise HTTPException(
+                status_code=409,
+                detail=f"Holiday overlaps with existing entry ({existing.start_date} to {existing.end_date}{time_info})"
+            )
 
     # Check for existing shifts during the holiday period
     conflicting_shifts = db.query(RosterShift).filter(
@@ -2127,18 +2177,6 @@ async def create_holiday(
                 status_code=409,
                 detail=f"Staff member has {len(conflicting_shifts)} shifts scheduled during this period ({shift_dates[0]} to {shift_dates[-1]}). Please remove the shifts first."
             )
-
-    # Parse times if provided
-    parsed_start_time = None
-    parsed_end_time = None
-    if start_time:
-        parsed_start_time = parse_time_for_unavailability(start_time)
-        if parsed_start_time is None:
-            raise HTTPException(status_code=400, detail="Invalid start_time format. Use HH:MM")
-    if end_time:
-        parsed_end_time = parse_time_for_unavailability(end_time)
-        if parsed_end_time is None:
-            raise HTTPException(status_code=400, detail="Invalid end_time format. Use HH:MM")
 
     new_holiday = EmployeeHoliday(
         staff_id=staff_id,
@@ -2213,19 +2251,28 @@ async def update_holiday(
     if holiday.end_date < holiday.start_date:
         raise HTTPException(status_code=400, detail="End date must be on or after start date")
 
-    # Check for overlapping holidays (excluding self)
-    existing = db.query(EmployeeHoliday).filter(
+    # Check for overlapping holidays (excluding self, considering time ranges)
+    overlapping_dates = db.query(EmployeeHoliday).filter(
         EmployeeHoliday.staff_id == holiday.staff_id,
         EmployeeHoliday.id != holiday_id,
         EmployeeHoliday.start_date <= holiday.end_date,
         EmployeeHoliday.end_date >= holiday.start_date
-    ).first()
+    ).all()
 
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Holiday overlaps with existing entry ({existing.start_date} to {existing.end_date})"
-        )
+    # Check each one for actual time overlap
+    for existing in overlapping_dates:
+        if check_holiday_time_overlap(
+            existing.start_time, existing.end_time,
+            holiday.start_time, holiday.end_time
+        ):
+            # Format the error message with time info if applicable
+            time_info = ""
+            if existing.start_time and existing.end_time:
+                time_info = f" {format_time(existing.start_time)}-{format_time(existing.end_time)}"
+            raise HTTPException(
+                status_code=409,
+                detail=f"Holiday overlaps with existing entry ({existing.start_date} to {existing.end_date}{time_info})"
+            )
 
     # Check for existing shifts during the updated holiday period
     conflicting_shifts = db.query(RosterShift).filter(
