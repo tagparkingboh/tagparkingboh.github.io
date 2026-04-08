@@ -1603,10 +1603,12 @@
 .shift-initials {
   background: #D9FF00;
   color: #1a1a2e;
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-weight: 600;
-  font-size: 0.6rem;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .shift-unassigned-mini {
