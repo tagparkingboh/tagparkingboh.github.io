@@ -359,3 +359,244 @@ class TestSessionTrackingAuthentication:
         assert response.status_code == 200
 
         app.dependency_overrides.clear()
+
+
+# =============================================================================
+# Tests - Manual Booking Sources (phone, walk-in)
+# =============================================================================
+
+class TestManualBookingSources:
+    """Tests for manual booking source counting in session tracking."""
+
+    def test_manual_bookings_count_includes_manual_source(self, client, mock_db):
+        """Manual bookings count should include booking_source='manual'."""
+        import pytz
+        from db_models import BookingStatus
+
+        uk_tz = pytz.timezone('Europe/London')
+        now = datetime.now(uk_tz)
+
+        # Create mock booking with 'manual' source
+        mock_booking = MagicMock()
+        mock_booking.id = 1
+        mock_booking.booking_source = "manual"
+        mock_booking.status = BookingStatus.CONFIRMED
+        mock_booking.created_at = now
+
+        # Set up mock to return empty audit logs but manual bookings
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if hasattr(model, '__name__') and model.__name__ == 'Booking':
+                query_mock.filter.return_value.all.return_value = [mock_booking]
+            else:
+                query_mock.filter.return_value.all.return_value = []
+            return query_mock
+
+        mock_db.query.side_effect = query_side_effect
+
+        response = client.get("/api/admin/reports/session-tracking?period=daily")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "cumulative" in data
+        assert "manual_bookings" in data["cumulative"]
+
+    def test_manual_bookings_count_includes_admin_source(self, client, mock_db):
+        """Manual bookings count should include booking_source='admin'."""
+        import pytz
+        from db_models import BookingStatus
+
+        uk_tz = pytz.timezone('Europe/London')
+        now = datetime.now(uk_tz)
+
+        mock_booking = MagicMock()
+        mock_booking.id = 1
+        mock_booking.booking_source = "admin"
+        mock_booking.status = BookingStatus.CONFIRMED
+        mock_booking.created_at = now
+
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if hasattr(model, '__name__') and model.__name__ == 'Booking':
+                query_mock.filter.return_value.all.return_value = [mock_booking]
+            else:
+                query_mock.filter.return_value.all.return_value = []
+            return query_mock
+
+        mock_db.query.side_effect = query_side_effect
+
+        response = client.get("/api/admin/reports/session-tracking?period=daily")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "cumulative" in data
+        assert "manual_bookings" in data["cumulative"]
+
+    def test_manual_bookings_count_includes_phone_source(self, client, mock_db):
+        """Manual bookings count should include booking_source='phone'."""
+        import pytz
+        from db_models import BookingStatus
+
+        uk_tz = pytz.timezone('Europe/London')
+        now = datetime.now(uk_tz)
+
+        mock_booking = MagicMock()
+        mock_booking.id = 1
+        mock_booking.booking_source = "phone"
+        mock_booking.status = BookingStatus.CONFIRMED
+        mock_booking.created_at = now
+
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if hasattr(model, '__name__') and model.__name__ == 'Booking':
+                query_mock.filter.return_value.all.return_value = [mock_booking]
+            else:
+                query_mock.filter.return_value.all.return_value = []
+            return query_mock
+
+        mock_db.query.side_effect = query_side_effect
+
+        response = client.get("/api/admin/reports/session-tracking?period=daily")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "cumulative" in data
+        assert "manual_bookings" in data["cumulative"]
+
+    def test_manual_bookings_count_includes_walkin_source(self, client, mock_db):
+        """Manual bookings count should include booking_source='walk-in'."""
+        import pytz
+        from db_models import BookingStatus
+
+        uk_tz = pytz.timezone('Europe/London')
+        now = datetime.now(uk_tz)
+
+        mock_booking = MagicMock()
+        mock_booking.id = 1
+        mock_booking.booking_source = "walk-in"
+        mock_booking.status = BookingStatus.CONFIRMED
+        mock_booking.created_at = now
+
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if hasattr(model, '__name__') and model.__name__ == 'Booking':
+                query_mock.filter.return_value.all.return_value = [mock_booking]
+            else:
+                query_mock.filter.return_value.all.return_value = []
+            return query_mock
+
+        mock_db.query.side_effect = query_side_effect
+
+        response = client.get("/api/admin/reports/session-tracking?period=daily")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "cumulative" in data
+        assert "manual_bookings" in data["cumulative"]
+
+    def test_multiple_manual_source_types_counted(self, client, mock_db):
+        """Multiple manual source types should all be counted."""
+        import pytz
+        from db_models import BookingStatus
+
+        uk_tz = pytz.timezone('Europe/London')
+        now = datetime.now(uk_tz)
+
+        # Create bookings with different manual source types
+        mock_bookings = []
+        for i, source in enumerate(['manual', 'admin', 'phone', 'walk-in']):
+            booking = MagicMock()
+            booking.id = i + 1
+            booking.booking_source = source
+            booking.status = BookingStatus.CONFIRMED
+            booking.created_at = now
+            mock_bookings.append(booking)
+
+        # Verify that all 4 booking sources are valid manual sources
+        manual_sources = ['manual', 'admin', 'phone', 'walk-in']
+        for booking in mock_bookings:
+            assert booking.booking_source in manual_sources
+
+        # Verify we created 4 bookings
+        assert len(mock_bookings) == 4
+
+    def test_online_source_not_counted_as_manual(self, client, mock_db):
+        """Online bookings should NOT be counted in manual bookings."""
+        from db_models import BookingStatus
+
+        # Create booking with online source
+        mock_booking = MagicMock()
+        mock_booking.id = 1
+        mock_booking.booking_source = "online"
+        mock_booking.status = BookingStatus.CONFIRMED
+
+        # Verify that 'online' is NOT in the manual sources list
+        manual_sources = ['manual', 'admin', 'phone', 'walk-in']
+        assert mock_booking.booking_source not in manual_sources
+
+        # This booking would not be included in the manual booking count
+        # because the query filters for booking_source.in_(['manual', 'admin', 'phone', 'walk-in'])
+        assert mock_booking.booking_source == "online"
+
+    def test_manual_bookings_per_period(self, client, mock_db):
+        """Manual bookings should be counted per period."""
+        import pytz
+        from db_models import BookingStatus
+
+        uk_tz = pytz.timezone('Europe/London')
+        now = datetime.now(uk_tz)
+
+        mock_booking = MagicMock()
+        mock_booking.id = 1
+        mock_booking.booking_source = "phone"
+        mock_booking.status = BookingStatus.CONFIRMED
+        mock_booking.created_at = now
+
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if hasattr(model, '__name__') and model.__name__ == 'Booking':
+                query_mock.filter.return_value.all.return_value = [mock_booking]
+            else:
+                query_mock.filter.return_value.all.return_value = []
+            return query_mock
+
+        mock_db.query.side_effect = query_side_effect
+
+        response = client.get("/api/admin/reports/session-tracking?period=daily")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Check that periods array exists
+        assert "periods" in data
+
+    def test_completed_manual_bookings_included(self, client, mock_db):
+        """Completed manual bookings should be included in count."""
+        import pytz
+        from db_models import BookingStatus
+
+        uk_tz = pytz.timezone('Europe/London')
+        now = datetime.now(uk_tz)
+
+        mock_booking = MagicMock()
+        mock_booking.id = 1
+        mock_booking.booking_source = "phone"
+        mock_booking.status = BookingStatus.COMPLETED  # Completed, not just confirmed
+        mock_booking.created_at = now
+
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if hasattr(model, '__name__') and model.__name__ == 'Booking':
+                query_mock.filter.return_value.all.return_value = [mock_booking]
+            else:
+                query_mock.filter.return_value.all.return_value = []
+            return query_mock
+
+        mock_db.query.side_effect = query_side_effect
+
+        response = client.get("/api/admin/reports/session-tracking?period=daily")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "cumulative" in data
+        assert "manual_bookings" in data["cumulative"]

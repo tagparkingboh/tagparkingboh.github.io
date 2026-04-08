@@ -117,9 +117,26 @@ db.close()
 | Audit logs date filter using user's local timezone | `ukDateTimeToIso()` created ISO string without timezone, interpreted as local time | Convert UK datetime input to UTC using `Intl.DateTimeFormat` to get correct offset |
 | Admin can't unassign shift (set staff_id to null) | `RosterShiftUpdate` model couldn't distinguish "not provided" from "explicitly null" | Added `staff_id_provided` flag with `model_validator` to track explicit null |
 
+### 2026-04-08
+
+| Issue | Root Cause | Fix |
+|-------|------------|-----|
+| Session tracking manual bookings missing phone/walk-in | Query only filtered for `['manual', 'admin']` booking sources | Added `'phone'` and `'walk-in'` to `booking_source.in_()` filter |
+
 ---
 
 ## Session Log
+
+### 2026-04-08
+
+**Bug Fixes:**
+- Session tracking now counts all non-online booking sources (manual, admin, phone, walk-in)
+
+**Tests Added:** 19 new tests
+- `test_session_tracking.py` - TestManualBookingSourceTypes (6), TestManualBookingMock (5)
+- `test_session_tracking_integration.py` - TestManualBookingSources (8)
+
+**Commits:** (pending)
 
 ### 2026-04-06
 

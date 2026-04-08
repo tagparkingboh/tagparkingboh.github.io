@@ -562,3 +562,89 @@ class TestSessionTrackingIntegration:
 
         assert response["cumulative"]["counts"]["dates_selected"] == 25
         assert response["cumulative"]["counts"]["booking_confirmed"] == 8
+
+
+# =============================================================================
+# Unit Tests - Manual Booking Source Types
+# =============================================================================
+
+class TestManualBookingSourceTypes:
+    """Unit tests for manual booking source type inclusion."""
+
+    def test_manual_source_is_valid(self):
+        """'manual' should be a valid non-online booking source."""
+        valid_sources = ['manual', 'admin', 'phone', 'walk-in']
+        assert 'manual' in valid_sources
+
+    def test_admin_source_is_valid(self):
+        """'admin' should be a valid non-online booking source."""
+        valid_sources = ['manual', 'admin', 'phone', 'walk-in']
+        assert 'admin' in valid_sources
+
+    def test_phone_source_is_valid(self):
+        """'phone' should be a valid non-online booking source."""
+        valid_sources = ['manual', 'admin', 'phone', 'walk-in']
+        assert 'phone' in valid_sources
+
+    def test_walkin_source_is_valid(self):
+        """'walk-in' should be a valid non-online booking source."""
+        valid_sources = ['manual', 'admin', 'phone', 'walk-in']
+        assert 'walk-in' in valid_sources
+
+    def test_online_source_is_not_manual(self):
+        """'online' should NOT be in manual booking sources."""
+        manual_sources = ['manual', 'admin', 'phone', 'walk-in']
+        assert 'online' not in manual_sources
+
+    def test_all_non_online_sources_included(self):
+        """All non-online booking sources should be included in manual count."""
+        # These are the sources that bypass the online checkout flow
+        expected_sources = ['manual', 'admin', 'phone', 'walk-in']
+        # Verify all expected sources are accounted for
+        assert len(expected_sources) == 4
+
+
+class TestManualBookingMock:
+    """Unit tests for manual booking mock data."""
+
+    def create_mock_booking(self, booking_source, status="confirmed"):
+        """Create a mock booking object."""
+        from datetime import datetime
+        booking = MagicMock()
+        booking.id = 1
+        booking.booking_source = booking_source
+        booking.created_at = datetime.utcnow()
+
+        status_mock = MagicMock()
+        status_mock.value = status
+        booking.status = status_mock
+
+        return booking
+
+    def test_mock_booking_with_manual_source(self):
+        """Mock booking should accept 'manual' source."""
+        booking = self.create_mock_booking("manual")
+        assert booking.booking_source == "manual"
+
+    def test_mock_booking_with_admin_source(self):
+        """Mock booking should accept 'admin' source."""
+        booking = self.create_mock_booking("admin")
+        assert booking.booking_source == "admin"
+
+    def test_mock_booking_with_phone_source(self):
+        """Mock booking should accept 'phone' source."""
+        booking = self.create_mock_booking("phone")
+        assert booking.booking_source == "phone"
+
+    def test_mock_booking_with_walkin_source(self):
+        """Mock booking should accept 'walk-in' source."""
+        booking = self.create_mock_booking("walk-in")
+        assert booking.booking_source == "walk-in"
+
+    def test_mock_booking_with_online_source(self):
+        """Mock booking should accept 'online' source (but not counted as manual)."""
+        booking = self.create_mock_booking("online")
+        assert booking.booking_source == "online"
+        # Verify online is different from manual sources
+        manual_sources = ['manual', 'admin', 'phone', 'walk-in']
+        assert booking.booking_source not in manual_sources

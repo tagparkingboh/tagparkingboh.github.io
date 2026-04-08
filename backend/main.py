@@ -4961,10 +4961,11 @@ async def get_session_tracking_report(
     overall_conversion = round((bookings_count / dates_count) * 100, 1) if dates_count > 0 else 0.0
 
     # Count manual/admin bookings per period (these bypass the checkout flow)
+    # Include all non-online sources: manual, admin, phone, walk-in
     from db_models import Booking as DbBooking, BookingStatus, Payment
     manual_bookings = db.query(DbBooking).filter(
         DbBooking.created_at >= start_date,
-        DbBooking.booking_source.in_(['manual', 'admin']),
+        DbBooking.booking_source.in_(['manual', 'admin', 'phone', 'walk-in']),
         DbBooking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED])
     ).all()
 
