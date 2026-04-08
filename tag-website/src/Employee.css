@@ -1297,6 +1297,28 @@
   background: #D9FF00;
 }
 
+/* Camera modal landscape optimization */
+@media (orientation: landscape) and (max-height: 500px) {
+  .camera-controls {
+    padding: 8px;
+  }
+
+  .camera-capture-btn {
+    width: 48px;
+    height: 48px;
+  }
+
+  .camera-capture-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .camera-header {
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+}
+
 /* Update photo-slot-capture to work as button */
 button.photo-slot-capture {
   width: 100%;
