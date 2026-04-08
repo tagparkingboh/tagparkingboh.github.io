@@ -2528,6 +2528,17 @@
   border: 1px solid rgba(136, 136, 136, 0.4);
 }
 
+.day-badge.badge-holiday.holiday-unavailable {
+  background: rgba(149, 165, 166, 0.25);
+  color: #fff;
+  border: 1px solid rgba(149, 165, 166, 0.6);
+  font-weight: 700;
+  font-size: 0.75rem;
+  padding: 3px 6px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
 /* Holidays section in detail panel */
 .holidays-section {
   background: #2a2a1a;
