@@ -7809,7 +7809,7 @@ class CreateVehicleRequest(BaseModel):
     customer_id: int
     registration: str
     make: str
-    model: str
+    model: Optional[str] = None  # Deprecated - DVLA API doesn't provide model
     colour: str
     session_id: Optional[str] = None
 

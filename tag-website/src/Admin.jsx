@@ -3491,7 +3491,7 @@ function Admin() {
                   <span className="detail-value">
                     <span className="vehicle-reg">{booking.vehicle?.registration}</span>
                     {' '}
-                    {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
+                    {booking.vehicle?.colour} {booking.vehicle?.make}
                   </span>
                 </div>
               </div>
@@ -14334,7 +14334,7 @@ function Admin() {
             <div className="modal-booking-info">
               <p><strong>Booking:</strong> {bookingForInspection.reference}</p>
               <p><strong>Customer:</strong> {bookingForInspection.customer?.first_name} {bookingForInspection.customer?.last_name}</p>
-              <p><strong>Vehicle:</strong> {bookingForInspection.vehicle?.registration} - {bookingForInspection.vehicle?.make} {bookingForInspection.vehicle?.model}</p>
+              <p><strong>Vehicle:</strong> {bookingForInspection.vehicle?.registration} - {bookingForInspection.vehicle?.colour} {bookingForInspection.vehicle?.make}</p>
             </div>
 
             {loadingReturnInspection ? (
@@ -14437,7 +14437,7 @@ function Admin() {
             <div className="modal-booking-info">
               <p><strong>Booking:</strong> {bookingForDropoffInspection.reference}</p>
               <p><strong>Customer:</strong> {bookingForDropoffInspection.customer?.first_name} {bookingForDropoffInspection.customer?.last_name}</p>
-              <p><strong>Vehicle:</strong> {bookingForDropoffInspection.vehicle?.registration} - {bookingForDropoffInspection.vehicle?.make} {bookingForDropoffInspection.vehicle?.model}</p>
+              <p><strong>Vehicle:</strong> {bookingForDropoffInspection.vehicle?.registration} - {bookingForDropoffInspection.vehicle?.colour} {bookingForDropoffInspection.vehicle?.make}</p>
             </div>
 
             {loadingDropoffInspection ? (

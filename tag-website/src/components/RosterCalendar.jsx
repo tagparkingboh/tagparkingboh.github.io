@@ -2143,7 +2143,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                             {booking.customer?.phone || 'N/A'}
                           </a>
                           <span>|</span>
-                          {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
+                          {booking.vehicle?.colour} {booking.vehicle?.make}
                           <span>|</span>
                           <span className="reg-plate">
                             {booking.vehicle?.registration || booking.vehicle_registration}
@@ -2199,7 +2199,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                             {booking.customer?.phone || 'N/A'}
                           </a>
                           <span>|</span>
-                          {booking.vehicle?.colour} {booking.vehicle?.make} {booking.vehicle?.model}
+                          {booking.vehicle?.colour} {booking.vehicle?.make}
                           <span>|</span>
                           <span className="reg-plate">
                             {booking.vehicle?.registration || booking.vehicle_registration}

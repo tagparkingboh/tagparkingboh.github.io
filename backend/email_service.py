@@ -211,11 +211,11 @@ def send_booking_confirmation_email(
     departure_flight: str,
     return_flight: str,
     vehicle_make: str,
-    vehicle_model: str,
     vehicle_colour: str,
     vehicle_registration: str,
     package_name: str,
     amount_paid: str,
+    vehicle_model: str = None,  # Deprecated - DVLA API doesn't provide model
     promo_code: str = None,
     discount_amount: str = None,
     original_amount: str = None,
@@ -297,7 +297,7 @@ def send_booking_confirmation_email(
         html_content = html_content.replace("{{DEPARTURE_FLIGHT}}", departure_flight)
         html_content = html_content.replace("{{RETURN_FLIGHT}}", return_flight)
         html_content = html_content.replace("{{VEHICLE_MAKE}}", vehicle_make)
-        html_content = html_content.replace("{{VEHICLE_MODEL}}", vehicle_model)
+        html_content = html_content.replace("{{VEHICLE_MODEL}}", vehicle_model or "")
         html_content = html_content.replace("{{VEHICLE_COLOUR}}", vehicle_colour)
         html_content = html_content.replace("{{VEHICLE_REGISTRATION}}", vehicle_registration)
         html_content = html_content.replace("{{PACKAGE_NAME}}", package_name)
@@ -489,11 +489,11 @@ def send_manual_booking_payment_email(
     pickup_date: str,
     pickup_time: str,
     vehicle_make: str,
-    vehicle_model: str,
     vehicle_colour: str,
     vehicle_registration: str,
     amount: str,
     payment_link: str,
+    vehicle_model: str = None,  # Deprecated - DVLA API doesn't provide model
 ) -> bool:
     """
     Send payment request email for manual bookings.
@@ -530,7 +530,7 @@ def send_manual_booking_payment_email(
         html_content = html_content.replace("{{PICKUP_DATE}}", pickup_date)
         html_content = html_content.replace("{{PICKUP_TIME}}", pickup_time)
         html_content = html_content.replace("{{VEHICLE_MAKE}}", vehicle_make)
-        html_content = html_content.replace("{{VEHICLE_MODEL}}", vehicle_model)
+        html_content = html_content.replace("{{VEHICLE_MODEL}}", vehicle_model or "")
         html_content = html_content.replace("{{VEHICLE_COLOUR}}", vehicle_colour)
         html_content = html_content.replace("{{VEHICLE_REGISTRATION}}", vehicle_registration)
         html_content = html_content.replace("{{AMOUNT}}", amount)

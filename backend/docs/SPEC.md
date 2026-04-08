@@ -129,12 +129,18 @@ db.close()
 
 ### 2026-04-08
 
+**Features:**
+- Removed car make/model library from booking flow - now relies solely on DVLA API (returns make + colour)
+- Vehicle model field is now optional/nullable in database
+- Simplified vehicle form: registration → DVLA lookup → make + colour auto-filled
+
 **Bug Fixes:**
 - Session tracking now counts all non-online booking sources (manual, admin, phone, walk-in)
 
-**Tests Added:** 19 new tests
+**Tests Added:** 39 new tests
 - `test_session_tracking.py` - TestManualBookingSourceTypes (6), TestManualBookingMock (5)
 - `test_session_tracking_integration.py` - TestManualBookingSources (8)
+- `test_vehicle_model_optional.py` - 20 tests for model-optional behavior
 
 **Commits:** (pending)
 

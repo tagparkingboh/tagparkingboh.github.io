@@ -180,8 +180,8 @@ def create_vehicle(
     customer_id: int,
     registration: str,
     make: str,
-    model: str,
-    colour: str
+    colour: str,
+    model: str = None  # Deprecated - DVLA API doesn't provide model
 ) -> tuple[Vehicle, bool]:
     """
     Create a new vehicle or return existing one.
@@ -673,7 +673,6 @@ def create_full_booking(
     # Vehicle details
     registration: str,
     make: str,
-    model: str,
     colour: str,
     # Booking details
     package: str,
@@ -681,6 +680,7 @@ def create_full_booking(
     dropoff_time: time,
     pickup_date: date,
     # Optional fields
+    model: str = None,  # Deprecated - DVLA API doesn't provide model
     billing_address2: str = None,
     billing_county: str = None,
     dropoff_flight_number: str = None,

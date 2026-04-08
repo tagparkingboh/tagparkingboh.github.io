@@ -218,7 +218,7 @@ class AdminBookingRequest(BaseModel):
     # Vehicle details
     registration: str
     make: str
-    model: str
+    model: Optional[str] = None  # Deprecated - DVLA API doesn't provide model
     colour: str
 
     # Package and pricing
@@ -259,7 +259,7 @@ class ManualBookingRequest(BaseModel):
     # Vehicle details
     registration: str
     make: str
-    model: str
+    model: Optional[str] = None  # Deprecated - DVLA API doesn't provide model
     colour: str
 
     # Trip details

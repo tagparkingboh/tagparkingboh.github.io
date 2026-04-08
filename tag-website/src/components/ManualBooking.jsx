@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from 'react'
-import { getMakes, getModels } from 'car-info'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
 import 'react-datepicker/dist/react-datepicker.css'
@@ -24,9 +23,6 @@ function ManualBooking({ token }) {
     // Vehicle
     registration: '',
     make: '',
-    customMake: '',
-    model: '',
-    customModel: '',
     colour: '',
     // Departure flight details
     dropoffDate: null,
@@ -121,9 +117,6 @@ function ManualBooking({ token }) {
       billingCountry: 'United Kingdom',
       registration: '',
       make: '',
-      customMake: '',
-      model: '',
-      customModel: '',
       colour: '',
       dropoffDate: null,
       dropoffAirline: '',
@@ -303,20 +296,13 @@ function ManualBooking({ token }) {
     return `${String(pickupHours).padStart(2, '0')}:${String(pickupMins).padStart(2, '0')}`
   }, [formData.arrivalTime])
 
-  // Get car makes and models from car-info library
-  const carMakes = useMemo(() => getMakes().sort(), [])
-  const carModels = useMemo(() => {
-    if (!formData.make || formData.make === 'Other') return []
-    return getModels(formData.make) || []
-  }, [formData.make])
-
   // Convert string to Title Case
   const toTitleCase = (str) => {
     if (!str) return str
     return str.toLowerCase().replace(/\b\w/g, char => char.toUpperCase())
   }
 
-  const titleCaseFields = ['colour', 'customMake', 'customModel', 'billingAddress1', 'billingAddress2', 'billingCity', 'billingCounty', 'customDropoffAirline', 'customDropoffDestination', 'customPickupAirline', 'customPickupOrigin']
+  const titleCaseFields = ['colour', 'make', 'billingAddress1', 'billingAddress2', 'billingCity', 'billingCounty', 'customDropoffAirline', 'customDropoffDestination', 'customPickupAirline', 'customPickupOrigin']
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -325,26 +311,6 @@ function ManualBooking({ token }) {
       ...prev,
       [name]: processedValue
     }))
-
-    // Reset model when make changes
-    if (name === 'make') {
-      setFormData(prev => ({
-        ...prev,
-        make: value,
-        model: '',
-        customMake: '',
-        customModel: ''
-      }))
-    }
-
-    // Reset custom model when model changes
-    if (name === 'model') {
-      setFormData(prev => ({
-        ...prev,
-        model: value,
-        customModel: ''
-      }))
-    }
   }
 
   const handleDateChange = (date, field) => {
@@ -388,15 +354,10 @@ function ManualBooking({ token }) {
         const formattedColour = data.colour ?
           data.colour.charAt(0).toUpperCase() + data.colour.slice(1).toLowerCase() : ''
 
-        const makeExists = carMakes.some(m => m.toUpperCase() === data.make.toUpperCase())
-
         setFormData(prev => ({
           ...prev,
-          make: makeExists ? formattedMake : 'Other',
-          customMake: makeExists ? '' : formattedMake,
+          make: formattedMake,
           colour: formattedColour,
-          model: '',
-          customModel: '',
         }))
         setDvlaVerified(true)
         setDvlaError('')
@@ -617,8 +578,7 @@ function ManualBooking({ token }) {
       formData.billingCity &&
       formData.billingPostcode &&
       formData.registration &&
-      (formData.make && (formData.make !== 'Other' || formData.customMake)) &&
-      (formData.make === 'Other' ? formData.customModel : (formData.model && (formData.model !== 'Other' || formData.customModel))) &&
+      formData.make &&
       formData.colour &&
       // Departure flight details
       formData.dropoffDate &&
@@ -673,8 +633,7 @@ function ManualBooking({ token }) {
       billing_postcode: formData.billingPostcode.toUpperCase(),
       billing_country: formData.billingCountry,
       registration: formData.registration.toUpperCase(),
-      make: formData.make === 'Other' ? formData.customMake : formData.make,
-      model: formData.model === 'Other' ? formData.customModel : formData.model,
+      make: formData.make,
       colour: formData.colour,
       dropoff_date: format(formData.dropoffDate, 'yyyy-MM-dd'),
       dropoff_time: getDropoffTime(),
@@ -731,9 +690,6 @@ function ManualBooking({ token }) {
           billingCountry: 'United Kingdom',
           registration: '',
           make: '',
-          customMake: '',
-          model: '',
-          customModel: '',
           colour: '',
           dropoffDate: null,
           dropoffAirline: '',
@@ -983,46 +939,26 @@ function ManualBooking({ token }) {
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="make">Make <span className="required">*</span></label>
-              {dvlaVerified && (formData.make !== 'Other' || formData.customMake) ? (
+              {dvlaVerified && formData.make ? (
                 <input
                   type="text"
                   id="make"
-                  value={formData.make !== 'Other' ? formData.make : formData.customMake}
+                  value={formData.make}
                   readOnly
                   className="readonly-input"
                 />
               ) : (
-                <select
+                <input
+                  type="text"
                   id="make"
                   name="make"
                   value={formData.make}
                   onChange={handleChange}
-                  required
-                >
-                  <option value="">Select make</option>
-                  {carMakes.map(make => (
-                    <option key={make} value={make}>{make}</option>
-                  ))}
-                  <option value="Other">Other</option>
-                </select>
-              )}
-            </div>
-            {formData.make === 'Other' && !(dvlaVerified && formData.customMake) && (
-              <div className="form-group">
-                <label htmlFor="customMake">Custom Make <span className="required">*</span></label>
-                <input
-                  type="text"
-                  id="customMake"
-                  name="customMake"
-                  value={formData.customMake}
-                  onChange={handleChange}
+                  placeholder="e.g. Ford"
                   required
                 />
-              </div>
-            )}
-          </div>
-
-          <div className="form-row">
+              )}
+            </div>
             <div className="form-group">
               <label htmlFor="colour">Colour <span className="required">*</span></label>
               {dvlaVerified && formData.colour ? (
@@ -1040,53 +976,12 @@ function ManualBooking({ token }) {
                   name="colour"
                   value={formData.colour}
                   onChange={handleChange}
+                  placeholder="e.g. Blue"
                   required
                 />
-              )}
-            </div>
-            <div className="form-group">
-              <label htmlFor="model">Model <span className="required">*</span></label>
-              {formData.make === 'Other' ? (
-                <input
-                  type="text"
-                  id="customModel"
-                  name="customModel"
-                  value={formData.customModel}
-                  onChange={handleChange}
-                  placeholder="Enter model"
-                  required
-                />
-              ) : (
-                <select
-                  id="model"
-                  name="model"
-                  value={formData.model}
-                  onChange={handleChange}
-                  required
-                  disabled={!formData.make}
-                >
-                  <option value="">Select model</option>
-                  {carModels.map(model => (
-                    <option key={model} value={model}>{model}</option>
-                  ))}
-                  <option value="Other">Other</option>
-                </select>
               )}
             </div>
           </div>
-          {formData.model === 'Other' && formData.make !== 'Other' && (
-            <div className="form-group">
-              <label htmlFor="customModel">Custom Model <span className="required">*</span></label>
-              <input
-                type="text"
-                id="customModel"
-                name="customModel"
-                value={formData.customModel}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          )}
         </div>
 
         {/* Trip Details Section */}
@@ -1526,7 +1421,7 @@ function ManualBooking({ token }) {
                 <li>Pick-up: {formatDate(formData.pickupDate)} from {calculatedPickupTime}</li>
                 <li>Outbound: {getDropoffAirlineName()} {formData.dropoffFlightNumber || ''} to {getDropoffDestinationName()}</li>
                 <li>Return: {getPickupAirlineName()} {formData.pickupFlightNumber || ''} from {getPickupOriginName()}</li>
-                <li>Vehicle: {formData.colour} {formData.make === 'Other' ? formData.customMake : formData.make} {formData.model === 'Other' ? formData.customModel : formData.model}</li>
+                <li>Vehicle: {formData.colour} {formData.make}</li>
                 <li>Registration: {formData.registration.toUpperCase()}</li>
                 <li>Total: £{parseFloat(formData.amount).toFixed(2)}</li>
               </ul>

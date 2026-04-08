@@ -132,7 +132,7 @@ class Vehicle(Base):
 
     registration = Column(String(20), nullable=False, index=True)
     make = Column(String(100), nullable=False)
-    model = Column(String(100), nullable=False)
+    model = Column(String(100), nullable=True)  # Deprecated - DVLA API doesn't provide model
     colour = Column(String(50), nullable=False)
 
     # Timestamps
@@ -143,7 +143,7 @@ class Vehicle(Base):
     bookings = relationship("Booking", back_populates="vehicle")
 
     def __repr__(self):
-        return f"<Vehicle {self.registration} - {self.make} {self.model}>"
+        return f"<Vehicle {self.registration} - {self.make}>"
 
 
 class Booking(Base):

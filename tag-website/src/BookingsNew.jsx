@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
 import { format } from 'date-fns'
-import { getMakes, getModels } from 'car-info'
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import StripePayment from './components/StripePayment'
@@ -211,9 +210,6 @@ function Bookings() {
       pickupFlightTime: '',
       registration: '',
       make: '',
-      customMake: '',
-      model: '',
-      customModel: '',
       colour: '',
       firstName: '',
       lastName: '',
@@ -604,13 +600,6 @@ function Bookings() {
 
     return null
   }
-
-  // Get car makes and models from car-info library
-  const carMakes = useMemo(() => getMakes().sort(), [])
-  const carModels = useMemo(() => {
-    if (!formData.make) return []
-    return getModels(formData.make) || []
-  }, [formData.make])
 
   // Fetch available airlines and destinations for manual entry
   useEffect(() => {
@@ -1191,7 +1180,7 @@ function Bookings() {
   }
 
   // Fields that should be title case
-  const titleCaseFields = ['colour', 'customMake', 'customModel', 'billingAddress1', 'billingAddress2', 'billingCity', 'billingCounty']
+  const titleCaseFields = ['colour', 'make', 'billingAddress1', 'billingAddress2', 'billingCity', 'billingCounty']
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -1259,25 +1248,6 @@ function Bookings() {
     }
 
 
-    // Reset model when make changes
-    if (name === 'make') {
-      setFormData(prev => ({
-        ...prev,
-        make: value,
-        model: '',
-        customMake: '',
-        customModel: ''
-      }))
-    }
-
-    // Reset custom model when model changes
-    if (name === 'model') {
-      setFormData(prev => ({
-        ...prev,
-        model: value,
-        customModel: ''
-      }))
-    }
   }
 
   const handleDateChange = (date, field) => {
@@ -1378,8 +1348,7 @@ function Bookings() {
           body: JSON.stringify({
             customer_id: customerIdToUse,
             registration: formData.registration.toUpperCase(),
-            make: formData.make === 'Other' ? formData.customMake : formData.make,
-            model: formData.model === 'Other' ? formData.customModel : formData.model,
+            make: formData.make,
             colour: formData.colour,
             session_id: sessionIdRef.current,
           }),
@@ -1401,8 +1370,7 @@ function Bookings() {
         body: JSON.stringify({
           customer_id: customerIdToUse,
           registration: formData.registration.toUpperCase(),
-          make: formData.make === 'Other' ? formData.customMake : formData.make,
-          model: formData.model === 'Other' ? formData.customModel : formData.model,
+          make: formData.make,
           colour: formData.colour,
           session_id: sessionIdRef.current,
         }),
@@ -1472,16 +1440,10 @@ function Bookings() {
         const formattedColour = data.colour ?
           data.colour.charAt(0).toUpperCase() + data.colour.slice(1).toLowerCase() : ''
 
-        // Check if make exists in car-info library
-        const makeExists = carMakes.some(m => m.toUpperCase() === data.make.toUpperCase())
-
         setFormData(prev => ({
           ...prev,
-          make: makeExists ? formattedMake : 'Other',
-          customMake: makeExists ? '' : formattedMake,
+          make: formattedMake,
           colour: formattedColour,
-          model: '', // Reset model so user can select
-          customModel: '',
         }))
         setDvlaVerified(true)
         setDvlaError('')
@@ -1666,11 +1628,10 @@ function Bookings() {
   const isPhoneValid = formData.phone && isValidPhoneNumber(formData.phone)
   const isEmailValid = formData.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)
   const isBillingComplete = formData.billingAddress1 && formData.billingCity && formData.billingPostcode && formData.billingCountry
-  const isMakeComplete = formData.make && (formData.make !== 'Other' || formData.customMake)
-  const isModelComplete = formData.make === 'Other' ? formData.customModel : (formData.model && (formData.model !== 'Other' || formData.customModel))
+  const isMakeComplete = !!formData.make  // Make comes from DVLA lookup
 
   // Step 3: Contact + Billing + Vehicle Information (Details page)
-  const isStep3Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid && isBillingComplete && formData.registration && isMakeComplete && isModelComplete && formData.colour
+  const isStep3Complete = formData.firstName && formData.lastName && isEmailValid && isPhoneValid && isBillingComplete && formData.registration && isMakeComplete && formData.colour
 
   // Step 2: Trip Details - Direct entry validation
   const isDepartureAirlineComplete = manualDepartureData.airlineCode &&
@@ -1728,7 +1689,7 @@ function Bookings() {
       else if (!manualArrivalData.originCode) fieldId = 'manualArrivalOrigin'
       else if (manualArrivalData.originCode === 'Other' && (!manualArrivalData.customOrigin || containsProfanity(manualArrivalData.customOrigin))) fieldId = 'customOrigin'
     } else if (step === 3) {
-      // Step 3 (Details) validation order: firstName, lastName, email, phone, billingAddress1, billingCity, billingPostcode, registration, make, model, colour
+      // Step 3 (Details) validation order: firstName, lastName, email, phone, billingAddress1, billingCity, billingPostcode, registration, make, colour
       if (!formData.firstName) fieldId = 'firstName'
       else if (!formData.lastName) fieldId = 'lastName'
       else if (!isEmailValid) fieldId = 'email'
@@ -1737,8 +1698,7 @@ function Bookings() {
       else if (!formData.billingCity) fieldId = 'billingCity'
       else if (!formData.billingPostcode) fieldId = manualAddressEntry ? 'billingPostcodeManual' : 'billingPostcode'
       else if (!formData.registration) fieldId = 'registration'
-      else if (!isMakeComplete) fieldId = formData.make === 'Other' ? 'customMake' : 'make'
-      else if (!isModelComplete) fieldId = formData.model === 'Other' || formData.make === 'Other' ? 'customModel' : 'model'
+      else if (!isMakeComplete) fieldId = 'registration' // Focus on registration to trigger DVLA lookup
       else if (!formData.colour) fieldId = 'colour'
     }
 
@@ -2318,55 +2278,38 @@ function Bookings() {
                 )}
               </div>
 
-              {(formData.registration && (dvlaVerified || dvlaError || formData.make)) && (
+              {/* Vehicle Make - from DVLA lookup */}
+              {(formData.registration && (dvlaVerified || formData.make)) && (
                 <div className="form-group fade-in">
                   <label htmlFor="make">Vehicle Make <span className="required">*</span></label>
-                  {dvlaVerified && (formData.make !== 'Other' || formData.customMake) ? (
+                  {dvlaVerified && formData.make ? (
                     <input
                       type="text"
                       id="make"
-                      value={formData.make !== 'Other' ? formData.make : formData.customMake}
+                      value={formData.make}
                       readOnly
                       className="readonly-input"
                     />
                   ) : (
-                    <select
+                    <input
+                      type="text"
                       id="make"
                       name="make"
+                      placeholder="e.g. Ford"
                       value={formData.make}
                       onChange={handleChange}
                       className={step1Attempted && !formData.make ? 'input-error' : ''}
                       required
-                    >
-                      <option value="">Select make</option>
-                      {carMakes.map(make => (
-                        <option key={make} value={make}>{make}</option>
-                      ))}
-                      <option value="Other">Other</option>
-                    </select>
+                    />
                   )}
                   {step1Attempted && !isMakeComplete && (
-                    <span className="field-error">Vehicle make is required</span>
+                    <span className="field-error">Vehicle make is required - use Check Reg button</span>
                   )}
                 </div>
               )}
 
-              {formData.make === 'Other' && !(dvlaVerified && formData.customMake) && (
-                <div className="form-group fade-in">
-                  <label htmlFor="customMake">Enter Vehicle Make <span className="required">*</span></label>
-                  <input
-                    type="text"
-                    id="customMake"
-                    name="customMake"
-                    placeholder="e.g. Cupra"
-                    value={formData.customMake}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-              )}
-
-              {((formData.make && formData.make !== 'Other') || (formData.make === 'Other' && formData.customMake)) && (
+              {/* Vehicle Colour - from DVLA lookup or manual entry */}
+              {formData.make && (
                 <div className="form-group fade-in">
                   <label htmlFor="colour">Vehicle Colour <span className="required">*</span></label>
                   {dvlaVerified && formData.colour ? (
@@ -2392,59 +2335,6 @@ function Bookings() {
                   {step1Attempted && !formData.colour && (
                     <span className="field-error">Vehicle colour is required</span>
                   )}
-                </div>
-              )}
-
-              {formData.make && formData.make !== 'Other' && formData.colour && (
-                <div className="form-group fade-in">
-                  <label htmlFor="model">Vehicle Model <span className="required">*</span></label>
-                  <select
-                    id="model"
-                    name="model"
-                    value={formData.model}
-                    onChange={handleChange}
-                    className={step1Attempted && !isModelComplete ? 'input-error' : ''}
-                    required
-                  >
-                    <option value="">Select model</option>
-                    {carModels.map(model => (
-                      <option key={model} value={model}>{model}</option>
-                    ))}
-                    <option value="Other">Other</option>
-                  </select>
-                  {step1Attempted && !isModelComplete && (
-                    <span className="field-error">Vehicle model is required</span>
-                  )}
-                </div>
-              )}
-
-              {formData.make === 'Other' && formData.customMake && formData.colour && (
-                <div className="form-group fade-in">
-                  <label htmlFor="customModel">Enter Vehicle Model <span className="required">*</span></label>
-                  <input
-                    type="text"
-                    id="customModel"
-                    name="customModel"
-                    placeholder="e.g. Formentor"
-                    value={formData.customModel}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-              )}
-
-              {formData.model === 'Other' && formData.make !== 'Other' && (
-                <div className="form-group fade-in">
-                  <label htmlFor="customModel">Enter Vehicle Model <span className="required">*</span></label>
-                  <input
-                    type="text"
-                    id="customModel"
-                    name="customModel"
-                    placeholder="e.g. Special Edition"
-                    value={formData.customModel}
-                    onChange={handleChange}
-                    required
-                  />
                 </div>
               )}
 
@@ -3016,7 +2906,7 @@ function Bookings() {
                 </div>
                 <div className="summary-item">
                   <span>Vehicle</span>
-                  <span>{formData.colour} {formData.make === 'Other' ? formData.customMake : formData.make} {formData.model === 'Other' ? formData.customModel : formData.model}</span>
+                  <span>{formData.colour} {formData.make}</span>
                 </div>
                 <div className="summary-item">
                   <span>Registration</span>
