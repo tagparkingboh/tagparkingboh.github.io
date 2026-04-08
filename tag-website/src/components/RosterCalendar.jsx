@@ -139,6 +139,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   // Monthly hours (for payroll)
   const [monthlyHours, setMonthlyHours] = useState(null)
   const [loadingMonthlyHours, setLoadingMonthlyHours] = useState(false)
+  const [expandedWeeks, setExpandedWeeks] = useState({})  // Track which weeks are expanded
+  const [monthlyTotalsExpanded, setMonthlyTotalsExpanded] = useState(false)  // Monthly totals collapsed by default
 
   // Blocked dates state
   const [blockedDates, setBlockedDates] = useState([])
@@ -1894,40 +1896,108 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         </div>
       </div>
 
-      {/* Monthly Hours Summary (for payroll) */}
+      {/* Monthly Hours Summary (for payroll) - with weekly breakdown */}
       {monthlyHours && (
-        <div className="weekly-hours-section">
-          <h3 className="weekly-hours-title">
-            Monthly Hours <span className="week-range">({monthlyHours.month_name} {monthlyHours.year})</span>
+        <div className="hours-breakdown-section">
+          <h3 className="hours-breakdown-title">
+            Hours <span className="week-range">({monthlyHours.month_name} {monthlyHours.year})</span>
           </h3>
           {loadingMonthlyHours ? (
             <div className="weekly-hours-loading">Loading...</div>
-          ) : isAdmin ? (
-            // Admin view: show all employees
-            <div className="weekly-hours-grid">
-              {monthlyHours.employees && monthlyHours.employees.length > 0 ? (
-                monthlyHours.employees.map((emp) => (
-                  <div key={emp.employee_id} className="weekly-hours-card">
-                    <div className="employee-name">{emp.employee_name}</div>
-                    <div className="hours-summary">
-                      <span className="total-hours">{emp.total_hours.toFixed(1)}h</span>
-                      <span className="shift-count">({emp.shift_count} shifts)</span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="no-hours">No shifts scheduled this month</div>
-              )}
-            </div>
           ) : (
-            // Employee view: show only their own hours
-            <div className="weekly-hours-grid">
-              <div className="weekly-hours-card own-hours">
-                <div className="employee-name">Your Hours</div>
-                <div className="hours-summary">
-                  <span className="total-hours">{monthlyHours.total_hours?.toFixed(1) || 0}h</span>
-                  <span className="shift-count">({monthlyHours.shift_count || 0} shifts)</span>
+            <div className="hours-breakdown-container">
+              {/* Weekly Breakdown */}
+              {monthlyHours.weeks && monthlyHours.weeks.map((week, idx) => (
+                <div key={week.week_number} className="hours-week-container">
+                  <div
+                    className="hours-week-header"
+                    onClick={() => setExpandedWeeks(prev => ({
+                      ...prev,
+                      [idx]: !prev[idx]
+                    }))}
+                  >
+                    <span className={`hours-caret ${expandedWeeks[idx] ? 'expanded' : ''}`}>▶</span>
+                    <span className="hours-week-label">Week {week.week_number}</span>
+                    <span className="hours-week-range">({week.week_label})</span>
+                  </div>
+                  {expandedWeeks[idx] && (
+                    <div className="hours-week-content">
+                      {isAdmin ? (
+                        // Admin view: show all employees for this week
+                        <div className="weekly-hours-grid">
+                          {week.employees && week.employees.length > 0 ? (
+                            week.employees.map((emp) => (
+                              <div key={emp.employee_id} className="weekly-hours-card">
+                                <div className="employee-name">{emp.employee_name}</div>
+                                <div className="hours-summary">
+                                  <span className="total-hours">{emp.total_hours.toFixed(1)}h</span>
+                                  <span className="shift-count">({emp.shift_count} shifts)</span>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="no-hours">No shifts this week</div>
+                          )}
+                        </div>
+                      ) : (
+                        // Employee view: show their hours for this week
+                        <div className="weekly-hours-grid">
+                          <div className="weekly-hours-card own-hours">
+                            <div className="employee-name">Your Hours</div>
+                            <div className="hours-summary">
+                              <span className="total-hours">{week.total_hours?.toFixed(1) || 0}h</span>
+                              <span className="shift-count">({week.shift_count || 0} shifts)</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
+              ))}
+
+              {/* Monthly Totals */}
+              <div className="hours-week-container monthly-totals">
+                <div
+                  className="hours-week-header monthly-header"
+                  onClick={() => setMonthlyTotalsExpanded(!monthlyTotalsExpanded)}
+                >
+                  <span className={`hours-caret ${monthlyTotalsExpanded ? 'expanded' : ''}`}>▶</span>
+                  <span className="hours-week-label">Monthly Totals</span>
+                </div>
+                {monthlyTotalsExpanded && (
+                  <div className="hours-week-content">
+                    {isAdmin ? (
+                      // Admin view: show all employees' monthly totals
+                      <div className="weekly-hours-grid">
+                        {monthlyHours.employees && monthlyHours.employees.length > 0 ? (
+                          monthlyHours.employees.map((emp) => (
+                            <div key={emp.employee_id} className="weekly-hours-card">
+                              <div className="employee-name">{emp.employee_name}</div>
+                              <div className="hours-summary">
+                                <span className="total-hours">{emp.total_hours.toFixed(1)}h</span>
+                                <span className="shift-count">({emp.shift_count} shifts)</span>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="no-hours">No shifts scheduled this month</div>
+                        )}
+                      </div>
+                    ) : (
+                      // Employee view: show their monthly total
+                      <div className="weekly-hours-grid">
+                        <div className="weekly-hours-card own-hours">
+                          <div className="employee-name">Your Hours</div>
+                          <div className="hours-summary">
+                            <span className="total-hours">{monthlyHours.total_hours?.toFixed(1) || 0}h</span>
+                            <span className="shift-count">({monthlyHours.shift_count || 0} shifts)</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

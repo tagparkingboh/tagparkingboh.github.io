@@ -133,14 +133,19 @@ db.close()
 - Removed car make/model library from booking flow - now relies solely on DVLA API (returns make + colour)
 - Vehicle model field is now optional/nullable in database
 - Simplified vehicle form: registration → DVLA lookup → make + colour auto-filled
+- Weekly hours breakdown on Admin Calendar and Employee page
+  - Collapsible weeks (Mon-Sun) with carets
+  - Monthly totals section
+  - Employee page shows only own hours
 
 **Bug Fixes:**
 - Session tracking now counts all non-online booking sources (manual, admin, phone, walk-in)
 
-**Tests Added:** 39 new tests
+**Tests Added:** 55+ new tests
 - `test_session_tracking.py` - TestManualBookingSourceTypes (6), TestManualBookingMock (5)
 - `test_session_tracking_integration.py` - TestManualBookingSources (8)
 - `test_vehicle_model_optional.py` - 20 tests for model-optional behavior
+- `test_weekly_hours_breakdown.py` - 16 tests for weekly hours feature
 
 **Commits:** (pending)
 

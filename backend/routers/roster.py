@@ -748,16 +748,36 @@ async def get_monthly_hours(
 ):
     """
     Get monthly hours worked for all employees (admin view).
-    Returns total hours per employee for the specified month.
+    Returns total hours per employee for the specified month, with weekly breakdown.
     Hours are attributed to the shift start date.
+    Weeks run Monday-Sunday.
     Used for payroll calculations.
     """
     import calendar
+    from datetime import timedelta
 
     # Calculate month start and end dates
     month_start = date_type(year, month, 1)
     last_day = calendar.monthrange(year, month)[1]
     month_end = date_type(year, month, last_day)
+
+    # Calculate weeks in the month (Mon-Sun)
+    weeks = []
+    current = month_start
+    # Find the Monday of the first week (may be in previous month)
+    week_start = current - timedelta(days=current.weekday())
+
+    while week_start <= month_end:
+        week_end = week_start + timedelta(days=6)
+        # Only include weeks that overlap with this month
+        if week_end >= month_start:
+            weeks.append({
+                "week_start": max(week_start, month_start),
+                "week_end": min(week_end, month_end),
+                "week_start_display": week_start,  # For display purposes
+                "week_end_display": week_end,
+            })
+        week_start = week_start + timedelta(days=7)
 
     # Get all shifts for the month
     query = db.query(RosterShift).filter(
@@ -771,31 +791,76 @@ async def get_monthly_hours(
 
     shifts = query.all()
 
-    # Group shifts by employee and calculate hours
-    employee_hours = {}
+    # Build employee info cache
+    employee_info = {}
     for shift in shifts:
-        if shift.staff_id not in employee_hours:
-            # Get employee info
+        if shift.staff_id not in employee_info:
             employee = db.query(User).filter(User.id == shift.staff_id).first()
             if employee:
-                employee_hours[shift.staff_id] = {
+                employee_info[shift.staff_id] = {
                     "employee_id": shift.staff_id,
                     "employee_name": f"{employee.first_name or ''} {employee.last_name or ''}".strip() or employee.email,
+                }
+
+    # Group shifts by employee and calculate total hours
+    employee_totals = {}
+    for shift in shifts:
+        if shift.staff_id not in employee_totals:
+            if shift.staff_id in employee_info:
+                employee_totals[shift.staff_id] = {
+                    **employee_info[shift.staff_id],
                     "total_hours": 0.0,
                     "shift_count": 0,
                 }
 
-        if shift.staff_id in employee_hours:
-            # Calculate hours for this shift
+        if shift.staff_id in employee_totals:
             is_overnight = shift.end_date and shift.end_date != shift.date
             hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
+            employee_totals[shift.staff_id]["total_hours"] += hours
+            employee_totals[shift.staff_id]["shift_count"] += 1
 
-            employee_hours[shift.staff_id]["total_hours"] += hours
-            employee_hours[shift.staff_id]["shift_count"] += 1
+    # Calculate weekly breakdown
+    weeks_data = []
+    for week_idx, week in enumerate(weeks):
+        week_employee_hours = {}
+
+        for shift in shifts:
+            if week["week_start"] <= shift.date <= week["week_end"]:
+                if shift.staff_id not in week_employee_hours:
+                    if shift.staff_id in employee_info:
+                        week_employee_hours[shift.staff_id] = {
+                            **employee_info[shift.staff_id],
+                            "total_hours": 0.0,
+                            "shift_count": 0,
+                        }
+
+                if shift.staff_id in week_employee_hours:
+                    is_overnight = shift.end_date and shift.end_date != shift.date
+                    hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
+                    week_employee_hours[shift.staff_id]["total_hours"] += hours
+                    week_employee_hours[shift.staff_id]["shift_count"] += 1
+
+        # Round hours for this week
+        for emp_id in week_employee_hours:
+            week_employee_hours[emp_id]["total_hours"] = round(week_employee_hours[emp_id]["total_hours"], 2)
+
+        # Format week label (handle single-day weeks nicely)
+        if week["week_start"] == week["week_end"]:
+            week_label = f"{week['week_start'].day} {calendar.month_abbr[week['week_start'].month]}"
+        else:
+            week_label = f"{week['week_start'].day}-{week['week_end'].day} {calendar.month_abbr[week['week_start'].month]}"
+
+        weeks_data.append({
+            "week_number": week_idx + 1,
+            "week_start": str(week["week_start"]),
+            "week_end": str(week["week_end"]),
+            "week_label": week_label,
+            "employees": list(week_employee_hours.values())
+        })
 
     # Round total hours for each employee
-    for emp_id in employee_hours:
-        employee_hours[emp_id]["total_hours"] = round(employee_hours[emp_id]["total_hours"], 2)
+    for emp_id in employee_totals:
+        employee_totals[emp_id]["total_hours"] = round(employee_totals[emp_id]["total_hours"], 2)
 
     return {
         "year": year,
@@ -803,7 +868,8 @@ async def get_monthly_hours(
         "month_name": calendar.month_name[month],
         "month_start": str(month_start),
         "month_end": str(month_end),
-        "employees": list(employee_hours.values())
+        "weeks": weeks_data,
+        "employees": list(employee_totals.values())
     }
 
 
@@ -816,15 +882,33 @@ async def get_employee_monthly_hours(
 ):
     """
     Get monthly hours worked for the authenticated employee.
-    Returns total hours for the specified month.
+    Returns total hours for the specified month, with weekly breakdown.
+    Weeks run Monday-Sunday.
     Employees can only see their own hours.
     """
     import calendar
+    from datetime import timedelta
 
     # Calculate month start and end dates
     month_start = date_type(year, month, 1)
     last_day = calendar.monthrange(year, month)[1]
     month_end = date_type(year, month, last_day)
+
+    # Calculate weeks in the month (Mon-Sun)
+    weeks = []
+    current = month_start
+    # Find the Monday of the first week (may be in previous month)
+    week_start = current - timedelta(days=current.weekday())
+
+    while week_start <= month_end:
+        week_end = week_start + timedelta(days=6)
+        # Only include weeks that overlap with this month
+        if week_end >= month_start:
+            weeks.append({
+                "week_start": max(week_start, month_start),
+                "week_end": min(week_end, month_end),
+            })
+        week_start = week_start + timedelta(days=7)
 
     # Get shifts for the current user only
     shifts = db.query(RosterShift).filter(
@@ -833,16 +917,43 @@ async def get_employee_monthly_hours(
         RosterShift.staff_id == current_user.id
     ).all()
 
-    # Calculate hours
+    # Calculate total hours
     total_hours = 0.0
     shift_count = 0
 
     for shift in shifts:
         is_overnight = shift.end_date and shift.end_date != shift.date
         hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
-
         total_hours += hours
         shift_count += 1
+
+    # Calculate weekly breakdown
+    weeks_data = []
+    for week_idx, week in enumerate(weeks):
+        week_hours = 0.0
+        week_shifts = 0
+
+        for shift in shifts:
+            if week["week_start"] <= shift.date <= week["week_end"]:
+                is_overnight = shift.end_date and shift.end_date != shift.date
+                hours = calculate_shift_hours(shift.start_time, shift.end_time, is_overnight)
+                week_hours += hours
+                week_shifts += 1
+
+        # Format week label (handle single-day weeks nicely)
+        if week["week_start"] == week["week_end"]:
+            week_label = f"{week['week_start'].day} {calendar.month_abbr[week['week_start'].month]}"
+        else:
+            week_label = f"{week['week_start'].day}-{week['week_end'].day} {calendar.month_abbr[week['week_start'].month]}"
+
+        weeks_data.append({
+            "week_number": week_idx + 1,
+            "week_start": str(week["week_start"]),
+            "week_end": str(week["week_end"]),
+            "week_label": week_label,
+            "total_hours": round(week_hours, 2),
+            "shift_count": week_shifts
+        })
 
     return {
         "year": year,
@@ -853,7 +964,8 @@ async def get_employee_monthly_hours(
         "employee_id": current_user.id,
         "employee_name": f"{current_user.first_name or ''} {current_user.last_name or ''}".strip() or current_user.email,
         "total_hours": round(total_hours, 2),
-        "shift_count": shift_count
+        "shift_count": shift_count,
+        "weeks": weeks_data
     }
 
 
