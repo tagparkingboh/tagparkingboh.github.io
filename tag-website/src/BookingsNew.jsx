@@ -2812,7 +2812,15 @@ function Bookings() {
 
               {formData.pickupDate && !isCapacityAvailable && (
                 <div className="form-group fade-in">
-                  <p className="no-flights-message">Sorry, we're fully booked for some dates in your selected range. Please try different dates.</p>
+                  <div className="fully-booked-banner">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                    </svg>
+                    <div className="fully-booked-content">
+                      <strong>We're fully booked for your dates</strong>
+                      <p>Our car park is at capacity during your trip. Email <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a> and we'll do our best to help.</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
