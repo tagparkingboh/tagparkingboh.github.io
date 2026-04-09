@@ -1460,15 +1460,15 @@
   }
 
   .roster-calendar .calendar-weekdays {
-    min-width: 840px;
+    min-width: 910px;
   }
 
   .roster-calendar .calendar-weeks {
-    min-width: 840px;
+    min-width: 910px;
   }
 
   .roster-calendar .calendar-day {
-    min-width: 120px;
+    min-width: 130px;
   }
 
   /* Shorter button text on mobile */
@@ -1548,12 +1548,12 @@
 
   .roster-calendar .calendar-day {
     min-height: 80px;
-    min-width: 115px;
+    min-width: 125px;
   }
 
   .roster-calendar .calendar-weekdays,
   .roster-calendar .calendar-weeks {
-    min-width: 805px;
+    min-width: 875px;
   }
 
   .day-badge,
