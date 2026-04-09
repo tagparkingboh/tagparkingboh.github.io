@@ -359,11 +359,18 @@
 .roster-detail-panel .detail-header,
 .roster-detail-modal-content .detail-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 12px;
   padding: 15px 20px;
   background: #1a1a2e;
   border-bottom: 1px solid #444;
+}
+
+.roster-detail-modal-content .detail-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
 }
 
 .roster-detail-panel .detail-header h3,
@@ -377,7 +384,20 @@
 .detail-header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Uniform button styling in modal header */
+.roster-detail-modal-content .detail-header-actions .roster-add-btn-small,
+.roster-detail-modal-content .detail-header-actions .roster-add-holiday-btn-small,
+.roster-detail-modal-content .detail-header-actions .blocked-dates-btn {
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  flex: 1;
+  min-width: 100px;
+  justify-content: center;
+  text-align: center;
 }
 
 .roster-detail-panel .detail-close,

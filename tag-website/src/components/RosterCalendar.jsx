@@ -2032,47 +2032,43 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         <div className="roster-detail-modal-overlay" onClick={closeDetailModal}>
           <div className="roster-detail-modal-content" onClick={(e) => e.stopPropagation()}>
           <div className="detail-header">
-            <h3>
-              {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
-              })}
-            </h3>
-            <div className="detail-header-actions">
-              {isAdmin && (
-                <>
-                  <button
-                    className="roster-add-btn-small"
-                    onClick={() => openNewShiftModal(formatDateUK(selectedDate))}
-                  >
-                    + Add Shift
-                  </button>
-                  <button
-                    className="roster-add-holiday-btn-small"
-                    onClick={() => openNewHolidayModal(selectedDate)}
-                  >
-                    + Holiday
-                  </button>
-                  {!selectedDateBlockedInfo && (
-                    <button
-                      className="blocked-dates-btn"
-                      onClick={() => openBlockedDateModal(selectedDate)}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-                      </svg>
-                      Block Date
-                    </button>
-                  )}
-                </>
-              )}
+            <div className="detail-header-top">
+              <h3>
+                {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+              </h3>
               <button className="detail-close" onClick={closeDetailModal}>
                 ×
               </button>
             </div>
+            {isAdmin && (
+              <div className="detail-header-actions">
+                <button
+                  className="roster-add-btn-small"
+                  onClick={() => openNewShiftModal(formatDateUK(selectedDate))}
+                >
+                  + Add Shift
+                </button>
+                <button
+                  className="roster-add-holiday-btn-small"
+                  onClick={() => openNewHolidayModal(selectedDate)}
+                >
+                  + Holiday
+                </button>
+                {!selectedDateBlockedInfo && (
+                  <button
+                    className="blocked-dates-btn"
+                    onClick={() => openBlockedDateModal(selectedDate)}
+                  >
+                    Block Date
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="detail-content">
