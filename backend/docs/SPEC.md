@@ -100,6 +100,23 @@ db.close()
 
 ---
 
+## Deprecated / Legacy Code
+
+### capacity_tier (flight_departures table)
+
+The `capacity_tier` and `is_call_us_only` fields in `FlightDeparture` model are **no longer used**. This was from an earlier approach where each flight had per-slot capacity limits.
+
+**Current approach:** Capacity is now controlled solely by `MAX_PARKING_SPOTS = 50` in `booking_service.py`. All flights are bookable online up to the parking lot limit.
+
+The legacy code remains in:
+- `BookingsNew.jsx` - `isCallUsOnly` logic (always false in practice)
+- `main.py` - Various endpoints still reference `capacity_tier`
+- `db_models.py` - `FlightDeparture.capacity_tier` column
+
+This can be cleaned up in a future refactor.
+
+---
+
 ## Mistakes Log
 
 ### 2026-04-04
