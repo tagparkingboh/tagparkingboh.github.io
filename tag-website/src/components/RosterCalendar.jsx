@@ -2051,20 +2051,23 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   className="roster-add-btn-small"
                   onClick={() => openNewShiftModal(formatDateUK(selectedDate))}
                 >
-                  + Add Shift
+                  <span className="btn-text-full">+ Add Shift</span>
+                  <span className="btn-text-short">+ Shift</span>
                 </button>
                 <button
                   className="roster-add-holiday-btn-small"
                   onClick={() => openNewHolidayModal(selectedDate)}
                 >
-                  + Holiday
+                  <span className="btn-text-full">+ Holiday</span>
+                  <span className="btn-text-short">+ Holiday</span>
                 </button>
                 {!selectedDateBlockedInfo && (
                   <button
                     className="blocked-dates-btn"
                     onClick={() => openBlockedDateModal(selectedDate)}
                   >
-                    Block Date
+                    <span className="btn-text-full">Block Date</span>
+                    <span className="btn-text-short">Block</span>
                   </button>
                 )}
               </div>

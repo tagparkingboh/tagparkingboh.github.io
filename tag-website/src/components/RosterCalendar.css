@@ -400,6 +400,15 @@
   text-align: center;
 }
 
+/* Button text - show full text by default, hide short text */
+.btn-text-short {
+  display: none;
+}
+
+.btn-text-full {
+  display: inline;
+}
+
 .roster-detail-panel .detail-close,
 .roster-detail-modal-content .detail-close {
   background: none;
@@ -1451,15 +1460,24 @@
   }
 
   .roster-calendar .calendar-weekdays {
-    min-width: 700px;
+    min-width: 840px;
   }
 
   .roster-calendar .calendar-weeks {
-    min-width: 700px;
+    min-width: 840px;
   }
 
   .roster-calendar .calendar-day {
-    min-width: 100px;
+    min-width: 120px;
+  }
+
+  /* Shorter button text on mobile */
+  .btn-text-full {
+    display: none;
+  }
+
+  .btn-text-short {
+    display: inline;
   }
 
   .roster-calendar .day-number {
@@ -1530,12 +1548,12 @@
 
   .roster-calendar .calendar-day {
     min-height: 80px;
-    min-width: 95px;
+    min-width: 115px;
   }
 
   .roster-calendar .calendar-weekdays,
   .roster-calendar .calendar-weeks {
-    min-width: 665px;
+    min-width: 805px;
   }
 
   .day-badge,
