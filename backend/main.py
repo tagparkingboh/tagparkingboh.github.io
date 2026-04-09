@@ -12131,7 +12131,7 @@ async def get_admin_flight_filters(
 
 @app.get("/api/admin/flights/export")
 async def export_admin_flights(
-    flight_type: str = Query("all", regex="^(all|departures|arrivals)$"),
+    flight_type: str = Query("all", pattern="^(all|departures|arrivals)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
