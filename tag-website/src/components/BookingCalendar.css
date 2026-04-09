@@ -484,16 +484,40 @@
     max-width: 95vw;
     max-height: 90vh;
   }
+
+  /* Horizontal scroll for calendar on mobile */
+  .calendar-grid {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .calendar-weekdays {
+    min-width: 700px;
+  }
+
+  .calendar-weeks {
+    min-width: 700px;
+  }
+
+  .calendar-day {
+    min-width: 100px;
+  }
 }
 
 @media (max-width: 480px) {
   .calendar-weekday {
     padding: 8px 4px;
-    font-size: 0.7rem;
+    font-size: 0.75rem;
   }
 
   .calendar-day {
-    min-height: 55px;
+    min-height: 80px;
+    min-width: 95px;
+  }
+
+  .calendar-weekdays,
+  .calendar-weeks {
+    min-width: 665px;
   }
 
   .day-badges {
