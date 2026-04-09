@@ -140,6 +140,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   // Monthly hours (for payroll)
   const [monthlyHours, setMonthlyHours] = useState(null)
   const [loadingMonthlyHours, setLoadingMonthlyHours] = useState(false)
+  const [hoursExpanded, setHoursExpanded] = useState(false)  // Hours section collapsed by default
   const [expandedWeeks, setExpandedWeeks] = useState({})  // Track which weeks are expanded
   const [monthlyTotalsExpanded, setMonthlyTotalsExpanded] = useState(false)  // Monthly totals collapsed by default
 
@@ -1922,10 +1923,14 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       {/* Monthly Hours Summary (for payroll) - with weekly breakdown */}
       {monthlyHours && (
         <div className="hours-breakdown-section">
-          <h3 className="hours-breakdown-title">
+          <h3
+            className="hours-breakdown-title hours-breakdown-clickable"
+            onClick={() => setHoursExpanded(!hoursExpanded)}
+          >
+            <span className={`hours-section-caret ${hoursExpanded ? 'expanded' : ''}`}>▶</span>
             Hours <span className="week-range">({monthlyHours.month_name} {monthlyHours.year})</span>
           </h3>
-          {loadingMonthlyHours ? (
+          {hoursExpanded && (loadingMonthlyHours ? (
             <div className="weekly-hours-loading">Loading...</div>
           ) : (
             <div className="hours-breakdown-container">
@@ -2023,7 +2028,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 )}
               </div>
             </div>
-          )}
+          ))}
         </div>
       )}
 

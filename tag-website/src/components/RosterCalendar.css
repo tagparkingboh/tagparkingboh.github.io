@@ -1829,6 +1829,25 @@
   gap: 8px;
 }
 
+.hours-breakdown-title.hours-breakdown-clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.hours-breakdown-title.hours-breakdown-clickable:hover {
+  opacity: 0.8;
+}
+
+.hours-section-caret {
+  font-size: 0.75rem;
+  transition: transform 0.2s ease;
+  color: #D9FF00;
+}
+
+.hours-section-caret.expanded {
+  transform: rotate(90deg);
+}
+
 .hours-breakdown-title .week-range {
   font-size: 0.85rem;
   color: #888;
