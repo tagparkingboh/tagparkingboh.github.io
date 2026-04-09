@@ -199,7 +199,7 @@ async def test_check_capacity(client):
     assert response.status_code == 200
     data = response.json()
     assert data["all_available"] is True
-    assert data["max_capacity"] == 60
+    assert data["max_capacity"] == 50
 
 
 @pytest.mark.asyncio
@@ -529,8 +529,8 @@ async def test_admin_occupancy(admin_client):
     response = await admin_client.get("/api/admin/occupancy/2026-02-10")
     assert response.status_code == 200
     data = response.json()
-    assert data["max_capacity"] == 60
-    assert data["available"] == 60
+    assert data["max_capacity"] == 50
+    assert data["available"] == 50
 
 
 @pytest.mark.asyncio

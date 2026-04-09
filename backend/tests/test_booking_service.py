@@ -346,7 +346,7 @@ class TestCapacityManagement:
         )
 
         assert result["all_available"] is True
-        assert result["max_capacity"] == 60
+        assert result["max_capacity"] == 50
 
     def test_booking_updates_daily_occupancy(self, service, sample_booking_request):
         """Creating a booking should update occupancy counts."""

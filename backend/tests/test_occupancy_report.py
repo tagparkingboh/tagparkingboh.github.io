@@ -94,7 +94,7 @@ def create_bookings_for_date_range(start_date, end_date, count=1, status="confir
 class TestDailyOccupancyCalculation:
     """Tests for daily occupancy calculation logic."""
 
-    MAX_CAPACITY = 60
+    MAX_CAPACITY = 50
 
     def test_single_booking_spans_multiple_days(self):
         """Test that a single booking is counted on each day it occupies."""
@@ -159,24 +159,24 @@ class TestDailyOccupancyCalculation:
 
     def test_occupancy_percentage_calculation(self):
         """Test occupancy percentage is calculated correctly."""
-        occupied = 30
+        occupied = 25
         percentage = round((occupied / self.MAX_CAPACITY) * 100, 1)
 
         assert percentage == 50.0
 
     def test_full_capacity(self):
         """Test 100% occupancy."""
-        occupied = 60
+        occupied = 50
         percentage = round((occupied / self.MAX_CAPACITY) * 100, 1)
 
         assert percentage == 100.0
 
     def test_over_capacity(self):
         """Test handling of over-capacity (shouldn't happen but handle gracefully)."""
-        occupied = 65
+        occupied = 55
         percentage = round((occupied / self.MAX_CAPACITY) * 100, 1)
 
-        assert percentage == 108.3
+        assert percentage == 110.0
 
     def test_uk_date_format(self):
         """Test UK date format dd/mm/yyyy."""
@@ -195,7 +195,7 @@ class TestDailyOccupancyCalculation:
 class TestWeeklyOccupancyCalculation:
     """Tests for weekly average occupancy calculation."""
 
-    MAX_CAPACITY = 60
+    MAX_CAPACITY = 50
 
     def test_iso_week_key_format(self):
         """Test ISO week key format."""
@@ -388,7 +388,7 @@ class TestDateRangeFiltering:
 class TestOccupancyEdgeCases:
     """Edge case tests for occupancy calculations."""
 
-    MAX_CAPACITY = 60
+    MAX_CAPACITY = 50
 
     def test_no_bookings(self):
         """Test occupancy with no bookings."""
@@ -534,7 +534,7 @@ class TestOccupancyResponseFormat:
         """Test daily view response has all required fields."""
         response = {
             "view": "daily",
-            "max_capacity": 60,
+            "max_capacity": 50,
             "start_date": "2026-03-01",
             "end_date": "2026-04-30",
             "data": [
@@ -542,8 +542,8 @@ class TestOccupancyResponseFormat:
                     "date": "2026-03-01",
                     "display_date": "01/03/2026",
                     "occupied": 25,
-                    "available": 35,
-                    "occupancy_percent": 41.7,
+                    "available": 25,
+                    "occupancy_percent": 50.0,
                     "is_past": True,
                     "is_today": False,
                 }
@@ -551,7 +551,7 @@ class TestOccupancyResponseFormat:
         }
 
         assert response["view"] == "daily"
-        assert response["max_capacity"] == 60
+        assert response["max_capacity"] == 50
         assert "start_date" in response
         assert "end_date" in response
         assert len(response["data"]) > 0
@@ -569,7 +569,7 @@ class TestOccupancyResponseFormat:
         """Test weekly view response has all required fields."""
         response = {
             "view": "weekly",
-            "max_capacity": 60,
+            "max_capacity": 50,
             "start_date": "2026-03-01",
             "end_date": "2026-04-30",
             "data": [
@@ -578,9 +578,9 @@ class TestOccupancyResponseFormat:
                     "display_week": "02/03 - 08/03/2026",
                     "week_start": "2026-03-02",
                     "week_end": "2026-03-08",
-                    "avg_occupied": 30.5,
-                    "avg_available": 29.5,
-                    "avg_occupancy_percent": 50.8,
+                    "avg_occupied": 25.0,
+                    "avg_available": 25.0,
+                    "avg_occupancy_percent": 50.0,
                     "is_current_week": False,
                     "is_past": True,
                 }
@@ -600,16 +600,16 @@ class TestOccupancyResponseFormat:
         """Test monthly view response has all required fields."""
         response = {
             "view": "monthly",
-            "max_capacity": 60,
+            "max_capacity": 50,
             "start_date": "2026-03-01",
             "end_date": "2026-08-31",
             "data": [
                 {
                     "month": "2026-03",
                     "display_month": "March 2026",
-                    "avg_occupied": 28.5,
-                    "avg_available": 31.5,
-                    "avg_occupancy_percent": 47.5,
+                    "avg_occupied": 25.0,
+                    "avg_available": 25.0,
+                    "avg_occupancy_percent": 50.0,
                     "is_current_month": True,
                     "is_past": False,
                 }

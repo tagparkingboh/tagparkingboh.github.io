@@ -3398,7 +3398,7 @@ async def get_occupancy_report(
     from collections import defaultdict
     import calendar
 
-    MAX_CAPACITY = 60
+    MAX_CAPACITY = 50
 
     # Set default date ranges based on view type
     today = date.today()

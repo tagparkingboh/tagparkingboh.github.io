@@ -142,7 +142,7 @@ class BookingService:
     """
 
     # Maximum concurrent bookings (parking spots)
-    MAX_PARKING_SPOTS = 60
+    MAX_PARKING_SPOTS = 50
 
     # Package durations (in days)
     PACKAGE_DURATIONS = {
