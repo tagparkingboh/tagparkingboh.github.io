@@ -173,6 +173,11 @@ function Bookings() {
   const [arrivalTimeOverride, setArrivalTimeOverride] = useState(() => loadBookingState('arrivalTimeOverride', ''))
   const [arrivalTimeValidating, setArrivalTimeValidating] = useState(false)
   const [arrivalTimeError, setArrivalTimeError] = useState('')
+  // 24-hour time format warning toast - shown once per session when ambiguous time entered
+  const [showTimeFormatWarning, setShowTimeFormatWarning] = useState(false)
+  const timeFormatWarningShownRef = useRef(
+    sessionStorage.getItem('booking_timeFormatWarningShown') === 'true'
+  )
   // Manual entry is now the default (simplified booking flow)
   const [showManualDeparture, setShowManualDeparture] = useState(true)
   const [manualDepartureData, setManualDepartureData] = useState(() => loadBookingState('manualDepartureData', {
@@ -1124,6 +1129,17 @@ function Bookings() {
     return `${hours}:${mins}`
   }
 
+  // Handle ambiguous time entry (01:00-12:59) - show warning once per session
+  const handleAmbiguousTime = () => {
+    if (!timeFormatWarningShownRef.current) {
+      timeFormatWarningShownRef.current = true
+      sessionStorage.setItem('booking_timeFormatWarningShown', 'true')
+      setShowTimeFormatWarning(true)
+      // Auto-dismiss after 6 seconds
+      setTimeout(() => setShowTimeFormatWarning(false), 6000)
+    }
+  }
+
   // Validate flight time via API
   const validateFlightTime = async (timeStr, flightType) => {
     if (!isValidTimeFormat(timeStr)) {
@@ -1849,6 +1865,23 @@ function Bookings() {
 
   return (
     <div className="bookings-new-page">
+      {/* 24-hour time format warning toast */}
+      {showTimeFormatWarning && (
+        <div className="time-format-toast">
+          <span className="time-format-toast-icon">⏰</span>
+          <span className="time-format-toast-message">
+            Just checking – is that morning or evening? We use 24-hour format, so 11pm would be 23:00.
+          </span>
+          <button
+            className="time-format-toast-close"
+            onClick={() => setShowTimeFormatWarning(false)}
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Welcome Modal - shown first when user lands on booking page */}
       {showWelcomeModal && (
         <div className="welcome-modal-overlay">
@@ -2569,6 +2602,7 @@ function Bookings() {
                           ...prev,
                           flightTime: value
                         }))}
+                        onAmbiguousTime={handleAmbiguousTime}
                       />
                     </div>
                   </div>
@@ -2802,6 +2836,7 @@ function Bookings() {
                           ...prev,
                           flightTime: value
                         }))}
+                        onAmbiguousTime={handleAmbiguousTime}
                       />
                       <p className="field-hint">Time your flight lands at Bournemouth. For overnight flights, select the landing date above.</p>
                     </div>

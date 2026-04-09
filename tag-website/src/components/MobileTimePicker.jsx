@@ -9,7 +9,7 @@ const isMobileOrTablet = () => {
     ('ontouchstart' in window)
 }
 
-function MobileTimePicker({ value, onChange, id, placeholder, label }) {
+function MobileTimePicker({ value, onChange, id, placeholder, label, onAmbiguousTime }) {
   const [showPicker, setShowPicker] = useState(false)
   const [hours, setHours] = useState('00')
   const [minutes, setMinutes] = useState('00')
@@ -93,9 +93,18 @@ function MobileTimePicker({ value, onChange, id, placeholder, label }) {
     }, 100)
   }, [handleScroll])
 
+  // Check if time is ambiguous (01:00-12:59 could be AM or PM)
+  const isAmbiguousTime = (hour) => {
+    const h = parseInt(hour, 10)
+    return h >= 1 && h <= 12
+  }
+
   const handleConfirm = () => {
     const timeValue = `${hours}:${minutes}`
     onChange(timeValue)
+    if (isAmbiguousTime(hours) && onAmbiguousTime) {
+      onAmbiguousTime(timeValue)
+    }
     setShowPicker(false)
   }
 
@@ -108,6 +117,19 @@ function MobileTimePicker({ value, onChange, id, placeholder, label }) {
   // Generate minute options (00-59)
   const minuteOptions = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'))
 
+  // Handle desktop input change with ambiguous time detection
+  const handleDesktopChange = (e) => {
+    const formatted = formatTimeInput(e.target.value)
+    onChange(formatted)
+    // Check for ambiguous time when input is complete (HH:MM format)
+    if (formatted.length === 5 && onAmbiguousTime) {
+      const hour = parseInt(formatted.slice(0, 2), 10)
+      if (hour >= 1 && hour <= 12) {
+        onAmbiguousTime(formatted)
+      }
+    }
+  }
+
   // For desktop, use standard text input with formatting
   if (!isMobile) {
     return (
@@ -118,7 +140,7 @@ function MobileTimePicker({ value, onChange, id, placeholder, label }) {
         maxLength={5}
         inputMode="numeric"
         value={value}
-        onChange={(e) => onChange(formatTimeInput(e.target.value))}
+        onChange={handleDesktopChange}
       />
     )
   }
