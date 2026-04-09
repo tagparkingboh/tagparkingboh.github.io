@@ -1424,6 +1424,24 @@
     max-height: 90vh;
   }
 
+  /* Horizontal scroll for calendar on mobile */
+  .roster-calendar .calendar-grid {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .roster-calendar .calendar-weekdays {
+    min-width: 700px;
+  }
+
+  .roster-calendar .calendar-weeks {
+    min-width: 700px;
+  }
+
+  .roster-calendar .calendar-day {
+    min-width: 100px;
+  }
+
   .roster-calendar .day-number {
     font-size: 0.85rem;
   }
@@ -1487,11 +1505,17 @@
 @media (max-width: 480px) {
   .roster-calendar .calendar-weekday {
     padding: 8px 4px;
-    font-size: 0.7rem;
+    font-size: 0.75rem;
   }
 
   .roster-calendar .calendar-day {
-    min-height: 70px;
+    min-height: 80px;
+    min-width: 95px;
+  }
+
+  .roster-calendar .calendar-weekdays,
+  .roster-calendar .calendar-weeks {
+    min-width: 665px;
   }
 
   .day-badge,
