@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import './BookingCalendar.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -9,7 +9,20 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedDate, setSelectedDate] = useState(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
   const [viewMode, setViewMode] = useState('month') // 'month', 'week', 'day'
+
+  // Close modal on Escape key
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && showDetailModal) {
+        setShowDetailModal(false)
+        setSelectedDate(null)
+      }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [showDetailModal])
 
   // Fetch bookings for the current month view
   useEffect(() => {
@@ -178,6 +191,27 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
   // Get selected day's bookings
   const selectedDayBookings = selectedDate ? bookingsByDate[selectedDate] : null
 
+  // Handle day click - close modal if open, otherwise open for clicked date
+  const handleDayClick = useCallback((day) => {
+    if (!day) return
+    const dateKey = getDateKey(day)
+    if (showDetailModal) {
+      // Close modal first
+      setShowDetailModal(false)
+      setSelectedDate(null)
+    } else {
+      // Open modal for this date
+      setSelectedDate(dateKey)
+      setShowDetailModal(true)
+    }
+  }, [showDetailModal, getDateKey])
+
+  // Close modal handler
+  const closeModal = useCallback(() => {
+    setShowDetailModal(false)
+    setSelectedDate(null)
+  }, [])
+
   return (
     <div className="booking-calendar">
       {/* Calendar Header */}
@@ -228,7 +262,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
                   <div
                     key={dayIndex}
                     className={`calendar-day ${!day ? 'empty' : ''} ${isToday(day) ? 'today' : ''} ${isSelected(day) ? 'selected' : ''} ${hasBookings ? 'has-bookings' : ''}`}
-                    onClick={() => day && setSelectedDate(getDateKey(day))}
+                    onClick={() => handleDayClick(day)}
                   >
                     {day && (
                       <>
@@ -257,27 +291,28 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
         </div>
       </div>
 
-      {/* Selected Day Detail Panel */}
-      {selectedDate && selectedDayBookings && (
-        <div className="calendar-detail-panel">
-          <div className="detail-header">
-            <h3>
-              {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
-              })}
-            </h3>
-            <button
-              className="detail-close"
-              onClick={() => setSelectedDate(null)}
-            >
-              &times;
-            </button>
-          </div>
+      {/* Selected Day Detail Modal */}
+      {showDetailModal && selectedDate && selectedDayBookings && (
+        <div className="calendar-modal-overlay" onClick={closeModal}>
+          <div className="calendar-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="detail-header">
+              <h3>
+                {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                })}
+              </h3>
+              <button
+                className="detail-close"
+                onClick={closeModal}
+              >
+                &times;
+              </button>
+            </div>
 
-          <div className="detail-content">
+            <div className="detail-content">
             {/* Drop-offs */}
             {selectedDayBookings.dropoffs.length > 0 && (
               <div className="detail-section">
@@ -372,6 +407,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
             {selectedDayBookings.dropoffs.length === 0 && selectedDayBookings.pickups.length === 0 && (
               <p className="no-bookings">No bookings for this day</p>
             )}
+          </div>
           </div>
         </div>
       )}

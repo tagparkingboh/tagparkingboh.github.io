@@ -97,6 +97,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedDate, setSelectedDate] = useState(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
 
   // Modal state
@@ -571,6 +572,18 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     fetchMonthlyHours()
   }, [fetchMonthlyHours])
 
+  // Close detail modal on Escape key
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && showDetailModal) {
+        setShowDetailModal(false)
+        setSelectedDate(null)
+      }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [showDetailModal])
+
   // Fetch bookings for a specific date (for shift assignment)
   const fetchBookingsForDate = useCallback(async (dateStr, additionalDateStr = null) => {
     if (!token || !dateStr) {
@@ -792,15 +805,25 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     )
   }
 
-  // Handle date selection
+  // Handle date selection - close modal if open, otherwise open modal
   const handleDateClick = (day) => {
     if (!day) return
     const dateKey = getDateKey(day)
-    if (selectedDate === dateKey) {
+    if (showDetailModal) {
+      // Close modal first
+      setShowDetailModal(false)
       setSelectedDate(null)
     } else {
+      // Open modal for this date
       setSelectedDate(dateKey)
+      setShowDetailModal(true)
     }
+  }
+
+  // Close detail modal handler
+  const closeDetailModal = () => {
+    setShowDetailModal(false)
+    setSelectedDate(null)
   }
 
   // Modal handlers
@@ -2004,9 +2027,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         </div>
       )}
 
-      {/* Detail Panel - Shows both bookings and shifts */}
-      {selectedDate && (
-        <div className="roster-detail-panel">
+      {/* Detail Modal - Shows both bookings and shifts */}
+      {showDetailModal && selectedDate && (
+        <div className="roster-detail-modal-overlay" onClick={closeDetailModal}>
+          <div className="roster-detail-modal-content" onClick={(e) => e.stopPropagation()}>
           <div className="detail-header">
             <h3>
               {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-GB', {
@@ -2045,7 +2069,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   )}
                 </>
               )}
-              <button className="detail-close" onClick={() => setSelectedDate(null)}>
+              <button className="detail-close" onClick={closeDetailModal}>
                 ×
               </button>
             </div>
@@ -2539,6 +2563,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
               selectedDateShifts.length === 0 && (
                 <p className="no-content">No bookings or shifts scheduled for this date.</p>
               )}
+          </div>
           </div>
         </div>
       )}

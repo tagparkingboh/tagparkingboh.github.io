@@ -321,7 +321,33 @@
   font-weight: 600;
 }
 
-/* Detail Panel */
+/* Detail Modal Overlay */
+.roster-detail-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.roster-detail-modal-content {
+  background: #252525;
+  border-radius: 12px;
+  border: 1px solid #444;
+  width: 100%;
+  max-width: 700px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Detail Panel (legacy) */
 .roster-detail-panel {
   margin-top: 20px;
   background: #252525;
@@ -330,7 +356,8 @@
   overflow: hidden;
 }
 
-.roster-detail-panel .detail-header {
+.roster-detail-panel .detail-header,
+.roster-detail-modal-content .detail-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -339,7 +366,8 @@
   border-bottom: 1px solid #444;
 }
 
-.roster-detail-panel .detail-header h3 {
+.roster-detail-panel .detail-header h3,
+.roster-detail-modal-content .detail-header h3 {
   margin: 0;
   color: #fff;
   font-size: 1.1rem;
@@ -352,7 +380,8 @@
   gap: 10px;
 }
 
-.roster-detail-panel .detail-close {
+.roster-detail-panel .detail-close,
+.roster-detail-modal-content .detail-close {
   background: none;
   border: none;
   color: #888;
@@ -363,11 +392,13 @@
   transition: color 0.2s;
 }
 
-.roster-detail-panel .detail-close:hover {
+.roster-detail-panel .detail-close:hover,
+.roster-detail-modal-content .detail-close:hover {
   color: #fff;
 }
 
-.roster-detail-panel .detail-content {
+.roster-detail-panel .detail-content,
+.roster-detail-modal-content .detail-content {
   padding: 20px;
 }
 
@@ -1357,6 +1388,10 @@
   .roster-calendar .modal-content-wide {
     max-width: 90vw;
   }
+
+  .roster-detail-modal-content {
+    max-width: 90vw;
+  }
 }
 
 /* Responsive - Small Tablet / Large Phone */
@@ -1378,6 +1413,15 @@
   .roster-calendar .calendar-day {
     min-height: 90px;
     padding: 5px;
+  }
+
+  .roster-detail-modal-overlay {
+    padding: 10px;
+  }
+
+  .roster-detail-modal-content {
+    max-width: 95vw;
+    max-height: 90vh;
   }
 
   .roster-calendar .day-number {

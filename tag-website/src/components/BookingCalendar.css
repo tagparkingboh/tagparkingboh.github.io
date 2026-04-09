@@ -214,7 +214,33 @@
   border: 1px solid rgba(80, 200, 120, 0.3);
 }
 
-/* Detail Panel */
+/* Modal Overlay */
+.calendar-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.calendar-modal-content {
+  background: #252525;
+  border-radius: 12px;
+  border: 1px solid #444;
+  width: 100%;
+  max-width: 700px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Detail Panel (legacy - kept for reference) */
 .calendar-detail-panel {
   margin-top: 20px;
   background: #252525;
@@ -401,7 +427,14 @@
   font-style: italic;
 }
 
-/* Responsive */
+/* Responsive - Tablet */
+@media (max-width: 1024px) {
+  .calendar-modal-content {
+    max-width: 90vw;
+  }
+}
+
+/* Responsive - Mobile */
 @media (max-width: 768px) {
   .calendar-header {
     flex-direction: column;
@@ -441,6 +474,15 @@
 
   .booking-ref {
     text-align: left;
+  }
+
+  .calendar-modal-overlay {
+    padding: 10px;
+  }
+
+  .calendar-modal-content {
+    max-width: 95vw;
+    max-height: 90vh;
   }
 }
 
