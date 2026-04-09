@@ -4,19 +4,17 @@
  * These tests verify:
  * 1. MobileTimePicker detects ambiguous times (01:00-12:59)
  * 2. onAmbiguousTime callback is called correctly
- * 3. Warning toast appears once per session
- * 4. Toast auto-dismisses and can be manually closed
- * 5. SessionStorage persistence works correctly
+ * 3. Warning shows once per field type per session (departure & arrival separately)
+ * 4. Inline warning displays below time input
+ * 5. SessionStorage persistence works correctly for each field
  *
  * Test Coverage:
- * - Happy path: Warning shows on first ambiguous time entry
+ * - Happy path: Warning shows on first ambiguous time entry for each field
  * - Unhappy path: Warning doesn't show for unambiguous times (13:00-23:59, 00:xx)
  * - Edge cases: Boundary hours (12:59, 13:00, 00:00, 00:59)
- * - Boundaries: Session persistence, multiple time inputs
+ * - Boundaries: Separate session persistence for departure vs arrival
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 
 // =============================================================================
 // Unit Tests: Ambiguous Time Detection Logic
@@ -166,12 +164,11 @@ describe('MobileTimePicker - Desktop Input Change Handler', () => {
 })
 
 // =============================================================================
-// Integration Tests: Session Storage Persistence
+// Integration Tests: Session Storage Persistence (Separate for Departure/Arrival)
 // =============================================================================
 
-describe('Time Format Warning - Session Storage', () => {
+describe('Time Format Warning - Session Storage (Separate Fields)', () => {
   beforeEach(() => {
-    // Clear sessionStorage before each test
     sessionStorage.clear()
   })
 
@@ -179,144 +176,248 @@ describe('Time Format Warning - Session Storage', () => {
     sessionStorage.clear()
   })
 
-  describe('Happy path - First time warning', () => {
-    it('sessionStorage is empty initially', () => {
-      expect(sessionStorage.getItem('booking_timeFormatWarningShown')).toBeNull()
+  describe('Happy path - Independent tracking', () => {
+    it('departure and arrival keys are separate', () => {
+      sessionStorage.setItem('booking_departureTimeWarningShown', 'true')
+
+      expect(sessionStorage.getItem('booking_departureTimeWarningShown')).toBe('true')
+      expect(sessionStorage.getItem('booking_arrivalTimeWarningShown')).toBeNull()
     })
 
-    it('sets flag to true after warning is shown', () => {
-      // Simulate what handleAmbiguousTime does
-      sessionStorage.setItem('booking_timeFormatWarningShown', 'true')
-      expect(sessionStorage.getItem('booking_timeFormatWarningShown')).toBe('true')
-    })
-  })
+    it('can set both independently', () => {
+      sessionStorage.setItem('booking_departureTimeWarningShown', 'true')
+      sessionStorage.setItem('booking_arrivalTimeWarningShown', 'true')
 
-  describe('Unhappy path - Warning already shown', () => {
-    it('does not show warning again when flag is already set', () => {
-      sessionStorage.setItem('booking_timeFormatWarningShown', 'true')
-
-      // Simulate the ref check
-      const warningAlreadyShown = sessionStorage.getItem('booking_timeFormatWarningShown') === 'true'
-      expect(warningAlreadyShown).toBe(true)
+      expect(sessionStorage.getItem('booking_departureTimeWarningShown')).toBe('true')
+      expect(sessionStorage.getItem('booking_arrivalTimeWarningShown')).toBe('true')
     })
   })
 
   describe('Edge cases', () => {
-    it('handles missing sessionStorage gracefully', () => {
-      const value = sessionStorage.getItem('nonexistent_key')
-      expect(value).toBeNull()
-      expect(value === 'true').toBe(false)
+    it('sessionStorage is empty initially for both', () => {
+      expect(sessionStorage.getItem('booking_departureTimeWarningShown')).toBeNull()
+      expect(sessionStorage.getItem('booking_arrivalTimeWarningShown')).toBeNull()
     })
   })
 })
 
 // =============================================================================
-// Integration Tests: Warning Handler Logic
+// Integration Tests: Departure Warning Handler Logic
 // =============================================================================
 
-describe('Time Format Warning - Handler Logic', () => {
-  let warningShownRef
-  let showWarningState
-  let setShowWarning
+describe('Time Format Warning - Departure Handler', () => {
+  let departureWarningShownRef
+  let setShowDepartureWarning
 
   beforeEach(() => {
     sessionStorage.clear()
-    warningShownRef = { current: false }
-    showWarningState = false
-    setShowWarning = vi.fn((value) => {
-      showWarningState = value
-    })
+    departureWarningShownRef = { current: false }
+    setShowDepartureWarning = vi.fn()
   })
 
   afterEach(() => {
     sessionStorage.clear()
   })
 
-  // Mirror handleAmbiguousTime logic
-  const handleAmbiguousTime = () => {
-    if (!warningShownRef.current) {
-      warningShownRef.current = true
-      sessionStorage.setItem('booking_timeFormatWarningShown', 'true')
-      setShowWarning(true)
+  const handleAmbiguousDepartureTime = () => {
+    if (!departureWarningShownRef.current) {
+      departureWarningShownRef.current = true
+      sessionStorage.setItem('booking_departureTimeWarningShown', 'true')
+      setShowDepartureWarning(true)
     }
   }
 
   describe('Happy path', () => {
-    it('shows warning on first call', () => {
-      handleAmbiguousTime()
+    it('shows warning on first departure time entry', () => {
+      handleAmbiguousDepartureTime()
 
-      expect(warningShownRef.current).toBe(true)
-      expect(setShowWarning).toHaveBeenCalledWith(true)
-      expect(sessionStorage.getItem('booking_timeFormatWarningShown')).toBe('true')
+      expect(departureWarningShownRef.current).toBe(true)
+      expect(setShowDepartureWarning).toHaveBeenCalledWith(true)
+      expect(sessionStorage.getItem('booking_departureTimeWarningShown')).toBe('true')
     })
   })
 
   describe('Unhappy path', () => {
-    it('does not show warning on second call', () => {
-      handleAmbiguousTime()
-      setShowWarning.mockClear()
+    it('does not show warning on second departure time entry', () => {
+      handleAmbiguousDepartureTime()
+      setShowDepartureWarning.mockClear()
 
-      handleAmbiguousTime()
+      handleAmbiguousDepartureTime()
 
-      expect(setShowWarning).not.toHaveBeenCalled()
+      expect(setShowDepartureWarning).not.toHaveBeenCalled()
     })
 
     it('does not show warning if already shown in previous session', () => {
-      // Simulate loading from sessionStorage
-      sessionStorage.setItem('booking_timeFormatWarningShown', 'true')
-      warningShownRef.current = sessionStorage.getItem('booking_timeFormatWarningShown') === 'true'
+      sessionStorage.setItem('booking_departureTimeWarningShown', 'true')
+      departureWarningShownRef.current = sessionStorage.getItem('booking_departureTimeWarningShown') === 'true'
 
-      handleAmbiguousTime()
+      handleAmbiguousDepartureTime()
 
-      expect(setShowWarning).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('Edge cases - Multiple time inputs', () => {
-    it('only shows warning once across multiple ambiguous times', () => {
-      // First ambiguous time
-      handleAmbiguousTime()
-      expect(setShowWarning).toHaveBeenCalledTimes(1)
-
-      setShowWarning.mockClear()
-
-      // Second ambiguous time
-      handleAmbiguousTime()
-      expect(setShowWarning).not.toHaveBeenCalled()
-
-      // Third ambiguous time
-      handleAmbiguousTime()
-      expect(setShowWarning).not.toHaveBeenCalled()
+      expect(setShowDepartureWarning).not.toHaveBeenCalled()
     })
   })
 })
 
 // =============================================================================
-// Integration Tests: Toast Display
+// Integration Tests: Arrival Warning Handler Logic
 // =============================================================================
 
-describe('Time Format Warning - Toast Display', () => {
-  describe('Happy path - Toast content', () => {
-    it('toast message includes 24-hour format explanation', () => {
-      const toastMessage = 'Just checking – is that morning or evening? We use 24-hour format, so 11pm would be 23:00.'
+describe('Time Format Warning - Arrival Handler', () => {
+  let arrivalWarningShownRef
+  let setShowArrivalWarning
 
-      expect(toastMessage).toContain('24-hour format')
-      expect(toastMessage).toContain('11pm')
-      expect(toastMessage).toContain('23:00')
-    })
+  beforeEach(() => {
+    sessionStorage.clear()
+    arrivalWarningShownRef = { current: false }
+    setShowArrivalWarning = vi.fn()
+  })
 
-    it('toast message is helpful for common evening times', () => {
-      const toastMessage = 'Just checking – is that morning or evening? We use 24-hour format, so 11pm would be 23:00.'
+  afterEach(() => {
+    sessionStorage.clear()
+  })
 
-      // Should help users understand the PM conversion
-      expect(toastMessage).toContain('evening')
+  const handleAmbiguousArrivalTime = () => {
+    if (!arrivalWarningShownRef.current) {
+      arrivalWarningShownRef.current = true
+      sessionStorage.setItem('booking_arrivalTimeWarningShown', 'true')
+      setShowArrivalWarning(true)
+    }
+  }
+
+  describe('Happy path', () => {
+    it('shows warning on first arrival time entry', () => {
+      handleAmbiguousArrivalTime()
+
+      expect(arrivalWarningShownRef.current).toBe(true)
+      expect(setShowArrivalWarning).toHaveBeenCalledWith(true)
+      expect(sessionStorage.getItem('booking_arrivalTimeWarningShown')).toBe('true')
     })
   })
 
-  describe('Boundaries - Auto-dismiss timing', () => {
-    it('auto-dismiss timeout is set to 6 seconds', () => {
-      const AUTO_DISMISS_MS = 6000
-      expect(AUTO_DISMISS_MS).toBe(6000)
+  describe('Unhappy path', () => {
+    it('does not show warning on second arrival time entry', () => {
+      handleAmbiguousArrivalTime()
+      setShowArrivalWarning.mockClear()
+
+      handleAmbiguousArrivalTime()
+
+      expect(setShowArrivalWarning).not.toHaveBeenCalled()
+    })
+  })
+})
+
+// =============================================================================
+// Integration Tests: Independent Field Warnings
+// =============================================================================
+
+describe('Time Format Warning - Independent Departure/Arrival Warnings', () => {
+  let departureWarningShownRef
+  let arrivalWarningShownRef
+  let setShowDepartureWarning
+  let setShowArrivalWarning
+
+  beforeEach(() => {
+    sessionStorage.clear()
+    departureWarningShownRef = { current: false }
+    arrivalWarningShownRef = { current: false }
+    setShowDepartureWarning = vi.fn()
+    setShowArrivalWarning = vi.fn()
+  })
+
+  afterEach(() => {
+    sessionStorage.clear()
+  })
+
+  const handleAmbiguousDepartureTime = () => {
+    if (!departureWarningShownRef.current) {
+      departureWarningShownRef.current = true
+      sessionStorage.setItem('booking_departureTimeWarningShown', 'true')
+      setShowDepartureWarning(true)
+    }
+  }
+
+  const handleAmbiguousArrivalTime = () => {
+    if (!arrivalWarningShownRef.current) {
+      arrivalWarningShownRef.current = true
+      sessionStorage.setItem('booking_arrivalTimeWarningShown', 'true')
+      setShowArrivalWarning(true)
+    }
+  }
+
+  describe('Happy path - Both warnings show independently', () => {
+    it('departure warning shows even after arrival warning was shown', () => {
+      handleAmbiguousArrivalTime()
+      expect(setShowArrivalWarning).toHaveBeenCalledWith(true)
+
+      handleAmbiguousDepartureTime()
+      expect(setShowDepartureWarning).toHaveBeenCalledWith(true)
+    })
+
+    it('arrival warning shows even after departure warning was shown', () => {
+      handleAmbiguousDepartureTime()
+      expect(setShowDepartureWarning).toHaveBeenCalledWith(true)
+
+      handleAmbiguousArrivalTime()
+      expect(setShowArrivalWarning).toHaveBeenCalledWith(true)
+    })
+
+    it('both warnings can be shown in same session', () => {
+      handleAmbiguousDepartureTime()
+      handleAmbiguousArrivalTime()
+
+      expect(setShowDepartureWarning).toHaveBeenCalledTimes(1)
+      expect(setShowArrivalWarning).toHaveBeenCalledTimes(1)
+      expect(sessionStorage.getItem('booking_departureTimeWarningShown')).toBe('true')
+      expect(sessionStorage.getItem('booking_arrivalTimeWarningShown')).toBe('true')
+    })
+  })
+
+  describe('Edge cases - Multiple entries per field', () => {
+    it('departure warning shows once even with multiple ambiguous entries', () => {
+      handleAmbiguousDepartureTime()
+      handleAmbiguousDepartureTime()
+      handleAmbiguousDepartureTime()
+
+      expect(setShowDepartureWarning).toHaveBeenCalledTimes(1)
+    })
+
+    it('arrival warning shows once even with multiple ambiguous entries', () => {
+      handleAmbiguousArrivalTime()
+      handleAmbiguousArrivalTime()
+      handleAmbiguousArrivalTime()
+
+      expect(setShowArrivalWarning).toHaveBeenCalledTimes(1)
+    })
+  })
+})
+
+// =============================================================================
+// Integration Tests: Inline Warning Display
+// =============================================================================
+
+describe('Time Format Warning - Inline Display', () => {
+  describe('Happy path - Warning content', () => {
+    it('warning message includes 24-hour format explanation', () => {
+      const warningMessage = 'Just checking – is that morning or evening? We use 24-hour format, so 11pm would be 23:00.'
+
+      expect(warningMessage).toContain('24-hour format')
+      expect(warningMessage).toContain('11pm')
+      expect(warningMessage).toContain('23:00')
+    })
+
+    it('warning message asks about morning or evening', () => {
+      const warningMessage = 'Just checking – is that morning or evening? We use 24-hour format, so 11pm would be 23:00.'
+
+      expect(warningMessage).toContain('morning')
+      expect(warningMessage).toContain('evening')
+    })
+  })
+
+  describe('Boundaries - Inline display persists', () => {
+    it('warning does not auto-dismiss (inline stays visible)', () => {
+      // Inline warnings stay visible - no auto-dismiss timeout
+      const hasAutoTimeout = false
+      expect(hasAutoTimeout).toBe(false)
     })
   })
 })

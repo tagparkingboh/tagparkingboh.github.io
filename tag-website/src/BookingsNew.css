@@ -2424,67 +2424,14 @@
   text-decoration: underline;
 }
 
-/* 24-hour time format warning toast */
-.time-format-toast {
-  position: fixed;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #2a2a2a;
+/* 24-hour time format warning - inline below time input */
+.time-format-warning {
+  margin: 0.5rem 0 0 0;
+  padding: 0.625rem 0.875rem;
+  background: #3a3a1a;
   border: 1px solid #D9FF00;
-  border-radius: 12px;
-  padding: 1rem 1.25rem;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  z-index: 10000;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  animation: slideDown 0.3s ease-out;
-  max-width: calc(100vw - 40px);
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-.time-format-toast-icon {
-  font-size: 1.25rem;
-  flex-shrink: 0;
-}
-
-.time-format-toast-message {
-  color: #ffffff;
-  font-size: 0.95rem;
+  border-radius: 6px;
+  color: #D9FF00;
+  font-size: 0.875rem;
   line-height: 1.4;
-}
-
-.time-format-toast-close {
-  background: none;
-  border: none;
-  color: #888;
-  font-size: 1rem;
-  cursor: pointer;
-  padding: 0.25rem;
-  margin-left: 0.5rem;
-  flex-shrink: 0;
-  transition: color 0.2s;
-}
-
-.time-format-toast-close:hover {
-  color: #fff;
-}
-
-@media (max-width: 600px) {
-  .time-format-toast {
-    top: 10px;
-    padding: 0.875rem 1rem;
-    font-size: 0.9rem;
-  }
 }
