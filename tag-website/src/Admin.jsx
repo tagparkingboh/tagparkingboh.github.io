@@ -5137,36 +5137,24 @@ function Admin() {
     setSwappingVehicle(true)
     setError('')
 
+    // Store values before modal close clears state
+    const bookingId = bookingForSwap.id
+    const vehicleId = swapConfirmVehicle.id
+
     try {
-      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingForSwap.id}/swap-vehicle`, {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingId}/swap-vehicle`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ vehicle_id: swapConfirmVehicle.id }),
+        body: JSON.stringify({ vehicle_id: vehicleId }),
       })
 
       if (response.ok) {
-        const data = await response.json()
-        // Close modals
+        // Close modals and refresh bookings list
         closeSwapVehicleModal()
-        // Refresh bookings to show updated vehicle
         fetchBookings()
-        // If we have a selected booking open, update it
-        if (selectedBooking && selectedBooking.id === bookingForSwap.id) {
-          setSelectedBooking(prev => ({
-            ...prev,
-            vehicle: {
-              ...(prev.vehicle || {}),
-              id: swapConfirmVehicle.id,
-              registration: swapConfirmVehicle.registration,
-              make: swapConfirmVehicle.make,
-              model: swapConfirmVehicle.model,
-              colour: swapConfirmVehicle.colour,
-            },
-          }))
-        }
       } else {
         const data = await response.json()
         setError(data.detail || 'Failed to swap vehicle')
