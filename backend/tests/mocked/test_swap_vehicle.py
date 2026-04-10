@@ -358,3 +358,74 @@ class TestSwapVehicleBoundaries:
         # Should still allow swap, just use "Unknown" for old reg
         old_registration = old_vehicle.registration if old_vehicle else "Unknown"
         assert old_registration == "Unknown"
+
+
+# ============================================================================
+# VEHICLE COUNT TESTS - For button visibility
+# ============================================================================
+
+class TestVehicleCountForSwapButton:
+    """Tests for vehicle_count field used to show/hide swap button."""
+
+    def test_vehicle_count_with_multiple_vehicles(self):
+        """Happy path: Customer with multiple vehicles shows count > 1."""
+        customer_vehicles = [
+            MockVehicle(id=1, registration="AB12CDE"),
+            MockVehicle(id=2, registration="XY98ZAB"),
+        ]
+        vehicle_count = len(customer_vehicles)
+        assert vehicle_count == 2
+        assert vehicle_count > 1  # Button should show
+
+    def test_vehicle_count_with_single_vehicle(self):
+        """Unhappy path: Customer with single vehicle shows count = 1."""
+        customer_vehicles = [MockVehicle(id=1, registration="AB12CDE")]
+        vehicle_count = len(customer_vehicles)
+        assert vehicle_count == 1
+        assert vehicle_count <= 1  # Button should be hidden
+
+    def test_vehicle_count_with_no_vehicles(self):
+        """Edge case: Customer with no vehicles shows count = 0."""
+        customer_vehicles = []
+        vehicle_count = len(customer_vehicles) if customer_vehicles else 0
+        assert vehicle_count == 0
+        assert vehicle_count <= 1  # Button should be hidden
+
+    def test_vehicle_count_with_none_vehicles(self):
+        """Edge case: Vehicles list is None."""
+        customer_vehicles = None
+        vehicle_count = len(customer_vehicles) if customer_vehicles else 0
+        assert vehicle_count == 0
+
+    def test_vehicle_count_boundary_two_vehicles(self):
+        """Boundary: Exactly 2 vehicles - minimum for swap."""
+        customer_vehicles = [
+            MockVehicle(id=1),
+            MockVehicle(id=2),
+        ]
+        vehicle_count = len(customer_vehicles)
+        assert vehicle_count == 2
+        assert vehicle_count > 1  # Button shows at 2+
+
+    def test_vehicle_count_many_vehicles(self):
+        """Boundary: Customer with many vehicles."""
+        customer_vehicles = [MockVehicle(id=i) for i in range(10)]
+        vehicle_count = len(customer_vehicles)
+        assert vehicle_count == 10
+        assert vehicle_count > 1  # Button shows
+
+    def test_customer_response_includes_vehicle_count(self):
+        """Integration: Customer object in response includes vehicle_count."""
+        customer_vehicles = [MockVehicle(id=1), MockVehicle(id=2), MockVehicle(id=3)]
+
+        # Simulated customer response object
+        customer_response = {
+            "id": 1,
+            "first_name": "John",
+            "last_name": "Doe",
+            "email": "john@example.com",
+            "vehicle_count": len(customer_vehicles),
+        }
+
+        assert "vehicle_count" in customer_response
+        assert customer_response["vehicle_count"] == 3

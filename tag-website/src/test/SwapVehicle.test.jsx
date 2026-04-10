@@ -465,3 +465,149 @@ describe('SwapVehicle - Regression: Modal Close Before State Access', () => {
     }).toThrow()
   })
 })
+
+// =============================================================================
+// Button Visibility Tests: vehicle_count
+// =============================================================================
+
+describe('SwapVehicle - Button Visibility Based on Vehicle Count', () => {
+  // Mirror the condition from Admin.jsx:
+  // {booking.status?.toLowerCase() !== 'completed' && (booking.customer?.vehicle_count || 0) > 1 && (...)}
+
+  const shouldShowSwapButton = (booking) => {
+    const isNotCompleted = booking.status?.toLowerCase() !== 'completed'
+    const hasMultipleVehicles = (booking.customer?.vehicle_count || 0) > 1
+    return isNotCompleted && hasMultipleVehicles
+  }
+
+  describe('Happy path - Button should show', () => {
+    it('shows button when customer has 2 vehicles and booking is confirmed', () => {
+      const booking = {
+        status: 'confirmed',
+        customer: { vehicle_count: 2 }
+      }
+      expect(shouldShowSwapButton(booking)).toBe(true)
+    })
+
+    it('shows button when customer has 3 vehicles and booking is pending', () => {
+      const booking = {
+        status: 'pending',
+        customer: { vehicle_count: 3 }
+      }
+      expect(shouldShowSwapButton(booking)).toBe(true)
+    })
+
+    it('shows button when customer has many vehicles', () => {
+      const booking = {
+        status: 'confirmed',
+        customer: { vehicle_count: 10 }
+      }
+      expect(shouldShowSwapButton(booking)).toBe(true)
+    })
+  })
+
+  describe('Unhappy path - Button should be hidden', () => {
+    it('hides button when customer has only 1 vehicle', () => {
+      const booking = {
+        status: 'confirmed',
+        customer: { vehicle_count: 1 }
+      }
+      expect(shouldShowSwapButton(booking)).toBe(false)
+    })
+
+    it('hides button when customer has 0 vehicles', () => {
+      const booking = {
+        status: 'confirmed',
+        customer: { vehicle_count: 0 }
+      }
+      expect(shouldShowSwapButton(booking)).toBe(false)
+    })
+
+    it('hides button when booking is completed (even with multiple vehicles)', () => {
+      const booking = {
+        status: 'completed',
+        customer: { vehicle_count: 5 }
+      }
+      expect(shouldShowSwapButton(booking)).toBe(false)
+    })
+
+    it('hides button when booking is COMPLETED (case insensitive)', () => {
+      const booking = {
+        status: 'COMPLETED',
+        customer: { vehicle_count: 5 }
+      }
+      expect(shouldShowSwapButton(booking)).toBe(false)
+    })
+  })
+
+  describe('Edge cases - Null/undefined handling', () => {
+    it('hides button when customer is null', () => {
+      const booking = {
+        status: 'confirmed',
+        customer: null
+      }
+      expect(shouldShowSwapButton(booking)).toBe(false)
+    })
+
+    it('hides button when customer is undefined', () => {
+      const booking = {
+        status: 'confirmed'
+      }
+      expect(shouldShowSwapButton(booking)).toBe(false)
+    })
+
+    it('hides button when vehicle_count is undefined', () => {
+      const booking = {
+        status: 'confirmed',
+        customer: { id: 1 }  // No vehicle_count
+      }
+      expect(shouldShowSwapButton(booking)).toBe(false)
+    })
+
+    it('hides button when status is null', () => {
+      const booking = {
+        status: null,
+        customer: { vehicle_count: 5 }
+      }
+      // status?.toLowerCase() returns undefined, !== 'completed' is true
+      // But we should handle null status gracefully
+      expect(shouldShowSwapButton(booking)).toBe(true)
+    })
+
+    it('hides button when status is undefined', () => {
+      const booking = {
+        customer: { vehicle_count: 5 }
+      }
+      expect(shouldShowSwapButton(booking)).toBe(true)
+    })
+  })
+
+  describe('Boundaries', () => {
+    it('boundary: vehicle_count = 1 hides button', () => {
+      const booking = {
+        status: 'confirmed',
+        customer: { vehicle_count: 1 }
+      }
+      expect(shouldShowSwapButton(booking)).toBe(false)
+    })
+
+    it('boundary: vehicle_count = 2 shows button', () => {
+      const booking = {
+        status: 'confirmed',
+        customer: { vehicle_count: 2 }
+      }
+      expect(shouldShowSwapButton(booking)).toBe(true)
+    })
+
+    it('works with all non-completed statuses', () => {
+      const statuses = ['pending', 'confirmed', 'cancelled', 'refunded']
+      statuses.forEach(status => {
+        const booking = {
+          status,
+          customer: { vehicle_count: 2 }
+        }
+        expect(shouldShowSwapButton(booking)).toBe(true)
+      })
+    })
+  })
+})

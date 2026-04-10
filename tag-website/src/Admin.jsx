@@ -3832,8 +3832,8 @@ function Admin() {
                   {resendingEmailId === booking.id ? 'Sending...' : 'Resend Confirmation Email'}
                 </button>
               )}
-              {/* Swap Vehicle button - only show if not completed */}
-              {booking.status?.toLowerCase() !== 'completed' && (
+              {/* Swap Vehicle button - only show if not completed and customer has multiple vehicles */}
+              {booking.status?.toLowerCase() !== 'completed' && (booking.customer?.vehicle_count || 0) > 1 && (
                 <button
                   className="action-btn swap-btn"
                   onClick={(e) => handleSwapVehicleClick(booking, e)}

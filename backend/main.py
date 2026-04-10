@@ -1173,7 +1173,7 @@ async def get_all_bookings(
     today = datetime.now(uk_tz).date()
 
     query = db.query(Booking).options(
-        joinedload(Booking.customer),
+        joinedload(Booking.customer).subqueryload(Customer.vehicles),
         joinedload(Booking.vehicle),
         joinedload(Booking.payment),
         joinedload(Booking.departure),
@@ -1269,6 +1269,8 @@ async def get_all_bookings(
                 # Founder followup tracking
                 "founder_followup_sent": b.customer.founder_followup_sent,
                 "founder_followup_sent_at": b.customer.founder_followup_sent_at.isoformat() if b.customer.founder_followup_sent_at else None,
+                # Vehicle count for swap button visibility
+                "vehicle_count": len(b.customer.vehicles) if b.customer.vehicles else 0,
             } if b.customer else None,
             "vehicle": {
                 "id": b.vehicle.id,
