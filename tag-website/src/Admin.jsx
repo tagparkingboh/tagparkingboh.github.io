@@ -5106,14 +5106,14 @@ function Admin() {
 
     try {
       // Fetch customer details including vehicles
-      const response = await fetch(`${API_URL}/api/admin/customers/${booking.customer_id}`, {
+      const response = await fetch(`${API_URL}/api/admin/customers/${booking.customer?.id}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       })
 
       if (response.ok) {
         const data = await response.json()
         // Filter out the current vehicle
-        const otherVehicles = data.vehicles.filter(v => v.id !== booking.vehicle_id)
+        const otherVehicles = data.vehicles.filter(v => v.id !== booking.vehicle?.id)
         setCustomerVehiclesForSwap(otherVehicles)
       } else {
         setError('Failed to fetch customer vehicles')
@@ -5157,11 +5157,14 @@ function Admin() {
         if (selectedBooking && selectedBooking.id === bookingForSwap.id) {
           setSelectedBooking(prev => ({
             ...prev,
-            vehicle_id: swapConfirmVehicle.id,
-            vehicle_registration: swapConfirmVehicle.registration,
-            vehicle_make: swapConfirmVehicle.make,
-            vehicle_model: swapConfirmVehicle.model,
-            vehicle_colour: swapConfirmVehicle.colour,
+            vehicle: {
+              ...prev.vehicle,
+              id: swapConfirmVehicle.id,
+              registration: swapConfirmVehicle.registration,
+              make: swapConfirmVehicle.make,
+              model: swapConfirmVehicle.model,
+              colour: swapConfirmVehicle.colour,
+            },
           }))
         }
       } else {
@@ -14621,7 +14624,7 @@ function Admin() {
                 <h3>Swap Vehicle</h3>
                 <div className="modal-booking-info">
                   <p><strong>Booking:</strong> {bookingForSwap.reference}</p>
-                  <p><strong>Current Vehicle:</strong> {bookingForSwap.vehicle_registration} ({bookingForSwap.vehicle_make} {bookingForSwap.vehicle_colour})</p>
+                  <p><strong>Current Vehicle:</strong> {bookingForSwap.vehicle?.registration} ({bookingForSwap.vehicle?.make} {bookingForSwap.vehicle?.colour})</p>
                 </div>
 
                 {loadingCustomerVehicles ? (
@@ -14666,8 +14669,8 @@ function Admin() {
                 <div className="swap-confirm-info">
                   <div className="swap-from">
                     <span className="swap-label">From:</span>
-                    <span className="swap-reg">{bookingForSwap.vehicle_registration}</span>
-                    <span className="swap-details">{bookingForSwap.vehicle_make} {bookingForSwap.vehicle_colour}</span>
+                    <span className="swap-reg">{bookingForSwap.vehicle?.registration}</span>
+                    <span className="swap-details">{bookingForSwap.vehicle?.make} {bookingForSwap.vehicle?.colour}</span>
                   </div>
                   <div className="swap-arrow">→</div>
                   <div className="swap-to">
