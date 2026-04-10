@@ -5158,7 +5158,7 @@ function Admin() {
           setSelectedBooking(prev => ({
             ...prev,
             vehicle: {
-              ...prev.vehicle,
+              ...(prev.vehicle || {}),
               id: swapConfirmVehicle.id,
               registration: swapConfirmVehicle.registration,
               make: swapConfirmVehicle.make,
