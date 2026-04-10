@@ -3080,7 +3080,7 @@ function Admin() {
 
     setVehicleLookupLoading(true)
     try {
-      const response = await fetch(`${API_URL}/api/vehicle-lookup`, {
+      const response = await fetch(`${API_URL}/api/vehicles/dvla-lookup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ registration: reg }),

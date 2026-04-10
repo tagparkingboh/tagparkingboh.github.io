@@ -9185,3 +9185,89 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Customer modal button styles */
+.customer-detail-modal .btn-primary {
+  background: #D9FF00;
+  border: none;
+  color: #000;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  font-size: 14px;
+}
+
+.customer-detail-modal .btn-primary:hover:not(:disabled) {
+  background: #c4e600;
+}
+
+.customer-detail-modal .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.customer-detail-modal .btn-secondary {
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  color: #333;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.customer-detail-modal .btn-secondary:hover:not(:disabled) {
+  background: #e8e8e8;
+  border-color: #ccc;
+}
+
+.customer-detail-modal .btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.customer-detail-modal .btn-danger {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.15s ease;
+}
+
+.customer-detail-modal .btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.customer-detail-modal .btn-small {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.customer-detail-modal .modal-actions {
+  justify-content: flex-start;
+}
+
+/* Add vehicle form improvements */
+.customer-detail-modal .add-vehicle-form {
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 12px;
+  border: 1px solid #eee;
+}
+
+.customer-detail-modal .add-vehicle-form .form-row {
+  margin-bottom: 12px;
+}
+
+.customer-detail-modal .add-vehicle-form .form-row:last-child {
+  margin-bottom: 0;
+}
