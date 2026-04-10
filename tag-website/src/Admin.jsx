@@ -397,6 +397,13 @@ function Admin() {
   const [savingCustomer, setSavingCustomer] = useState(false)
   const [deletingCustomerId, setDeletingCustomerId] = useState(null)
   const [customerMessage, setCustomerMessage] = useState('')
+  const [selectedCustomer, setSelectedCustomer] = useState(null)
+  const [showCustomerModal, setShowCustomerModal] = useState(false)
+  const [loadingCustomerDetail, setLoadingCustomerDetail] = useState(false)
+  const [addingVehicle, setAddingVehicle] = useState(false)
+  const [showAddVehicleForm, setShowAddVehicleForm] = useState(false)
+  const [newVehicleForm, setNewVehicleForm] = useState({ registration: '', make: '', model: '', colour: '' })
+  const [vehicleLookupLoading, setVehicleLookupLoading] = useState(false)
 
   // Pricing settings state - anchor pricing with daily increment
   const [pricing, setPricing] = useState({
@@ -3027,6 +3034,197 @@ function Admin() {
       setCustomerMessage('Network error deleting customer')
     } finally {
       setDeletingCustomerId(null)
+    }
+  }
+
+  // Open customer detail modal
+  const openCustomerModal = async (customer) => {
+    setShowCustomerModal(true)
+    setLoadingCustomerDetail(true)
+    setSelectedCustomer(null)
+    setShowAddVehicleForm(false)
+    setNewVehicleForm({ registration: '', make: '', model: '', colour: '' })
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/customers/${customer.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSelectedCustomer(data)
+      } else {
+        setCustomerMessage('Failed to load customer details')
+        setShowCustomerModal(false)
+      }
+    } catch (err) {
+      setCustomerMessage('Network error loading customer details')
+      setShowCustomerModal(false)
+    } finally {
+      setLoadingCustomerDetail(false)
+    }
+  }
+
+  const closeCustomerModal = () => {
+    setShowCustomerModal(false)
+    setSelectedCustomer(null)
+    setShowAddVehicleForm(false)
+    setNewVehicleForm({ registration: '', make: '', model: '', colour: '' })
+  }
+
+  // DVLA vehicle lookup for customer modal
+  const handleVehicleLookup = async () => {
+    const reg = newVehicleForm.registration.toUpperCase().replace(/\s/g, '')
+    if (!reg) return
+
+    setVehicleLookupLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/api/vehicle-lookup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registration: reg }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setNewVehicleForm(prev => ({
+          ...prev,
+          registration: reg,
+          make: data.make || '',
+          colour: data.colour || '',
+        }))
+      } else {
+        setCustomerMessage('Vehicle not found - please enter details manually')
+        setTimeout(() => setCustomerMessage(''), 3000)
+      }
+    } catch (err) {
+      setCustomerMessage('Error looking up vehicle')
+      setTimeout(() => setCustomerMessage(''), 3000)
+    } finally {
+      setVehicleLookupLoading(false)
+    }
+  }
+
+  // Add vehicle to customer
+  const handleAddVehicle = async () => {
+    if (!selectedCustomer || !newVehicleForm.registration || !newVehicleForm.make || !newVehicleForm.colour) {
+      setCustomerMessage('Please fill in registration, make, and colour')
+      setTimeout(() => setCustomerMessage(''), 3000)
+      return
+    }
+
+    setAddingVehicle(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/customers/${selectedCustomer.id}/vehicles`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newVehicleForm),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Add vehicle to selected customer
+        setSelectedCustomer(prev => ({
+          ...prev,
+          vehicles: [...prev.vehicles, data.vehicle],
+        }))
+        setShowAddVehicleForm(false)
+        setNewVehicleForm({ registration: '', make: '', model: '', colour: '' })
+        setCustomerMessage('Vehicle added successfully')
+        setTimeout(() => setCustomerMessage(''), 3000)
+      } else {
+        const error = await response.json()
+        setCustomerMessage(`Error: ${error.detail || 'Failed to add vehicle'}`)
+        setTimeout(() => setCustomerMessage(''), 5000)
+      }
+    } catch (err) {
+      setCustomerMessage('Network error adding vehicle')
+      setTimeout(() => setCustomerMessage(''), 3000)
+    } finally {
+      setAddingVehicle(false)
+    }
+  }
+
+  // Delete customer from modal
+  const deleteCustomerFromModal = async () => {
+    if (!selectedCustomer) return
+    if (!window.confirm('Are you sure you want to delete this customer?')) return
+
+    setDeletingCustomerId(selectedCustomer.id)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/customers/${selectedCustomer.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setCustomers(prev => prev.filter(c => c.id !== selectedCustomer.id))
+        closeCustomerModal()
+        setCustomerMessage('Customer deleted successfully')
+        setTimeout(() => setCustomerMessage(''), 3000)
+      } else {
+        const error = await response.json()
+        setCustomerMessage(`Error: ${error.detail || 'Failed to delete customer'}`)
+      }
+    } catch (err) {
+      setCustomerMessage('Network error deleting customer')
+    } finally {
+      setDeletingCustomerId(null)
+    }
+  }
+
+  // Start editing from modal
+  const startEditFromModal = () => {
+    if (!selectedCustomer) return
+    setEditingCustomerId(selectedCustomer.id)
+    setEditCustomerForm({ email: selectedCustomer.email || '', phone: selectedCustomer.phone || '' })
+  }
+
+  // Save edit from modal
+  const saveEditFromModal = async () => {
+    if (!selectedCustomer) return
+
+    setSavingCustomer(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/customers/${selectedCustomer.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editCustomerForm),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Update customer in list
+        setCustomers(prev => prev.map(c =>
+          c.id === selectedCustomer.id ? data.customer : c
+        ))
+        // Update selected customer
+        setSelectedCustomer(prev => ({
+          ...prev,
+          email: data.customer.email,
+          phone: data.customer.phone,
+        }))
+        setEditingCustomerId(null)
+        setEditCustomerForm({ email: '', phone: '' })
+        setCustomerMessage('Customer updated successfully')
+        setTimeout(() => setCustomerMessage(''), 3000)
+        fetchBookings()
+      } else {
+        const error = await response.json()
+        setCustomerMessage(`Error: ${error.detail || 'Failed to update customer'}`)
+      }
+    } catch (err) {
+      setCustomerMessage('Network error updating customer')
+    } finally {
+      setSavingCustomer(false)
     }
   }
 
@@ -9336,71 +9534,21 @@ function Admin() {
                               <th>Post Code</th>
                               <th>Source</th>
                               <th>Date</th>
-                              <th>Actions</th>
                             </tr>
                           </thead>
                           <tbody>
                             {monthCustomers.map((customer) => (
-                              <tr key={customer.id} className={editingCustomerId === customer.id ? 'editing' : ''}>
-                                {editingCustomerId === customer.id ? (
-                                  <>
-                                    <td>{customer.first_name} {customer.last_name}</td>
-                                    <td>
-                                      <input
-                                        type="text"
-                                        value={editCustomerForm.phone}
-                                        onChange={(e) => setEditCustomerForm({...editCustomerForm, phone: e.target.value})}
-                                        className="flight-edit-input"
-                                        placeholder="Phone"
-                                      />
-                                    </td>
-                                    <td>
-                                      <input
-                                        type="email"
-                                        value={editCustomerForm.email}
-                                        onChange={(e) => setEditCustomerForm({...editCustomerForm, email: e.target.value})}
-                                        className="flight-edit-input"
-                                        placeholder="Email"
-                                      />
-                                    </td>
-                                    <td>{customer.billing_postcode || '-'}</td>
-                                    <td>{formatMarketingSource(customer.marketing_source)}</td>
-                                    <td>
-                                      {customer.created_at
-                                        ? new Date(customer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
-                                        : '-'}
-                                    </td>
-                                    <td className="flight-actions">
-                                      <button className="btn-save" onClick={saveCustomerEdit} disabled={savingCustomer}>
-                                        {savingCustomer ? '...' : '✓'}
-                                      </button>
-                                      <button className="btn-cancel" onClick={cancelEditCustomer}>✕</button>
-                                    </td>
-                                  </>
-                                ) : (
-                                  <>
-                                    <td>{customer.first_name} {customer.last_name}</td>
-                                    <td>{customer.phone || '-'}</td>
-                                    <td>{customer.email || '-'}</td>
-                                    <td>{customer.billing_postcode || '-'}</td>
-                                    <td>{formatMarketingSource(customer.marketing_source)}</td>
-                                    <td>
-                                      {customer.created_at
-                                        ? new Date(customer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
-                                        : '-'}
-                                    </td>
-                                    <td className="flight-actions">
-                                      <button className="btn-edit" onClick={() => startEditCustomer(customer)}>Edit</button>
-                                      <button
-                                        className="btn-delete"
-                                        onClick={() => deleteCustomer(customer.id)}
-                                        disabled={deletingCustomerId === customer.id}
-                                      >
-                                        {deletingCustomerId === customer.id ? '...' : 'Delete'}
-                                      </button>
-                                    </td>
-                                  </>
-                                )}
+                              <tr key={customer.id} className="clickable-row" onClick={() => openCustomerModal(customer)}>
+                                <td className="customer-name-cell">{customer.first_name} {customer.last_name}</td>
+                                <td>{customer.phone || '-'}</td>
+                                <td>{customer.email || '-'}</td>
+                                <td>{customer.billing_postcode || '-'}</td>
+                                <td>{formatMarketingSource(customer.marketing_source)}</td>
+                                <td>
+                                  {customer.created_at
+                                    ? new Date(customer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
+                                    : '-'}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -9411,6 +9559,204 @@ function Admin() {
                 )
               })
             })()}
+
+            {/* Customer Detail Modal */}
+            {showCustomerModal && (
+              <div className="modal-overlay" onClick={closeCustomerModal}>
+                <div className="modal-content customer-detail-modal" onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h3>Customer Details</h3>
+                    <button className="modal-close" onClick={closeCustomerModal}>&times;</button>
+                  </div>
+                  <div className="modal-body">
+                    {loadingCustomerDetail ? (
+                      <div className="admin-loading-inline">
+                        <div className="spinner-small"></div>
+                        <span>Loading customer details...</span>
+                      </div>
+                    ) : selectedCustomer ? (
+                      <>
+                        {/* Customer Info */}
+                        <div className="customer-detail-section">
+                          <h4>Contact Information</h4>
+                          {editingCustomerId === selectedCustomer.id ? (
+                            <div className="customer-edit-form">
+                              <div className="form-row">
+                                <label>Name:</label>
+                                <span>{selectedCustomer.first_name} {selectedCustomer.last_name}</span>
+                              </div>
+                              <div className="form-row">
+                                <label>Phone:</label>
+                                <input
+                                  type="text"
+                                  value={editCustomerForm.phone}
+                                  onChange={(e) => setEditCustomerForm({...editCustomerForm, phone: e.target.value})}
+                                  className="form-input"
+                                />
+                              </div>
+                              <div className="form-row">
+                                <label>Email:</label>
+                                <input
+                                  type="email"
+                                  value={editCustomerForm.email}
+                                  onChange={(e) => setEditCustomerForm({...editCustomerForm, email: e.target.value})}
+                                  className="form-input"
+                                />
+                              </div>
+                              <div className="form-actions">
+                                <button className="btn-primary" onClick={saveEditFromModal} disabled={savingCustomer}>
+                                  {savingCustomer ? 'Saving...' : 'Save'}
+                                </button>
+                                <button className="btn-secondary" onClick={() => { setEditingCustomerId(null); setEditCustomerForm({ email: '', phone: '' }); }}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="customer-info-grid">
+                              <div className="info-row">
+                                <span className="info-label">Name:</span>
+                                <span className="info-value">{selectedCustomer.first_name} {selectedCustomer.last_name}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Phone:</span>
+                                <span className="info-value">{selectedCustomer.phone || '-'}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Email:</span>
+                                <span className="info-value">{selectedCustomer.email || '-'}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Postcode:</span>
+                                <span className="info-value">{selectedCustomer.billing_postcode || '-'}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Source:</span>
+                                <span className="info-value">{formatMarketingSource(selectedCustomer.marketing_source)}</span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Signed Up:</span>
+                                <span className="info-value">
+                                  {selectedCustomer.created_at
+                                    ? new Date(selectedCustomer.created_at).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })
+                                    : '-'}
+                                </span>
+                              </div>
+                              <div className="info-row">
+                                <span className="info-label">Bookings:</span>
+                                <span className="info-value">{selectedCustomer.booking_count || 0}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Vehicles Section */}
+                        <div className="customer-detail-section">
+                          <div className="section-header">
+                            <h4>Vehicles ({selectedCustomer.vehicles?.length || 0})</h4>
+                            {!showAddVehicleForm && (
+                              <button className="btn-secondary btn-small" onClick={() => setShowAddVehicleForm(true)}>
+                                + Add Vehicle
+                              </button>
+                            )}
+                          </div>
+
+                          {showAddVehicleForm && (
+                            <div className="add-vehicle-form">
+                              <div className="form-row">
+                                <label>Registration:</label>
+                                <div className="reg-lookup-row">
+                                  <input
+                                    type="text"
+                                    value={newVehicleForm.registration}
+                                    onChange={(e) => setNewVehicleForm({...newVehicleForm, registration: e.target.value.toUpperCase()})}
+                                    className="form-input"
+                                    placeholder="AB12 CDE"
+                                  />
+                                  <button
+                                    className="btn-secondary btn-small"
+                                    onClick={handleVehicleLookup}
+                                    disabled={vehicleLookupLoading || !newVehicleForm.registration}
+                                  >
+                                    {vehicleLookupLoading ? '...' : 'Lookup'}
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="form-row">
+                                <label>Make:</label>
+                                <input
+                                  type="text"
+                                  value={newVehicleForm.make}
+                                  onChange={(e) => setNewVehicleForm({...newVehicleForm, make: e.target.value})}
+                                  className="form-input"
+                                  placeholder="e.g. Ford"
+                                />
+                              </div>
+                              <div className="form-row">
+                                <label>Colour:</label>
+                                <input
+                                  type="text"
+                                  value={newVehicleForm.colour}
+                                  onChange={(e) => setNewVehicleForm({...newVehicleForm, colour: e.target.value})}
+                                  className="form-input"
+                                  placeholder="e.g. Blue"
+                                />
+                              </div>
+                              <div className="form-actions">
+                                <button
+                                  className="btn-primary"
+                                  onClick={handleAddVehicle}
+                                  disabled={addingVehicle || !newVehicleForm.registration || !newVehicleForm.make || !newVehicleForm.colour}
+                                >
+                                  {addingVehicle ? 'Adding...' : 'Add Vehicle'}
+                                </button>
+                                <button className="btn-secondary" onClick={() => { setShowAddVehicleForm(false); setNewVehicleForm({ registration: '', make: '', model: '', colour: '' }); }}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {selectedCustomer.vehicles?.length > 0 ? (
+                            <div className="vehicles-list">
+                              {selectedCustomer.vehicles.map(vehicle => (
+                                <div key={vehicle.id} className="vehicle-card">
+                                  <div className="vehicle-reg">{vehicle.registration}</div>
+                                  <div className="vehicle-details">
+                                    {vehicle.colour} {vehicle.make} {vehicle.model || ''}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="no-data-text">No vehicles registered</p>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        {editingCustomerId !== selectedCustomer.id && (
+                          <div className="modal-actions">
+                            <button className="btn-secondary" onClick={startEditFromModal}>
+                              Edit Customer
+                            </button>
+                            <button
+                              className="btn-danger"
+                              onClick={deleteCustomerFromModal}
+                              disabled={deletingCustomerId === selectedCustomer.id || selectedCustomer.booking_count > 0}
+                              title={selectedCustomer.booking_count > 0 ? 'Cannot delete customer with bookings' : ''}
+                            >
+                              {deletingCustomerId === selectedCustomer.id ? 'Deleting...' : 'Delete Customer'}
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p>Customer not found</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

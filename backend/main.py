@@ -3110,6 +3110,122 @@ async def delete_customer(
     }
 
 
+@app.get("/api/admin/customers/{customer_id}")
+async def get_customer_detail(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Get customer details including associated vehicles and booking count.
+    """
+    from db_models import Customer, Vehicle, Booking
+
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Get vehicles
+    vehicles = db.query(Vehicle).filter(Vehicle.customer_id == customer_id).all()
+    vehicles_data = [
+        {
+            "id": v.id,
+            "registration": v.registration,
+            "make": v.make,
+            "model": v.model,
+            "colour": v.colour,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+        }
+        for v in vehicles
+    ]
+
+    # Get booking count
+    booking_count = db.query(Booking).filter(Booking.customer_id == customer_id).count()
+
+    # Get marketing source
+    marketing_source = None
+    if customer.marketing_source:
+        marketing_source = customer.marketing_source.source
+
+    return {
+        "id": customer.id,
+        "first_name": customer.first_name,
+        "last_name": customer.last_name,
+        "email": customer.email,
+        "phone": customer.phone,
+        "billing_address1": customer.billing_address1,
+        "billing_address2": customer.billing_address2,
+        "billing_city": customer.billing_city,
+        "billing_county": customer.billing_county,
+        "billing_postcode": customer.billing_postcode,
+        "billing_country": customer.billing_country,
+        "created_at": customer.created_at.isoformat() if customer.created_at else None,
+        "marketing_source": marketing_source,
+        "vehicles": vehicles_data,
+        "booking_count": booking_count,
+    }
+
+
+class AddVehicleRequest(BaseModel):
+    registration: str
+    make: str
+    model: Optional[str] = None
+    colour: str
+
+
+@app.post("/api/admin/customers/{customer_id}/vehicles")
+async def add_customer_vehicle(
+    customer_id: int,
+    request: AddVehicleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Add a vehicle to a customer account.
+    """
+    from db_models import Customer, Vehicle
+
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Check if vehicle with same registration already exists for this customer
+    existing = db.query(Vehicle).filter(
+        Vehicle.customer_id == customer_id,
+        Vehicle.registration == request.registration.upper().replace(" ", "")
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Vehicle with registration {request.registration} already exists for this customer"
+        )
+
+    # Create vehicle
+    vehicle = Vehicle(
+        customer_id=customer_id,
+        registration=request.registration.upper().replace(" ", ""),
+        make=request.make,
+        model=request.model,
+        colour=request.colour,
+    )
+    db.add(vehicle)
+    db.commit()
+    db.refresh(vehicle)
+
+    return {
+        "success": True,
+        "vehicle": {
+            "id": vehicle.id,
+            "registration": vehicle.registration,
+            "make": vehicle.make,
+            "model": vehicle.model,
+            "colour": vehicle.colour,
+            "created_at": vehicle.created_at.isoformat() if vehicle.created_at else None,
+        }
+    }
+
+
 @app.get("/api/admin/reports/booking-locations")
 async def get_booking_locations(
     map_type: str = Query("bookings", description="Map type: 'bookings' for confirmed bookings, 'origins' for all leads"),
