@@ -9655,7 +9655,7 @@ function Admin() {
                           <div className="section-header">
                             <h4>Vehicles ({selectedCustomer.vehicles?.length || 0})</h4>
                             {!showAddVehicleForm && (
-                              <button className="btn-secondary btn-small" onClick={() => setShowAddVehicleForm(true)}>
+                              <button className="btn-primary btn-small" onClick={() => setShowAddVehicleForm(true)}>
                                 + Add Vehicle
                               </button>
                             )}
