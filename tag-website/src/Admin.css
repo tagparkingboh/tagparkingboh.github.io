@@ -826,6 +826,16 @@
   background: #e9d8fd;
 }
 
+.swap-btn {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+}
+
+.swap-btn:hover:not(:disabled) {
+  background: #fef3c7;
+}
+
 /* Status Section Containers */
 .bookings-by-status {
   display: flex;
@@ -9270,4 +9280,134 @@
 
 .customer-detail-modal .add-vehicle-form .form-row:last-child {
   margin-bottom: 0;
+}
+
+/* Swap Vehicle Modal */
+.swap-vehicle-modal {
+  max-width: 480px;
+}
+
+.swap-vehicle-modal h3 {
+  margin: 0 0 16px 0;
+  font-size: 20px;
+  color: #1a1a2e;
+}
+
+.swap-instruction {
+  color: #666;
+  margin: 16px 0 12px 0;
+  font-size: 14px;
+}
+
+.swap-vehicles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.swap-vehicle-card {
+  background: #f8f9fa;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.swap-vehicle-card:hover {
+  border-color: #D9FF00;
+  background: #fafff0;
+}
+
+.swap-vehicle-reg {
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 16px;
+  color: #1a1a2e;
+  background: #fff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+}
+
+.swap-vehicle-details {
+  color: #666;
+  font-size: 14px;
+}
+
+.no-vehicles-message {
+  text-align: center;
+  padding: 24px;
+  color: #666;
+}
+
+.no-vehicles-message p {
+  margin: 0;
+}
+
+.no-vehicles-message .hint {
+  font-size: 13px;
+  color: #999;
+  margin-top: 8px;
+}
+
+/* Swap confirmation view */
+.swap-confirm-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin: 16px 0;
+}
+
+.swap-from,
+.swap-to {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.swap-label {
+  font-size: 12px;
+  color: #999;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.swap-reg {
+  font-family: monospace;
+  font-weight: 700;
+  font-size: 18px;
+  color: #1a1a2e;
+}
+
+.swap-details {
+  font-size: 13px;
+  color: #666;
+}
+
+.swap-arrow {
+  font-size: 24px;
+  color: #D9FF00;
+  font-weight: bold;
+}
+
+.swap-warning {
+  color: #666;
+  font-size: 14px;
+  margin: 0 0 16px 0;
+}
+
+.loading-spinner {
+  text-align: center;
+  padding: 24px;
+  color: #666;
 }

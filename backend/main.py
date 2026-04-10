@@ -2843,6 +2843,84 @@ async def send_founder_email_endpoint(
         )
 
 
+class SwapVehicleRequest(BaseModel):
+    """Request body for swapping a booking's vehicle."""
+    vehicle_id: int
+
+
+@app.put("/api/admin/bookings/{booking_id}/swap-vehicle")
+async def swap_booking_vehicle(
+    booking_id: int,
+    request: SwapVehicleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """
+    Admin endpoint: Swap the vehicle for a booking.
+
+    Allows admin to change which vehicle is associated with a booking,
+    typically when a customer changes their mind about which car to bring.
+    The new vehicle must belong to the same customer.
+    """
+    from db_models import Vehicle
+
+    # Get the booking
+    booking = db.query(DbBooking).filter(DbBooking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    # Get the new vehicle
+    new_vehicle = db.query(Vehicle).filter(Vehicle.id == request.vehicle_id).first()
+    if not new_vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    # Ensure vehicle belongs to the same customer
+    if new_vehicle.customer_id != booking.customer_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Vehicle does not belong to this customer"
+        )
+
+    # Don't allow swapping to the same vehicle
+    if new_vehicle.id == booking.vehicle_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Booking already has this vehicle assigned"
+        )
+
+    # Store old vehicle info for response
+    old_vehicle = db.query(Vehicle).filter(Vehicle.id == booking.vehicle_id).first()
+    old_registration = old_vehicle.registration if old_vehicle else "Unknown"
+
+    # Update the booking
+    booking.vehicle_id = new_vehicle.id
+    booking.vehicle_registration = new_vehicle.registration
+    booking.vehicle_make = new_vehicle.make
+    booking.vehicle_model = new_vehicle.model
+    booking.vehicle_colour = new_vehicle.colour
+
+    db.commit()
+    db.refresh(booking)
+
+    return {
+        "success": True,
+        "message": f"Vehicle swapped from {old_registration} to {new_vehicle.registration}",
+        "booking_id": booking.id,
+        "reference": booking.reference,
+        "old_vehicle": {
+            "id": old_vehicle.id if old_vehicle else None,
+            "registration": old_registration,
+        },
+        "new_vehicle": {
+            "id": new_vehicle.id,
+            "registration": new_vehicle.registration,
+            "make": new_vehicle.make,
+            "model": new_vehicle.model,
+            "colour": new_vehicle.colour,
+        },
+    }
+
+
 # =============================================================================
 # Marketing Subscribers Admin Endpoints
 # =============================================================================

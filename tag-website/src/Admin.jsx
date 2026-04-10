@@ -405,6 +405,14 @@ function Admin() {
   const [newVehicleForm, setNewVehicleForm] = useState({ registration: '', make: '', model: '', colour: '' })
   const [vehicleLookupLoading, setVehicleLookupLoading] = useState(false)
 
+  // Swap vehicle state
+  const [showSwapVehicleModal, setShowSwapVehicleModal] = useState(false)
+  const [swappingVehicle, setSwappingVehicle] = useState(false)
+  const [customerVehiclesForSwap, setCustomerVehiclesForSwap] = useState([])
+  const [loadingCustomerVehicles, setLoadingCustomerVehicles] = useState(false)
+  const [swapConfirmVehicle, setSwapConfirmVehicle] = useState(null)
+  const [bookingForSwap, setBookingForSwap] = useState(null)
+
   // Pricing settings state - anchor pricing with daily increment
   const [pricing, setPricing] = useState({
     days_1_4_price: 65,       // 1-4 days anchor
@@ -3824,6 +3832,15 @@ function Admin() {
                   {resendingEmailId === booking.id ? 'Sending...' : 'Resend Confirmation Email'}
                 </button>
               )}
+              {/* Swap Vehicle button - only show if not completed */}
+              {booking.status?.toLowerCase() !== 'completed' && (
+                <button
+                  className="action-btn swap-btn"
+                  onClick={(e) => handleSwapVehicleClick(booking, e)}
+                >
+                  Swap Vehicle
+                </button>
+              )}
               {/* Show cancellation email button only when status is cancelled */}
               {booking.status?.toLowerCase() === 'cancelled' && (
                 <button
@@ -5078,6 +5095,91 @@ function Admin() {
     } finally {
       setResendingEmailId(null)
     }
+  }
+
+  // Swap Vehicle handlers
+  const handleSwapVehicleClick = async (booking, e) => {
+    e.stopPropagation()
+    setBookingForSwap(booking)
+    setLoadingCustomerVehicles(true)
+    setShowSwapVehicleModal(true)
+
+    try {
+      // Fetch customer details including vehicles
+      const response = await fetch(`${API_URL}/api/admin/customers/${booking.customer_id}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Filter out the current vehicle
+        const otherVehicles = data.vehicles.filter(v => v.id !== booking.vehicle_id)
+        setCustomerVehiclesForSwap(otherVehicles)
+      } else {
+        setError('Failed to fetch customer vehicles')
+        setShowSwapVehicleModal(false)
+      }
+    } catch (err) {
+      setError('Network error fetching vehicles')
+      setShowSwapVehicleModal(false)
+    } finally {
+      setLoadingCustomerVehicles(false)
+    }
+  }
+
+  const handleSelectVehicleForSwap = (vehicle) => {
+    setSwapConfirmVehicle(vehicle)
+  }
+
+  const handleConfirmSwapVehicle = async () => {
+    if (!bookingForSwap || !swapConfirmVehicle) return
+
+    setSwappingVehicle(true)
+    setError('')
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin/bookings/${bookingForSwap.id}/swap-vehicle`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ vehicle_id: swapConfirmVehicle.id }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Close modals
+        closeSwapVehicleModal()
+        // Refresh bookings to show updated vehicle
+        fetchBookings()
+        // If we have a selected booking open, update it
+        if (selectedBooking && selectedBooking.id === bookingForSwap.id) {
+          setSelectedBooking(prev => ({
+            ...prev,
+            vehicle_id: swapConfirmVehicle.id,
+            vehicle_registration: swapConfirmVehicle.registration,
+            vehicle_make: swapConfirmVehicle.make,
+            vehicle_model: swapConfirmVehicle.model,
+            vehicle_colour: swapConfirmVehicle.colour,
+          }))
+        }
+      } else {
+        const data = await response.json()
+        setError(data.detail || 'Failed to swap vehicle')
+      }
+    } catch (err) {
+      setError('Network error while swapping vehicle')
+    } finally {
+      setSwappingVehicle(false)
+    }
+  }
+
+  const closeSwapVehicleModal = () => {
+    setShowSwapVehicleModal(false)
+    setSwapConfirmVehicle(null)
+    setBookingForSwap(null)
+    setCustomerVehiclesForSwap([])
   }
 
   const handleSendCancellationEmailClick = (booking, e) => {
@@ -14506,6 +14608,92 @@ function Admin() {
                 {resendingEmailId ? 'Sending...' : 'Yes, Send Email'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Swap Vehicle Modal */}
+      {showSwapVehicleModal && bookingForSwap && (
+        <div className="modal-overlay" onClick={closeSwapVehicleModal}>
+          <div className="modal-content swap-vehicle-modal" onClick={(e) => e.stopPropagation()}>
+            {!swapConfirmVehicle ? (
+              <>
+                <h3>Swap Vehicle</h3>
+                <div className="modal-booking-info">
+                  <p><strong>Booking:</strong> {bookingForSwap.reference}</p>
+                  <p><strong>Current Vehicle:</strong> {bookingForSwap.vehicle_registration} ({bookingForSwap.vehicle_make} {bookingForSwap.vehicle_colour})</p>
+                </div>
+
+                {loadingCustomerVehicles ? (
+                  <div className="loading-spinner">Loading vehicles...</div>
+                ) : customerVehiclesForSwap.length === 0 ? (
+                  <div className="no-vehicles-message">
+                    <p>No other vehicles found for this customer.</p>
+                    <p className="hint">Add vehicles in the customer's profile first.</p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="swap-instruction">Select a vehicle to swap to:</p>
+                    <div className="swap-vehicles-list">
+                      {customerVehiclesForSwap.map(vehicle => (
+                        <div
+                          key={vehicle.id}
+                          className="swap-vehicle-card"
+                          onClick={() => handleSelectVehicleForSwap(vehicle)}
+                        >
+                          <div className="swap-vehicle-reg">{vehicle.registration}</div>
+                          <div className="swap-vehicle-details">
+                            {vehicle.make} {vehicle.model && `${vehicle.model} `}- {vehicle.colour}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <div className="modal-actions">
+                  <button
+                    className="modal-btn modal-btn-secondary"
+                    onClick={closeSwapVehicleModal}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3>Confirm Vehicle Swap</h3>
+                <div className="swap-confirm-info">
+                  <div className="swap-from">
+                    <span className="swap-label">From:</span>
+                    <span className="swap-reg">{bookingForSwap.vehicle_registration}</span>
+                    <span className="swap-details">{bookingForSwap.vehicle_make} {bookingForSwap.vehicle_colour}</span>
+                  </div>
+                  <div className="swap-arrow">→</div>
+                  <div className="swap-to">
+                    <span className="swap-label">To:</span>
+                    <span className="swap-reg">{swapConfirmVehicle.registration}</span>
+                    <span className="swap-details">{swapConfirmVehicle.make} {swapConfirmVehicle.model && `${swapConfirmVehicle.model} `}{swapConfirmVehicle.colour}</span>
+                  </div>
+                </div>
+                <p className="swap-warning">This will update the vehicle for booking {bookingForSwap.reference}.</p>
+                <div className="modal-actions">
+                  <button
+                    className="modal-btn modal-btn-secondary"
+                    onClick={() => setSwapConfirmVehicle(null)}
+                  >
+                    Back
+                  </button>
+                  <button
+                    className="modal-btn modal-btn-primary"
+                    onClick={handleConfirmSwapVehicle}
+                    disabled={swappingVehicle}
+                  >
+                    {swappingVehicle ? 'Swapping...' : 'Confirm Swap'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
