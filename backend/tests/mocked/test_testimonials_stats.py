@@ -206,7 +206,7 @@ class TestBuzzWordsExtraction:
         "perfect", "clean", "safe", "secure", "affordable",
     ]
 
-    def extract_buzz_words(self, testimonials, min_count=2, max_words=8):
+    def extract_buzz_words(self, testimonials, min_count=2):
         """Mirror the extraction logic from the endpoint."""
         word_counts = Counter()
         for t in testimonials:
@@ -216,7 +216,7 @@ class TestBuzzWordsExtraction:
                     word_counts[word] += 1
         return [
             {"word": word.title(), "count": count}
-            for word, count in word_counts.most_common(max_words)
+            for word, count in word_counts.most_common()
             if count >= min_count
         ]
 
@@ -257,16 +257,17 @@ class TestBuzzWordsExtraction:
         # Each word appears only once, so none should be returned
         assert len(buzz_words) == 0
 
-    def test_buzz_words_max_words_limit(self):
-        """Boundary: Returns at most max_words."""
+    def test_buzz_words_returns_all_qualifying(self):
+        """Boundary: Returns all words with count >= min_count."""
         testimonials = [
             MockTestimonial(review_text="Friendly, helpful, professional, efficient, reliable"),
             MockTestimonial(review_text="Friendly, helpful, professional, efficient, reliable"),
             MockTestimonial(review_text="Punctual, quick, easy, seamless, smooth"),
             MockTestimonial(review_text="Punctual, quick, easy, seamless, smooth"),
         ]
-        buzz_words = self.extract_buzz_words(testimonials, max_words=5)
-        assert len(buzz_words) <= 5
+        buzz_words = self.extract_buzz_words(testimonials)
+        # All 10 words appear twice, so all should be returned
+        assert len(buzz_words) == 10
 
     def test_buzz_words_sorted_by_count(self):
         """Happy path: Words sorted by frequency (most common first)."""
