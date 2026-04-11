@@ -5,7 +5,7 @@ function TestimonialsCarousel() {
   const [testimonials, setTestimonials] = useState([])
   const [stats, setStats] = useState(null)
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [buzzWordIndex, setBuzzWordIndex] = useState(0)
+  const [cyclingIndex, setCyclingIndex] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -72,14 +72,30 @@ function TestimonialsCarousel() {
     return () => clearInterval(interval)
   }, [testimonials.length, isPaused, goToNext])
 
-  // Cycle through buzz words every 2 seconds
+  // Build cycling items: buzz words + recommend stat
+  const cyclingItems = stats ? [
+    // Add recommend stat first
+    ...(stats.recommend_count > 0 ? [{
+      type: 'recommend',
+      count: stats.recommend_count,
+      text: "say they'd recommend"
+    }] : []),
+    // Add buzz words
+    ...(stats.buzz_words || []).map(bw => ({
+      type: 'buzz',
+      count: bw.count,
+      text: `say it's ${bw.word}`
+    }))
+  ] : []
+
+  // Cycle through items every 2 seconds
   useEffect(() => {
-    if (!stats?.buzz_words || stats.buzz_words.length <= 1) return
+    if (cyclingItems.length <= 1) return
     const interval = setInterval(() => {
-      setBuzzWordIndex((prev) => (prev + 1) % stats.buzz_words.length)
+      setCyclingIndex((prev) => (prev + 1) % cyclingItems.length)
     }, 2000)
     return () => clearInterval(interval)
-  }, [stats?.buzz_words])
+  }, [cyclingItems.length])
 
   // Navigation handlers
   const goToPrevious = () => {
@@ -162,14 +178,13 @@ function TestimonialsCarousel() {
               <span className="stat-value">{stats.total_count}</span>
               <span className="stat-label">Reviews</span>
             </div>
-            {stats.buzz_words && stats.buzz_words.length > 0 && (
+            {cyclingItems.length > 0 && (
               <>
                 <div className="stat-divider" />
                 <div className="stat-box stat-box-buzz">
                   <span className="stat-value stat-buzz-value">
-                    {stats.buzz_words[buzzWordIndex].count}× {stats.buzz_words[buzzWordIndex].word}
+                    {cyclingItems[cyclingIndex]?.count}× {cyclingItems[cyclingIndex]?.text}
                   </span>
-                  <span className="stat-label">Say it's</span>
                 </div>
               </>
             )}

@@ -13831,6 +13831,7 @@ async def get_active_testimonials(
         recommend_percent = round((recommend_count / len(rated_testimonials)) * 100)
     else:
         average_rating = 0
+        recommend_count = 0
         recommend_percent = 0
 
     # Extract buzz words from review text
@@ -13891,6 +13892,7 @@ async def get_active_testimonials(
         "stats": {
             "average_rating": average_rating,
             "total_count": total_count,
+            "recommend_count": recommend_count,
             "recommend_percent": recommend_percent,
             "buzz_words": buzz_words,
         },

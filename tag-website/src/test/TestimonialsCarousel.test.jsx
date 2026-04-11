@@ -760,115 +760,147 @@ describe('TestimonialsCarousel - Stats Bar', () => {
 })
 
 // =============================================================================
-// Buzz Words Display Tests
+// Cycling Stats Display Tests (Recommend + Buzz Words)
 // =============================================================================
 
-describe('TestimonialsCarousel - Buzz Words Cycling', () => {
-  const mockBuzzWords = [
-    { word: 'Friendly', count: 12 },
-    { word: 'Easy', count: 8 },
-    { word: 'Professional', count: 6 },
-    { word: 'Reliable', count: 5 },
+describe('TestimonialsCarousel - Cycling Stats', () => {
+  const mockStats = {
+    recommend_count: 30,
+    buzz_words: [
+      { word: 'Friendly', count: 12 },
+      { word: 'Easy', count: 8 },
+      { word: 'Professional', count: 6 },
+    ],
+  }
+
+  // Build cycling items like the component does
+  const buildCyclingItems = (stats) => [
+    ...(stats.recommend_count > 0 ? [{
+      type: 'recommend',
+      count: stats.recommend_count,
+      text: "say they'd recommend"
+    }] : []),
+    ...(stats.buzz_words || []).map(bw => ({
+      type: 'buzz',
+      count: bw.count,
+      text: `say it's ${bw.word}`
+    }))
   ]
 
   describe('Happy path - Cycling behavior', () => {
-    it('should start at index 0', () => {
-      const buzzWordIndex = 0
-      expect(mockBuzzWords[buzzWordIndex].word).toBe('Friendly')
+    it('should start with recommend stat', () => {
+      const cyclingItems = buildCyclingItems(mockStats)
+      expect(cyclingItems[0].type).toBe('recommend')
+      expect(cyclingItems[0].text).toBe("say they'd recommend")
     })
 
-    it('should cycle to next buzz word', () => {
-      let buzzWordIndex = 0
-      buzzWordIndex = (buzzWordIndex + 1) % mockBuzzWords.length
-      expect(buzzWordIndex).toBe(1)
-      expect(mockBuzzWords[buzzWordIndex].word).toBe('Easy')
+    it('should include buzz words after recommend', () => {
+      const cyclingItems = buildCyclingItems(mockStats)
+      expect(cyclingItems[1].type).toBe('buzz')
+      expect(cyclingItems[1].text).toBe("say it's Friendly")
     })
 
-    it('should wrap around to first buzz word after last', () => {
-      let buzzWordIndex = mockBuzzWords.length - 1 // Last index
-      buzzWordIndex = (buzzWordIndex + 1) % mockBuzzWords.length
-      expect(buzzWordIndex).toBe(0)
-      expect(mockBuzzWords[buzzWordIndex].word).toBe('Friendly')
+    it('should format recommend as count× text', () => {
+      const cyclingItems = buildCyclingItems(mockStats)
+      const item = cyclingItems[0]
+      const formatted = `${item.count}× ${item.text}`
+      expect(formatted).toBe("30× say they'd recommend")
     })
 
-    it('should format as count× word', () => {
-      const bw = mockBuzzWords[0]
-      const formatted = `${bw.count}× ${bw.word}`
-      expect(formatted).toBe('12× Friendly')
+    it('should format buzz word as count× say its word', () => {
+      const cyclingItems = buildCyclingItems(mockStats)
+      const item = cyclingItems[1]
+      const formatted = `${item.count}× ${item.text}`
+      expect(formatted).toBe("12× say it's Friendly")
+    })
+
+    it('should cycle through all items', () => {
+      const cyclingItems = buildCyclingItems(mockStats)
+      expect(cyclingItems.length).toBe(4) // 1 recommend + 3 buzz words
+    })
+
+    it('should wrap around after last item', () => {
+      const cyclingItems = buildCyclingItems(mockStats)
+      let cyclingIndex = cyclingItems.length - 1
+      cyclingIndex = (cyclingIndex + 1) % cyclingItems.length
+      expect(cyclingIndex).toBe(0)
     })
   })
 
-  describe('Edge cases - Buzz words variations', () => {
-    it('should handle buzz word with count of 2 (minimum)', () => {
-      const buzzWord = { word: 'Quick', count: 2 }
-      const formatted = `${buzzWord.count}× ${buzzWord.word}`
-      expect(formatted).toBe('2× Quick')
+  describe('Edge cases - Variations', () => {
+    it('should handle zero recommend count', () => {
+      const stats = { recommend_count: 0, buzz_words: mockStats.buzz_words }
+      const cyclingItems = buildCyclingItems(stats)
+      expect(cyclingItems[0].type).toBe('buzz') // Skip recommend
+      expect(cyclingItems.length).toBe(3)
     })
 
-    it('should handle buzz word with high count', () => {
-      const buzzWord = { word: 'Great', count: 50 }
-      const formatted = `${buzzWord.count}× ${buzzWord.word}`
-      expect(formatted).toBe('50× Great')
+    it('should handle empty buzz words', () => {
+      const stats = { recommend_count: 30, buzz_words: [] }
+      const cyclingItems = buildCyclingItems(stats)
+      expect(cyclingItems.length).toBe(1)
+      expect(cyclingItems[0].type).toBe('recommend')
+    })
+
+    it('should handle single buzz word', () => {
+      const stats = { recommend_count: 5, buzz_words: [{ word: 'Great', count: 3 }] }
+      const cyclingItems = buildCyclingItems(stats)
+      expect(cyclingItems.length).toBe(2)
     })
 
     it('should handle hyphenated buzz words', () => {
-      const buzzWord = { word: 'Stress-Free', count: 5 }
-      const formatted = `${buzzWord.count}× ${buzzWord.word}`
-      expect(formatted).toBe('5× Stress-Free')
-    })
-
-    it('should handle single buzz word (no cycling)', () => {
-      const singleBuzzWord = [{ word: 'Friendly', count: 3 }]
-      let buzzWordIndex = 0
-      // With single item, cycling stays at 0
-      buzzWordIndex = (buzzWordIndex + 1) % singleBuzzWord.length
-      expect(buzzWordIndex).toBe(0)
+      const stats = { recommend_count: 0, buzz_words: [{ word: 'Stress-Free', count: 5 }] }
+      const cyclingItems = buildCyclingItems(stats)
+      expect(cyclingItems[0].text).toBe("say it's Stress-Free")
     })
   })
 
-  describe('Unhappy path - Missing buzz words', () => {
-    it('should not render buzz column when array is empty', () => {
-      const buzzWords = []
-      const shouldRender = buzzWords && buzzWords.length > 0
-      expect(shouldRender).toBe(false)
+  describe('Unhappy path - Missing data', () => {
+    it('should handle no cycling items when both empty', () => {
+      const stats = { recommend_count: 0, buzz_words: [] }
+      const cyclingItems = buildCyclingItems(stats)
+      expect(cyclingItems.length).toBe(0)
     })
 
-    it('should not render buzz column when undefined', () => {
-      const buzzWords = undefined
-      const shouldRender = buzzWords && buzzWords.length > 0
-      // Returns undefined (falsy), not false - still works correctly in JSX
-      expect(shouldRender).toBeFalsy()
+    it('should handle undefined buzz words', () => {
+      const stats = { recommend_count: 5, buzz_words: undefined }
+      const cyclingItems = buildCyclingItems(stats)
+      expect(cyclingItems.length).toBe(1)
+      expect(cyclingItems[0].type).toBe('recommend')
     })
   })
 
   describe('Boundaries - Cycling limits', () => {
-    it('should handle cycling through all buzz words', () => {
-      let buzzWordIndex = 0
+    it('should handle cycling through all items', () => {
+      const cyclingItems = buildCyclingItems(mockStats)
+      let cyclingIndex = 0
       const visited = []
-      for (let i = 0; i < mockBuzzWords.length; i++) {
-        visited.push(mockBuzzWords[buzzWordIndex].word)
-        buzzWordIndex = (buzzWordIndex + 1) % mockBuzzWords.length
+      for (let i = 0; i < cyclingItems.length; i++) {
+        visited.push(cyclingItems[cyclingIndex].type)
+        cyclingIndex = (cyclingIndex + 1) % cyclingItems.length
       }
-      expect(visited).toEqual(['Friendly', 'Easy', 'Professional', 'Reliable'])
+      expect(visited).toEqual(['recommend', 'buzz', 'buzz', 'buzz'])
     })
 
     it('should return to start after full cycle', () => {
-      let buzzWordIndex = 0
-      for (let i = 0; i < mockBuzzWords.length; i++) {
-        buzzWordIndex = (buzzWordIndex + 1) % mockBuzzWords.length
+      const cyclingItems = buildCyclingItems(mockStats)
+      let cyclingIndex = 0
+      for (let i = 0; i < cyclingItems.length; i++) {
+        cyclingIndex = (cyclingIndex + 1) % cyclingItems.length
       }
-      expect(buzzWordIndex).toBe(0)
+      expect(cyclingIndex).toBe(0)
     })
 
-    it('should handle max 8 buzz words', () => {
-      const maxBuzzWords = Array.from({ length: 8 }, (_, i) => ({
-        word: `Word${i}`,
-        count: 10 - i,
-      }))
-      expect(maxBuzzWords.length).toBe(8)
-      let buzzWordIndex = 7
-      buzzWordIndex = (buzzWordIndex + 1) % maxBuzzWords.length
-      expect(buzzWordIndex).toBe(0)
+    it('should handle max 8 buzz words plus recommend', () => {
+      const stats = {
+        recommend_count: 50,
+        buzz_words: Array.from({ length: 8 }, (_, i) => ({
+          word: `Word${i}`,
+          count: 10 - i,
+        }))
+      }
+      const cyclingItems = buildCyclingItems(stats)
+      expect(cyclingItems.length).toBe(9) // 1 recommend + 8 buzz words
     })
   })
 })
