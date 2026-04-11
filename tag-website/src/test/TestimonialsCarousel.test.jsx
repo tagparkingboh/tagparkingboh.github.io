@@ -764,63 +764,53 @@ describe('TestimonialsCarousel - Stats Bar', () => {
 // =============================================================================
 
 describe('TestimonialsCarousel - Cycling Stats', () => {
-  const mockStats = {
-    recommend_count: 30,
-    buzz_words: [
-      { word: 'Friendly', count: 12 },
-      { word: 'Easy', count: 8 },
-      { word: 'Professional', count: 6 },
-    ],
-  }
-
-  // Build cycling items like the component does
-  const buildCyclingItems = (stats) => [
-    ...(stats.recommend_count > 0 ? [{
-      type: 'recommend',
-      count: stats.recommend_count,
-      text: "say they'd recommend"
-    }] : []),
-    ...(stats.buzz_words || []).map(bw => ({
-      type: 'buzz',
-      count: bw.count,
-      text: `say it's ${bw.word}`
-    }))
+  const mockBuzzWords = [
+    { word: 'Friendly', count: 12 },
+    { word: 'Easy', count: 8 },
+    { word: 'Recommend', count: 6 },
   ]
 
+  // Build cycling items like the component does
+  const buildCyclingItems = (buzzWords) =>
+    buzzWords?.map(bw => ({
+      count: bw.count,
+      text: bw.word.toLowerCase().startsWith('recommend')
+        ? "say they'd recommend"
+        : `say it's ${bw.word}`
+    })) || []
+
   describe('Happy path - Cycling behavior', () => {
-    it('should start with recommend stat', () => {
-      const cyclingItems = buildCyclingItems(mockStats)
-      expect(cyclingItems[0].type).toBe('recommend')
-      expect(cyclingItems[0].text).toBe("say they'd recommend")
+    it('should format regular buzz word correctly', () => {
+      const cyclingItems = buildCyclingItems(mockBuzzWords)
+      expect(cyclingItems[0].text).toBe("say it's Friendly")
     })
 
-    it('should include buzz words after recommend', () => {
-      const cyclingItems = buildCyclingItems(mockStats)
-      expect(cyclingItems[1].type).toBe('buzz')
-      expect(cyclingItems[1].text).toBe("say it's Friendly")
+    it('should format recommend buzz word specially', () => {
+      const cyclingItems = buildCyclingItems(mockBuzzWords)
+      expect(cyclingItems[2].text).toBe("say they'd recommend")
     })
 
-    it('should format recommend as count× text', () => {
-      const cyclingItems = buildCyclingItems(mockStats)
+    it('should format as count× text', () => {
+      const cyclingItems = buildCyclingItems(mockBuzzWords)
       const item = cyclingItems[0]
-      const formatted = `${item.count}× ${item.text}`
-      expect(formatted).toBe("30× say they'd recommend")
-    })
-
-    it('should format buzz word as count× say its word', () => {
-      const cyclingItems = buildCyclingItems(mockStats)
-      const item = cyclingItems[1]
       const formatted = `${item.count}× ${item.text}`
       expect(formatted).toBe("12× say it's Friendly")
     })
 
-    it('should cycle through all items', () => {
-      const cyclingItems = buildCyclingItems(mockStats)
-      expect(cyclingItems.length).toBe(4) // 1 recommend + 3 buzz words
+    it('should format recommend as count× say theyd recommend', () => {
+      const cyclingItems = buildCyclingItems(mockBuzzWords)
+      const item = cyclingItems[2]
+      const formatted = `${item.count}× ${item.text}`
+      expect(formatted).toBe("6× say they'd recommend")
+    })
+
+    it('should cycle through all buzz words', () => {
+      const cyclingItems = buildCyclingItems(mockBuzzWords)
+      expect(cyclingItems.length).toBe(3)
     })
 
     it('should wrap around after last item', () => {
-      const cyclingItems = buildCyclingItems(mockStats)
+      const cyclingItems = buildCyclingItems(mockBuzzWords)
       let cyclingIndex = cyclingItems.length - 1
       cyclingIndex = (cyclingIndex + 1) % cyclingItems.length
       expect(cyclingIndex).toBe(0)
@@ -828,62 +818,51 @@ describe('TestimonialsCarousel - Cycling Stats', () => {
   })
 
   describe('Edge cases - Variations', () => {
-    it('should handle zero recommend count', () => {
-      const stats = { recommend_count: 0, buzz_words: mockStats.buzz_words }
-      const cyclingItems = buildCyclingItems(stats)
-      expect(cyclingItems[0].type).toBe('buzz') // Skip recommend
-      expect(cyclingItems.length).toBe(3)
-    })
-
-    it('should handle empty buzz words', () => {
-      const stats = { recommend_count: 30, buzz_words: [] }
-      const cyclingItems = buildCyclingItems(stats)
-      expect(cyclingItems.length).toBe(1)
-      expect(cyclingItems[0].type).toBe('recommend')
-    })
-
-    it('should handle single buzz word', () => {
-      const stats = { recommend_count: 5, buzz_words: [{ word: 'Great', count: 3 }] }
-      const cyclingItems = buildCyclingItems(stats)
-      expect(cyclingItems.length).toBe(2)
+    it('should handle recommended variant', () => {
+      const buzzWords = [{ word: 'Recommended', count: 5 }]
+      const cyclingItems = buildCyclingItems(buzzWords)
+      expect(cyclingItems[0].text).toBe("say they'd recommend")
     })
 
     it('should handle hyphenated buzz words', () => {
-      const stats = { recommend_count: 0, buzz_words: [{ word: 'Stress-Free', count: 5 }] }
-      const cyclingItems = buildCyclingItems(stats)
+      const buzzWords = [{ word: 'Stress-Free', count: 5 }]
+      const cyclingItems = buildCyclingItems(buzzWords)
       expect(cyclingItems[0].text).toBe("say it's Stress-Free")
+    })
+
+    it('should handle single buzz word', () => {
+      const buzzWords = [{ word: 'Great', count: 3 }]
+      const cyclingItems = buildCyclingItems(buzzWords)
+      expect(cyclingItems.length).toBe(1)
     })
   })
 
   describe('Unhappy path - Missing data', () => {
-    it('should handle no cycling items when both empty', () => {
-      const stats = { recommend_count: 0, buzz_words: [] }
-      const cyclingItems = buildCyclingItems(stats)
+    it('should handle empty buzz words array', () => {
+      const cyclingItems = buildCyclingItems([])
       expect(cyclingItems.length).toBe(0)
     })
 
     it('should handle undefined buzz words', () => {
-      const stats = { recommend_count: 5, buzz_words: undefined }
-      const cyclingItems = buildCyclingItems(stats)
-      expect(cyclingItems.length).toBe(1)
-      expect(cyclingItems[0].type).toBe('recommend')
+      const cyclingItems = buildCyclingItems(undefined)
+      expect(cyclingItems.length).toBe(0)
     })
   })
 
   describe('Boundaries - Cycling limits', () => {
     it('should handle cycling through all items', () => {
-      const cyclingItems = buildCyclingItems(mockStats)
+      const cyclingItems = buildCyclingItems(mockBuzzWords)
       let cyclingIndex = 0
       const visited = []
       for (let i = 0; i < cyclingItems.length; i++) {
-        visited.push(cyclingItems[cyclingIndex].type)
+        visited.push(cyclingItems[cyclingIndex].text)
         cyclingIndex = (cyclingIndex + 1) % cyclingItems.length
       }
-      expect(visited).toEqual(['recommend', 'buzz', 'buzz', 'buzz'])
+      expect(visited).toEqual(["say it's Friendly", "say it's Easy", "say they'd recommend"])
     })
 
     it('should return to start after full cycle', () => {
-      const cyclingItems = buildCyclingItems(mockStats)
+      const cyclingItems = buildCyclingItems(mockBuzzWords)
       let cyclingIndex = 0
       for (let i = 0; i < cyclingItems.length; i++) {
         cyclingIndex = (cyclingIndex + 1) % cyclingItems.length
@@ -891,16 +870,13 @@ describe('TestimonialsCarousel - Cycling Stats', () => {
       expect(cyclingIndex).toBe(0)
     })
 
-    it('should handle max 8 buzz words plus recommend', () => {
-      const stats = {
-        recommend_count: 50,
-        buzz_words: Array.from({ length: 8 }, (_, i) => ({
-          word: `Word${i}`,
-          count: 10 - i,
-        }))
-      }
-      const cyclingItems = buildCyclingItems(stats)
-      expect(cyclingItems.length).toBe(9) // 1 recommend + 8 buzz words
+    it('should handle max 8 buzz words', () => {
+      const buzzWords = Array.from({ length: 8 }, (_, i) => ({
+        word: `Word${i}`,
+        count: 10 - i,
+      }))
+      const cyclingItems = buildCyclingItems(buzzWords)
+      expect(cyclingItems.length).toBe(8)
     })
   })
 })

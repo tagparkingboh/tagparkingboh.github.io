@@ -72,21 +72,14 @@ function TestimonialsCarousel() {
     return () => clearInterval(interval)
   }, [testimonials.length, isPaused, goToNext])
 
-  // Build cycling items: buzz words + recommend stat
-  const cyclingItems = stats ? [
-    // Add recommend stat first
-    ...(stats.recommend_count > 0 ? [{
-      type: 'recommend',
-      count: stats.recommend_count,
-      text: "say they'd recommend"
-    }] : []),
-    // Add buzz words
-    ...(stats.buzz_words || []).map(bw => ({
-      type: 'buzz',
-      count: bw.count,
-      text: `say it's ${bw.word}`
-    }))
-  ] : []
+  // Build cycling items from buzz words only
+  const cyclingItems = stats?.buzz_words?.map(bw => ({
+    count: bw.count,
+    // Format "recommend/recommended" specially
+    text: bw.word.toLowerCase().startsWith('recommend')
+      ? "say they'd recommend"
+      : `say it's ${bw.word}`
+  })) || []
 
   // Cycle through items every 2 seconds
   useEffect(() => {
