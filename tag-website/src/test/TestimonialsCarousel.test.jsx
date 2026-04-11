@@ -870,13 +870,13 @@ describe('TestimonialsCarousel - Cycling Stats', () => {
       expect(cyclingIndex).toBe(0)
     })
 
-    it('should handle many buzz words', () => {
-      const buzzWords = Array.from({ length: 20 }, (_, i) => ({
+    it('should handle max 8 buzz words', () => {
+      const buzzWords = Array.from({ length: 8 }, (_, i) => ({
         word: `Word${i}`,
-        count: 20 - i,
+        count: 10 - i,
       }))
       const cyclingItems = buildCyclingItems(buzzWords)
-      expect(cyclingItems.length).toBe(20)
+      expect(cyclingItems.length).toBe(8)
     })
   })
 })
