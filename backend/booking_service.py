@@ -128,9 +128,9 @@ def is_peak_day_booking(drop_off_date: date, pickup_date: date) -> bool:
     """
     Check if a booking qualifies for peak day pricing.
 
-    Peak day criteria:
+    Peak day criteria (either condition triggers peak pricing):
     - Drop-off is on Friday (4) or Saturday (5)
-    - Pickup is on Sunday (6), Monday (0), or Tuesday (1)
+    - OR Pickup is on Sunday (6), Monday (0), or Tuesday (1)
 
     Args:
         drop_off_date: The date of drop-off
@@ -149,7 +149,7 @@ def is_peak_day_booking(drop_off_date: date, pickup_date: date) -> bool:
     # Pickup on Sunday (6), Monday (0), or Tuesday (1)
     is_peak_pickup = pickup_day in (6, 0, 1)
 
-    return is_peak_dropoff and is_peak_pickup
+    return is_peak_dropoff or is_peak_pickup
 
 
 # Cache for pricing settings (refreshed every request in production)
