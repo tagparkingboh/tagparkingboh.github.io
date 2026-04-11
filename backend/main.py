@@ -13872,10 +13872,10 @@ async def get_active_testimonials(
             if word in text_lower:
                 word_counts[word] += 1
 
-    # Get top buzz words (those appearing in at least 2 reviews)
+    # Get all buzz words appearing in at least 2 reviews (sorted by count)
     buzz_words = [
         {"word": word.title(), "count": count}
-        for word, count in word_counts.most_common(8)
+        for word, count in word_counts.most_common()
         if count >= 2
     ]
 
