@@ -10103,7 +10103,7 @@ function Admin() {
                       </tr>
                     </tbody>
                   </table>
-                  <p className="pricing-preview-note">Peak Day: applies when drop-off is Fri/Sat AND pickup is Sun/Mon/Tue</p>
+                  <p className="pricing-preview-note">Peak Day: applies when drop-off is Fri/Sat OR pickup is Sun/Mon/Tue</p>
                 </div>
 
                 <div className="pricing-actions">
