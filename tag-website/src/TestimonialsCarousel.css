@@ -38,6 +38,94 @@
   opacity: 0.9;
 }
 
+/* Stats Bar */
+.testimonials-stats {
+  max-width: 600px;
+  margin: 0 auto 2.5rem;
+  position: relative;
+}
+
+.stats-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 1.5rem 2rem;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stat-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 2rem;
+}
+
+.stat-value {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+
+.stat-value .stat-star {
+  color: #FFD700;
+  margin-left: 0.1rem;
+}
+
+.stat-label {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.stat-divider {
+  width: 1px;
+  height: 50px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Buzz Words */
+.buzz-words {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
+.buzz-label {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-right: 0.75rem;
+}
+
+.buzz-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 0.75rem;
+}
+
+.buzz-pill {
+  background: rgba(204, 255, 0, 0.15);
+  color: var(--lime-green);
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid rgba(204, 255, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.buzz-pill:hover {
+  background: rgba(204, 255, 0, 0.25);
+  transform: translateY(-1px);
+}
+
 .testimonials-carousel {
   display: flex;
   align-items: center;
@@ -341,6 +429,18 @@
     font-size: 36px;
   }
 
+  .stats-bar {
+    padding: 1.25rem 1.5rem;
+  }
+
+  .stat-box {
+    padding: 0 1.5rem;
+  }
+
+  .stat-value {
+    font-size: 2rem;
+  }
+
   .testimonial-card {
     padding: 2.5rem;
     max-width: 550px;
@@ -365,6 +465,43 @@
   .testimonials-section h2 {
     font-size: 28px;
     margin-bottom: 1.5rem;
+  }
+
+  .testimonials-stats {
+    margin-bottom: 2rem;
+  }
+
+  .stats-bar {
+    padding: 1rem;
+  }
+
+  .stat-box {
+    padding: 0 0.75rem;
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+  }
+
+  .stat-label {
+    font-size: 0.75rem;
+  }
+
+  .stat-divider {
+    height: 40px;
+  }
+
+  .buzz-words {
+    margin-top: 1rem;
+  }
+
+  .buzz-pills {
+    gap: 0.4rem;
+  }
+
+  .buzz-pill {
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8rem;
   }
 
   .testimonials-carousel {

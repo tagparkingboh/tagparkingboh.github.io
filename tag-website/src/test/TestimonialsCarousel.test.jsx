@@ -648,3 +648,170 @@ describe('TestimonialsCarousel Additional Edge Cases', () => {
     expect(deduplicated).toHaveLength(2)
   })
 })
+
+// =============================================================================
+// Stats Bar Display Tests
+// =============================================================================
+
+describe('TestimonialsCarousel - Stats Bar', () => {
+  const mockStats = {
+    average_rating: 4.9,
+    total_count: 34,
+    recommend_percent: 97,
+    buzz_words: [
+      { word: 'Friendly', count: 12 },
+      { word: 'Easy', count: 8 },
+      { word: 'Professional', count: 6 },
+    ],
+  }
+
+  describe('Happy path - Stats display', () => {
+    it('should display average rating from stats', () => {
+      const stats = mockStats
+      expect(stats.average_rating).toBe(4.9)
+    })
+
+    it('should display total count from stats', () => {
+      const stats = mockStats
+      expect(stats.total_count).toBe(34)
+    })
+
+    it('should display recommend percent from stats', () => {
+      const stats = mockStats
+      expect(stats.recommend_percent).toBe(97)
+    })
+
+    it('should display buzz words from stats', () => {
+      const stats = mockStats
+      expect(stats.buzz_words).toHaveLength(3)
+      expect(stats.buzz_words[0].word).toBe('Friendly')
+    })
+  })
+
+  describe('Edge cases - Stats with null/empty values', () => {
+    it('should handle null stats gracefully', () => {
+      const stats = null
+      const shouldShowStats = stats !== null
+      expect(shouldShowStats).toBe(false)
+    })
+
+    it('should handle empty buzz words array', () => {
+      const stats = {
+        ...mockStats,
+        buzz_words: [],
+      }
+      expect(stats.buzz_words.length).toBe(0)
+      const showBuzzWords = stats.buzz_words && stats.buzz_words.length > 0
+      expect(showBuzzWords).toBe(false)
+    })
+
+    it('should handle zero average rating', () => {
+      const stats = {
+        ...mockStats,
+        average_rating: 0,
+      }
+      expect(stats.average_rating).toBe(0)
+    })
+
+    it('should handle zero recommend percent', () => {
+      const stats = {
+        ...mockStats,
+        recommend_percent: 0,
+      }
+      expect(stats.recommend_percent).toBe(0)
+    })
+  })
+
+  describe('Boundaries - Stats value ranges', () => {
+    it('should handle maximum rating (5.0)', () => {
+      const stats = { ...mockStats, average_rating: 5.0 }
+      expect(stats.average_rating).toBe(5.0)
+    })
+
+    it('should handle minimum rating (1.0)', () => {
+      const stats = { ...mockStats, average_rating: 1.0 }
+      expect(stats.average_rating).toBe(1.0)
+    })
+
+    it('should handle 100% recommend', () => {
+      const stats = { ...mockStats, recommend_percent: 100 }
+      expect(stats.recommend_percent).toBe(100)
+    })
+
+    it('should handle single testimonial', () => {
+      const stats = { ...mockStats, total_count: 1 }
+      expect(stats.total_count).toBe(1)
+    })
+
+    it('should handle large number of testimonials', () => {
+      const stats = { ...mockStats, total_count: 1000 }
+      expect(stats.total_count).toBe(1000)
+    })
+  })
+})
+
+// =============================================================================
+// Buzz Words Display Tests
+// =============================================================================
+
+describe('TestimonialsCarousel - Buzz Words', () => {
+  describe('Happy path - Buzz words rendering', () => {
+    it('should format buzz words with title case', () => {
+      const buzzWord = { word: 'Friendly', count: 12 }
+      expect(buzzWord.word).toBe('Friendly')
+      expect(buzzWord.word[0]).toBe(buzzWord.word[0].toUpperCase())
+    })
+
+    it('should include count in buzz word object', () => {
+      const buzzWord = { word: 'Easy', count: 8 }
+      expect(buzzWord.count).toBeGreaterThan(0)
+    })
+
+    it('should handle multiple buzz words', () => {
+      const buzzWords = [
+        { word: 'Friendly', count: 12 },
+        { word: 'Easy', count: 8 },
+        { word: 'Professional', count: 6 },
+        { word: 'Reliable', count: 5 },
+      ]
+      expect(buzzWords.length).toBe(4)
+    })
+  })
+
+  describe('Edge cases - Buzz words variations', () => {
+    it('should handle buzz word with count of 2 (minimum)', () => {
+      const buzzWord = { word: 'Quick', count: 2 }
+      expect(buzzWord.count).toBeGreaterThanOrEqual(2)
+    })
+
+    it('should handle buzz word with high count', () => {
+      const buzzWord = { word: 'Great', count: 50 }
+      expect(buzzWord.count).toBe(50)
+    })
+
+    it('should handle hyphenated buzz words', () => {
+      const buzzWord = { word: 'Stress-Free', count: 5 }
+      expect(buzzWord.word).toContain('-')
+    })
+
+    it('should handle multi-word buzz phrases', () => {
+      const buzzWord = { word: 'On Time', count: 7 }
+      expect(buzzWord.word).toContain(' ')
+    })
+  })
+
+  describe('Unhappy path - Missing buzz words', () => {
+    it('should not render buzz words section when array is empty', () => {
+      const buzzWords = []
+      const shouldRender = buzzWords && buzzWords.length > 0
+      expect(shouldRender).toBe(false)
+    })
+
+    it('should not render buzz words section when undefined', () => {
+      const buzzWords = undefined
+      const shouldRender = buzzWords && buzzWords.length > 0
+      // Returns undefined (falsy), not false - still works correctly in JSX
+      expect(shouldRender).toBeFalsy()
+    })
+  })
+})

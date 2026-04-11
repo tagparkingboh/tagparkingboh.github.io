@@ -3,6 +3,7 @@ import './TestimonialsCarousel.css'
 
 function TestimonialsCarousel() {
   const [testimonials, setTestimonials] = useState([])
+  const [stats, setStats] = useState(null)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
@@ -21,6 +22,10 @@ function TestimonialsCarousel() {
           const shuffled = shuffleArray([...data.testimonials])
           const unique = deduplicateTestimonials(shuffled)
           setTestimonials(unique)
+        }
+        // Store stats if available
+        if (data.stats) {
+          setStats(data.stats)
         }
       } catch (error) {
         console.error('Error fetching testimonials:', error)
@@ -133,6 +138,39 @@ function TestimonialsCarousel() {
   return (
     <section id="testimonials" className="testimonials-section">
       <h2>What our customers say:</h2>
+
+      {/* Stats Bar */}
+      {stats && (
+        <div className="testimonials-stats">
+          <div className="stats-bar">
+            <div className="stat-box">
+              <span className="stat-value">{stats.average_rating}<span className="stat-star">★</span></span>
+              <span className="stat-label">Average</span>
+            </div>
+            <div className="stat-divider" />
+            <div className="stat-box">
+              <span className="stat-value">{stats.total_count}</span>
+              <span className="stat-label">Reviews</span>
+            </div>
+            <div className="stat-divider" />
+            <div className="stat-box">
+              <span className="stat-value">{stats.recommend_percent}%</span>
+              <span className="stat-label">Recommend</span>
+            </div>
+          </div>
+          {stats.buzz_words && stats.buzz_words.length > 0 && (
+            <div className="buzz-words">
+              <span className="buzz-label">Customers love:</span>
+              <div className="buzz-pills">
+                {stats.buzz_words.map((bw, idx) => (
+                  <span key={idx} className="buzz-pill">{bw.word}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div
         className="testimonials-carousel"
         onMouseEnter={() => setIsPaused(true)}

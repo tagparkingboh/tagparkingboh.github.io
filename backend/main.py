@@ -13810,13 +13810,58 @@ async def get_active_testimonials(
     Get active testimonials for public display (weighted pool).
     Weighting: 5★=5x, 4★=3x, unrated=3x, 3★=1x, 1-2★=excluded.
     Featured reviews always included regardless of rating.
+    Also returns aggregate stats and buzz words.
     """
     from db_models import Testimonial, TestimonialStatus
+    import re
+    from collections import Counter
 
     # Get active testimonials
     testimonials = db.query(Testimonial).filter(
         Testimonial.status == TestimonialStatus.ACTIVE
     ).all()
+
+    # Calculate stats
+    total_count = len(testimonials)
+    rated_testimonials = [t for t in testimonials if t.star_rating is not None]
+
+    if rated_testimonials:
+        average_rating = round(sum(t.star_rating for t in rated_testimonials) / len(rated_testimonials), 1)
+        recommend_count = sum(1 for t in rated_testimonials if t.star_rating >= 4)
+        recommend_percent = round((recommend_count / len(rated_testimonials)) * 100)
+    else:
+        average_rating = 0
+        recommend_percent = 0
+
+    # Extract buzz words from review text
+    # Curated list of positive service keywords
+    BUZZ_WORDS = [
+        "friendly", "helpful", "professional", "efficient", "reliable",
+        "punctual", "quick", "fast", "prompt", "timely",
+        "easy", "seamless", "smooth", "simple", "convenient",
+        "great", "excellent", "amazing", "fantastic", "brilliant",
+        "recommend", "recommended", "stress-free", "hassle-free",
+        "perfect", "clean", "safe", "secure", "affordable",
+        "polite", "courteous", "communicative", "responsive",
+        "on time", "on-time", "well organised", "well organized",
+        "no issues", "no problems", "peace of mind",
+    ]
+
+    # Count buzz word occurrences across all reviews
+    word_counts = Counter()
+    for t in testimonials:
+        text_lower = t.review_text.lower()
+        for word in BUZZ_WORDS:
+            # Count each word once per review (not multiple times in same review)
+            if word in text_lower:
+                word_counts[word] += 1
+
+    # Get top buzz words (those appearing in at least 2 reviews)
+    buzz_words = [
+        {"word": word.title(), "count": count}
+        for word, count in word_counts.most_common(8)
+        if count >= 2
+    ]
 
     # Build weighted pool
     weighted_pool = []
@@ -13843,6 +13888,12 @@ async def get_active_testimonials(
     return {
         "testimonials": weighted_pool,
         "total": len(weighted_pool),
+        "stats": {
+            "average_rating": average_rating,
+            "total_count": total_count,
+            "recommend_percent": recommend_percent,
+            "buzz_words": buzz_words,
+        },
     }
 
 
