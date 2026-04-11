@@ -745,6 +745,9 @@ class PricingSettings(Base):
     # Price increment per booking tier (early -> standard -> late)
     tier_increment = Column(Numeric(10, 2), nullable=False, default=5.00)
 
+    # Peak day increment - added when drop-off is Fri/Sat AND pickup is Sun/Mon/Tue
+    peak_day_increment = Column(Numeric(10, 2), nullable=False, default=0.00)
+
     # Legacy columns - kept for migration compatibility, will be removed later
     days_5_6_price = Column(Numeric(10, 2), nullable=True)
     days_8_9_price = Column(Numeric(10, 2), nullable=True)
