@@ -13835,17 +13835,32 @@ async def get_active_testimonials(
         recommend_percent = 0
 
     # Extract buzz words from review text
-    # Curated list of positive service keywords
+    # Curated list of positive service keywords from actual customer reviews
     BUZZ_WORDS = [
+        # Service quality
         "friendly", "helpful", "professional", "efficient", "reliable",
-        "punctual", "quick", "fast", "prompt", "timely",
-        "easy", "seamless", "smooth", "simple", "convenient",
-        "great", "excellent", "amazing", "fantastic", "brilliant",
-        "recommend", "recommended", "stress-free", "hassle-free",
-        "perfect", "clean", "safe", "secure", "affordable",
         "polite", "courteous", "communicative", "responsive",
-        "on time", "on-time", "well organised", "well organized",
+        # Speed
+        "punctual", "quick", "fast", "prompt", "timely",
+        "on time", "on-time",
+        # Ease
+        "easy", "seamless", "smooth", "simple", "convenient",
+        "stress-free", "hassle-free", "worry free", "worry-free",
+        "no fuss", "doddle",
+        # Praise
+        "great", "excellent", "amazing", "fantastic", "brilliant",
+        "perfect", "outstanding", "flawless", "incredible", "superb",
+        "top notch", "top service", "impressed",
+        "recommend", "recommended",
+        # Trust
+        "safe", "secure", "clean",
         "no issues", "no problems", "peace of mind",
+        "couldn't fault", "can't fault", "no hidden fees",
+        # Value
+        "affordable", "good value", "excellent value", "value for money",
+        "good price", "great price", "cheaper",
+        # Organisation
+        "well organised", "well organized",
     ]
 
     # Count buzz word occurrences across all reviews
