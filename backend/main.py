@@ -13872,6 +13872,10 @@ async def get_active_testimonials(
             if word in text_lower:
                 word_counts[word] += 1
 
+    # Merge "cheaper" count into "value for money" (cheaper lacks context)
+    if "cheaper" in word_counts:
+        word_counts["value for money"] += word_counts.pop("cheaper")
+
     # Get top buzz words (those appearing in at least 2 reviews)
     buzz_words = [
         {"word": word.title(), "count": count}

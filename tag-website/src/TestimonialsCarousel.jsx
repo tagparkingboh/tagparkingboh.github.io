@@ -72,14 +72,27 @@ function TestimonialsCarousel() {
     return () => clearInterval(interval)
   }, [testimonials.length, isPaused, goToNext])
 
-  // Build cycling items from buzz words only
-  const cyclingItems = stats?.buzz_words?.map(bw => ({
-    count: bw.count,
-    // Format "recommend/recommended" specially, all words in quotes
-    text: bw.word.toLowerCase().startsWith('recommend')
-      ? `say they'd "Recommend"`
-      : `say it's "${bw.word}"`
-  })) || []
+  // Build cycling items from buzz words with proper phrasing
+  const formatBuzzWord = (word) => {
+    const w = word.toLowerCase()
+    // Special phrasings for specific buzz words
+    if (w.startsWith('recommend')) return { phrase: "say they'd", buzzWord: 'Recommend' }
+    if (w === 'impressed') return { phrase: 'say they were', buzzWord: 'Impressed' }
+    if (w === 'no issues' || w === 'no problems') return { phrase: 'say there were', buzzWord: word }
+    if (w === 'no hidden fees') return { phrase: 'say there are', buzzWord: word }
+    if (w === 'no fuss') return { phrase: "say there's", buzzWord: 'No Fuss' }
+    if (w === 'peace of mind') return { phrase: 'say it gives', buzzWord: 'Peace Of Mind' }
+    if (w === 'value for money') return { phrase: "say it's good", buzzWord: 'Value For Money' }
+    if (w === 'doddle') return { phrase: "say it's a", buzzWord: 'Doddle' }
+    if (w === "couldn't fault" || w === "can't fault") return { phrase: "say they couldn't", buzzWord: 'Fault It' }
+    // Default: "say it's"
+    return { phrase: "say it's", buzzWord: word }
+  }
+
+  const cyclingItems = stats?.buzz_words?.map(bw => {
+    const { phrase, buzzWord } = formatBuzzWord(bw.word)
+    return { count: bw.count, phrase, buzzWord }
+  }) || []
 
   // Cycle through items every 2 seconds
   useEffect(() => {
@@ -175,8 +188,11 @@ function TestimonialsCarousel() {
               <>
                 <div className="stat-divider" />
                 <div className="stat-box stat-box-buzz">
-                  <span className="stat-value stat-buzz-value">
-                    {cyclingItems[cyclingIndex]?.count}× {cyclingItems[cyclingIndex]?.text}
+                  <span className="stat-buzz-line1">
+                    {cyclingItems[cyclingIndex]?.count}× {cyclingItems[cyclingIndex]?.phrase}
+                  </span>
+                  <span className="stat-buzz-line2">
+                    "{cyclingItems[cyclingIndex]?.buzzWord}"
                   </span>
                 </div>
               </>
