@@ -324,7 +324,7 @@ function HomePage() {
             <div className="pricing-side-option left">
               <span className="pricing-side-label">4 DAY TRIP</span>
               <div className="pricing-side-price">
-                <span className="pricing-side-amount"><span className="currency">£</span>{prices.days4}–£{prices.days4Max}</span>
+                <span className="pricing-side-amount">£{prices.days4}–£{prices.days4Max}</span>
               </div>
             </div>
             <div className="pricing-center-hero">
@@ -339,7 +339,7 @@ function HomePage() {
             <div className="pricing-side-option right">
               <span className="pricing-side-label">14 DAY TRIP</span>
               <div className="pricing-side-price">
-                <span className="pricing-side-amount"><span className="currency">£</span>{prices.week2}–£{prices.week2Max}</span>
+                <span className="pricing-side-amount">£{prices.week2}–£{prices.week2Max}</span>
               </div>
             </div>
           </div>
