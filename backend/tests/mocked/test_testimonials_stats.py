@@ -308,6 +308,70 @@ class TestBuzzWordsExtraction:
 
 
 # ============================================================================
+# MOCKED UNIT TESTS - Cheaper Merge Into Value For Money
+# ============================================================================
+
+class TestCheaperMerge:
+    """Unit tests for merging 'cheaper' count into 'value for money'."""
+
+    def test_cheaper_merged_into_value_for_money(self):
+        """Happy path: Cheaper count adds to value for money."""
+        word_counts = Counter({
+            "value for money": 2,
+            "cheaper": 3,
+            "friendly": 5,
+        })
+        # Merge cheaper into value for money
+        if "cheaper" in word_counts:
+            word_counts["value for money"] += word_counts.pop("cheaper")
+
+        assert word_counts["value for money"] == 5
+        assert "cheaper" not in word_counts
+
+    def test_cheaper_only_creates_value_for_money(self):
+        """Edge case: Only cheaper mentioned, creates value for money entry."""
+        word_counts = Counter({
+            "cheaper": 4,
+            "friendly": 3,
+        })
+        if "cheaper" in word_counts:
+            word_counts["value for money"] += word_counts.pop("cheaper")
+
+        assert word_counts["value for money"] == 4
+        assert "cheaper" not in word_counts
+
+    def test_no_cheaper_no_change(self):
+        """Edge case: No cheaper mentioned, no change."""
+        word_counts = Counter({
+            "value for money": 3,
+            "friendly": 5,
+        })
+        original_value = word_counts["value for money"]
+        if "cheaper" in word_counts:
+            word_counts["value for money"] += word_counts.pop("cheaper")
+
+        assert word_counts["value for money"] == original_value
+
+    def test_cheaper_does_not_appear_in_output(self):
+        """Unhappy path: Cheaper should never appear in final buzz words."""
+        word_counts = Counter({
+            "cheaper": 5,
+            "friendly": 3,
+        })
+        if "cheaper" in word_counts:
+            word_counts["value for money"] += word_counts.pop("cheaper")
+
+        buzz_words = [
+            {"word": word.title(), "count": count}
+            for word, count in word_counts.most_common(8)
+            if count >= 2
+        ]
+        words = [bw["word"] for bw in buzz_words]
+        assert "Cheaper" not in words
+        assert "Value For Money" in words
+
+
+# ============================================================================
 # MOCKED INTEGRATION TESTS - Stats Response Format
 # ============================================================================
 

@@ -90,14 +90,26 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Cycling Buzz Word */
+/* Cycling Buzz Word - Two Line Display */
 .stat-box-buzz {
-  min-width: 140px;
+  min-width: 180px;
+  text-align: center;
 }
 
-.stat-buzz-value {
-  font-size: 1.5rem;
+.stat-buzz-line1 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #fff;
+  display: block;
+  animation: buzzFade 2s ease-in-out infinite;
+}
+
+.stat-buzz-line2 {
+  font-size: 1.4rem;
+  font-weight: 700;
   color: var(--lime-green);
+  display: block;
+  margin-top: 0.2rem;
   animation: buzzFade 2s ease-in-out infinite;
 }
 
@@ -473,10 +485,14 @@
   }
 
   .stat-box-buzz {
-    min-width: 100px;
+    min-width: 120px;
   }
 
-  .stat-buzz-value {
+  .stat-buzz-line1 {
+    font-size: 0.85rem;
+  }
+
+  .stat-buzz-line2 {
     font-size: 1rem;
   }
 
