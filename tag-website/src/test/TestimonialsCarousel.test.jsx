@@ -676,15 +676,20 @@ describe('TestimonialsCarousel - Stats Bar', () => {
       expect(stats.total_count).toBe(34)
     })
 
-    it('should display recommend percent from stats', () => {
+    it('should display first buzz word in stats bar', () => {
       const stats = mockStats
-      expect(stats.recommend_percent).toBe(97)
+      const buzzWordIndex = 0
+      const currentBuzzWord = stats.buzz_words[buzzWordIndex]
+      expect(currentBuzzWord.word).toBe('Friendly')
+      expect(currentBuzzWord.count).toBe(12)
     })
 
-    it('should display buzz words from stats', () => {
+    it('should format buzz word as count× word', () => {
       const stats = mockStats
-      expect(stats.buzz_words).toHaveLength(3)
-      expect(stats.buzz_words[0].word).toBe('Friendly')
+      const buzzWordIndex = 0
+      const bw = stats.buzz_words[buzzWordIndex]
+      const formatted = `${bw.count}× ${bw.word}`
+      expect(formatted).toBe('12× Friendly')
     })
   })
 
@@ -713,12 +718,12 @@ describe('TestimonialsCarousel - Stats Bar', () => {
       expect(stats.average_rating).toBe(0)
     })
 
-    it('should handle zero recommend percent', () => {
+    it('should handle single buzz word (no cycling needed)', () => {
       const stats = {
         ...mockStats,
-        recommend_percent: 0,
+        buzz_words: [{ word: 'Friendly', count: 5 }],
       }
-      expect(stats.recommend_percent).toBe(0)
+      expect(stats.buzz_words.length).toBe(1)
     })
   })
 
@@ -733,9 +738,13 @@ describe('TestimonialsCarousel - Stats Bar', () => {
       expect(stats.average_rating).toBe(1.0)
     })
 
-    it('should handle 100% recommend', () => {
-      const stats = { ...mockStats, recommend_percent: 100 }
-      expect(stats.recommend_percent).toBe(100)
+    it('should cycle buzz word index correctly', () => {
+      const buzzWords = mockStats.buzz_words
+      let buzzWordIndex = 0
+      // Simulate cycling
+      buzzWordIndex = (buzzWordIndex + 1) % buzzWords.length
+      expect(buzzWordIndex).toBe(1)
+      expect(buzzWords[buzzWordIndex].word).toBe('Easy')
     })
 
     it('should handle single testimonial', () => {
@@ -754,64 +763,112 @@ describe('TestimonialsCarousel - Stats Bar', () => {
 // Buzz Words Display Tests
 // =============================================================================
 
-describe('TestimonialsCarousel - Buzz Words', () => {
-  describe('Happy path - Buzz words rendering', () => {
-    it('should format buzz words with title case', () => {
-      const buzzWord = { word: 'Friendly', count: 12 }
-      expect(buzzWord.word).toBe('Friendly')
-      expect(buzzWord.word[0]).toBe(buzzWord.word[0].toUpperCase())
+describe('TestimonialsCarousel - Buzz Words Cycling', () => {
+  const mockBuzzWords = [
+    { word: 'Friendly', count: 12 },
+    { word: 'Easy', count: 8 },
+    { word: 'Professional', count: 6 },
+    { word: 'Reliable', count: 5 },
+  ]
+
+  describe('Happy path - Cycling behavior', () => {
+    it('should start at index 0', () => {
+      const buzzWordIndex = 0
+      expect(mockBuzzWords[buzzWordIndex].word).toBe('Friendly')
     })
 
-    it('should include count in buzz word object', () => {
-      const buzzWord = { word: 'Easy', count: 8 }
-      expect(buzzWord.count).toBeGreaterThan(0)
+    it('should cycle to next buzz word', () => {
+      let buzzWordIndex = 0
+      buzzWordIndex = (buzzWordIndex + 1) % mockBuzzWords.length
+      expect(buzzWordIndex).toBe(1)
+      expect(mockBuzzWords[buzzWordIndex].word).toBe('Easy')
     })
 
-    it('should handle multiple buzz words', () => {
-      const buzzWords = [
-        { word: 'Friendly', count: 12 },
-        { word: 'Easy', count: 8 },
-        { word: 'Professional', count: 6 },
-        { word: 'Reliable', count: 5 },
-      ]
-      expect(buzzWords.length).toBe(4)
+    it('should wrap around to first buzz word after last', () => {
+      let buzzWordIndex = mockBuzzWords.length - 1 // Last index
+      buzzWordIndex = (buzzWordIndex + 1) % mockBuzzWords.length
+      expect(buzzWordIndex).toBe(0)
+      expect(mockBuzzWords[buzzWordIndex].word).toBe('Friendly')
+    })
+
+    it('should format as count× word', () => {
+      const bw = mockBuzzWords[0]
+      const formatted = `${bw.count}× ${bw.word}`
+      expect(formatted).toBe('12× Friendly')
     })
   })
 
   describe('Edge cases - Buzz words variations', () => {
     it('should handle buzz word with count of 2 (minimum)', () => {
       const buzzWord = { word: 'Quick', count: 2 }
-      expect(buzzWord.count).toBeGreaterThanOrEqual(2)
+      const formatted = `${buzzWord.count}× ${buzzWord.word}`
+      expect(formatted).toBe('2× Quick')
     })
 
     it('should handle buzz word with high count', () => {
       const buzzWord = { word: 'Great', count: 50 }
-      expect(buzzWord.count).toBe(50)
+      const formatted = `${buzzWord.count}× ${buzzWord.word}`
+      expect(formatted).toBe('50× Great')
     })
 
     it('should handle hyphenated buzz words', () => {
       const buzzWord = { word: 'Stress-Free', count: 5 }
-      expect(buzzWord.word).toContain('-')
+      const formatted = `${buzzWord.count}× ${buzzWord.word}`
+      expect(formatted).toBe('5× Stress-Free')
     })
 
-    it('should handle multi-word buzz phrases', () => {
-      const buzzWord = { word: 'On Time', count: 7 }
-      expect(buzzWord.word).toContain(' ')
+    it('should handle single buzz word (no cycling)', () => {
+      const singleBuzzWord = [{ word: 'Friendly', count: 3 }]
+      let buzzWordIndex = 0
+      // With single item, cycling stays at 0
+      buzzWordIndex = (buzzWordIndex + 1) % singleBuzzWord.length
+      expect(buzzWordIndex).toBe(0)
     })
   })
 
   describe('Unhappy path - Missing buzz words', () => {
-    it('should not render buzz words section when array is empty', () => {
+    it('should not render buzz column when array is empty', () => {
       const buzzWords = []
       const shouldRender = buzzWords && buzzWords.length > 0
       expect(shouldRender).toBe(false)
     })
 
-    it('should not render buzz words section when undefined', () => {
+    it('should not render buzz column when undefined', () => {
       const buzzWords = undefined
       const shouldRender = buzzWords && buzzWords.length > 0
       // Returns undefined (falsy), not false - still works correctly in JSX
       expect(shouldRender).toBeFalsy()
+    })
+  })
+
+  describe('Boundaries - Cycling limits', () => {
+    it('should handle cycling through all buzz words', () => {
+      let buzzWordIndex = 0
+      const visited = []
+      for (let i = 0; i < mockBuzzWords.length; i++) {
+        visited.push(mockBuzzWords[buzzWordIndex].word)
+        buzzWordIndex = (buzzWordIndex + 1) % mockBuzzWords.length
+      }
+      expect(visited).toEqual(['Friendly', 'Easy', 'Professional', 'Reliable'])
+    })
+
+    it('should return to start after full cycle', () => {
+      let buzzWordIndex = 0
+      for (let i = 0; i < mockBuzzWords.length; i++) {
+        buzzWordIndex = (buzzWordIndex + 1) % mockBuzzWords.length
+      }
+      expect(buzzWordIndex).toBe(0)
+    })
+
+    it('should handle max 8 buzz words', () => {
+      const maxBuzzWords = Array.from({ length: 8 }, (_, i) => ({
+        word: `Word${i}`,
+        count: 10 - i,
+      }))
+      expect(maxBuzzWords.length).toBe(8)
+      let buzzWordIndex = 7
+      buzzWordIndex = (buzzWordIndex + 1) % maxBuzzWords.length
+      expect(buzzWordIndex).toBe(0)
     })
   })
 })
