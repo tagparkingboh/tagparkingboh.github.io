@@ -332,8 +332,7 @@ function HomePage() {
               <span className="pricing-hero-label">7 DAY TRIP</span>
               <div className="pricing-hero-price">
                 <div className="pricing-hero-amount">
-                  <span className="currency">£</span>
-                  <span className="price">{prices.week1}–£{prices.week1Max}</span>
+                  <span className="price">£{prices.week1}–£{prices.week1Max}</span>
                 </div>
               </div>
             </div>
