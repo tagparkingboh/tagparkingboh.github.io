@@ -5,6 +5,7 @@ function TestimonialsCarousel() {
   const [testimonials, setTestimonials] = useState([])
   const [stats, setStats] = useState(null)
   const [currentIndex, setCurrentIndex] = useState(0)
+  const [buzzWordIndex, setBuzzWordIndex] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -70,6 +71,15 @@ function TestimonialsCarousel() {
     const interval = setInterval(goToNext, 7000) // 7 seconds per slide
     return () => clearInterval(interval)
   }, [testimonials.length, isPaused, goToNext])
+
+  // Cycle through buzz words every 2 seconds
+  useEffect(() => {
+    if (!stats?.buzz_words || stats.buzz_words.length <= 1) return
+    const interval = setInterval(() => {
+      setBuzzWordIndex((prev) => (prev + 1) % stats.buzz_words.length)
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [stats?.buzz_words])
 
   // Navigation handlers
   const goToPrevious = () => {
@@ -152,22 +162,18 @@ function TestimonialsCarousel() {
               <span className="stat-value">{stats.total_count}</span>
               <span className="stat-label">Reviews</span>
             </div>
-            <div className="stat-divider" />
-            <div className="stat-box">
-              <span className="stat-value">{stats.recommend_percent}%</span>
-              <span className="stat-label">Recommend</span>
-            </div>
+            {stats.buzz_words && stats.buzz_words.length > 0 && (
+              <>
+                <div className="stat-divider" />
+                <div className="stat-box stat-box-buzz">
+                  <span className="stat-value stat-buzz-value">
+                    {stats.buzz_words[buzzWordIndex].count}× {stats.buzz_words[buzzWordIndex].word}
+                  </span>
+                  <span className="stat-label">Say it's</span>
+                </div>
+              </>
+            )}
           </div>
-          {stats.buzz_words && stats.buzz_words.length > 0 && (
-            <div className="buzz-words">
-              <span className="buzz-label">Customers love:</span>
-              <div className="buzz-pills">
-                {stats.buzz_words.map((bw, idx) => (
-                  <span key={idx} className="buzz-pill">{bw.word}</span>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 

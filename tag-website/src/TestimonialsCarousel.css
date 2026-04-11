@@ -90,40 +90,21 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Buzz Words */
-.buzz-words {
-  margin-top: 1.5rem;
-  text-align: center;
+/* Cycling Buzz Word */
+.stat-box-buzz {
+  min-width: 140px;
 }
 
-.buzz-label {
-  font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.7);
-  margin-right: 0.75rem;
-}
-
-.buzz-pills {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: center;
-  margin-top: 0.75rem;
-}
-
-.buzz-pill {
-  background: rgba(204, 255, 0, 0.15);
+.stat-buzz-value {
+  font-size: 1.5rem;
   color: var(--lime-green);
-  padding: 0.4rem 1rem;
-  border-radius: 20px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  border: 1px solid rgba(204, 255, 0, 0.3);
-  transition: all 0.2s ease;
+  animation: buzzFade 2s ease-in-out infinite;
 }
 
-.buzz-pill:hover {
-  background: rgba(204, 255, 0, 0.25);
-  transform: translateY(-1px);
+@keyframes buzzFade {
+  0%, 100% { opacity: 1; }
+  45%, 55% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 .testimonials-carousel {
@@ -491,17 +472,12 @@
     height: 40px;
   }
 
-  .buzz-words {
-    margin-top: 1rem;
+  .stat-box-buzz {
+    min-width: 100px;
   }
 
-  .buzz-pills {
-    gap: 0.4rem;
-  }
-
-  .buzz-pill {
-    padding: 0.3rem 0.75rem;
-    font-size: 0.8rem;
+  .stat-buzz-value {
+    font-size: 1rem;
   }
 
   .testimonials-carousel {
