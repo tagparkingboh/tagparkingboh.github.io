@@ -970,16 +970,17 @@
 .pricing-hero-amount {
   display: flex;
   align-items: baseline;
+  white-space: nowrap;
 }
 
 .pricing-hero-amount .currency {
-  font-size: 1.5rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: #343434;
 }
 
 .pricing-hero-amount .price {
-  font-size: 4rem;
+  font-size: 2.5rem;
   font-weight: 700;
   color: #343434;
   line-height: 1;
