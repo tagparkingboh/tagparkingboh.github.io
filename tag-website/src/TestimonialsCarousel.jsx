@@ -75,10 +75,10 @@ function TestimonialsCarousel() {
   // Build cycling items from buzz words only
   const cyclingItems = stats?.buzz_words?.map(bw => ({
     count: bw.count,
-    // Format "recommend/recommended" specially
+    // Format "recommend/recommended" specially, all words in quotes
     text: bw.word.toLowerCase().startsWith('recommend')
-      ? "say they'd recommend"
-      : `say it's ${bw.word}`
+      ? `say they'd "Recommend"`
+      : `say it's "${bw.word}"`
   })) || []
 
   // Cycle through items every 2 seconds
