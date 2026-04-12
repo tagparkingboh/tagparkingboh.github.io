@@ -2385,7 +2385,9 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                           {/* Show linked bookings */}
                           {shift.bookings && shift.bookings.length > 0 ? (
                             <div className="shift-bookings-list">
-                              {shift.bookings.map((booking, idx) => (
+                              {[...shift.bookings]
+                                .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
+                                .map((booking, idx) => (
                                 <div key={booking.id} className="shift-booking-info">
                                   <div className="shift-booking-header">
                                     <span className={`shift-booking-type ${booking.type}`}>
@@ -2481,7 +2483,9 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                           <div className="shift-card-body">
                             {shift.bookings && shift.bookings.length > 0 ? (
                               <div className="shift-bookings-list">
-                                {shift.bookings.map((booking) => (
+                                {[...shift.bookings]
+                                  .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
+                                  .map((booking) => (
                                   <div key={booking.id} className="shift-booking-info">
                                     <div className="shift-booking-header">
                                       <span className={`shift-booking-type ${booking.type}`}>
