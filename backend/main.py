@@ -13840,25 +13840,31 @@ async def get_active_testimonials(
         # Service quality
         "friendly", "helpful", "professional", "efficient", "reliable",
         "polite", "courteous", "communicative", "responsive",
+        "thorough", "attentive", "careful",
         # Speed
         "punctual", "quick", "fast", "prompt", "timely",
         "on time", "on-time",
         # Ease
         "easy", "seamless", "smooth", "simple", "convenient",
         "stress-free", "hassle-free", "worry free", "worry-free",
-        "no fuss", "doddle",
+        "no fuss", "doddle", "straightforward",
         # Praise
         "great", "excellent", "amazing", "fantastic", "brilliant",
         "perfect", "outstanding", "flawless", "incredible", "superb",
-        "top notch", "top service", "impressed",
+        "top notch", "top service", "impressed", "first class",
         "recommend", "recommended",
+        # Satisfaction
+        "happy", "pleased", "satisfied", "delighted",
         # Trust
-        "safe", "secure", "clean",
+        "safe", "secure", "clean", "confident", "reassured",
         "no issues", "no problems", "peace of mind",
         "couldn't fault", "can't fault", "no hidden fees",
+        # Loyalty
+        "definitely use again", "will use again", "use again",
+        "will be back", "coming back",
         # Value
         "affordable", "good value", "excellent value", "value for money",
-        "good price", "great price", "cheaper",
+        "good price", "great price", "cheaper", "worth it",
         # Organisation
         "well organised", "well organized",
     ]
