@@ -85,6 +85,14 @@ function TestimonialsCarousel() {
     if (w === 'value for money') return { phrase: "say it's good", buzzWord: 'Value For Money' }
     if (w === 'doddle') return { phrase: "say it's a", buzzWord: 'Doddle' }
     if (w === "couldn't fault" || w === "can't fault") return { phrase: "say they couldn't", buzzWord: 'Fault It' }
+    // Loyalty phrases
+    if (w.includes('use again') || w.includes('will be back') || w.includes('coming back')) return { phrase: "say they'll", buzzWord: 'Use Again' }
+    // Satisfaction phrases
+    if (w === 'happy' || w === 'pleased' || w === 'satisfied' || w === 'delighted') return { phrase: 'say they were', buzzWord: word }
+    // Confidence phrases
+    if (w === 'confident' || w === 'reassured') return { phrase: 'say they felt', buzzWord: word }
+    // Worth it
+    if (w === 'worth it') return { phrase: "say it's", buzzWord: 'Worth It' }
     // Default: "say it's"
     return { phrase: "say it's", buzzWord: word }
   }

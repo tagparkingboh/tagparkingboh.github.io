@@ -776,6 +776,14 @@ describe('TestimonialsCarousel - Cycling Stats (Two Line Format)', () => {
     if (w === 'value for money') return { phrase: "say it's good", buzzWord: 'Value For Money' }
     if (w === 'doddle') return { phrase: "say it's a", buzzWord: 'Doddle' }
     if (w === "couldn't fault" || w === "can't fault") return { phrase: "say they couldn't", buzzWord: 'Fault It' }
+    // Loyalty phrases
+    if (w.includes('use again') || w.includes('will be back') || w.includes('coming back')) return { phrase: "say they'll", buzzWord: 'Use Again' }
+    // Satisfaction phrases
+    if (w === 'happy' || w === 'pleased' || w === 'satisfied' || w === 'delighted') return { phrase: 'say they were', buzzWord: word }
+    // Confidence phrases
+    if (w === 'confident' || w === 'reassured') return { phrase: 'say they felt', buzzWord: word }
+    // Worth it
+    if (w === 'worth it') return { phrase: "say it's", buzzWord: 'Worth It' }
     return { phrase: "say it's", buzzWord: word }
   }
 
@@ -944,6 +952,56 @@ describe('TestimonialsCarousel - Cycling Stats (Two Line Format)', () => {
       }))
       const cyclingItems = buildCyclingItems(buzzWords)
       expect(cyclingItems.length).toBe(20)
+    })
+  })
+
+  describe('Happy path - New buzz word phrasings', () => {
+    it('should format use again as say theyll', () => {
+      const items = buildCyclingItems([{ word: 'Definitely Use Again', count: 5 }])
+      expect(items[0].phrase).toBe("say they'll")
+      expect(items[0].buzzWord).toBe('Use Again')
+    })
+
+    it('should format will be back as say theyll', () => {
+      const items = buildCyclingItems([{ word: 'Will Be Back', count: 3 }])
+      expect(items[0].phrase).toBe("say they'll")
+      expect(items[0].buzzWord).toBe('Use Again')
+    })
+
+    it('should format happy as say they were', () => {
+      const items = buildCyclingItems([{ word: 'Happy', count: 2 }])
+      expect(items[0].phrase).toBe('say they were')
+      expect(items[0].buzzWord).toBe('Happy')
+    })
+
+    it('should format pleased as say they were', () => {
+      const items = buildCyclingItems([{ word: 'Pleased', count: 2 }])
+      expect(items[0].phrase).toBe('say they were')
+      expect(items[0].buzzWord).toBe('Pleased')
+    })
+
+    it('should format confident as say they felt', () => {
+      const items = buildCyclingItems([{ word: 'Confident', count: 3 }])
+      expect(items[0].phrase).toBe('say they felt')
+      expect(items[0].buzzWord).toBe('Confident')
+    })
+
+    it('should format reassured as say they felt', () => {
+      const items = buildCyclingItems([{ word: 'Reassured', count: 2 }])
+      expect(items[0].phrase).toBe('say they felt')
+      expect(items[0].buzzWord).toBe('Reassured')
+    })
+
+    it('should format worth it correctly', () => {
+      const items = buildCyclingItems([{ word: 'Worth It', count: 2 }])
+      expect(items[0].phrase).toBe("say it's")
+      expect(items[0].buzzWord).toBe('Worth It')
+    })
+
+    it('should format thorough with default phrasing', () => {
+      const items = buildCyclingItems([{ word: 'Thorough', count: 2 }])
+      expect(items[0].phrase).toBe("say it's")
+      expect(items[0].buzzWord).toBe('Thorough')
     })
   })
 })
