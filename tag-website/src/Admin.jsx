@@ -128,7 +128,14 @@ const ukDateTimeToIso = (ukDateTime) => {
   const datePart = parts[0]
   const timePart = parts[1] || '00:00'
   const [day, month, year] = datePart.split('/')
+  // Validate format - must have day, month, year with reasonable values
   if (!day || !month || !year) return ''
+  // Validate year is 4 digits and reasonable (2020-2099)
+  if (!/^\d{4}$/.test(year) || parseInt(year) < 2020 || parseInt(year) > 2099) return ''
+  // Validate month is 1-12
+  if (!/^\d{1,2}$/.test(month) || parseInt(month) < 1 || parseInt(month) > 12) return ''
+  // Validate day is 1-31
+  if (!/^\d{1,2}$/.test(day) || parseInt(day) < 1 || parseInt(day) > 31) return ''
 
   // Create a date object interpreting the input as UK time
   // Format: YYYY-MM-DDTHH:MM with explicit UK timezone
