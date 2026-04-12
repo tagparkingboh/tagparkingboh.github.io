@@ -1895,9 +1895,13 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                               🛬 {dayBookings.pickups.length}
                             </div>
                           )}
-                          {/* Available shifts indicator */}
+                          {/* Available shifts indicator (employee view) */}
                           {(() => {
-                            const availableCount = dayShifts.filter(s => !s.staff_id).length
+                            // For non-admin users, count available shifts from the separate availableShifts state
+                            // For admin, count unassigned shifts from dayShifts
+                            const availableCount = isAdmin
+                              ? dayShifts.filter(s => !s.staff_id).length
+                              : availableShifts.filter(s => s.date === dateKey).length
                             return availableCount > 0 ? (
                               <div className="day-badge badge-available" title={`${availableCount} available shift${availableCount > 1 ? 's' : ''}`}>
                                 ✨ {availableCount}
