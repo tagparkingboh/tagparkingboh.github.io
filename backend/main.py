@@ -13888,6 +13888,12 @@ async def get_active_testimonials(
     if "cheaper" in word_counts:
         word_counts["value for money"] += word_counts.pop("cheaper")
 
+    # Merge all "use again" variants into single "use again" entry
+    use_again_variants = ["definitely use again", "will use again", "will be back", "coming back"]
+    for variant in use_again_variants:
+        if variant in word_counts:
+            word_counts["use again"] += word_counts.pop(variant)
+
     # Get all buzz words appearing in at least 2 reviews (sorted by count)
     buzz_words = [
         {"word": word.title(), "count": count}
