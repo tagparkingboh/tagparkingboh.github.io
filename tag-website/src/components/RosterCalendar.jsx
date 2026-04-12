@@ -1895,6 +1895,15 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                               🛬 {dayBookings.pickups.length}
                             </div>
                           )}
+                          {/* Available shifts indicator */}
+                          {(() => {
+                            const availableCount = dayShifts.filter(s => !s.staff_id).length
+                            return availableCount > 0 ? (
+                              <div className="day-badge badge-available" title={`${availableCount} available shift${availableCount > 1 ? 's' : ''}`}>
+                                ✨ {availableCount}
+                              </div>
+                            ) : null
+                          })()}
                           {/* Shift indicators with details */}
                           {hasShifts && dayShifts.map((shift, idx) => (
                             <div
