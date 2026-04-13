@@ -844,6 +844,11 @@ class PromoCodeValidateResponse(BaseModel):
     valid: bool
     message: str
     discount_percent: Optional[int] = None
+    # Discount types:
+    # - 'percentage': Standard percentage discount (e.g., 10% off)
+    # - 'free_week': "1 Week Free Parking" - deducts week1_price (free for ≤7 days, partial for >7 days)
+    # - 'free_100': "100% Off" - completely free regardless of trip length
+    discount_type: Optional[str] = None
 
 
 @app.post("/api/promo/validate", response_model=PromoCodeValidateResponse)
@@ -918,21 +923,39 @@ async def validate_promo_code(
         promotion = db.query(Promotion).filter(Promotion.id == promo_code.promotion_id).first()
         if promotion:
             discount = promotion.discount_percent
+            # Determine discount type from promotion record, or auto-determine if not set
+            # - 'percentage': Standard percentage off
+            # - 'free_week': "1 Week Free" - deducts week1_price (free for ≤7 days, partial for >7 days)
+            # - 'free_100': "100% Off" - completely free regardless of trip length
+            if promotion.discount_type:
+                discount_type = promotion.discount_type
+            elif discount == 100:
+                discount_type = 'free_week'  # Default 100% to free_week behavior
+            else:
+                discount_type = 'percentage'
+
             log_promo("VALIDATE success (new system)", {
                 "code": code,
                 "promotion_name": promotion.name,
                 "discount_percent": discount,
+                "discount_type": discount_type,
                 "is_multi_use": promo_code.is_multi_use,
                 "uses_remaining": promo_code.uses_remaining
             })
-            if discount == 100:
+
+            # Set message based on discount type
+            if discount_type == 'free_week':
+                message = "Promo code applied! 1 week free parking!"
+            elif discount_type == 'free_100':
                 message = "Promo code applied! 100% off your booking!"
             else:
                 message = f"Promo code applied! {discount}% off"
+
             return PromoCodeValidateResponse(
                 valid=True,
                 message=message,
                 discount_percent=discount,
+                discount_type=discount_type,
             )
     else:
         log_promo("VALIDATE not found in promo_codes table, checking legacy", {"code": code})
@@ -989,6 +1012,11 @@ async def validate_promo_code(
             message="This code is invalid. Please check and try again.",
         )
 
+    # Determine discount type for legacy codes
+    # promo_free_code = 'free_week' (1 week free, deducts week1_price for trips > 7 days)
+    # Others = 'percentage'
+    discount_type = 'free_week' if discount == 100 else 'percentage'
+
     if discount == 100:
         message = "Promo code applied! 1 week free parking!"
     else:
@@ -997,6 +1025,7 @@ async def validate_promo_code(
         valid=True,
         message=message,
         discount_percent=discount,
+        discount_type=discount_type,
     )
 
 
@@ -6413,6 +6442,8 @@ async def create_promotion(
     expiry_date = request.get("expiry_date")  # DD/MM/YYYY
     expiry_time = request.get("expiry_time")  # HH:MM
     max_uses_raw = request.get("max_uses")  # None = single-use, 0 = unlimited, N = max N uses
+    # Discount type: 'percentage', 'free_week', 'free_100' (defaults based on discount_percent if not provided)
+    discount_type = request.get("discount_type")
 
     # Validate and sanitize prefix - only allow alphanumeric, max 10 chars
     if code_prefix:
@@ -6474,11 +6505,18 @@ async def create_promotion(
             log_promo("CREATE_PROMOTION failed - custom code already exists", {"custom_code": custom_code})
             raise HTTPException(status_code=400, detail=f"Code '{custom_code}' already exists. Please choose a different code.")
 
+    # Validate discount_type if provided
+    valid_discount_types = ['percentage', 'free_week', 'free_100']
+    if discount_type and discount_type not in valid_discount_types:
+        log_promo("CREATE_PROMOTION failed - invalid discount_type", {"discount_type": discount_type})
+        raise HTTPException(status_code=400, detail=f"discount_type must be one of: {', '.join(valid_discount_types)}")
+
     # Create promotion
     promotion = Promotion(
         name=name,
         description=description,
         discount_percent=discount_percent,
+        discount_type=discount_type,  # 'percentage', 'free_week', 'free_100' or None (auto-determine)
         total_codes=total_codes,
         code_prefix=code_prefix,
         created_by=current_user.email,
@@ -6535,6 +6573,7 @@ async def create_promotion(
         "name": promotion.name,
         "description": promotion.description,
         "discount_percent": promotion.discount_percent,
+        "discount_type": promotion.discount_type,  # 'percentage', 'free_week', 'free_100' or None
         "total_codes": promotion.total_codes,
         "codes_sent": promotion.codes_sent,
         "codes_used": promotion.codes_used,
@@ -6592,6 +6631,7 @@ async def list_promotions(
                 "name": p.name,
                 "description": p.description,
                 "discount_percent": p.discount_percent,
+                "discount_type": p.discount_type,  # 'percentage', 'free_week', 'free_100' or None
                 "total_codes": p.total_codes,
                 "codes_sent": p.codes_sent,
                 "codes_used": p.codes_used,
@@ -6710,6 +6750,7 @@ async def get_promotion(
         "name": promotion.name,
         "description": promotion.description,
         "discount_percent": promotion.discount_percent,
+        "discount_type": promotion.discount_type,  # 'percentage', 'free_week', 'free_100' or None
         "total_codes": promotion.total_codes,
         "codes_sent": promotion.codes_sent,
         "codes_used": promotion.codes_used,
@@ -9486,13 +9527,29 @@ async def create_payment(
                                                 can_use = promo_code_record.is_multi_use or not promo_code_record.is_used
                                                 if can_use:
                                                     discount_percent = promotion.discount_percent
-                                                    if discount_percent == 100:
+                                                    # Get discount type from promotion, or auto-determine
+                                                    discount_type = promotion.discount_type
+                                                    if not discount_type:
+                                                        discount_type = 'free_week' if discount_percent == 100 else 'percentage'
+
+                                                    if discount_type == 'free_100':
+                                                        # "100% Off" - completely free regardless of trip length
                                                         new_discount_amount = new_original_amount
                                                         is_free_booking = True
+                                                    elif discount_type == 'free_week':
+                                                        # "1 Week Free Parking" - trips <= 7 days are free, longer trips deduct week1 price
+                                                        if duration_days <= 7:
+                                                            new_discount_amount = new_original_amount
+                                                            is_free_booking = True
+                                                        else:
+                                                            week1_base_pence = int(get_base_price_for_duration(7) * 100)
+                                                            new_discount_amount = min(week1_base_pence, new_original_amount)
+                                                            is_free_booking = False
                                                     else:
+                                                        # 'percentage' - Standard percentage-based discount
                                                         new_discount_amount = int(new_original_amount * discount_percent / 100)
                                                     new_promo_code_applied = new_promo
-                                                    print(f"[DEDUP] New promo {new_promo}: {discount_percent}% = {new_discount_amount} pence discount")
+                                                    print(f"[DEDUP] New promo {new_promo}: {discount_type} {discount_percent}% = {new_discount_amount} pence discount, duration: {duration_days} days")
                                     else:
                                         # Check legacy promotions table
                                         from db_models import Promotion
@@ -9647,19 +9704,34 @@ async def create_payment(
                     promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
                     if promotion:
                         discount_percent = promotion.discount_percent
+                        # Get discount type from promotion, or auto-determine
+                        discount_type = promotion.discount_type
+                        if not discount_type:
+                            discount_type = 'free_week' if discount_percent == 100 else 'percentage'
+
                         log_promo("PAYMENT applying discount (new system)", {
                             "code": promo_code,
                             "promotion_name": promotion.name,
                             "discount_percent": discount_percent,
+                            "discount_type": discount_type,
                             "original_amount": original_amount
                         })
 
-                        if discount_percent == 100:
-                            # 100% off - full discount on any trip length
+                        if discount_type == 'free_100':
+                            # "100% Off" - completely free regardless of trip length
                             discount_amount = original_amount
                             is_free_booking = True
+                        elif discount_type == 'free_week':
+                            # "1 Week Free Parking" - trips <= 7 days are free, longer trips deduct week1 price
+                            if duration_days <= 7:
+                                discount_amount = original_amount
+                                is_free_booking = True
+                            else:
+                                week1_base_pence = int(get_base_price_for_duration(7) * 100)
+                                discount_amount = min(week1_base_pence, original_amount)
+                                is_free_booking = False
                         else:
-                            # Percentage-based discount
+                            # 'percentage' - Standard percentage-based discount
                             discount_amount = int(original_amount * discount_percent / 100)
                             is_free_booking = False
 
@@ -9668,7 +9740,9 @@ async def create_payment(
                             "code": promo_code,
                             "discount_amount": discount_amount,
                             "final_amount": original_amount - discount_amount,
-                            "is_free_booking": is_free_booking
+                            "is_free_booking": is_free_booking,
+                            "discount_type": discount_type,
+                            "duration_days": duration_days
                         })
             else:
                 # Fallback: Check legacy MarketingSubscriber promo fields
