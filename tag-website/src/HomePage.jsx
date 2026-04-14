@@ -33,7 +33,7 @@ function HomePage() {
   const [submitStatus, setSubmitStatus] = useState(null) // 'success' | 'error' | null
   const [heroBannerIndex, setHeroBannerIndex] = useState(0)
   const [bannerFading, setBannerFading] = useState(false)
-  const [prices, setPrices] = useState({ days4: 65, week1: 89, week2: 140 })
+  const [prices, setPrices] = useState({ days4: 65, days4Max: 75, week1: 89, week1Max: 99, week2: 140, week2Max: 150 })
   const [hasActivePromo, setHasActivePromo] = useState(false)
 
   // Alternate hero banner every 10 seconds
@@ -79,10 +79,16 @@ function HomePage() {
     })
       .then(res => res.json())
       .then(data => {
+        const tierIncrement = data.tier_increment || 5
+        const peakDayIncrement = data.peak_day_increment || 0
+        const maxAddon = (tierIncrement * 2) + peakDayIncrement
         setPrices({
           days4: data.days_1_4_price || 65,
+          days4Max: (data.days_1_4_price || 65) + maxAddon,
           week1: data.week1_base_price || 89,
+          week1Max: (data.week1_base_price || 89) + maxAddon,
           week2: data.week2_base_price || 140,
+          week2Max: (data.week2_base_price || 140) + maxAddon,
         })
       })
       .catch(() => {
@@ -318,26 +324,22 @@ function HomePage() {
             <div className="pricing-side-option left">
               <span className="pricing-side-label">4 DAY TRIP</span>
               <div className="pricing-side-price">
-                <span className="pricing-side-from">From</span>
-                <span className="pricing-side-amount"><span className="currency">£</span>{prices.days4}</span>
+                <span className="pricing-side-amount">£{prices.days4}–£{prices.days4Max}</span>
               </div>
             </div>
             <div className="pricing-center-hero">
               <span className="pricing-hero-badge">MOST POPULAR</span>
               <span className="pricing-hero-label">7 DAY TRIP</span>
               <div className="pricing-hero-price">
-                <span className="pricing-hero-from">From</span>
                 <div className="pricing-hero-amount">
-                  <span className="currency">£</span>
-                  <span className="price">{prices.week1}</span>
+                  <span className="price">£{prices.week1}–£{prices.week1Max}</span>
                 </div>
               </div>
             </div>
             <div className="pricing-side-option right">
               <span className="pricing-side-label">14 DAY TRIP</span>
               <div className="pricing-side-price">
-                <span className="pricing-side-from">From</span>
-                <span className="pricing-side-amount"><span className="currency">£</span>{prices.week2}</span>
+                <span className="pricing-side-amount">£{prices.week2}–£{prices.week2Max}</span>
               </div>
             </div>
           </div>

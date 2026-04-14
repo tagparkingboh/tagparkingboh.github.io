@@ -322,6 +322,11 @@ function StripePayment({
   sessionId,
   promoCode,
   promoCodeDiscount = 0,
+  // Discount types:
+  // - 'percentage': Standard percentage discount (e.g., 10% off)
+  // - 'free_week': "1 Week Free Parking" - deducts week1_price (free for ≤7 days, partial for >7 days)
+  // - 'free_100': "100% Off" - completely free regardless of trip length
+  promoCodeType = 'percentage',
   pricingInfo,
   onPaymentSuccess,
   onPaymentError,
@@ -342,12 +347,31 @@ function StripePayment({
   const [discountAmount, setDiscountAmount] = useState('')
   const [isProcessingFreeBooking, setIsProcessingFreeBooking] = useState(false)
 
-  // Calculate display amounts for free booking preview (1-week + 100% promo only)
+  // Calculate display amounts for free booking preview
+  // Handles three discount types:
+  // - 'percentage': Standard percentage discount (e.g., 10% off)
+  // - 'free_week': "1 Week Free" - deducts week1_price (free for ≤7 days, partial for >7 days)
+  // - 'free_100': "100% Off" - completely free regardless of trip length
   const calculateAmounts = () => {
     const pricePounds = pricingInfo ? pricingInfo.price : 0
+    const week1Price = pricingInfo?.week1_price || pricePounds
+    const durationDays = pricingInfo?.duration_days || 7
+
+    // For free_week type with trips > 7 days, only week1 is free
+    if (promoCodeType === 'free_week' && durationDays > 7) {
+      const discountPounds = Math.min(week1Price, pricePounds)
+      return {
+        original: `£${pricePounds.toFixed(2)}`,
+        discount: `£${discountPounds.toFixed(2)}`,
+        total: `£${(pricePounds - discountPounds).toFixed(2)}`,
+      }
+    }
+
+    // For 'free_100' type, free_week with trips <= 7 days, or percentage 100%, full discount
     return {
       original: `£${pricePounds.toFixed(2)}`,
       discount: `£${pricePounds.toFixed(2)}`,
+      total: '£0.00',
     }
   }
 
@@ -460,9 +484,14 @@ function StripePayment({
     console.log('[StripePayment] promoCodeDiscount:', promoCodeDiscount)
     console.log('[StripePayment] previousPromo (ref):', previousPromo)
 
-    const isFree = promoCodeDiscount === 100 && formData.package === 'quick'
+    const durationDays = pricingInfo?.duration_days || 7
+    // Free booking conditions:
+    // - 'free_100' type with any trip duration = always free
+    // - 'free_week' type with trips <= 7 days = free
+    // - 'free_week' type with trips > 7 days = NOT free (partial discount)
+    const isFree = promoCodeDiscount === 100 && (promoCodeType === 'free_100' || (promoCodeType === 'free_week' && durationDays <= 7))
 
-    // For FREE bookings (1-week + 100% promo), show free booking UI
+    // For FREE bookings, show free booking UI
     if (isFree) {
       // Log checkout loaded event for free bookings
       logAuditEvent(sessionId, 'checkout_loaded', {
@@ -519,7 +548,13 @@ function StripePayment({
         initializedWithPromoRef.current = currentPromo // Track which promo was used
 
         // Handle response
-        if (data.is_free_booking) {
+        // For 'free_week' promo type with trips > 7 days, we need payment even if backend says free
+        // Because free_week only deducts week1_price, not the full amount
+        const durationDays = pricingInfo?.duration_days || 7
+        const actuallyFree = data.is_free_booking &&
+          !(promoCodeType === 'free_week' && durationDays > 7)
+
+        if (actuallyFree) {
           setBookingReference(data.booking_reference)
           setAmount(data.amount_display)
           setIsFreeBooking(true)

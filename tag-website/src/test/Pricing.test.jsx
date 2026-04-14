@@ -23,7 +23,7 @@ describe('HomePage Pricing Display', () => {
     vi.clearAllMocks()
   })
 
-  it('displays default prices before API response', async () => {
+  it('displays default price ranges before API response', async () => {
     // Mock a slow API response
     global.fetch.mockImplementation(() => new Promise(() => {}))
 
@@ -33,18 +33,21 @@ describe('HomePage Pricing Display', () => {
       </BrowserRouter>
     )
 
-    // Should show default prices initially
-    expect(container.textContent).toContain('79')
-    expect(container.textContent).toContain('140')
+    // Should show default price ranges initially (base–max)
+    expect(container.textContent).toContain('£65–£75')  // 4 day
+    expect(container.textContent).toContain('£89–£99')  // 7 day
+    expect(container.textContent).toContain('£140–£150') // 14 day
   })
 
   it('fetches pricing from API on mount', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({
+        days_1_4_price: 65,
         week1_base_price: 99,
         week2_base_price: 159,
         tier_increment: 15,
+        peak_day_increment: 10,
       }),
     })
 
@@ -56,18 +59,21 @@ describe('HomePage Pricing Display', () => {
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/pricing')
+        expect.stringContaining('/api/pricing'),
+        expect.objectContaining({ cache: 'no-store' })
       )
     })
   })
 
-  it('updates prices after successful API fetch', async () => {
+  it('updates prices with range after successful API fetch', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({
+        days_1_4_price: 70,
         week1_base_price: 95,
         week2_base_price: 155,
-        tier_increment: 12,
+        tier_increment: 10,
+        peak_day_increment: 5,
       }),
     })
 
@@ -77,9 +83,64 @@ describe('HomePage Pricing Display', () => {
       </BrowserRouter>
     )
 
+    // Max = base + (tier_increment * 2) + peak_day_increment
+    // = base + (10 * 2) + 5 = base + 25
     await waitFor(() => {
-      expect(container.textContent).toContain('95')
-      expect(container.textContent).toContain('155')
+      expect(container.textContent).toContain('£70–£95')   // 70 + 25
+      expect(container.textContent).toContain('£95–£120')  // 95 + 25
+      expect(container.textContent).toContain('£155–£180') // 155 + 25
+    })
+  })
+
+  it('calculates max price correctly with peak day increment', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        days_1_4_price: 65,
+        week1_base_price: 85,
+        week2_base_price: 150,
+        tier_increment: 10,
+        peak_day_increment: 10,
+      }),
+    })
+
+    const { container } = render(
+      <BrowserRouter>
+        <MockHomePage />
+      </BrowserRouter>
+    )
+
+    // Max = base + (10 * 2) + 10 = base + 30
+    await waitFor(() => {
+      expect(container.textContent).toContain('£65–£95')   // 65 + 30
+      expect(container.textContent).toContain('£85–£115')  // 85 + 30
+      expect(container.textContent).toContain('£150–£180') // 150 + 30
+    })
+  })
+
+  it('handles zero peak day increment', async () => {
+    global.fetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        days_1_4_price: 65,
+        week1_base_price: 85,
+        week2_base_price: 150,
+        tier_increment: 10,
+        peak_day_increment: 0,
+      }),
+    })
+
+    const { container } = render(
+      <BrowserRouter>
+        <MockHomePage />
+      </BrowserRouter>
+    )
+
+    // Max = base + (10 * 2) + 0 = base + 20
+    await waitFor(() => {
+      expect(container.textContent).toContain('£65–£85')   // 65 + 20
+      expect(container.textContent).toContain('£85–£105')  // 85 + 20
+      expect(container.textContent).toContain('£150–£170') // 150 + 20
     })
   })
 
@@ -95,15 +156,17 @@ describe('HomePage Pricing Display', () => {
     // Wait a bit for error to be handled
     await new Promise(resolve => setTimeout(resolve, 100))
 
-    // Should still show default prices
-    expect(container.textContent).toContain('79')
-    expect(container.textContent).toContain('140')
+    // Should still show default price ranges
+    expect(container.textContent).toContain('£65–£75')
+    expect(container.textContent).toContain('£89–£99')
+    expect(container.textContent).toContain('£140–£150')
   })
 
   it('keeps default prices on non-OK response', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
+      json: () => Promise.reject(new Error('Failed')),
     })
 
     const { container } = render(
@@ -114,9 +177,10 @@ describe('HomePage Pricing Display', () => {
 
     await new Promise(resolve => setTimeout(resolve, 100))
 
-    // Should still show default prices
-    expect(container.textContent).toContain('79')
-    expect(container.textContent).toContain('140')
+    // Should still show default price ranges
+    expect(container.textContent).toContain('£65–£75')
+    expect(container.textContent).toContain('£89–£99')
+    expect(container.textContent).toContain('£140–£150')
   })
 })
 
@@ -387,8 +451,9 @@ describe('Pricing Edge Cases', () => {
       </BrowserRouter>
     )
 
-    // Should still render with defaults
-    expect(container.textContent).toContain('79')
+    // Should still render with default price ranges
+    expect(container.textContent).toContain('£65–£75')
+    expect(container.textContent).toContain('£89–£99')
 
     vi.useRealTimers()
   })
@@ -443,24 +508,102 @@ describe('Price Preview Calculations', () => {
 })
 
 // =============================================================================
+// Price Range Calculation Tests
+// =============================================================================
+
+describe('Price Range Calculations', () => {
+  it('calculates max price with tier and peak day increments', () => {
+    const pricing = {
+      days_1_4_price: 65,
+      week1_base_price: 85,
+      week2_base_price: 150,
+      tier_increment: 10,
+      peak_day_increment: 10,
+    }
+
+    // Max = base + (tier_increment * 2) + peak_day_increment
+    const maxAddon = (pricing.tier_increment * 2) + pricing.peak_day_increment
+    expect(maxAddon).toBe(30)
+
+    expect(pricing.days_1_4_price + maxAddon).toBe(95)
+    expect(pricing.week1_base_price + maxAddon).toBe(115)
+    expect(pricing.week2_base_price + maxAddon).toBe(180)
+  })
+
+  it('calculates max price with zero peak day increment', () => {
+    const pricing = {
+      days_1_4_price: 65,
+      week1_base_price: 85,
+      week2_base_price: 150,
+      tier_increment: 10,
+      peak_day_increment: 0,
+    }
+
+    // Max = base + (tier_increment * 2) + 0
+    const maxAddon = (pricing.tier_increment * 2) + pricing.peak_day_increment
+    expect(maxAddon).toBe(20)
+
+    expect(pricing.days_1_4_price + maxAddon).toBe(85)
+    expect(pricing.week1_base_price + maxAddon).toBe(105)
+    expect(pricing.week2_base_price + maxAddon).toBe(170)
+  })
+
+  it('calculates max price with high peak day increment', () => {
+    const pricing = {
+      days_1_4_price: 65,
+      week1_base_price: 85,
+      week2_base_price: 150,
+      tier_increment: 5,
+      peak_day_increment: 20,
+    }
+
+    // Max = base + (5 * 2) + 20 = base + 30
+    const maxAddon = (pricing.tier_increment * 2) + pricing.peak_day_increment
+    expect(maxAddon).toBe(30)
+
+    expect(pricing.days_1_4_price + maxAddon).toBe(95)
+  })
+
+  it('handles decimal increments correctly', () => {
+    const pricing = {
+      days_1_4_price: 65.50,
+      tier_increment: 7.50,
+      peak_day_increment: 5.00,
+    }
+
+    // Max = 65.50 + (7.50 * 2) + 5.00 = 65.50 + 20 = 85.50
+    const maxAddon = (pricing.tier_increment * 2) + pricing.peak_day_increment
+    expect(pricing.days_1_4_price + maxAddon).toBe(85.50)
+  })
+})
+
+// =============================================================================
 // Mock Components for Testing
 // =============================================================================
 
 // Simplified HomePage component for testing
 function MockHomePage() {
-  const [prices, setPrices] = React.useState({ week1: 79, week2: 140 })
+  const [prices, setPrices] = React.useState({
+    days4: 65, days4Max: 75,
+    week1: 89, week1Max: 99,
+    week2: 140, week2Max: 150
+  })
 
   React.useEffect(() => {
     const API_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8000'
-    fetch(`${API_URL}/api/pricing`)
-      .then(res => {
-        if (res.ok) return res.json()
-        throw new Error('Not OK')
-      })
+    fetch(`${API_URL}/api/pricing`, { cache: 'no-store' })
+      .then(res => res.json())
       .then(data => {
+        const tierIncrement = data.tier_increment || 5
+        const peakDayIncrement = data.peak_day_increment || 0
+        const maxAddon = (tierIncrement * 2) + peakDayIncrement
         setPrices({
-          week1: data.week1_base_price || 79,
+          days4: data.days_1_4_price || 65,
+          days4Max: (data.days_1_4_price || 65) + maxAddon,
+          week1: data.week1_base_price || 89,
+          week1Max: (data.week1_base_price || 89) + maxAddon,
           week2: data.week2_base_price || 140,
+          week2Max: (data.week2_base_price || 140) + maxAddon,
         })
       })
       .catch(() => {
@@ -470,11 +613,14 @@ function MockHomePage() {
 
   return (
     <div>
-      <div className="pricing-card">
-        <span className="price">{prices.week1}</span>
+      <div className="pricing-card" data-testid="days4-card">
+        <span className="price">£{prices.days4}–£{prices.days4Max}</span>
       </div>
-      <div className="pricing-card">
-        <span className="price">{prices.week2}</span>
+      <div className="pricing-card" data-testid="week1-card">
+        <span className="price">£{prices.week1}–£{prices.week1Max}</span>
+      </div>
+      <div className="pricing-card" data-testid="week2-card">
+        <span className="price">£{prices.week2}–£{prices.week2Max}</span>
       </div>
     </div>
   )

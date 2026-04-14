@@ -427,6 +427,7 @@ function Admin() {
     week2_base_price: 150,    // 14 days anchor
     daily_increment: 8,       // Daily increment between anchors
     tier_increment: 5,        // Early -> Standard -> Late increment
+    peak_day_increment: 0,    // Peak day increment (Fri/Sat drop-off, Sun/Mon/Tue pickup)
   })
   const [loadingPricing, setLoadingPricing] = useState(false)
   const [savingPricing, setSavingPricing] = useState(false)
@@ -3260,6 +3261,7 @@ function Admin() {
           week2_base_price: data.week2_base_price ?? 150,
           daily_increment: data.daily_increment ?? 8,
           tier_increment: data.tier_increment ?? 5,
+          peak_day_increment: data.peak_day_increment ?? 0,
         })
       } else {
         setError('Failed to load pricing settings')
@@ -9979,15 +9981,45 @@ function Admin() {
                   </div>
                 </div>
 
+                <div className="admin-pricing-section peak-day-section">
+                  <h3>Peak Day Increment</h3>
+                  <p className="pricing-hint">Added when drop-off is Friday/Saturday AND pickup is Sunday/Monday/Tuesday. Set to 0 to disable.</p>
+                  <div className="pricing-inputs">
+                    <div className="pricing-input-group pricing-input-highlight">
+                      <label>Peak Day Increment</label>
+                      <div className="price-input-wrapper">
+                        <span className="currency-symbol">£</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={pricing.peak_day_increment}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '')
+                            setPricing({ ...pricing, peak_day_increment: parseFloat(val) || 0 })
+                          }}
+                        />
+                      </div>
+                      <span className="pricing-input-hint">for peak day bookings</span>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="pricing-preview">
                   <h3>Price Preview</h3>
                   <table className="pricing-preview-table">
                     <thead>
                       <tr>
-                        <th>Duration</th>
-                        <th>Early (14+ days)</th>
-                        <th>Standard (7-13 days)</th>
-                        <th>Late (&lt;7 days)</th>
+                        <th rowSpan="2">Duration</th>
+                        <th colSpan="3">Regular</th>
+                        <th colSpan="3">Peak Day (+£{pricing.peak_day_increment})</th>
+                      </tr>
+                      <tr>
+                        <th>Early</th>
+                        <th>Standard</th>
+                        <th>Late</th>
+                        <th>Early</th>
+                        <th>Standard</th>
+                        <th>Late</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -9996,75 +10028,112 @@ function Admin() {
                         <td>£{pricing.days_1_4_price}</td>
                         <td>£{pricing.days_1_4_price + pricing.tier_increment}</td>
                         <td>£{pricing.days_1_4_price + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.days_1_4_price + pricing.peak_day_increment}</td>
+                        <td>£{pricing.days_1_4_price + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.days_1_4_price + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                       <tr>
                         <td>5 Days</td>
                         <td>£{pricing.days_1_4_price + pricing.daily_increment}</td>
                         <td>£{pricing.days_1_4_price + pricing.daily_increment + pricing.tier_increment}</td>
                         <td>£{pricing.days_1_4_price + pricing.daily_increment + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.days_1_4_price + pricing.daily_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.days_1_4_price + pricing.daily_increment + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.days_1_4_price + pricing.daily_increment + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                       <tr>
                         <td>6 Days</td>
                         <td>£{pricing.days_1_4_price + (pricing.daily_increment * 2)}</td>
                         <td>£{pricing.days_1_4_price + (pricing.daily_increment * 2) + pricing.tier_increment}</td>
                         <td>£{pricing.days_1_4_price + (pricing.daily_increment * 2) + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.days_1_4_price + (pricing.daily_increment * 2) + pricing.peak_day_increment}</td>
+                        <td>£{pricing.days_1_4_price + (pricing.daily_increment * 2) + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.days_1_4_price + (pricing.daily_increment * 2) + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                       <tr>
                         <td>7 Days (1 Week)</td>
                         <td>£{pricing.week1_base_price}</td>
                         <td>£{pricing.week1_base_price + pricing.tier_increment}</td>
                         <td>£{pricing.week1_base_price + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.week1_base_price + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                       <tr>
                         <td>8 Days</td>
                         <td>£{pricing.week1_base_price + pricing.daily_increment}</td>
                         <td>£{pricing.week1_base_price + pricing.daily_increment + pricing.tier_increment}</td>
                         <td>£{pricing.week1_base_price + pricing.daily_increment + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.week1_base_price + pricing.daily_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + pricing.daily_increment + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + pricing.daily_increment + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                       <tr>
                         <td>9 Days</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 2)}</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 2) + pricing.tier_increment}</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 2) + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 2) + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 2) + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 2) + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                       <tr>
                         <td>10 Days</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 3)}</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 3) + pricing.tier_increment}</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 3) + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 3) + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 3) + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 3) + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                       <tr>
                         <td>11 Days</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 4)}</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 4) + pricing.tier_increment}</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 4) + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 4) + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 4) + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 4) + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                       <tr>
                         <td>12 Days</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 5)}</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 5) + pricing.tier_increment}</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 5) + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 5) + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 5) + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 5) + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                       <tr>
                         <td>13 Days</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 6)}</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 6) + pricing.tier_increment}</td>
                         <td>£{pricing.week1_base_price + (pricing.daily_increment * 6) + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 6) + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 6) + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week1_base_price + (pricing.daily_increment * 6) + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                       <tr>
                         <td>14 Days (2 Weeks)</td>
                         <td>£{pricing.week2_base_price}</td>
                         <td>£{pricing.week2_base_price + pricing.tier_increment}</td>
                         <td>£{pricing.week2_base_price + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.week2_base_price + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week2_base_price + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week2_base_price + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                       <tr>
                         <td>15 Days</td>
                         <td>£{pricing.week2_base_price + pricing.daily_increment}</td>
                         <td>£{pricing.week2_base_price + pricing.daily_increment + pricing.tier_increment}</td>
                         <td>£{pricing.week2_base_price + pricing.daily_increment + (pricing.tier_increment * 2)}</td>
+                        <td>£{pricing.week2_base_price + pricing.daily_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week2_base_price + pricing.daily_increment + pricing.tier_increment + pricing.peak_day_increment}</td>
+                        <td>£{pricing.week2_base_price + pricing.daily_increment + (pricing.tier_increment * 2) + pricing.peak_day_increment}</td>
                       </tr>
                     </tbody>
                   </table>
+                  <p className="pricing-preview-note">Peak Day: applies when drop-off is Fri/Sat OR pickup is Sun/Mon/Tue</p>
                 </div>
 
                 <div className="pricing-actions">

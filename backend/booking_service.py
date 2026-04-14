@@ -7,7 +7,7 @@ When a slot is booked, it becomes hidden/unavailable for other users.
 import json
 import os
 import uuid
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
@@ -38,6 +38,7 @@ def get_pricing_from_db() -> dict:
         "week2_base_price": 150.0,   # 14 days anchor
         "daily_increment": 8.0,      # Per-day increment between anchors
         "tier_increment": 5.0,       # Early -> Standard -> Late increment
+        "peak_day_increment": 0.0,   # Added for peak day bookings (Fri/Sat drop-off, Sun/Mon/Tue pickup)
     }
 
     try:
@@ -51,7 +52,7 @@ def get_pricing_from_db() -> dict:
         cur = conn.cursor()
         cur.execute("""
             SELECT days_1_4_price, week1_base_price, week2_base_price,
-                   daily_increment, tier_increment
+                   daily_increment, tier_increment, peak_day_increment
             FROM pricing_settings LIMIT 1
         """)
         row = cur.fetchone()
@@ -65,6 +66,7 @@ def get_pricing_from_db() -> dict:
                 "week2_base_price": float(row[2]) if row[2] else defaults["week2_base_price"],
                 "daily_increment": float(row[3]) if row[3] is not None else defaults["daily_increment"],
                 "tier_increment": float(row[4]) if row[4] is not None else defaults["tier_increment"],
+                "peak_day_increment": float(row[5]) if row[5] is not None else defaults["peak_day_increment"],
             }
         return defaults
     except Exception:
@@ -120,6 +122,34 @@ def get_base_price_for_duration(duration_days: int, pricing: dict = None) -> flo
         # 15+ days: 2 weeks anchor + increments
         extra_days = duration_days - 14
         return pricing["week2_base_price"] + (extra_days * daily_inc)
+
+
+def is_peak_day_booking(drop_off_date: date, pickup_date: date) -> bool:
+    """
+    Check if a booking qualifies for peak day pricing.
+
+    Peak day criteria (either condition triggers peak pricing):
+    - Drop-off is on Friday (4) or Saturday (5)
+    - OR Pickup is on Sunday (6), Monday (0), or Tuesday (1)
+
+    Args:
+        drop_off_date: The date of drop-off
+        pickup_date: The date of pickup
+
+    Returns:
+        True if booking qualifies for peak day increment
+    """
+    # weekday() returns 0=Monday, 1=Tuesday, ..., 4=Friday, 5=Saturday, 6=Sunday
+    drop_off_day = drop_off_date.weekday()
+    pickup_day = pickup_date.weekday()
+
+    # Drop-off on Friday (4) or Saturday (5)
+    is_peak_dropoff = drop_off_day in (4, 5)
+
+    # Pickup on Sunday (6), Monday (0), or Tuesday (1)
+    is_peak_pickup = pickup_day in (6, 0, 1)
+
+    return is_peak_dropoff or is_peak_pickup
 
 
 # Cache for pricing settings (refreshed every request in production)
@@ -224,7 +254,7 @@ class BookingService:
             return "late"
 
     @classmethod
-    def calculate_price_for_duration(cls, duration_days: int, drop_off_date: date) -> float:
+    def calculate_price_for_duration(cls, duration_days: int, drop_off_date: date, pickup_date: date = None) -> float:
         """
         Calculate the price based on trip duration and advance booking tier.
 
@@ -236,9 +266,14 @@ class BookingService:
         - 14 days: 2 weeks base
         - 15+ days: 2 weeks base + daily increments
 
+        Also applies peak day increment when:
+        - Drop-off is on Friday or Saturday
+        - Pickup is on Sunday, Monday, or Tuesday
+
         Args:
             duration_days: Number of days for the trip (1+)
             drop_off_date: The date of drop-off
+            pickup_date: The date of pickup (optional, calculated from duration if not provided)
 
         Returns:
             The price in pounds
@@ -246,17 +281,28 @@ class BookingService:
         advance_tier = cls.get_advance_tier(drop_off_date)
         pricing = get_pricing_from_db()
         tier_inc = pricing["tier_increment"]
+        peak_inc = pricing["peak_day_increment"]
 
         # Get base price using anchor pricing
         base_price = get_base_price_for_duration(duration_days, pricing)
 
         # Apply tier increment based on advance booking
         if advance_tier == "early":
-            return base_price
+            price = base_price
         elif advance_tier == "standard":
-            return base_price + tier_inc
+            price = base_price + tier_inc
         else:  # late
-            return base_price + (tier_inc * 2)
+            price = base_price + (tier_inc * 2)
+
+        # Apply peak day increment if applicable
+        if pickup_date is None:
+            # Calculate pickup_date from drop_off_date and duration
+            pickup_date = drop_off_date + timedelta(days=duration_days)
+
+        if peak_inc > 0 and is_peak_day_booking(drop_off_date, pickup_date):
+            price += peak_inc
+
+        return price
 
     @classmethod
     def calculate_price(cls, package: str, drop_off_date: date) -> float:

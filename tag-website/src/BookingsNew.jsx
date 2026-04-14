@@ -156,6 +156,11 @@ function Bookings() {
   const [promoCodeValid, setPromoCodeValid] = useState(() => loadBookingState('promoCodeValid', false))
   const [promoCodeMessage, setPromoCodeMessage] = useState(() => loadBookingState('promoCodeMessage', ''))
   const [promoCodeDiscount, setPromoCodeDiscount] = useState(() => loadBookingState('promoCodeDiscount', 0))
+  // Promo code type determines discount behavior:
+  // - 'percentage': Standard percentage discount (e.g., 10% off)
+  // - 'free_week': "1 Week Free Parking" - deducts week1_price (free for ≤7 days, partial for >7 days)
+  // - 'free_100': "100% Off" - completely free regardless of trip length
+  const [promoCodeType, setPromoCodeType] = useState(() => loadBookingState('promoCodeType', 'percentage'))
 
   // "Where did you hear about us?" marketing attribution state
   const [heardAboutUsSource, setHeardAboutUsSource] = useState(() => loadBookingState('heardAboutUsSource', ''))
@@ -1817,6 +1822,13 @@ function Bookings() {
         setPromoCodeValid(true)
         setPromoCodeDiscount(data.discount_percent)
         setPromoCodeMessage(data.message)
+        // Set promo code type from backend response:
+        // - 'percentage': Standard percentage discount (e.g., 10% off)
+        // - 'free_week': "1 Week Free Parking" - deducts week1_price (free for ≤7 days, partial for >7 days)
+        // - 'free_100': "100% Off" - completely free regardless of trip length
+        // Fallback to 'free_week' for 100% if backend doesn't provide type
+        const discountType = data.discount_type || (data.discount_percent === 100 ? 'free_week' : 'percentage')
+        setPromoCodeType(discountType)
         // Log promo code added
         fetch(`${API_BASE_URL}/api/booking/audit-event`, {
           method: 'POST',
@@ -1827,6 +1839,7 @@ function Bookings() {
             event_data: {
               promo_code: promoCode.trim().toUpperCase(),
               discount_percent: data.discount_percent,
+              discount_type: discountType,
               customer_email: formData.email,
               timestamp: new Date().toISOString()
             }
@@ -1835,6 +1848,7 @@ function Bookings() {
       } else {
         setPromoCodeValid(false)
         setPromoCodeDiscount(0)
+        setPromoCodeType('percentage')
         setPromoCodeMessage(data.message)
       }
     } catch (err) {
@@ -1867,6 +1881,7 @@ function Bookings() {
     setPromoCodeValid(false)
     setPromoCodeMessage('')
     setPromoCodeDiscount(0)
+    setPromoCodeType('percentage')
   }
 
   const formatDisplayDate = (date) => {
@@ -2970,16 +2985,32 @@ function Bookings() {
                       <span>£{pricingInfo ? pricingInfo.price.toFixed(2) : (formData.package === 'quick' ? '99.00' : '150.00')}</span>
                     </div>
                     <div className="summary-item discount">
-                      <span>{promoCodeDiscount === 100 ? '1 Week Free Parking' : `Promo Discount (${promoCodeDiscount}%)`}</span>
+                      <span>{(() => {
+                        // Show different labels based on discount type
+                        if (promoCodeType === 'free_100') {
+                          return '100% Off'
+                        } else if (promoCodeType === 'free_week') {
+                          return '1 Week Free Parking'
+                        } else {
+                          return `Promo Discount (${promoCodeDiscount}%)`
+                        }
+                      })()}</span>
                       <span className="discount-amount">-£{(() => {
                         const basePrice = pricingInfo ? pricingInfo.price : 0
-                        if (promoCodeDiscount === 100) {
-                          if (formData.package === 'quick') {
+                        const durationDays = pricingInfo?.duration_days || 7
+                        // free_100: full discount regardless of duration
+                        if (promoCodeType === 'free_100') {
+                          return basePrice.toFixed(2)
+                        }
+                        // free_week: full discount for <=7 days, week1 price for longer trips
+                        if (promoCodeType === 'free_week') {
+                          if (durationDays <= 7) {
                             return basePrice.toFixed(2)
                           }
                           const week1BasePrice = pricingInfo?.week1_price || 0
                           return Math.min(week1BasePrice, basePrice).toFixed(2)
                         }
+                        // percentage: standard percentage discount
                         return (basePrice * promoCodeDiscount / 100).toFixed(2)
                       })()}</span>
                     </div>
@@ -2990,16 +3021,24 @@ function Bookings() {
                   <span>
                     £{(() => {
                       const basePrice = pricingInfo ? pricingInfo.price : 0
+                      const durationDays = pricingInfo?.duration_days || 7
                       let discount = 0
                       if (promoCodeValid && promoCodeDiscount > 0) {
-                        if (promoCodeDiscount === 100) {
-                          if (formData.package === 'quick') {
+                        // free_100: full discount regardless of duration
+                        if (promoCodeType === 'free_100') {
+                          discount = basePrice
+                        }
+                        // free_week: full discount for <=7 days, week1 price for longer trips
+                        else if (promoCodeType === 'free_week') {
+                          if (durationDays <= 7) {
                             discount = basePrice
                           } else {
                             const week1BasePrice = pricingInfo?.week1_price || 0
                             discount = Math.min(week1BasePrice, basePrice)
                           }
-                        } else {
+                        }
+                        // percentage: standard percentage discount
+                        else {
                           discount = basePrice * promoCodeDiscount / 100
                         }
                       }
@@ -3146,6 +3185,7 @@ function Bookings() {
                   sessionId={sessionIdRef.current}
                   promoCode={promoCodeValid ? promoCode : null}
                   promoCodeDiscount={promoCodeValid ? promoCodeDiscount : 0}
+                  promoCodeType={promoCodeValid ? promoCodeType : 'percentage'}
                   pricingInfo={pricingInfo}
                   onPaymentSuccess={handlePaymentSuccess}
                   onPaymentError={handlePaymentError}
