@@ -353,7 +353,7 @@ function HomePage() {
         </div>
 
         <Link to="/tag-it" className="pricing-btn pricing-btn-center" onClick={() => window.gtag && window.gtag('event', 'book_it_click', { event_category: 'cta', event_label: 'pricing_section' })}>Book it <span>→</span></Link>
-        <p className="pricing-early-note">*Book early for the best price — last-minute bookings cost more</p>
+        <p className="pricing-early-note">*Book early for the best price — leaving it late costs more</p>
       </section>
 
       {/* Features Banner Section */}
