@@ -1129,23 +1129,17 @@ async def get_current_user(
 
     token = parts[1]
 
-    # Find valid session
-    session = db.query(DbSession).filter(
+    # Single JOIN query to get user from valid session (was 2 queries before)
+    user = db.query(User).join(
+        DbSession, DbSession.user_id == User.id
+    ).filter(
         DbSession.token == token,
-        DbSession.expires_at > datetime.utcnow()
-    ).first()
-
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-
-    # Get user
-    user = db.query(User).filter(
-        User.id == session.user_id,
+        DbSession.expires_at > datetime.utcnow(),
         User.is_active == True
     ).first()
 
     if not user:
-        raise HTTPException(status_code=401, detail="User not found or inactive")
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
 
     return user
 

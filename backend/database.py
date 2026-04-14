@@ -71,9 +71,9 @@ if not DATABASE_URL:
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Pool configuration
-POOL_SIZE = 10
-MAX_OVERFLOW = 20
+# Pool configuration - increased from 10+20 to handle traffic spikes
+POOL_SIZE = 15
+MAX_OVERFLOW = 30
 POOL_WARNING_THRESHOLD = 0.7  # Warn when 70% of pool is in use
 
 engine = create_engine(
