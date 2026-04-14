@@ -78,10 +78,11 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
+  // Disabled - running against staging URL instead
   // webServer: {
   //   command: 'npm run dev',
   //   url: 'http://localhost:5173',
-  //   reuseExistingServer: !process.env.CI,
+  //   reuseExistingServer: true,
   //   timeout: 120 * 1000,
   // },
 });

@@ -64,15 +64,15 @@ export class PaymentPage extends BasePage {
   constructor(page: Page) {
     super(page);
 
-    // Promo code section
+    // Promo code section (from BookingsNew.jsx)
     this.promoCodeSection = page.locator('.promo-code-section');
-    this.promoCodeInput = page.locator('.promo-code-input input[type="text"]');
-    this.promoApplyButton = page.locator('.promo-apply-btn, button:has-text("Apply")');
+    this.promoCodeInput = page.locator('.promo-code-input input[placeholder="Enter promo code"]');
+    this.promoApplyButton = page.locator('button.promo-apply-btn');
     this.promoCodeApplied = page.locator('.promo-code-applied');
     this.promoBadge = page.locator('.promo-badge');
     this.promoSuccessMessage = page.locator('.promo-success');
-    this.promoRemoveButton = page.locator('.promo-remove, button:has-text("Remove")');
-    this.promoErrorMessage = page.locator('.promo-error');
+    this.promoRemoveButton = page.locator('button.promo-remove');
+    this.promoErrorMessage = page.locator('p.promo-error');
 
     // Booking summary
     this.bookingSummary = page.locator('.booking-summary');
@@ -80,9 +80,9 @@ export class PaymentPage extends BasePage {
     this.summaryDiscount = page.locator('.summary-item.discount .discount-amount');
     this.summaryBasePrice = page.locator('.summary-item:has-text("Parking") span:last-child');
 
-    // Terms & Conditions
+    // Terms & Conditions (from BookingsNew.jsx - inside checkbox-group)
     this.termsCheckbox = page.locator('input[name="terms"]');
-    this.termsLabel = page.locator('.checkbox-label:has(input[name="terms"])');
+    this.termsLabel = page.locator('label.checkbox-label:has(input[name="terms"])');
     this.termsRequiredMessage = page.locator('.terms-required p');
 
     // Heard about us
@@ -90,9 +90,9 @@ export class PaymentPage extends BasePage {
     this.heardAboutUsSelect = page.locator('.heard-about-us-section select');
     this.heardAboutUsSubmit = page.locator('.heard-about-us-section button:has-text("Continue")');
 
-    // Stripe Elements container
-    this.stripeContainer = page.locator('.stripe-payment-container, .stripe-form, [class*="stripe"]');
-    this.paymentElement = page.locator('.StripeElement, #payment-element, [class*="PaymentElement"]');
+    // Stripe Elements container - use the exact class from StripePayment.jsx
+    this.stripeContainer = page.locator('.stripe-form');
+    this.paymentElement = page.locator('.stripe-form iframe, .StripeElement');
 
     // Stripe iframes
     this.cardNumberFrame = page.frameLocator('iframe[name*="__privateStripeFrame"]').first();
@@ -319,44 +319,49 @@ export class PaymentPage extends BasePage {
 
   /**
    * Fill test card details using Stripe's test cards
-   * Uses Stripe PaymentElement which auto-handles input fields
+   * Uses Stripe PaymentElement which renders in iframes
+   * Test card: 4242 4242 4242 4242, 10/65, 321
    */
   async fillTestCard(testCardType: 'success' | 'decline' | 'auth_required' = 'success') {
     const testCards = {
-      success: '4242424242424242',
-      decline: '4000000000000002',
-      auth_required: '4000002500003155',
+      success: { number: '4242424242424242', expiry: '1065', cvc: '321' },
+      decline: { number: '4000000000000002', expiry: '1065', cvc: '321' },
+      auth_required: { number: '4000002500003155', expiry: '1065', cvc: '321' },
     };
 
-    const cardNumber = testCards[testCardType];
+    const card = testCards[testCardType];
 
-    // Wait for Stripe iframe to be ready
-    await this.page.waitForTimeout(2000);
+    // Wait for Stripe PaymentElement to be ready
+    await this.page.waitForTimeout(3000);
 
-    // Stripe PaymentElement creates nested iframes
-    // We need to find the correct iframe and fill the inputs
-    const stripeFrame = this.page.frameLocator('iframe[title*="Stripe"]').first();
-
+    // Stripe PaymentElement uses multiple iframes for each field
+    // Try different iframe selectors that Stripe uses
     try {
-      // Card number
-      await stripeFrame.locator('input[name="number"]').fill(cardNumber);
-      await this.page.waitForTimeout(300);
+      // Card number iframe
+      const cardNumberFrame = this.page.frameLocator('iframe[name*="__privateStripeFrame"]').first();
+      await cardNumberFrame.locator('input[name="cardnumber"]').fill(card.number);
+      await this.page.waitForTimeout(500);
 
-      // Expiry
-      await stripeFrame.locator('input[name="expiry"]').fill('12/30');
-      await this.page.waitForTimeout(300);
+      // Expiry iframe (usually second frame)
+      const expiryFrame = this.page.frameLocator('iframe[name*="__privateStripeFrame"]').nth(1);
+      await expiryFrame.locator('input[name="exp-date"]').fill(card.expiry);
+      await this.page.waitForTimeout(500);
 
-      // CVC
-      await stripeFrame.locator('input[name="cvc"]').fill('123');
-      await this.page.waitForTimeout(300);
-
-      // Country/Postal code if visible
-      const postalInput = stripeFrame.locator('input[name="postalCode"]');
-      if (await postalInput.isVisible({ timeout: 1000 }).catch(() => false)) {
-        await postalInput.fill('12345');
-      }
+      // CVC iframe (usually third frame)
+      const cvcFrame = this.page.frameLocator('iframe[name*="__privateStripeFrame"]').nth(2);
+      await cvcFrame.locator('input[name="cvc"]').fill(card.cvc);
+      await this.page.waitForTimeout(500);
     } catch (error) {
-      console.log('Note: Stripe iframe interaction may need adjustment based on PaymentElement version');
+      // Alternative: Try single iframe with PaymentElement structure
+      console.log('Trying alternative Stripe iframe structure...');
+      try {
+        const stripeFrame = this.page.frameLocator('iframe[title*="Secure payment"]').first();
+        await stripeFrame.locator('[data-testid="card-number-input"], input[autocomplete="cc-number"]').fill(card.number);
+        await stripeFrame.locator('[data-testid="card-expiry-input"], input[autocomplete="cc-exp"]').fill(card.expiry);
+        await stripeFrame.locator('[data-testid="card-cvc-input"], input[autocomplete="cc-csc"]').fill(card.cvc);
+      } catch (innerError) {
+        console.log('Stripe iframe interaction failed - PaymentElement structure may differ');
+      }
     }
   }
 

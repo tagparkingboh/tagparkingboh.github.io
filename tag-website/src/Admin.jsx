@@ -1848,10 +1848,12 @@ function Admin() {
     }
   }
 
-  const fetchFunFacts = async () => {
+  const fetchFunFacts = async (forceRefresh = false) => {
     setLoadingFunFacts(true)
     try {
-      const response = await fetch(`${API_URL}/api/admin/reports/fun-facts`, {
+      const params = new URLSearchParams()
+      if (forceRefresh) params.append('refresh', 'true')
+      const response = await fetch(`${API_URL}/api/admin/reports/fun-facts?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -1867,10 +1869,12 @@ function Admin() {
     }
   }
 
-  const fetchOccupancyReport = async (view = 'daily') => {
+  const fetchOccupancyReport = async (view = 'daily', forceRefresh = false) => {
     setLoadingOccupancy(true)
     try {
-      const response = await fetch(`${API_URL}/api/admin/reports/occupancy?view=${view}`, {
+      const params = new URLSearchParams({ view })
+      if (forceRefresh) params.append('refresh', 'true')
+      const response = await fetch(`${API_URL}/api/admin/reports/occupancy?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -1886,12 +1890,13 @@ function Admin() {
     }
   }
 
-  const fetchPopularReport = async () => {
+  const fetchPopularReport = async (forceRefresh = false) => {
     setLoadingPopular(true)
     try {
       const params = new URLSearchParams({
         top: popularTop.toString(),
       })
+      if (forceRefresh) params.append('refresh', 'true')
       const response = await fetch(`${API_URL}/api/admin/reports/popular?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -1908,7 +1913,7 @@ function Admin() {
     }
   }
 
-  const fetchFinancialReport = async () => {
+  const fetchFinancialReport = async (forceRefresh = false) => {
     setLoadingFinancial(true)
     try {
       const params = new URLSearchParams()
@@ -1916,6 +1921,7 @@ function Admin() {
       if (financialToDate) params.append('to_date', financialToDate)
       if (financialStatusFilter !== 'all') params.append('status_filter', financialStatusFilter)
       if (financialPromoFilter !== 'all') params.append('promo_filter', financialPromoFilter)
+      if (forceRefresh) params.append('refresh', 'true')
 
       const response = await fetch(`${API_URL}/api/admin/reports/financial?${params}`, {
         headers: {
@@ -1933,10 +1939,12 @@ function Admin() {
     }
   }
 
-  const fetchSessionTracking = async (period = sessionTrackingPeriod) => {
+  const fetchSessionTracking = async (period = sessionTrackingPeriod, forceRefresh = false) => {
     setLoadingSessionTracking(true)
     try {
-      const response = await fetch(`${API_URL}/api/admin/reports/session-tracking?period=${period}`, {
+      const params = new URLSearchParams({ period })
+      if (forceRefresh) params.append('refresh', 'true')
+      const response = await fetch(`${API_URL}/api/admin/reports/session-tracking?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -1971,10 +1979,12 @@ function Admin() {
     }
   }
 
-  const fetchBookingsForecast = async () => {
+  const fetchBookingsForecast = async (forceRefresh = false) => {
     setLoadingForecast(true)
     try {
-      const response = await fetch(`${API_URL}/api/admin/reports/bookings-forecast`, {
+      const params = new URLSearchParams()
+      if (forceRefresh) params.append('refresh', 'true')
+      const response = await fetch(`${API_URL}/api/admin/reports/bookings-forecast?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -2008,8 +2018,8 @@ function Admin() {
 
       if (response.ok) {
         setEditingFinancialBooking(null)
-        // Refresh the financial report to show updated values
-        await fetchFinancialReport()
+        // Refresh the financial report to show updated values (force refresh to bypass cache)
+        await fetchFinancialReport(true)
       } else {
         console.error('Failed to save financial override')
       }
@@ -2143,11 +2153,13 @@ function Admin() {
     }
   }
 
-  const fetchBookingLocations = async (type = 'bookings') => {
+  const fetchBookingLocations = async (type = 'bookings', forceRefresh = false) => {
     setLoadingLocations(true)
     setError('')
     try {
-      const response = await fetch(`${API_URL}/api/admin/reports/booking-locations?map_type=${type}`, {
+      const params = new URLSearchParams({ map_type: type })
+      if (forceRefresh) params.append('refresh', 'true')
+      const response = await fetch(`${API_URL}/api/admin/reports/booking-locations?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -10177,7 +10189,7 @@ function Admin() {
                     <div className="reports-section-header">
                       <button
                         className="refresh-page-btn"
-                        onClick={() => { fetchBookingStats(); fetchFunFacts(); }}
+                        onClick={() => { fetchBookingStats(); fetchFunFacts(true); }}
                         disabled={loadingStats || loadingFunFacts}
                       >
                         {loadingStats || loadingFunFacts ? 'Refreshing...' : 'Refresh Page'}
@@ -10975,7 +10987,7 @@ function Admin() {
                   </select>
                   <button
                     className="refresh-stats-btn"
-                    onClick={() => fetchOccupancyReport(occupancyView)}
+                    onClick={() => fetchOccupancyReport(occupancyView, true)}
                     disabled={loadingOccupancy}
                   >
                     {loadingOccupancy ? 'Refreshing...' : 'Refresh Data'}
@@ -11461,7 +11473,7 @@ function Admin() {
                 <div className="reports-section-header">
                   <button
                     className="refresh-page-btn"
-                    onClick={() => fetchBookingLocations(mapType)}
+                    onClick={() => fetchBookingLocations(mapType, true)}
                     disabled={loadingLocations}
                   >
                     {loadingLocations ? 'Refreshing...' : 'Refresh Page'}
@@ -11535,7 +11547,7 @@ function Admin() {
                 <div className="reports-section-header">
                   <button
                     className="refresh-page-btn"
-                    onClick={fetchFinancialReport}
+                    onClick={() => fetchFinancialReport(true)}
                     disabled={loadingFinancial}
                   >
                     {loadingFinancial ? 'Refreshing...' : 'Refresh Page'}
@@ -12122,7 +12134,7 @@ function Admin() {
                   </div>
                   <button
                     className="refresh-page-btn"
-                    onClick={() => fetchSessionTracking()}
+                    onClick={() => fetchSessionTracking(sessionTrackingPeriod, true)}
                     disabled={loadingSessionTracking}
                   >
                     {loadingSessionTracking ? 'Refreshing...' : 'Refresh Page'}
@@ -12421,7 +12433,7 @@ function Admin() {
                 <div className="forecast-header">
                   <button
                     className="admin-refresh"
-                    onClick={fetchBookingsForecast}
+                    onClick={() => fetchBookingsForecast(true)}
                     disabled={loadingForecast}
                   >
                     {loadingForecast ? 'Loading...' : 'Refresh'}
