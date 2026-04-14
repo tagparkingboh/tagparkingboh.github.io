@@ -94,17 +94,61 @@ export const testAddresses = {
 /**
  * Test promo codes (staging environment only)
  * These are reusable unlimited-use codes created specifically for E2E testing.
+ *
+ * Discount Types:
+ * - 'percentage': Standard percentage discount (e.g., 10% off total price)
+ * - 'free_week': "1 Week Free Parking" - deducts week1_price (free for ≤7 days, partial for >7 days)
+ * - 'free_100': "100% Off" - completely free regardless of trip length
  */
 export const testPromoCodes = {
+  // ---- PERCENTAGE TYPE ----
   // 10% discount - can be used unlimited times
   tenPercent: 'TEST10',
-  // 100% discount (free week) - free for stays ≤7 days, deducts week 1 price for longer stays
+  // 20% discount (if available)
+  twentyPercent: 'TEST20',
+
+  // ---- FREE_WEEK TYPE ----
+  // 100% discount but only deducts week1 price for trips > 7 days
+  // - Free for stays ≤7 days
+  // - Deducts £79 (week1 price) for longer stays, customer pays remainder
   freeWeek: 'FREEWEEK',
-  // Invalid codes for negative testing
+
+  // ---- FREE_100 TYPE ----
+  // 100% discount - completely free regardless of trip length
+  // - Free for ALL trip durations (1-60 days)
+  free100: 'FREE100',
+
+  // ---- INVALID CODES ----
   invalid: 'INVALIDCODE123',
   expired: 'EXPIRED2023',
-  // Legacy codes (may not exist in staging)
+
+  // ---- LEGACY CODES ----
+  // Legacy codes from marketing_subscribers table (may not exist in staging)
   legacy: 'TESTCODE',
+};
+
+/**
+ * Expected behavior for each promo code type by trip duration
+ */
+export const promoCodeExpectations = {
+  percentage: {
+    type: 'percentage',
+    description: 'Standard percentage discount',
+    shortTrip: { isFree: false, discountCalculation: '10% of total' },
+    longTrip: { isFree: false, discountCalculation: '10% of total' },
+  },
+  freeWeek: {
+    type: 'free_week',
+    description: '1 Week Free - deducts week1 price',
+    shortTrip: { isFree: true, discountCalculation: '100% (full amount)' },
+    longTrip: { isFree: false, discountCalculation: '£79 (week1 price) deducted' },
+  },
+  free100: {
+    type: 'free_100',
+    description: '100% Off - always free',
+    shortTrip: { isFree: true, discountCalculation: '100% (full amount)' },
+    longTrip: { isFree: true, discountCalculation: '100% (full amount)' },
+  },
 };
 
 /**
