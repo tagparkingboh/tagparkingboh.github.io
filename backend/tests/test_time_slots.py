@@ -36,7 +36,7 @@ class TestCalculateDropOffDatetime:
     """Tests for the calculate_drop_off_datetime function."""
 
     def test_normal_morning_flight_early_slot(self):
-        """Flight at 07:10 with early slot (2h45m before) = 04:25 same day."""
+        """Flight at 07:10 with early slot (2.5h before) = 04:40 same day."""
         flight_date = FUTURE_DATE  # Tuesday
         flight_time = time(7, 10)
 
@@ -45,10 +45,22 @@ class TestCalculateDropOffDatetime:
         )
 
         assert drop_off_date == FUTURE_DATE  # Same day
-        assert drop_off_time == time(4, 25)  # 07:10 - 2:45 = 04:25
+        assert drop_off_time == time(4, 40)  # 07:10 - 2:30 = 04:40
+
+    def test_normal_morning_flight_standard_slot(self):
+        """Flight at 07:10 with standard slot (2h before) = 05:10 same day."""
+        flight_date = FUTURE_DATE
+        flight_time = time(7, 10)
+
+        drop_off_date, drop_off_time = calculate_drop_off_datetime(
+            flight_date, flight_time, SlotType.STANDARD
+        )
+
+        assert drop_off_date == FUTURE_DATE
+        assert drop_off_time == time(5, 10)  # 07:10 - 2:00 = 05:10
 
     def test_normal_morning_flight_late_slot(self):
-        """Flight at 07:10 with late slot (2h before) = 05:10 same day."""
+        """Flight at 07:10 with late slot (1.5h before) = 05:40 same day."""
         flight_date = FUTURE_DATE
         flight_time = time(7, 10)
 
@@ -57,12 +69,12 @@ class TestCalculateDropOffDatetime:
         )
 
         assert drop_off_date == FUTURE_DATE
-        assert drop_off_time == time(5, 10)  # 07:10 - 2:00 = 05:10
+        assert drop_off_time == time(5, 40)  # 07:10 - 1:30 = 05:40
 
     def test_overnight_early_morning_flight_early_slot(self):
         """
         Edge case: Flight at 00:35 Tuesday with early slot.
-        00:35 - 2:45 = 21:50 on Monday (previous day).
+        00:35 - 2:30 = 22:05 on Monday (previous day).
         """
         flight_date = FUTURE_DATE  # Tuesday
         flight_time = time(0, 35)
@@ -72,46 +84,68 @@ class TestCalculateDropOffDatetime:
         )
 
         assert drop_off_date == FUTURE_DATE_PREV  # Monday (previous day)
-        assert drop_off_time == time(21, 50)  # 00:35 - 2:45 = 21:50
+        assert drop_off_time == time(22, 5)  # 00:35 - 2:30 = 22:05
 
-    def test_overnight_early_morning_flight_late_slot(self):
+    def test_overnight_early_morning_flight_standard_slot(self):
         """
-        Edge case: Flight at 00:35 Tuesday with late slot.
+        Edge case: Flight at 00:35 Tuesday with standard slot.
         00:35 - 2:00 = 22:35 on Monday (previous day).
         """
         flight_date = FUTURE_DATE  # Tuesday
         flight_time = time(0, 35)
 
         drop_off_date, drop_off_time = calculate_drop_off_datetime(
-            flight_date, flight_time, SlotType.LATE
+            flight_date, flight_time, SlotType.STANDARD
         )
 
         assert drop_off_date == FUTURE_DATE_PREV  # Monday (previous day)
         assert drop_off_time == time(22, 35)  # 00:35 - 2:00 = 22:35
 
+    def test_overnight_early_morning_flight_late_slot(self):
+        """
+        Edge case: Flight at 00:35 Tuesday with late slot.
+        00:35 - 1:30 = 23:05 on Monday (previous day).
+        """
+        flight_date = FUTURE_DATE  # Tuesday
+        flight_time = time(0, 35)
+
+        drop_off_date, drop_off_time = calculate_drop_off_datetime(
+            flight_date, flight_time, SlotType.LATE
+        )
+
+        assert drop_off_date == FUTURE_DATE_PREV  # Monday (previous day)
+        assert drop_off_time == time(23, 5)  # 00:35 - 1:30 = 23:05
+
     def test_midnight_flight_exactly(self):
-        """Flight at exactly 00:00 - both slots fall on previous day."""
+        """Flight at exactly 00:00 - all slots fall on previous day."""
         flight_date = FUTURE_DATE
         flight_time = time(0, 0)
 
-        # Early slot: 00:00 - 2:45 = 21:15 previous day
+        # Early slot: 00:00 - 2:30 = 21:30 previous day
         early_date, early_time = calculate_drop_off_datetime(
             flight_date, flight_time, SlotType.EARLY
         )
         assert early_date == FUTURE_DATE_PREV
-        assert early_time == time(21, 15)
+        assert early_time == time(21, 30)
 
-        # Late slot: 00:00 - 2:00 = 22:00 previous day
+        # Standard slot: 00:00 - 2:00 = 22:00 previous day
+        standard_date, standard_time = calculate_drop_off_datetime(
+            flight_date, flight_time, SlotType.STANDARD
+        )
+        assert standard_date == FUTURE_DATE_PREV
+        assert standard_time == time(22, 0)
+
+        # Late slot: 00:00 - 1:30 = 22:30 previous day
         late_date, late_time = calculate_drop_off_datetime(
             flight_date, flight_time, SlotType.LATE
         )
         assert late_date == FUTURE_DATE_PREV
-        assert late_time == time(22, 0)
+        assert late_time == time(22, 30)
 
-    def test_boundary_case_2h45m_flight(self):
-        """Flight at 02:45 - early slot exactly at midnight."""
+    def test_boundary_case_2h30m_flight(self):
+        """Flight at 02:30 - early slot exactly at midnight."""
         flight_date = FUTURE_DATE
-        flight_time = time(2, 45)
+        flight_time = time(2, 30)
 
         drop_off_date, drop_off_time = calculate_drop_off_datetime(
             flight_date, flight_time, SlotType.EARLY
@@ -121,9 +155,21 @@ class TestCalculateDropOffDatetime:
         assert drop_off_time == time(0, 0)  # Exactly midnight
 
     def test_boundary_case_2h_flight(self):
-        """Flight at 02:00 - late slot exactly at midnight."""
+        """Flight at 02:00 - standard slot exactly at midnight."""
         flight_date = FUTURE_DATE
         flight_time = time(2, 0)
+
+        drop_off_date, drop_off_time = calculate_drop_off_datetime(
+            flight_date, flight_time, SlotType.STANDARD
+        )
+
+        assert drop_off_date == FUTURE_DATE  # Same day
+        assert drop_off_time == time(0, 0)  # Exactly midnight
+
+    def test_boundary_case_1h30m_flight(self):
+        """Flight at 01:30 - late slot exactly at midnight."""
+        flight_date = FUTURE_DATE
+        flight_time = time(1, 30)
 
         drop_off_date, drop_off_time = calculate_drop_off_datetime(
             flight_date, flight_time, SlotType.LATE
@@ -133,7 +179,7 @@ class TestCalculateDropOffDatetime:
         assert drop_off_time == time(0, 0)  # Exactly midnight
 
     def test_afternoon_flight(self):
-        """Flight at 14:30 - both slots on same day."""
+        """Flight at 14:30 - all slots on same day."""
         flight_date = FUTURE_DATE
         flight_time = time(14, 30)
 
@@ -141,16 +187,22 @@ class TestCalculateDropOffDatetime:
             flight_date, flight_time, SlotType.EARLY
         )
         assert early_date == FUTURE_DATE
-        assert early_time == time(11, 45)  # 14:30 - 2:45
+        assert early_time == time(12, 0)  # 14:30 - 2:30
+
+        standard_date, standard_time = calculate_drop_off_datetime(
+            flight_date, flight_time, SlotType.STANDARD
+        )
+        assert standard_date == FUTURE_DATE
+        assert standard_time == time(12, 30)  # 14:30 - 2:00
 
         late_date, late_time = calculate_drop_off_datetime(
             flight_date, flight_time, SlotType.LATE
         )
         assert late_date == FUTURE_DATE
-        assert late_time == time(12, 30)  # 14:30 - 2:00
+        assert late_time == time(13, 0)  # 14:30 - 1:30
 
     def test_evening_flight(self):
-        """Flight at 23:00 - both slots on same day."""
+        """Flight at 23:00 - all slots on same day."""
         flight_date = FUTURE_DATE
         flight_time = time(23, 0)
 
@@ -158,13 +210,19 @@ class TestCalculateDropOffDatetime:
             flight_date, flight_time, SlotType.EARLY
         )
         assert early_date == FUTURE_DATE
-        assert early_time == time(20, 15)
+        assert early_time == time(20, 30)  # 23:00 - 2:30
+
+        standard_date, standard_time = calculate_drop_off_datetime(
+            flight_date, flight_time, SlotType.STANDARD
+        )
+        assert standard_date == FUTURE_DATE
+        assert standard_time == time(21, 0)  # 23:00 - 2:00
 
         late_date, late_time = calculate_drop_off_datetime(
             flight_date, flight_time, SlotType.LATE
         )
         assert late_date == FUTURE_DATE
-        assert late_time == time(21, 0)
+        assert late_time == time(21, 30)  # 23:00 - 1:30
 
     def test_year_boundary_overnight(self):
         """Flight at 00:30 on Jan 1st - drop-off on Dec 31st previous year."""
@@ -177,7 +235,7 @@ class TestCalculateDropOffDatetime:
         )
 
         assert drop_off_date == date(year - 1, 12, 31)  # Previous year
-        assert drop_off_time == time(21, 45)
+        assert drop_off_time == time(22, 0)  # 00:30 - 2:30 = 22:00
 
     def test_month_boundary_overnight(self):
         """Flight at 01:00 on March 1st - drop-off on Feb 28th/29th."""
@@ -193,24 +251,24 @@ class TestCalculateDropOffDatetime:
         )
 
         assert drop_off_date == date(year, 2, 28)
-        assert drop_off_time == time(22, 15)
+        assert drop_off_time == time(22, 30)  # 01:00 - 2:30 = 22:30
 
 
 class TestCalculateAllSlots:
     """Tests for the calculate_all_slots function."""
 
-    def test_returns_two_slots(self):
-        """Should always return exactly two slots."""
+    def test_returns_three_slots(self):
+        """Should always return exactly three slots."""
         slots = calculate_all_slots(
             FUTURE_DATE,
             time(10, 0),
             "5523",
             "FR"
         )
-        assert len(slots) == 2
+        assert len(slots) == 3
 
     def test_slot_types_are_correct(self):
-        """Should return one early and one late slot."""
+        """Should return one early, one standard, and one late slot."""
         slots = calculate_all_slots(
             FUTURE_DATE,
             time(10, 0),
@@ -219,7 +277,7 @@ class TestCalculateAllSlots:
         )
 
         slot_types = {s.slot_type for s in slots}
-        assert slot_types == {SlotType.EARLY, SlotType.LATE}
+        assert slot_types == {SlotType.EARLY, SlotType.STANDARD, SlotType.LATE}
 
     def test_slot_ids_are_unique(self):
         """Each slot should have a unique ID."""
@@ -343,7 +401,7 @@ class TestGetDropOffSummary:
         assert summary["flight_date"] == FUTURE_DATE.isoformat()
         assert summary["flight_time"] == "10:00"
         assert summary["drop_off_date"] == FUTURE_DATE.isoformat()
-        assert summary["drop_off_time"] == "07:15"
+        assert summary["drop_off_time"] == "07:30"  # 10:00 - 2:30 = 07:30
         assert summary["is_overnight"] is False
         assert summary["display_message"] is None
 
@@ -362,10 +420,10 @@ class TestGetDropOffSummary:
         assert summary["flight_day"] == expected_day
         assert summary["drop_off_date"] == FUTURE_DATE_PREV.isoformat()
         assert summary["drop_off_day"] == expected_prev_day
-        assert summary["drop_off_time"] == "21:50"
+        assert summary["drop_off_time"] == "22:05"  # 00:35 - 2:30 = 22:05
         assert summary["is_overnight"] is True
         assert expected_prev_day in summary["display_message"]
-        assert "21:50" in summary["display_message"]
+        assert "22:05" in summary["display_message"]
 
     def test_overnight_late_slot_summary(self):
         """Summary for early morning flight with late slot."""
@@ -376,7 +434,7 @@ class TestGetDropOffSummary:
         )
 
         assert summary["drop_off_date"] == FUTURE_DATE_PREV.isoformat()
-        assert summary["drop_off_time"] == "22:35"
+        assert summary["drop_off_time"] == "23:05"  # 00:35 - 1:30 = 23:05
         assert summary["is_overnight"] is True
 
 
@@ -384,12 +442,16 @@ class TestSlotOffsets:
     """Tests to verify slot offset constants."""
 
     def test_early_slot_offset(self):
-        """Early slot should be 165 minutes (2h45m)."""
+        """Early slot should be 165 minutes (2.75h)."""
         assert SLOT_OFFSETS[SlotType.EARLY] == 165
 
+    def test_standard_slot_offset(self):
+        """Standard slot should be 120 minutes (2h)."""
+        assert SLOT_OFFSETS[SlotType.STANDARD] == 120
+
     def test_late_slot_offset(self):
-        """Late slot should be 120 minutes (2h)."""
-        assert SLOT_OFFSETS[SlotType.LATE] == 120
+        """Late slot should be 90 minutes (1.5h)."""
+        assert SLOT_OFFSETS[SlotType.LATE] == 90
 
 
 class TestArrivalClearanceBuffer:

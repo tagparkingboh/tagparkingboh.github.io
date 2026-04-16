@@ -515,8 +515,8 @@ function Bookings() {
       const departureMinutes = hours * 60 + minutes
 
       const potentialTimes = []
-      // Early slot: 2½ hours (150 min), Standard slot: 2 hours (120 min), Late slot: 1½ hours (90 min)
-      const earlyMinutes = departureMinutes - 150
+      // Early slot: 2¾ hours (165 min), Standard slot: 2 hours (120 min), Late slot: 1½ hours (90 min)
+      const earlyMinutes = departureMinutes - 165
       if (earlyMinutes >= 0) {
         const earlyHours = Math.floor(earlyMinutes / 60)
         const earlyMins = earlyMinutes % 60
@@ -750,7 +750,7 @@ function Bookings() {
     return selectedDropoffFlight.is_call_us_only || selectedDropoffFlight.capacity_tier === 0
   }, [selectedDropoffFlight])
 
-  // Calculate drop-off time slots (2½h, 2h, 1½h before departure)
+  // Calculate drop-off time slots (2¾h, 2h, 1½h before departure)
   // Shows slots based on capacity tier and remaining availability
   const dropoffSlots = useMemo(() => {
     if (!selectedDropoffFlight) return []
@@ -771,13 +771,13 @@ function Bookings() {
 
     const slots = []
 
-    // Early slot: 2½ hours before (150 minutes)
-    const earlySlotMinutes = departureMinutes - 150
+    // Early slot: 2¾ hours before (165 minutes)
+    const earlySlotMinutes = departureMinutes - 165
     const earlySlotAllowed = !isToday || (earlySlotMinutes >= currentUKMinutes + minNoticeMinutes)
     if (earlySlotAllowed) {
       slots.push({
-        id: '150',
-        label: '2½ hours before',
+        id: '165',
+        label: '2¾ hours before',
         time: formatMinutesToTime(earlySlotMinutes),
         available: 1,
         isLastSlot: false
@@ -1091,14 +1091,14 @@ function Bookings() {
 
     const slots = []
 
-    // Early slot: 2½ hours before (150 minutes)
-    const earlySlotMinutes = departureMinutes - 150
+    // Early slot: 2¾ hours before (165 minutes)
+    const earlySlotMinutes = departureMinutes - 165
     const earlySlotTime = formatMinutesToTime(earlySlotMinutes)
     const earlySlotBlocked = formData.dropoffDate && isTimeBlocked(earlySlotTime)
     if ((!isToday || (earlySlotMinutes >= currentUKMinutes + minNoticeMinutes)) && !earlySlotBlocked) {
       slots.push({
-        id: '150',
-        label: '2½ hours before',
+        id: '165',
+        label: '2¾ hours before',
         time: earlySlotTime
       })
     }
@@ -1145,7 +1145,7 @@ function Bookings() {
     const minNoticeMinutes = MIN_HOURS_NOTICE * 60
 
     // Check if any slot would exist without the 4-hour filter
-    const earlySlotMinutes = departureMinutes - 150
+    const earlySlotMinutes = departureMinutes - 165
     const standardSlotMinutes = departureMinutes - 120
     const lateSlotMinutes = departureMinutes - 90
 
@@ -2451,11 +2451,11 @@ function Bookings() {
                 {isDropoffDateBlocked && formData.dropoffDate && (
                   <div className="blocked-date-message">
                     {(() => {
-                      // Calculate first potential dropoff time for error message (earliest = 150 min before)
+                      // Calculate first potential dropoff time for error message (earliest = 165 min before)
                       let firstPotentialTime = null
                       if (manualDepartureData.flightTime && isValidTimeFormat(manualDepartureData.flightTime)) {
                         const [h, m] = manualDepartureData.flightTime.split(':').map(Number)
-                        const earlyMins = (h * 60 + m) - 150
+                        const earlyMins = (h * 60 + m) - 165
                         if (earlyMins >= 0) {
                           firstPotentialTime = `${String(Math.floor(earlyMins / 60)).padStart(2, '0')}:${String(earlyMins % 60).padStart(2, '0')}`
                         }

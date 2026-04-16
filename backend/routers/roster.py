@@ -1311,11 +1311,11 @@ async def auto_assign_shifts(
     for booking in bookings:
         # Create departure shift if dropoff is in range
         if request.date_from <= booking.dropoff_date <= request.date_to:
-            # Calculate shift time: 2.5 hours before flight departure
+            # Calculate shift time: 2.75 hours before flight departure
             if booking.flight_departure_time:
                 flight_mins = booking.flight_departure_time.hour * 60 + booking.flight_departure_time.minute
-                shift_start_mins = flight_mins - 150  # 2.5 hours before
-                shift_end_mins = flight_mins - 105  # 1.75 hours before (45 min shift)
+                shift_start_mins = flight_mins - 165  # 2.75 hours before
+                shift_end_mins = flight_mins - 120  # 2 hours before (45 min shift)
 
                 # Handle overnight
                 if shift_start_mins < 0:

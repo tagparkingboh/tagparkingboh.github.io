@@ -148,7 +148,7 @@ type DropoffSlotType = 'early' | 'standard' | 'late';
 
 /**
  * Navigate through booking flow to Step 4 (Payment)
- * @param slotType - Which drop-off slot to select: 'early' (2½h), 'standard' (2h), or 'late' (1½h)
+ * @param slotType - Which drop-off slot to select: 'early' (2¾h), 'standard' (2h), or 'late' (1½h)
  */
 async function navigateToPaymentStep(
   page: Page,
@@ -205,7 +205,7 @@ async function navigateToPaymentStep(
   await page.waitForTimeout(1000);
 
   // Select drop-off slot based on slotType parameter
-  // Slots are: early (2½h/150min), standard (2h/120min), late (1½h/90min)
+  // Slots are: early (2¾h/165min), standard (2h/120min), late (1½h/90min)
   const slotIndex = slotType === 'early' ? 0 : slotType === 'standard' ? 1 : 2;
   // Use only label.dropoff-slot to avoid duplicates (don't also match child .slot-card)
   const allSlotCards = page.locator('label.dropoff-slot');
@@ -424,7 +424,7 @@ test.describe('Comprehensive Booking Tests', () => {
   // 1. TRIP DURATION TESTS (4, 7, 14 days) - Non-peak, Early tier, No promo
   // ---------------------------------------------------------------------------
 
-  test('4-day trip | Early tier | Non-peak | No promo | Early slot (2½h)', async ({ page }) => {
+  test('4-day trip | Early tier | Non-peak | No promo | Early slot (2¾h)', async ({ page }) => {
     const { dropoffDate, pickupDate } = generateScenarioDates(4, 16, 'none');
     const peak = isPeakDay(dropoffDate, pickupDate);
     const tier = getTier(16);
@@ -434,7 +434,7 @@ test.describe('Comprehensive Booking Tests', () => {
     const pricing = await getPricingInfo(page);
 
     logScenario({
-      testName: '4-day trip | Early tier | Non-peak | No promo | Early slot (2½h)',
+      testName: '4-day trip | Early tier | Non-peak | No promo | Early slot (2¾h)',
       dropoffDate, pickupDate,
       tripDuration: 4,
       tier: tier.tier,
@@ -532,7 +532,7 @@ test.describe('Comprehensive Booking Tests', () => {
     expect(success).toBe(true);
   });
 
-  test('7-day trip | Late tier (5 days out) | Non-peak | No promo | Early slot (2½h)', async ({ page }) => {
+  test('7-day trip | Late tier (5 days out) | Non-peak | No promo | Early slot (2¾h)', async ({ page }) => {
     const { dropoffDate, pickupDate } = generateScenarioDates(7, 5, 'none');
     const peak = isPeakDay(dropoffDate, pickupDate);
     const tier = getTier(5);
@@ -542,7 +542,7 @@ test.describe('Comprehensive Booking Tests', () => {
     const pricing = await getPricingInfo(page);
 
     logScenario({
-      testName: '7-day trip | Late tier | Non-peak | No promo | Early slot (2½h)',
+      testName: '7-day trip | Late tier | Non-peak | No promo | Early slot (2¾h)',
       dropoffDate, pickupDate,
       tripDuration: 7,
       tier: tier.tier,
@@ -614,7 +614,7 @@ test.describe('Comprehensive Booking Tests', () => {
     expect(success).toBe(true);
   });
 
-  test('7-day trip | Early tier | Sunday pickup (PEAK) | No promo | Early slot (2½h)', async ({ page }) => {
+  test('7-day trip | Early tier | Sunday pickup (PEAK) | No promo | Early slot (2¾h)', async ({ page }) => {
     const { dropoffDate, pickupDate } = generateScenarioDates(7, 16, 'sunday');
     const peak = isPeakDay(dropoffDate, pickupDate);
     const tier = getTier(16);
@@ -624,7 +624,7 @@ test.describe('Comprehensive Booking Tests', () => {
     const pricing = await getPricingInfo(page);
 
     logScenario({
-      testName: '7-day trip | Early tier | Sunday pickup (PEAK) | No promo | Early slot (2½h)',
+      testName: '7-day trip | Early tier | Sunday pickup (PEAK) | No promo | Early slot (2¾h)',
       dropoffDate, pickupDate,
       tripDuration: 7,
       tier: tier.tier,
@@ -728,7 +728,7 @@ test.describe('Comprehensive Booking Tests', () => {
     }
   });
 
-  test('14-day trip | Early tier | Non-peak | FREEWEEK (deducts week1 price) | Early slot (2½h)', async ({ page }) => {
+  test('14-day trip | Early tier | Non-peak | FREEWEEK (deducts week1 price) | Early slot (2¾h)', async ({ page }) => {
     const { dropoffDate, pickupDate } = generateScenarioDates(14, 16, 'none');
     const peak = isPeakDay(dropoffDate, pickupDate);
     const tier = getTier(16);
@@ -748,7 +748,7 @@ test.describe('Comprehensive Booking Tests', () => {
     const discountedPricing = await getPricingInfo(page);
 
     logScenario({
-      testName: '14-day trip | Early tier | Non-peak | FREEWEEK (deducts week1) | Early slot (2½h)',
+      testName: '14-day trip | Early tier | Non-peak | FREEWEEK (deducts week1) | Early slot (2¾h)',
       dropoffDate, pickupDate,
       tripDuration: 14,
       tier: tier.tier,
@@ -825,7 +825,7 @@ test.describe('Comprehensive Booking Tests', () => {
     console.log('✓ T&Cs unchecked - Stripe form correctly hidden');
   });
 
-  test('T&Cs check then uncheck - payment should be blocked again | Early slot (2½h)', async ({ page }) => {
+  test('T&Cs check then uncheck - payment should be blocked again | Early slot (2¾h)', async ({ page }) => {
     const { dropoffDate, pickupDate } = generateScenarioDates(7, 16, 'none');
 
     await navigateToPaymentStep(page, dropoffDate, pickupDate, 'early');
@@ -943,7 +943,7 @@ test.describe('Comprehensive Booking Tests', () => {
     }
   });
 
-  test('COMBINED: 14-day | Early tier | Monday pickup (PEAK) | TEST10 | Early slot (2½h)', async ({ page }) => {
+  test('COMBINED: 14-day | Early tier | Monday pickup (PEAK) | TEST10 | Early slot (2¾h)', async ({ page }) => {
     const { dropoffDate, pickupDate } = generateScenarioDates(14, 16, 'monday');
     const peak = isPeakDay(dropoffDate, pickupDate);
     const tier = getTier(16);
@@ -961,7 +961,7 @@ test.describe('Comprehensive Booking Tests', () => {
     const discountedPricing = await getPricingInfo(page);
 
     logScenario({
-      testName: 'COMBINED: 14-day | Early tier | Monday PEAK | TEST10 | Early slot (2½h)',
+      testName: 'COMBINED: 14-day | Early tier | Monday PEAK | TEST10 | Early slot (2¾h)',
       dropoffDate, pickupDate,
       tripDuration: 14,
       tier: tier.tier,

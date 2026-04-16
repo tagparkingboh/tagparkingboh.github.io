@@ -12,13 +12,13 @@ from models import SlotType, TimeSlot
 
 # Time offsets in minutes before departure (for drop-offs)
 SLOT_OFFSETS = {
-    SlotType.EARLY: 150,     # 2.5 hours (2½ hours)
+    SlotType.EARLY: 165,     # 2.75 hours (2¾ hours)
     SlotType.STANDARD: 120,  # 2 hours
     SlotType.LATE: 90,       # 1.5 hours (1½ hours)
 }
 
 SLOT_LABELS = {
-    SlotType.EARLY: "2½ hours before",
+    SlotType.EARLY: "2¾ hours before",
     SlotType.STANDARD: "2 hours before",
     SlotType.LATE: "1½ hours before",
 }
