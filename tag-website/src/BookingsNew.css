@@ -2196,15 +2196,33 @@
   margin-bottom: 1.5rem;
 }
 
+.time-confirm-section {
+  padding: 0.75rem 0;
+}
+
+.time-confirm-section:first-child {
+  border-bottom: 1px solid #555555;
+  padding-top: 0;
+}
+
+.time-confirm-section:last-child {
+  padding-bottom: 0;
+}
+
+.time-confirm-section-title {
+  color: #D9FF00;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.5rem;
+}
+
 .time-confirm-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem 0;
-}
-
-.time-confirm-row:first-child {
-  border-bottom: 1px solid #555555;
+  padding: 0.25rem 0;
 }
 
 .time-confirm-label {

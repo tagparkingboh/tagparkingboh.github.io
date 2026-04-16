@@ -2006,17 +2006,53 @@ function Bookings() {
               We rely on the accuracy of the information you provide to ensure a smooth meet and greet experience.
             </p>
             <div className="time-confirm-summary">
-              <div className="time-confirm-row">
-                <span className="time-confirm-label">Drop-off:</span>
-                <span className="time-confirm-value">
-                  {formData.dropoffDate ? format(formData.dropoffDate, 'EEE, dd MMM yyyy') : ''} at {formData.dropoffTime || '--:--'}
-                </span>
+              <div className="time-confirm-section">
+                <div className="time-confirm-section-title">Departure</div>
+                <div className="time-confirm-row">
+                  <span className="time-confirm-label">Date:</span>
+                  <span className="time-confirm-value">
+                    {formData.dropoffDate ? format(formData.dropoffDate, 'EEE, dd MMM yyyy') : '--'}
+                  </span>
+                </div>
+                <div className="time-confirm-row">
+                  <span className="time-confirm-label">Flight time:</span>
+                  <span className="time-confirm-value">
+                    {manualDepartureData.flightTime || '--:--'}
+                  </span>
+                </div>
+                <div className="time-confirm-row">
+                  <span className="time-confirm-label">Drop-off time:</span>
+                  <span className="time-confirm-value">
+                    {dropoffSlots.find(s => s.id === manualDepartureData.dropoffSlot)?.time || '--:--'}
+                  </span>
+                </div>
               </div>
-              <div className="time-confirm-row">
-                <span className="time-confirm-label">Pick-up:</span>
-                <span className="time-confirm-value">
-                  {formData.pickupDate ? format(formData.pickupDate, 'EEE, dd MMM yyyy') : ''} at {formData.pickupTime || '--:--'}
-                </span>
+              <div className="time-confirm-section">
+                <div className="time-confirm-section-title">Return</div>
+                <div className="time-confirm-row">
+                  <span className="time-confirm-label">Date:</span>
+                  <span className="time-confirm-value">
+                    {formData.pickupDate ? format(formData.pickupDate, 'EEE, dd MMM yyyy') : '--'}
+                  </span>
+                </div>
+                <div className="time-confirm-row">
+                  <span className="time-confirm-label">Arrival time:</span>
+                  <span className="time-confirm-value">
+                    {manualArrivalData.flightTime || '--:--'}
+                  </span>
+                </div>
+                <div className="time-confirm-row">
+                  <span className="time-confirm-label">Pick-up time:</span>
+                  <span className="time-confirm-value">
+                    {manualArrivalData.flightTime ? (() => {
+                      const [h, m] = manualArrivalData.flightTime.split(':').map(Number);
+                      const pickupMins = h * 60 + m + 30;
+                      const ph = Math.floor(pickupMins / 60) % 24;
+                      const pm = pickupMins % 60;
+                      return `${ph.toString().padStart(2, '0')}:${pm.toString().padStart(2, '0')}`;
+                    })() : '--:--'}
+                  </span>
+                </div>
               </div>
             </div>
             <div className="time-confirm-actions">
