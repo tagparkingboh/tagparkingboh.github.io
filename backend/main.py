@@ -1651,7 +1651,16 @@ async def get_booking_stats(
     # This is when customers select dates and search for availability
     search_events = db.query(AuditLog).filter(
         AuditLog.event == AuditLogEvent.DATES_SELECTED
-    ).all()
+    ).order_by(AuditLog.created_at.asc()).all()
+
+    # Get the earliest audit log date for the footnote (when session tracking started)
+    search_data_start_date = None
+    if search_events and search_events[0].created_at:
+        earliest_date = search_events[0].created_at
+        if earliest_date.tzinfo is None:
+            earliest_date = pytz.utc.localize(earliest_date)
+        earliest_date = earliest_date.astimezone(uk_tz)
+        search_data_start_date = earliest_date.strftime("%d %B %Y")
 
     # Day of week for searches
     search_days_of_week = {day: 0 for day in day_names}
@@ -1773,6 +1782,7 @@ async def get_booking_stats(
         "search_time_ranges": search_time_ranges,
         "search_hours_by_day": search_hours_by_day_list,
         "total_searches": total_searches,
+        "search_data_start_date": search_data_start_date,
     }
 
 

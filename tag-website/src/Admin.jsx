@@ -10421,6 +10421,56 @@ function Admin() {
                       </div>
                     )}
 
+                    {/* Peak Search Hours (UK timezone) */}
+                    {bookingStats.search_hours_of_day && bookingStats.search_hours_of_day.length > 0 && bookingStats.total_searches > 0 && (
+                      <div className="booking-hours-section search-hours-section">
+                        <h3>Peak Search Hours</h3>
+                        <p className="section-subtitle">When customers search for quotes (UK time)</p>
+
+                        {/* Time Ranges Summary */}
+                        {bookingStats.search_time_ranges && (
+                          <div className="time-ranges-grid">
+                            {bookingStats.search_time_ranges.map((range, index) => (
+                              <div key={index} className="time-range-card search">
+                                <div className="time-range-label">{range.label.split(' ')[0]}</div>
+                                <div className="time-range-hours">{range.label.match(/\(([^)]+)\)/)?.[1]}</div>
+                                <div className="time-range-count">{range.count}</div>
+                                <div className="time-range-percent">{range.percent}%</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Hourly Breakdown Chart */}
+                        <div className="hourly-chart">
+                          {(() => {
+                            const hoursData = bookingStats.search_hours_of_day;
+                            const maxCount = Math.max(...hoursData.map(h => h.count), 1);
+
+                            return hoursData.map((hour, index) => (
+                              <div key={index} className="hour-bar-container">
+                                <div className="hour-bar-wrapper">
+                                  <div
+                                    className="hour-bar search"
+                                    style={{
+                                      height: `${maxCount > 0 ? (hour.count / maxCount) * 100 : 0}%`,
+                                      backgroundColor: hour.count === maxCount ? '#f97316' : '#fb923c'
+                                    }}
+                                    title={`${hour.label}: ${hour.count} searches (${hour.percent}%)`}
+                                  />
+                                </div>
+                                <div className="hour-label">{hour.hour}</div>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                        <p className="chart-helper-text">Hours shown in 24-hour format (UK timezone)</p>
+                        {bookingStats.search_data_start_date && (
+                          <p className="chart-footnote">* Session tracking went live {bookingStats.search_data_start_date}</p>
+                        )}
+                      </div>
+                    )}
+
                     {/* Fun Facts */}
                     {funFacts && (
                       <div className="fun-facts-section">

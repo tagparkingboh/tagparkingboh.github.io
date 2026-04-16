@@ -5228,6 +5228,22 @@
   background: #3b82f6;
 }
 
+.chart-footnote {
+  font-size: 11px;
+  color: #9ca3af;
+  font-style: italic;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.search-hours-section .time-range-card {
+  border-left: 3px solid #f97316;
+}
+
+.search-hours-section .time-range-card.search {
+  border-left-color: #f97316;
+}
+
 @media (max-width: 768px) {
   .time-ranges-grid {
     grid-template-columns: repeat(2, 1fr);
