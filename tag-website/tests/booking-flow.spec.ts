@@ -207,12 +207,26 @@ async function navigateToPaymentStep(
   // Select drop-off slot based on slotType parameter
   // Slots are: early (2½h/150min), standard (2h/120min), late (1½h/90min)
   const slotIndex = slotType === 'early' ? 0 : slotType === 'standard' ? 1 : 2;
-  const allSlotCards = page.locator('.dropoff-slot .slot-card, label.dropoff-slot');
+  // Use only label.dropoff-slot to avoid duplicates (don't also match child .slot-card)
+  const allSlotCards = page.locator('label.dropoff-slot');
   await allSlotCards.first().waitFor({ state: 'visible', timeout: 10000 });
 
   // Get available slots count and select the appropriate one
   const slotsCount = await allSlotCards.count();
+  console.log(`SLOT DEBUG: Found ${slotsCount} slots, requested slotType=${slotType} (index ${slotIndex})`);
+
+  // Log all slot labels for debugging
+  for (let i = 0; i < slotsCount; i++) {
+    const slotText = await allSlotCards.nth(i).textContent();
+    console.log(`SLOT DEBUG: Slot ${i}: ${slotText?.replace(/\s+/g, ' ').substring(0, 40)}`);
+  }
+
+  if (slotsCount < 3) {
+    console.log(`SLOT WARNING: Only ${slotsCount} slots available, expected 3. Late slot may be missing!`);
+  }
+
   const targetIndex = Math.min(slotIndex, slotsCount - 1); // Fallback to last available if requested slot doesn't exist
+  console.log(`SLOT DEBUG: Selecting slot at index ${targetIndex}`);
   await allSlotCards.nth(targetIndex).click();
   await page.waitForTimeout(500);
 
