@@ -515,13 +515,20 @@ function Bookings() {
       const departureMinutes = hours * 60 + minutes
 
       const potentialTimes = []
-      const earlyMinutes = departureMinutes - 165
+      // Early slot: 2½ hours (150 min), Standard slot: 2 hours (120 min), Late slot: 1½ hours (90 min)
+      const earlyMinutes = departureMinutes - 150
       if (earlyMinutes >= 0) {
         const earlyHours = Math.floor(earlyMinutes / 60)
         const earlyMins = earlyMinutes % 60
         potentialTimes.push(`${String(earlyHours).padStart(2, '0')}:${String(earlyMins).padStart(2, '0')}`)
       }
-      const lateMinutes = departureMinutes - 120
+      const standardMinutes = departureMinutes - 120
+      if (standardMinutes >= 0) {
+        const standardHours = Math.floor(standardMinutes / 60)
+        const standardMins = standardMinutes % 60
+        potentialTimes.push(`${String(standardHours).padStart(2, '0')}:${String(standardMins).padStart(2, '0')}`)
+      }
+      const lateMinutes = departureMinutes - 90
       if (lateMinutes >= 0) {
         const lateHours = Math.floor(lateMinutes / 60)
         const lateMins = lateMinutes % 60
@@ -2444,11 +2451,11 @@ function Bookings() {
                 {isDropoffDateBlocked && formData.dropoffDate && (
                   <div className="blocked-date-message">
                     {(() => {
-                      // Calculate first potential dropoff time for error message
+                      // Calculate first potential dropoff time for error message (earliest = 150 min before)
                       let firstPotentialTime = null
                       if (manualDepartureData.flightTime && isValidTimeFormat(manualDepartureData.flightTime)) {
                         const [h, m] = manualDepartureData.flightTime.split(':').map(Number)
-                        const earlyMins = (h * 60 + m) - 165
+                        const earlyMins = (h * 60 + m) - 150
                         if (earlyMins >= 0) {
                           firstPotentialTime = `${String(Math.floor(earlyMins / 60)).padStart(2, '0')}:${String(earlyMins % 60).padStart(2, '0')}`
                         }

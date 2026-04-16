@@ -32,7 +32,7 @@ function ManualBooking({ token }) {
     customDropoffDestination: '',
     dropoffFlightNumber: '',
     departureTime: '',  // Flight departure time (HH:MM string)
-    dropoffSlot: '',      // 'early' (2.75h) or 'late' (2h)
+    dropoffSlot: '',      // 'early' (2.5h), 'standard' (2h), or 'late' (1.5h)
     // Return flight details
     pickupDate: null,
     pickupAirline: '',
@@ -265,21 +265,30 @@ function ManualBooking({ token }) {
 
     const slots = []
 
-    // Early slot (2.75 hours = 165 minutes before departure)
-    const earlyResult = formatMinutesToTime(depTotalMinutes - 165)
+    // Early slot (2.5 hours = 150 minutes before departure)
+    const earlyResult = formatMinutesToTime(depTotalMinutes - 150)
     slots.push({
       id: 'early',
       time: earlyResult.time,
-      label: `Early - ${earlyResult.time} (2¾ hours before)${earlyResult.isOvernight ? ' *' : ''}`,
+      label: `Early - ${earlyResult.time} (2½ hours before)${earlyResult.isOvernight ? ' *' : ''}`,
       isOvernight: earlyResult.isOvernight
     })
 
-    // Late slot (2 hours = 120 minutes before departure)
-    const lateResult = formatMinutesToTime(depTotalMinutes - 120)
+    // Standard slot (2 hours = 120 minutes before departure)
+    const standardResult = formatMinutesToTime(depTotalMinutes - 120)
+    slots.push({
+      id: 'standard',
+      time: standardResult.time,
+      label: `Standard - ${standardResult.time} (2 hours before)${standardResult.isOvernight ? ' *' : ''}`,
+      isOvernight: standardResult.isOvernight
+    })
+
+    // Late slot (1.5 hours = 90 minutes before departure)
+    const lateResult = formatMinutesToTime(depTotalMinutes - 90)
     slots.push({
       id: 'late',
       time: lateResult.time,
-      label: `Late - ${lateResult.time} (2 hours before)${lateResult.isOvernight ? ' *' : ''}`,
+      label: `Late - ${lateResult.time} (1½ hours before)${lateResult.isOvernight ? ' *' : ''}`,
       isOvernight: lateResult.isOvernight
     })
 

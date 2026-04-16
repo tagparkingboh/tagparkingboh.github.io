@@ -257,7 +257,7 @@ function Bookings() {
     return selectedDropoffFlight.is_call_us_only || selectedDropoffFlight.capacity_tier === 0
   }, [selectedDropoffFlight])
 
-  // Calculate drop-off time slots (2¾h, 2h before departure)
+  // Calculate drop-off time slots (2½h, 2h, 1½h before departure)
   // Shows slots based on capacity tier and remaining availability
   const dropoffSlots = useMemo(() => {
     if (!selectedDropoffFlight) return []
@@ -270,31 +270,32 @@ function Bookings() {
 
     const slots = []
 
-    // Early slot: 2¾ hours before (165 minutes) - show if slots available
-    const earlyAvailable = selectedDropoffFlight.early_slots_available ??
-      (selectedDropoffFlight.is_slot_1_booked === false ? 1 : 0)
-    if (earlyAvailable > 0) {
-      slots.push({
-        id: '165',
-        label: '2¾ hours before',
-        time: formatMinutesToTime(departureMinutes - 165),
-        available: earlyAvailable,
-        isLastSlot: selectedDropoffFlight.early_is_last_slot || selectedDropoffFlight.is_last_slot
-      })
-    }
+    // Early slot: 2½ hours before (150 minutes)
+    slots.push({
+      id: '150',
+      label: '2½ hours before',
+      time: formatMinutesToTime(departureMinutes - 150),
+      available: 1,
+      isLastSlot: false
+    })
 
-    // Late slot: 2 hours before (120 minutes) - show if slots available
-    const lateAvailable = selectedDropoffFlight.late_slots_available ??
-      (selectedDropoffFlight.is_slot_2_booked === false ? 1 : 0)
-    if (lateAvailable > 0) {
-      slots.push({
-        id: '120',
-        label: '2 hours before',
-        time: formatMinutesToTime(departureMinutes - 120),
-        available: lateAvailable,
-        isLastSlot: selectedDropoffFlight.late_is_last_slot || selectedDropoffFlight.is_last_slot
-      })
-    }
+    // Standard slot: 2 hours before (120 minutes)
+    slots.push({
+      id: '120',
+      label: '2 hours before',
+      time: formatMinutesToTime(departureMinutes - 120),
+      available: 1,
+      isLastSlot: false
+    })
+
+    // Late slot: 1½ hours before (90 minutes)
+    slots.push({
+      id: '90',
+      label: '1½ hours before',
+      time: formatMinutesToTime(departureMinutes - 90),
+      available: 1,
+      isLastSlot: false
+    })
 
     return slots
   }, [selectedDropoffFlight, isCallUsOnly])
