@@ -12,13 +12,15 @@ from models import SlotType, TimeSlot
 
 # Time offsets in minutes before departure (for drop-offs)
 SLOT_OFFSETS = {
-    SlotType.EARLY: 165,  # 2 hours 45 minutes (2¾ hours)
-    SlotType.LATE: 120,   # 2 hours
+    SlotType.EARLY: 150,     # 2.5 hours (2½ hours)
+    SlotType.STANDARD: 120,  # 2 hours
+    SlotType.LATE: 90,       # 1.5 hours (1½ hours)
 }
 
 SLOT_LABELS = {
-    SlotType.EARLY: "2¾ hours before",
-    SlotType.LATE: "2 hours before",
+    SlotType.EARLY: "2½ hours before",
+    SlotType.STANDARD: "2 hours before",
+    SlotType.LATE: "1½ hours before",
 }
 
 # Minimum time in minutes for passengers to clear security/immigration after landing
@@ -39,20 +41,23 @@ def calculate_drop_off_datetime(
     Args:
         flight_date: The date of the flight departure
         flight_time: The time of the flight departure
-        slot_type: Either EARLY (2¾ hours before) or LATE (2 hours before)
+        slot_type: EARLY (2½ hours before), STANDARD (2 hours before), or LATE (1½ hours before)
 
     Returns:
         Tuple of (drop_off_date, drop_off_time)
 
     Examples:
-        - Flight at 07:10 on Tuesday with EARLY slot:
-          Drop-off at 04:25 on Tuesday
+        - Flight at 07:10 on Tuesday with EARLY slot (150 min = 2h30m):
+          Drop-off at 04:40 on Tuesday
 
-        - Flight at 00:35 on Tuesday with EARLY slot (165 min = 2h45m):
-          00:35 - 2:45 = 21:50 on Monday
+        - Flight at 00:35 on Tuesday with EARLY slot (150 min = 2h30m):
+          00:35 - 2:30 = 22:05 on Monday
 
-        - Flight at 00:35 on Tuesday with LATE slot (120 min = 2h):
+        - Flight at 00:35 on Tuesday with STANDARD slot (120 min = 2h):
           00:35 - 2:00 = 22:35 on Monday
+
+        - Flight at 00:35 on Tuesday with LATE slot (90 min = 1h30m):
+          00:35 - 1:30 = 23:05 on Monday
     """
     offset_minutes = SLOT_OFFSETS[slot_type]
 

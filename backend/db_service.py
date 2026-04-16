@@ -492,7 +492,7 @@ def book_departure_slot(db: Session, flight_id: int, slot_type: str) -> dict:
     Args:
         db: Database session
         flight_id: The departure flight ID
-        slot_type: 'early' (2¾ hours before) or 'late' (2 hours before)
+        slot_type: 'early' (2½ hours before), 'standard' (2 hours before), or 'late' (1½ hours before)
 
     Returns:
         dict with 'success' (bool), 'message' (str), and optionally 'slots_remaining' (int)
@@ -538,7 +538,7 @@ def release_departure_slot(db: Session, flight_id: int, slot_type: str) -> dict:
     Args:
         db: Database session
         flight_id: The departure flight ID
-        slot_type: 'early' (2¾ hours before) or 'late' (2 hours before)
+        slot_type: 'early' (2½ hours before), 'standard' (2 hours before), or 'late' (1½ hours before)
 
     Returns:
         dict with 'success' (bool) and 'message' (str)

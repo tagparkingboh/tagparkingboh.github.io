@@ -9,8 +9,9 @@ from enum import Enum
 
 class SlotType(str, Enum):
     """Drop-off time slot types."""
-    EARLY = "165"  # 2 hours 45 minutes before departure
-    LATE = "120"   # 2 hours before departure
+    EARLY = "150"     # 2.5 hours before departure
+    STANDARD = "120"  # 2 hours before departure
+    LATE = "90"       # 1.5 hours before departure
 
 
 class FlightType(str, Enum):

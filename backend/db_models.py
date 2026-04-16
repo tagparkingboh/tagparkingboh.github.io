@@ -308,10 +308,11 @@ class FlightDeparture(Base):
     capacity_tier = Column(Integer, default=0, nullable=False)
 
     # Slot booking counters (how many booked at each time)
-    # Early slot: 2¾ hours (165 min) before departure
-    # Late slot: 2 hours (120 min) before departure
+    # Early slot: 2½ hours (150 min) before departure
+    # Standard slot: 2 hours (120 min) before departure  } shares late counter
+    # Late slot: 1½ hours (90 min) before departure      }
     slots_booked_early = Column(Integer, default=0, nullable=False)
-    slots_booked_late = Column(Integer, default=0, nullable=False)
+    slots_booked_late = Column(Integer, default=0, nullable=False)  # Used for both standard and late
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

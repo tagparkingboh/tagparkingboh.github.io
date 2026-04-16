@@ -1707,10 +1707,16 @@ async def create_manual_booking(
             # max_slots_per_time = capacity_tier // 2 (e.g., capacity_tier=4 means 2 early + 2 late)
             max_per_slot = departure_flight.capacity_tier // 2
 
-            if request.dropoff_slot in ("165", "early"):  # Early slot
+            # Slot types: "150"/"early" (2½h), "120"/"standard" (2h), "90"/"late" (1½h)
+            # Note: "165" is legacy format, treat as "early"
+            if request.dropoff_slot in ("150", "165", "early"):  # Early slot
                 if departure_flight.slots_booked_early >= max_per_slot:
                     raise HTTPException(status_code=400, detail="Early slot is fully booked")
-            elif request.dropoff_slot in ("120", "late"):  # Late slot
+            elif request.dropoff_slot in ("120", "standard"):  # Standard slot
+                # For now, standard slot shares capacity with late slot
+                if departure_flight.slots_booked_late >= max_per_slot:
+                    raise HTTPException(status_code=400, detail="Standard slot is fully booked")
+            elif request.dropoff_slot in ("90", "late"):  # Late slot
                 if departure_flight.slots_booked_late >= max_per_slot:
                     raise HTTPException(status_code=400, detail="Late slot is fully booked")
 
@@ -1840,12 +1846,15 @@ async def create_manual_booking(
                         subscriber.promo_code_used_booking_id = booking.id
 
         # For free bookings with flight selection, increment slot counts
+        # Slot types: "150"/"early" (2½h), "120"/"standard" (2h), "90"/"late" (1½h)
+        # Note: "165" is legacy format, treat as "early"
         if is_free and request.departure_id and request.dropoff_slot:
             departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
             if departure:
-                if request.dropoff_slot == "165":
+                if request.dropoff_slot in ("150", "165", "early"):
                     departure.slots_booked_early = (departure.slots_booked_early or 0) + 1
-                elif request.dropoff_slot == "120":
+                elif request.dropoff_slot in ("120", "standard", "90", "late"):
+                    # Standard and late slots share the late slot capacity
                     departure.slots_booked_late = (departure.slots_booked_late or 0) + 1
 
         # Format dates for email
@@ -1991,13 +2000,15 @@ async def mark_booking_paid(
             max_per_slot = departure_flight.capacity_tier // 2
 
             # Check slot availability before booking
-            if booking.dropoff_slot in ("165", "early"):  # Early slot
+            # Slot types: "150"/"early" (2½h), "120"/"standard" (2h), "90"/"late" (1½h)
+            # Note: "165" is legacy format, treat as "early"
+            if booking.dropoff_slot in ("150", "165", "early"):  # Early slot
                 if departure_flight.slots_booked_early >= max_per_slot:
                     raise HTTPException(status_code=400, detail="Early slot is now fully booked")
                 departure_flight.slots_booked_early += 1
-            elif booking.dropoff_slot in ("120", "late"):  # Late slot
+            elif booking.dropoff_slot in ("120", "standard", "90", "late"):  # Standard/Late slot
                 if departure_flight.slots_booked_late >= max_per_slot:
-                    raise HTTPException(status_code=400, detail="Late slot is now fully booked")
+                    raise HTTPException(status_code=400, detail="Slot is now fully booked")
                 departure_flight.slots_booked_late += 1
 
     # Update booking status
@@ -2153,8 +2164,10 @@ async def cancel_booking_admin(
     # Release the flight slot using stored departure_id and dropoff_slot
     slot_released = False
     if booking.departure_id and booking.dropoff_slot:
-        # Normalize dropoff_slot to "early"/"late" (handle both old "165"/"120" and new "early"/"late" formats)
-        slot_type = "early" if booking.dropoff_slot in ("165", "early") else "late"
+        # Normalize dropoff_slot to "early"/"late" for slot release
+        # Slot types: "150"/"165"/"early" -> early, "120"/"standard"/"90"/"late" -> late
+        # Note: "165" is legacy format, treat as "early"
+        slot_type = "early" if booking.dropoff_slot in ("150", "165", "early") else "late"
         result = db_service.release_departure_slot(db, booking.departure_id, slot_type)
         slot_released = result.get("success", False)
 
@@ -2214,9 +2227,10 @@ async def delete_booking(
     reference = booking.reference
 
     # Release the flight slot if one was reserved
+    # Slot types: "150"/"165"/"early" -> early, "120"/"standard"/"90"/"late" -> late
     slot_released = False
     if booking.departure_id and booking.dropoff_slot:
-        slot_type = "early" if booking.dropoff_slot in ("165", "early") else "late"
+        slot_type = "early" if booking.dropoff_slot in ("150", "165", "early") else "late"
         result = db_service.release_departure_slot(db, booking.departure_id, slot_type)
         slot_released = result.get("success", False)
 
@@ -7843,22 +7857,32 @@ async def get_schedule_for_date(flight_date: date, db: Session = Depends(get_db)
 @app.post("/api/flights/departures/{departure_id}/book-slot")
 async def book_departure_slot(
     departure_id: int,
-    slot_id: str = Query(..., description="Slot ID: '165' for early slot (2¾h before), '120' for late slot (2h before)"),
+    slot_id: str = Query(..., description="Slot ID: '150' for early slot (2½h), '120' for standard slot (2h), '90' for late slot (1½h)"),
     db: Session = Depends(get_db)
 ):
     """
     Book a slot on a departure flight.
 
     Slot types (based on time before departure):
-    - '165' (early): 2¾ hours before departure
-    - '120' (late): 2 hours before departure
+    - '150' (early): 2½ hours before departure
+    - '120' (standard): 2 hours before departure
+    - '90' (late): 1½ hours before departure
+    - '165' (legacy early): supported for backwards compatibility
 
     Returns success status and remaining slots available.
     """
     # Convert slot_id to slot_type
-    slot_type = 'early' if slot_id == "165" else 'late' if slot_id == "120" else None
+    # Note: "165" is legacy format, treat as "early"
+    if slot_id in ("150", "165"):
+        slot_type = 'early'
+    elif slot_id == "120":
+        slot_type = 'standard'  # Maps to 'late' capacity for now
+    elif slot_id == "90":
+        slot_type = 'late'
+    else:
+        slot_type = None
     if slot_type is None:
-        raise HTTPException(status_code=400, detail="Invalid slot ID. Use '165' (early) or '120' (late)")
+        raise HTTPException(status_code=400, detail="Invalid slot ID. Use '150' (early), '120' (standard), or '90' (late)")
 
     result = db_service.book_departure_slot(db, departure_id, slot_type)
 
@@ -9217,7 +9241,7 @@ class CreatePaymentRequest(BaseModel):
     drop_off_date: str
     pickup_date: str
     drop_off_time: Optional[str] = None
-    drop_off_slot: Optional[str] = None  # "165" or "120" (minutes before flight)
+    drop_off_slot: Optional[str] = None  # "150", "120", or "90" (minutes before flight)
     departure_id: Optional[int] = None  # ID of the flight departure to book slot on
 
     # Return flight details
@@ -9358,9 +9382,9 @@ async def create_payment(
             if flight_time_str:
                 flight_hours, flight_mins = map(int, flight_time_str.split(':'))
                 flight_minutes_from_midnight = flight_hours * 60 + flight_mins
-                # Calculate dropoff slot time (either 165 or 120 mins before flight)
-                # drop_off_slot contains "165" or "120" as string
-                slot_offset = int(request.drop_off_slot) if request.drop_off_slot else 165
+                # Calculate dropoff slot time (150, 120, or 90 mins before flight)
+                # drop_off_slot contains "150", "120", or "90" as string (or legacy "165")
+                slot_offset = int(request.drop_off_slot) if request.drop_off_slot else 150
                 dropoff_minutes = flight_minutes_from_midnight - slot_offset
                 # Current UK time in minutes from midnight
                 current_minutes = now_uk.hour * 60 + now_uk.minute
@@ -9811,7 +9835,7 @@ async def create_payment(
             # Calculate from flight departure time minus slot minutes
             departure = db.query(FlightDeparture).filter(FlightDeparture.id == request.departure_id).first()
             if departure:
-                # Slot is minutes before departure (165 = 2¾h, 120 = 2h)
+                # Slot is minutes before departure (150 = 2½h, 120 = 2h, 90 = 1½h)
                 slot_minutes = int(request.drop_off_slot)
                 dep_hour = departure.departure_time.hour
                 dep_min = departure.departure_time.minute
@@ -9858,10 +9882,16 @@ async def create_payment(
             if not customer:
                 raise ValueError("Customer not found")
 
-            # Determine slot type from drop_off_slot ("165" = early, "120" = late)
+            # Determine slot type from drop_off_slot
+            # "150"/"165" = early, "120" = standard, "90" = late
             slot_type = None
             if request.drop_off_slot:
-                slot_type = 'early' if request.drop_off_slot == "165" else 'late'
+                if request.drop_off_slot in ("150", "165"):
+                    slot_type = 'early'
+                elif request.drop_off_slot == "120":
+                    slot_type = 'standard'
+                elif request.drop_off_slot == "90":
+                    slot_type = 'late'
 
             # Look up destination name from departure table (more reliable than frontend)
             dropoff_destination = None
@@ -9934,10 +9964,16 @@ async def create_payment(
             booking_id = booking.id
         else:
             # Fallback: Create everything from scratch (backwards compatible)
-            # Determine slot type from drop_off_slot ("165" = early, "120" = late)
+            # Determine slot type from drop_off_slot
+            # "150"/"165" = early, "120" = standard, "90" = late
             slot_type = None
             if request.drop_off_slot:
-                slot_type = 'early' if request.drop_off_slot == "165" else 'late'
+                if request.drop_off_slot in ("150", "165"):
+                    slot_type = 'early'
+                elif request.drop_off_slot == "120":
+                    slot_type = 'standard'
+                elif request.drop_off_slot == "90":
+                    slot_type = 'late'
 
             # Look up destination name from departure table (more reliable than frontend)
             dropoff_destination = None
@@ -10067,17 +10103,17 @@ async def create_payment(
                         detail="This flight is fully booked. Please contact us directly to arrange an alternative."
                     )
 
-                # Slot "165" = early (2¾ hours before)
-                # Slot "120" = late (2 hours before)
-                if request.drop_off_slot == "165" and departure.early_slots_available <= 0:
+                # Slot types: "150"/"165" = early (2½h), "120" = standard (2h), "90" = late (1½h)
+                if request.drop_off_slot in ("150", "165") and departure.early_slots_available <= 0:
                     raise HTTPException(
                         status_code=400,
-                        detail="This slot is fully booked. Please select the other available slot or contact us directly."
+                        detail="This slot is fully booked. Please select another available slot or contact us directly."
                     )
-                elif request.drop_off_slot == "120" and departure.late_slots_available <= 0:
+                elif request.drop_off_slot in ("120", "90") and departure.late_slots_available <= 0:
+                    # Standard and late slots share late capacity
                     raise HTTPException(
                         status_code=400,
-                        detail="This slot is fully booked. Please select the other available slot or contact us directly."
+                        detail="This slot is fully booked. Please select another available slot or contact us directly."
                     )
                 # Note: Slot is NOT booked here - it will be booked after payment succeeds via webhook
 
@@ -10157,8 +10193,9 @@ async def create_payment(
                     print(f"[FREE BOOKING] Failed to check promo modal code usage: {e}")
 
             # Book the slot immediately for free bookings
+            # "150"/"165" = early, "120"/"90" = late (shares capacity)
             if request.departure_id and request.drop_off_slot:
-                slot_type = 'early' if request.drop_off_slot == "165" else 'late'
+                slot_type = 'early' if request.drop_off_slot in ("150", "165") else 'late'
                 db_service.book_departure_slot(db, request.departure_id, slot_type)
 
             # Log payment success
@@ -10540,9 +10577,10 @@ async def stripe_webhook(
 
         # Book the slot on the departure flight (now that payment succeeded)
         # Skip if this webhook was already processed (idempotency for duplicate webhooks)
+        # "150"/"165" = early, "120"/"90" = late (shares capacity)
         if departure_id and drop_off_slot and payment and not was_already_processed:
             try:
-                slot_type = 'early' if drop_off_slot == "165" else 'late'
+                slot_type = 'early' if drop_off_slot in ("150", "165") else 'late'
                 db_service.book_departure_slot(db, int(departure_id), slot_type)
             except Exception as e:
                 log_error(
@@ -12518,11 +12556,13 @@ async def update_admin_departure(
 
         for booking in linked_bookings:
             # Calculate new drop-off time based on slot
-            # Early slot (165 min = 2h 45m before), Late slot (120 min = 2h before)
-            if booking.dropoff_slot in ("165", "early"):
-                minutes_before = 165
-            elif booking.dropoff_slot in ("120", "late"):
+            # Early slot (150/165 min = 2½h before), Standard slot (120 min = 2h before), Late slot (90 min = 1½h before)
+            if booking.dropoff_slot in ("150", "165", "early"):
+                minutes_before = 150
+            elif booking.dropoff_slot in ("120", "standard"):
                 minutes_before = 120
+            elif booking.dropoff_slot in ("90", "late"):
+                minutes_before = 90
             else:
                 continue  # Skip if no valid slot
 
