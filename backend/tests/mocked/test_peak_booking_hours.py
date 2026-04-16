@@ -860,13 +860,13 @@ class TestHoursByDayBoundaries:
 
 class MockAuditEvent:
     """Mock audit log event object with created_at timestamp."""
-    def __init__(self, created_at: datetime, event: str = "booking_started"):
+    def __init__(self, created_at: datetime, event: str = "dates_selected"):
         self.created_at = created_at
         self.event = event
 
 
 class TestSearchAnalyticsCalculation:
-    """Unit tests for search analytics from audit logs."""
+    """Unit tests for search analytics from audit logs (dates_selected events)."""
 
     DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
