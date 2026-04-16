@@ -4796,7 +4796,36 @@
 .booking-days-section .section-subtitle {
   font-size: 13px;
   color: #6b7280;
-  margin: 0 0 20px 0;
+  margin: 0 0 12px 0;
+}
+
+/* Dual Legend for Searches vs Bookings */
+.dual-legend {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #475569;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.legend-dot.searches {
+  background: #f59e0b;
+}
+
+.legend-dot.bookings {
+  background: #3b82f6;
 }
 
 .day-of-week-chart {
@@ -4880,6 +4909,67 @@
   }
 }
 
+/* Dual Bar Styles for Day of Week */
+.day-of-week-chart.dual-bars .day-bar-container {
+  height: 100%;
+}
+
+.dual-bar-wrapper {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  width: 100%;
+  order: 2;
+}
+
+.dual-bar-wrapper .day-bar-wrapper {
+  flex: 1;
+  max-width: 22px;
+}
+
+.dual-bar-wrapper .search-bar-wrapper {
+  background: #fef3c7;
+}
+
+.dual-bar-wrapper .booking-bar-wrapper {
+  background: #dbeafe;
+}
+
+.day-bar.search-bar {
+  background: #f59e0b;
+}
+
+.day-bar.booking-bar {
+  background: #3b82f6;
+}
+
+.dual-counts {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  order: 3;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dual-counts .search-count {
+  color: #d97706;
+}
+
+.dual-counts .booking-count {
+  color: #2563eb;
+}
+
+@media (max-width: 600px) {
+  .dual-bar-wrapper .day-bar-wrapper {
+    max-width: 16px;
+  }
+
+  .dual-counts {
+    font-size: 9px;
+  }
+}
+
 /* Peak Booking Hours Section */
 .booking-hours-section {
   background: white;
@@ -4958,6 +5048,23 @@
   font-weight: 600;
 }
 
+/* Day-specific summary dual */
+.day-specific-summary.dual {
+  gap: 12px;
+}
+
+.day-specific-summary .search-count {
+  color: #d97706;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.day-specific-summary .booking-count {
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* Time Ranges Grid */
 .time-ranges-grid {
   display: grid;
@@ -4996,6 +5103,41 @@
 .time-range-percent {
   font-size: 12px;
   color: #6b7280;
+}
+
+/* Time Ranges Dual */
+.time-range-dual-counts {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.time-range-dual-counts .search-count {
+  font-size: 16px;
+  font-weight: 700;
+  color: #d97706;
+}
+
+.time-range-dual-counts .booking-count {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.time-range-dual-percents {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.time-range-dual-percents .search-percent {
+  color: #d97706;
+}
+
+.time-range-dual-percents .booking-percent {
+  color: #2563eb;
 }
 
 /* Hourly Chart */
@@ -5047,6 +5189,43 @@
   text-align: center;
   margin-top: 12px;
   margin-bottom: 0;
+}
+
+/* Dual Hour Bars */
+.hourly-chart.dual-bars {
+  gap: 1px;
+}
+
+.hour-bar-container.dual {
+  height: 100%;
+}
+
+.dual-hour-bars {
+  display: flex;
+  gap: 1px;
+  flex: 1;
+  width: 100%;
+}
+
+.dual-hour-bars .hour-bar-wrapper {
+  flex: 1;
+  max-width: 9px;
+}
+
+.dual-hour-bars .search-bar-wrapper {
+  background: #fef3c7;
+}
+
+.dual-hour-bars .booking-bar-wrapper {
+  background: #dbeafe;
+}
+
+.hour-bar.search-bar {
+  background: #f59e0b;
+}
+
+.hour-bar.booking-bar {
+  background: #3b82f6;
 }
 
 @media (max-width: 768px) {

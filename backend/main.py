@@ -1642,6 +1642,104 @@ async def get_booking_stats(
             "total": day_total
         }
 
+    # =========================================================================
+    # SEARCH ANALYTICS (from audit_logs - booking_started events)
+    # =========================================================================
+    from db_models import AuditLog, AuditLogEvent
+
+    # Get all booking_started events (represents searches/quote requests)
+    search_events = db.query(AuditLog).filter(
+        AuditLog.event == AuditLogEvent.BOOKING_STARTED
+    ).all()
+
+    # Day of week for searches
+    search_days_of_week = {day: 0 for day in day_names}
+    search_hours_of_day = {hour: 0 for hour in range(24)}
+    search_hours_by_day = {day: {hour: 0 for hour in range(24)} for day in day_names}
+
+    for event in search_events:
+        if event.created_at:
+            created_at_uk = event.created_at
+            if created_at_uk.tzinfo is None:
+                created_at_uk = pytz.utc.localize(created_at_uk)
+            created_at_uk = created_at_uk.astimezone(uk_tz)
+
+            day_name = day_names[created_at_uk.weekday()]
+            search_days_of_week[day_name] += 1
+            search_hours_of_day[created_at_uk.hour] += 1
+            search_hours_by_day[day_name][created_at_uk.hour] += 1
+
+    # Convert search days to list format
+    total_searches = sum(search_days_of_week.values())
+    search_days_list = []
+    for day in day_names:
+        count = search_days_of_week[day]
+        percent = round(count / total_searches * 100, 1) if total_searches > 0 else 0
+        search_days_list.append({
+            "day": day,
+            "count": count,
+            "percent": percent
+        })
+
+    # Convert search hours to list format
+    search_hours_list = []
+    for hour in range(24):
+        count = search_hours_of_day[hour]
+        percent = round(count / total_searches * 100, 1) if total_searches > 0 else 0
+        search_hours_list.append({
+            "hour": hour,
+            "label": f"{hour:02d}:00",
+            "count": count,
+            "percent": percent
+        })
+
+    # Search time ranges
+    search_time_ranges_data = {
+        "morning": {"label": "Morning (06:00-11:59)", "count": 0},
+        "afternoon": {"label": "Afternoon (12:00-17:59)", "count": 0},
+        "evening": {"label": "Evening (18:00-23:59)", "count": 0},
+        "night": {"label": "Night (00:00-05:59)", "count": 0},
+    }
+    for hour, count in search_hours_of_day.items():
+        if 6 <= hour <= 11:
+            search_time_ranges_data["morning"]["count"] += count
+        elif 12 <= hour <= 17:
+            search_time_ranges_data["afternoon"]["count"] += count
+        elif 18 <= hour <= 23:
+            search_time_ranges_data["evening"]["count"] += count
+        else:
+            search_time_ranges_data["night"]["count"] += count
+
+    search_time_ranges = []
+    for key in ["morning", "afternoon", "evening", "night"]:
+        tr = search_time_ranges_data[key]
+        percent = round(tr["count"] / total_searches * 100, 1) if total_searches > 0 else 0
+        search_time_ranges.append({
+            "range": key,
+            "label": tr["label"],
+            "count": tr["count"],
+            "percent": percent
+        })
+
+    # Search hours by day
+    search_hours_by_day_list = {}
+    for day in day_names:
+        day_total = sum(search_hours_by_day[day].values())
+        hours_list = []
+        for hour in range(24):
+            count = search_hours_by_day[day][hour]
+            percent = round(count / day_total * 100, 1) if day_total > 0 else 0
+            hours_list.append({
+                "hour": hour,
+                "label": f"{hour:02d}:00",
+                "count": count,
+                "percent": percent
+            })
+        search_hours_by_day_list[day] = {
+            "hours": hours_list,
+            "total": day_total
+        }
+
     return {
         "total_bookings": len(all_bookings),
         "total_successful": total_successful,
@@ -1668,6 +1766,12 @@ async def get_booking_stats(
         "booking_hours_of_day": booking_hours_list,
         "booking_time_ranges": booking_time_ranges,
         "booking_hours_by_day": booking_hours_by_day_list,
+        # Search analytics (from audit logs)
+        "search_days_of_week": search_days_list,
+        "search_hours_of_day": search_hours_list,
+        "search_time_ranges": search_time_ranges,
+        "search_hours_by_day": search_hours_by_day_list,
+        "total_searches": total_searches,
     }
 
 

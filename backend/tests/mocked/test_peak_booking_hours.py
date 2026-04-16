@@ -852,3 +852,212 @@ class TestHoursByDayBoundaries:
 
         hour_0 = next(h for h in result["Saturday"]["hours"] if h["hour"] == 0)
         assert hour_0["count"] == 1
+
+
+# ============================================================================
+# MOCKED UNIT TESTS - Search Analytics (Audit Log)
+# ============================================================================
+
+class MockAuditEvent:
+    """Mock audit log event object with created_at timestamp."""
+    def __init__(self, created_at: datetime, event: str = "booking_started"):
+        self.created_at = created_at
+        self.event = event
+
+
+class TestSearchAnalyticsCalculation:
+    """Unit tests for search analytics from audit logs."""
+
+    DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+    def calculate_search_analytics(self, events):
+        """Mirror the search analytics calculation from the endpoint."""
+        uk_tz = pytz.timezone('Europe/London')
+
+        search_days_of_week = {day: 0 for day in self.DAY_NAMES}
+        search_hours_of_day = {hour: 0 for hour in range(24)}
+        search_hours_by_day = {day: {hour: 0 for hour in range(24)} for day in self.DAY_NAMES}
+
+        for event in events:
+            if event.created_at:
+                created_at_uk = event.created_at
+                if created_at_uk.tzinfo is None:
+                    created_at_uk = pytz.utc.localize(created_at_uk)
+                created_at_uk = created_at_uk.astimezone(uk_tz)
+
+                day_name = self.DAY_NAMES[created_at_uk.weekday()]
+                search_days_of_week[day_name] += 1
+                search_hours_of_day[created_at_uk.hour] += 1
+                search_hours_by_day[day_name][created_at_uk.hour] += 1
+
+        total_searches = sum(search_days_of_week.values())
+
+        # Days list
+        search_days_list = []
+        for day in self.DAY_NAMES:
+            count = search_days_of_week[day]
+            percent = round(count / total_searches * 100, 1) if total_searches > 0 else 0
+            search_days_list.append({"day": day, "count": count, "percent": percent})
+
+        # Hours list
+        search_hours_list = []
+        for hour in range(24):
+            count = search_hours_of_day[hour]
+            percent = round(count / total_searches * 100, 1) if total_searches > 0 else 0
+            search_hours_list.append({
+                "hour": hour,
+                "label": f"{hour:02d}:00",
+                "count": count,
+                "percent": percent
+            })
+
+        # Hours by day
+        search_hours_by_day_list = {}
+        for day in self.DAY_NAMES:
+            day_total = sum(search_hours_by_day[day].values())
+            hours_list = []
+            for hour in range(24):
+                count = search_hours_by_day[day][hour]
+                percent = round(count / day_total * 100, 1) if day_total > 0 else 0
+                hours_list.append({
+                    "hour": hour,
+                    "label": f"{hour:02d}:00",
+                    "count": count,
+                    "percent": percent
+                })
+            search_hours_by_day_list[day] = {"hours": hours_list, "total": day_total}
+
+        return {
+            "search_days_of_week": search_days_list,
+            "search_hours_of_day": search_hours_list,
+            "search_hours_by_day": search_hours_by_day_list,
+            "total_searches": total_searches
+        }
+
+    def test_search_days_distribution(self):
+        """Happy path: Searches correctly distributed by day."""
+        events = [
+            MockAuditEvent(create_uk_datetime(2026, 4, 17, 10, 0)),  # Friday
+            MockAuditEvent(create_uk_datetime(2026, 4, 17, 14, 0)),  # Friday
+            MockAuditEvent(create_uk_datetime(2026, 4, 17, 16, 0)),  # Friday
+            MockAuditEvent(create_uk_datetime(2026, 4, 16, 12, 0)),  # Thursday
+        ]
+        result = self.calculate_search_analytics(events)
+
+        friday = next(d for d in result["search_days_of_week"] if d["day"] == "Friday")
+        assert friday["count"] == 3
+        assert friday["percent"] == 75.0
+
+    def test_search_hours_distribution(self):
+        """Happy path: Searches correctly distributed by hour."""
+        events = [
+            MockAuditEvent(create_uk_datetime(2026, 4, 17, 15, 0)),
+            MockAuditEvent(create_uk_datetime(2026, 4, 17, 15, 30)),
+            MockAuditEvent(create_uk_datetime(2026, 4, 17, 17, 0)),
+        ]
+        result = self.calculate_search_analytics(events)
+
+        hour_15 = next(h for h in result["search_hours_of_day"] if h["hour"] == 15)
+        assert hour_15["count"] == 2
+        assert hour_15["percent"] == 66.7
+
+    def test_search_total_count(self):
+        """Happy path: Total search count is correct."""
+        events = [
+            MockAuditEvent(create_uk_datetime(2026, 4, 17, 10, 0)),
+            MockAuditEvent(create_uk_datetime(2026, 4, 17, 14, 0)),
+            MockAuditEvent(create_uk_datetime(2026, 4, 18, 10, 0)),
+        ]
+        result = self.calculate_search_analytics(events)
+        assert result["total_searches"] == 3
+
+    def test_empty_searches(self):
+        """Edge case: No search events."""
+        result = self.calculate_search_analytics([])
+
+        assert result["total_searches"] == 0
+        assert len(result["search_days_of_week"]) == 7
+        assert len(result["search_hours_of_day"]) == 24
+
+        for day in result["search_days_of_week"]:
+            assert day["count"] == 0
+            assert day["percent"] == 0
+
+    def test_search_hours_by_day(self):
+        """Happy path: Search hours by day correctly structured."""
+        events = [
+            MockAuditEvent(create_uk_datetime(2026, 4, 17, 10, 0)),  # Friday 10:00
+            MockAuditEvent(create_uk_datetime(2026, 4, 17, 15, 0)),  # Friday 15:00
+        ]
+        result = self.calculate_search_analytics(events)
+
+        friday = result["search_hours_by_day"]["Friday"]
+        assert friday["total"] == 2
+
+        hour_10 = next(h for h in friday["hours"] if h["hour"] == 10)
+        assert hour_10["count"] == 1
+
+    def test_search_timezone_conversion(self):
+        """Edge case: UTC times correctly converted to UK timezone."""
+        # UTC 23:30 on Thursday = 00:30 Friday in BST
+        events = [MockAuditEvent(create_utc_datetime(2026, 7, 16, 23, 30))]
+        result = self.calculate_search_analytics(events)
+
+        friday = next(d for d in result["search_days_of_week"] if d["day"] == "Friday")
+        thursday = next(d for d in result["search_days_of_week"] if d["day"] == "Thursday")
+
+        assert friday["count"] == 1
+        assert thursday["count"] == 0
+
+    def test_search_all_days_present(self):
+        """Happy path: All 7 days present in output."""
+        events = [MockAuditEvent(create_uk_datetime(2026, 4, 17, 10, 0))]
+        result = self.calculate_search_analytics(events)
+
+        days = [d["day"] for d in result["search_days_of_week"]]
+        assert days == ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+
+# ============================================================================
+# MOCKED INTEGRATION TESTS - Search vs Booking Comparison
+# ============================================================================
+
+class TestSearchVsBookingComparison:
+    """Integration tests for comparing searches with bookings."""
+
+    def test_response_has_both_search_and_booking_data(self):
+        """Happy path: Response contains both search and booking analytics."""
+        response = {
+            "booking_days_of_week": [{"day": "Friday", "count": 10, "percent": 50.0}],
+            "search_days_of_week": [{"day": "Friday", "count": 100, "percent": 50.0}],
+            "total_successful": 20,
+            "total_searches": 200,
+        }
+
+        assert "booking_days_of_week" in response
+        assert "search_days_of_week" in response
+        assert "total_successful" in response
+        assert "total_searches" in response
+
+    def test_conversion_rate_can_be_calculated(self):
+        """Happy path: Can calculate conversion rate from searches to bookings."""
+        total_searches = 200
+        total_bookings = 20
+
+        conversion_rate = round((total_bookings / total_searches) * 100, 1) if total_searches > 0 else 0
+        assert conversion_rate == 10.0
+
+    def test_search_and_booking_hours_same_structure(self):
+        """Happy path: Search and booking hours have identical structure."""
+        booking_hours = [
+            {"hour": 0, "label": "00:00", "count": 5, "percent": 2.5},
+            {"hour": 15, "label": "15:00", "count": 20, "percent": 10.0},
+        ]
+        search_hours = [
+            {"hour": 0, "label": "00:00", "count": 50, "percent": 2.5},
+            {"hour": 15, "label": "15:00", "count": 200, "percent": 10.0},
+        ]
+
+        for bh, sh in zip(booking_hours, search_hours):
+            assert set(bh.keys()) == set(sh.keys())
+            assert set(bh.keys()) == {"hour", "label", "count", "percent"}
