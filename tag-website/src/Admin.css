@@ -4900,7 +4900,62 @@
 .booking-hours-section .section-subtitle {
   font-size: 13px;
   color: #6b7280;
-  margin: 0 0 20px 0;
+  margin: 0 0 16px 0;
+}
+
+/* Peak Hours View Switcher */
+.peak-hours-view-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.view-switch-btn {
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.view-switch-btn:hover {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.view-switch-btn.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+/* Day-specific summary */
+.day-specific-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: #f0f9ff;
+  border-radius: 8px;
+  border: 1px solid #bae6fd;
+}
+
+.day-total-label {
+  font-size: 13px;
+  color: #0369a1;
+  font-weight: 500;
+}
+
+.day-total-count {
+  font-size: 14px;
+  color: #0c4a6e;
+  font-weight: 600;
 }
 
 /* Time Ranges Grid */

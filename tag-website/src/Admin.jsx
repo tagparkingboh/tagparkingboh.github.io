@@ -587,6 +587,9 @@ function Admin() {
 
   // Fun facts state
   const [funFacts, setFunFacts] = useState(null)
+
+  // Peak booking hours view state
+  const [peakHoursView, setPeakHoursView] = useState('overall') // 'overall', 'Monday', 'Tuesday', etc.
   const [loadingFunFacts, setLoadingFunFacts] = useState(false)
 
   // Financial report state
@@ -10348,8 +10351,27 @@ function Admin() {
                         <h3>Peak Booking Hours</h3>
                         <p className="section-subtitle">What time customers make their bookings (UK time)</p>
 
-                        {/* Time Ranges Summary */}
-                        {bookingStats.booking_time_ranges && (
+                        {/* View Switcher */}
+                        <div className="peak-hours-view-switcher">
+                          <button
+                            className={`view-switch-btn ${peakHoursView === 'overall' ? 'active' : ''}`}
+                            onClick={() => setPeakHoursView('overall')}
+                          >
+                            Overall
+                          </button>
+                          {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => (
+                            <button
+                              key={day}
+                              className={`view-switch-btn ${peakHoursView === day ? 'active' : ''}`}
+                              onClick={() => setPeakHoursView(day)}
+                            >
+                              {day.substring(0, 3)}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Time Ranges Summary - only show for overall view */}
+                        {peakHoursView === 'overall' && bookingStats.booking_time_ranges && (
                           <div className="time-ranges-grid">
                             {bookingStats.booking_time_ranges.map((range, index) => (
                               <div key={index} className="time-range-card">
@@ -10362,18 +10384,29 @@ function Admin() {
                           </div>
                         )}
 
+                        {/* Day-specific total */}
+                        {peakHoursView !== 'overall' && bookingStats.booking_hours_by_day?.[peakHoursView] && (
+                          <div className="day-specific-summary">
+                            <span className="day-total-label">{peakHoursView}s:</span>
+                            <span className="day-total-count">{bookingStats.booking_hours_by_day[peakHoursView].total} bookings</span>
+                          </div>
+                        )}
+
                         {/* Hourly Breakdown Chart */}
                         <div className="hourly-chart">
                           {(() => {
-                            const maxCount = Math.max(...bookingStats.booking_hours_of_day.map(h => h.count));
-                            return bookingStats.booking_hours_of_day.map((hour, index) => (
+                            const hoursData = peakHoursView === 'overall'
+                              ? bookingStats.booking_hours_of_day
+                              : bookingStats.booking_hours_by_day?.[peakHoursView]?.hours || [];
+                            const maxCount = Math.max(...hoursData.map(h => h.count), 1);
+                            return hoursData.map((hour, index) => (
                               <div key={index} className="hour-bar-container">
                                 <div className="hour-bar-wrapper">
                                   <div
                                     className="hour-bar"
                                     style={{
                                       height: `${maxCount > 0 ? (hour.count / maxCount) * 100 : 0}%`,
-                                      backgroundColor: hour.count === maxCount ? '#22c55e' : '#3b82f6'
+                                      backgroundColor: hour.count === maxCount && hour.count > 0 ? '#22c55e' : '#3b82f6'
                                     }}
                                     title={`${hour.label}: ${hour.count} bookings (${hour.percent}%)`}
                                   />

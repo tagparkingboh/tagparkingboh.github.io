@@ -1550,6 +1550,9 @@ async def get_booking_stats(
     # Hour of day booking analysis (UK timezone)
     booking_hours_of_day = {hour: 0 for hour in range(24)}
 
+    # Hour of day by day of week (for day-specific views)
+    booking_hours_by_day = {day: {hour: 0 for hour in range(24)} for day in day_names}
+
     for booking in successful_bookings:
         if booking.created_at:
             # Convert to UK timezone
@@ -1561,8 +1564,11 @@ async def get_booking_stats(
             day_name = day_names[created_at_uk.weekday()]
             booking_days_of_week[day_name] += 1
 
-            # Track hour of day
+            # Track hour of day (overall)
             booking_hours_of_day[created_at_uk.hour] += 1
+
+            # Track hour of day by day of week
+            booking_hours_by_day[day_name][created_at_uk.hour] += 1
 
     # Convert to list format with percentages
     total_bookings_with_dates = sum(booking_days_of_week.values())
@@ -1617,6 +1623,25 @@ async def get_booking_stats(
             "percent": percent
         })
 
+    # Convert hours by day to list format with percentages
+    booking_hours_by_day_list = {}
+    for day in day_names:
+        day_total = sum(booking_hours_by_day[day].values())
+        hours_list = []
+        for hour in range(24):
+            count = booking_hours_by_day[day][hour]
+            percent = round(count / day_total * 100, 1) if day_total > 0 else 0
+            hours_list.append({
+                "hour": hour,
+                "label": f"{hour:02d}:00",
+                "count": count,
+                "percent": percent
+            })
+        booking_hours_by_day_list[day] = {
+            "hours": hours_list,
+            "total": day_total
+        }
+
     return {
         "total_bookings": len(all_bookings),
         "total_successful": total_successful,
@@ -1642,6 +1667,7 @@ async def get_booking_stats(
         "booking_days_of_week": booking_days_list,
         "booking_hours_of_day": booking_hours_list,
         "booking_time_ranges": booking_time_ranges,
+        "booking_hours_by_day": booking_hours_by_day_list,
     }
 
 
