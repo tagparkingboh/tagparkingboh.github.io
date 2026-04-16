@@ -150,7 +150,15 @@ async function getBookingPrice(
 
   // Continue to Step 2
   await page.locator('button.next-btn, button:has-text("Continue")').first().click();
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(500);
+
+  // Handle Time Confirmation Modal
+  const timeConfirmModal = page.locator('.time-confirm-modal');
+  if (await timeConfirmModal.isVisible({ timeout: 3000 }).catch(() => false)) {
+    const confirmBtn = page.locator('.time-confirm-btn-primary, button:has-text("Yes, times are correct")');
+    await confirmBtn.click();
+    await page.waitForTimeout(500);
+  }
 
   // ========== Step 2: Package Selection ==========
   const step2Continue = page.locator('button.next-btn, button:has-text("Continue")').first();
