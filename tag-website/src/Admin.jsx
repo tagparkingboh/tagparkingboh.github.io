@@ -10316,67 +10316,40 @@ function Admin() {
                       </div>
                     </div>
 
-                    {/* Busiest Days - Searches vs Bookings */}
+                    {/* Busiest Booking Days (when customers make bookings) */}
                     {bookingStats.booking_days_of_week && bookingStats.booking_days_of_week.length > 0 && (
                       <div className="booking-days-section">
-                        <h3>Busiest Days</h3>
-                        <p className="section-subtitle">When customers search and book (UK time)</p>
-                        <div className="dual-legend">
-                          <span className="legend-item"><span className="legend-dot searches"></span> Searches ({bookingStats.total_searches || 0})</span>
-                          <span className="legend-item"><span className="legend-dot bookings"></span> Bookings ({bookingStats.total_successful || 0})</span>
-                        </div>
-                        <div className="day-of-week-chart dual-bars">
+                        <h3>Busiest Booking Days</h3>
+                        <p className="section-subtitle">When customers make their bookings (UK time)</p>
+                        <div className="day-of-week-chart">
                           {(() => {
-                            const maxBookings = Math.max(...bookingStats.booking_days_of_week.map(d => d.count));
-                            const maxSearches = bookingStats.search_days_of_week
-                              ? Math.max(...bookingStats.search_days_of_week.map(d => d.count))
-                              : 0;
-                            const maxCount = Math.max(maxBookings, maxSearches);
-
-                            return bookingStats.booking_days_of_week.map((day, index) => {
-                              const searchDay = bookingStats.search_days_of_week?.find(s => s.day === day.day);
-                              return (
-                                <div key={index} className="day-bar-container">
-                                  <div className="day-label">{day.day.substring(0, 3)}</div>
-                                  <div className="dual-bar-wrapper">
-                                    {/* Search bar */}
-                                    <div className="day-bar-wrapper search-bar-wrapper">
-                                      <div
-                                        className="day-bar search-bar"
-                                        style={{
-                                          height: `${maxCount > 0 && searchDay ? (searchDay.count / maxCount) * 100 : 0}%`,
-                                        }}
-                                        title={`Searches: ${searchDay?.count || 0} (${searchDay?.percent || 0}%)`}
-                                      />
-                                    </div>
-                                    {/* Booking bar */}
-                                    <div className="day-bar-wrapper booking-bar-wrapper">
-                                      <div
-                                        className="day-bar booking-bar"
-                                        style={{
-                                          height: `${maxCount > 0 ? (day.count / maxCount) * 100 : 0}%`,
-                                        }}
-                                        title={`Bookings: ${day.count} (${day.percent}%)`}
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="dual-counts">
-                                    <span className="search-count">{searchDay?.count || 0}</span>
-                                    <span className="booking-count">{day.count}</span>
-                                  </div>
+                            const maxCount = Math.max(...bookingStats.booking_days_of_week.map(d => d.count));
+                            return bookingStats.booking_days_of_week.map((day, index) => (
+                              <div key={index} className="day-bar-container">
+                                <div className="day-label">{day.day.substring(0, 3)}</div>
+                                <div className="day-bar-wrapper">
+                                  <div
+                                    className="day-bar"
+                                    style={{
+                                      height: `${maxCount > 0 ? (day.count / maxCount) * 100 : 0}%`,
+                                      backgroundColor: day.count === maxCount ? '#22c55e' : '#3b82f6'
+                                    }}
+                                  />
                                 </div>
-                              );
-                            });
+                                <div className="day-count">{day.count}</div>
+                                <div className="day-percent">{day.percent}%</div>
+                              </div>
+                            ));
                           })()}
                         </div>
                       </div>
                     )}
 
-                    {/* Peak Hours - Searches vs Bookings (UK timezone) */}
+                    {/* Peak Booking Hours (UK timezone) */}
                     {bookingStats.booking_hours_of_day && bookingStats.booking_hours_of_day.length > 0 && (
                       <div className="booking-hours-section">
-                        <h3>Peak Hours</h3>
-                        <p className="section-subtitle">When customers search and book (UK time)</p>
+                        <h3>Peak Booking Hours</h3>
+                        <p className="section-subtitle">When customers make their bookings (UK time)</p>
 
                         {/* View Switcher */}
                         <div className="peak-hours-view-switcher">
@@ -10397,86 +10370,51 @@ function Admin() {
                           ))}
                         </div>
 
-                        {/* Legend */}
-                        <div className="dual-legend">
-                          <span className="legend-item"><span className="legend-dot searches"></span> Searches</span>
-                          <span className="legend-item"><span className="legend-dot bookings"></span> Bookings</span>
-                        </div>
-
                         {/* Time Ranges Summary - only show for overall view */}
-                        {peakHoursView === 'overall' && bookingStats.booking_time_ranges && bookingStats.search_time_ranges && (
-                          <div className="time-ranges-grid dual">
-                            {bookingStats.booking_time_ranges.map((range, index) => {
-                              const searchRange = bookingStats.search_time_ranges?.find(s => s.range === range.range);
-                              return (
-                                <div key={index} className="time-range-card">
-                                  <div className="time-range-label">{range.label.split(' ')[0]}</div>
-                                  <div className="time-range-hours">{range.label.match(/\(([^)]+)\)/)?.[1]}</div>
-                                  <div className="time-range-dual-counts">
-                                    <span className="search-count" title="Searches">{searchRange?.count || 0}</span>
-                                    <span className="booking-count" title="Bookings">{range.count}</span>
-                                  </div>
-                                  <div className="time-range-dual-percents">
-                                    <span className="search-percent">{searchRange?.percent || 0}%</span>
-                                    <span className="booking-percent">{range.percent}%</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                        {peakHoursView === 'overall' && bookingStats.booking_time_ranges && (
+                          <div className="time-ranges-grid">
+                            {bookingStats.booking_time_ranges.map((range, index) => (
+                              <div key={index} className="time-range-card">
+                                <div className="time-range-label">{range.label.split(' ')[0]}</div>
+                                <div className="time-range-hours">{range.label.match(/\(([^)]+)\)/)?.[1]}</div>
+                                <div className="time-range-count">{range.count}</div>
+                                <div className="time-range-percent">{range.percent}%</div>
+                              </div>
+                            ))}
                           </div>
                         )}
 
                         {/* Day-specific total */}
                         {peakHoursView !== 'overall' && bookingStats.booking_hours_by_day?.[peakHoursView] && (
-                          <div className="day-specific-summary dual">
+                          <div className="day-specific-summary">
                             <span className="day-total-label">{peakHoursView}s:</span>
-                            <span className="search-count">{bookingStats.search_hours_by_day?.[peakHoursView]?.total || 0} searches</span>
-                            <span className="booking-count">{bookingStats.booking_hours_by_day[peakHoursView].total} bookings</span>
+                            <span className="day-total-count">{bookingStats.booking_hours_by_day[peakHoursView].total} bookings</span>
                           </div>
                         )}
 
-                        {/* Hourly Breakdown Chart - Dual Bars */}
-                        <div className="hourly-chart dual-bars">
+                        {/* Hourly Breakdown Chart */}
+                        <div className="hourly-chart">
                           {(() => {
-                            const bookingHoursData = peakHoursView === 'overall'
+                            const hoursData = peakHoursView === 'overall'
                               ? bookingStats.booking_hours_of_day
                               : bookingStats.booking_hours_by_day?.[peakHoursView]?.hours || [];
-                            const searchHoursData = peakHoursView === 'overall'
-                              ? bookingStats.search_hours_of_day || []
-                              : bookingStats.search_hours_by_day?.[peakHoursView]?.hours || [];
+                            const maxCount = Math.max(...hoursData.map(h => h.count), 1);
 
-                            const maxBookings = Math.max(...bookingHoursData.map(h => h.count), 1);
-                            const maxSearches = Math.max(...searchHoursData.map(h => h.count), 1);
-                            const maxCount = Math.max(maxBookings, maxSearches);
-
-                            return bookingHoursData.map((hour, index) => {
-                              const searchHour = searchHoursData[index] || { count: 0, percent: 0 };
-                              return (
-                                <div key={index} className="hour-bar-container dual">
-                                  <div className="dual-hour-bars">
-                                    <div className="hour-bar-wrapper search-bar-wrapper">
-                                      <div
-                                        className="hour-bar search-bar"
-                                        style={{
-                                          height: `${maxCount > 0 ? (searchHour.count / maxCount) * 100 : 0}%`,
-                                        }}
-                                        title={`${hour.label}: ${searchHour.count} searches (${searchHour.percent}%)`}
-                                      />
-                                    </div>
-                                    <div className="hour-bar-wrapper booking-bar-wrapper">
-                                      <div
-                                        className="hour-bar booking-bar"
-                                        style={{
-                                          height: `${maxCount > 0 ? (hour.count / maxCount) * 100 : 0}%`,
-                                        }}
-                                        title={`${hour.label}: ${hour.count} bookings (${hour.percent}%)`}
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="hour-label">{hour.hour}</div>
+                            return hoursData.map((hour, index) => (
+                              <div key={index} className="hour-bar-container">
+                                <div className="hour-bar-wrapper">
+                                  <div
+                                    className="hour-bar"
+                                    style={{
+                                      height: `${maxCount > 0 ? (hour.count / maxCount) * 100 : 0}%`,
+                                      backgroundColor: hour.count === maxCount ? '#22c55e' : '#3b82f6'
+                                    }}
+                                    title={`${hour.label}: ${hour.count} bookings (${hour.percent}%)`}
+                                  />
                                 </div>
-                              );
-                            });
+                                <div className="hour-label">{hour.hour}</div>
+                              </div>
+                            ));
                           })()}
                         </div>
                         <p className="chart-helper-text">Hours shown in 24-hour format (UK timezone)</p>
