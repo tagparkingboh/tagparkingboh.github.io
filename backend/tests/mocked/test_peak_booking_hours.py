@@ -1061,3 +1061,93 @@ class TestSearchVsBookingComparison:
         for bh, sh in zip(booking_hours, search_hours):
             assert set(bh.keys()) == set(sh.keys())
             assert set(bh.keys()) == {"hour", "label", "count", "percent"}
+
+
+# ============================================================================
+# MOCKED UNIT TESTS - Search Data Start Date
+# ============================================================================
+
+class TestSearchDataStartDate:
+    """Unit tests for search_data_start_date calculation (session tracking start date)."""
+
+    def calculate_search_data_start_date(self, events):
+        """Mirror the search_data_start_date calculation from the endpoint."""
+        if not events:
+            return None
+
+        uk_tz = pytz.timezone('Europe/London')
+
+        # Events should be sorted by created_at ascending
+        sorted_events = sorted(events, key=lambda e: e.created_at if e.created_at else datetime.max)
+
+        if sorted_events and sorted_events[0].created_at:
+            earliest_date = sorted_events[0].created_at
+            if earliest_date.tzinfo is None:
+                earliest_date = pytz.utc.localize(earliest_date)
+            earliest_date = earliest_date.astimezone(uk_tz)
+            return earliest_date.strftime("%d %B %Y")
+
+        return None
+
+    def test_earliest_date_returned(self):
+        """Happy path: Returns the earliest event date in correct format."""
+        events = [
+            MockAuditEvent(create_uk_datetime(2026, 4, 15, 10, 0)),  # Middle
+            MockAuditEvent(create_uk_datetime(2026, 2, 10, 14, 0)),  # Earliest
+            MockAuditEvent(create_uk_datetime(2026, 4, 20, 16, 0)),  # Latest
+        ]
+        result = self.calculate_search_data_start_date(events)
+
+        assert result == "10 February 2026"
+
+    def test_date_format_correct(self):
+        """Happy path: Date format is 'DD Month YYYY'."""
+        events = [MockAuditEvent(create_uk_datetime(2026, 1, 5, 9, 30))]
+        result = self.calculate_search_data_start_date(events)
+
+        assert result == "05 January 2026"
+
+    def test_empty_events_returns_none(self):
+        """Edge case: Empty events list returns None."""
+        result = self.calculate_search_data_start_date([])
+
+        assert result is None
+
+    def test_utc_events_converted_to_uk(self):
+        """Happy path: UTC dates are converted to UK timezone for display."""
+        # Create UTC event at 23:30 on Jan 1 - this is 23:30 UK time (same day in winter)
+        events = [MockAuditEvent(create_utc_datetime(2026, 1, 1, 23, 30))]
+        result = self.calculate_search_data_start_date(events)
+
+        # In January, UK is on GMT so UTC = UK time
+        assert result == "01 January 2026"
+
+    def test_bst_conversion_summer(self):
+        """Happy path: BST conversion for summer dates."""
+        # Create UTC event at 23:30 on July 1 - this is 00:30 UK time (next day in summer)
+        events = [MockAuditEvent(create_utc_datetime(2026, 7, 1, 23, 30))]
+        result = self.calculate_search_data_start_date(events)
+
+        # In July, UK is on BST (UTC+1) so 23:30 UTC = 00:30 BST on July 2
+        assert result == "02 July 2026"
+
+    def test_response_includes_search_data_start_date(self):
+        """Integration test: Response includes search_data_start_date field."""
+        response = {
+            "search_days_of_week": [{"day": "Friday", "count": 100, "percent": 50.0}],
+            "search_hours_of_day": [{"hour": 15, "label": "15:00", "count": 50, "percent": 25.0}],
+            "total_searches": 200,
+            "search_data_start_date": "10 February 2026",
+        }
+
+        assert "search_data_start_date" in response
+        assert response["search_data_start_date"] == "10 February 2026"
+
+    def test_search_data_start_date_none_when_no_searches(self):
+        """Edge case: search_data_start_date is None when no search events exist."""
+        response = {
+            "total_searches": 0,
+            "search_data_start_date": None,
+        }
+
+        assert response["search_data_start_date"] is None

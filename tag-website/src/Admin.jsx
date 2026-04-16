@@ -590,6 +590,7 @@ function Admin() {
 
   // Peak booking hours view state
   const [peakHoursView, setPeakHoursView] = useState('overall') // 'overall', 'Monday', 'Tuesday', etc.
+  const [peakSearchView, setPeakSearchView] = useState('overall') // 'overall', 'Monday', 'Tuesday', etc.
   const [loadingFunFacts, setLoadingFunFacts] = useState(false)
 
   // Financial report state
@@ -10427,8 +10428,27 @@ function Admin() {
                         <h3>Peak Search Hours</h3>
                         <p className="section-subtitle">When customers search for quotes (UK time)</p>
 
-                        {/* Time Ranges Summary */}
-                        {bookingStats.search_time_ranges && (
+                        {/* View Switcher */}
+                        <div className="peak-hours-view-switcher">
+                          <button
+                            className={`view-switch-btn ${peakSearchView === 'overall' ? 'active' : ''}`}
+                            onClick={() => setPeakSearchView('overall')}
+                          >
+                            Overall
+                          </button>
+                          {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => (
+                            <button
+                              key={day}
+                              className={`view-switch-btn ${peakSearchView === day ? 'active' : ''}`}
+                              onClick={() => setPeakSearchView(day)}
+                            >
+                              {day.substring(0, 3)}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Time Ranges Summary - only show for overall view */}
+                        {peakSearchView === 'overall' && bookingStats.search_time_ranges && (
                           <div className="time-ranges-grid">
                             {bookingStats.search_time_ranges.map((range, index) => (
                               <div key={index} className="time-range-card search">
@@ -10441,10 +10461,20 @@ function Admin() {
                           </div>
                         )}
 
+                        {/* Day-specific total */}
+                        {peakSearchView !== 'overall' && bookingStats.search_hours_by_day?.[peakSearchView] && (
+                          <div className="day-specific-summary">
+                            <span className="day-total-label">{peakSearchView}s:</span>
+                            <span className="day-total-count">{bookingStats.search_hours_by_day[peakSearchView].total} searches</span>
+                          </div>
+                        )}
+
                         {/* Hourly Breakdown Chart */}
                         <div className="hourly-chart">
                           {(() => {
-                            const hoursData = bookingStats.search_hours_of_day;
+                            const hoursData = peakSearchView === 'overall'
+                              ? bookingStats.search_hours_of_day
+                              : bookingStats.search_hours_by_day?.[peakSearchView]?.hours || [];
                             const maxCount = Math.max(...hoursData.map(h => h.count), 1);
 
                             return hoursData.map((hour, index) => (
