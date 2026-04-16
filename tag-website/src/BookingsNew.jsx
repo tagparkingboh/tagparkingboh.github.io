@@ -1787,7 +1787,17 @@ function Bookings() {
       scrollToFirstError(1)
       return
     }
-    nextStep()
+
+    // Show confirmation dialog to double-check times
+    const confirmed = window.confirm(
+      'Please double-check your drop-off and pick-up times before continuing.\n\n' +
+      'We rely on the accuracy of the information you provide to ensure a smooth experience.\n\n' +
+      'Click OK to continue or Cancel to review your details.'
+    )
+
+    if (confirmed) {
+      nextStep()
+    }
   }
 
   const handleContinueStep2 = () => {
