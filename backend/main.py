@@ -1643,13 +1643,14 @@ async def get_booking_stats(
         }
 
     # =========================================================================
-    # SEARCH ANALYTICS (from audit_logs - booking_started events)
+    # SEARCH ANALYTICS (from audit_logs - dates_selected events)
     # =========================================================================
     from db_models import AuditLog, AuditLogEvent
 
-    # Get all booking_started events (represents searches/quote requests)
+    # Get all dates_selected events (represents searches/quote requests)
+    # This is when customers select dates and search for availability
     search_events = db.query(AuditLog).filter(
-        AuditLog.event == AuditLogEvent.BOOKING_STARTED
+        AuditLog.event == AuditLogEvent.DATES_SELECTED
     ).all()
 
     # Day of week for searches
