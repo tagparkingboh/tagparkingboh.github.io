@@ -2144,6 +2144,137 @@
   }
 }
 
+/* Time Confirmation Modal */
+.time-confirm-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.time-confirm-modal {
+  background: #2a2a2a;
+  border: 2px solid #D9FF00;
+  border-radius: 16px;
+  padding: 2rem;
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(217, 255, 0, 0.1);
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+.time-confirm-icon {
+  margin-bottom: 1rem;
+}
+
+.time-confirm-modal h2 {
+  font-size: 1.5rem;
+  color: #ffffff;
+  margin: 0 0 1rem 0;
+  font-weight: 700;
+}
+
+.time-confirm-modal p {
+  font-size: 1rem;
+  color: #b0b0b0;
+  line-height: 1.6;
+  margin: 0 0 1.5rem 0;
+}
+
+.time-confirm-summary {
+  background: #343434;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.time-confirm-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+}
+
+.time-confirm-row:first-child {
+  border-bottom: 1px solid #555555;
+}
+
+.time-confirm-label {
+  color: #888888;
+  font-size: 0.95rem;
+}
+
+.time-confirm-value {
+  color: #D9FF00;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.time-confirm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.time-confirm-btn-primary {
+  background: #D9FF00;
+  color: #343434;
+  border: none;
+  padding: 1rem 2rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Gilroy', sans-serif;
+}
+
+.time-confirm-btn-primary:hover {
+  background: #e8ff4d;
+  transform: translateY(-2px);
+}
+
+.time-confirm-btn-secondary {
+  background: #555555;
+  color: #ffffff;
+  border: none;
+  padding: 0.85rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Gilroy', sans-serif;
+}
+
+.time-confirm-btn-secondary:hover {
+  background: #666666;
+}
+
+@media (max-width: 480px) {
+  .time-confirm-modal {
+    padding: 1.5rem;
+  }
+
+  .time-confirm-modal h2 {
+    font-size: 1.25rem;
+  }
+
+  .time-confirm-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+}
+
 /* Time Override Styles */
 .time-override-link {
   background: none;

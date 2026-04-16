@@ -120,6 +120,8 @@ function Bookings() {
   // Track when user has attempted to submit each step (to show validation errors)
   const [step1Attempted, setStep1Attempted] = useState(false)
   const [step2Attempted, setStep2Attempted] = useState(false)
+  // Confirmation modal for step 1
+  const [showTimeConfirmModal, setShowTimeConfirmModal] = useState(false)
 
   // Google Analytics page view tracking for SPA
   useEffect(() => {
@@ -1788,16 +1790,18 @@ function Bookings() {
       return
     }
 
-    // Show confirmation dialog to double-check times
-    const confirmed = window.confirm(
-      'Please double-check your drop-off and pick-up times before continuing.\n\n' +
-      'We rely on the accuracy of the information you provide to ensure a smooth experience.\n\n' +
-      'Click OK to continue or Cancel to review your details.'
-    )
+    // Show styled confirmation modal to double-check times
+    setShowTimeConfirmModal(true)
+  }
 
-    if (confirmed) {
-      nextStep()
-    }
+  // Handle confirmation modal actions
+  const handleTimeConfirmProceed = () => {
+    setShowTimeConfirmModal(false)
+    nextStep()
+  }
+
+  const handleTimeConfirmCancel = () => {
+    setShowTimeConfirmModal(false)
   }
 
   const handleContinueStep2 = () => {
@@ -1982,6 +1986,53 @@ function Bookings() {
                 onClick={() => navigate('/')}
               >
                 Back to home
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Time Confirmation Modal - shown before proceeding to step 2 */}
+      {showTimeConfirmModal && (
+        <div className="time-confirm-modal-overlay">
+          <div className="time-confirm-modal">
+            <div className="time-confirm-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="#D9FF00">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+              </svg>
+            </div>
+            <h2>Please double-check your times</h2>
+            <p>
+              We rely on the accuracy of the information you provide to ensure a smooth meet and greet experience.
+            </p>
+            <div className="time-confirm-summary">
+              <div className="time-confirm-row">
+                <span className="time-confirm-label">Drop-off:</span>
+                <span className="time-confirm-value">
+                  {formData.dropoffDate ? format(formData.dropoffDate, 'EEE, dd MMM yyyy') : ''} at {formData.dropoffTime || '--:--'}
+                </span>
+              </div>
+              <div className="time-confirm-row">
+                <span className="time-confirm-label">Pick-up:</span>
+                <span className="time-confirm-value">
+                  {formData.pickupDate ? format(formData.pickupDate, 'EEE, dd MMM yyyy') : ''} at {formData.pickupTime || '--:--'}
+                </span>
+              </div>
+            </div>
+            <div className="time-confirm-actions">
+              <button
+                type="button"
+                className="time-confirm-btn-primary"
+                onClick={handleTimeConfirmProceed}
+              >
+                Yes, times are correct
+              </button>
+              <button
+                type="button"
+                className="time-confirm-btn-secondary"
+                onClick={handleTimeConfirmCancel}
+              >
+                Let me check again
               </button>
             </div>
           </div>
