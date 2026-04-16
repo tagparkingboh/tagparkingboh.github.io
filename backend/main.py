@@ -1540,13 +1540,29 @@ async def get_booking_stats(
         pickup_range = {"am": 0, "pm": 0, "am_busiest": [], "pm_busiest": []}
 
     # Day of week booking creation analysis (when customers make bookings)
+    # Convert to UK timezone for accurate day/hour analysis
+    import pytz
+    uk_tz = pytz.timezone('Europe/London')
+
     day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     booking_days_of_week = {day: 0 for day in day_names}
 
+    # Hour of day booking analysis (UK timezone)
+    booking_hours_of_day = {hour: 0 for hour in range(24)}
+
     for booking in successful_bookings:
         if booking.created_at:
-            day_name = day_names[booking.created_at.weekday()]
+            # Convert to UK timezone
+            created_at_uk = booking.created_at
+            if created_at_uk.tzinfo is None:
+                created_at_uk = pytz.utc.localize(created_at_uk)
+            created_at_uk = created_at_uk.astimezone(uk_tz)
+
+            day_name = day_names[created_at_uk.weekday()]
             booking_days_of_week[day_name] += 1
+
+            # Track hour of day
+            booking_hours_of_day[created_at_uk.hour] += 1
 
     # Convert to list format with percentages
     total_bookings_with_dates = sum(booking_days_of_week.values())
@@ -1557,6 +1573,47 @@ async def get_booking_stats(
         booking_days_list.append({
             "day": day,
             "count": count,
+            "percent": percent
+        })
+
+    # Convert hours to list format with percentages
+    booking_hours_list = []
+    for hour in range(24):
+        count = booking_hours_of_day[hour]
+        percent = round(count / total_bookings_with_dates * 100, 1) if total_bookings_with_dates > 0 else 0
+        booking_hours_list.append({
+            "hour": hour,
+            "label": f"{hour:02d}:00",
+            "count": count,
+            "percent": percent
+        })
+
+    # Time ranges (Morning 06:00-11:59, Afternoon 12:00-17:59, Evening 18:00-23:59, Night 00:00-05:59)
+    time_ranges = {
+        "morning": {"label": "Morning (06:00-11:59)", "start": 6, "end": 11, "count": 0},
+        "afternoon": {"label": "Afternoon (12:00-17:59)", "start": 12, "end": 17, "count": 0},
+        "evening": {"label": "Evening (18:00-23:59)", "start": 18, "end": 23, "count": 0},
+        "night": {"label": "Night (00:00-05:59)", "start": 0, "end": 5, "count": 0},
+    }
+    for hour, count in booking_hours_of_day.items():
+        if 6 <= hour <= 11:
+            time_ranges["morning"]["count"] += count
+        elif 12 <= hour <= 17:
+            time_ranges["afternoon"]["count"] += count
+        elif 18 <= hour <= 23:
+            time_ranges["evening"]["count"] += count
+        else:  # 0-5
+            time_ranges["night"]["count"] += count
+
+    # Add percentages to time ranges
+    booking_time_ranges = []
+    for key in ["morning", "afternoon", "evening", "night"]:
+        tr = time_ranges[key]
+        percent = round(tr["count"] / total_bookings_with_dates * 100, 1) if total_bookings_with_dates > 0 else 0
+        booking_time_ranges.append({
+            "range": key,
+            "label": tr["label"],
+            "count": tr["count"],
             "percent": percent
         })
 
@@ -1583,6 +1640,8 @@ async def get_booking_stats(
         "dropoff_range": dropoff_range,
         "pickup_range": pickup_range,
         "booking_days_of_week": booking_days_list,
+        "booking_hours_of_day": booking_hours_list,
+        "booking_time_ranges": booking_time_ranges,
     }
 
 

@@ -10342,6 +10342,51 @@ function Admin() {
                       </div>
                     )}
 
+                    {/* Peak Booking Hours (UK timezone) */}
+                    {bookingStats.booking_hours_of_day && bookingStats.booking_hours_of_day.length > 0 && (
+                      <div className="booking-hours-section">
+                        <h3>Peak Booking Hours</h3>
+                        <p className="section-subtitle">What time customers make their bookings (UK time)</p>
+
+                        {/* Time Ranges Summary */}
+                        {bookingStats.booking_time_ranges && (
+                          <div className="time-ranges-grid">
+                            {bookingStats.booking_time_ranges.map((range, index) => (
+                              <div key={index} className="time-range-card">
+                                <div className="time-range-label">{range.label.split(' ')[0]}</div>
+                                <div className="time-range-hours">{range.label.match(/\(([^)]+)\)/)?.[1]}</div>
+                                <div className="time-range-count">{range.count}</div>
+                                <div className="time-range-percent">{range.percent}%</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Hourly Breakdown Chart */}
+                        <div className="hourly-chart">
+                          {(() => {
+                            const maxCount = Math.max(...bookingStats.booking_hours_of_day.map(h => h.count));
+                            return bookingStats.booking_hours_of_day.map((hour, index) => (
+                              <div key={index} className="hour-bar-container">
+                                <div className="hour-bar-wrapper">
+                                  <div
+                                    className="hour-bar"
+                                    style={{
+                                      height: `${maxCount > 0 ? (hour.count / maxCount) * 100 : 0}%`,
+                                      backgroundColor: hour.count === maxCount ? '#22c55e' : '#3b82f6'
+                                    }}
+                                    title={`${hour.label}: ${hour.count} bookings (${hour.percent}%)`}
+                                  />
+                                </div>
+                                <div className="hour-label">{hour.hour}</div>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                        <p className="chart-helper-text">Hours shown in 24-hour format (UK timezone)</p>
+                      </div>
+                    )}
+
                     {/* Fun Facts */}
                     {funFacts && (
                       <div className="fun-facts-section">

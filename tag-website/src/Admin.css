@@ -4880,6 +4880,153 @@
   }
 }
 
+/* Peak Booking Hours Section */
+.booking-hours-section {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e5e7eb;
+}
+
+.booking-hours-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 4px 0;
+}
+
+.booking-hours-section .section-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0 0 20px 0;
+}
+
+/* Time Ranges Grid */
+.time-ranges-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.time-range-card {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+}
+
+.time-range-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 2px;
+}
+
+.time-range-hours {
+  font-size: 11px;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.time-range-count {
+  font-size: 20px;
+  font-weight: 700;
+  color: #3b82f6;
+}
+
+.time-range-percent {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Hourly Chart */
+.hourly-chart {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 2px;
+  height: 120px;
+  padding-top: 10px;
+}
+
+.hour-bar-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  height: 100%;
+}
+
+.hour-bar-wrapper {
+  flex: 1;
+  width: 100%;
+  max-width: 20px;
+  background: #f1f5f9;
+  border-radius: 3px 3px 0 0;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.hour-bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  transition: height 0.3s ease;
+  min-height: 2px;
+  cursor: pointer;
+}
+
+.hour-label {
+  font-size: 9px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.chart-helper-text {
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: center;
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .time-ranges-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .hourly-chart {
+    height: 100px;
+  }
+
+  .hour-label {
+    font-size: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .time-ranges-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .time-range-card {
+    padding: 8px;
+  }
+
+  .time-range-count {
+    font-size: 16px;
+  }
+
+  .hour-bar-wrapper {
+    max-width: 12px;
+  }
+}
+
 /* Booking Targets Section */
 .booking-targets-section {
   background: white;
