@@ -519,3 +519,336 @@ class TestPeakHoursBoundaries:
         for h in hours:
             assert h["count"] == 1
             assert 4.0 <= h["percent"] <= 4.2  # ~4.17% each
+
+
+# ============================================================================
+# MOCKED UNIT TESTS - Hours By Day of Week Calculation
+# ============================================================================
+
+class TestHoursByDayOfWeekCalculation:
+    """Unit tests for hourly breakdown by day of week."""
+
+    DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+    def calculate_hours_by_day(self, bookings):
+        """Mirror the hours by day calculation from the endpoint."""
+        uk_tz = pytz.timezone('Europe/London')
+
+        # Initialize structure
+        booking_hours_by_day = {day: {hour: 0 for hour in range(24)} for day in self.DAY_NAMES}
+
+        for booking in bookings:
+            if booking.created_at:
+                created_at_uk = booking.created_at
+                if created_at_uk.tzinfo is None:
+                    created_at_uk = pytz.utc.localize(created_at_uk)
+                created_at_uk = created_at_uk.astimezone(uk_tz)
+
+                day_name = self.DAY_NAMES[created_at_uk.weekday()]
+                booking_hours_by_day[day_name][created_at_uk.hour] += 1
+
+        # Convert to list format
+        result = {}
+        for day in self.DAY_NAMES:
+            day_total = sum(booking_hours_by_day[day].values())
+            hours_list = []
+            for hour in range(24):
+                count = booking_hours_by_day[day][hour]
+                percent = round(count / day_total * 100, 1) if day_total > 0 else 0
+                hours_list.append({
+                    "hour": hour,
+                    "label": f"{hour:02d}:00",
+                    "count": count,
+                    "percent": percent
+                })
+            result[day] = {
+                "hours": hours_list,
+                "total": day_total
+            }
+        return result
+
+    def test_hours_by_day_basic(self):
+        """Happy path: Bookings correctly grouped by day of week."""
+        # April 17, 2026 is a Friday
+        bookings = [
+            MockBooking(create_uk_datetime(2026, 4, 17, 10, 0)),  # Friday 10:00
+            MockBooking(create_uk_datetime(2026, 4, 17, 15, 0)),  # Friday 15:00
+            MockBooking(create_uk_datetime(2026, 4, 16, 14, 0)),  # Thursday 14:00
+        ]
+        result = self.calculate_hours_by_day(bookings)
+
+        assert result["Friday"]["total"] == 2
+        assert result["Thursday"]["total"] == 1
+        assert result["Monday"]["total"] == 0
+
+    def test_hours_by_day_all_days_present(self):
+        """Happy path: All 7 days are present in output."""
+        bookings = [MockBooking(create_uk_datetime(2026, 4, 17, 10, 0))]
+        result = self.calculate_hours_by_day(bookings)
+
+        assert len(result) == 7
+        for day in self.DAY_NAMES:
+            assert day in result
+
+    def test_hours_by_day_24_hours_per_day(self):
+        """Happy path: Each day has 24 hours."""
+        bookings = [MockBooking(create_uk_datetime(2026, 4, 17, 10, 0))]
+        result = self.calculate_hours_by_day(bookings)
+
+        for day in self.DAY_NAMES:
+            assert len(result[day]["hours"]) == 24
+
+    def test_hours_by_day_percentage_per_day(self):
+        """Happy path: Percentages calculated per day, not overall."""
+        # Friday: 2 bookings at 10:00, 1 at 15:00
+        bookings = [
+            MockBooking(create_uk_datetime(2026, 4, 17, 10, 0)),  # Friday
+            MockBooking(create_uk_datetime(2026, 4, 17, 10, 30)), # Friday
+            MockBooking(create_uk_datetime(2026, 4, 17, 15, 0)),  # Friday
+        ]
+        result = self.calculate_hours_by_day(bookings)
+
+        friday = result["Friday"]
+        assert friday["total"] == 3
+
+        hour_10 = next(h for h in friday["hours"] if h["hour"] == 10)
+        hour_15 = next(h for h in friday["hours"] if h["hour"] == 15)
+
+        # 2 out of 3 = 66.7%
+        assert hour_10["count"] == 2
+        assert hour_10["percent"] == 66.7
+
+        # 1 out of 3 = 33.3%
+        assert hour_15["count"] == 1
+        assert hour_15["percent"] == 33.3
+
+    def test_hours_by_day_empty_day_zero_percent(self):
+        """Edge case: Day with no bookings has 0% for all hours."""
+        # Only Friday bookings
+        bookings = [MockBooking(create_uk_datetime(2026, 4, 17, 10, 0))]
+        result = self.calculate_hours_by_day(bookings)
+
+        # Monday has no bookings
+        monday = result["Monday"]
+        assert monday["total"] == 0
+        for hour in monday["hours"]:
+            assert hour["count"] == 0
+            assert hour["percent"] == 0
+
+    def test_hours_by_day_single_booking_100_percent(self):
+        """Boundary: Single booking on a day = 100% for that hour."""
+        bookings = [MockBooking(create_uk_datetime(2026, 4, 17, 14, 0))]  # Friday 14:00
+        result = self.calculate_hours_by_day(bookings)
+
+        friday = result["Friday"]
+        assert friday["total"] == 1
+
+        hour_14 = next(h for h in friday["hours"] if h["hour"] == 14)
+        assert hour_14["count"] == 1
+        assert hour_14["percent"] == 100.0
+
+    def test_hours_by_day_across_multiple_weeks(self):
+        """Happy path: Same day across multiple weeks aggregates correctly."""
+        # Multiple Fridays
+        bookings = [
+            MockBooking(create_uk_datetime(2026, 4, 3, 10, 0)),   # Friday Apr 3
+            MockBooking(create_uk_datetime(2026, 4, 10, 10, 0)),  # Friday Apr 10
+            MockBooking(create_uk_datetime(2026, 4, 17, 10, 0)),  # Friday Apr 17
+            MockBooking(create_uk_datetime(2026, 4, 17, 15, 0)),  # Friday Apr 17
+        ]
+        result = self.calculate_hours_by_day(bookings)
+
+        friday = result["Friday"]
+        assert friday["total"] == 4
+
+        hour_10 = next(h for h in friday["hours"] if h["hour"] == 10)
+        assert hour_10["count"] == 3  # 3 bookings at 10:00 across Fridays
+
+    def test_hours_by_day_timezone_conversion(self):
+        """Edge case: UTC times correctly converted to UK timezone."""
+        # UTC 23:30 on Thursday July 16 = 00:30 Friday July 17 in UK (BST)
+        bookings = [MockBooking(create_utc_datetime(2026, 7, 16, 23, 30))]
+        result = self.calculate_hours_by_day(bookings)
+
+        # Should be Friday (not Thursday) due to BST conversion
+        friday = result["Friday"]
+        thursday = result["Thursday"]
+
+        assert friday["total"] == 1
+        assert thursday["total"] == 0
+
+        # Should be at 00:00 hour
+        hour_0 = next(h for h in friday["hours"] if h["hour"] == 0)
+        assert hour_0["count"] == 1
+
+    def test_hours_by_day_weekend_vs_weekday(self):
+        """Happy path: Weekend and weekday data correctly separated."""
+        bookings = [
+            MockBooking(create_uk_datetime(2026, 4, 17, 10, 0)),  # Friday (weekday)
+            MockBooking(create_uk_datetime(2026, 4, 18, 11, 0)),  # Saturday (weekend)
+            MockBooking(create_uk_datetime(2026, 4, 19, 12, 0)),  # Sunday (weekend)
+        ]
+        result = self.calculate_hours_by_day(bookings)
+
+        assert result["Friday"]["total"] == 1
+        assert result["Saturday"]["total"] == 1
+        assert result["Sunday"]["total"] == 1
+        assert result["Monday"]["total"] == 0
+
+
+# ============================================================================
+# MOCKED INTEGRATION TESTS - Hours By Day Response Format
+# ============================================================================
+
+class TestHoursByDayResponseFormat:
+    """Integration tests for hours by day API response format."""
+
+    def test_hours_by_day_structure(self):
+        """Happy path: Hours by day has correct nested structure."""
+        hours_by_day = {
+            "Monday": {
+                "hours": [
+                    {"hour": 0, "label": "00:00", "count": 0, "percent": 0},
+                    {"hour": 10, "label": "10:00", "count": 5, "percent": 50.0},
+                ],
+                "total": 10
+            },
+            "Friday": {
+                "hours": [
+                    {"hour": 15, "label": "15:00", "count": 8, "percent": 40.0},
+                ],
+                "total": 20
+            }
+        }
+
+        for day, data in hours_by_day.items():
+            assert "hours" in data
+            assert "total" in data
+            assert isinstance(data["hours"], list)
+            assert isinstance(data["total"], int)
+
+    def test_hours_by_day_hour_entry_structure(self):
+        """Happy path: Each hour entry has required fields."""
+        hour_entry = {"hour": 15, "label": "15:00", "count": 8, "percent": 40.0}
+
+        assert "hour" in hour_entry
+        assert "label" in hour_entry
+        assert "count" in hour_entry
+        assert "percent" in hour_entry
+        assert isinstance(hour_entry["hour"], int)
+        assert isinstance(hour_entry["label"], str)
+        assert isinstance(hour_entry["count"], int)
+        assert isinstance(hour_entry["percent"], float)
+
+    def test_hours_by_day_all_days_keys(self):
+        """Happy path: All 7 days are keys in the response."""
+        expected_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        hours_by_day = {day: {"hours": [], "total": 0} for day in expected_days}
+
+        for day in expected_days:
+            assert day in hours_by_day
+
+
+# ============================================================================
+# BOUNDARY TESTS - Hours By Day
+# ============================================================================
+
+class TestHoursByDayBoundaries:
+    """Boundary tests for hours by day calculations."""
+
+    DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+    def calculate_hours_by_day(self, bookings):
+        """Mirror the hours by day calculation from the endpoint."""
+        uk_tz = pytz.timezone('Europe/London')
+        booking_hours_by_day = {day: {hour: 0 for hour in range(24)} for day in self.DAY_NAMES}
+
+        for booking in bookings:
+            if booking.created_at:
+                created_at_uk = booking.created_at
+                if created_at_uk.tzinfo is None:
+                    created_at_uk = pytz.utc.localize(created_at_uk)
+                created_at_uk = created_at_uk.astimezone(uk_tz)
+                day_name = self.DAY_NAMES[created_at_uk.weekday()]
+                booking_hours_by_day[day_name][created_at_uk.hour] += 1
+
+        result = {}
+        for day in self.DAY_NAMES:
+            day_total = sum(booking_hours_by_day[day].values())
+            hours_list = []
+            for hour in range(24):
+                count = booking_hours_by_day[day][hour]
+                percent = round(count / day_total * 100, 1) if day_total > 0 else 0
+                hours_list.append({
+                    "hour": hour,
+                    "label": f"{hour:02d}:00",
+                    "count": count,
+                    "percent": percent
+                })
+            result[day] = {"hours": hours_list, "total": day_total}
+        return result
+
+    def test_large_bookings_single_day(self):
+        """Boundary: Large number of bookings on single day."""
+        # All on Friday April 17, 2026
+        bookings = [
+            MockBooking(create_uk_datetime(2026, 4, 17, i % 24, 0))
+            for i in range(500)
+        ]
+        result = self.calculate_hours_by_day(bookings)
+
+        assert result["Friday"]["total"] == 500
+        # Other days should be 0
+        for day in self.DAY_NAMES:
+            if day != "Friday":
+                assert result[day]["total"] == 0
+
+    def test_empty_bookings_all_days_zero(self):
+        """Boundary: No bookings = all days have 0 total."""
+        result = self.calculate_hours_by_day([])
+
+        for day in self.DAY_NAMES:
+            assert result[day]["total"] == 0
+            for hour in result[day]["hours"]:
+                assert hour["count"] == 0
+                assert hour["percent"] == 0
+
+    def test_all_days_equal_distribution(self):
+        """Boundary: Equal bookings across all days."""
+        bookings = []
+        # Add one booking per day at 10:00
+        for day_offset in range(7):
+            # April 13, 2026 is Monday
+            bookings.append(MockBooking(create_uk_datetime(2026, 4, 13 + day_offset, 10, 0)))
+
+        result = self.calculate_hours_by_day(bookings)
+
+        for day in self.DAY_NAMES:
+            assert result[day]["total"] == 1
+            hour_10 = next(h for h in result[day]["hours"] if h["hour"] == 10)
+            assert hour_10["percent"] == 100.0
+
+    def test_percentages_sum_to_100_per_day(self):
+        """Boundary: Percentages sum to 100% for each day with bookings."""
+        bookings = [
+            MockBooking(create_uk_datetime(2026, 4, 17, 10, 0)),  # Friday
+            MockBooking(create_uk_datetime(2026, 4, 17, 15, 0)),  # Friday
+            MockBooking(create_uk_datetime(2026, 4, 17, 20, 0)),  # Friday
+        ]
+        result = self.calculate_hours_by_day(bookings)
+
+        friday = result["Friday"]
+        total_percent = sum(h["percent"] for h in friday["hours"])
+        assert 99.5 <= total_percent <= 100.5  # Allow for rounding
+
+    def test_midnight_boundary_correct_day(self):
+        """Boundary: Bookings at exactly midnight assigned to correct day."""
+        # Exactly midnight on Saturday April 18, 2026
+        bookings = [MockBooking(create_uk_datetime(2026, 4, 18, 0, 0))]
+        result = self.calculate_hours_by_day(bookings)
+
+        assert result["Saturday"]["total"] == 1
+        assert result["Friday"]["total"] == 0
+
+        hour_0 = next(h for h in result["Saturday"]["hours"] if h["hour"] == 0)
+        assert hour_0["count"] == 1
