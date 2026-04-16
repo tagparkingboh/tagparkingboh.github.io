@@ -2023,7 +2023,15 @@ function Bookings() {
                 <div className="time-confirm-row">
                   <span className="time-confirm-label">Drop-off time:</span>
                   <span className="time-confirm-value">
-                    {dropoffSlots.find(s => s.id === manualDepartureData.dropoffSlot)?.time || '--:--'}
+                    {manualDepartureData.flightTime && manualDepartureData.dropoffSlot ? (() => {
+                      const [h, m] = manualDepartureData.flightTime.split(':').map(Number);
+                      const slotOffset = parseInt(manualDepartureData.dropoffSlot, 10); // 165, 120, or 90
+                      const dropoffMins = h * 60 + m - slotOffset;
+                      const adjustedMins = dropoffMins < 0 ? dropoffMins + 1440 : dropoffMins; // Handle overnight
+                      const dh = Math.floor(adjustedMins / 60) % 24;
+                      const dm = adjustedMins % 60;
+                      return `${dh.toString().padStart(2, '0')}:${dm.toString().padStart(2, '0')}`;
+                    })() : '--:--'}
                   </span>
                 </div>
               </div>
