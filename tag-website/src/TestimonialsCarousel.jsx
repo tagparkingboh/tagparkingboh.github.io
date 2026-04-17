@@ -1,15 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import './TestimonialsCarousel.css'
 
 function TestimonialsCarousel() {
   const [testimonials, setTestimonials] = useState([])
   const [stats, setStats] = useState(null)
-  const [currentIndex, setCurrentIndex] = useState(0)
   const [cyclingIndex, setCyclingIndex] = useState(0)
-  const [isTransitioning, setIsTransitioning] = useState(false)
-  const [isPaused, setIsPaused] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [showPressModal, setShowPressModal] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(12) // Show 12 initially
 
   // Fetch testimonials from API
   useEffect(() => {
@@ -56,22 +54,6 @@ function TestimonialsCarousel() {
     })
   }
 
-  // Auto-rotate carousel
-  const goToNext = useCallback(() => {
-    if (testimonials.length <= 1) return
-    setIsTransitioning(true)
-    setTimeout(() => {
-      setCurrentIndex((prev) => (prev + 1) % testimonials.length)
-      setIsTransitioning(false)
-    }, 300)
-  }, [testimonials.length])
-
-  useEffect(() => {
-    if (testimonials.length <= 1 || isPaused) return
-    const interval = setInterval(goToNext, 7000) // 7 seconds per slide
-    return () => clearInterval(interval)
-  }, [testimonials.length, isPaused, goToNext])
-
   // Build cycling items from buzz words with proper phrasing
   const formatBuzzWord = (word) => {
     const w = word.toLowerCase()
@@ -111,23 +93,11 @@ function TestimonialsCarousel() {
     return () => clearInterval(interval)
   }, [cyclingItems.length])
 
-  // Navigation handlers
-  const goToPrevious = () => {
-    if (testimonials.length <= 1) return
-    setIsTransitioning(true)
-    setTimeout(() => {
-      setCurrentIndex((prev) => (prev - 1 + testimonials.length) % testimonials.length)
-      setIsTransitioning(false)
-    }, 300)
-  }
-
   // Render star rating (or nothing for unrated)
   const renderRating = (rating) => {
     if (rating === null || rating === undefined) {
-      // Unrated - show nothing
       return null
     }
-    // Show stars for rated testimonials
     return (
       <div className="testimonial-stars">
         {[1, 2, 3, 4, 5].map((star) => (
@@ -139,11 +109,11 @@ function TestimonialsCarousel() {
     )
   }
 
-  // Format date as "February 2026"
+  // Format date as "Feb 2026"
   const formatDate = (dateString) => {
     if (!dateString) return ''
     const date = new Date(dateString)
-    return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    return date.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
   }
 
   // Source badge
@@ -165,15 +135,21 @@ function TestimonialsCarousel() {
     )
   }
 
+  // Load more testimonials
+  const loadMore = () => {
+    setVisibleCount(prev => Math.min(prev + 12, testimonials.length))
+  }
+
   if (isLoading) {
-    return null // Don't render anything while loading
+    return null
   }
 
   if (testimonials.length === 0) {
-    return null // Don't render if no testimonials
+    return null
   }
 
-  const currentTestimonial = testimonials[currentIndex]
+  const visibleTestimonials = testimonials.slice(0, visibleCount)
+  const hasMore = visibleCount < testimonials.length
 
   return (
     <section id="testimonials" className="testimonials-section">
@@ -209,64 +185,37 @@ function TestimonialsCarousel() {
         </div>
       )}
 
-      <div
-        className="testimonials-carousel"
-        onMouseEnter={() => setIsPaused(true)}
-        onMouseLeave={() => setIsPaused(false)}
-      >
-        <button
-          className="carousel-nav carousel-nav-prev"
-          onClick={goToPrevious}
-          aria-label="Previous testimonial"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-
-        <div className={`testimonial-card ${isTransitioning ? 'transitioning' : ''}`}>
-          <div className="testimonial-header">
-            {renderRating(currentTestimonial.star_rating)}
-            {renderSourceBadge(currentTestimonial.source)}
+      {/* Masonry Grid */}
+      <div className="testimonials-masonry">
+        {visibleTestimonials.map((testimonial, index) => (
+          <div
+            key={testimonial.id}
+            className="masonry-card"
+            style={{ animationDelay: `${(index % 12) * 0.05}s` }}
+          >
+            <div className="masonry-card-header">
+              {renderRating(testimonial.star_rating)}
+              {renderSourceBadge(testimonial.source)}
+            </div>
+            <blockquote className="masonry-card-text">
+              "{testimonial.review_text}"
+            </blockquote>
+            <div className="masonry-card-footer">
+              <span className="masonry-card-author">{testimonial.customer_name}</span>
+              {testimonial.date_of_travel && (
+                <span className="masonry-card-date">{formatDate(testimonial.date_of_travel)}</span>
+              )}
+            </div>
           </div>
-          <blockquote className="testimonial-text">
-            {`"${currentTestimonial.review_text}"`}
-          </blockquote>
-          <div className="testimonial-footer">
-            <span className="testimonial-author">{currentTestimonial.customer_name}</span>
-            {currentTestimonial.date_of_travel && (
-              <span className="testimonial-date">{formatDate(currentTestimonial.date_of_travel)}</span>
-            )}
-          </div>
-        </div>
-
-        <button
-          className="carousel-nav carousel-nav-next"
-          onClick={goToNext}
-          aria-label="Next testimonial"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-      </div>
-
-      <div className="testimonial-dots">
-        {testimonials.map((_, index) => (
-          <button
-            key={index}
-            className={`dot ${index === currentIndex ? 'active' : ''}`}
-            onClick={() => {
-              setIsTransitioning(true)
-              setTimeout(() => {
-                setCurrentIndex(index)
-                setIsTransitioning(false)
-              }, 300)
-            }}
-            aria-label={`Go to testimonial ${index + 1}`}
-          />
         ))}
       </div>
+
+      {/* Load More Button */}
+      {hasMore && (
+        <button className="testimonials-load-more" onClick={loadMore}>
+          Show More Reviews ({testimonials.length - visibleCount} remaining)
+        </button>
+      )}
 
       <div className="testimonials-press">
         <svg className="press-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
