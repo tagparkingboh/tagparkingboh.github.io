@@ -11942,6 +11942,7 @@ class PricingSettingsUpdate(BaseModel):
     daily_increment: float     # Daily increment between anchors
     tier_increment: float      # Early -> Standard -> Late increment
     peak_day_increment: float = 0.0  # Peak day increment (Fri/Sat drop-off, Sun/Mon/Tue pickup)
+    show_price_range: bool = False   # True = show range (£65-£80), False = show "From £65"
 
 
 @app.get("/api/pricing")
@@ -11977,6 +11978,7 @@ async def get_admin_pricing(
             "daily_increment": 8.0,
             "tier_increment": 5.0,
             "peak_day_increment": 0.0,
+            "show_price_range": False,
             "updated_at": None,
             "updated_by": None,
         }
@@ -11988,6 +11990,7 @@ async def get_admin_pricing(
         "daily_increment": float(settings.daily_increment) if settings.daily_increment is not None else 8.0,
         "tier_increment": float(settings.tier_increment) if settings.tier_increment is not None else 5.0,
         "peak_day_increment": float(settings.peak_day_increment) if settings.peak_day_increment is not None else 0.0,
+        "show_price_range": bool(settings.show_price_range) if settings.show_price_range is not None else False,
         "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
         "updated_by": settings.updater.first_name if settings.updater else None,
     }
@@ -12016,6 +12019,7 @@ async def update_pricing(
             daily_increment=Decimal(str(update.daily_increment)),
             tier_increment=Decimal(str(update.tier_increment)),
             peak_day_increment=Decimal(str(update.peak_day_increment)),
+            show_price_range=update.show_price_range,
             updated_by=current_user.id,
         )
         db.add(settings)
@@ -12027,6 +12031,7 @@ async def update_pricing(
         settings.daily_increment = Decimal(str(update.daily_increment))
         settings.tier_increment = Decimal(str(update.tier_increment))
         settings.peak_day_increment = Decimal(str(update.peak_day_increment))
+        settings.show_price_range = update.show_price_range
         settings.updated_by = current_user.id
 
     db.commit()
@@ -12042,6 +12047,7 @@ async def update_pricing(
             "daily_increment": float(settings.daily_increment),
             "tier_increment": float(settings.tier_increment),
             "peak_day_increment": float(settings.peak_day_increment),
+            "show_price_range": bool(settings.show_price_range),
             "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
         }
     }

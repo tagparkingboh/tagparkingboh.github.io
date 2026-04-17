@@ -39,6 +39,7 @@ def get_pricing_from_db() -> dict:
         "daily_increment": 8.0,      # Per-day increment between anchors
         "tier_increment": 5.0,       # Early -> Standard -> Late increment
         "peak_day_increment": 0.0,   # Added for peak day bookings (Fri/Sat drop-off, Sun/Mon/Tue pickup)
+        "show_price_range": False,   # False = "From £X", True = "£X-£Y" range
     }
 
     try:
@@ -52,7 +53,7 @@ def get_pricing_from_db() -> dict:
         cur = conn.cursor()
         cur.execute("""
             SELECT days_1_4_price, week1_base_price, week2_base_price,
-                   daily_increment, tier_increment, peak_day_increment
+                   daily_increment, tier_increment, peak_day_increment, show_price_range
             FROM pricing_settings LIMIT 1
         """)
         row = cur.fetchone()
@@ -67,6 +68,7 @@ def get_pricing_from_db() -> dict:
                 "daily_increment": float(row[3]) if row[3] is not None else defaults["daily_increment"],
                 "tier_increment": float(row[4]) if row[4] is not None else defaults["tier_increment"],
                 "peak_day_increment": float(row[5]) if row[5] is not None else defaults["peak_day_increment"],
+                "show_price_range": bool(row[6]) if row[6] is not None else defaults["show_price_range"],
             }
         return defaults
     except Exception:

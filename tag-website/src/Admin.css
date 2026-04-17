@@ -2054,6 +2054,60 @@
   border: 1px solid #cce0ff;
 }
 
+/* Pricing Display Toggle */
+.pricing-display-toggle {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.pricing-display-toggle .toggle-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: #f8f9fa;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+  min-width: 200px;
+}
+
+.pricing-display-toggle .toggle-option:hover {
+  border-color: #c5ff00;
+  background: #fafff0;
+}
+
+.pricing-display-toggle .toggle-option:has(input:checked) {
+  border-color: #c5ff00;
+  background: #f0ffe0;
+}
+
+.pricing-display-toggle .toggle-option input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  accent-color: #8bc34a;
+}
+
+.pricing-display-toggle .toggle-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pricing-display-toggle .toggle-label strong {
+  font-size: 18px;
+  color: #1a1a2e;
+}
+
+.pricing-display-toggle .toggle-hint {
+  font-size: 13px;
+  color: #666;
+}
+
 .pricing-input-hint {
   display: block;
   margin-top: 6px;

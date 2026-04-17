@@ -428,6 +428,7 @@ function Admin() {
     daily_increment: 8,       // Daily increment between anchors
     tier_increment: 5,        // Early -> Standard -> Late increment
     peak_day_increment: 0,    // Peak day increment (Fri/Sat drop-off, Sun/Mon/Tue pickup)
+    show_price_range: false,  // False = "From £X", True = "£X-£Y" range
   })
   const [loadingPricing, setLoadingPricing] = useState(false)
   const [savingPricing, setSavingPricing] = useState(false)
@@ -3278,6 +3279,7 @@ function Admin() {
           daily_increment: data.daily_increment ?? 8,
           tier_increment: data.tier_increment ?? 5,
           peak_day_increment: data.peak_day_increment ?? 0,
+          show_price_range: data.show_price_range ?? false,
         })
       } else {
         setError('Failed to load pricing settings')
@@ -10017,6 +10019,37 @@ function Admin() {
                       </div>
                       <span className="pricing-input-hint">for peak day bookings</span>
                     </div>
+                  </div>
+                </div>
+
+                <div className="admin-pricing-section display-mode-section">
+                  <h3>Homepage Display</h3>
+                  <p className="pricing-hint">How prices are shown on the homepage pricing section.</p>
+                  <div className="pricing-display-toggle">
+                    <label className="toggle-option">
+                      <input
+                        type="radio"
+                        name="priceDisplayMode"
+                        checked={!pricing.show_price_range}
+                        onChange={() => setPricing({ ...pricing, show_price_range: false })}
+                      />
+                      <span className="toggle-label">
+                        <strong>From £{pricing.days_1_4_price}</strong>
+                        <span className="toggle-hint">Shows minimum price only</span>
+                      </span>
+                    </label>
+                    <label className="toggle-option">
+                      <input
+                        type="radio"
+                        name="priceDisplayMode"
+                        checked={pricing.show_price_range}
+                        onChange={() => setPricing({ ...pricing, show_price_range: true })}
+                      />
+                      <span className="toggle-label">
+                        <strong>£{pricing.days_1_4_price}–£{pricing.days_1_4_price + (pricing.tier_increment * 2) + pricing.peak_day_increment}</strong>
+                        <span className="toggle-hint">Shows full price range</span>
+                      </span>
+                    </label>
                   </div>
                 </div>
 

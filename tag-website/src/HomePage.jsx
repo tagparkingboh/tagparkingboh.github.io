@@ -33,7 +33,7 @@ function HomePage() {
   const [submitStatus, setSubmitStatus] = useState(null) // 'success' | 'error' | null
   const [heroBannerIndex, setHeroBannerIndex] = useState(0)
   const [bannerFading, setBannerFading] = useState(false)
-  const [prices, setPrices] = useState({ days4: 65, days4Max: 75, week1: 89, week1Max: 99, week2: 140, week2Max: 150 })
+  const [prices, setPrices] = useState({ days4: 65, days4Max: 75, week1: 89, week1Max: 99, week2: 140, week2Max: 150, showRange: false })
   const [hasActivePromo, setHasActivePromo] = useState(false)
 
   // Alternate hero banner every 10 seconds
@@ -89,6 +89,7 @@ function HomePage() {
           week1Max: (data.week1_base_price || 89) + maxAddon,
           week2: data.week2_base_price || 140,
           week2Max: (data.week2_base_price || 140) + maxAddon,
+          showRange: data.show_price_range || false,
         })
       })
       .catch(() => {
@@ -324,22 +325,45 @@ function HomePage() {
             <div className="pricing-side-option left">
               <span className="pricing-side-label">4 DAY TRIP</span>
               <div className="pricing-side-price">
-                <span className="pricing-side-amount">£{prices.days4}–£{prices.days4Max}</span>
+                {prices.showRange ? (
+                  <span className="pricing-side-amount">£{prices.days4}–£{prices.days4Max}</span>
+                ) : (
+                  <>
+                    <span className="pricing-side-from">From</span>
+                    <span className="pricing-side-amount">£{prices.days4}</span>
+                  </>
+                )}
               </div>
             </div>
             <div className="pricing-center-hero">
               <span className="pricing-hero-badge">MOST POPULAR</span>
               <span className="pricing-hero-label">7 DAY TRIP</span>
               <div className="pricing-hero-price">
-                <div className="pricing-hero-amount">
-                  <span className="price">£{prices.week1}–£{prices.week1Max}</span>
-                </div>
+                {prices.showRange ? (
+                  <div className="pricing-hero-amount">
+                    <span className="price">£{prices.week1}–£{prices.week1Max}</span>
+                  </div>
+                ) : (
+                  <>
+                    <span className="pricing-hero-from">From</span>
+                    <div className="pricing-hero-amount">
+                      <span className="price">£{prices.week1}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             <div className="pricing-side-option right">
               <span className="pricing-side-label">14 DAY TRIP</span>
               <div className="pricing-side-price">
-                <span className="pricing-side-amount">£{prices.week2}–£{prices.week2Max}</span>
+                {prices.showRange ? (
+                  <span className="pricing-side-amount">£{prices.week2}–£{prices.week2Max}</span>
+                ) : (
+                  <>
+                    <span className="pricing-side-from">From</span>
+                    <span className="pricing-side-amount">£{prices.week2}</span>
+                  </>
+                )}
               </div>
             </div>
           </div>

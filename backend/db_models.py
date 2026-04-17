@@ -749,6 +749,9 @@ class PricingSettings(Base):
     # Peak day increment - added when drop-off is Fri/Sat AND pickup is Sun/Mon/Tue
     peak_day_increment = Column(Numeric(10, 2), nullable=False, default=0.00)
 
+    # Display mode: True = show range (£65-£80), False = show "From £65"
+    show_price_range = Column(Boolean, nullable=False, default=False)
+
     # Legacy columns - kept for migration compatibility, will be removed later
     days_5_6_price = Column(Numeric(10, 2), nullable=True)
     days_8_9_price = Column(Numeric(10, 2), nullable=True)
