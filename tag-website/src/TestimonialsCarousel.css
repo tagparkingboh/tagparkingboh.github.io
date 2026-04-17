@@ -139,6 +139,7 @@
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   animation: cardFadeIn 0.4s ease forwards;
   opacity: 0;
+  cursor: pointer;
 }
 
 @keyframes cardFadeIn {
@@ -533,6 +534,104 @@
   width: 80vw;
   height: 85vh;
   border: none;
+}
+
+/* ===== EXPANDED REVIEW MODAL ===== */
+.review-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease;
+}
+
+.review-modal {
+  position: relative;
+  max-width: 600px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--white);
+  border-radius: 16px;
+  padding: 2.5rem;
+  text-align: left;
+  animation: scaleIn 0.3s ease;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.review-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  background: rgba(52, 52, 52, 0.1);
+  color: #343434;
+  border: none;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.review-modal-close:hover {
+  background: rgba(52, 52, 52, 0.2);
+  transform: scale(1.1);
+}
+
+.review-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.review-modal-header .testimonial-stars .star {
+  font-size: 1.5rem;
+}
+
+.review-modal-text {
+  font-size: 1.25rem;
+  line-height: 1.8;
+  color: #343434;
+  margin: 0 0 1.5rem 0;
+  font-weight: 500;
+}
+
+.review-modal-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(52, 52, 52, 0.1);
+}
+
+.review-modal-author {
+  font-weight: 700;
+  color: #343434;
+  font-size: 1rem;
+}
+
+.review-modal-date {
+  color: #888;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.review-modal-date::before {
+  content: '•';
+  margin-right: 0.75rem;
+  color: #CCC;
 }
 
 /* ===== RESPONSIVE DESIGN ===== */

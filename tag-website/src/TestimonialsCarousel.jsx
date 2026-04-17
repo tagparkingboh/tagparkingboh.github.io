@@ -8,6 +8,7 @@ function TestimonialsCarousel() {
   const [isLoading, setIsLoading] = useState(true)
   const [showPressModal, setShowPressModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(0) // Pagination: 12 per page
+  const [expandedReview, setExpandedReview] = useState(null) // Expanded review modal
 
   // Fetch testimonials from API
   useEffect(() => {
@@ -201,6 +202,10 @@ function TestimonialsCarousel() {
             key={testimonial.id}
             className="masonry-card"
             style={{ animationDelay: `${(index % 12) * 0.05}s` }}
+            onClick={() => setExpandedReview(testimonial)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && setExpandedReview(testimonial)}
           >
             <div className="masonry-card-header">
               {renderRating(testimonial.star_rating)}
@@ -218,6 +223,34 @@ function TestimonialsCarousel() {
           </div>
         ))}
       </div>
+
+      {/* Expanded Review Modal */}
+      {expandedReview && (
+        <div className="review-modal-overlay" onClick={() => setExpandedReview(null)}>
+          <div className="review-modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="review-modal-close"
+              onClick={() => setExpandedReview(null)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+            <div className="review-modal-header">
+              {renderRating(expandedReview.star_rating)}
+              {renderSourceBadge(expandedReview.source)}
+            </div>
+            <blockquote className="review-modal-text">
+              "{expandedReview.review_text}"
+            </blockquote>
+            <div className="review-modal-footer">
+              <span className="review-modal-author">{expandedReview.customer_name}</span>
+              {expandedReview.date_of_travel && (
+                <span className="review-modal-date">{formatDate(expandedReview.date_of_travel)}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
