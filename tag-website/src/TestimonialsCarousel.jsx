@@ -7,7 +7,7 @@ function TestimonialsCarousel() {
   const [cyclingIndex, setCyclingIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [showPressModal, setShowPressModal] = useState(false)
-  const [visibleCount, setVisibleCount] = useState(12) // Show 12 initially
+  const [currentPage, setCurrentPage] = useState(0) // Pagination: 12 per page
 
   // Fetch testimonials from API
   useEffect(() => {
@@ -135,9 +135,16 @@ function TestimonialsCarousel() {
     )
   }
 
-  // Load more testimonials
-  const loadMore = () => {
-    setVisibleCount(prev => Math.min(prev + 12, testimonials.length))
+  // Pagination
+  const pageSize = 12
+  const totalPages = Math.ceil(testimonials.length / pageSize)
+
+  const nextPage = () => {
+    setCurrentPage(prev => Math.min(prev + 1, totalPages - 1))
+  }
+
+  const prevPage = () => {
+    setCurrentPage(prev => Math.max(prev - 1, 0))
   }
 
   if (isLoading) {
@@ -148,8 +155,10 @@ function TestimonialsCarousel() {
     return null
   }
 
-  const visibleTestimonials = testimonials.slice(0, visibleCount)
-  const hasMore = visibleCount < testimonials.length
+  const startIndex = currentPage * pageSize
+  const visibleTestimonials = testimonials.slice(startIndex, startIndex + pageSize)
+  const hasNext = currentPage < totalPages - 1
+  const hasPrev = currentPage > 0
 
   return (
     <section id="testimonials" className="testimonials-section">
@@ -210,11 +219,27 @@ function TestimonialsCarousel() {
         ))}
       </div>
 
-      {/* Load More Button */}
-      {hasMore && (
-        <button className="testimonials-load-more" onClick={loadMore}>
-          Show More Reviews ({testimonials.length - visibleCount} remaining)
-        </button>
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="testimonials-pagination">
+          <button
+            className="testimonials-page-btn"
+            onClick={prevPage}
+            disabled={!hasPrev}
+          >
+            ← Previous
+          </button>
+          <span className="testimonials-page-info">
+            Page {currentPage + 1} of {totalPages}
+          </span>
+          <button
+            className="testimonials-page-btn"
+            onClick={nextPage}
+            disabled={!hasNext}
+          >
+            Next →
+          </button>
+        </div>
       )}
 
       <div className="testimonials-press">
