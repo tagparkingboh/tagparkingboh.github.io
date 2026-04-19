@@ -13296,6 +13296,7 @@ async def create_test_result(
     Uses API key authentication instead of session auth.
     """
     from db_models import TestRun, TestRunStatus
+    from datetime import timezone
     import os
 
     # Simple API key check (set via environment variable)
