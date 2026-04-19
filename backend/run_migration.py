@@ -1,9 +1,10 @@
+import os
 from sqlalchemy import create_engine, text
 
-# Staging
-STAGING_URL = "postgresql://postgres:oviYXmjpSwWKHejteMgdIxXTorTtGdUl@switchback.proxy.rlwy.net:25567/railway"
-# Production
-PRODUCTION_URL = "postgresql://postgres:wjqOmlfMamCcuIEwydmamWeGoJKmUlJb@trolley.proxy.rlwy.net:39730/railway"
+# Database URLs from environment variables
+# Set these before running: export STAGING_DATABASE_URL="..." and export PRODUCTION_DATABASE_URL="..."
+STAGING_URL = os.environ.get("STAGING_DATABASE_URL", "")
+PRODUCTION_URL = os.environ.get("PRODUCTION_DATABASE_URL", "")
 
 def run_migration(name, url):
     print(f"\n{name}:")

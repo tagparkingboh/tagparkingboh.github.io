@@ -19,9 +19,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import create_engine, text
 
-# Database URLs
-STAGING_URL = "postgresql://postgres:jUUYQoZPxuALQOGbwsaUXtttkkWnEnUi@switchback.proxy.rlwy.net:25567/railway"
-PRODUCTION_URL = "postgresql://postgres:plMOZhUkDJkZDoHobvDWwoDURQCCYcHK@trolley.proxy.rlwy.net:39730/railway"
+# Database URLs from environment variables
+STAGING_URL = os.environ.get("STAGING_DATABASE_URL", "")
+PRODUCTION_URL = os.environ.get("PRODUCTION_DATABASE_URL", "")
 
 MIGRATION_SQL = """
 -- Add discount_type column to promotions table

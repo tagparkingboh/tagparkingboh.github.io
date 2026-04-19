@@ -6,10 +6,15 @@ Adds new time-based shift types while keeping backwards compatibility.
 Run with: python migrations/update_shift_type_enum.py
 """
 import sys
+import os
 from sqlalchemy import create_engine, text
 
-# Railway staging database
-STAGING_URL = "postgresql://postgres:oviYXmjpSwWKHejteMgdIxXTorTtGdUl@switchback.proxy.rlwy.net:25567/railway"
+# Database URL from environment variable
+STAGING_URL = os.environ.get("STAGING_DATABASE_URL", "")
+
+if not STAGING_URL:
+    print("Error: STAGING_DATABASE_URL environment variable not set")
+    sys.exit(1)
 
 engine = create_engine(STAGING_URL)
 

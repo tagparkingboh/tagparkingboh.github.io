@@ -15,8 +15,11 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from email_service import send_booking_confirmation_email
 
-# Use production database (trolley)
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:wjqOmlfMamCcuIEwydmamWeGoJKmUlJb@trolley.proxy.rlwy.net:39730/railway")
+# Use production database from environment variable
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("PRODUCTION_DATABASE_URL")
+if not DATABASE_URL:
+    print("Error: DATABASE_URL or PRODUCTION_DATABASE_URL environment variable not set")
+    sys.exit(1)
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)

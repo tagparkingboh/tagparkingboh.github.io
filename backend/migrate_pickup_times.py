@@ -16,8 +16,11 @@ from datetime import time, timedelta, datetime
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-# Staging database URL
-STAGING_DB_URL = "postgresql://postgres:oviYXmjpSwWKHejteMgdIxXTorTtGdUl@switchback.proxy.rlwy.net:25567/railway"
+# Database URL from environment variable
+STAGING_DB_URL = os.environ.get("STAGING_DATABASE_URL", "")
+if not STAGING_DB_URL:
+    print("Error: STAGING_DATABASE_URL environment variable not set")
+    sys.exit(1)
 
 
 def add_30_minutes(t: time) -> time:

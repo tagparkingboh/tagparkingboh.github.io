@@ -42,3 +42,6 @@ venv/
 docs/SPEC.md
 backend/docs/TEST_STRATEGY.md
 backend/docs/SPEC.md
+
+# Migration scripts (contain sensitive patterns)
+backend/migrations/

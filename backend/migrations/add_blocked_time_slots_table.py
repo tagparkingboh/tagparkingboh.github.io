@@ -19,9 +19,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import create_engine, text
 
-# Database URLs
-STAGING_URL = "postgresql://postgres:oviYXmjpSwWKHejteMgdIxXTorTtGdUl@switchback.proxy.rlwy.net:25567/railway"
-PRODUCTION_URL = "postgresql://postgres:wjqOmlfMamCcuIEwydmamWeGoJKmUlJb@trolley.proxy.rlwy.net:39730/railway"
+# Database URLs from environment variables
+STAGING_URL = os.environ.get("STAGING_DATABASE_URL", "")
+PRODUCTION_URL = os.environ.get("PRODUCTION_DATABASE_URL", "")
 
 
 def run_migration(db_url: str, db_name: str):

@@ -6,15 +6,14 @@ Changes:
 2. Add start_time and end_time columns to employee_holidays table
 
 Run with: python migrations/add_employee_unavailability.py [staging|production]
-
-URLs from backend/docs/SPEC.md
 """
 import sys
+import os
 from sqlalchemy import create_engine, text
 
-# Database URLs from SPEC.md
-STAGING_URL = "postgresql://postgres:oviYXmjpSwWKHejteMgdIxXTorTtGdUl@switchback.proxy.rlwy.net:25567/railway"
-PRODUCTION_URL = "postgresql://postgres:wjqOmlfMamCcuIEwydmamWeGoJKmUlJb@trolley.proxy.rlwy.net:39730/railway"
+# Database URLs from environment variables
+STAGING_URL = os.environ.get("STAGING_DATABASE_URL", "")
+PRODUCTION_URL = os.environ.get("PRODUCTION_DATABASE_URL", "")
 
 
 def migrate(db_url: str, env_name: str):

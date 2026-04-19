@@ -68,14 +68,26 @@ STRIPE_TEST_CARD = {
     "cvc": "549",
 }
 
-# Staging database for promo code reset
-STAGING_DB = {
-    "host": "switchback.proxy.rlwy.net",
-    "port": 25567,
-    "user": "postgres",
-    "password": "oviYXmjpSwWKHejteMgdIxXTorTtGdUl",
-    "dbname": "railway"
-}
+# Staging database for promo code reset - uses environment variable
+# Set STAGING_DATABASE_URL before running promo code tests
+STAGING_DB_URL = os.environ.get("STAGING_DATABASE_URL", "")
+# Parse URL into components for psycopg2 if needed
+if STAGING_DB_URL:
+    # URL format: postgresql://user:pass@host:port/dbname
+    import re
+    match = re.match(r'postgresql://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)', STAGING_DB_URL)
+    if match:
+        STAGING_DB = {
+            "user": match.group(1),
+            "password": match.group(2),
+            "host": match.group(3),
+            "port": int(match.group(4)),
+            "dbname": match.group(5)
+        }
+    else:
+        STAGING_DB = None
+else:
+    STAGING_DB = None
 
 # Test promo codes
 TEST_PROMO_10 = "TEST10OFF"      # 10% off promo

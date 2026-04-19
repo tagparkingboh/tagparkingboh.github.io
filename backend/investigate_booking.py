@@ -2,7 +2,13 @@
 """Investigate booking TAG-C1G6XKGK and promo code status."""
 
 import os
-os.environ['DATABASE_URL'] = 'postgresql://postgres:oviYXmjpSwWKHejteMgdIxXTorTtGdUl@switchback.proxy.rlwy.net:25567/railway'
+import sys
+
+# Get database URL from environment variable
+if 'DATABASE_URL' not in os.environ:
+    print("Error: DATABASE_URL environment variable not set")
+    print("Usage: DATABASE_URL='postgresql://...' python investigate_booking.py")
+    sys.exit(1)
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

@@ -12,8 +12,11 @@ from sqlalchemy.orm import sessionmaker
 from email_service import send_promo_free_reminder_email
 from datetime import datetime
 
-# Production DB
-db_url = 'postgresql://postgres:wjqOmlfMamCcuIEwydmamWeGoJKmUlJb@trolley.proxy.rlwy.net:39730/railway'
+# Production DB from environment variable
+db_url = os.getenv("DATABASE_URL") or os.getenv("PRODUCTION_DATABASE_URL")
+if not db_url:
+    print("Error: DATABASE_URL or PRODUCTION_DATABASE_URL environment variable not set")
+    sys.exit(1)
 engine = create_engine(db_url)
 Session = sessionmaker(bind=engine)
 
