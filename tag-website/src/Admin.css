@@ -4530,6 +4530,175 @@
   color: #1a1a2e;
 }
 
+/* Google Ads Bid Recommendations Section */
+.bid-recommendations-section {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e5e7eb;
+}
+
+.bid-recommendations-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 8px 0;
+}
+
+.bid-recommendations-section .section-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0 0 16px 0;
+}
+
+.bid-recommendations-section .section-subtitle strong {
+  color: #1a1a2e;
+}
+
+.bid-recommendations-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 1400px) {
+  .bid-recommendations-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .bid-recommendations-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
+  .bid-recommendations-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bid-recommendation-card {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.bid-recommendation-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.bid-recommendation-card.increase {
+  border-left: 3px solid #22c55e;
+}
+
+.bid-recommendation-card.maintain {
+  border-left: 3px solid #f59e0b;
+}
+
+.bid-recommendation-card.reduce {
+  border-left: 3px solid #ef4444;
+}
+
+.bid-recommendation-card.priority-high {
+  background: #fefefe;
+}
+
+.bid-rec-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.bid-rec-day {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.bid-rec-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.bid-rec-badge.increase {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.bid-rec-badge.maintain {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.bid-rec-badge.reduce {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.bid-rec-stats {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.bid-rec-stat {
+  flex: 1;
+  text-align: center;
+  padding: 6px 4px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+}
+
+.bid-rec-stat .stat-value {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.bid-rec-stat .stat-label {
+  display: block;
+  font-size: 9px;
+  color: #6b7280;
+  text-transform: uppercase;
+}
+
+.bid-rec-reason {
+  font-size: 11px;
+  color: #4b5563;
+  line-height: 1.4;
+  margin: 0 0 8px 0;
+}
+
+.bid-rec-peak-hours,
+.bid-rec-converting-hours {
+  font-size: 10px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.bid-rec-peak-hours .peak-hours-label,
+.bid-rec-converting-hours .converting-hours-label {
+  font-weight: 500;
+  color: #4b5563;
+}
+
+.bid-rec-peak-hours .peak-hours-value,
+.bid-rec-converting-hours .converting-hours-value {
+  color: #1a1a2e;
+}
+
 /* Fun Facts Section */
 .fun-facts-section {
   background: white;

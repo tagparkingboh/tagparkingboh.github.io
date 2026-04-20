@@ -10534,6 +10534,63 @@ function Admin() {
                       </div>
                     )}
 
+                    {/* Google Ads Bid Recommendations */}
+                    {bookingStats?.bid_recommendations && bookingStats.bid_recommendations.length > 0 && (
+                      <div className="bid-recommendations-section">
+                        <h3>Google Ads Bid Recommendations</h3>
+                        <p className="section-subtitle">
+                          Daily recommendations based on search volume and conversion rates.
+                          Overall conversion rate: <strong>{bookingStats.overall_conversion_rate}%</strong>
+                        </p>
+                        <div className="bid-recommendations-grid">
+                          {bookingStats.bid_recommendations.map((rec) => (
+                            <div
+                              key={rec.day}
+                              className={`bid-recommendation-card ${rec.recommendation} priority-${rec.priority}`}
+                            >
+                              <div className="bid-rec-header">
+                                <span className="bid-rec-day">{rec.day}</span>
+                                <span className={`bid-rec-badge ${rec.recommendation}`}>
+                                  {rec.recommendation === 'increase' && '↑ Increase'}
+                                  {rec.recommendation === 'maintain' && '→ Maintain'}
+                                  {rec.recommendation === 'reduce' && '↓ Reduce'}
+                                </span>
+                              </div>
+                              <div className="bid-rec-stats">
+                                <div className="bid-rec-stat">
+                                  <span className="stat-value">{rec.searches}</span>
+                                  <span className="stat-label">Searches</span>
+                                </div>
+                                <div className="bid-rec-stat">
+                                  <span className="stat-value">{rec.bookings}</span>
+                                  <span className="stat-label">Bookings</span>
+                                </div>
+                                <div className="bid-rec-stat">
+                                  <span className="stat-value">{rec.conversion_rate}%</span>
+                                  <span className="stat-label">Conversion</span>
+                                </div>
+                              </div>
+                              <p className="bid-rec-reason">{rec.reason}</p>
+                              {rec.peak_search_hours.length > 0 && (
+                                <div className="bid-rec-peak-hours">
+                                  <span className="peak-hours-label">Peak search hours:</span>
+                                  <span className="peak-hours-value">{rec.peak_search_hours.join(', ')}</span>
+                                </div>
+                              )}
+                              {rec.high_converting_hours.length > 0 && (
+                                <div className="bid-rec-converting-hours">
+                                  <span className="converting-hours-label">Best converting:</span>
+                                  <span className="converting-hours-value">
+                                    {rec.high_converting_hours.map(h => `${h.label} (${h.conversion_rate}%)`).join(', ')}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Fun Facts */}
                     {funFacts && (
                       <div className="fun-facts-section">

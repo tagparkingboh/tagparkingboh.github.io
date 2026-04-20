@@ -1750,6 +1750,130 @@ async def get_booking_stats(
             "total": day_total
         }
 
+    # ========================================
+    # Google Ads Bid Recommendations by Day
+    # ========================================
+    # Calculate conversion rate and recommend bid adjustments for each day of week
+
+    bid_recommendations = []
+
+    for day in day_names:
+        day_searches = sum(search_hours_by_day[day].values())
+        day_bookings = sum(booking_hours_by_day[day].values())
+
+        # Calculate conversion rate for this day
+        conversion_rate = round((day_bookings / day_searches * 100), 1) if day_searches > 0 else 0
+
+        # Calculate this day's share of total activity
+        search_share = round((day_searches / total_searches * 100), 1) if total_searches > 0 else 0
+        booking_share = round((day_bookings / total_successful * 100), 1) if total_successful > 0 else 0
+
+        # Identify peak hours for this day (top 3 hours by searches)
+        day_search_hours = search_hours_by_day[day]
+        sorted_hours = sorted(day_search_hours.items(), key=lambda x: x[1], reverse=True)
+        peak_hours = [h for h, c in sorted_hours[:3] if c > 0]
+
+        # Identify peak booking hours for this day (top 3 hours by bookings)
+        day_booking_hours = booking_hours_by_day[day]
+        sorted_booking_hours = sorted(day_booking_hours.items(), key=lambda x: x[1], reverse=True)
+        peak_booking_hours = [h for h, c in sorted_booking_hours[:3] if c > 0]
+
+        # Calculate hourly conversion rates for more granular recommendations
+        hourly_conversions = []
+        for hour in range(24):
+            h_searches = day_search_hours.get(hour, 0)
+            h_bookings = day_booking_hours.get(hour, 0)
+            if h_searches > 0:
+                h_conv = round((h_bookings / h_searches * 100), 1)
+                hourly_conversions.append({
+                    "hour": hour,
+                    "label": f"{hour:02d}:00",
+                    "searches": h_searches,
+                    "bookings": h_bookings,
+                    "conversion_rate": h_conv
+                })
+
+        # Sort by conversion rate to find best/worst hours
+        high_converting_hours = sorted(
+            [h for h in hourly_conversions if h["searches"] >= 3],  # Min 3 searches for significance
+            key=lambda x: x["conversion_rate"],
+            reverse=True
+        )[:3]
+
+        low_converting_hours = sorted(
+            [h for h in hourly_conversions if h["searches"] >= 3 and h["conversion_rate"] < 50],
+            key=lambda x: x["conversion_rate"]
+        )[:3]
+
+        # Generate bid recommendation
+        # Logic:
+        # - High search share + high conversion = INCREASE BID (proven demand + conversion)
+        # - High search share + low conversion = MAINTAIN/REDUCE (lots of traffic but not converting)
+        # - Low search share + high conversion = INCREASE BID (untapped high-value traffic)
+        # - Low search share + low conversion = REDUCE BID (low activity, low value)
+
+        avg_daily_search_share = 100 / 7  # ~14.3%
+        avg_conversion = round((total_successful / total_searches * 100), 1) if total_searches > 0 else 0
+
+        if search_share >= avg_daily_search_share * 1.2:  # 20% above average
+            if conversion_rate >= avg_conversion:
+                recommendation = "increase"
+                reason = f"High search volume ({search_share}% of weekly) with strong conversion ({conversion_rate}%)"
+                priority = "high"
+            else:
+                recommendation = "maintain"
+                reason = f"High search volume ({search_share}% of weekly) but below-average conversion ({conversion_rate}% vs {avg_conversion}% avg)"
+                priority = "medium"
+        elif search_share <= avg_daily_search_share * 0.8:  # 20% below average
+            if conversion_rate >= avg_conversion * 1.2:  # 20% above average conversion
+                recommendation = "increase"
+                reason = f"Lower volume but excellent conversion ({conversion_rate}%) - untapped opportunity"
+                priority = "medium"
+            else:
+                recommendation = "reduce"
+                reason = f"Low search volume ({search_share}% of weekly) with weak conversion ({conversion_rate}%)"
+                priority = "low"
+        else:
+            if conversion_rate >= avg_conversion * 1.2:
+                recommendation = "increase"
+                reason = f"Average volume with above-average conversion ({conversion_rate}%)"
+                priority = "medium"
+            elif conversion_rate <= avg_conversion * 0.8:
+                recommendation = "reduce"
+                reason = f"Average volume but below-average conversion ({conversion_rate}% vs {avg_conversion}% avg)"
+                priority = "medium"
+            else:
+                recommendation = "maintain"
+                reason = f"Average performance ({conversion_rate}% conversion, {search_share}% of searches)"
+                priority = "low"
+
+        # Format peak hours for display
+        peak_hours_formatted = [f"{h:02d}:00-{(h+1) % 24:02d}:00" for h in peak_hours] if peak_hours else []
+        peak_booking_hours_formatted = [f"{h:02d}:00-{(h+1) % 24:02d}:00" for h in peak_booking_hours] if peak_booking_hours else []
+
+        bid_recommendations.append({
+            "day": day,
+            "searches": day_searches,
+            "bookings": day_bookings,
+            "conversion_rate": conversion_rate,
+            "search_share": search_share,
+            "booking_share": booking_share,
+            "recommendation": recommendation,  # "increase", "maintain", "reduce"
+            "reason": reason,
+            "priority": priority,  # "high", "medium", "low"
+            "peak_search_hours": peak_hours_formatted,
+            "peak_booking_hours": peak_booking_hours_formatted,
+            "high_converting_hours": high_converting_hours,
+            "low_converting_hours": low_converting_hours,
+        })
+
+    # Overall metrics for context
+    overall_conversion = round((total_successful / total_searches * 100), 1) if total_searches > 0 else 0
+
+    # Sort recommendations by priority
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    bid_recommendations_sorted = sorted(bid_recommendations, key=lambda x: priority_order[x["priority"]])
+
     return {
         "total_bookings": len(all_bookings),
         "total_successful": total_successful,
@@ -1783,6 +1907,9 @@ async def get_booking_stats(
         "search_hours_by_day": search_hours_by_day_list,
         "total_searches": total_searches,
         "search_data_start_date": search_data_start_date,
+        # Google Ads bid recommendations
+        "bid_recommendations": bid_recommendations_sorted,
+        "overall_conversion_rate": overall_conversion,
     }
 
 
