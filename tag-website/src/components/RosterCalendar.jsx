@@ -722,14 +722,14 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return grouped
   }, [bookings])
 
-  // Group shifts by date (overnight shifts appear on both dates with split times)
+  // Group shifts by date (overnight shifts show entirely on start date)
   const shiftsByDate = useMemo(() => {
     const grouped = {}
 
     shifts.forEach((shift) => {
       const isOvernight = shift.end_date && shift.end_date !== shift.date
 
-      // Add to start date
+      // Add to start date only - overnight shifts display with actual end time
       const startDateKey = shift.date
       if (!grouped[startDateKey]) {
         grouped[startDateKey] = []
@@ -737,25 +737,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       grouped[startDateKey].push({
         ...shift,
         isOvernight,
-        shiftPart: isOvernight ? 'start' : null,
+        shiftPart: null,
         displayStartTime: shift.start_time,
-        displayEndTime: isOvernight ? '23:59' : shift.end_time
+        displayEndTime: shift.end_time  // Show actual end time (e.g., 00:45 next day)
       })
-
-      // If overnight, also add to end date with the remaining time
-      if (isOvernight) {
-        const endDateKey = shift.end_date
-        if (!grouped[endDateKey]) {
-          grouped[endDateKey] = []
-        }
-        grouped[endDateKey].push({
-          ...shift,
-          isOvernight: true,
-          shiftPart: 'end',
-          displayStartTime: '00:00',
-          displayEndTime: shift.end_time
-        })
-      }
     })
 
     Object.keys(grouped).forEach((date) => {
