@@ -4559,13 +4559,13 @@
 
 .bid-recommendations-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1200px) {
   .bid-recommendations-grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
@@ -4603,6 +4603,16 @@
 
 .bid-recommendation-card.reduce {
   border-left: 3px solid #ef4444;
+}
+
+.bid-recommendation-card.overall {
+  border-left: 3px solid #6366f1;
+  background: #eef2ff;
+}
+
+.bid-rec-badge.overall {
+  background: #e0e7ff;
+  color: #4338ca;
 }
 
 .bid-recommendation-card.priority-high {

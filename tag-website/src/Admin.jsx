@@ -10588,6 +10588,34 @@ function Admin() {
                               )}
                             </div>
                           ))}
+                          {/* Overall Summary Card */}
+                          <div className="bid-recommendation-card overall">
+                            <div className="bid-rec-header">
+                              <span className="bid-rec-day">Overall</span>
+                              <span className="bid-rec-badge overall">Summary</span>
+                            </div>
+                            <div className="bid-rec-stats">
+                              <div className="bid-rec-stat">
+                                <span className="stat-value">{bookingStats.total_searches}</span>
+                                <span className="stat-label">Searches</span>
+                              </div>
+                              <div className="bid-rec-stat">
+                                <span className="stat-value">{bookingStats.bid_total_bookings}</span>
+                                <span className="stat-label">Bookings</span>
+                              </div>
+                              <div className="bid-rec-stat">
+                                <span className="stat-value">{bookingStats.overall_conversion_rate}%</span>
+                                <span className="stat-label">Conversion</span>
+                              </div>
+                            </div>
+                            <p className="bid-rec-reason">
+                              {bookingStats.overall_conversion_rate >= 50
+                                ? 'Strong conversion rate - campaigns performing well'
+                                : bookingStats.overall_conversion_rate >= 30
+                                ? 'Good conversion rate - room for optimization'
+                                : 'Focus on high-converting days for better ROI'}
+                            </p>
+                          </div>
                         </div>
                       </div>
                     )}
