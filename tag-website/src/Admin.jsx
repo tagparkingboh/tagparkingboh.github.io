@@ -13039,6 +13039,55 @@ function Admin() {
                       </div>
                     )}
 
+                    {/* Historical Results */}
+                    <div className="qa-history">
+                      <h4>Test Run History</h4>
+                      {testResults.length === 0 ? (
+                        <p className="admin-empty">No test runs recorded yet.</p>
+                      ) : (
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Status</th>
+                              <th>Passed</th>
+                              <th>Failed</th>
+                              <th>Total</th>
+                              <th>Pass Rate</th>
+                              <th>Coverage</th>
+                              <th>Duration</th>
+                              <th>Branch</th>
+                              <th>Logs</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {testResults.map((run) => (
+                              <tr key={run.id} className={run.status === 'failed' ? 'row-warning' : ''}>
+                                <td>{new Date(run.started_at).toLocaleDateString()}</td>
+                                <td>
+                                  <span className={`status-badge status-${run.status === 'passed' ? 'confirmed' : run.status === 'failed' ? 'cancelled' : 'pending'}`}>
+                                    {run.status}
+                                  </span>
+                                </td>
+                                <td style={{ color: '#22c55e' }}>{run.tests_passed}</td>
+                                <td style={{ color: run.tests_failed > 0 ? '#ef4444' : '#22c55e' }}>{run.tests_failed}</td>
+                                <td>{run.tests_total}</td>
+                                <td>{run.pass_rate?.toFixed(1) || 0}%</td>
+                                <td>{run.coverage_percent !== null ? `${run.coverage_percent?.toFixed(1)}%` : '-'}</td>
+                                <td>{run.duration_seconds ? `${run.duration_seconds}s` : '-'}</td>
+                                <td>{run.branch || '-'}</td>
+                                <td>
+                                  {run.logs_url ? (
+                                    <a href={run.logs_url} target="_blank" rel="noopener noreferrer" className="admin-link">View</a>
+                                  ) : '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+
                     {/* Database Health */}
                     <div className="qa-db-health">
                       <div className="qa-db-health-header">
@@ -13144,55 +13193,6 @@ function Admin() {
                         <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
                           Showing 50 of {dbPoolHistory.snapshot_count} snapshots from the last 24 hours
                         </p>
-                      )}
-                    </div>
-
-                    {/* Historical Results */}
-                    <div className="qa-history">
-                      <h4>Test Run History</h4>
-                      {testResults.length === 0 ? (
-                        <p className="admin-empty">No test runs recorded yet.</p>
-                      ) : (
-                        <table className="admin-table">
-                          <thead>
-                            <tr>
-                              <th>Date</th>
-                              <th>Status</th>
-                              <th>Passed</th>
-                              <th>Failed</th>
-                              <th>Total</th>
-                              <th>Pass Rate</th>
-                              <th>Coverage</th>
-                              <th>Duration</th>
-                              <th>Branch</th>
-                              <th>Logs</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {testResults.map((run) => (
-                              <tr key={run.id} className={run.status === 'failed' ? 'row-warning' : ''}>
-                                <td>{new Date(run.started_at).toLocaleDateString()}</td>
-                                <td>
-                                  <span className={`status-badge status-${run.status === 'passed' ? 'confirmed' : run.status === 'failed' ? 'cancelled' : 'pending'}`}>
-                                    {run.status}
-                                  </span>
-                                </td>
-                                <td style={{ color: '#22c55e' }}>{run.tests_passed}</td>
-                                <td style={{ color: run.tests_failed > 0 ? '#ef4444' : '#22c55e' }}>{run.tests_failed}</td>
-                                <td>{run.tests_total}</td>
-                                <td>{run.pass_rate?.toFixed(1) || 0}%</td>
-                                <td>{run.coverage_percent !== null ? `${run.coverage_percent?.toFixed(1)}%` : '-'}</td>
-                                <td>{run.duration_seconds ? `${run.duration_seconds}s` : '-'}</td>
-                                <td>{run.branch || '-'}</td>
-                                <td>
-                                  {run.logs_url ? (
-                                    <a href={run.logs_url} target="_blank" rel="noopener noreferrer" className="admin-link">View</a>
-                                  ) : '-'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
                       )}
                     </div>
 
