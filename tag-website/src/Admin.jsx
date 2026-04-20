@@ -1500,12 +1500,12 @@ function Admin() {
     }
   }
 
-  const fetchAuditLogs = async (resetOffset = false) => {
+  const fetchAuditLogs = async (resetOffset = false, explicitOffset = null) => {
     setLoadingAuditLogs(true)
     if (resetOffset) {
       setAuditLogsOffset(0)
     }
-    const currentOffset = resetOffset ? 0 : auditLogsOffset
+    const currentOffset = explicitOffset !== null ? explicitOffset : (resetOffset ? 0 : auditLogsOffset)
     try {
       const params = new URLSearchParams({
         limit: '50',
@@ -1546,12 +1546,12 @@ function Admin() {
     }
   }
 
-  const fetchErrorLogs = async (resetOffset = false) => {
+  const fetchErrorLogs = async (resetOffset = false, explicitOffset = null) => {
     setLoadingErrorLogs(true)
     if (resetOffset) {
       setErrorLogsOffset(0)
     }
-    const currentOffset = resetOffset ? 0 : errorLogsOffset
+    const currentOffset = explicitOffset !== null ? explicitOffset : (resetOffset ? 0 : errorLogsOffset)
     try {
       const params = new URLSearchParams({
         limit: '50',
@@ -13425,7 +13425,7 @@ function Admin() {
                     {/* Pagination */}
                     <div className="qa-logs-pagination">
                       <button
-                        onClick={() => { setAuditLogsOffset(Math.max(0, auditLogsOffset - 50)); fetchAuditLogs() }}
+                        onClick={() => { const newOffset = Math.max(0, auditLogsOffset - 50); setAuditLogsOffset(newOffset); fetchAuditLogs(false, newOffset) }}
                         disabled={auditLogsOffset === 0 || loadingAuditLogs}
                         className="admin-btn"
                       >
@@ -13433,7 +13433,7 @@ function Admin() {
                       </button>
                       <span>Page {Math.floor(auditLogsOffset / 50) + 1} of {Math.ceil(auditLogsTotalCount / 50)}</span>
                       <button
-                        onClick={() => { setAuditLogsOffset(auditLogsOffset + 50); fetchAuditLogs() }}
+                        onClick={() => { const newOffset = auditLogsOffset + 50; setAuditLogsOffset(newOffset); fetchAuditLogs(false, newOffset) }}
                         disabled={auditLogsOffset + 50 >= auditLogsTotalCount || loadingAuditLogs}
                         className="admin-btn"
                       >
@@ -13583,7 +13583,7 @@ function Admin() {
                     {/* Pagination */}
                     <div className="qa-logs-pagination">
                       <button
-                        onClick={() => { setErrorLogsOffset(Math.max(0, errorLogsOffset - 50)); fetchErrorLogs() }}
+                        onClick={() => { const newOffset = Math.max(0, errorLogsOffset - 50); setErrorLogsOffset(newOffset); fetchErrorLogs(false, newOffset) }}
                         disabled={errorLogsOffset === 0 || loadingErrorLogs}
                         className="admin-btn"
                       >
@@ -13591,7 +13591,7 @@ function Admin() {
                       </button>
                       <span>Page {Math.floor(errorLogsOffset / 50) + 1} of {Math.ceil(errorLogsTotalCount / 50)}</span>
                       <button
-                        onClick={() => { setErrorLogsOffset(errorLogsOffset + 50); fetchErrorLogs() }}
+                        onClick={() => { const newOffset = errorLogsOffset + 50; setErrorLogsOffset(newOffset); fetchErrorLogs(false, newOffset) }}
                         disabled={errorLogsOffset + 50 >= errorLogsTotalCount || loadingErrorLogs}
                         className="admin-btn"
                       >
