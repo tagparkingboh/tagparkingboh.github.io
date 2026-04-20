@@ -1897,9 +1897,9 @@ async def get_booking_stats(
     # Overall metrics for context (using filtered bookings since search tracking started)
     overall_conversion = round((bid_total_bookings / total_searches * 100), 1) if total_searches > 0 else 0
 
-    # Sort recommendations by priority
-    priority_order = {"high": 0, "medium": 1, "low": 2}
-    bid_recommendations_sorted = sorted(bid_recommendations, key=lambda x: priority_order[x["priority"]])
+    # Keep recommendations in day-of-week order (Mon-Sun)
+    day_order = {day: i for i, day in enumerate(day_names)}
+    bid_recommendations_sorted = sorted(bid_recommendations, key=lambda x: day_order[x["day"]])
 
     return {
         "total_bookings": len(all_bookings),
