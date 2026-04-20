@@ -18,8 +18,14 @@ if env_file.exists():
     load_dotenv(env_file)
 
 # Set test database before any imports
-# Use staging PostgreSQL database for realistic testing
-STAGING_DATABASE_URL = "postgresql://postgres:oviYXmjpSwWKHejteMgdIxXTorTtGdUl@switchback.proxy.rlwy.net:25567/railway"
+# Use STAGING_DATABASE_URL from environment (set by CI secrets or local .env)
+# Falls back to DATABASE_URL if STAGING_DATABASE_URL not set
+STAGING_DATABASE_URL = os.environ.get("STAGING_DATABASE_URL") or os.environ.get("DATABASE_URL")
+if not STAGING_DATABASE_URL:
+    raise RuntimeError(
+        "No database URL configured for tests. "
+        "Set STAGING_DATABASE_URL in .env or environment variables."
+    )
 os.environ["DATABASE_URL"] = STAGING_DATABASE_URL
 
 from sqlalchemy import create_engine

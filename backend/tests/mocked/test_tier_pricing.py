@@ -30,6 +30,51 @@ from booking_service import (
 
 
 # =============================================================================
+# Helper Functions for Test Dates
+# =============================================================================
+
+def get_non_peak_date_for_tier(tier: str, duration_days: int = 7) -> tuple[date, date]:
+    """
+    Get a drop-off and pickup date pair for the specified tier, avoiding peak days.
+
+    Peak days:
+    - Drop-off: Fri/Sat
+    - Pickup: Sun/Mon/Tue
+
+    Args:
+        tier: 'early' (>=14 days), 'standard' (7-13 days), or 'late' (<7 days)
+        duration_days: Trip duration in days
+
+    Returns:
+        (drop_off, pickup) date tuple
+    """
+    # Start with a base offset that's solidly within the tier
+    if tier == "early":
+        base_offset = 21  # Well within >=14 days
+    elif tier == "standard":
+        base_offset = 10  # Well within 7-13 days
+    else:  # late
+        base_offset = 3   # Well within <7 days
+
+    drop_off = date.today() + timedelta(days=base_offset)
+    pickup = drop_off + timedelta(days=duration_days)
+
+    # Shift forward to avoid peak days while staying in tier
+    max_shifts = 6  # Limit shifts to stay in tier
+    for _ in range(max_shifts):
+        is_peak_dropoff = drop_off.weekday() in [4, 5]  # Fri/Sat
+        is_peak_pickup = pickup.weekday() in [0, 1, 6]  # Sun/Mon/Tue
+
+        if not is_peak_dropoff and not is_peak_pickup:
+            break
+
+        drop_off += timedelta(days=1)
+        pickup = drop_off + timedelta(days=duration_days)
+
+    return drop_off, pickup
+
+
+# =============================================================================
 # Test Fixtures
 # =============================================================================
 
@@ -208,10 +253,7 @@ class TestTierPriceCalculation:
 
     def test_standard_tier_7_day_trip_one_increment(self, mock_pricing):
         """Standard tier should add tier_increment to base price."""
-        # Use a fixed Wednesday date that's 10 days from a reference
-        # Apr 22, 2026 is Wednesday, pickup Apr 29 is also Wednesday (non-peak)
-        drop_off = date(2026, 4, 22)  # Wednesday
-        pickup = date(2026, 4, 29)    # Wednesday
+        drop_off, pickup = get_non_peak_date_for_tier("standard", 7)
 
         price = BookingService.calculate_price_for_duration(7, drop_off, pickup)
 
@@ -220,10 +262,7 @@ class TestTierPriceCalculation:
 
     def test_late_tier_7_day_trip_two_increments(self, mock_pricing):
         """Late tier should add 2× tier_increment to base price."""
-        # Use a fixed Wednesday date that's ~3 days from a reference (late tier)
-        # Apr 15, 2026 is Wednesday, pickup Apr 22 is also Wednesday (non-peak)
-        drop_off = date(2026, 4, 15)  # Wednesday
-        pickup = date(2026, 4, 22)    # Wednesday
+        drop_off, pickup = get_non_peak_date_for_tier("late", 7)
 
         price = BookingService.calculate_price_for_duration(7, drop_off, pickup)
 
@@ -232,13 +271,8 @@ class TestTierPriceCalculation:
 
     def test_tier_increment_difference(self, mock_pricing):
         """Standard price should be exactly tier_increment more than early."""
-        # Use fixed dates to ensure non-peak
-        early_drop = date(2026, 5, 6)  # Wednesday, 23 days out
-        standard_drop = date(2026, 4, 22)  # Wednesday, 10 days out
-
-        # Same 7-day trip
-        early_pickup = early_drop + timedelta(days=7)  # Also Wednesday
-        standard_pickup = standard_drop + timedelta(days=7)
+        early_drop, early_pickup = get_non_peak_date_for_tier("early", 7)
+        standard_drop, standard_pickup = get_non_peak_date_for_tier("standard", 7)
 
         early_price = BookingService.calculate_price_for_duration(7, early_drop, early_pickup)
         standard_price = BookingService.calculate_price_for_duration(7, standard_drop, standard_pickup)
@@ -256,24 +290,21 @@ class TestHighTierIncrement:
 
     def test_early_tier_with_high_increment(self, mock_pricing_high_tier):
         """Early tier should still be base price with high increment."""
-        drop_off = date(2026, 5, 6)  # Wednesday, early tier
-        pickup = drop_off + timedelta(days=7)
+        drop_off, pickup = get_non_peak_date_for_tier("early", 7)
 
         price = BookingService.calculate_price_for_duration(7, drop_off, pickup)
         assert price == 85.0  # Base price
 
     def test_standard_tier_with_high_increment(self, mock_pricing_high_tier):
         """Standard tier with £20 increment = base + 20."""
-        drop_off = date(2026, 4, 22)  # Wednesday, ~10 days out
-        pickup = drop_off + timedelta(days=7)
+        drop_off, pickup = get_non_peak_date_for_tier("standard", 7)
 
         price = BookingService.calculate_price_for_duration(7, drop_off, pickup)
         assert price == 105.0  # 85 + 20
 
     def test_late_tier_with_high_increment(self, mock_pricing_high_tier):
         """Late tier with £20 increment = base + 40."""
-        drop_off = date(2026, 4, 15)  # Wednesday, ~3 days out
-        pickup = drop_off + timedelta(days=7)
+        drop_off, pickup = get_non_peak_date_for_tier("late", 7)
 
         price = BookingService.calculate_price_for_duration(7, drop_off, pickup)
         assert price == 125.0  # 85 + (20 × 2)
@@ -288,37 +319,34 @@ class TestZeroTierIncrement:
 
     def test_early_tier_zero_increment(self, mock_pricing_zero_tier):
         """Early tier with zero increment = base price."""
-        drop_off = date(2026, 5, 6)  # Wednesday
-        pickup = drop_off + timedelta(days=7)
+        drop_off, pickup = get_non_peak_date_for_tier("early", 7)
 
         price = BookingService.calculate_price_for_duration(7, drop_off, pickup)
         assert price == 85.0
 
     def test_standard_tier_zero_increment(self, mock_pricing_zero_tier):
         """Standard tier with zero increment = base price (same as early)."""
-        drop_off = date(2026, 4, 22)  # Wednesday
-        pickup = drop_off + timedelta(days=7)
+        drop_off, pickup = get_non_peak_date_for_tier("standard", 7)
 
         price = BookingService.calculate_price_for_duration(7, drop_off, pickup)
         assert price == 85.0  # No increment added
 
     def test_late_tier_zero_increment(self, mock_pricing_zero_tier):
         """Late tier with zero increment = base price (same as early)."""
-        drop_off = date(2026, 4, 15)  # Wednesday
-        pickup = drop_off + timedelta(days=7)
+        drop_off, pickup = get_non_peak_date_for_tier("late", 7)
 
         price = BookingService.calculate_price_for_duration(7, drop_off, pickup)
         assert price == 85.0  # No increment added
 
     def test_all_tiers_equal_with_zero_increment(self, mock_pricing_zero_tier):
         """All tiers should be same price when tier_increment is 0."""
-        early_drop = date(2026, 5, 6)
-        standard_drop = date(2026, 4, 22)
-        late_drop = date(2026, 4, 15)
+        early_drop, early_pickup = get_non_peak_date_for_tier("early", 7)
+        standard_drop, standard_pickup = get_non_peak_date_for_tier("standard", 7)
+        late_drop, late_pickup = get_non_peak_date_for_tier("late", 7)
 
-        early_price = BookingService.calculate_price_for_duration(7, early_drop, early_drop + timedelta(days=7))
-        standard_price = BookingService.calculate_price_for_duration(7, standard_drop, standard_drop + timedelta(days=7))
-        late_price = BookingService.calculate_price_for_duration(7, late_drop, late_drop + timedelta(days=7))
+        early_price = BookingService.calculate_price_for_duration(7, early_drop, early_pickup)
+        standard_price = BookingService.calculate_price_for_duration(7, standard_drop, standard_pickup)
+        late_price = BookingService.calculate_price_for_duration(7, late_drop, late_pickup)
 
         assert early_price == standard_price == late_price == 85.0
 
@@ -332,54 +360,35 @@ class TestTierWithDurations:
 
     def test_early_tier_14_day_trip(self, mock_pricing):
         """Early tier 14-day trip = week2_base_price."""
-        drop_off = date(2026, 5, 6)  # Wednesday, early tier
-        pickup = drop_off + timedelta(days=14)
+        drop_off, pickup = get_non_peak_date_for_tier("early", 14)
 
         price = BookingService.calculate_price_for_duration(14, drop_off, pickup)
         assert price == 150.0  # week2_base_price
 
     def test_standard_tier_14_day_trip(self, mock_pricing):
         """Standard tier 14-day trip = week2_base_price + tier_increment."""
-        drop_off = date(2026, 4, 22)  # Wednesday, standard tier
-        pickup = drop_off + timedelta(days=14)
+        drop_off, pickup = get_non_peak_date_for_tier("standard", 14)
 
         price = BookingService.calculate_price_for_duration(14, drop_off, pickup)
         assert price == 160.0  # 150 + 10
 
     def test_late_tier_14_day_trip(self, mock_pricing):
         """Late tier 14-day trip = week2_base_price + 2×tier_increment."""
-        drop_off = date(2026, 4, 15)  # Wednesday, late tier
-        pickup = drop_off + timedelta(days=14)
+        drop_off, pickup = get_non_peak_date_for_tier("late", 14)
 
         price = BookingService.calculate_price_for_duration(14, drop_off, pickup)
         assert price == 170.0  # 150 + 20
 
     def test_early_tier_4_day_trip(self, mock_pricing):
         """Early tier 4-day trip = days_1_4_price."""
-        # May 6 is Wednesday, +4 days = May 10 Sunday (PEAK!)
-        # Use May 7 Thursday + 4 = May 11 Monday (PEAK!)
-        # Use May 4 Monday + 4 = May 8 Friday (non-peak pickup)
-        drop_off = date(2026, 5, 4)  # Monday (not Fri/Sat - non-peak dropoff)
-        pickup = date(2026, 5, 8)    # Friday (not Sun/Mon/Tue - non-peak pickup)
+        drop_off, pickup = get_non_peak_date_for_tier("early", 4)
 
         price = BookingService.calculate_price_for_duration(4, drop_off, pickup)
         assert price == 65.0  # days_1_4_price
 
     def test_standard_tier_4_day_trip(self, mock_pricing):
         """Standard tier 4-day trip = days_1_4_price + tier_increment."""
-        # Need to use a date exactly 10 days from "today" - mock today
-        # Use Thursday + 4 = Monday (peak pickup!), so need different approach
-        # Wed Apr 22 + 4 = Sun Apr 26 (peak!)
-        # Use date.today() + 10 days to ensure standard tier, then calculate
-        drop_off = date.today() + timedelta(days=10)
-        # Find non-peak: move to next Thursday if needed
-        while drop_off.weekday() in [4, 5]:  # Skip Fri/Sat dropoff
-            drop_off += timedelta(days=1)
-        pickup = drop_off + timedelta(days=4)
-        # Check pickup not Sun/Mon/Tue
-        while pickup.weekday() in [0, 1, 6]:
-            drop_off += timedelta(days=1)
-            pickup = drop_off + timedelta(days=4)
+        drop_off, pickup = get_non_peak_date_for_tier("standard", 4)
 
         price = BookingService.calculate_price_for_duration(4, drop_off, pickup)
         assert price == 75.0  # 65 + 10
@@ -394,7 +403,10 @@ class TestTierWithPeakDay:
 
     def test_early_tier_peak_friday_dropoff(self, mock_pricing):
         """Early tier + Friday dropoff = base + peak_increment."""
-        drop_off = date(2026, 5, 1)  # Friday, early tier (18 days)
+        # Explicitly find a Friday drop-off in early tier range
+        drop_off = date.today() + timedelta(days=21)
+        while drop_off.weekday() != 4:  # Find Friday
+            drop_off += timedelta(days=1)
         pickup = drop_off + timedelta(days=7)  # Friday
 
         price = BookingService.calculate_price_for_duration(7, drop_off, pickup)
@@ -403,7 +415,10 @@ class TestTierWithPeakDay:
 
     def test_standard_tier_peak_friday_dropoff(self, mock_pricing):
         """Standard tier + Friday dropoff = base + tier + peak."""
-        drop_off = date(2026, 4, 24)  # Friday, ~11 days out
+        # Explicitly find a Friday drop-off in standard tier range (7-13 days)
+        drop_off = date.today() + timedelta(days=7)
+        while drop_off.weekday() != 4:  # Find Friday
+            drop_off += timedelta(days=1)
         pickup = drop_off + timedelta(days=7)  # Friday
 
         price = BookingService.calculate_price_for_duration(7, drop_off, pickup)
@@ -412,7 +427,10 @@ class TestTierWithPeakDay:
 
     def test_late_tier_peak_sunday_pickup(self, mock_pricing):
         """Late tier + Sunday pickup = base + 2×tier + peak."""
-        drop_off = date(2026, 4, 16)  # Thursday, ~4 days out
+        # Explicitly find a Thursday drop-off in late tier range (<7 days)
+        drop_off = date.today() + timedelta(days=1)
+        while drop_off.weekday() != 3:  # Find Thursday
+            drop_off += timedelta(days=1)
         pickup = drop_off + timedelta(days=3)  # Sunday
 
         price = BookingService.calculate_price_for_duration(3, drop_off, pickup)
@@ -421,8 +439,7 @@ class TestTierWithPeakDay:
 
     def test_late_tier_non_peak(self, mock_pricing):
         """Late tier + non-peak = base + 2×tier (no peak)."""
-        drop_off = date(2026, 4, 15)  # Wednesday, late tier
-        pickup = drop_off + timedelta(days=7)  # Wednesday
+        drop_off, pickup = get_non_peak_date_for_tier("late", 7)
 
         price = BookingService.calculate_price_for_duration(7, drop_off, pickup)
         # base (85) + 2×tier (20) = 105 (no peak)
