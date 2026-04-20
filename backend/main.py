@@ -1754,27 +1754,54 @@ async def get_booking_stats(
     # Google Ads Bid Recommendations by Day
     # ========================================
     # Calculate conversion rate and recommend bid adjustments for each day of week
+    # IMPORTANT: Only use bookings created AFTER search tracking started (29 March 2026)
+    # to ensure fair conversion rate comparison
+
+    # Get the earliest search event date to filter bookings
+    earliest_search_date = None
+    if search_events and search_events[0].created_at:
+        earliest_search_date = search_events[0].created_at
+        if earliest_search_date.tzinfo is None:
+            earliest_search_date = pytz.utc.localize(earliest_search_date)
+
+    # Build booking data only for bookings since search tracking started
+    bid_booking_hours_by_day = {day: {hour: 0 for hour in range(24)} for day in day_names}
+    bid_total_bookings = 0
+
+    if earliest_search_date:
+        for booking in successful_bookings:
+            if booking.created_at:
+                booking_date = booking.created_at
+                if booking_date.tzinfo is None:
+                    booking_date = pytz.utc.localize(booking_date)
+
+                # Only count bookings after search tracking started
+                if booking_date >= earliest_search_date:
+                    created_at_uk = booking_date.astimezone(uk_tz)
+                    day_name = day_names[created_at_uk.weekday()]
+                    bid_booking_hours_by_day[day_name][created_at_uk.hour] += 1
+                    bid_total_bookings += 1
 
     bid_recommendations = []
 
     for day in day_names:
         day_searches = sum(search_hours_by_day[day].values())
-        day_bookings = sum(booking_hours_by_day[day].values())
+        day_bookings = sum(bid_booking_hours_by_day[day].values())
 
         # Calculate conversion rate for this day
         conversion_rate = round((day_bookings / day_searches * 100), 1) if day_searches > 0 else 0
 
         # Calculate this day's share of total activity
         search_share = round((day_searches / total_searches * 100), 1) if total_searches > 0 else 0
-        booking_share = round((day_bookings / total_successful * 100), 1) if total_successful > 0 else 0
+        booking_share = round((day_bookings / bid_total_bookings * 100), 1) if bid_total_bookings > 0 else 0
 
         # Identify peak hours for this day (top 3 hours by searches)
         day_search_hours = search_hours_by_day[day]
         sorted_hours = sorted(day_search_hours.items(), key=lambda x: x[1], reverse=True)
         peak_hours = [h for h, c in sorted_hours[:3] if c > 0]
 
-        # Identify peak booking hours for this day (top 3 hours by bookings)
-        day_booking_hours = booking_hours_by_day[day]
+        # Identify peak booking hours for this day (top 3 hours by bookings - filtered to match search period)
+        day_booking_hours = bid_booking_hours_by_day[day]
         sorted_booking_hours = sorted(day_booking_hours.items(), key=lambda x: x[1], reverse=True)
         peak_booking_hours = [h for h, c in sorted_booking_hours[:3] if c > 0]
 
@@ -1813,7 +1840,7 @@ async def get_booking_stats(
         # - Low search share + low conversion = REDUCE BID (low activity, low value)
 
         avg_daily_search_share = 100 / 7  # ~14.3%
-        avg_conversion = round((total_successful / total_searches * 100), 1) if total_searches > 0 else 0
+        avg_conversion = round((bid_total_bookings / total_searches * 100), 1) if total_searches > 0 else 0
 
         if search_share >= avg_daily_search_share * 1.2:  # 20% above average
             if conversion_rate >= avg_conversion:
@@ -1867,8 +1894,8 @@ async def get_booking_stats(
             "low_converting_hours": low_converting_hours,
         })
 
-    # Overall metrics for context
-    overall_conversion = round((total_successful / total_searches * 100), 1) if total_searches > 0 else 0
+    # Overall metrics for context (using filtered bookings since search tracking started)
+    overall_conversion = round((bid_total_bookings / total_searches * 100), 1) if total_searches > 0 else 0
 
     # Sort recommendations by priority
     priority_order = {"high": 0, "medium": 1, "low": 2}
@@ -1907,9 +1934,10 @@ async def get_booking_stats(
         "search_hours_by_day": search_hours_by_day_list,
         "total_searches": total_searches,
         "search_data_start_date": search_data_start_date,
-        # Google Ads bid recommendations
+        # Google Ads bid recommendations (filtered to match search tracking period)
         "bid_recommendations": bid_recommendations_sorted,
         "overall_conversion_rate": overall_conversion,
+        "bid_total_bookings": bid_total_bookings,  # Bookings since search tracking started
     }
 
 

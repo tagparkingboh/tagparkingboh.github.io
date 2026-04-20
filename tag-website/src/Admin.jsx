@@ -10539,8 +10539,9 @@ function Admin() {
                       <div className="bid-recommendations-section">
                         <h3>Google Ads Bid Recommendations</h3>
                         <p className="section-subtitle">
-                          Daily recommendations based on search volume and conversion rates.
-                          Overall conversion rate: <strong>{bookingStats.overall_conversion_rate}%</strong>
+                          Daily recommendations based on search volume and conversion rates since {bookingStats.search_data_start_date}.
+                          <br />
+                          <strong>{bookingStats.total_searches}</strong> searches → <strong>{bookingStats.bid_total_bookings}</strong> bookings = <strong>{bookingStats.overall_conversion_rate}%</strong> conversion
                         </p>
                         <div className="bid-recommendations-grid">
                           {bookingStats.bid_recommendations.map((rec) => (

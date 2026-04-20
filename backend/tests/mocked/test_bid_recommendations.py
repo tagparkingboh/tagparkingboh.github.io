@@ -10,6 +10,11 @@ Covers:
 - Edge cases (no data, single day, zero searches)
 
 All tests use mocked data - no real database connections.
+
+NOTE: In production (main.py), bookings are filtered to only include those
+created AFTER search tracking started (29 March 2026) to ensure fair
+conversion rate comparison. The tests assume this filtering has already
+been done - they test the pure recommendation logic.
 """
 import pytest
 from datetime import datetime
@@ -21,13 +26,19 @@ from collections import defaultdict
 # ============================================================================
 
 def calculate_bid_recommendations(
-    booking_hours_by_day: dict,
+    bid_booking_hours_by_day: dict,
     search_hours_by_day: dict,
     total_searches: int,
-    total_successful: int
+    bid_total_bookings: int
 ) -> tuple[list, float]:
     """
     Calculate bid recommendations for each day of week.
+
+    Args:
+        bid_booking_hours_by_day: Bookings by day/hour (filtered to search period)
+        search_hours_by_day: Searches by day/hour
+        total_searches: Total search count
+        bid_total_bookings: Total bookings in the search tracking period
 
     Returns:
         tuple: (bid_recommendations list, overall_conversion_rate)
@@ -35,28 +46,28 @@ def calculate_bid_recommendations(
     day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     bid_recommendations = []
 
-    # Calculate overall conversion rate
-    overall_conversion = round((total_successful / total_searches * 100), 1) if total_searches > 0 else 0
+    # Calculate overall conversion rate (using filtered booking data)
+    overall_conversion = round((bid_total_bookings / total_searches * 100), 1) if total_searches > 0 else 0
     avg_conversion = overall_conversion
 
     for day in day_names:
         day_searches = sum(search_hours_by_day.get(day, {}).values())
-        day_bookings = sum(booking_hours_by_day.get(day, {}).values())
+        day_bookings = sum(bid_booking_hours_by_day.get(day, {}).values())
 
         # Calculate conversion rate for this day
         conversion_rate = round((day_bookings / day_searches * 100), 1) if day_searches > 0 else 0
 
         # Calculate this day's share of total activity
         search_share = round((day_searches / total_searches * 100), 1) if total_searches > 0 else 0
-        booking_share = round((day_bookings / total_successful * 100), 1) if total_successful > 0 else 0
+        booking_share = round((day_bookings / bid_total_bookings * 100), 1) if bid_total_bookings > 0 else 0
 
         # Identify peak hours for this day (top 3 hours by searches)
         day_search_hours = search_hours_by_day.get(day, {})
         sorted_hours = sorted(day_search_hours.items(), key=lambda x: x[1], reverse=True)
         peak_hours = [h for h, c in sorted_hours[:3] if c > 0]
 
-        # Identify peak booking hours for this day (top 3 hours by bookings)
-        day_booking_hours = booking_hours_by_day.get(day, {})
+        # Identify peak booking hours for this day (top 3 hours by bookings - filtered to match search period)
+        day_booking_hours = bid_booking_hours_by_day.get(day, {})
         sorted_booking_hours = sorted(day_booking_hours.items(), key=lambda x: x[1], reverse=True)
         peak_booking_hours = [h for h, c in sorted_booking_hours[:3] if c > 0]
 
