@@ -54,8 +54,9 @@ jobs:
         run: |
           START_TIME=$(date +%s)
 
-          # Run tests with coverage, capture output
-          python -m pytest tests/ \
+          # Run ONLY mocked tests (don't require database connection)
+          # Root-level tests need migration - see tests/MIGRATION_AUDIT.md
+          python -m pytest tests/mocked/ \
             --cov=. \
             --cov-report=json \
             --cov-report=term \

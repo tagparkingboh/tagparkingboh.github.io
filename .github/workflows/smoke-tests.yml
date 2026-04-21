@@ -38,12 +38,10 @@ jobs:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
           ENVIRONMENT: test
         run: |
-          # Run critical smoke tests only (fast subset)
+          # Run mocked tests only (don't require database connection)
+          # Root-level tests need migration - see tests/MIGRATION_AUDIT.md
           python -m pytest \
-            tests/test_api.py \
-            tests/test_auth.py \
-            tests/test_pricing.py \
-            tests/test_booking_service.py \
+            tests/mocked/ \
             -v \
             --tb=short \
             -x \
