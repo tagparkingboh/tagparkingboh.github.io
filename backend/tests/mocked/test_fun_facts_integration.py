@@ -60,19 +60,31 @@ def create_mock_booking(
     amount_pence=None,
     paid_at=None,
     dropoff_destination="Faro Airport",
+    created_at=None,
+    customer_first_name="Test",
+    customer_last_name="Customer",
+    dropoff_time=None,
+    pickup_time=None,
 ):
     """Create a mock booking for database queries."""
-    from datetime import datetime
+    from datetime import datetime, time
     booking = MagicMock()
     booking.id = id
     booking.reference = reference
     booking.status = status
     booking.dropoff_date = dropoff_date or date(2026, 3, 15)
     booking.pickup_date = pickup_date or date(2026, 3, 22)
+    booking.dropoff_time = dropoff_time or time(10, 0)  # 10:00 AM
+    booking.pickup_time = pickup_time or time(14, 0)  # 2:00 PM
     # Default paid_at to dropoff_date at noon if not provided
     default_paid_at = datetime.combine(booking.dropoff_date, datetime.min.time().replace(hour=12))
     booking.payment = create_mock_payment(amount_pence, paid_at or default_paid_at)
     booking.dropoff_destination = dropoff_destination
+    # Add created_at for fun facts time comparisons
+    booking.created_at = created_at or datetime.combine(booking.dropoff_date - timedelta(days=7), datetime.min.time().replace(hour=14, minute=30))
+    booking.customer_first_name = customer_first_name
+    booking.customer_last_name = customer_last_name
+    booking.customer = None  # No linked customer object
     return booking
 
 
@@ -106,7 +118,7 @@ class TestFunFactsIntegrationHappyPath:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()
@@ -143,7 +155,7 @@ class TestFunFactsIntegrationHappyPath:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()
@@ -175,7 +187,7 @@ class TestFunFactsIntegrationHappyPath:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()
@@ -207,7 +219,7 @@ class TestFunFactsIntegrationHappyPath:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()
@@ -243,7 +255,7 @@ class TestFunFactsIntegrationHappyPath:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()
@@ -277,7 +289,7 @@ class TestFunFactsIntegrationEmptyCases:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()
@@ -310,7 +322,7 @@ class TestFunFactsIntegrationEmptyCases:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()
@@ -355,7 +367,7 @@ class TestFunFactsIntegrationEdgeCases:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()
@@ -393,7 +405,7 @@ class TestFunFactsIntegrationEdgeCases:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()
@@ -427,7 +439,7 @@ class TestFunFactsIntegrationEdgeCases:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()
@@ -451,7 +463,7 @@ class TestFunFactsIntegrationAuth:
         app.dependency_overrides.clear()
 
         client = TestClient(app)
-        response = client.get("/api/admin/reports/fun-facts")
+        response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
         # Should return 401 for unauthenticated requests
         assert response.status_code == 401
@@ -474,7 +486,7 @@ class TestFunFactsIntegrationAuth:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 403
         finally:
@@ -509,7 +521,7 @@ class TestFunFactsIntegrationDateFormatting:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()
@@ -547,7 +559,7 @@ class TestFunFactsIntegrationDateFormatting:
 
         try:
             client = TestClient(app)
-            response = client.get("/api/admin/reports/fun-facts")
+            response = client.get("/api/admin/reports/fun-facts?refresh=true")
 
             assert response.status_code == 200
             data = response.json()

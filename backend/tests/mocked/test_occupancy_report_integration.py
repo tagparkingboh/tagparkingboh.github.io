@@ -24,7 +24,9 @@ TODAY = date.today()
 FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
 FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
 # For occupancy tests, use month-aligned dates
-FUTURE_MONTH_START = TODAY.replace(day=1) + timedelta(days=60)  # Start of a future month
+# Calculate first day of a month ~2 months in the future
+_temp_date = TODAY.replace(day=1) + timedelta(days=62)
+FUTURE_MONTH_START = _temp_date.replace(day=1)  # First day of that month
 FUTURE_MONTH_END = (FUTURE_MONTH_START.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)  # End of that month
 
 
@@ -427,7 +429,7 @@ class TestOccupancyDateRangeOverlap:
             booking.pickup_date >= report_start
         )
 
-        assert overlaps is True
+        assert overlaps
 
     def test_booking_partial_overlap_start(self):
         """Test booking that starts before report range."""
@@ -444,7 +446,7 @@ class TestOccupancyDateRangeOverlap:
             booking.pickup_date >= report_start
         )
 
-        assert overlaps is True
+        assert overlaps
 
     def test_booking_partial_overlap_end(self):
         """Test booking that ends after report range."""
@@ -461,7 +463,7 @@ class TestOccupancyDateRangeOverlap:
             booking.pickup_date >= report_start
         )
 
-        assert overlaps is True
+        assert overlaps
 
     def test_booking_outside_range_not_included(self):
         """Test booking completely outside report range."""

@@ -7,12 +7,12 @@ with the new flexible duration pricing system (1-60 days).
 Pricing structure (early tier):
 - 1-4 days: £60
 - 5-6 days: £72
-- 7 days: £79
+- 7 days: £85
 - 8-9 days: £99
 - 10-11 days: £119
 - 12-13 days: £130
-- 14 days: £140
-- 15+ days: £140 + £9 per extra day
+- 14 days: £150
+- 15+ days: £150 + £9 per extra day
 
 Test scenarios:
 1. FREE promo with short trips (1-7 days) - should be completely free
@@ -36,17 +36,18 @@ from main import (
 )
 from booking_service import get_base_price_for_duration
 
-# Default pricing structure (matches booking_service.py defaults)
+# Default pricing structure - uses anchor + daily_increment model
+# Anchor prices: 1-4 days, 7 days, 14 days
+# Days between anchors use daily_increment
+# NOTE: peak_day_increment=0 to avoid date-dependent test failures
+# (peak day pricing is tested separately in test_peak_day_pricing.py)
 DEFAULT_PRICING = {
-    "days_1_4_price": 60.0,
-    "days_5_6_price": 72.0,
-    "week1_base_price": 79.0,   # 7 days
-    "days_8_9_price": 99.0,
-    "days_10_11_price": 119.0,
-    "days_12_13_price": 130.0,
-    "week2_base_price": 140.0,  # 14 days
-    "extra_day_price": 9.0,     # 15+ days
-    "tier_increment": 10.0,     # For standard/late pricing tiers
+    "days_1_4_price": 65.0,      # Anchor: 1-4 days
+    "week1_base_price": 85.0,    # Anchor: 7 days
+    "week2_base_price": 150.0,   # Anchor: 14 days
+    "daily_increment": 9.0,      # Added per day between anchors
+    "tier_increment": 10.0,      # +10 for standard, +20 for late
+    "peak_day_increment": 0.0,   # Disabled to avoid date-dependent failures
 }
 
 @pytest.fixture(autouse=True)
@@ -75,7 +76,7 @@ class TestFreePromoWithFlexiblePricing:
         discount_amount = original_amount
         final_amount = original_amount - discount_amount
 
-        assert original_amount == 7900, f"7-day early price should be £79, got £{original_amount/100}"
+        assert original_amount == 8500, f"7-day early price should be £85, got £{original_amount/100}"
         assert final_amount == 0, f"7-day trip with FREE promo should be £0, got £{final_amount/100}"
 
     def test_free_promo_5_day_trip_completely_free(self):
@@ -112,7 +113,7 @@ class TestFreePromoWithFlexiblePricing:
         discount_amount = original_amount
         final_amount = original_amount - discount_amount
 
-        assert original_amount == 6000, f"1-day early price should be £60 (1-4 tier), got £{original_amount/100}"
+        assert original_amount == 6500, f"1-day early price should be £65 (1-4 tier), got £{original_amount/100}"
         assert final_amount == 0, f"1-day trip with FREE promo should be £0, got £{final_amount/100}"
 
     def test_free_promo_10_day_trip_deducts_7_day_base(self):
@@ -131,12 +132,12 @@ class TestFreePromoWithFlexiblePricing:
         discount_amount = min(week1_base_pence, original_amount)
         final_amount = original_amount - discount_amount
 
-        # 10-day early = £119 (10-11 tier)
-        # Discount = £79 (7-day base)
-        # Customer pays = £40
-        assert original_amount == 11900, f"10-day price should be £119 (10-11 tier), got £{original_amount/100}"
-        assert discount_amount == 7900, f"Discount should be £79 (7-day base), got £{discount_amount/100}"
-        assert final_amount == 4000, f"Final should be £40, got £{final_amount/100}"
+        # 10-day early = £112 (7-day base + 3 × daily_increment = 79 + 27)
+        # Discount = £85 (7-day base)
+        # Customer pays = £27
+        assert original_amount == 11200, f"10-day price should be £112 (85 + 3*9), got £{original_amount/100}"
+        assert discount_amount == 8500, f"Discount should be £85 (7-day base), got £{discount_amount/100}"
+        assert final_amount == 2700, f"Final should be £27, got £{final_amount/100}"
 
     def test_free_promo_14_day_trip_deducts_7_day_base(self):
         """A 14-day trip with FREE promo should deduct 7-day base price."""
@@ -153,12 +154,12 @@ class TestFreePromoWithFlexiblePricing:
         discount_amount = min(week1_base_pence, original_amount)
         final_amount = original_amount - discount_amount
 
-        # 14-day early = £140
-        # Discount = £79 (7-day base)
-        # Customer pays = £61
-        assert original_amount == 14000, f"14-day price should be £140, got £{original_amount/100}"
-        assert discount_amount == 7900
-        assert final_amount == 6100, f"Final should be £61, got £{final_amount/100}"
+        # 14-day early = £150
+        # Discount = £85 (7-day base)
+        # Customer pays = £65
+        assert original_amount == 15000, f"14-day price should be £150, got £{original_amount/100}"
+        assert discount_amount == 8500
+        assert final_amount == 6500, f"Final should be £65, got £{final_amount/100}"
 
     def test_free_promo_20_day_extended_trip(self):
         """A 20-day extended trip with FREE promo should deduct 7-day base."""
@@ -175,14 +176,14 @@ class TestFreePromoWithFlexiblePricing:
         discount_amount = min(week1_base_pence, original_amount)
         final_amount = original_amount - discount_amount
 
-        # 20-day price = £140 (14-day base) + 6 extra days * £9 = £140 + £54 = £194
-        # Discount = £79 (7-day base)
-        # Customer pays = £194 - £79 = £115
-        expected_original = (140 + (20 - 14) * 9) * 100  # £194 = 19400 pence
-        assert original_amount == expected_original, f"20-day price should be £194, got £{original_amount/100}"
+        # 20-day price = £150 (14-day base) + 6 extra days * £9 = £150 + £54 = £204
+        # Discount = £85 (7-day base)
+        # Customer pays = £204 - £85 = £119
+        expected_original = (150 + (20 - 14) * 9) * 100  # £204 = 20400 pence
+        assert original_amount == expected_original, f"20-day price should be £204, got £{original_amount/100}"
 
-        expected_final = expected_original - week1_base_pence  # 19400 - 7900 = 11500
-        assert final_amount == expected_final, f"Final should be £115, got £{final_amount/100}"
+        expected_final = expected_original - week1_base_pence  # 20400 - 8500 = 11900
+        assert final_amount == expected_final, f"Final should be £119, got £{final_amount/100}"
 
     def test_free_promo_60_day_max_duration_trip(self):
         """A 60-day trip (max duration) with FREE promo should deduct 7-day base."""
@@ -199,13 +200,13 @@ class TestFreePromoWithFlexiblePricing:
         discount_amount = min(week1_base_pence, original_amount)
         final_amount = original_amount - discount_amount
 
-        # 60-day price = £140 (14-day base) + 46 extra days * £9 = £140 + £414 = £554
-        expected_original = (140 + (60 - 14) * 9) * 100  # £554 = 55400 pence
-        assert original_amount == expected_original, f"60-day price should be £554, got £{original_amount/100}"
+        # 60-day price = £150 (14-day base) + 46 extra days * £9 = £150 + £414 = £564
+        expected_original = (150 + (60 - 14) * 9) * 100  # £564 = 56400 pence
+        assert original_amount == expected_original, f"60-day price should be £564, got £{original_amount/100}"
 
-        # Customer pays = £554 - £79 = £475
-        expected_final = expected_original - week1_base_pence  # 55400 - 7900 = 47500
-        assert final_amount == expected_final, f"Final should be £475, got £{final_amount/100}"
+        # Customer pays = £564 - £85 = £479
+        expected_final = expected_original - week1_base_pence  # 56400 - 8500 = 47900
+        assert final_amount == expected_final, f"Final should be £479, got £{final_amount/100}"
 
 
 class TestTenPercentPromoWithFlexiblePricing:
@@ -227,12 +228,12 @@ class TestTenPercentPromoWithFlexiblePricing:
         discount_amount = int(original_amount * discount_percent / 100)
         final_amount = original_amount - discount_amount
 
-        # 7-day early = £79
-        # 10% off = £7.90
-        # Final = £71.10
-        assert original_amount == 7900, f"7-day early price should be £79, got £{original_amount/100}"
-        assert discount_amount == 790, f"10% discount should be £7.90, got £{discount_amount/100}"
-        assert final_amount == 7110, f"Final should be £71.10, got £{final_amount/100}"
+        # 7-day early = £85
+        # 10% off = £8.50
+        # Final = £76.50
+        assert original_amount == 8500, f"7-day early price should be £85, got £{original_amount/100}"
+        assert discount_amount == 850, f"10% discount should be £8.50, got £{discount_amount/100}"
+        assert final_amount == 7650, f"Final should be £76.50, got £{final_amount/100}"
 
     def test_10_percent_promo_14_day_trip(self):
         """A 14-day trip with 10% promo should get 10% off."""
@@ -249,12 +250,12 @@ class TestTenPercentPromoWithFlexiblePricing:
         discount_amount = int(original_amount * discount_percent / 100)
         final_amount = original_amount - discount_amount
 
-        # 14-day early = £140
-        # 10% off = £14.00
-        # Final = £126.00
-        assert original_amount == 14000, f"14-day early price should be £140, got £{original_amount/100}"
-        assert discount_amount == 1400, f"10% discount should be £14.00, got £{discount_amount/100}"
-        assert final_amount == 12600, f"Final should be £126.00, got £{final_amount/100}"
+        # 14-day early = £150
+        # 10% off = £15.00
+        # Final = £135.00
+        assert original_amount == 15000, f"14-day early price should be £150, got £{original_amount/100}"
+        assert discount_amount == 1500, f"10% discount should be £15.00, got £{discount_amount/100}"
+        assert final_amount == 13500, f"Final should be £135.00, got £{final_amount/100}"
 
     def test_10_percent_promo_20_day_extended_trip(self):
         """A 20-day extended trip with 10% promo should get 10% off total."""
@@ -271,13 +272,13 @@ class TestTenPercentPromoWithFlexiblePricing:
         discount_amount = int(original_amount * discount_percent / 100)
         final_amount = original_amount - discount_amount
 
-        # 20-day = £140 + (6 * £9) = £194
-        # 10% off = £19.40
-        # Final = £174.60
-        expected_original = 19400
-        assert original_amount == expected_original, f"20-day price should be £194, got £{original_amount/100}"
-        assert discount_amount == 1940, f"10% discount should be £19.40, got £{discount_amount/100}"
-        assert final_amount == 17460, f"Final should be £174.60, got £{final_amount/100}"
+        # 20-day = £150 + (6 * £9) = £204
+        # 10% off = £20.40
+        # Final = £183.60
+        expected_original = 20400
+        assert original_amount == expected_original, f"20-day price should be £204, got £{original_amount/100}"
+        assert discount_amount == 2040, f"10% discount should be £20.40, got £{discount_amount/100}"
+        assert final_amount == 18360, f"Final should be £183.60, got £{final_amount/100}"
 
     def test_10_percent_promo_standard_tier(self):
         """A standard tier booking with 10% promo should get 10% off standard price."""
@@ -294,12 +295,12 @@ class TestTenPercentPromoWithFlexiblePricing:
         discount_amount = int(original_amount * discount_percent / 100)
         final_amount = original_amount - discount_amount
 
-        # 7-day standard = £89 (£79 + £10 tier increment)
-        # 10% off = £8.90
-        # Final = £80.10
-        assert original_amount == 8900, f"7-day standard price should be £89, got £{original_amount/100}"
-        assert discount_amount == 890, f"10% discount should be £8.90, got £{discount_amount/100}"
-        assert final_amount == 8010, f"Final should be £80.10, got £{final_amount/100}"
+        # 7-day standard = £95 (£85 + £10 tier increment)
+        # 10% off = £9.50
+        # Final = £85.50
+        assert original_amount == 9500, f"7-day standard price should be £95, got £{original_amount/100}"
+        assert discount_amount == 950, f"10% discount should be £9.50, got £{discount_amount/100}"
+        assert final_amount == 8550, f"Final should be £85.50, got £{final_amount/100}"
 
     def test_10_percent_promo_late_tier(self):
         """A late tier booking with 10% promo should get 10% off late price."""
@@ -316,12 +317,12 @@ class TestTenPercentPromoWithFlexiblePricing:
         discount_amount = int(original_amount * discount_percent / 100)
         final_amount = original_amount - discount_amount
 
-        # 7-day late = £99 (£79 + 2*£10 tier increments)
-        # 10% off = £9.90
-        # Final = £89.10
-        assert original_amount == 9900, f"7-day late price should be £99, got £{original_amount/100}"
-        assert discount_amount == 990, f"10% discount should be £9.90, got £{discount_amount/100}"
-        assert final_amount == 8910, f"Final should be £89.10, got £{final_amount/100}"
+        # 7-day late = £105 (£85 + 2*£10 tier increments)
+        # 10% off = £10.50
+        # Final = £94.50
+        assert original_amount == 10500, f"7-day late price should be £105, got £{original_amount/100}"
+        assert discount_amount == 1050, f"10% discount should be £10.50, got £{discount_amount/100}"
+        assert final_amount == 9450, f"Final should be £94.50, got £{final_amount/100}"
 
 
 class TestPromoEdgeCasesWithFlexiblePricing:
@@ -344,12 +345,12 @@ class TestPromoEdgeCasesWithFlexiblePricing:
         discount_amount = min(week1_base_pence, original_amount)
         final_amount = original_amount - discount_amount
 
-        # 8-day price = £99 (8-9 day tier)
-        # Discount = £79 (7-day base)
-        # Customer pays = £20
-        assert original_amount == 9900, f"8-day price should be £99, got £{original_amount/100}"
-        assert discount_amount == 7900, f"Discount should be £79 (7-day base), got £{discount_amount/100}"
-        assert final_amount == 2000, f"Final should be £20, got £{final_amount/100}"
+        # 8-day price = £94 (£85 + 1*£9 daily increment)
+        # Discount = £85 (7-day base)
+        # Customer pays = £9
+        assert original_amount == 9400, f"8-day price should be £94, got £{original_amount/100}"
+        assert discount_amount == 8500, f"Discount should be £85 (7-day base), got £{discount_amount/100}"
+        assert final_amount == 900, f"Final should be £9, got £{final_amount/100}"
 
     def test_free_promo_15_day_first_extended_day(self):
         """15-day trip is the first extended stay day (beyond 14-day base)."""
@@ -366,12 +367,12 @@ class TestPromoEdgeCasesWithFlexiblePricing:
         discount_amount = min(week1_base_pence, original_amount)
         final_amount = original_amount - discount_amount
 
-        # 15-day = £140 + £9 = £149
-        # Discount = £79
-        # Customer pays = £70
-        expected_original = (140 + 9) * 100  # £149
-        assert original_amount == expected_original, f"15-day price should be £149, got £{original_amount/100}"
-        assert final_amount == expected_original - week1_base_pence
+        # 15-day = £150 + £9 = £159
+        # Discount = £85
+        # Customer pays = £74
+        expected_original = (150 + 9) * 100  # £159
+        assert original_amount == expected_original, f"15-day price should be £159, got £{original_amount/100}"
+        assert final_amount == expected_original - week1_base_pence  # 15900 - 8500 = 7400
 
     def test_10_percent_rounding_odd_amounts(self):
         """Test 10% discount rounding on various price amounts."""
@@ -430,7 +431,7 @@ class TestPromoEdgeCasesWithFlexiblePricing:
 
         week1_base_pence = int(get_base_price_for_duration(7, DEFAULT_PRICING) * 100)
 
-        # FREE promo (deducts 7-day base = £79)
+        # FREE promo (deducts 7-day base = £85)
         free_discount = week1_base_pence
         free_final = original_amount - free_discount
 
@@ -438,12 +439,12 @@ class TestPromoEdgeCasesWithFlexiblePricing:
         ten_percent_discount = int(original_amount * 10 / 100)
         ten_percent_final = original_amount - ten_percent_discount
 
-        # 30-day = £140 + 16*£9 = £284
-        # FREE: £284 - £79 = £205 (saves £79)
-        # 10%: £284 - £28.40 = £255.60 (saves £28.40)
+        # 30-day = £150 + 16*£9 = £294
+        # FREE: £294 - £85 = £209 (saves £85)
+        # 10%: £294 - £29.40 = £264.60 (saves £29.40)
         # FREE saves more even for long trips
-        expected_original = (140 + 16 * 9) * 100  # £284
-        assert original_amount == expected_original, f"30-day should be £284, got £{original_amount/100}"
+        expected_original = (150 + 16 * 9) * 100  # £294
+        assert original_amount == expected_original, f"30-day should be £294, got £{original_amount/100}"
         assert free_discount > ten_percent_discount, "FREE saves more than 10% for 30-day trip"
 
         print(f"\n30-day trip comparison:")

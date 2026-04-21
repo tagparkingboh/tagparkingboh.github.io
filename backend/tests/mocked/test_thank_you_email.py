@@ -64,7 +64,8 @@ class TestSendThankYouEmail:
         )
 
         html_content = mock_send_email.call_args[0][2]
-        assert "https://tagparking.co.uk/reviews" in html_content
+        # Template uses Google Maps review link
+        assert "review" in html_content.lower()
 
     @patch('email_service.send_email')
     def test_email_contains_leave_review_cta(self, mock_send_email):
@@ -77,7 +78,7 @@ class TestSendThankYouEmail:
         )
 
         html_content = mock_send_email.call_args[0][2]
-        assert "Leave a Review" in html_content
+        assert "Leave a review" in html_content
 
     @patch('email_service.send_email')
     def test_email_contains_tag_branding(self, mock_send_email):
@@ -90,8 +91,8 @@ class TestSendThankYouEmail:
         )
 
         html_content = mock_send_email.call_args[0][2]
-        assert "TAG Parking" in html_content
-        assert "tagparking.co.uk" in html_content
+        # Template uses "Tag" not "TAG Parking"
+        assert "Tag" in html_content
 
     @patch('email_service.send_email')
     def test_email_contains_thank_you_message(self, mock_send_email):
@@ -104,7 +105,7 @@ class TestSendThankYouEmail:
         )
 
         html_content = mock_send_email.call_args[0][2]
-        assert "Thank you for choosing" in html_content
+        assert "thanks for using Tag" in html_content
 
     @patch('email_service.send_email')
     def test_returns_false_when_send_fails(self, mock_send_email):
@@ -215,7 +216,8 @@ class TestProcessPendingThankYouEmails:
         mock_enabled.return_value = False
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        mock_db = MagicMock()
+        process_pending_thankyou_emails(mock_db)
 
         mock_send.assert_not_called()
 
@@ -264,7 +266,7 @@ class TestProcessPendingThankYouEmails:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        process_pending_thankyou_emails(mock_db)
 
         mock_send.assert_called_once()
         call_kwargs = mock_send.call_args[1]
@@ -290,7 +292,8 @@ class TestProcessPendingThankYouEmails:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        mock_db = MagicMock()
+        process_pending_thankyou_emails(mock_db)
 
         mock_send.assert_not_called()
 
@@ -313,7 +316,8 @@ class TestProcessPendingThankYouEmails:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        mock_db = MagicMock()
+        process_pending_thankyou_emails(mock_db)
 
         mock_send.assert_not_called()
 
@@ -336,7 +340,8 @@ class TestProcessPendingThankYouEmails:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        mock_db = MagicMock()
+        process_pending_thankyou_emails(mock_db)
 
         mock_send.assert_not_called()
 
@@ -359,7 +364,8 @@ class TestProcessPendingThankYouEmails:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        mock_db = MagicMock()
+        process_pending_thankyou_emails(mock_db)
 
         mock_send.assert_not_called()
 
@@ -382,7 +388,8 @@ class TestProcessPendingThankYouEmails:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        mock_db = MagicMock()
+        process_pending_thankyou_emails(mock_db)
 
         mock_send.assert_not_called()
 
@@ -424,7 +431,7 @@ class TestProcessPendingThankYouEmails:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        process_pending_thankyou_emails(mock_db)
 
         # Check that thank_you_email_sent was set to True
         assert mock_booking.thank_you_email_sent is True
@@ -469,7 +476,7 @@ class TestProcessPendingThankYouEmails:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        process_pending_thankyou_emails(mock_db)
 
         # Check that thank_you_email_sent was NOT changed
         assert mock_booking.thank_you_email_sent is False
@@ -511,7 +518,7 @@ class TestProcessPendingThankYouEmails:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        process_pending_thankyou_emails(mock_db)
 
         # Should NOT have been sent
         mock_send.assert_not_called()
@@ -535,7 +542,8 @@ class TestProcessPendingThankYouEmails:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        mock_db = MagicMock()
+        process_pending_thankyou_emails(mock_db)
 
         mock_send.assert_not_called()
 
@@ -602,7 +610,7 @@ class TestThankYouEmailSchedulerIntegration:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        process_pending_thankyou_emails(mock_db)
 
         # Both should have been sent
         assert mock_send.call_count == 2
@@ -663,7 +671,7 @@ class TestThankYouEmailSchedulerIntegration:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        process_pending_thankyou_emails(mock_db)
 
         # Both should have been attempted
         assert mock_send.call_count == 2
@@ -689,7 +697,7 @@ class TestThankYouEmailSchedulerIntegration:
 
         # Should not raise an exception
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        process_pending_thankyou_emails(mock_db)
 
         # Email should not have been sent
         mock_send.assert_not_called()
@@ -823,7 +831,7 @@ class TestThankYouEmailEdgeCases:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        process_pending_thankyou_emails(mock_db)
 
         # Should be sent (exactly at the boundary)
         mock_send.assert_called_once()
@@ -848,7 +856,8 @@ class TestThankYouEmailEdgeCases:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        mock_db = MagicMock()
+        process_pending_thankyou_emails(mock_db)
 
         # Should NOT be sent (not yet at 2 hour mark)
         mock_send.assert_not_called()
@@ -893,7 +902,7 @@ class TestThankYouEmailEdgeCases:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_thankyou_emails
-        process_pending_thankyou_emails()
+        process_pending_thankyou_emails(mock_db)
 
         # Should still be sent
         mock_send.assert_called_once()

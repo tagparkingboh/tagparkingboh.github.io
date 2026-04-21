@@ -6,6 +6,7 @@ capacity tracking, and cancellation logic.
 """
 import pytest
 from datetime import date, time, datetime, timedelta
+from unittest.mock import patch
 
 import sys
 from pathlib import Path
@@ -13,6 +14,28 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from booking_service import BookingService, NO_SLOTS_CONTACT_MESSAGE
 from models import BookingRequest, AdminBookingRequest, SlotType
+
+
+# Default pricing configuration for tests
+DEFAULT_TEST_PRICING = {
+    "days_1_4_price": 60.0,
+    "days_5_6_price": 69.0,
+    "week1_base_price": 79.0,
+    "days_8_9_price": 99.0,
+    "days_10_11_price": 119.0,
+    "days_12_13_price": 130.0,
+    "week2_base_price": 140.0,
+    "tier_increment": 10.0,
+    "peak_day_increment": 0.0,
+    "daily_increment": 8.0,
+}
+
+
+@pytest.fixture(autouse=True)
+def mock_pricing():
+    """Mock pricing from database for all tests."""
+    with patch("booking_service.get_pricing_from_db", return_value=DEFAULT_TEST_PRICING):
+        yield
 
 # Use relative dates for future-proof tests
 TODAY = date.today()
@@ -68,7 +91,7 @@ class TestBookingServiceInit:
 
     def test_max_parking_spots_configured(self, service):
         """Max parking spots should be set."""
-        assert service.MAX_PARKING_SPOTS == 60
+        assert service.MAX_PARKING_SPOTS == 50
 
     def test_duration_prices_available(self, service):
         """Duration prices should be retrievable from database."""
@@ -88,7 +111,7 @@ class TestSlotAvailability:
             flight_number="5523",
             airline_code="FR"
         )
-        assert len(slots.slots) == 2  # Both slots available
+        assert len(slots.slots) == 3  # All three slots available (EARLY, STANDARD, LATE)
 
     def test_slot_hidden_after_booking(self, service, sample_booking_request):
         """Booked slot should not appear in available slots."""
@@ -99,7 +122,7 @@ class TestSlotAvailability:
             flight_number="5523",
             airline_code="FR"
         )
-        assert len(initial_slots.slots) == 2
+        assert len(initial_slots.slots) == 3  # EARLY, STANDARD, LATE
 
         # Create booking (using EARLY slot)
         service.create_booking(sample_booking_request)
@@ -112,19 +135,26 @@ class TestSlotAvailability:
             airline_code="FR"
         )
 
-        # Only 1 slot should remain (LATE)
-        assert len(remaining_slots.slots) == 1
-        assert remaining_slots.slots[0].slot_type == SlotType.LATE
+        # 2 slots should remain (STANDARD, LATE)
+        assert len(remaining_slots.slots) == 2
+        slot_types = {s.slot_type for s in remaining_slots.slots}
+        assert SlotType.EARLY not in slot_types
 
-    def test_both_slots_hidden_when_both_booked(self, service, sample_booking_request):
-        """When both slots are booked, none should appear."""
+    def test_all_slots_hidden_when_all_booked(self, service, sample_booking_request):
+        """When all three slots are booked, none should appear."""
         # Book EARLY slot
         service.create_booking(sample_booking_request)
+
+        # Book STANDARD slot
+        standard_request = sample_booking_request.model_copy()
+        standard_request.drop_off_slot_type = SlotType.STANDARD
+        standard_request.email = "jane.doe@example.com"
+        service.create_booking(standard_request)
 
         # Book LATE slot
         late_request = sample_booking_request.model_copy()
         late_request.drop_off_slot_type = SlotType.LATE
-        late_request.email = "jane.doe@example.com"  # Different customer
+        late_request.email = "bob.doe@example.com"
         service.create_booking(late_request)
 
         # Check slots
@@ -184,7 +214,7 @@ class TestBookingCreation:
         """Booking should calculate correct drop-off time."""
         booking = service.create_booking(sample_booking_request)
 
-        # 10:00 - 2:45 = 07:15
+        # 10:00 - 2:45 (165 min) = 07:15
         assert booking.drop_off_time == time(7, 15)
         assert booking.drop_off_date == FUTURE_DATE
 
@@ -248,8 +278,9 @@ class TestOvernightBookings:
         booking = service.create_booking(request)
 
         # Drop-off should be previous day evening
+        # 00:35 - 2:45 (165 min) = 21:50
         assert booking.drop_off_date == overnight_date_prev
-        assert booking.drop_off_time == time(21, 50)  # 00:35 - 2:45
+        assert booking.drop_off_time == time(21, 50)
 
     def test_overnight_late_slot_booking(self, service):
         """Early morning flight with late slot."""
@@ -286,8 +317,9 @@ class TestOvernightBookings:
         booking = service.create_booking(request)
 
         # Drop-off should be previous day evening
+        # 00:35 - 1:30 (90 min for LATE slot) = 23:05
         assert booking.drop_off_date == overnight_date_prev
-        assert booking.drop_off_time == time(22, 35)  # 00:35 - 2:00
+        assert booking.drop_off_time == time(23, 5)
 
 
 class TestBookingCancellation:
@@ -304,7 +336,7 @@ class TestBookingCancellation:
             flight_number="5523",
             airline_code="FR"
         )
-        assert len(slots_before.slots) == 1  # Only LATE available
+        assert len(slots_before.slots) == 2  # STANDARD and LATE available
 
         # Cancel the booking
         result = service.cancel_booking(booking.booking_id)
@@ -317,7 +349,7 @@ class TestBookingCancellation:
             flight_number="5523",
             airline_code="FR"
         )
-        assert len(slots_after.slots) == 2  # Both available again
+        assert len(slots_after.slots) == 3  # All three available again
 
     def test_cancel_nonexistent_booking_returns_false(self, service):
         """Cancelling non-existent booking should return False."""
@@ -459,12 +491,12 @@ class TestAllSlotsBookedContactMessage:
 
         assert response.all_slots_booked is False
         assert response.contact_message is None
-        assert len(response.slots) == 2
+        assert len(response.slots) == 3  # All three slots available
 
-    def test_no_contact_message_when_one_slot_available(
+    def test_no_contact_message_when_slots_remain(
         self, service, sample_booking_request
     ):
-        """Should not show contact message when one slot remains."""
+        """Should not show contact message when slots remain."""
         # Book the early slot
         service.create_booking(sample_booking_request)
 
@@ -477,7 +509,7 @@ class TestAllSlotsBookedContactMessage:
 
         assert response.all_slots_booked is False
         assert response.contact_message is None
-        assert len(response.slots) == 1
+        assert len(response.slots) == 2  # STANDARD and LATE remain
 
     def test_contact_message_when_all_slots_booked(
         self, service, sample_booking_request
@@ -486,10 +518,16 @@ class TestAllSlotsBookedContactMessage:
         # Book early slot
         service.create_booking(sample_booking_request)
 
+        # Book standard slot
+        standard_request = sample_booking_request.model_copy()
+        standard_request.drop_off_slot_type = SlotType.STANDARD
+        standard_request.email = "other@example.com"
+        service.create_booking(standard_request)
+
         # Book late slot
         late_request = sample_booking_request.model_copy()
         late_request.drop_off_slot_type = SlotType.LATE
-        late_request.email = "other@example.com"
+        late_request.email = "third@example.com"
         service.create_booking(late_request)
 
         response = service.get_available_slots_for_flight(
@@ -508,12 +546,17 @@ class TestAllSlotsBookedContactMessage:
         self, service, sample_booking_request
     ):
         """Contact message should disappear when a slot becomes available."""
-        # Book both slots
+        # Book all three slots
         booking1 = service.create_booking(sample_booking_request)
+
+        standard_request = sample_booking_request.model_copy()
+        standard_request.drop_off_slot_type = SlotType.STANDARD
+        standard_request.email = "other@example.com"
+        service.create_booking(standard_request)
 
         late_request = sample_booking_request.model_copy()
         late_request.drop_off_slot_type = SlotType.LATE
-        late_request.email = "other@example.com"
+        late_request.email = "third@example.com"
         service.create_booking(late_request)
 
         # Verify all booked
@@ -602,12 +645,17 @@ class TestAdminBooking:
         self, service, sample_booking_request, admin_booking_request
     ):
         """Admin can book even when regular slots are full."""
-        # Book both regular slots
+        # Book all three regular slots
         service.create_booking(sample_booking_request)
+
+        standard_request = sample_booking_request.model_copy()
+        standard_request.drop_off_slot_type = SlotType.STANDARD
+        standard_request.email = "other@example.com"
+        service.create_booking(standard_request)
 
         late_request = sample_booking_request.model_copy()
         late_request.drop_off_slot_type = SlotType.LATE
-        late_request.email = "other@example.com"
+        late_request.email = "third@example.com"
         service.create_booking(late_request)
 
         # Verify regular slots are full

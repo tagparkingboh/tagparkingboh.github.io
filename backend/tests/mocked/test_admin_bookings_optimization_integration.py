@@ -181,7 +181,7 @@ class TestQueryParameterHandling:
 
         # When days is 0, no filter should be applied
         should_filter = days and days > 0
-        assert should_filter is False
+        assert not should_filter
 
     def test_days_custom_value(self):
         """Test custom days value is respected."""
@@ -342,7 +342,7 @@ class TestFullFlowScenarios:
         days = 0
         should_filter = days and days > 0
 
-        assert should_filter is False
+        assert not should_filter
         assert len(bookings) == 5
 
 

@@ -48,29 +48,31 @@ def get_non_peak_date_for_tier(tier: str, duration_days: int = 7) -> tuple[date,
     Returns:
         (drop_off, pickup) date tuple
     """
-    # Start with a base offset that's solidly within the tier
+    # Define tier boundaries
     if tier == "early":
-        base_offset = 21  # Well within >=14 days
+        min_offset = 14
+        max_offset = 60  # Plenty of room
     elif tier == "standard":
-        base_offset = 10  # Well within 7-13 days
+        min_offset = 7
+        max_offset = 13
     else:  # late
-        base_offset = 3   # Well within <7 days
+        min_offset = 1
+        max_offset = 6
 
-    drop_off = date.today() + timedelta(days=base_offset)
-    pickup = drop_off + timedelta(days=duration_days)
+    # Try each day in the tier range until we find a non-peak combination
+    for offset in range(min_offset, max_offset + 1):
+        drop_off = date.today() + timedelta(days=offset)
+        pickup = drop_off + timedelta(days=duration_days)
 
-    # Shift forward to avoid peak days while staying in tier
-    max_shifts = 6  # Limit shifts to stay in tier
-    for _ in range(max_shifts):
         is_peak_dropoff = drop_off.weekday() in [4, 5]  # Fri/Sat
         is_peak_pickup = pickup.weekday() in [0, 1, 6]  # Sun/Mon/Tue
 
         if not is_peak_dropoff and not is_peak_pickup:
-            break
+            return drop_off, pickup
 
-        drop_off += timedelta(days=1)
-        pickup = drop_off + timedelta(days=duration_days)
-
+    # Fallback: return a date in tier (may be peak - test will handle)
+    drop_off = date.today() + timedelta(days=min_offset)
+    pickup = drop_off + timedelta(days=duration_days)
     return drop_off, pickup
 
 

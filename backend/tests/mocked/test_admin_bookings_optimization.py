@@ -186,7 +186,7 @@ class TestLoadAllOption:
         # When days is 0 or None, no date filter should be applied
         should_filter = days and days > 0
 
-        assert should_filter is False
+        assert not should_filter
 
     def test_days_none_returns_all_bookings(self):
         """Test that days=None returns all bookings."""
@@ -194,7 +194,7 @@ class TestLoadAllOption:
 
         should_filter = days and days > 0
 
-        assert should_filter is False
+        assert not should_filter
 
     def test_days_negative_treated_as_no_filter(self):
         """Test that negative days value is treated as no filter."""

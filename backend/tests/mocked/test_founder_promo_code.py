@@ -335,7 +335,7 @@ class TestFounderPromoCodeNegativePath:
         )
         data = response.json()
         assert data["valid"] is False
-        assert "Invalid" in data["message"]
+        assert "invalid" in data["message"].lower()
 
     @pytest.mark.asyncio
     async def test_empty_promo_code_returns_invalid(self, client):

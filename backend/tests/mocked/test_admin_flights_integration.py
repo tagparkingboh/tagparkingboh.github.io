@@ -372,10 +372,10 @@ class TestCreateDepartureIntegration:
             create_mock_db_departure(id=1, date_val=test_date),
         ]
 
-        # Create new departure in same month
+        # Create new departure in same month (use small offset to stay in same month)
         new_departure = create_mock_db_departure(
             id=2,
-            date_val=test_date + timedelta(days=15),
+            date_val=test_date + timedelta(days=3),
             flight_number="NEW001"
         )
 
@@ -494,7 +494,7 @@ class TestDeleteDepartureIntegration:
         test_date = FUTURE_DATE + timedelta(days=130)
         departures = [
             create_mock_db_departure(id=1, date_val=test_date),
-            create_mock_db_departure(id=2, date_val=test_date + timedelta(days=10)),
+            create_mock_db_departure(id=2, date_val=test_date + timedelta(days=2)),  # Keep in same month
             create_mock_db_departure(id=3, date_val=test_date + timedelta(days=45)),
         ]
 

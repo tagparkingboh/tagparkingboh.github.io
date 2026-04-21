@@ -9,6 +9,7 @@ All tests use mocked data - no real database connections.
 import pytest
 import pytest_asyncio
 import asyncio
+from unittest.mock import patch
 from httpx import AsyncClient, ASGITransport
 
 import sys
@@ -18,6 +19,28 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from main import app
 from database import get_db
 from booking_service import _booking_service, BookingService
+
+
+# Default pricing configuration for tests
+DEFAULT_TEST_PRICING = {
+    "days_1_4_price": 60.0,
+    "days_5_6_price": 69.0,
+    "week1_base_price": 79.0,
+    "days_8_9_price": 99.0,
+    "days_10_11_price": 119.0,
+    "days_12_13_price": 130.0,
+    "week2_base_price": 140.0,
+    "tier_increment": 10.0,
+    "peak_day_increment": 0.0,
+    "daily_increment": 8.0,
+}
+
+
+@pytest.fixture(autouse=True)
+def mock_pricing():
+    """Mock pricing from database for all tests."""
+    with patch("booking_service.get_pricing_from_db", return_value=DEFAULT_TEST_PRICING):
+        yield
 
 
 # =============================================================================
@@ -210,7 +233,7 @@ class TestConcurrentBooking:
         booking_data_1["drop_off_slot_type"] = "165"  # EARLY slot
 
         booking_data_2 = get_booking_data(2)
-        booking_data_2["drop_off_slot_type"] = "120"  # LATE slot
+        booking_data_2["drop_off_slot_type"] = "90"  # LATE slot
 
         async def book_early():
             response = await client.post("/api/bookings", json=booking_data_1)
@@ -324,29 +347,34 @@ class TestConcurrentBooking:
         )
 
         data = response.json()
-        # Only LATE slot (120) should be available
-        assert len(data["slots"]) == 1
-        assert data["slots"][0]["slot_type"] == "120"
+        # STANDARD (120) and LATE (90) should be available
+        assert len(data["slots"]) == 2
+        slot_types = [s["slot_type"] for s in data["slots"]]
+        assert "165" not in slot_types  # EARLY taken
 
     @pytest.mark.asyncio
-    async def test_both_slots_booked_concurrently(self, client):
+    async def test_all_slots_booked_concurrently(self, client):
         """
-        Two users booking different slots concurrently should result in
-        both slots being booked and no slots available.
+        Three users booking different slots concurrently should result in
+        all slots being booked and no slots available.
         """
         booking_data_1 = get_booking_data(1)
-        booking_data_1["drop_off_slot_type"] = "165"
+        booking_data_1["drop_off_slot_type"] = "165"  # EARLY
 
         booking_data_2 = get_booking_data(2)
-        booking_data_2["drop_off_slot_type"] = "120"
+        booking_data_2["drop_off_slot_type"] = "120"  # STANDARD
 
-        # Book both slots concurrently
+        booking_data_3 = get_booking_data(3)
+        booking_data_3["drop_off_slot_type"] = "90"  # LATE
+
+        # Book all three slots concurrently
         results = await asyncio.gather(
             client.post("/api/bookings", json=booking_data_1),
             client.post("/api/bookings", json=booking_data_2),
+            client.post("/api/bookings", json=booking_data_3),
         )
 
-        # Both should succeed
+        # All should succeed
         assert all(r.status_code == 200 for r in results)
 
         # Check available slots - should be none
@@ -366,28 +394,32 @@ class TestConcurrentBooking:
         assert data["contact_message"] is not None
 
     @pytest.mark.asyncio
-    async def test_third_user_rejected_after_both_slots_booked_concurrently(self, client):
+    async def test_fourth_user_rejected_after_all_slots_booked_concurrently(self, client):
         """
-        After two slots are booked concurrently, a third user should get
+        After all three slots are booked concurrently, a fourth user should get
         the contact message.
         """
-        # Book both slots concurrently
+        # Book all three slots concurrently
         booking_data_1 = get_booking_data(1)
-        booking_data_1["drop_off_slot_type"] = "165"
+        booking_data_1["drop_off_slot_type"] = "165"  # EARLY
 
         booking_data_2 = get_booking_data(2)
-        booking_data_2["drop_off_slot_type"] = "120"
+        booking_data_2["drop_off_slot_type"] = "120"  # STANDARD
+
+        booking_data_3 = get_booking_data(3)
+        booking_data_3["drop_off_slot_type"] = "90"  # LATE
 
         await asyncio.gather(
             client.post("/api/bookings", json=booking_data_1),
             client.post("/api/bookings", json=booking_data_2),
+            client.post("/api/bookings", json=booking_data_3),
         )
 
-        # Third user tries to book - should fail since both slots are taken
-        booking_data_3 = get_booking_data(3)
-        booking_data_3["drop_off_slot_type"] = "165"  # Try EARLY slot
+        # Fourth user tries to book - should fail since all slots are taken
+        booking_data_4 = get_booking_data(4)
+        booking_data_4["drop_off_slot_type"] = "165"  # Try EARLY slot
 
-        response = await client.post("/api/bookings", json=booking_data_3)
+        response = await client.post("/api/bookings", json=booking_data_4)
         assert response.status_code == 400
         assert "already booked" in response.json()["detail"].lower()
 
@@ -534,9 +566,10 @@ class TestConcurrentEdgeCases:
         final_slots = await check_slots()
         data = final_slots.json()
 
-        # Only LATE slot should be available
+        # STANDARD and LATE slots should be available
         slot_types = [s["slot_type"] for s in data["slots"]]
         assert "165" not in slot_types  # EARLY slot should be taken
+        assert len(slot_types) == 2
 
     @pytest.mark.asyncio
     async def test_concurrent_booking_and_cancel(self, client):

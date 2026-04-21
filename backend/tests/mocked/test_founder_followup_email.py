@@ -28,9 +28,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 TODAY = date.today()
 FUTURE_DATE = TODAY + timedelta(days=90)  # ~3 months from now
+
+# Use a fixed date for tests to avoid date-dependent failures
+# Tests use dates around March 2026
+TEST_START_DATE = date(2026, 3, 1)
 FUTURE_DATE_END = TODAY + timedelta(days=97)  # ~1 week after FUTURE_DATE
 START_DATE = FUTURE_DATE
-START_DATETIME = datetime.combine(FUTURE_DATE, datetime.min.time())
+START_DATETIME = datetime.combine(TEST_START_DATE, datetime.min.time())
 
 
 # =============================================================================

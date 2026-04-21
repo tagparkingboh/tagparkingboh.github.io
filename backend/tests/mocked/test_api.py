@@ -81,7 +81,7 @@ async def test_get_available_slots(client):
     )
     assert response.status_code == 200
     data = response.json()
-    assert len(data["slots"]) == 2
+    assert len(data["slots"]) == 3  # EARLY, STANDARD, LATE
     assert data["flight_number"] == "FR5523"
 
 
@@ -290,8 +290,10 @@ async def test_slot_hidden_after_booking(client):
         }
     )
     data = response.json()
-    assert len(data["slots"]) == 1  # Only LATE slot available
-    assert data["slots"][0]["slot_type"] == "120"
+    assert len(data["slots"]) == 2  # STANDARD and LATE slots available
+    slot_types = [s["slot_type"] for s in data["slots"]]
+    assert "120" in slot_types  # STANDARD
+    assert "90" in slot_types   # LATE
 
 
 @pytest.mark.asyncio
@@ -436,7 +438,7 @@ async def test_cancel_booking(client):
             "airline_code": "FR"
         }
     )
-    assert len(slots_response.json()["slots"]) == 2  # Both available again
+    assert len(slots_response.json()["slots"]) == 3  # All slots available again
 
 
 @pytest.mark.asyncio
@@ -564,12 +566,17 @@ async def test_all_slots_booked_shows_contact_message(client):
         "billing_country": "United Kingdom"
     }
 
-    # Book early slot
+    # Book EARLY slot (165)
     await client.post("/api/bookings", json=booking_data)
 
-    # Book late slot
+    # Book STANDARD slot (120)
     booking_data["email"] = "jane@example.com"
     booking_data["drop_off_slot_type"] = "120"
+    await client.post("/api/bookings", json=booking_data)
+
+    # Book LATE slot (90)
+    booking_data["email"] = "bob@example.com"
+    booking_data["drop_off_slot_type"] = "90"
     await client.post("/api/bookings", json=booking_data)
 
     # Check available slots - should show contact message
@@ -1036,10 +1043,13 @@ async def test_admin_booking_bypasses_slot_restrictions(client, admin_client):
         "billing_country": "United Kingdom"
     }
 
-    # Book both regular slots
+    # Book all three regular slots
     await client.post("/api/bookings", json=booking_data)
     booking_data["email"] = "jane@example.com"
     booking_data["drop_off_slot_type"] = "120"
+    await client.post("/api/bookings", json=booking_data)
+    booking_data["email"] = "bob@example.com"
+    booking_data["drop_off_slot_type"] = "90"
     await client.post("/api/bookings", json=booking_data)
 
     # Verify slots are full

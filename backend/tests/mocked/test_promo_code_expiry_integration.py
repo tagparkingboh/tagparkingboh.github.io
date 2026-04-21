@@ -37,11 +37,14 @@ class MockIntegrationStore:
         self.users = {}
         self.next_id = 1
 
-    def add_promotion(self, name: str = "Test Promo", discount_percent: int = 10):
+    def add_promotion(self, name: str = "Test Promo", discount_percent: int = 10, discount_type: str = "PERCENT"):
         promo = MagicMock(spec=Promotion)
         promo.id = self.next_id
         promo.name = name
         promo.discount_percent = discount_percent
+        promo.discount_type = discount_type
+        promo.is_multi_use = False
+        promo.uses_remaining = None
         promo.code_prefix = "TAG"
         promo.total_codes = 0
         promo.codes_sent = 0
@@ -59,6 +62,8 @@ class MockIntegrationStore:
         promotion_id: int,
         is_used: bool = False,
         expires_at: datetime = None,
+        max_uses: int = None,
+        use_count: int = 0,
     ):
         pc = MagicMock(spec=PromoCode)
         pc.id = self.next_id
@@ -67,6 +72,8 @@ class MockIntegrationStore:
         pc.is_used = is_used
         pc.used_at = None
         pc.expires_at = expires_at
+        pc.max_uses = max_uses
+        pc.use_count = use_count
         pc.email_sent = False
         pc.email_sent_at = None
         pc.recipient_email = None
@@ -80,6 +87,20 @@ class MockIntegrationStore:
         pc.shared_privately_at = None
         pc.booking_id = None
         pc.created_at = datetime.utcnow()
+
+        # Set computed properties
+        pc.is_multi_use = max_uses is not None
+        pc.is_unlimited = max_uses == 0
+        if max_uses is None:
+            pc.uses_remaining = 0 if is_used else 1
+            pc.can_be_used = not is_used
+        elif max_uses == 0:
+            pc.uses_remaining = None
+            pc.can_be_used = True
+        else:
+            pc.uses_remaining = max(0, max_uses - use_count)
+            pc.can_be_used = use_count < max_uses
+
         self.promo_codes[pc.id] = pc
         self.next_id += 1
         return pc

@@ -154,6 +154,12 @@ class MockQuery:
         self._filters.extend(args)
         return self
 
+    def join(self, *args, **kwargs):
+        return self
+
+    def outerjoin(self, *args, **kwargs):
+        return self
+
     def order_by(self, *args):
         self._order_by = args
         return self

@@ -148,10 +148,19 @@ class TestCheckPromoModalCodeUsed:
     def test_deactivates_modal_when_code_matches(self, mock_db, mock_promo_modal):
         """Should deactivate modal when promo code matches."""
         from main import check_promo_modal_code_used
-        from db_models import PromoModalStatus
+        from db_models import PromoModalStatus, PromoCode as DbPromoCode, PromoModal
 
-        # Setup mock to return our modal
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_promo_modal
+        # First query returns None (no promo code record = single-use)
+        # Second query returns the modal
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            if model == DbPromoCode:
+                mock_query.filter.return_value.first.return_value = None  # Single-use code
+            elif model == PromoModal:
+                mock_query.filter.return_value.first.return_value = mock_promo_modal
+            return mock_query
+
+        mock_db.query.side_effect = query_side_effect
 
         check_promo_modal_code_used(mock_db, "TAG-SPECIAL-10")
 
@@ -161,9 +170,17 @@ class TestCheckPromoModalCodeUsed:
     def test_deactivates_modal_case_insensitive(self, mock_db, mock_promo_modal):
         """Should match promo codes case-insensitively."""
         from main import check_promo_modal_code_used
-        from db_models import PromoModalStatus
+        from db_models import PromoModalStatus, PromoCode as DbPromoCode, PromoModal
 
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_promo_modal
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            if model == DbPromoCode:
+                mock_query.filter.return_value.first.return_value = None  # Single-use code
+            elif model == PromoModal:
+                mock_query.filter.return_value.first.return_value = mock_promo_modal
+            return mock_query
+
+        mock_db.query.side_effect = query_side_effect
 
         # Test with lowercase
         check_promo_modal_code_used(mock_db, "tag-special-10")
@@ -264,13 +281,21 @@ class TestPromoCodeUsageFlow:
     def test_modal_deactivates_after_code_used_on_booking(self, mock_db, mock_promo_modal):
         """Modal should deactivate when its promo code is used on a confirmed booking."""
         from main import check_promo_modal_code_used
-        from db_models import PromoModalStatus
+        from db_models import PromoModalStatus, PromoCode as DbPromoCode, PromoModal
 
         # Initially active
         assert mock_promo_modal.status == PromoModalStatus.ACTIVE
 
-        # Mock finding the modal
-        mock_db.query.return_value.filter.return_value.first.return_value = mock_promo_modal
+        # Mock finding the modal - need to handle both PromoCode and PromoModal queries
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            if model == DbPromoCode:
+                mock_query.filter.return_value.first.return_value = None  # Single-use code
+            elif model == PromoModal:
+                mock_query.filter.return_value.first.return_value = mock_promo_modal
+            return mock_query
+
+        mock_db.query.side_effect = query_side_effect
 
         # Simulate promo code being used (called from webhook after payment)
         check_promo_modal_code_used(mock_db, "TAG-SPECIAL-10")
@@ -341,14 +366,18 @@ class TestPromoCodeConcurrency:
 
         mock_db.commit = mock_commit
 
-        # First call - modal is found and active
-        def first_query(*args, **kwargs):
-            mock_filter = MagicMock()
-            mock_filter.first.return_value = modal
-            return mock_filter
+        # Mock both PromoCode and PromoModal queries
+        from db_models import PromoCode as DbPromoCode, PromoModal
 
-        mock_db.query.return_value.filter.return_value = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = modal
+        def query_side_effect(model):
+            mock_query = MagicMock()
+            if model == DbPromoCode:
+                mock_query.filter.return_value.first.return_value = None  # Single-use code
+            elif model == PromoModal:
+                mock_query.filter.return_value.first.return_value = modal
+            return mock_query
+
+        mock_db.query.side_effect = query_side_effect
 
         # Simulate two concurrent calls
         results = []
@@ -524,6 +553,12 @@ class TestPromoCodeAlreadyUsedMessage:
         used_promo.used_at = datetime(2026, 3, 29, 12, 0, 0)
         used_promo.promotion_id = 1
         used_promo.expires_at = None
+        used_promo.max_uses = None
+        used_promo.use_count = 0
+        # Set computed properties for single-use code
+        used_promo.is_multi_use = False
+        used_promo.uses_remaining = 0
+        used_promo.can_be_used = False
 
         mock_db.query.return_value.filter.return_value.first.return_value = used_promo
 
@@ -546,6 +581,12 @@ class TestPromoCodeAlreadyUsedMessage:
         used_promo.used_at = datetime(2026, 3, 29, 12, 0, 0)
         used_promo.promotion_id = 1
         used_promo.expires_at = None
+        used_promo.max_uses = None
+        used_promo.use_count = 0
+        # Set computed properties for single-use code
+        used_promo.is_multi_use = False
+        used_promo.uses_remaining = 0
+        used_promo.can_be_used = False
 
         mock_db.query.return_value.filter.return_value.first.return_value = used_promo
 

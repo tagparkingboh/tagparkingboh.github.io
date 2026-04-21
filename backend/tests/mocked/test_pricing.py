@@ -27,6 +27,8 @@ DEFAULT_TEST_PRICING = {
     "days_12_13_price": 130.0,
     "week2_base_price": 140.0,  # Longer package (14 days) early tier
     "tier_increment": 10.0,    # Price increase per tier
+    "peak_day_increment": 0.0,  # No peak day for most tests
+    "daily_increment": 8.0,
 }
 
 # Quick package prices: early=79, standard=89, late=99
@@ -1273,6 +1275,8 @@ class TestFullBookingFlowWithDynamicPricing:
             "days_12_13_price": 130.0,
             "week2_base_price": 140.0,
             "tier_increment": 10.0,
+            "peak_day_increment": 0.0,
+            "daily_increment": 8.0,
         }
 
         # Updated pricing configuration
@@ -1285,6 +1289,8 @@ class TestFullBookingFlowWithDynamicPricing:
             "days_12_13_price": 140.0,
             "week2_base_price": 150.0,
             "tier_increment": 15.0,
+            "peak_day_increment": 0.0,
+            "daily_increment": 8.0,
         }
 
         drop_off = (date.today() + timedelta(days=20)).isoformat()

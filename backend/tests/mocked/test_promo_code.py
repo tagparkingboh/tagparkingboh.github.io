@@ -227,7 +227,7 @@ class TestPromoCodeValidation:
         assert response.status_code == 200
         data = response.json()
         assert data["valid"] is False
-        assert "Invalid" in data["message"]
+        assert "invalid" in data["message"].lower()
         assert data["discount_percent"] is None
 
     @pytest.mark.asyncio

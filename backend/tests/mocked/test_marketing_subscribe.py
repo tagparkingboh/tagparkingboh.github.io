@@ -37,6 +37,13 @@ class MockSubscriberStore:
     def add(self, subscriber):
         subscriber.id = self.next_id
         subscriber.subscribed_at = subscriber.subscribed_at or datetime.utcnow()
+        # Add missing attributes that the endpoint may set
+        if not hasattr(subscriber, 'subscribers_at_activation') or subscriber.subscribers_at_activation is None:
+            subscriber.subscribers_at_activation = len(self.subscribers)
+        if not hasattr(subscriber, 'promo_code') or subscriber.promo_code is None:
+            subscriber.promo_code = None
+        if not hasattr(subscriber, 'promo_code_sent_at'):
+            subscriber.promo_code_sent_at = None
         self.subscribers[subscriber.email.lower()] = subscriber
         self.next_id += 1
         return subscriber
@@ -72,6 +79,10 @@ class MockQuery:
         return self
 
     def first(self):
+        # Return None for non-MarketingSubscriber queries
+        if self.model != MarketingSubscriber:
+            return None
+
         # Try to extract filter values
         for f in self._filters:
             if isinstance(f, BinaryExpression):
@@ -95,9 +106,15 @@ class MockQuery:
         return None
 
     def all(self):
+        # Return empty list for non-MarketingSubscriber queries (e.g., PromoModal)
+        if self.model != MarketingSubscriber:
+            return []
         return list(self.store.subscribers.values())
 
     def count(self):
+        # Only count MarketingSubscriber
+        if self.model != MarketingSubscriber:
+            return 0
         return len(self.store.subscribers)
 
 

@@ -312,7 +312,8 @@ class TestProcess2DayReminders:
         mock_enabled.return_value = False
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        mock_db = MagicMock()
+        process_pending_2day_reminders(mock_db)
 
         mock_send.assert_not_called()
 
@@ -363,7 +364,7 @@ class TestProcess2DayReminders:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         mock_send.assert_called_once()
         call_kwargs = mock_send.call_args[1]
@@ -391,7 +392,7 @@ class TestProcess2DayReminders:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         mock_send.assert_not_called()
 
@@ -414,7 +415,7 @@ class TestProcess2DayReminders:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         mock_send.assert_not_called()
 
@@ -437,7 +438,7 @@ class TestProcess2DayReminders:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         mock_send.assert_not_called()
 
@@ -460,7 +461,7 @@ class TestProcess2DayReminders:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         mock_send.assert_not_called()
 
@@ -483,7 +484,7 @@ class TestProcess2DayReminders:
         mock_db.query.return_value = mock_booking_query
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         mock_send.assert_not_called()
 
@@ -530,7 +531,7 @@ class TestProcess2DayReminders:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         # Check that reminder_2day_sent was set to True
         assert mock_booking.reminder_2day_sent is True
@@ -580,7 +581,7 @@ class TestProcess2DayReminders:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         # Check that reminder_2day_sent was NOT changed
         assert mock_booking.reminder_2day_sent is False
@@ -628,7 +629,7 @@ class TestProcess2DayReminders:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         mock_send.assert_called_once()
         call_kwargs = mock_send.call_args[1]
@@ -677,7 +678,7 @@ class TestProcess2DayReminders:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         mock_send.assert_called_once()
         call_kwargs = mock_send.call_args[1]
@@ -727,7 +728,7 @@ class TestProcess2DayReminders:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         mock_send.assert_called_once()
         call_kwargs = mock_send.call_args[1]
@@ -802,7 +803,7 @@ class TestSchedulerIntegration:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         # Both should have been sent
         assert mock_send.call_count == 2
@@ -851,7 +852,7 @@ class TestSchedulerIntegration:
         mock_db.query.side_effect = query_side_effect
 
         from email_scheduler import process_pending_2day_reminders
-        process_pending_2day_reminders()
+        process_pending_2day_reminders(mock_db)
 
         # Should still receive reminder (even though it's same day)
         mock_send.assert_called_once()
