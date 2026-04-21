@@ -38,9 +38,9 @@ jobs:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
           ENVIRONMENT: test
         run: |
-          # Run mocked tests only (no database required)
+          # Run all tests (database.py handles missing DB gracefully)
           python -m pytest \
-            tests/mocked/ \
+            tests/ \
             -v \
             --tb=short \
             -x \

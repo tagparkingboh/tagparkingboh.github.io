@@ -54,8 +54,8 @@ jobs:
         run: |
           START_TIME=$(date +%s)
 
-          # Run mocked tests only (no database required)
-          python -m pytest tests/mocked/ \
+          # Run all tests (database.py handles missing DB gracefully)
+          python -m pytest tests/ \
             --cov=. \
             --cov-report=json \
             --cov-report=term \
