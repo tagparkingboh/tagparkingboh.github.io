@@ -13077,6 +13077,19 @@ function Admin() {
                   </div>
                 ) : (
                   <>
+                    {/* Schedule Info */}
+                    <div className="qa-schedule-info">
+                      <h4>Scheduled Tests</h4>
+                      <p>Automated tests run 4 times per week:</p>
+                      <ul>
+                        <li>Monday at 5:00 AM UTC</li>
+                        <li>Wednesday at 5:00 AM UTC</li>
+                        <li>Friday at 5:00 AM UTC</li>
+                        <li>Saturday at 5:00 AM UTC</li>
+                      </ul>
+                      <p>Tests are run against the <strong>production</strong> environment.</p>
+                    </div>
+
                     {/* Latest Run Summary */}
                     {latestTestRun && (
                       <div className="qa-latest-run">
@@ -13282,16 +13295,6 @@ function Admin() {
                       )}
                     </div>
 
-                    {/* Schedule Info */}
-                    <div className="qa-schedule-info">
-                      <h4>Scheduled Tests</h4>
-                      <p>Automated tests run twice per week:</p>
-                      <ul>
-                        <li>Monday at 6:00 AM UTC</li>
-                        <li>Thursday at 6:00 AM UTC</li>
-                      </ul>
-                      <p>Tests are run against the <strong>staging</strong> environment.</p>
-                    </div>
                   </>
                 )}
           </div>
