@@ -37,6 +37,7 @@ def default_pricing():
         "week2_base_price": 150.0,    # 14 days anchor
         "daily_increment": 8.0,       # Daily increment between anchors
         "tier_increment": 5.0,        # Advance tier increment
+        "peak_day_increment": 0.0,    # Peak day increment (Fri/Sat drop-off, Sun/Mon/Tue pickup)
     }
 
 
@@ -177,6 +178,7 @@ class TestGetBasePriceForDurationEdgeCases:
             "week2_base_price": 120.0,
             "daily_increment": 10.0,
             "tier_increment": 5.0,
+            "peak_day_increment": 0.0,
         }
         # 5 days with custom pricing = 50 + 1*10 = 60
         price = get_base_price_for_duration(5, custom_pricing)

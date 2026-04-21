@@ -38,6 +38,7 @@ def default_pricing():
         "week2_base_price": 150.0,    # 14 days anchor
         "daily_increment": 8.0,       # Daily increment between anchors
         "tier_increment": 5.0,        # Advance tier increment
+        "peak_day_increment": 0.0,    # Peak day increment (Fri/Sat drop-off, Sun/Mon/Tue pickup)
     }
 
 
