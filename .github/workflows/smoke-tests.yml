@@ -38,8 +38,7 @@ jobs:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
           ENVIRONMENT: test
         run: |
-          # Run mocked tests only (don't require database connection)
-          # Root-level tests need migration - see tests/MIGRATION_AUDIT.md
+          # Run mocked tests only (no database required)
           python -m pytest \
             tests/mocked/ \
             -v \
