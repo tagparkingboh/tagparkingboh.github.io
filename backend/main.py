@@ -4853,6 +4853,20 @@ async def get_financial_report(
                     "discount_percent": sub.discount_percent or 10
                 }
 
+        # 6. Get multi-use promo codes from PromoCodeUsage table
+        from db_models import PromoCodeUsage
+        promo_usages = db.query(PromoCodeUsage).options(
+            joinedload(PromoCodeUsage.promo_code)
+        ).filter(
+            PromoCodeUsage.booking_id.in_(booking_ids)
+        ).all()
+        for usage in promo_usages:
+            if usage.booking_id not in promo_codes:
+                promo_codes[usage.booking_id] = {
+                    "code": usage.promo_code.code if usage.promo_code else "UNKNOWN",
+                    "discount_percent": usage.discount_percent or 0
+                }
+
     # Filter by promo usage if requested
     if promo_filter == "yes":
         bookings = [b for b in bookings if b.id in promo_codes]

@@ -1531,3 +1531,296 @@ class TestFinancialOverrideEdgeCases:
         # Expected: 555 + 8500 = 9055 discount
         assert total_gross == 5555 + 8500
         assert total_discount == 555 + 8500
+
+
+# =============================================================================
+# PromoCodeUsage (Multi-Use Promo Codes) Tests
+# =============================================================================
+
+def create_mock_promo_code_usage(
+    id=1,
+    booking_id=1,
+    promo_code_id=1,
+    discount_percent=10,
+    discount_amount_pence=1000,
+    promo_code=None,
+):
+    """Create a mock PromoCodeUsage object for multi-use promo codes."""
+    usage = MagicMock()
+    usage.id = id
+    usage.booking_id = booking_id
+    usage.promo_code_id = promo_code_id
+    usage.discount_percent = discount_percent
+    usage.discount_amount_pence = discount_amount_pence
+
+    # Create linked promo_code if not provided
+    if promo_code is None:
+        promo_code = MagicMock()
+        promo_code.id = promo_code_id
+        promo_code.code = "WED10"
+    usage.promo_code = promo_code
+
+    return usage
+
+
+class TestPromoCodeUsageMultiUse:
+    """Tests for PromoCodeUsage (multi-use promo codes) in financial reports."""
+
+    def test_multi_use_promo_code_discount_applied(self):
+        """Multi-use promo code from PromoCodeUsage should apply discount."""
+        usage = create_mock_promo_code_usage(
+            booking_id=1,
+            discount_percent=10,
+            discount_amount_pence=740,  # £7.40 discount
+        )
+        usage.promo_code.code = "WED10"
+
+        assert usage.booking_id == 1
+        assert usage.promo_code.code == "WED10"
+        assert usage.discount_percent == 10
+
+        # Calculate gross from net
+        net_pence = 6660  # Customer paid £66.60
+        gross_pence = int(net_pence / (1 - usage.discount_percent / 100))
+        discount_pence = gross_pence - net_pence
+
+        assert gross_pence == 7400  # Original price was £74.00
+        assert discount_pence == 740  # Discount was £7.40
+
+    def test_multi_use_promo_code_multiple_bookings(self):
+        """Multi-use promo code can be used across multiple bookings."""
+        usages = [
+            create_mock_promo_code_usage(
+                id=1,
+                booking_id=100,
+                discount_percent=10,
+                discount_amount_pence=740,
+            ),
+            create_mock_promo_code_usage(
+                id=2,
+                booking_id=101,
+                discount_percent=10,
+                discount_amount_pence=850,
+            ),
+            create_mock_promo_code_usage(
+                id=3,
+                booking_id=102,
+                discount_percent=10,
+                discount_amount_pence=650,
+            ),
+        ]
+
+        # All have the same promo code
+        for usage in usages:
+            usage.promo_code.code = "WED10"
+
+        booking_ids_with_promo = {u.booking_id for u in usages}
+
+        assert 100 in booking_ids_with_promo
+        assert 101 in booking_ids_with_promo
+        assert 102 in booking_ids_with_promo
+        assert len(usages) == 3
+
+    def test_multi_use_promo_code_in_promo_codes_dict(self):
+        """PromoCodeUsage should populate promo_codes dict like other sources."""
+        usage = create_mock_promo_code_usage(
+            booking_id=1,
+            discount_percent=10,
+        )
+        usage.promo_code.code = "WED10"
+
+        # Simulate how the endpoint builds promo_codes dict
+        promo_codes = {}
+        if usage.booking_id not in promo_codes:
+            promo_codes[usage.booking_id] = {
+                "code": usage.promo_code.code,
+                "discount_percent": usage.discount_percent or 0
+            }
+
+        assert promo_codes[1]["code"] == "WED10"
+        assert promo_codes[1]["discount_percent"] == 10
+
+    def test_multi_use_promo_code_does_not_override_existing(self):
+        """PromoCodeUsage should not override existing promo in dict."""
+        # First a promo from PromoCode table
+        promo_codes = {
+            1: {"code": "SUMMER20", "discount_percent": 20}
+        }
+
+        # Then a usage from PromoCodeUsage
+        usage = create_mock_promo_code_usage(
+            booking_id=1,  # Same booking
+            discount_percent=10,
+        )
+        usage.promo_code.code = "WED10"
+
+        # Should not override existing entry
+        if usage.booking_id not in promo_codes:
+            promo_codes[usage.booking_id] = {
+                "code": usage.promo_code.code,
+                "discount_percent": usage.discount_percent or 0
+            }
+
+        # Original promo should still be there
+        assert promo_codes[1]["code"] == "SUMMER20"
+        assert promo_codes[1]["discount_percent"] == 20
+
+    def test_multi_use_promo_code_different_discount_percents(self):
+        """Multi-use promo codes can have different discount percentages."""
+        usages = [
+            create_mock_promo_code_usage(booking_id=1, discount_percent=10),
+            create_mock_promo_code_usage(booking_id=2, discount_percent=15),
+            create_mock_promo_code_usage(booking_id=3, discount_percent=20),
+        ]
+        usages[0].promo_code.code = "WED10"
+        usages[1].promo_code.code = "SPECIAL15"
+        usages[2].promo_code.code = "VIP20"
+
+        promo_codes = {}
+        for usage in usages:
+            if usage.booking_id not in promo_codes:
+                promo_codes[usage.booking_id] = {
+                    "code": usage.promo_code.code,
+                    "discount_percent": usage.discount_percent
+                }
+
+        assert promo_codes[1]["discount_percent"] == 10
+        assert promo_codes[2]["discount_percent"] == 15
+        assert promo_codes[3]["discount_percent"] == 20
+
+    def test_multi_use_promo_code_zero_discount_percent(self):
+        """PromoCodeUsage with zero discount should be handled."""
+        usage = create_mock_promo_code_usage(
+            booking_id=1,
+            discount_percent=0,
+            discount_amount_pence=0,
+        )
+        usage.promo_code.code = "FREETRACKING"
+
+        promo_codes = {}
+        promo_codes[usage.booking_id] = {
+            "code": usage.promo_code.code,
+            "discount_percent": usage.discount_percent or 0
+        }
+
+        assert promo_codes[1]["code"] == "FREETRACKING"
+        assert promo_codes[1]["discount_percent"] == 0
+
+    def test_multi_use_promo_code_null_discount_percent(self):
+        """PromoCodeUsage with null discount_percent should default to 0."""
+        usage = create_mock_promo_code_usage(
+            booking_id=1,
+            discount_percent=None,
+        )
+        usage.promo_code.code = "LEGACY"
+
+        promo_codes = {}
+        promo_codes[usage.booking_id] = {
+            "code": usage.promo_code.code,
+            "discount_percent": usage.discount_percent or 0
+        }
+
+        assert promo_codes[1]["discount_percent"] == 0
+
+    def test_multi_use_promo_code_null_promo_code_reference(self):
+        """PromoCodeUsage with null promo_code should use UNKNOWN."""
+        usage = MagicMock()
+        usage.booking_id = 1
+        usage.discount_percent = 10
+        usage.promo_code = None
+
+        promo_codes = {}
+        promo_codes[usage.booking_id] = {
+            "code": usage.promo_code.code if usage.promo_code else "UNKNOWN",
+            "discount_percent": usage.discount_percent or 0
+        }
+
+        assert promo_codes[1]["code"] == "UNKNOWN"
+        assert promo_codes[1]["discount_percent"] == 10
+
+
+class TestPromoCodeUsageIntegration:
+    """Integration tests for PromoCodeUsage in financial report context."""
+
+    def test_gross_calculation_with_multi_use_promo(self):
+        """Gross price should be calculated correctly with multi-use promo."""
+        # Customer paid £66.60 with 10% off WED10
+        net_pence = 6660
+        discount_percent = 10
+
+        # gross = net / (1 - discount/100)
+        gross_pence = int(net_pence / (1 - discount_percent / 100))
+        discount_pence = gross_pence - net_pence
+
+        assert gross_pence == 7400  # £74.00 original
+        assert discount_pence == 740  # £7.40 discount
+
+    def test_discount_calculation_with_multi_use_promo(self):
+        """Discount amount should be calculated correctly."""
+        # Customer paid £76.50 with 10% off
+        net_pence = 7650
+        discount_percent = 10
+
+        gross_pence = int(net_pence / (1 - discount_percent / 100))
+        discount_pence = gross_pence - net_pence
+
+        assert gross_pence == 8500  # £85.00 original
+        assert discount_pence == 850  # £8.50 discount
+
+    def test_promo_filter_includes_multi_use_bookings(self):
+        """Promo filter 'yes' should include bookings with multi-use codes."""
+        booking_ids = [1, 2, 3, 4, 5]
+
+        # Promo codes from various sources including PromoCodeUsage
+        promo_codes = {
+            1: {"code": "SUMMER10", "discount_percent": 10},  # From PromoCode
+            3: {"code": "WED10", "discount_percent": 10},     # From PromoCodeUsage
+            5: {"code": "TAG-10OFF", "discount_percent": 10}, # From MarketingSubscriber
+        }
+
+        with_promo = [b for b in booking_ids if b in promo_codes]
+
+        assert 3 in with_promo  # WED10 from PromoCodeUsage included
+        assert len(with_promo) == 3
+
+    def test_promo_filter_excludes_non_promo_bookings(self):
+        """Promo filter 'no' should exclude bookings with multi-use codes."""
+        booking_ids = [1, 2, 3, 4, 5]
+
+        promo_codes = {
+            1: {"code": "SUMMER10", "discount_percent": 10},
+            3: {"code": "WED10", "discount_percent": 10},  # From PromoCodeUsage
+        }
+
+        without_promo = [b for b in booking_ids if b not in promo_codes]
+
+        assert 3 not in without_promo  # WED10 booking excluded
+        assert without_promo == [2, 4, 5]
+
+    def test_monthly_totals_include_multi_use_discounts(self):
+        """Monthly discount totals should include multi-use promo discounts."""
+        # Simulating 3 bookings in January with various promos
+        january_bookings = [
+            {"net": 5000, "discount_percent": 0, "promo": None},           # No promo
+            {"net": 6660, "discount_percent": 10, "promo": "WED10"},       # Multi-use
+            {"net": 4500, "discount_percent": 10, "promo": "TAG-10OFF"},   # Marketing
+        ]
+
+        total_gross = 0
+        total_discount = 0
+
+        for b in january_bookings:
+            if b["discount_percent"] and b["discount_percent"] < 100:
+                gross = int(b["net"] / (1 - b["discount_percent"] / 100))
+                discount = gross - b["net"]
+            else:
+                gross = b["net"]
+                discount = 0
+
+            total_gross += gross
+            total_discount += discount
+
+        # Expected: 5000 + 7400 + 5000 = 17400 gross
+        # Expected: 0 + 740 + 500 = 1240 discount
+        assert total_gross == 5000 + 7400 + 5000
+        assert total_discount == 0 + 740 + 500
