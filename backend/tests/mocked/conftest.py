@@ -1,19 +1,36 @@
 """
-Conftest for mocked tests - does NOT connect to database.
+Shared pytest fixtures and configuration for mocked tests.
 
-Tests in this directory are pure unit tests that don't need database access.
+This conftest.py ensures proper test isolation when running the full suite.
 """
 import pytest
 
 
-# Override the parent conftest fixtures to prevent database connection
-@pytest.fixture(scope="session", autouse=True)
-def setup_app_dependency_override():
-    """No-op override - mocked tests don't need database."""
-    yield
-
-
 @pytest.fixture(autouse=True)
-def setup_test_database():
-    """No-op override - mocked tests don't need database."""
+def reset_app_state():
+    """
+    Automatically reset FastAPI app state after each test.
+
+    This prevents test pollution when multiple test files use
+    app.dependency_overrides.
+    """
     yield
+
+    # Clean up after each test
+    try:
+        from main import app
+        app.dependency_overrides.clear()
+    except ImportError:
+        pass  # main not imported in this test
+
+
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_at_end():
+    """Final cleanup at the end of the test session."""
+    yield
+
+    try:
+        from main import app
+        app.dependency_overrides.clear()
+    except ImportError:
+        pass
