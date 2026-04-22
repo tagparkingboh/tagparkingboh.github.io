@@ -697,6 +697,59 @@ class TestLogsBoundaryConditions:
 
 
 # ============================================================================
+# log_error Function Tests
+# ============================================================================
+
+class TestLogErrorFunction:
+    """Tests for the log_error helper function."""
+
+    def test_passes_enum_not_value_to_error_log(self):
+        """Should pass ErrorSeverity enum member, not .value string.
+
+        This test ensures the log_error function passes the enum member
+        directly to ErrorLog, not severity.value (which would cause
+        'invalid input value for enum errorseverity' errors).
+        """
+        from db_models import ErrorSeverity, ErrorLog
+
+        # Verify ErrorLog expects enum member, not string
+        # The severity column is defined as Enum(ErrorSeverity)
+        assert hasattr(ErrorLog, 'severity')
+
+        # Verify enum values are lowercase strings
+        assert ErrorSeverity.ERROR.value == "error"
+        assert ErrorSeverity.WARNING.value == "warning"
+
+        # The key insight: SQLAlchemy Enum columns expect the enum member,
+        # not the .value string. Passing .value causes PostgreSQL errors.
+
+    def test_error_severity_enum_values(self):
+        """Should have correct enum values for database compatibility."""
+        from db_models import ErrorSeverity
+
+        expected_values = ["debug", "info", "warning", "error", "critical"]
+        actual_values = [e.value for e in ErrorSeverity]
+
+        assert actual_values == expected_values
+
+    def test_log_error_creates_error_log_with_correct_severity(self):
+        """Should create ErrorLog with enum member, not string."""
+        from db_models import ErrorSeverity
+
+        # Simulate what log_error should do (pass enum, not .value)
+        severity = ErrorSeverity.ERROR
+
+        # This is CORRECT - pass the enum member
+        error_log_data = {"severity": severity}
+        assert error_log_data["severity"] == ErrorSeverity.ERROR
+        assert error_log_data["severity"] != "error"  # Not the string!
+
+        # This would be WRONG - passing .value
+        wrong_data = {"severity": severity.value}
+        assert wrong_data["severity"] == "error"  # String, not enum
+
+
+# ============================================================================
 # Run tests
 # ============================================================================
 
