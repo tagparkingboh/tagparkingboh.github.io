@@ -7,7 +7,7 @@ Checks for subscribers who need welcome or promo emails and sends them.
 """
 import logging
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
@@ -132,8 +132,11 @@ def process_pending_promo_emails(db: Session):
 
 def process_pending_2day_reminders(db: Session):
     """
-    Find confirmed bookings that are within 48 hours of their dropoff date
+    Find confirmed bookings that are within 48 hours of their dropoff datetime
     (UK time) and haven't received the 2-day reminder yet.
+
+    Uses exact datetime comparison: dropoff_date + dropoff_time must be within
+    48 hours of the current UK time.
     """
     try:
         # Get current time in UK timezone
@@ -141,18 +144,32 @@ def process_pending_2day_reminders(db: Session):
         now_uk = datetime.now(uk_tz)
 
         # Calculate the cutoff: 48 hours from now in UK time
-        cutoff_date = (now_uk + timedelta(hours=48)).date()
+        cutoff_datetime = now_uk + timedelta(hours=48)
+        cutoff_date = cutoff_datetime.date()
 
-        # Find confirmed bookings that:
-        # 1. Haven't received 2-day reminder
-        # 2. Dropoff date is within 48 hours (today or tomorrow or day after, depending on time)
-        # 3. Status is CONFIRMED
-        pending = db.query(Booking).filter(
+        # First, get candidate bookings with a broad date filter
+        # (we'll do precise datetime filtering in Python)
+        # Include bookings up to cutoff_date + 1 to account for edge cases
+        candidate_bookings = db.query(Booking).filter(
             Booking.reminder_2day_sent == False,
             Booking.status == BookingStatus.CONFIRMED,
-            Booking.dropoff_date <= cutoff_date,
+            Booking.dropoff_date <= cutoff_date + timedelta(days=1),
             Booking.dropoff_date >= now_uk.date(),  # Don't send for past bookings
-        ).limit(10).all()
+        ).limit(50).all()
+
+        # Filter to only bookings within exactly 48 hours
+        pending = []
+        for booking in candidate_bookings:
+            # Combine dropoff_date + dropoff_time into a datetime
+            dropoff_time = booking.dropoff_time or time(0, 0)
+            dropoff_datetime = uk_tz.localize(datetime.combine(booking.dropoff_date, dropoff_time))
+
+            # Check if dropoff is within 48 hours from now
+            if now_uk <= dropoff_datetime <= cutoff_datetime:
+                pending.append(booking)
+
+        # Limit to 10 at a time to avoid overwhelming
+        pending = pending[:10]
 
         for booking in pending:
             # Get customer details

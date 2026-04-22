@@ -808,25 +808,26 @@ class TestSchedulerIntegration:
         # Both should have been sent
         assert mock_send.call_count == 2
 
+    @patch('email_scheduler.datetime')
     @patch('email_scheduler.send_2_day_reminder_email')
-    @patch('email_scheduler.is_email_enabled')
-    @patch('email_scheduler.get_db')
-    def test_last_minute_booking_gets_reminder(
-        self, mock_get_db, mock_enabled, mock_send
-    ):
-        """Test that a booking made for today still gets the reminder."""
-        mock_enabled.return_value = True
+    def test_last_minute_booking_gets_reminder(self, mock_send, mock_datetime):
+        """Test that a same-day booking with future dropoff time gets the reminder."""
+        import pytz
+        uk_tz = pytz.timezone('Europe/London')
+
+        # Set current time to 08:00 on April 22
+        fixed_now = uk_tz.localize(datetime(2026, 4, 22, 8, 0, 0))
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.combine = datetime.combine
+
         mock_send.return_value = True
 
-        # Setup mock database
         mock_db = MagicMock()
-        mock_get_db.return_value = mock_db
 
-        # Create mock booking for today
-        today = date.today()
+        # Create mock booking for today at 18:00 (10 hours from now - within 48h)
         mock_booking = create_mock_booking(
             reference="TAG-REMIND012",
-            dropoff_date=today,
+            dropoff_date=date(2026, 4, 22),
             dropoff_time=time(18, 0),
         )
         mock_customer = create_mock_customer(email="lastminute@example.com", first_name="LastMinute", last_name="Booker")
@@ -837,9 +838,6 @@ class TestSchedulerIntegration:
 
         mock_customer_query = MagicMock()
         mock_customer_query.filter.return_value.first.return_value = mock_customer
-
-        mock_flight_query = MagicMock()
-        mock_flight_query.filter.return_value.first.return_value = None
 
         def query_side_effect(model):
             from db_models import Booking, Customer
@@ -854,7 +852,379 @@ class TestSchedulerIntegration:
         from email_scheduler import process_pending_2day_reminders
         process_pending_2day_reminders(mock_db)
 
-        # Should still receive reminder (even though it's same day)
+        # Should receive reminder (same day, future dropoff time)
         mock_send.assert_called_once()
         call_kwargs = mock_send.call_args[1]
         assert call_kwargs["email"] == "lastminute@example.com"
+
+
+# =============================================================================
+# 48-Hour Boundary Tests (Exact DateTime Comparison)
+# =============================================================================
+
+class Test48HourBoundary:
+    """Tests for exact 48-hour datetime boundary logic."""
+
+    @patch('email_scheduler.datetime')
+    @patch('email_scheduler.send_2_day_reminder_email')
+    def test_booking_exactly_at_48_hours_is_included(self, mock_send, mock_datetime):
+        """Booking exactly 48 hours from now should receive reminder."""
+        import pytz
+        uk_tz = pytz.timezone('Europe/London')
+
+        # Set current time to 10:00 on April 22
+        fixed_now = uk_tz.localize(datetime(2026, 4, 22, 10, 0, 0))
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.combine = datetime.combine  # Keep real combine
+
+        mock_send.return_value = True
+
+        mock_db = MagicMock()
+
+        # Booking at exactly 48 hours (April 24, 10:00)
+        mock_booking = create_mock_booking(
+            reference="TAG-48HR-EXACT",
+            dropoff_date=date(2026, 4, 24),
+            dropoff_time=time(10, 0),
+        )
+        mock_customer = create_mock_customer()
+
+        mock_booking_query = MagicMock()
+        mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
+
+        mock_customer_query = MagicMock()
+        mock_customer_query.filter.return_value.first.return_value = mock_customer
+
+        def query_side_effect(model):
+            from db_models import Booking, Customer
+            if model == Booking:
+                return mock_booking_query
+            elif model == Customer:
+                return mock_customer_query
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
+
+        from email_scheduler import process_pending_2day_reminders
+        process_pending_2day_reminders(mock_db)
+
+        mock_send.assert_called_once()
+
+    @patch('email_scheduler.datetime')
+    @patch('email_scheduler.send_2_day_reminder_email')
+    def test_booking_at_47_hours_59_minutes_is_included(self, mock_send, mock_datetime):
+        """Booking at 47h 59m (just under 48 hours) should receive reminder."""
+        import pytz
+        uk_tz = pytz.timezone('Europe/London')
+
+        # Set current time to 10:00 on April 22
+        fixed_now = uk_tz.localize(datetime(2026, 4, 22, 10, 0, 0))
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.combine = datetime.combine
+
+        mock_send.return_value = True
+
+        mock_db = MagicMock()
+
+        # Booking at 47h 59m (April 24, 09:59)
+        mock_booking = create_mock_booking(
+            reference="TAG-47HR59",
+            dropoff_date=date(2026, 4, 24),
+            dropoff_time=time(9, 59),
+        )
+        mock_customer = create_mock_customer()
+
+        mock_booking_query = MagicMock()
+        mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
+
+        mock_customer_query = MagicMock()
+        mock_customer_query.filter.return_value.first.return_value = mock_customer
+
+        def query_side_effect(model):
+            from db_models import Booking, Customer
+            if model == Booking:
+                return mock_booking_query
+            elif model == Customer:
+                return mock_customer_query
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
+
+        from email_scheduler import process_pending_2day_reminders
+        process_pending_2day_reminders(mock_db)
+
+        mock_send.assert_called_once()
+
+    @patch('email_scheduler.datetime')
+    @patch('email_scheduler.send_2_day_reminder_email')
+    def test_booking_at_48_hours_1_minute_is_excluded(self, mock_send, mock_datetime):
+        """Booking at 48h 1m (just over 48 hours) should NOT receive reminder."""
+        import pytz
+        uk_tz = pytz.timezone('Europe/London')
+
+        # Set current time to 10:00 on April 22
+        fixed_now = uk_tz.localize(datetime(2026, 4, 22, 10, 0, 0))
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.combine = datetime.combine
+
+        mock_send.return_value = True
+
+        mock_db = MagicMock()
+
+        # Booking at 48h 1m (April 24, 10:01) - should be excluded
+        mock_booking = create_mock_booking(
+            reference="TAG-48HR01",
+            dropoff_date=date(2026, 4, 24),
+            dropoff_time=time(10, 1),
+        )
+
+        mock_booking_query = MagicMock()
+        mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
+
+        mock_db.query.return_value = mock_booking_query
+
+        from email_scheduler import process_pending_2day_reminders
+        process_pending_2day_reminders(mock_db)
+
+        mock_send.assert_not_called()
+
+    @patch('email_scheduler.datetime')
+    @patch('email_scheduler.send_2_day_reminder_email')
+    def test_booking_3_days_away_is_excluded(self, mock_send, mock_datetime):
+        """Booking 3 days (72 hours) away should NOT receive reminder."""
+        import pytz
+        uk_tz = pytz.timezone('Europe/London')
+
+        fixed_now = uk_tz.localize(datetime(2026, 4, 22, 10, 0, 0))
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.combine = datetime.combine
+
+        mock_db = MagicMock()
+
+        # Booking 72 hours away (April 25, 10:00)
+        mock_booking = create_mock_booking(
+            reference="TAG-72HR",
+            dropoff_date=date(2026, 4, 25),
+            dropoff_time=time(10, 0),
+        )
+
+        mock_booking_query = MagicMock()
+        mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
+
+        mock_db.query.return_value = mock_booking_query
+
+        from email_scheduler import process_pending_2day_reminders
+        process_pending_2day_reminders(mock_db)
+
+        mock_send.assert_not_called()
+
+    @patch('email_scheduler.datetime')
+    @patch('email_scheduler.send_2_day_reminder_email')
+    def test_booking_24_hours_away_is_included(self, mock_send, mock_datetime):
+        """Booking 24 hours away should receive reminder (within 48 hours)."""
+        import pytz
+        uk_tz = pytz.timezone('Europe/London')
+
+        fixed_now = uk_tz.localize(datetime(2026, 4, 22, 10, 0, 0))
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.combine = datetime.combine
+
+        mock_send.return_value = True
+
+        mock_db = MagicMock()
+
+        # Booking 24 hours away (April 23, 10:00)
+        mock_booking = create_mock_booking(
+            reference="TAG-24HR",
+            dropoff_date=date(2026, 4, 23),
+            dropoff_time=time(10, 0),
+        )
+        mock_customer = create_mock_customer()
+
+        mock_booking_query = MagicMock()
+        mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
+
+        mock_customer_query = MagicMock()
+        mock_customer_query.filter.return_value.first.return_value = mock_customer
+
+        def query_side_effect(model):
+            from db_models import Booking, Customer
+            if model == Booking:
+                return mock_booking_query
+            elif model == Customer:
+                return mock_customer_query
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
+
+        from email_scheduler import process_pending_2day_reminders
+        process_pending_2day_reminders(mock_db)
+
+        mock_send.assert_called_once()
+
+    @patch('email_scheduler.datetime')
+    @patch('email_scheduler.send_2_day_reminder_email')
+    def test_late_night_booking_boundary(self, mock_send, mock_datetime):
+        """Late night booking (23:59) should use correct datetime comparison."""
+        import pytz
+        uk_tz = pytz.timezone('Europe/London')
+
+        # Current time: April 22, 23:00
+        fixed_now = uk_tz.localize(datetime(2026, 4, 22, 23, 0, 0))
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.combine = datetime.combine
+
+        mock_send.return_value = True
+
+        mock_db = MagicMock()
+
+        # Booking at April 24, 22:59 (47h 59m away) - should be included
+        mock_booking = create_mock_booking(
+            reference="TAG-LATE",
+            dropoff_date=date(2026, 4, 24),
+            dropoff_time=time(22, 59),
+        )
+        mock_customer = create_mock_customer()
+
+        mock_booking_query = MagicMock()
+        mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
+
+        mock_customer_query = MagicMock()
+        mock_customer_query.filter.return_value.first.return_value = mock_customer
+
+        def query_side_effect(model):
+            from db_models import Booking, Customer
+            if model == Booking:
+                return mock_booking_query
+            elif model == Customer:
+                return mock_customer_query
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
+
+        from email_scheduler import process_pending_2day_reminders
+        process_pending_2day_reminders(mock_db)
+
+        mock_send.assert_called_once()
+
+    @patch('email_scheduler.datetime')
+    @patch('email_scheduler.send_2_day_reminder_email')
+    def test_early_morning_booking_boundary(self, mock_send, mock_datetime):
+        """Early morning booking (06:00) should use correct datetime comparison."""
+        import pytz
+        uk_tz = pytz.timezone('Europe/London')
+
+        # Current time: April 22, 06:00
+        fixed_now = uk_tz.localize(datetime(2026, 4, 22, 6, 0, 0))
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.combine = datetime.combine
+
+        mock_send.return_value = True
+
+        mock_db = MagicMock()
+
+        # Booking at April 24, 05:59 (47h 59m away) - should be included
+        mock_booking = create_mock_booking(
+            reference="TAG-EARLY",
+            dropoff_date=date(2026, 4, 24),
+            dropoff_time=time(5, 59),
+        )
+        mock_customer = create_mock_customer()
+
+        mock_booking_query = MagicMock()
+        mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
+
+        mock_customer_query = MagicMock()
+        mock_customer_query.filter.return_value.first.return_value = mock_customer
+
+        def query_side_effect(model):
+            from db_models import Booking, Customer
+            if model == Booking:
+                return mock_booking_query
+            elif model == Customer:
+                return mock_customer_query
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
+
+        from email_scheduler import process_pending_2day_reminders
+        process_pending_2day_reminders(mock_db)
+
+        mock_send.assert_called_once()
+
+    @patch('email_scheduler.datetime')
+    @patch('email_scheduler.send_2_day_reminder_email')
+    def test_past_dropoff_time_today_is_excluded(self, mock_send, mock_datetime):
+        """Booking with dropoff time already passed today should NOT get reminder."""
+        import pytz
+        uk_tz = pytz.timezone('Europe/London')
+
+        # Current time: April 22, 14:00
+        fixed_now = uk_tz.localize(datetime(2026, 4, 22, 14, 0, 0))
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.combine = datetime.combine
+
+        mock_db = MagicMock()
+
+        # Booking today at 10:00 (already passed) - should be excluded
+        mock_booking = create_mock_booking(
+            reference="TAG-PAST",
+            dropoff_date=date(2026, 4, 22),
+            dropoff_time=time(10, 0),
+        )
+
+        mock_booking_query = MagicMock()
+        mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
+
+        mock_db.query.return_value = mock_booking_query
+
+        from email_scheduler import process_pending_2day_reminders
+        process_pending_2day_reminders(mock_db)
+
+        mock_send.assert_not_called()
+
+    @patch('email_scheduler.datetime')
+    @patch('email_scheduler.send_2_day_reminder_email')
+    def test_booking_with_no_dropoff_time_defaults_to_midnight(self, mock_send, mock_datetime):
+        """Booking without dropoff_time should default to 00:00."""
+        import pytz
+        uk_tz = pytz.timezone('Europe/London')
+
+        # Current time: April 22, 10:00
+        fixed_now = uk_tz.localize(datetime(2026, 4, 22, 10, 0, 0))
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.combine = datetime.combine
+
+        mock_send.return_value = True
+
+        mock_db = MagicMock()
+
+        # Booking on April 24 with no dropoff_time (defaults to 00:00)
+        # 00:00 on April 24 = 38 hours from 10:00 on April 22 = within 48h
+        mock_booking = create_mock_booking(
+            reference="TAG-NOTIME",
+            dropoff_date=date(2026, 4, 24),
+            dropoff_time=None,
+        )
+        mock_customer = create_mock_customer()
+
+        mock_booking_query = MagicMock()
+        mock_booking_query.filter.return_value.limit.return_value.all.return_value = [mock_booking]
+
+        mock_customer_query = MagicMock()
+        mock_customer_query.filter.return_value.first.return_value = mock_customer
+
+        def query_side_effect(model):
+            from db_models import Booking, Customer
+            if model == Booking:
+                return mock_booking_query
+            elif model == Customer:
+                return mock_customer_query
+            return MagicMock()
+
+        mock_db.query.side_effect = query_side_effect
+
+        from email_scheduler import process_pending_2day_reminders
+        process_pending_2day_reminders(mock_db)
+
+        mock_send.assert_called_once()
