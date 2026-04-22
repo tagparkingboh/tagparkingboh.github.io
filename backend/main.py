@@ -1189,7 +1189,7 @@ async def get_all_bookings(
 
     By default returns last 30 days of bookings. Set days=0 for all bookings.
     """
-    from db_models import Booking, Customer, Vehicle, Payment, BookingStatus
+    from db_models import Booking, Customer, Vehicle, Payment, BookingStatus, PromoCodeUsage
     import pytz
 
     uk_tz = pytz.timezone('Europe/London')
@@ -1238,6 +1238,18 @@ async def get_all_bookings(
         query = query.limit(limit)
 
     bookings = query.all()
+
+    # Batch load promo code usages for all bookings (avoids N+1 queries)
+    booking_ids = [b.id for b in bookings]
+    promo_usages = {}
+    if booking_ids:
+        usages = db.query(PromoCodeUsage).options(
+            joinedload(PromoCodeUsage.promo_code)
+        ).filter(
+            PromoCodeUsage.booking_id.in_(booking_ids)
+        ).all()
+        for usage in usages:
+            promo_usages[usage.booking_id] = usage
 
     # Format bookings for frontend
     result = []
@@ -1314,6 +1326,10 @@ async def get_all_bookings(
                 "refund_amount_pence": b.payment.refund_amount_pence,
                 "refunded_at": b.payment.refunded_at.isoformat() if b.payment.refunded_at else None,
             } if b.payment else None,
+            # Promo code fields (from PromoCodeUsage table)
+            "promo_code": promo_usages[b.id].promo_code.code if b.id in promo_usages else None,
+            "discount_percent": promo_usages[b.id].discount_percent if b.id in promo_usages else None,
+            "discount_amount_pence": promo_usages[b.id].discount_amount_pence if b.id in promo_usages else None,
         })
 
     return {
