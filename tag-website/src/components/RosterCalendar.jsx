@@ -673,7 +673,8 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     const lastDay = new Date(year, month + 1, 0)
     const daysInMonth = lastDay.getDate()
 
-    const startDayOfWeek = firstDay.getDay()
+    // Monday-first week: shift so Monday = 0 and Sunday = 6
+    const startDayOfWeek = (firstDay.getDay() + 6) % 7
 
     const weeks = []
     let currentDay = 1 - startDayOfWeek
@@ -1813,7 +1814,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       {/* Calendar Grid */}
       <div className="calendar-grid">
         <div className="calendar-weekdays">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
             <div key={day} className="calendar-weekday">
               {day}
             </div>

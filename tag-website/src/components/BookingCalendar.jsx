@@ -81,8 +81,8 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
     const lastDay = new Date(year, month + 1, 0)
     const daysInMonth = lastDay.getDate()
 
-    // What day of week does the month start on (0 = Sunday)
-    const startDayOfWeek = firstDay.getDay()
+    // Monday-first week: shift so Monday = 0 and Sunday = 6
+    const startDayOfWeek = (firstDay.getDay() + 6) % 7
 
     // Build calendar grid (6 weeks max)
     const weeks = []
@@ -186,7 +186,7 @@ function BookingCalendar({ token, renderBookingActions, refreshTrigger, apiEndpo
     'July', 'August', 'September', 'October', 'November', 'December'
   ]
 
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
   // Get selected day's bookings
   const selectedDayBookings = selectedDate ? bookingsByDate[selectedDate] : null
