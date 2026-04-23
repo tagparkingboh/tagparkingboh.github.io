@@ -826,3 +826,101 @@ def send_founder_followup_email(
         print(f"[EMAIL] Exception sending founder followup: {str(e)}")
         logger.error(f"Error sending founder followup to {email}: {str(e)}")
         return False
+
+
+def send_marketing_campaign_email(
+    email: str,
+    first_name: str,
+    subject: str,
+    message: str,
+    promo_code: str = None,
+    unsubscribe_token: str = None,
+) -> bool:
+    """
+    Send a marketing campaign email to a subscriber.
+
+    Uses the marketing_campaign_email.html template with lime green branding.
+
+    Args:
+        email: Subscriber email address
+        first_name: Subscriber first name
+        subject: Email subject line
+        message: Email body content (can contain {{first_name}}, {{founder_name}})
+        promo_code: Optional promo code to include
+        unsubscribe_token: Token for unsubscribe link
+
+    Returns:
+        True if sent successfully, False otherwise.
+    """
+    founder_name = os.getenv("FOUNDER_NAME", "Kristian")
+
+    # Load template from file
+    template_path = os.path.join(os.path.dirname(__file__), "email_templates", "marketing_campaign_email.html")
+    with open(template_path, "r") as f:
+        html_content = f.read()
+
+    # Replace message variables
+    processed_message = message.replace("{{first_name}}", first_name or "there")
+    processed_message = processed_message.replace("{{founder_name}}", founder_name)
+
+    # Build promo code section if provided
+    promo_section = ""
+    if promo_code:
+        promo_section = f'''
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+            <tr>
+                <td align="center" style="padding: 20px 0;">
+                    <div style="background-color: #CCFF00; border-radius: 8px; padding: 20px; display: inline-block;">
+                        <p style="margin: 0 0 10px 0; font-size: 14px; color: #1A1A1A;">Your exclusive promo code:</p>
+                        <p style="margin: 0; font-size: 28px; font-weight: bold; color: #1A1A1A; letter-spacing: 2px;">{promo_code}</p>
+                    </div>
+                </td>
+            </tr>
+        </table>
+        '''
+
+    # Build unsubscribe URL
+    base_url = os.getenv("BASE_URL", "https://tagparking.co.uk")
+    unsubscribe_url = f"{base_url}/unsubscribe/{unsubscribe_token}" if unsubscribe_token else f"{base_url}/unsubscribe"
+
+    # Replace template placeholders
+    html_content = html_content.replace("{{SUBJECT}}", subject)
+    html_content = html_content.replace("{{FIRST_NAME}}", first_name or "there")
+    html_content = html_content.replace("{{MESSAGE}}", processed_message.replace("\n", "<br>"))
+    html_content = html_content.replace("{{PROMO_CODE_SECTION}}", promo_section)
+    html_content = html_content.replace("{{FOUNDER_NAME}}", founder_name)
+    html_content = html_content.replace("{{UNSUBSCRIBE_URL}}", unsubscribe_url)
+    html_content = html_content.replace("{{PREVIEW_TEXT}}", subject[:100])
+
+    print(f"[EMAIL] send_marketing_campaign_email called for: {email}, subject: {subject}")
+    if not SENDGRID_API_KEY:
+        print("[EMAIL] ERROR: SendGrid API key not configured!")
+        logger.warning("SendGrid API key not configured - email not sent")
+        return False
+
+    try:
+        message_obj = Mail(
+            from_email=Email(FROM_EMAIL, FROM_NAME),
+            to_emails=To(email),
+            subject=subject,
+            html_content=Content("text/html", html_content),
+        )
+
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        print(f"[EMAIL] Sending marketing campaign via SendGrid...")
+        response = sg.send(message_obj)
+        print(f"[EMAIL] SendGrid response status: {response.status_code}")
+
+        if response.status_code in (200, 201, 202):
+            print(f"[EMAIL] Marketing campaign email sent successfully to {email}")
+            logger.info(f"Marketing campaign email sent to {email}")
+            return True
+        else:
+            print(f"[EMAIL] SendGrid returned non-success status: {response.status_code}")
+            logger.error(f"Failed to send marketing campaign to {email}: {response.status_code}")
+            return False
+
+    except Exception as e:
+        print(f"[EMAIL] Exception sending marketing campaign: {str(e)}")
+        logger.error(f"Error sending marketing campaign to {email}: {str(e)}")
+        return False

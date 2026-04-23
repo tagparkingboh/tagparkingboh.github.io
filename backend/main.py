@@ -46,7 +46,7 @@ def log_promo(message: str, data: dict = None):
             print(f"[PROMO {timestamp}] {message}")
 
 
-from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends, Body
+from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends, Body, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
@@ -16335,6 +16335,312 @@ async def get_sms_stats(
         "conversations": conversations,
         "sms_enabled": sms_service.is_sms_enabled(),
     }
+
+
+# =============================================================================
+# Marketing Email Campaigns Admin Endpoints
+# =============================================================================
+
+from db_models import MarketingEmailCampaign, MarketingEmailRecipient, MarketingEmailStatus, PromoCode
+
+
+class CampaignCreate(BaseModel):
+    subject: str
+    message: str
+    promo_code_id: Optional[int] = None
+    subscriber_ids: List[int]  # List of subscriber IDs to send to
+
+
+class CampaignPreview(BaseModel):
+    subject: str
+    message: str
+    promo_code_id: Optional[int] = None
+
+
+@app.get("/api/admin/marketing/campaigns")
+async def get_marketing_campaigns(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Get all marketing email campaigns."""
+    campaigns = db.query(MarketingEmailCampaign).order_by(
+        MarketingEmailCampaign.created_at.desc()
+    ).all()
+
+    return {
+        "campaigns": [
+            {
+                "id": c.id,
+                "subject": c.subject,
+                "message": c.message[:100] + "..." if len(c.message) > 100 else c.message,
+                "promo_code_id": c.promo_code_id,
+                "promo_code": c.promo_code.code if c.promo_code else None,
+                "status": c.status.value if c.status else "draft",
+                "total_recipients": c.total_recipients,
+                "sent_count": c.sent_count,
+                "failed_count": c.failed_count,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "sent_at": c.sent_at.isoformat() if c.sent_at else None,
+                "completed_at": c.completed_at.isoformat() if c.completed_at else None,
+                "created_by": c.created_by,
+            }
+            for c in campaigns
+        ]
+    }
+
+
+@app.get("/api/admin/marketing/campaigns/{campaign_id}")
+async def get_marketing_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Get a single marketing email campaign with recipient details."""
+    campaign = db.query(MarketingEmailCampaign).filter(
+        MarketingEmailCampaign.id == campaign_id
+    ).first()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    recipients = db.query(MarketingEmailRecipient).filter(
+        MarketingEmailRecipient.campaign_id == campaign_id
+    ).all()
+
+    return {
+        "id": campaign.id,
+        "subject": campaign.subject,
+        "message": campaign.message,
+        "promo_code_id": campaign.promo_code_id,
+        "promo_code": campaign.promo_code.code if campaign.promo_code else None,
+        "status": campaign.status.value if campaign.status else "draft",
+        "total_recipients": campaign.total_recipients,
+        "sent_count": campaign.sent_count,
+        "failed_count": campaign.failed_count,
+        "created_at": campaign.created_at.isoformat() if campaign.created_at else None,
+        "sent_at": campaign.sent_at.isoformat() if campaign.sent_at else None,
+        "completed_at": campaign.completed_at.isoformat() if campaign.completed_at else None,
+        "created_by": campaign.created_by,
+        "recipients": [
+            {
+                "id": r.id,
+                "subscriber_id": r.subscriber_id,
+                "email": r.subscriber.email if r.subscriber else None,
+                "first_name": r.subscriber.first_name if r.subscriber else None,
+                "email_sent": r.email_sent,
+                "email_sent_at": r.email_sent_at.isoformat() if r.email_sent_at else None,
+                "email_failed": r.email_failed,
+                "error_message": r.error_message,
+            }
+            for r in recipients
+        ]
+    }
+
+
+@app.post("/api/admin/marketing/campaigns")
+async def create_marketing_campaign(
+    data: CampaignCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Create a new marketing email campaign."""
+    # Validate promo code exists if provided
+    if data.promo_code_id:
+        promo = db.query(PromoCode).filter(PromoCode.id == data.promo_code_id).first()
+        if not promo:
+            raise HTTPException(status_code=400, detail="Promo code not found")
+
+    # Validate subscribers exist
+    subscribers = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.id.in_(data.subscriber_ids),
+        MarketingSubscriber.unsubscribed == False
+    ).all()
+
+    if not subscribers:
+        raise HTTPException(status_code=400, detail="No valid subscribers selected")
+
+    # Create campaign
+    campaign = MarketingEmailCampaign(
+        subject=data.subject,
+        message=data.message,
+        promo_code_id=data.promo_code_id,
+        status=MarketingEmailStatus.DRAFT,
+        total_recipients=len(subscribers),
+        created_by=current_user.email,
+    )
+    db.add(campaign)
+    db.flush()  # Get campaign ID
+
+    # Add recipients
+    for subscriber in subscribers:
+        recipient = MarketingEmailRecipient(
+            campaign_id=campaign.id,
+            subscriber_id=subscriber.id,
+        )
+        db.add(recipient)
+
+    db.commit()
+
+    return {"id": campaign.id, "message": f"Campaign created with {len(subscribers)} recipients"}
+
+
+@app.post("/api/admin/marketing/campaigns/{campaign_id}/send")
+async def send_marketing_campaign(
+    campaign_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Send a marketing email campaign to all recipients."""
+    campaign = db.query(MarketingEmailCampaign).filter(
+        MarketingEmailCampaign.id == campaign_id
+    ).first()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if campaign.status != MarketingEmailStatus.DRAFT:
+        raise HTTPException(status_code=400, detail=f"Campaign already {campaign.status.value}")
+
+    # Update status to sending
+    campaign.status = MarketingEmailStatus.SENDING
+    campaign.sent_at = datetime.utcnow()
+    db.commit()
+
+    # Send emails in background
+    background_tasks.add_task(send_campaign_emails, campaign_id)
+
+    return {"message": "Campaign sending started", "total_recipients": campaign.total_recipients}
+
+
+@app.post("/api/admin/marketing/campaigns/preview")
+async def preview_marketing_campaign(
+    data: CampaignPreview,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Preview a marketing email with sample data."""
+    # Get promo code if provided
+    promo_code = None
+    if data.promo_code_id:
+        promo = db.query(PromoCode).filter(PromoCode.id == data.promo_code_id).first()
+        if promo:
+            promo_code = promo.code
+
+    # Replace variables with sample values
+    preview_message = data.message.replace("{{first_name}}", "John")
+    preview_message = preview_message.replace("{{founder_name}}", "Matt")
+
+    return {
+        "subject": data.subject,
+        "message": preview_message,
+        "promo_code": promo_code,
+    }
+
+
+@app.get("/api/admin/marketing/promo-codes")
+async def get_available_promo_codes(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Get available promo codes for marketing campaigns (multi-use codes)."""
+    # Get multi-use promo codes (max_uses is not NULL or is 0 for unlimited)
+    codes = db.query(PromoCode).filter(
+        PromoCode.max_uses != None,  # Multi-use codes
+        PromoCode.is_used == False,  # Not exhausted
+    ).order_by(PromoCode.created_at.desc()).all()
+
+    return {
+        "promo_codes": [
+            {
+                "id": c.id,
+                "code": c.code,
+                "discount_percent": c.promotion.discount_percent if c.promotion else None,
+                "max_uses": c.max_uses,
+                "use_count": c.use_count,
+                "expires_at": c.expires_at.isoformat() if c.expires_at else None,
+            }
+            for c in codes
+        ]
+    }
+
+
+def send_campaign_emails(campaign_id: int):
+    """Background task to send campaign emails in batches."""
+    from database import SessionLocal
+    from email_service import send_marketing_campaign_email
+
+    db = SessionLocal()
+    try:
+        campaign = db.query(MarketingEmailCampaign).filter(
+            MarketingEmailCampaign.id == campaign_id
+        ).first()
+
+        if not campaign:
+            return
+
+        # Get promo code
+        promo_code = None
+        if campaign.promo_code:
+            promo_code = campaign.promo_code.code
+
+        # Get unsent recipients
+        recipients = db.query(MarketingEmailRecipient).filter(
+            MarketingEmailRecipient.campaign_id == campaign_id,
+            MarketingEmailRecipient.email_sent == False,
+            MarketingEmailRecipient.email_failed == False,
+        ).all()
+
+        for recipient in recipients:
+            subscriber = recipient.subscriber
+            if not subscriber or subscriber.unsubscribed:
+                continue
+
+            try:
+                success = send_marketing_campaign_email(
+                    email=subscriber.email,
+                    first_name=subscriber.first_name,
+                    subject=campaign.subject,
+                    message=campaign.message,
+                    promo_code=promo_code,
+                    unsubscribe_token=subscriber.unsubscribe_token,
+                )
+
+                if success:
+                    recipient.email_sent = True
+                    recipient.email_sent_at = datetime.utcnow()
+                    campaign.sent_count = (campaign.sent_count or 0) + 1
+                else:
+                    recipient.email_failed = True
+                    recipient.error_message = "Send failed"
+                    campaign.failed_count = (campaign.failed_count or 0) + 1
+
+                db.commit()
+
+            except Exception as e:
+                recipient.email_failed = True
+                recipient.error_message = str(e)[:500]
+                campaign.failed_count = (campaign.failed_count or 0) + 1
+                db.commit()
+
+        # Mark campaign as complete
+        campaign.status = MarketingEmailStatus.SENT
+        campaign.completed_at = datetime.utcnow()
+        db.commit()
+
+    except Exception as e:
+        logger.error(f"Error sending campaign {campaign_id}: {e}")
+        try:
+            campaign = db.query(MarketingEmailCampaign).filter(
+                MarketingEmailCampaign.id == campaign_id
+            ).first()
+            if campaign:
+                campaign.status = MarketingEmailStatus.FAILED
+                db.commit()
+        except:
+            pass
+    finally:
+        db.close()
 
 
 if __name__ == "__main__":

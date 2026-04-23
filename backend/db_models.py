@@ -595,6 +595,79 @@ class MarketingSubscriber(Base):
         return f"<MarketingSubscriber {self.first_name} {self.last_name} ({self.email})>"
 
 
+class MarketingEmailStatus(enum.Enum):
+    """Status of a marketing email campaign."""
+    DRAFT = "draft"           # Not yet sent
+    SENDING = "sending"       # Currently being sent (in batches)
+    SENT = "sent"             # Fully sent
+    FAILED = "failed"         # Failed to send
+
+
+class MarketingEmailCampaign(Base):
+    """Marketing email campaigns sent to subscribers."""
+    __tablename__ = "marketing_email_campaigns"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Email content
+    subject = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)  # Supports {{first_name}}, {{founder_name}} variables
+
+    # Optional promo code (links to PromoCode table which supports multi-use codes)
+    promo_code_id = Column(Integer, ForeignKey("promo_codes.id"), nullable=True)
+
+    # Campaign status
+    status = Column(Enum(MarketingEmailStatus), default=MarketingEmailStatus.DRAFT, nullable=False)
+
+    # Recipient tracking
+    total_recipients = Column(Integer, default=0)
+    sent_count = Column(Integer, default=0)
+    failed_count = Column(Integer, default=0)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Who created it
+    created_by = Column(String(100), nullable=True)  # Admin username/email
+
+    # Relationships
+    promo_code = relationship("PromoCode", foreign_keys=[promo_code_id])
+    recipients = relationship("MarketingEmailRecipient", back_populates="campaign")
+
+    def __repr__(self):
+        return f"<MarketingEmailCampaign {self.id}: {self.subject[:30]}...>"
+
+
+class MarketingEmailRecipient(Base):
+    """Individual recipients of a marketing email campaign."""
+    __tablename__ = "marketing_email_recipients"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    campaign_id = Column(Integer, ForeignKey("marketing_email_campaigns.id"), nullable=False)
+    subscriber_id = Column(Integer, ForeignKey("marketing_subscribers.id"), nullable=False)
+
+    # Email tracking
+    email_sent = Column(Boolean, default=False)
+    email_sent_at = Column(DateTime(timezone=True), nullable=True)
+    email_failed = Column(Boolean, default=False)
+    error_message = Column(Text, nullable=True)
+
+    # Relationships
+    campaign = relationship("MarketingEmailCampaign", back_populates="recipients")
+    subscriber = relationship("MarketingSubscriber")
+
+    # Unique constraint - each subscriber can only be in a campaign once
+    __table_args__ = (
+        UniqueConstraint('campaign_id', 'subscriber_id', name='uq_campaign_subscriber'),
+    )
+
+    def __repr__(self):
+        return f"<MarketingEmailRecipient campaign={self.campaign_id} subscriber={self.subscriber_id}>"
+
+
 class ErrorLog(Base):
     """Error log for API and service errors."""
     __tablename__ = "error_logs"
