@@ -900,7 +900,7 @@ def send_marketing_campaign_email(
 
     try:
         message_obj = Mail(
-            from_email=Email(FROM_EMAIL, FROM_NAME),
+            from_email=Email(FOUNDER_EMAIL, FOUNDER_NAME),
             to_emails=To(email),
             subject=subject,
             html_content=Content("text/html", html_content),
