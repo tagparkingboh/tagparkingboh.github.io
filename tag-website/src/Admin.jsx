@@ -904,9 +904,9 @@ function Admin() {
   }, [activeTab, token])
 
 
-  // Fetch subscribers when marketing tab is active with subscribers sub-tab
+  // Fetch subscribers when marketing tab is active with subscribers or campaigns sub-tab
   useEffect(() => {
-    if (activeTab === 'marketing' && token && marketingSubTab === 'subscribers') {
+    if (activeTab === 'marketing' && token && (marketingSubTab === 'subscribers' || marketingSubTab === 'campaigns')) {
       fetchSubscribers()
     }
   }, [activeTab, token, marketingSubTab])
