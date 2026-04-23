@@ -8770,8 +8770,7 @@ function Admin() {
             {/* Email Campaigns Sub-tab */}
             {marketingSubTab === 'campaigns' && (
               <div className="email-campaigns-section">
-                <div className="admin-section-header">
-                  <h2>Email Campaigns</h2>
+                <div className="admin-section-header" style={{ justifyContent: 'flex-end' }}>
                   <div className="flights-header-actions">
                     <button
                       className="btn-secondary"
