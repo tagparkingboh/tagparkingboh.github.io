@@ -8768,50 +8768,88 @@ function Admin() {
                 {/* Create Campaign Modal */}
                 {showCreateCampaign && (
                   <div className="modal-overlay" onClick={() => setShowCreateCampaign(false)}>
-                    <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
+                    <div className="modal-content" style={{ maxWidth: '1200px', width: '95%' }} onClick={(e) => e.stopPropagation()}>
                       <div className="modal-header">
                         <h3>Create Email Campaign</h3>
                         <button className="modal-close" onClick={() => setShowCreateCampaign(false)}>×</button>
                       </div>
                       <div className="modal-body">
-                        <div className="form-group">
-                          <label>Subject Line</label>
-                          <input
-                            type="text"
-                            value={newCampaign.subject}
-                            onChange={(e) => setNewCampaign({ ...newCampaign, subject: e.target.value })}
-                            placeholder="e.g., Special offer just for you!"
-                          />
+                        {/* Campaign Details Section */}
+                        <div style={{ background: '#f9f9f9', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+                          <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: '600' }}>Campaign Details</h4>
+                          <div style={{ height: '3px', background: '#D4AF37', width: '120px', marginBottom: '20px' }}></div>
+
+                          <div className="form-group">
+                            <label>Subject Line *</label>
+                            <input
+                              type="text"
+                              value={newCampaign.subject}
+                              onChange={(e) => setNewCampaign({ ...newCampaign, subject: e.target.value })}
+                              placeholder="e.g., Special offer just for you!"
+                              style={{ width: '100%' }}
+                            />
+                          </div>
+
+                          <div className="form-group">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                              <label style={{ margin: 0 }}>Message *</label>
+                              <select
+                                style={{ padding: '6px 12px', borderRadius: '20px', background: '#D4AF37', color: 'white', border: 'none', cursor: 'pointer', fontSize: '13px' }}
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    setNewCampaign({ ...newCampaign, message: newCampaign.message + e.target.value })
+                                    e.target.value = ''
+                                  }
+                                }}
+                                value=""
+                              >
+                                <option value="">Add Variable</option>
+                                <option value="{{first_name}}">{'{{first_name}}'}</option>
+                                <option value="{{founder_name}}">{'{{founder_name}}'}</option>
+                              </select>
+                            </div>
+                            <textarea
+                              rows={6}
+                              value={newCampaign.message}
+                              onChange={(e) => setNewCampaign({ ...newCampaign, message: e.target.value })}
+                              placeholder="Enter the promotional message..."
+                              style={{ width: '100%' }}
+                            />
+                            <small style={{ color: '#666' }}>
+                              Variables: {'{{first_name}}'} = subscriber name, {'{{founder_name}}'} = founder signature
+                            </small>
+                          </div>
+
+                          <div className="form-group">
+                            <label>Promo Code (optional)</label>
+                            <select
+                              value={newCampaign.promo_code_id || ''}
+                              onChange={(e) => setNewCampaign({ ...newCampaign, promo_code_id: e.target.value ? parseInt(e.target.value) : null })}
+                              style={{ width: '100%' }}
+                            >
+                              <option value="">No promo code</option>
+                              {availablePromoCodes.map(code => (
+                                <option key={code.id} value={code.id}>
+                                  {code.code} ({code.discount_percent}% off, {code.use_count}/{code.max_uses === 0 ? '∞' : code.max_uses} used)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
-                        <div className="form-group">
-                          <label>Message</label>
-                          <textarea
-                            rows={6}
-                            value={newCampaign.message}
-                            onChange={(e) => setNewCampaign({ ...newCampaign, message: e.target.value })}
-                            placeholder="Use {{first_name}} for personalisation and {{founder_name}} for signature"
-                          />
-                          <small style={{ color: '#666' }}>
-                            Variables: {'{{first_name}}'} = subscriber name, {'{{founder_name}}'} = founder signature
-                          </small>
-                        </div>
-                        <div className="form-group">
-                          <label>Promo Code (optional)</label>
-                          <select
-                            value={newCampaign.promo_code_id || ''}
-                            onChange={(e) => setNewCampaign({ ...newCampaign, promo_code_id: e.target.value ? parseInt(e.target.value) : null })}
-                          >
-                            <option value="">No promo code</option>
-                            {availablePromoCodes.map(code => (
-                              <option key={code.id} value={code.id}>
-                                {code.code} ({code.discount_percent}% off, {code.use_count}/{code.max_uses === 0 ? '∞' : code.max_uses} used)
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label>Recipients</label>
-                          <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+
+                        {/* Recipients Section */}
+                        <div style={{ background: '#f9f9f9', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
+                          <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: '600' }}>Recipients</h4>
+                          <div style={{ height: '3px', background: '#D4AF37', width: '80px', marginBottom: '20px' }}></div>
+
+                          <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              placeholder="Search subscribers..."
+                              value={newCampaign.searchFilter || ''}
+                              onChange={(e) => setNewCampaign({ ...newCampaign, searchFilter: e.target.value })}
+                              style={{ flex: '1', minWidth: '200px', padding: '8px 12px' }}
+                            />
                             <button
                               type="button"
                               className="btn-secondary btn-sm"
@@ -8827,67 +8865,135 @@ function Admin() {
                               className="btn-secondary btn-sm"
                               onClick={() => setNewCampaign({ ...newCampaign, subscriber_ids: [] })}
                             >
-                              Clear Selection
+                              Clear
                             </button>
                           </div>
-                          <div style={{ maxHeight: '200px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px', padding: '10px' }}>
-                            {subscribers.filter(s => !s.unsubscribed).map(subscriber => (
-                              <label key={subscriber.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', cursor: 'pointer' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={newCampaign.subscriber_ids.includes(subscriber.id)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setNewCampaign({ ...newCampaign, subscriber_ids: [...newCampaign.subscriber_ids, subscriber.id] })
-                                    } else {
-                                      setNewCampaign({ ...newCampaign, subscriber_ids: newCampaign.subscriber_ids.filter(id => id !== subscriber.id) })
-                                    }
-                                  }}
-                                />
-                                {subscriber.first_name} {subscriber.last_name} ({subscriber.email})
-                              </label>
-                            ))}
+
+                          <div style={{ maxHeight: '250px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '8px', background: 'white' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                              <thead>
+                                <tr style={{ background: '#f5f5f5', position: 'sticky', top: 0 }}>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left', width: '40px' }}></th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left' }}>Name</th>
+                                  <th style={{ padding: '10px 15px', textAlign: 'left' }}>Email</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {subscribers
+                                  .filter(s => !s.unsubscribed)
+                                  .filter(s => {
+                                    const search = (newCampaign.searchFilter || '').toLowerCase()
+                                    if (!search) return true
+                                    return (
+                                      (s.first_name || '').toLowerCase().includes(search) ||
+                                      (s.last_name || '').toLowerCase().includes(search) ||
+                                      (s.email || '').toLowerCase().includes(search)
+                                    )
+                                  })
+                                  .map(subscriber => (
+                                    <tr
+                                      key={subscriber.id}
+                                      style={{
+                                        borderBottom: '1px solid #eee',
+                                        cursor: 'pointer',
+                                        background: newCampaign.subscriber_ids.includes(subscriber.id) ? '#fff9e6' : 'transparent'
+                                      }}
+                                      onClick={() => {
+                                        if (newCampaign.subscriber_ids.includes(subscriber.id)) {
+                                          setNewCampaign({ ...newCampaign, subscriber_ids: newCampaign.subscriber_ids.filter(id => id !== subscriber.id) })
+                                        } else {
+                                          setNewCampaign({ ...newCampaign, subscriber_ids: [...newCampaign.subscriber_ids, subscriber.id] })
+                                        }
+                                      }}
+                                    >
+                                      <td style={{ padding: '10px 15px' }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={newCampaign.subscriber_ids.includes(subscriber.id)}
+                                          onChange={() => {}}
+                                          style={{ cursor: 'pointer' }}
+                                        />
+                                      </td>
+                                      <td style={{ padding: '10px 15px', fontWeight: '500' }}>
+                                        {subscriber.first_name} {subscriber.last_name}
+                                      </td>
+                                      <td style={{ padding: '10px 15px', color: '#666' }}>
+                                        {subscriber.email}
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
                           </div>
-                          <small style={{ color: '#666' }}>
-                            {newCampaign.subscriber_ids.length} recipient(s) selected
-                          </small>
+                          <div style={{ marginTop: '10px', color: '#666', fontSize: '14px' }}>
+                            <strong>{newCampaign.subscriber_ids.length}</strong> recipient(s) selected
+                          </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                          <button
-                            type="button"
-                            className="btn-secondary"
-                            onClick={previewCampaign}
-                            disabled={!newCampaign.subject || !newCampaign.message}
-                          >
-                            Preview
-                          </button>
-                        </div>
+
+                        {/* Preview Section */}
                         {campaignPreview && (
-                          <div style={{ marginTop: '15px', padding: '15px', background: '#f5f5f5', borderRadius: '8px' }}>
-                            <h4 style={{ margin: '0 0 10px 0' }}>Preview</h4>
+                          <div style={{ background: '#f0f7ff', padding: '20px', borderRadius: '8px', marginBottom: '10px' }}>
+                            <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: '600' }}>Preview</h4>
+                            <div style={{ height: '3px', background: '#4a90d9', width: '60px', marginBottom: '15px' }}></div>
                             <p><strong>Subject:</strong> {campaignPreview.subject}</p>
-                            <p><strong>Message:</strong></p>
-                            <div style={{ whiteSpace: 'pre-wrap', background: 'white', padding: '10px', borderRadius: '4px' }}>
+                            <div style={{ whiteSpace: 'pre-wrap', background: 'white', padding: '15px', borderRadius: '6px', border: '1px solid #ddd' }}>
                               {campaignPreview.message}
                             </div>
                             {campaignPreview.promo_code && (
-                              <p><strong>Promo Code:</strong> {campaignPreview.promo_code}</p>
+                              <p style={{ marginTop: '10px' }}><strong>Promo Code:</strong> <span style={{ background: '#D4AF37', color: 'white', padding: '2px 8px', borderRadius: '4px' }}>{campaignPreview.promo_code}</span></p>
                             )}
                           </div>
                         )}
                       </div>
-                      <div className="modal-footer">
-                        <button className="btn-secondary" onClick={() => setShowCreateCampaign(false)}>
-                          Cancel
-                        </button>
-                        <button
-                          className="btn-primary"
-                          onClick={createCampaign}
-                          disabled={creatingCampaign || !newCampaign.subject || !newCampaign.message || newCampaign.subscriber_ids.length === 0}
-                        >
-                          {creatingCampaign ? 'Creating...' : 'Create Campaign'}
-                        </button>
+
+                      {/* Footer with responsive buttons */}
+                      <div className="modal-footer" style={{ borderTop: '1px solid #eee', paddingTop: '20px' }}>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(4, 1fr)',
+                          gap: '10px',
+                          width: '100%'
+                        }} className="campaign-modal-buttons">
+                          <button
+                            className="btn-secondary"
+                            onClick={() => setShowCreateCampaign(false)}
+                            style={{ padding: '12px 16px' }}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            className="btn-secondary"
+                            disabled
+                            style={{ padding: '12px 16px', opacity: 0.5 }}
+                          >
+                            Save Draft
+                          </button>
+                          <button
+                            className="btn-secondary"
+                            onClick={previewCampaign}
+                            disabled={!newCampaign.subject || !newCampaign.message}
+                            style={{ padding: '12px 16px' }}
+                          >
+                            Preview
+                          </button>
+                          <button
+                            className="btn-primary"
+                            onClick={createCampaign}
+                            disabled={creatingCampaign || !newCampaign.subject || !newCampaign.message || newCampaign.subscriber_ids.length === 0}
+                            style={{ padding: '12px 16px' }}
+                          >
+                            {creatingCampaign ? 'Creating...' : 'Create Campaign'}
+                          </button>
+                        </div>
                       </div>
+
+                      <style>{`
+                        @media (max-width: 600px) {
+                          .campaign-modal-buttons {
+                            grid-template-columns: repeat(2, 1fr) !important;
+                          }
+                        }
+                      `}</style>
                     </div>
                   </div>
                 )}
