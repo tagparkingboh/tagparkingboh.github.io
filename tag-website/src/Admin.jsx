@@ -359,6 +359,7 @@ function Admin() {
   const [sendingCampaign, setSendingCampaign] = useState(false)
   const [editingCampaignId, setEditingCampaignId] = useState(null)
   const [deletingCampaignId, setDeletingCampaignId] = useState(null)
+  const [campaignConfirm, setCampaignConfirm] = useState(null) // { action: 'delete' | 'send', id }
 
   // Promotions state
   const [promotions, setPromotions] = useState([])
@@ -2238,8 +2239,11 @@ function Admin() {
     }
   }
 
-  const deleteCampaign = async (campaignId) => {
-    if (!confirm('Delete this draft campaign? This cannot be undone.')) return
+  const deleteCampaign = (campaignId) => {
+    setCampaignConfirm({ action: 'delete', id: campaignId })
+  }
+
+  const performDeleteCampaign = async (campaignId) => {
     setDeletingCampaignId(campaignId)
     try {
       const response = await fetch(`${API_URL}/api/admin/marketing/campaigns/${campaignId}`, {
@@ -2260,9 +2264,12 @@ function Admin() {
     }
   }
 
-  // Send email campaign
-  const sendCampaign = async (campaignId) => {
-    if (!confirm('Are you sure you want to send this campaign? This cannot be undone.')) return
+  // Send email campaign — opens confirm modal
+  const sendCampaign = (campaignId) => {
+    setCampaignConfirm({ action: 'send', id: campaignId })
+  }
+
+  const performSendCampaign = async (campaignId) => {
     setSendingCampaign(true)
     try {
       const response = await fetch(`${API_URL}/api/admin/marketing/campaigns/${campaignId}/send`, {
@@ -9050,6 +9057,51 @@ function Admin() {
                           {creatingCampaign
                             ? (editingCampaignId ? 'Saving...' : 'Creating...')
                             : (editingCampaignId ? 'Save Changes' : 'Create Campaign')}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Campaign Confirm Modal (Delete / Send) */}
+                {campaignConfirm && (
+                  <div className="modal-overlay" onClick={() => setCampaignConfirm(null)}>
+                    <div className="modal-content" style={{ maxWidth: '440px', width: '90%' }} onClick={(e) => e.stopPropagation()}>
+                      <div className="modal-header">
+                        <h3>
+                          {campaignConfirm.action === 'delete' ? 'Delete draft campaign?' : 'Send campaign?'}
+                        </h3>
+                        <button className="modal-close" onClick={() => setCampaignConfirm(null)}>×</button>
+                      </div>
+                      <div className="modal-body">
+                        <p style={{ margin: 0, color: '#444' }}>
+                          {campaignConfirm.action === 'delete'
+                            ? 'This will permanently remove the draft and its selected recipients. This cannot be undone.'
+                            : 'This will email every selected recipient immediately. This cannot be undone.'}
+                        </p>
+                      </div>
+                      <div className="modal-actions" style={{ borderTop: '1px solid #eee', paddingTop: '16px', marginTop: '10px' }}>
+                        <button
+                          className="modal-btn modal-btn-secondary"
+                          onClick={() => setCampaignConfirm(null)}
+                          style={{ borderRadius: '20px' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className={campaignConfirm.action === 'delete' ? 'modal-btn modal-btn-danger' : 'modal-btn modal-btn-primary'}
+                          onClick={() => {
+                            const { action, id } = campaignConfirm
+                            setCampaignConfirm(null)
+                            if (action === 'delete') {
+                              performDeleteCampaign(id)
+                            } else {
+                              performSendCampaign(id)
+                            }
+                          }}
+                          style={{ borderRadius: '20px', color: campaignConfirm.action === 'delete' ? 'white' : undefined }}
+                        >
+                          {campaignConfirm.action === 'delete' ? 'Delete' : 'Send Campaign'}
                         </button>
                       </div>
                     </div>
