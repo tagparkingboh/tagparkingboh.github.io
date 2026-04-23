@@ -455,6 +455,219 @@ class TestCreateCampaignEndpoint:
 
 
 # ============================================================================
+# PUT /api/admin/marketing/campaigns/{campaign_id} Tests
+# ============================================================================
+
+class TestUpdateCampaignEndpoint:
+    """Integration tests for PUT /api/admin/marketing/campaigns/{campaign_id}."""
+
+    def test_updates_draft_campaign_successfully(self, client, mock_db):
+        """Should update draft campaign and return success."""
+        campaign = create_mock_campaign(id=1, status=MarketingEmailStatus.DRAFT)
+        subscribers = [
+            create_mock_subscriber(id=1, email="sub1@test.com"),
+            create_mock_subscriber(id=2, email="sub2@test.com"),
+        ]
+
+        campaign_query = MagicMock()
+        campaign_query.filter.return_value = campaign_query
+        campaign_query.first.return_value = campaign
+
+        sub_query = MagicMock()
+        sub_query.filter.return_value = sub_query
+        sub_query.all.return_value = subscribers
+
+        recipient_delete_query = MagicMock()
+        recipient_delete_query.filter.return_value = recipient_delete_query
+        recipient_delete_query.delete.return_value = 0
+
+        mock_db.query.side_effect = [campaign_query, sub_query, recipient_delete_query]
+        mock_db.commit = MagicMock()
+
+        response = client.put(
+            "/api/admin/marketing/campaigns/1",
+            json={
+                "subject": "Updated Subject",
+                "message": "Updated message",
+                "subscriber_ids": [1, 2],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "id" in data or "message" in data
+        assert campaign.subject == "Updated Subject"
+        assert campaign.message == "Updated message"
+        assert campaign.total_recipients == 2
+
+    def test_returns_404_for_nonexistent_campaign(self, client, mock_db):
+        """Should return 404 when campaign not found."""
+        campaign_query = MagicMock()
+        campaign_query.filter.return_value = campaign_query
+        campaign_query.first.return_value = None
+        mock_db.query.return_value = campaign_query
+
+        response = client.put(
+            "/api/admin/marketing/campaigns/999",
+            json={
+                "subject": "X",
+                "message": "Y",
+                "subscriber_ids": [1],
+            },
+        )
+
+        assert response.status_code == 404
+
+    def test_rejects_non_draft_campaign(self, client, mock_db):
+        """Should return 400 for sent/sending campaign."""
+        campaign = create_mock_campaign(id=1, status=MarketingEmailStatus.SENT)
+
+        campaign_query = MagicMock()
+        campaign_query.filter.return_value = campaign_query
+        campaign_query.first.return_value = campaign
+        mock_db.query.return_value = campaign_query
+
+        response = client.put(
+            "/api/admin/marketing/campaigns/1",
+            json={
+                "subject": "X",
+                "message": "Y",
+                "subscriber_ids": [1],
+            },
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "draft" in data["detail"].lower()
+
+    def test_rejects_invalid_promo_code(self, client, mock_db):
+        """Should return 400 when provided promo_code_id does not exist."""
+        campaign = create_mock_campaign(id=1, status=MarketingEmailStatus.DRAFT)
+
+        campaign_query = MagicMock()
+        campaign_query.filter.return_value = campaign_query
+        campaign_query.first.return_value = campaign
+
+        promo_query = MagicMock()
+        promo_query.filter.return_value = promo_query
+        promo_query.first.return_value = None
+
+        mock_db.query.side_effect = [campaign_query, promo_query]
+
+        response = client.put(
+            "/api/admin/marketing/campaigns/1",
+            json={
+                "subject": "X",
+                "message": "Y",
+                "promo_code_id": 999,
+                "subscriber_ids": [1],
+            },
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "promo code" in data["detail"].lower()
+
+    def test_rejects_when_no_valid_subscribers(self, client, mock_db):
+        """Should return 400 when all subscriber_ids are invalid/unsubscribed."""
+        campaign = create_mock_campaign(id=1, status=MarketingEmailStatus.DRAFT)
+
+        campaign_query = MagicMock()
+        campaign_query.filter.return_value = campaign_query
+        campaign_query.first.return_value = campaign
+
+        sub_query = MagicMock()
+        sub_query.filter.return_value = sub_query
+        sub_query.all.return_value = []
+
+        mock_db.query.side_effect = [campaign_query, sub_query]
+
+        response = client.put(
+            "/api/admin/marketing/campaigns/1",
+            json={
+                "subject": "X",
+                "message": "Y",
+                "subscriber_ids": [99, 98],
+            },
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "subscriber" in data["detail"].lower()
+
+
+# ============================================================================
+# DELETE /api/admin/marketing/campaigns/{campaign_id} Tests
+# ============================================================================
+
+class TestDeleteCampaignEndpoint:
+    """Integration tests for DELETE /api/admin/marketing/campaigns/{campaign_id}."""
+
+    def test_deletes_draft_campaign_successfully(self, client, mock_db):
+        """Should delete draft campaign and its recipients."""
+        campaign = create_mock_campaign(id=1, status=MarketingEmailStatus.DRAFT)
+
+        campaign_query = MagicMock()
+        campaign_query.filter.return_value = campaign_query
+        campaign_query.first.return_value = campaign
+
+        recipient_delete_query = MagicMock()
+        recipient_delete_query.filter.return_value = recipient_delete_query
+        recipient_delete_query.delete.return_value = 0
+
+        mock_db.query.side_effect = [campaign_query, recipient_delete_query]
+        mock_db.delete = MagicMock()
+        mock_db.commit = MagicMock()
+
+        response = client.delete("/api/admin/marketing/campaigns/1")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "deleted" in data["message"].lower()
+        mock_db.delete.assert_called_once_with(campaign)
+        recipient_delete_query.delete.assert_called_once()
+
+    def test_returns_404_for_nonexistent_campaign(self, client, mock_db):
+        """Should return 404 when campaign not found."""
+        campaign_query = MagicMock()
+        campaign_query.filter.return_value = campaign_query
+        campaign_query.first.return_value = None
+        mock_db.query.return_value = campaign_query
+
+        response = client.delete("/api/admin/marketing/campaigns/999")
+
+        assert response.status_code == 404
+
+    def test_rejects_non_draft_campaign(self, client, mock_db):
+        """Should return 400 for sent campaign."""
+        campaign = create_mock_campaign(id=1, status=MarketingEmailStatus.SENT)
+
+        campaign_query = MagicMock()
+        campaign_query.filter.return_value = campaign_query
+        campaign_query.first.return_value = campaign
+        mock_db.query.return_value = campaign_query
+
+        response = client.delete("/api/admin/marketing/campaigns/1")
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "draft" in data["detail"].lower()
+
+    def test_rejects_sending_campaign(self, client, mock_db):
+        """Should return 400 for campaign currently sending."""
+        campaign = create_mock_campaign(id=1, status=MarketingEmailStatus.SENDING)
+
+        campaign_query = MagicMock()
+        campaign_query.filter.return_value = campaign_query
+        campaign_query.first.return_value = campaign
+        mock_db.query.return_value = campaign_query
+
+        response = client.delete("/api/admin/marketing/campaigns/1")
+
+        assert response.status_code == 400
+
+
+# ============================================================================
 # POST /api/admin/marketing/campaigns/{campaign_id}/send Tests
 # ============================================================================
 

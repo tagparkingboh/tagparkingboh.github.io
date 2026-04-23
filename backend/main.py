@@ -16484,6 +16484,84 @@ async def create_marketing_campaign(
     return {"id": campaign.id, "message": f"Campaign created with {len(subscribers)} recipients"}
 
 
+@app.put("/api/admin/marketing/campaigns/{campaign_id}")
+async def update_marketing_campaign(
+    campaign_id: int,
+    data: CampaignCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Update a draft marketing email campaign."""
+    campaign = db.query(MarketingEmailCampaign).filter(
+        MarketingEmailCampaign.id == campaign_id
+    ).first()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if campaign.status != MarketingEmailStatus.DRAFT:
+        raise HTTPException(status_code=400, detail="Only draft campaigns can be edited")
+
+    if data.promo_code_id:
+        promo = db.query(PromoCode).filter(PromoCode.id == data.promo_code_id).first()
+        if not promo:
+            raise HTTPException(status_code=400, detail="Promo code not found")
+
+    subscribers = db.query(MarketingSubscriber).filter(
+        MarketingSubscriber.id.in_(data.subscriber_ids),
+        MarketingSubscriber.unsubscribed == False
+    ).all()
+
+    if not subscribers:
+        raise HTTPException(status_code=400, detail="No valid subscribers selected")
+
+    campaign.subject = data.subject
+    campaign.message = data.message
+    campaign.promo_code_id = data.promo_code_id
+    campaign.total_recipients = len(subscribers)
+
+    db.query(MarketingEmailRecipient).filter(
+        MarketingEmailRecipient.campaign_id == campaign_id
+    ).delete()
+
+    for subscriber in subscribers:
+        recipient = MarketingEmailRecipient(
+            campaign_id=campaign.id,
+            subscriber_id=subscriber.id,
+        )
+        db.add(recipient)
+
+    db.commit()
+
+    return {"id": campaign.id, "message": f"Campaign updated with {len(subscribers)} recipients"}
+
+
+@app.delete("/api/admin/marketing/campaigns/{campaign_id}")
+async def delete_marketing_campaign(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Delete a draft marketing email campaign."""
+    campaign = db.query(MarketingEmailCampaign).filter(
+        MarketingEmailCampaign.id == campaign_id
+    ).first()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if campaign.status != MarketingEmailStatus.DRAFT:
+        raise HTTPException(status_code=400, detail="Only draft campaigns can be deleted")
+
+    db.query(MarketingEmailRecipient).filter(
+        MarketingEmailRecipient.campaign_id == campaign_id
+    ).delete()
+    db.delete(campaign)
+    db.commit()
+
+    return {"message": "Campaign deleted"}
+
+
 @app.post("/api/admin/marketing/campaigns/{campaign_id}/send")
 async def send_marketing_campaign(
     campaign_id: int,

@@ -357,6 +357,8 @@ function Admin() {
   const [availablePromoCodes, setAvailablePromoCodes] = useState([])
   const [campaignPreview, setCampaignPreview] = useState(null)
   const [sendingCampaign, setSendingCampaign] = useState(false)
+  const [editingCampaignId, setEditingCampaignId] = useState(null)
+  const [deletingCampaignId, setDeletingCampaignId] = useState(null)
 
   // Promotions state
   const [promotions, setPromotions] = useState([])
@@ -2164,7 +2166,7 @@ function Admin() {
     }
   }
 
-  // Create email campaign
+  // Create or update email campaign
   const createCampaign = async () => {
     if (!newCampaign.subject || !newCampaign.message || newCampaign.subscriber_ids.length === 0) {
       alert('Please fill in subject, message, and select at least one recipient')
@@ -2172,27 +2174,89 @@ function Admin() {
     }
     setCreatingCampaign(true)
     try {
-      const response = await fetch(`${API_URL}/api/admin/marketing/campaigns`, {
-        method: 'POST',
+      const isEdit = !!editingCampaignId
+      const url = isEdit
+        ? `${API_URL}/api/admin/marketing/campaigns/${editingCampaignId}`
+        : `${API_URL}/api/admin/marketing/campaigns`
+      const response = await fetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(newCampaign),
+        body: JSON.stringify({
+          subject: newCampaign.subject,
+          message: newCampaign.message,
+          promo_code_id: newCampaign.promo_code_id,
+          subscriber_ids: newCampaign.subscriber_ids,
+        }),
       })
       if (response.ok) {
-        setShowCreateCampaign(false)
-        setNewCampaign({ subject: '', message: '', promo_code_id: null, subscriber_ids: [] })
+        closeCampaignModal()
         fetchCampaigns()
       } else {
         const data = await response.json()
-        alert(data.detail || 'Failed to create campaign')
+        alert(data.detail || (isEdit ? 'Failed to update campaign' : 'Failed to create campaign'))
       }
     } catch (err) {
-      console.error('Failed to create campaign:', err)
-      alert('Failed to create campaign')
+      console.error('Failed to save campaign:', err)
+      alert('Failed to save campaign')
     } finally {
       setCreatingCampaign(false)
+    }
+  }
+
+  const closeCampaignModal = () => {
+    setShowCreateCampaign(false)
+    setNewCampaign({ subject: '', message: '', promo_code_id: null, subscriber_ids: [] })
+    setEditingCampaignId(null)
+    setCampaignPreview(null)
+  }
+
+  const openCampaignForEdit = async (campaignId) => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing/campaigns/${campaignId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (!response.ok) {
+        alert('Failed to load campaign')
+        return
+      }
+      const data = await response.json()
+      setEditingCampaignId(campaignId)
+      setNewCampaign({
+        subject: data.subject || '',
+        message: data.message || '',
+        promo_code_id: data.promo_code_id || null,
+        subscriber_ids: (data.recipients || []).map(r => r.subscriber_id),
+      })
+      setCampaignPreview(null)
+      setShowCreateCampaign(true)
+    } catch (err) {
+      console.error('Failed to load campaign for edit:', err)
+      alert('Failed to load campaign')
+    }
+  }
+
+  const deleteCampaign = async (campaignId) => {
+    if (!confirm('Delete this draft campaign? This cannot be undone.')) return
+    setDeletingCampaignId(campaignId)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing/campaigns/${campaignId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        fetchCampaigns()
+      } else {
+        const data = await response.json()
+        alert(data.detail || 'Failed to delete campaign')
+      }
+    } catch (err) {
+      console.error('Failed to delete campaign:', err)
+      alert('Failed to delete campaign')
+    } finally {
+      setDeletingCampaignId(null)
     }
   }
 
@@ -8750,13 +8814,29 @@ function Admin() {
                           <td>{campaign.created_at ? new Date(campaign.created_at).toLocaleDateString('en-GB') : '-'}</td>
                           <td>
                             {campaign.status === 'draft' && (
-                              <button
-                                className="btn-primary btn-sm"
-                                onClick={() => sendCampaign(campaign.id)}
-                                disabled={sendingCampaign}
-                              >
-                                {sendingCampaign ? 'Sending...' : 'Send'}
-                              </button>
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                <button
+                                  className="btn-secondary btn-sm"
+                                  onClick={() => openCampaignForEdit(campaign.id)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="btn-secondary btn-sm"
+                                  onClick={() => deleteCampaign(campaign.id)}
+                                  disabled={deletingCampaignId === campaign.id}
+                                  style={{ color: '#c53030' }}
+                                >
+                                  {deletingCampaignId === campaign.id ? 'Deleting...' : 'Delete'}
+                                </button>
+                                <button
+                                  className="btn-primary btn-sm"
+                                  onClick={() => sendCampaign(campaign.id)}
+                                  disabled={sendingCampaign}
+                                >
+                                  {sendingCampaign ? 'Sending...' : 'Send'}
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -8767,11 +8847,11 @@ function Admin() {
 
                 {/* Create Campaign Modal */}
                 {showCreateCampaign && (
-                  <div className="modal-overlay" onClick={() => setShowCreateCampaign(false)}>
+                  <div className="modal-overlay" onClick={closeCampaignModal}>
                     <div className="modal-content" style={{ maxWidth: '1200px', width: '95%' }} onClick={(e) => e.stopPropagation()}>
                       <div className="modal-header">
-                        <h3>Create Email Campaign</h3>
-                        <button className="modal-close" onClick={() => setShowCreateCampaign(false)}>×</button>
+                        <h3>{editingCampaignId ? 'Edit Email Campaign' : 'Create Email Campaign'}</h3>
+                        <button className="modal-close" onClick={closeCampaignModal}>×</button>
                       </div>
                       <div className="modal-body">
                         {/* Campaign Details Section */}
@@ -8794,7 +8874,7 @@ function Admin() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                               <label style={{ margin: 0 }}>Message *</label>
                               <select
-                                style={{ padding: '6px 12px', borderRadius: '20px', background: '#D4AF37', color: 'white', border: 'none', cursor: 'pointer', fontSize: '13px' }}
+                                style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto', flexShrink: 0, textAlign: 'center', textAlignLast: 'center' }}
                                 onChange={(e) => {
                                   if (e.target.value) {
                                     setNewCampaign({ ...newCampaign, message: newCampaign.message + e.target.value })
@@ -8848,22 +8928,22 @@ function Admin() {
                               placeholder="Search subscribers..."
                               value={newCampaign.searchFilter || ''}
                               onChange={(e) => setNewCampaign({ ...newCampaign, searchFilter: e.target.value })}
-                              style={{ flex: '1', minWidth: '200px', padding: '8px 12px' }}
+                              style={{ flex: '1', minWidth: '200px', padding: '8px 14px', borderRadius: '20px', border: '1px solid #ddd' }}
                             />
                             <button
                               type="button"
-                              className="btn-secondary btn-sm"
                               onClick={() => {
                                 const allIds = subscribers.filter(s => !s.unsubscribed).map(s => s.id)
                                 setNewCampaign({ ...newCampaign, subscriber_ids: allIds })
                               }}
+                              style={{ padding: '8px 16px', fontSize: '0.8rem', fontWeight: '600', borderRadius: '20px', background: '#f0f0f0', color: '#333', border: 'none', cursor: 'pointer', flexShrink: 0 }}
                             >
                               Select All ({subscribers.filter(s => !s.unsubscribed).length})
                             </button>
                             <button
                               type="button"
-                              className="btn-secondary btn-sm"
                               onClick={() => setNewCampaign({ ...newCampaign, subscriber_ids: [] })}
+                              style={{ padding: '8px 16px', fontSize: '0.8rem', fontWeight: '600', borderRadius: '20px', background: '#f0f0f0', color: '#333', border: 'none', cursor: 'pointer', flexShrink: 0 }}
                             >
                               Clear
                             </button>
@@ -8946,54 +9026,33 @@ function Admin() {
                         )}
                       </div>
 
-                      {/* Footer with responsive buttons */}
-                      <div className="modal-footer" style={{ borderTop: '1px solid #eee', paddingTop: '20px' }}>
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(4, 1fr)',
-                          gap: '10px',
-                          width: '100%'
-                        }} className="campaign-modal-buttons">
-                          <button
-                            className="btn-secondary"
-                            onClick={() => setShowCreateCampaign(false)}
-                            style={{ padding: '12px 16px' }}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            className="btn-secondary"
-                            disabled
-                            style={{ padding: '12px 16px', opacity: 0.5 }}
-                          >
-                            Save Draft
-                          </button>
-                          <button
-                            className="btn-secondary"
-                            onClick={previewCampaign}
-                            disabled={!newCampaign.subject || !newCampaign.message}
-                            style={{ padding: '12px 16px' }}
-                          >
-                            Preview
-                          </button>
-                          <button
-                            className="btn-primary"
-                            onClick={createCampaign}
-                            disabled={creatingCampaign || !newCampaign.subject || !newCampaign.message || newCampaign.subscriber_ids.length === 0}
-                            style={{ padding: '12px 16px' }}
-                          >
-                            {creatingCampaign ? 'Creating...' : 'Create Campaign'}
-                          </button>
-                        </div>
+                      <div className="modal-actions" style={{ borderTop: '1px solid #eee', paddingTop: '20px', marginTop: '10px', flexWrap: 'wrap' }}>
+                        <button
+                          className="modal-btn modal-btn-secondary"
+                          onClick={closeCampaignModal}
+                          style={{ borderRadius: '20px' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="modal-btn modal-btn-secondary"
+                          onClick={previewCampaign}
+                          disabled={!newCampaign.subject || !newCampaign.message}
+                          style={{ borderRadius: '20px' }}
+                        >
+                          Preview
+                        </button>
+                        <button
+                          className="modal-btn modal-btn-primary"
+                          onClick={createCampaign}
+                          disabled={creatingCampaign || !newCampaign.subject || !newCampaign.message || newCampaign.subscriber_ids.length === 0}
+                          style={{ borderRadius: '20px' }}
+                        >
+                          {creatingCampaign
+                            ? (editingCampaignId ? 'Saving...' : 'Creating...')
+                            : (editingCampaignId ? 'Save Changes' : 'Create Campaign')}
+                        </button>
                       </div>
-
-                      <style>{`
-                        @media (max-width: 600px) {
-                          .campaign-modal-buttons {
-                            grid-template-columns: repeat(2, 1fr) !important;
-                          }
-                        }
-                      `}</style>
                     </div>
                   </div>
                 )}
