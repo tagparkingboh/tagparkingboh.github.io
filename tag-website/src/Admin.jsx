@@ -8871,38 +8871,25 @@ function Admin() {
                               type="text"
                               value={newCampaign.subject}
                               onChange={(e) => setNewCampaign({ ...newCampaign, subject: e.target.value })}
-                              placeholder="e.g., Special offer just for you!"
-                              style={{ width: '100%' }}
-                            />
-                          </div>
-
-                          <div className="form-group">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                              <label style={{ margin: 0 }}>Message *</label>
-                              <select
-                                style={{ padding: '6px 14px', fontSize: '0.75rem', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', fontWeight: '600', width: 'auto', flexShrink: 0, textAlign: 'center', textAlignLast: 'center' }}
-                                onChange={(e) => {
-                                  if (e.target.value) {
-                                    setNewCampaign({ ...newCampaign, message: newCampaign.message + e.target.value })
-                                    e.target.value = ''
-                                  }
-                                }}
-                                value=""
-                              >
-                                <option value="">Add Variable</option>
-                                <option value="{{first_name}}">{'{{first_name}}'}</option>
-                                <option value="{{founder_name}}">{'{{founder_name}}'}</option>
-                              </select>
-                            </div>
-                            <textarea
-                              rows={6}
-                              value={newCampaign.message}
-                              onChange={(e) => setNewCampaign({ ...newCampaign, message: e.target.value })}
-                              placeholder="Enter the promotional message..."
+                              placeholder="e.g., Your exclusive 15% off code inside"
                               style={{ width: '100%' }}
                             />
                             <small style={{ color: '#666' }}>
-                              Variables: {'{{first_name}}'} = subscriber name, {'{{founder_name}}'} = founder signature
+                              Short and specific works best — this is what subscribers see in their inbox.
+                            </small>
+                          </div>
+
+                          <div className="form-group">
+                            <label>Message *</label>
+                            <textarea
+                              rows={8}
+                              value={newCampaign.message}
+                              onChange={(e) => setNewCampaign({ ...newCampaign, message: e.target.value })}
+                              placeholder={`Write the body of the email — no need for a greeting or sign-off.\n\nThe template automatically adds:\n  • "Hi [first name]," at the top\n  • "Best, [founder name]" at the bottom\n\nExample:\nWe're running a spring offer this month — 15% off any booking over 5 days. Use the code below at checkout. It's our way of saying thanks for flying with us.`}
+                              style={{ width: '100%' }}
+                            />
+                            <small style={{ color: '#666' }}>
+                              Tip: keep it short, warm, and conversational. Preview before sending.
                             </small>
                           </div>
 
