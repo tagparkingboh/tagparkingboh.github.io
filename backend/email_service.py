@@ -879,9 +879,9 @@ def send_marketing_campaign_email(
         </table>
         '''
 
-    # Build unsubscribe URL
-    base_url = os.getenv("BASE_URL", "https://tagparking.co.uk")
-    unsubscribe_url = f"{base_url}/unsubscribe/{unsubscribe_token}" if unsubscribe_token else f"{base_url}/unsubscribe"
+    # Build unsubscribe URL — point at backend API directly (frontend has no route for this)
+    api_base_url = os.getenv("API_BASE_URL", "https://tagparkingbohgithubio-production.up.railway.app")
+    unsubscribe_url = f"{api_base_url}/api/marketing/unsubscribe/{unsubscribe_token}" if unsubscribe_token else f"{api_base_url}/api/marketing/unsubscribe"
 
     # Replace template placeholders
     html_content = html_content.replace("{{SUBJECT}}", subject)
