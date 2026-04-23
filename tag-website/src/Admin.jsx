@@ -8816,23 +8816,22 @@ function Admin() {
                             {campaign.status === 'draft' && (
                               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                                 <button
-                                  className="btn-secondary btn-sm"
                                   onClick={() => openCampaignForEdit(campaign.id)}
+                                  style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '600', borderRadius: '20px', background: '#f0f0f0', color: '#333', border: 'none', cursor: 'pointer' }}
                                 >
                                   Edit
                                 </button>
                                 <button
-                                  className="btn-secondary btn-sm"
                                   onClick={() => deleteCampaign(campaign.id)}
                                   disabled={deletingCampaignId === campaign.id}
-                                  style={{ color: '#c53030' }}
+                                  style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '600', borderRadius: '20px', background: '#f0f0f0', color: '#c53030', border: 'none', cursor: 'pointer', opacity: deletingCampaignId === campaign.id ? 0.6 : 1 }}
                                 >
                                   {deletingCampaignId === campaign.id ? 'Deleting...' : 'Delete'}
                                 </button>
                                 <button
-                                  className="btn-primary btn-sm"
                                   onClick={() => sendCampaign(campaign.id)}
                                   disabled={sendingCampaign}
+                                  style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: '600', borderRadius: '20px', background: '#f7b32b', color: '#1a1a2e', border: 'none', cursor: 'pointer', opacity: sendingCampaign ? 0.6 : 1 }}
                                 >
                                   {sendingCampaign ? 'Sending...' : 'Send'}
                                 </button>
