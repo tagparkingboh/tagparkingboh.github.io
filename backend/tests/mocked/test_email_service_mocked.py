@@ -310,13 +310,36 @@ class TestMarketingEmails:
 
         assert "31/05/2026" in email_content
 
-    def test_includes_unsubscribe_link(self):
-        """Marketing email should include unsubscribe link."""
-        subscriber = create_mock_subscriber(unsubscribe_token="abc123")
+    def test_marketing_campaign_unsubscribe_url_points_at_backend_api(self):
+        """Regression guard: the unsubscribe link must target the backend API
+        (API_BASE_URL + /api/marketing/unsubscribe/<token>), not the frontend
+        domain. The frontend has no matching route, so a link built against
+        tagparking.co.uk/unsubscribe/... produces a 404."""
+        from unittest.mock import patch, MagicMock
+        import email_service
 
-        unsubscribe_url = f"https://tagparking.co.uk/unsubscribe/{subscriber.unsubscribe_token}"
+        mock_sg = MagicMock()
+        mock_sg.send.return_value = MagicMock(status_code=202)
 
-        assert "abc123" in unsubscribe_url
+        with patch.object(email_service, 'SENDGRID_API_KEY', 'fake-key'), \
+             patch.object(email_service, 'SendGridAPIClient', return_value=mock_sg), \
+             patch.dict(os.environ, {'API_BASE_URL': 'https://backend.example.com'}):
+            result = email_service.send_marketing_campaign_email(
+                email="test@example.com",
+                first_name="Test",
+                subject="Hi",
+                message="Body",
+                unsubscribe_token="tok-xyz-123",
+            )
+
+        assert result is True
+        assert mock_sg.send.called
+        sent_mail = mock_sg.send.call_args[0][0]
+        html = sent_mail.get()['content'][0]['value']
+
+        assert "tok-xyz-123" in html
+        assert "https://backend.example.com/api/marketing/unsubscribe/tok-xyz-123" in html
+        assert "tagparking.co.uk/unsubscribe/" not in html
 
 
 # ============================================================================
