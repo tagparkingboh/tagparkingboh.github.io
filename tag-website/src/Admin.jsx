@@ -360,6 +360,7 @@ function Admin() {
   const [editingCampaignId, setEditingCampaignId] = useState(null)
   const [deletingCampaignId, setDeletingCampaignId] = useState(null)
   const [campaignConfirm, setCampaignConfirm] = useState(null) // { action: 'delete' | 'send', id }
+  const [campaignToast, setCampaignToast] = useState(null) // { type: 'success' | 'error', message }
 
   // Promotions state
   const [promotions, setPromotions] = useState([])
@@ -2167,10 +2168,16 @@ function Admin() {
     }
   }
 
+  const showCampaignToast = (type, message) => {
+    setCampaignToast({ type, message })
+    window.clearTimeout(showCampaignToast._timer)
+    showCampaignToast._timer = window.setTimeout(() => setCampaignToast(null), 4000)
+  }
+
   // Create or update email campaign
   const createCampaign = async () => {
     if (!newCampaign.subject || !newCampaign.message || newCampaign.subscriber_ids.length === 0) {
-      alert('Please fill in subject, message, and select at least one recipient')
+      showCampaignToast('error', 'Please fill in subject, message, and select at least one recipient')
       return
     }
     setCreatingCampaign(true)
@@ -2193,15 +2200,17 @@ function Admin() {
         }),
       })
       if (response.ok) {
+        const wasEdit = isEdit
         closeCampaignModal()
         fetchCampaigns()
+        showCampaignToast('success', wasEdit ? 'Campaign updated' : 'Campaign created as draft')
       } else {
         const data = await response.json()
-        alert(data.detail || (isEdit ? 'Failed to update campaign' : 'Failed to create campaign'))
+        showCampaignToast('error', data.detail || (isEdit ? 'Failed to update campaign' : 'Failed to create campaign'))
       }
     } catch (err) {
       console.error('Failed to save campaign:', err)
-      alert('Failed to save campaign')
+      showCampaignToast('error', 'Failed to save campaign')
     } finally {
       setCreatingCampaign(false)
     }
@@ -2220,7 +2229,7 @@ function Admin() {
         headers: { 'Authorization': `Bearer ${token}` },
       })
       if (!response.ok) {
-        alert('Failed to load campaign')
+        showCampaignToast('error', 'Failed to load campaign')
         return
       }
       const data = await response.json()
@@ -2235,7 +2244,7 @@ function Admin() {
       setShowCreateCampaign(true)
     } catch (err) {
       console.error('Failed to load campaign for edit:', err)
-      alert('Failed to load campaign')
+      showCampaignToast('error', 'Failed to load campaign')
     }
   }
 
@@ -2252,13 +2261,14 @@ function Admin() {
       })
       if (response.ok) {
         fetchCampaigns()
+        showCampaignToast('success', 'Campaign deleted')
       } else {
         const data = await response.json()
-        alert(data.detail || 'Failed to delete campaign')
+        showCampaignToast('error', data.detail || 'Failed to delete campaign')
       }
     } catch (err) {
       console.error('Failed to delete campaign:', err)
-      alert('Failed to delete campaign')
+      showCampaignToast('error', 'Failed to delete campaign')
     } finally {
       setDeletingCampaignId(null)
     }
@@ -2280,14 +2290,14 @@ function Admin() {
       })
       if (response.ok) {
         fetchCampaigns()
-        alert('Campaign sending started!')
+        showCampaignToast('success', 'Campaign sending started')
       } else {
         const data = await response.json()
-        alert(data.detail || 'Failed to send campaign')
+        showCampaignToast('error', data.detail || 'Failed to send campaign')
       }
     } catch (err) {
       console.error('Failed to send campaign:', err)
-      alert('Failed to send campaign')
+      showCampaignToast('error', 'Failed to send campaign')
     } finally {
       setSendingCampaign(false)
     }
@@ -8885,7 +8895,7 @@ function Admin() {
                               rows={8}
                               value={newCampaign.message}
                               onChange={(e) => setNewCampaign({ ...newCampaign, message: e.target.value })}
-                              placeholder={`Write the body of the email — no need for a greeting or sign-off.\n\nThe template automatically adds:\n  • "Hi [first name]," at the top\n  • "Best, [founder name]" at the bottom\n\nExample:\nWe're running a spring offer this month — 15% off any booking over 5 days. Use the code below at checkout. It's our way of saying thanks for flying with us.`}
+                              placeholder={`Write the body of the email — no need for a greeting or sign-off.\n\nThe template automatically adds:\n  • "Hi [first name]," at the top\n  • "Best, [founder name]" at the bottom\n\nExample:\nWe're running a spring offer this month — 15% off any booking over 5 days. Use the code below at checkout. It's our way of saying thanks for booking with us.`}
                               style={{ width: '100%' }}
                             />
                             <small style={{ color: '#666' }}>
@@ -9047,6 +9057,39 @@ function Admin() {
                         </button>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Campaign Toast */}
+                {campaignToast && (
+                  <div
+                    style={{
+                      position: 'fixed',
+                      bottom: '24px',
+                      right: '24px',
+                      zIndex: 10000,
+                      background: campaignToast.type === 'success' ? '#276749' : '#c53030',
+                      color: 'white',
+                      padding: '14px 20px',
+                      borderRadius: '12px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      maxWidth: '360px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                    }}
+                  >
+                    <span>{campaignToast.type === 'success' ? '✓' : '!'}</span>
+                    <span>{campaignToast.message}</span>
+                    <button
+                      onClick={() => setCampaignToast(null)}
+                      style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: 0, marginLeft: 'auto' }}
+                      aria-label="Dismiss"
+                    >
+                      ×
+                    </button>
                   </div>
                 )}
 
