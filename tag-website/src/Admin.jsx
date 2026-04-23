@@ -47,6 +47,7 @@ const NAV_STRUCTURE = [
     items: [
       { id: 'marketing', label: 'Subscribers' },
       { id: 'promotions', label: 'Promotions' },
+      { id: 'campaigns', label: 'Email Campaigns' },
       { id: 'sources', label: 'Sources' },
     ]
   },
@@ -345,7 +346,17 @@ function Admin() {
   const [subscriberDateTo, setSubscriberDateTo] = useState(null)
 
   // Marketing sub-tab state
-  const [marketingSubTab, setMarketingSubTab] = useState('subscribers') // 'subscribers', 'promotions', or 'sources'
+  const [marketingSubTab, setMarketingSubTab] = useState('subscribers') // 'subscribers', 'promotions', 'campaigns', or 'sources'
+
+  // Email Campaigns state
+  const [campaigns, setCampaigns] = useState([])
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false)
+  const [showCreateCampaign, setShowCreateCampaign] = useState(false)
+  const [newCampaign, setNewCampaign] = useState({ subject: '', message: '', promo_code_id: null, subscriber_ids: [] })
+  const [creatingCampaign, setCreatingCampaign] = useState(false)
+  const [availablePromoCodes, setAvailablePromoCodes] = useState([])
+  const [campaignPreview, setCampaignPreview] = useState(null)
+  const [sendingCampaign, setSendingCampaign] = useState(false)
 
   // Promotions state
   const [promotions, setPromotions] = useState([])
@@ -911,6 +922,14 @@ function Admin() {
   useEffect(() => {
     if (activeTab === 'marketing' && token && marketingSubTab === 'sources') {
       fetchMarketingSources()
+    }
+  }, [activeTab, token, marketingSubTab])
+
+  // Fetch email campaigns when marketing tab is active with campaigns sub-tab
+  useEffect(() => {
+    if (activeTab === 'marketing' && token && marketingSubTab === 'campaigns') {
+      fetchCampaigns()
+      fetchAvailablePromoCodes()
     }
   }, [activeTab, token, marketingSubTab])
 
@@ -2105,6 +2124,125 @@ function Admin() {
       console.error('Failed to fetch marketing other details:', err)
     } finally {
       setLoadingMarketingOther(false)
+    }
+  }
+
+  // Fetch email campaigns
+  const fetchCampaigns = async () => {
+    setLoadingCampaigns(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing/campaigns`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setCampaigns(data.campaigns || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch campaigns:', err)
+    } finally {
+      setLoadingCampaigns(false)
+    }
+  }
+
+  // Fetch available promo codes for campaigns
+  const fetchAvailablePromoCodes = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing/promo-codes`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setAvailablePromoCodes(data.promo_codes || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch promo codes:', err)
+    }
+  }
+
+  // Create email campaign
+  const createCampaign = async () => {
+    if (!newCampaign.subject || !newCampaign.message || newCampaign.subscriber_ids.length === 0) {
+      alert('Please fill in subject, message, and select at least one recipient')
+      return
+    }
+    setCreatingCampaign(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing/campaigns`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newCampaign),
+      })
+      if (response.ok) {
+        setShowCreateCampaign(false)
+        setNewCampaign({ subject: '', message: '', promo_code_id: null, subscriber_ids: [] })
+        fetchCampaigns()
+      } else {
+        const data = await response.json()
+        alert(data.detail || 'Failed to create campaign')
+      }
+    } catch (err) {
+      console.error('Failed to create campaign:', err)
+      alert('Failed to create campaign')
+    } finally {
+      setCreatingCampaign(false)
+    }
+  }
+
+  // Send email campaign
+  const sendCampaign = async (campaignId) => {
+    if (!confirm('Are you sure you want to send this campaign? This cannot be undone.')) return
+    setSendingCampaign(true)
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing/campaigns/${campaignId}/send`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      if (response.ok) {
+        fetchCampaigns()
+        alert('Campaign sending started!')
+      } else {
+        const data = await response.json()
+        alert(data.detail || 'Failed to send campaign')
+      }
+    } catch (err) {
+      console.error('Failed to send campaign:', err)
+      alert('Failed to send campaign')
+    } finally {
+      setSendingCampaign(false)
+    }
+  }
+
+  // Preview campaign
+  const previewCampaign = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/marketing/campaigns/preview`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          subject: newCampaign.subject,
+          message: newCampaign.message,
+          promo_code_id: newCampaign.promo_code_id,
+        }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setCampaignPreview(data)
+      }
+    } catch (err) {
+      console.error('Failed to preview campaign:', err)
     }
   }
 
@@ -5470,6 +5608,9 @@ function Admin() {
     } else if (tabId === 'promotions') {
       setActiveTab('marketing')
       setMarketingSubTab('promotions')
+    } else if (tabId === 'campaigns') {
+      setActiveTab('marketing')
+      setMarketingSubTab('campaigns')
     } else if (tabId === 'sources') {
       setActiveTab('marketing')
       setMarketingSubTab('sources')
@@ -5514,6 +5655,7 @@ function Admin() {
     // Marketing sub-tabs
     if (itemId === 'marketing' && activeTab === 'marketing' && marketingSubTab === 'subscribers') return true
     if (itemId === 'promotions' && activeTab === 'marketing' && marketingSubTab === 'promotions') return true
+    if (itemId === 'campaigns' && activeTab === 'marketing' && marketingSubTab === 'campaigns') return true
     if (itemId === 'sources' && activeTab === 'marketing' && marketingSubTab === 'sources') return true
     // Reports sub-tabs
     if (itemId === 'reports-growth' && activeTab === 'reports' && reportsSubTab === 'growth') return true
@@ -7415,6 +7557,7 @@ function Admin() {
             <h2>
               {marketingSubTab === 'subscribers' && 'Subscribers'}
               {marketingSubTab === 'promotions' && 'Promotions'}
+              {marketingSubTab === 'campaigns' && 'Email Campaigns'}
               {marketingSubTab === 'sources' && 'Sources'}
             </h2>
 
@@ -8538,6 +8681,214 @@ function Admin() {
                         )}
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Email Campaigns Sub-tab */}
+            {marketingSubTab === 'campaigns' && (
+              <div className="email-campaigns-section">
+                <div className="admin-section-header">
+                  <h2>Email Campaigns</h2>
+                  <div className="flights-header-actions">
+                    <button
+                      className="btn-secondary"
+                      onClick={fetchCampaigns}
+                      disabled={loadingCampaigns}
+                    >
+                      {loadingCampaigns ? 'Loading...' : '↻ Refresh'}
+                    </button>
+                    <button
+                      className="btn-primary"
+                      onClick={() => setShowCreateCampaign(true)}
+                    >
+                      + New Campaign
+                    </button>
+                  </div>
+                </div>
+
+                {/* Campaign List */}
+                {loadingCampaigns ? (
+                  <div className="loading-spinner">Loading campaigns...</div>
+                ) : campaigns.length === 0 ? (
+                  <div className="no-data-message">
+                    <p>No email campaigns yet. Create your first campaign to send marketing emails to subscribers.</p>
+                  </div>
+                ) : (
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Subject</th>
+                        <th>Status</th>
+                        <th>Recipients</th>
+                        <th>Sent</th>
+                        <th>Failed</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {campaigns.map(campaign => (
+                        <tr key={campaign.id}>
+                          <td>
+                            <strong>{campaign.subject}</strong>
+                            {campaign.promo_code && (
+                              <span className="promo-badge" style={{ marginLeft: '8px', background: '#CCFF00', color: '#1A1A1A', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>
+                                {campaign.promo_code}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`status-badge status-${campaign.status}`}>
+                              {campaign.status}
+                            </span>
+                          </td>
+                          <td>{campaign.total_recipients}</td>
+                          <td>{campaign.sent_count}</td>
+                          <td>{campaign.failed_count}</td>
+                          <td>{campaign.created_at ? new Date(campaign.created_at).toLocaleDateString('en-GB') : '-'}</td>
+                          <td>
+                            {campaign.status === 'draft' && (
+                              <button
+                                className="btn-primary btn-sm"
+                                onClick={() => sendCampaign(campaign.id)}
+                                disabled={sendingCampaign}
+                              >
+                                {sendingCampaign ? 'Sending...' : 'Send'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                {/* Create Campaign Modal */}
+                {showCreateCampaign && (
+                  <div className="modal-overlay" onClick={() => setShowCreateCampaign(false)}>
+                    <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
+                      <div className="modal-header">
+                        <h3>Create Email Campaign</h3>
+                        <button className="modal-close" onClick={() => setShowCreateCampaign(false)}>×</button>
+                      </div>
+                      <div className="modal-body">
+                        <div className="form-group">
+                          <label>Subject Line</label>
+                          <input
+                            type="text"
+                            value={newCampaign.subject}
+                            onChange={(e) => setNewCampaign({ ...newCampaign, subject: e.target.value })}
+                            placeholder="e.g., Special offer just for you!"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>Message</label>
+                          <textarea
+                            rows={6}
+                            value={newCampaign.message}
+                            onChange={(e) => setNewCampaign({ ...newCampaign, message: e.target.value })}
+                            placeholder="Use {{first_name}} for personalisation and {{founder_name}} for signature"
+                          />
+                          <small style={{ color: '#666' }}>
+                            Variables: {'{{first_name}}'} = subscriber name, {'{{founder_name}}'} = founder signature
+                          </small>
+                        </div>
+                        <div className="form-group">
+                          <label>Promo Code (optional)</label>
+                          <select
+                            value={newCampaign.promo_code_id || ''}
+                            onChange={(e) => setNewCampaign({ ...newCampaign, promo_code_id: e.target.value ? parseInt(e.target.value) : null })}
+                          >
+                            <option value="">No promo code</option>
+                            {availablePromoCodes.map(code => (
+                              <option key={code.id} value={code.id}>
+                                {code.code} ({code.discount_percent}% off, {code.use_count}/{code.max_uses === 0 ? '∞' : code.max_uses} used)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label>Recipients</label>
+                          <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                            <button
+                              type="button"
+                              className="btn-secondary btn-sm"
+                              onClick={() => {
+                                const allIds = subscribers.filter(s => !s.unsubscribed).map(s => s.id)
+                                setNewCampaign({ ...newCampaign, subscriber_ids: allIds })
+                              }}
+                            >
+                              Select All ({subscribers.filter(s => !s.unsubscribed).length})
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary btn-sm"
+                              onClick={() => setNewCampaign({ ...newCampaign, subscriber_ids: [] })}
+                            >
+                              Clear Selection
+                            </button>
+                          </div>
+                          <div style={{ maxHeight: '200px', overflow: 'auto', border: '1px solid #ddd', borderRadius: '4px', padding: '10px' }}>
+                            {subscribers.filter(s => !s.unsubscribed).map(subscriber => (
+                              <label key={subscriber.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={newCampaign.subscriber_ids.includes(subscriber.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setNewCampaign({ ...newCampaign, subscriber_ids: [...newCampaign.subscriber_ids, subscriber.id] })
+                                    } else {
+                                      setNewCampaign({ ...newCampaign, subscriber_ids: newCampaign.subscriber_ids.filter(id => id !== subscriber.id) })
+                                    }
+                                  }}
+                                />
+                                {subscriber.first_name} {subscriber.last_name} ({subscriber.email})
+                              </label>
+                            ))}
+                          </div>
+                          <small style={{ color: '#666' }}>
+                            {newCampaign.subscriber_ids.length} recipient(s) selected
+                          </small>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={previewCampaign}
+                            disabled={!newCampaign.subject || !newCampaign.message}
+                          >
+                            Preview
+                          </button>
+                        </div>
+                        {campaignPreview && (
+                          <div style={{ marginTop: '15px', padding: '15px', background: '#f5f5f5', borderRadius: '8px' }}>
+                            <h4 style={{ margin: '0 0 10px 0' }}>Preview</h4>
+                            <p><strong>Subject:</strong> {campaignPreview.subject}</p>
+                            <p><strong>Message:</strong></p>
+                            <div style={{ whiteSpace: 'pre-wrap', background: 'white', padding: '10px', borderRadius: '4px' }}>
+                              {campaignPreview.message}
+                            </div>
+                            {campaignPreview.promo_code && (
+                              <p><strong>Promo Code:</strong> {campaignPreview.promo_code}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="modal-footer">
+                        <button className="btn-secondary" onClick={() => setShowCreateCampaign(false)}>
+                          Cancel
+                        </button>
+                        <button
+                          className="btn-primary"
+                          onClick={createCampaign}
+                          disabled={creatingCampaign || !newCampaign.subject || !newCampaign.message || newCampaign.subscriber_ids.length === 0}
+                        >
+                          {creatingCampaign ? 'Creating...' : 'Create Campaign'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
