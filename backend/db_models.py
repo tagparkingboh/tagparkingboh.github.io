@@ -675,7 +675,15 @@ class ErrorLog(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     # Error classification
-    severity = Column(Enum(ErrorSeverity), default=ErrorSeverity.ERROR, nullable=False, index=True)
+    # values_callable sends enum values (lowercase) to Postgres instead of names (uppercase),
+    # matching the errorseverity enum type. Without this, every insert fails with
+    # "invalid input value for enum errorseverity: 'ERROR'" and log_error swallows the exception.
+    severity = Column(
+        Enum(ErrorSeverity, values_callable=lambda x: [e.value for e in x]),
+        default=ErrorSeverity.ERROR,
+        nullable=False,
+        index=True,
+    )
     error_type = Column(String(100), nullable=False, index=True)  # e.g., "dvla_api", "stripe", "validation"
     error_code = Column(String(50))  # HTTP status or custom code
 

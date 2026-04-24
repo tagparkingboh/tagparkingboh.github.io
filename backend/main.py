@@ -346,6 +346,36 @@ def run_migrations():
         else:
             print("Migration check: audit_logs enum already has lowercase values")
 
+        # Migration 5b: Align errorseverity enum to lowercase (prod is lowercase, staging was uppercase)
+        # Required because ErrorLog.severity uses values_callable → lowercase; mismatched envs broke writes.
+        result = db.execute(text("""
+            SELECT enumlabel FROM pg_enum
+            WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'errorseverity')
+            AND enumlabel = 'warning'
+        """))
+
+        if not result.fetchone():
+            print("Running migration: Aligning errorseverity enum to lowercase...")
+            for value in ('debug', 'info', 'warning', 'error', 'critical'):
+                try:
+                    db.execute(text(f"ALTER TYPE errorseverity ADD VALUE IF NOT EXISTS '{value}'"))
+                    db.commit()
+                except Exception:
+                    db.rollback()
+
+            for old_val, new_val in (
+                ('DEBUG', 'debug'),
+                ('INFO', 'info'),
+                ('WARNING', 'warning'),
+                ('ERROR', 'error'),
+                ('CRITICAL', 'critical'),
+            ):
+                db.execute(text(f"UPDATE error_logs SET severity = '{new_val}' WHERE severity = '{old_val}'"))
+            db.commit()
+            print("Migration completed: errorseverity enum aligned")
+        else:
+            print("Migration check: errorseverity enum already lowercase")
+
         # Migration 6: Add type column to promo_modals table
         result = db.execute(text("""
             SELECT column_name
