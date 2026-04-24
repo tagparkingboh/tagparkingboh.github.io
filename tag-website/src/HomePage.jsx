@@ -41,7 +41,7 @@ function HomePage() {
     const interval = setInterval(() => {
       setBannerFading(true)
       setTimeout(() => {
-        setHeroBannerIndex(prev => (prev + 1) % 7)
+        setHeroBannerIndex(prev => (prev + 1) % 8)
         setBannerFading(false)
       }, 300) // Fade out duration
     }, 5000)
@@ -277,21 +277,24 @@ function HomePage() {
                 <>Save up to 60% off<br />official airport parking</>
               )}
               {heroBannerIndex === 1 && (
-                <>Read our story in the<br /><a href="https://www.bournemouthecho.co.uk/news/25707007.new-parking-business-launches-near-bournemouth-airport/" target="_blank" rel="noopener noreferrer" className="hero-link">Daily Echo</a></>
+                <>Friendly and cost-effective alternative<br />to official airport parking</>
               )}
               {heroBannerIndex === 2 && (
-                <>It's time to Tag it.<br />Book your parking now</>
+                <>Read our story in the<br /><a href="https://www.bournemouthecho.co.uk/news/25707007.new-parking-business-launches-near-bournemouth-airport/" target="_blank" rel="noopener noreferrer" className="hero-link">Daily Echo</a></>
               )}
               {heroBannerIndex === 3 && (
-                <>Enjoy peace of mind from<br />Palma to Paphos</>
+                <>It's time to Tag it.<br />Book your parking now</>
               )}
               {heroBannerIndex === 4 && (
-                <>Secure parking<br />guaranteed, 24/7</>
+                <>Enjoy peace of mind from<br />Palma to Paphos</>
               )}
               {heroBannerIndex === 5 && (
-                <>Free cancellation up to<br />24 hours before</>
+                <>Secure parking<br />guaranteed, 24/7</>
               )}
               {heroBannerIndex === 6 && (
+                <>Free cancellation up to<br />24 hours before</>
+              )}
+              {heroBannerIndex === 7 && (
                 <>Secure payments<br />powered by Stripe</>
               )}
             </h1>
