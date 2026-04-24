@@ -5,6 +5,7 @@ from sqlalchemy import (
     Column, Integer, String, DateTime, Date, Time,
     ForeignKey, Enum, Boolean, Text, Numeric, UniqueConstraint
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -721,6 +722,17 @@ class User(Base):
     is_admin = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
 
+    # Roster planner inputs
+    # Soft preference: engine favours (not enforces) shifts whose type is in this list.
+    # Empty array = flexible.
+    preferred_shift_types = Column(
+        ARRAY(Enum(ShiftType, values_callable=lambda x: [e.value for e in x], name="shifttype", create_type=False)),
+        nullable=False,
+        server_default="{}",
+    )
+    # Hard exclusion: engine never proposes or extends a shift for this user.
+    auto_assign_excluded = Column(Boolean, nullable=False, server_default="false")
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -1202,6 +1214,21 @@ class ShiftBookingLink(Base):
     )
 
 
+class RosterPlannerSettings(Base):
+    """Key/value settings for the Roster Planner engine.
+
+    Values are JSON-encoded text so the engine can mix scalars, lists, and objects
+    without schema churn as rules evolve. Seeded with defaults at startup.
+    """
+    __tablename__ = "roster_planner_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(100), unique=True, nullable=False, index=True)
+    value_json = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+
 class RosterShift(Base):
     """Roster shift for staff scheduling."""
     __tablename__ = "roster_shifts"
@@ -1234,6 +1261,14 @@ class RosterShift(Base):
 
     # Notes
     notes = Column(Text, nullable=True)
+
+    # Roster planner audit tags
+    # 'manual' for shifts created by admins via the UI (existing behaviour).
+    # 'planner' for shifts created by the auto-planner commit flow (Phase 3+).
+    created_source = Column(String(50), nullable=False, server_default="manual")
+    # UUID-ish identifier of the planner run that created this shift — enables undo
+    # via `DELETE FROM roster_shifts WHERE planner_run_id = ? AND status = 'scheduled'`.
+    planner_run_id = Column(String(64), nullable=True, index=True)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -604,3 +604,103 @@ class OperationalWarning(BaseModel):
     rule: str
     message: str
     severity: str = "warning"  # "warning" or "error"
+
+
+# =====================================================================================
+# Roster Planner — Phase 1 (read-only preview)
+# Rules locked 2026-04-24, see backend/docs/SPEC.md § Roster Planner.
+# =====================================================================================
+
+class RosterPlannerStaffingThreshold(BaseModel):
+    """One bucket of the staffing curve. The engine picks the first bucket whose
+    max_peak is >= the peak concurrent event count in any 15-min window."""
+    max_peak: int = Field(..., ge=1)
+    staff: int = Field(..., ge=1)
+
+
+class RosterPlannerSettingsResponse(BaseModel):
+    """Read-only snapshot of current planner settings."""
+    window_days: int
+    gap_max_minutes: int
+    buffer_minutes: int
+    staffing_thresholds: List[RosterPlannerStaffingThreshold]
+    max_hours_per_week: int
+    min_rest_hours: int
+    untouchable_hours: int
+    preview_enabled: bool
+    commit_enabled: bool
+
+
+class RosterPlannerSettingsUpdate(BaseModel):
+    """Partial update for planner settings. Unset fields are not modified.
+
+    Uses Pydantic's default `exclude_unset` semantics via `model_dump(exclude_unset=True)`
+    at the endpoint — so a PATCH with only `{max_hours_per_week: 45}` leaves every
+    other setting untouched (per SPEC.md 2026-04-06 null-vs-not-provided rule).
+    """
+    window_days: Optional[int] = Field(default=None, ge=1, le=90)
+    gap_max_minutes: Optional[int] = Field(default=None, ge=0, le=480)
+    buffer_minutes: Optional[int] = Field(default=None, ge=0, le=120)
+    staffing_thresholds: Optional[List[RosterPlannerStaffingThreshold]] = None
+    max_hours_per_week: Optional[int] = Field(default=None, ge=1, le=168)
+    min_rest_hours: Optional[int] = Field(default=None, ge=0, le=48)
+    untouchable_hours: Optional[int] = Field(default=None, ge=0, le=168)
+    preview_enabled: Optional[bool] = None
+    commit_enabled: Optional[bool] = None
+
+
+class ProposedEvent(BaseModel):
+    """A single drop-off or pick-up covered by a proposed shift."""
+    booking_id: int
+    booking_reference: str
+    event_type: Literal["drop_off", "pick_up"]
+    event_time: datetime  # Europe/London aware
+
+
+class ProposedShift(BaseModel):
+    """A shift the engine proposes to create or extend.
+
+    `kind`:
+      - `new`: create a brand-new shift.
+      - `extend`: extend an existing `shift_id` (update its start/end and add links).
+      - `untouched_for_reason`: an existing shift the engine reports but won't modify.
+    """
+    kind: Literal["new", "extend", "untouched_for_reason"]
+    shift_id: Optional[int] = None  # set for extend / untouched_for_reason
+    date: date_type
+    end_date: Optional[date_type] = None  # for overnight shifts
+    start_time: time
+    end_time: time
+    shift_type: ShiftTypeEnum
+    is_custom_range: bool = False  # True when times don't match a canonical ShiftType window
+    staff_id: Optional[int] = None  # None = unassigned (?)
+    staff_initials: Optional[str] = None  # e.g. "KA"
+    events: List[ProposedEvent]
+    peak_concurrent_count: int
+    required_staff_count: int
+    reason: str  # human-readable rationale, e.g. "3 drop-offs within 45 min"
+    untouched_reason: Optional[str] = None  # set when kind=untouched_for_reason
+
+
+class RosterProposalWarning(BaseModel):
+    """A concern raised by the engine — coverage gap, constraint collision, etc."""
+    rule: str  # e.g. "max_hours_per_week", "unmanned", "preference_violation"
+    severity: Literal["info", "warning", "error"] = "warning"
+    message: str
+    booking_references: List[str] = Field(default_factory=list)
+    staff_id: Optional[int] = None
+
+
+class RosterProposalResponse(BaseModel):
+    """Full JSON result of `POST /api/admin/qa/roster-planner/propose`.
+
+    Deterministic: same DB state + same `now` produces the same output.
+    """
+    run_id: str  # UUID for audit / replay / undo
+    generated_at: datetime
+    window_start: date_type
+    window_end: date_type
+    settings_snapshot: RosterPlannerSettingsResponse
+    proposed_shifts: List[ProposedShift]
+    warnings: List[RosterProposalWarning]
+    summary: dict  # counts: { new_shifts, extended_shifts, untouched_shifts, unmanned_events, staff_hit_max_hours }

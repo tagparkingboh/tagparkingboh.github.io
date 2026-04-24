@@ -376,6 +376,37 @@ def run_migrations():
         else:
             print("Migration check: errorseverity enum already lowercase")
 
+        # Migration 5c: Seed default roster_planner_settings (idempotent)
+        # Rules locked 2026-04-24. Admins can tune these via the QA tab once Phase 2 ships.
+        try:
+            import json as _json
+            default_settings = {
+                "window_days": 28,
+                "gap_max_minutes": 120,
+                "buffer_minutes": 30,
+                "staffing_thresholds": [
+                    {"max_peak": 3, "staff": 1},
+                    {"max_peak": 999, "staff": 2},
+                ],
+                "max_hours_per_week": 40,
+                "min_rest_hours": 8,
+                "untouchable_hours": 24,
+                "preview_enabled": True,
+                "commit_enabled": False,
+            }
+            for key, value in default_settings.items():
+                db.execute(
+                    text(
+                        "INSERT INTO roster_planner_settings (key, value_json) "
+                        "VALUES (:k, :v) ON CONFLICT (key) DO NOTHING"
+                    ),
+                    {"k": key, "v": _json.dumps(value)},
+                )
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"Migration check: roster_planner_settings seed skipped ({e})")
+
         # Migration 6: Add type column to promo_modals table
         result = db.execute(text("""
             SELECT column_name

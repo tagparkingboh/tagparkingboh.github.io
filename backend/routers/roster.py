@@ -15,13 +15,17 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from database import get_db
-from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession, BookingStatus, ShiftBookingLink, EmployeeHoliday, HolidayType
+from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession, BookingStatus, ShiftBookingLink, EmployeeHoliday, HolidayType, RosterPlannerSettings as DbRosterPlannerSettings
 from models import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     RosterShiftCreate, RosterShiftUpdate, RosterShiftResponse,
     AutoAssignRequest, AutoAssignResponse, OperationalWarning,
-    ShiftTypeEnum, ShiftStatusEnum, LinkedBookingInfo
+    ShiftTypeEnum, ShiftStatusEnum, LinkedBookingInfo,
+    RosterPlannerSettingsResponse, RosterPlannerSettingsUpdate,
+    RosterProposalResponse,
 )
+from roster_planner import propose_roster, PlannerSettings, UK_TZ
+import json
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 router = APIRouter(prefix="/api", tags=["roster"])
@@ -2429,3 +2433,161 @@ async def delete_holiday(
     db.commit()
 
     return {"success": True, "message": "Holiday deleted"}
+
+
+# ============================================================================
+# QA Roster Planner (Phase 1) — read-only preview + settings
+# Rules locked 2026-04-24. See backend/docs/SPEC.md § Roster Planner.
+# Gated by user_id IN QA_USER_IDS as defence-in-depth (UI also hides the tab).
+# No writes to roster_shifts occur in Phase 1.
+# ============================================================================
+
+QA_USER_IDS = {1, 2}
+
+_PLANNER_DEFAULT_SETTINGS = {
+    "window_days": 28,
+    "gap_max_minutes": 120,
+    "buffer_minutes": 30,
+    "staffing_thresholds": [
+        {"max_peak": 3, "staff": 1},
+        {"max_peak": 999, "staff": 2},
+    ],
+    "max_hours_per_week": 40,
+    "min_rest_hours": 8,
+    "untouchable_hours": 24,
+    "preview_enabled": True,
+    "commit_enabled": False,
+}
+
+
+async def require_qa_admin(current_user: User = Depends(require_admin)) -> User:
+    if current_user.id not in QA_USER_IDS:
+        raise HTTPException(status_code=403, detail="QA access required")
+    return current_user
+
+
+def _load_planner_settings_rows(db: Session) -> dict:
+    rows = db.query(DbRosterPlannerSettings).all()
+    parsed: dict = {}
+    for row in rows:
+        try:
+            parsed[row.key] = json.loads(row.value_json)
+        except (json.JSONDecodeError, TypeError):
+            continue
+    return parsed
+
+
+def _settings_response(parsed: dict) -> RosterPlannerSettingsResponse:
+    merged = {**_PLANNER_DEFAULT_SETTINGS, **parsed}
+    return RosterPlannerSettingsResponse(**merged)
+
+
+@router.get(
+    "/admin/qa/roster-planner/settings",
+    response_model=RosterPlannerSettingsResponse,
+)
+async def get_roster_planner_settings(
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    return _settings_response(_load_planner_settings_rows(db))
+
+
+@router.patch(
+    "/admin/qa/roster-planner/settings",
+    response_model=RosterPlannerSettingsResponse,
+)
+async def patch_roster_planner_settings(
+    payload: RosterPlannerSettingsUpdate,
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    # exclude_unset guards against clobbering fields the admin didn't touch
+    # (2026-04-06 shift-unassign lesson).
+    changes = payload.model_dump(exclude_unset=True)
+    for key, value in changes.items():
+        row = (
+            db.query(DbRosterPlannerSettings)
+            .filter(DbRosterPlannerSettings.key == key)
+            .one_or_none()
+        )
+        value_json = json.dumps(value)
+        if row is None:
+            db.add(
+                DbRosterPlannerSettings(
+                    key=key, value_json=value_json, updated_by=current_user.id
+                )
+            )
+        else:
+            row.value_json = value_json
+            row.updated_by = current_user.id
+            row.updated_at = datetime.utcnow()
+    if changes:
+        db.commit()
+    return _settings_response(_load_planner_settings_rows(db))
+
+
+@router.post(
+    "/admin/qa/roster-planner/propose",
+    response_model=RosterProposalResponse,
+)
+async def propose_roster_endpoint(
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    parsed = _load_planner_settings_rows(db)
+    settings_snapshot = _settings_response(parsed)
+    engine_settings = PlannerSettings.from_kv(parsed)
+    now = datetime.now(UK_TZ)
+    window_start = now.date()
+    window_end = window_start + timedelta(days=engine_settings.window_days)
+
+    bookings = (
+        db.query(Booking)
+        .filter(
+            Booking.status == BookingStatus.CONFIRMED,
+            or_(
+                and_(
+                    Booking.dropoff_date >= window_start,
+                    Booking.dropoff_date < window_end,
+                ),
+                and_(
+                    Booking.pickup_date >= window_start,
+                    Booking.pickup_date < window_end,
+                ),
+            ),
+        )
+        .all()
+    )
+    shifts = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.date >= window_start,
+            RosterShift.date < window_end,
+        )
+        .all()
+    )
+    staff = (
+        db.query(User)
+        .filter(User.is_active == True, User.is_admin == False)
+        .all()
+    )
+    holidays = (
+        db.query(EmployeeHoliday)
+        .filter(
+            EmployeeHoliday.start_date < window_end,
+            EmployeeHoliday.end_date >= window_start,
+        )
+        .all()
+    )
+
+    result = propose_roster(
+        bookings=bookings,
+        shifts=shifts,
+        staff=staff,
+        holidays=holidays,
+        settings=engine_settings,
+        now=now,
+    )
+    result["settings_snapshot"] = settings_snapshot.model_dump()
+    return result
