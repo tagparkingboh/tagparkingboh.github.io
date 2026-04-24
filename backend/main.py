@@ -437,7 +437,17 @@ def run_migrations():
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database and start background scheduler on startup."""
+    """Initialize database and start background scheduler on startup.
+
+    Guard: if engine is None (e.g. test environment without a DB URL),
+    skip DB-dependent startup steps so TestClient(app) can enter the
+    lifespan without AttributeError: 'NoneType' object has no attribute
+    '_run_ddl_visitor'.
+    """
+    from database import engine
+    if engine is None:
+        print("[startup] engine is None — skipping init_db/run_migrations/start_scheduler")
+        return
     init_db()
     run_migrations()
     start_scheduler()
