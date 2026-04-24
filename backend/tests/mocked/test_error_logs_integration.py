@@ -283,6 +283,45 @@ class TestErrorLogsAuthentication:
         app.dependency_overrides.clear()
 
 
+class TestLogErrorSeverityEnumSerialization:
+    """Regression guard for the errorseverity enum serialization bug.
+
+    Bug: ErrorLog.severity column was declared as Column(Enum(ErrorSeverity))
+    without values_callable, so SQLAlchemy sent enum names (uppercase, e.g.
+    'WARNING') to Postgres while the errorseverity enum type only accepts
+    lowercase values. Every insert raised InvalidTextRepresentation, which
+    log_error()'s try/except swallowed — silently dropping all error logs
+    for ~12 days before detection.
+
+    This test inserts a real ErrorLog via log_error() against a real DB and
+    asserts the row is retrievable. If the column serialization breaks again,
+    this fails loudly.
+    """
+
+    def test_log_error_inserts_row_with_warning_severity(self, db_session):
+        """log_error must actually persist a row — not silently swallow exceptions."""
+        from main import log_error
+
+        marker = f"regression_probe_{datetime.now(timezone.utc).isoformat()}"
+        log_error(
+            db=db_session,
+            error_type="regression_probe",
+            message=marker,
+            severity=ErrorSeverity.WARNING,
+        )
+
+        row = (
+            db_session.query(ErrorLog)
+            .filter(ErrorLog.message == marker)
+            .one_or_none()
+        )
+        assert row is not None, "log_error silently failed — row did not land in error_logs"
+        assert row.severity == ErrorSeverity.WARNING
+
+        db_session.delete(row)
+        db_session.commit()
+
+
 # ============================================================================
 # Run tests
 # ============================================================================
