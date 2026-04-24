@@ -214,7 +214,7 @@ def is_staff_on_holiday(
     staff_id: int, day: date, holidays: Iterable[EmployeeHoliday]
 ) -> bool:
     return any(
-        h.employee_id == staff_id and h.start_date <= day <= h.end_date for h in holidays
+        h.staff_id == staff_id and h.start_date <= day <= h.end_date for h in holidays
     )
 
 

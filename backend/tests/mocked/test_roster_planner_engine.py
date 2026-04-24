@@ -132,8 +132,9 @@ def mk_shift(
 
 
 def mk_holiday(staff_id: int, start: date, end: Optional[date] = None):
+    # Match the real EmployeeHoliday.staff_id column — engine reads h.staff_id.
     return SimpleNamespace(
-        employee_id=staff_id, start_date=start, end_date=end or start
+        staff_id=staff_id, start_date=start, end_date=end or start
     )
 
 
