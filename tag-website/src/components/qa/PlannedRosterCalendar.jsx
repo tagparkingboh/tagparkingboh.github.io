@@ -453,19 +453,11 @@ function FeedbackModal({ apiUrl, authHeader, runId, shift, shiftIndex, onClose }
             ) : adminShifts.length === 0 ? (
               <div className="prp-empty">No shifts scheduled on this date.</div>
             ) : (
-              <ul className="prp-modal-shift-list">
+              <div className="prp-admin-shift-stack">
                 {adminShifts.map((s) => (
-                  <li key={s.id}>
-                    <strong>
-                      {formatTime(s.start_time)}–{formatTime(s.end_time)}
-                    </strong>{' '}
-                    {s.staff_initials || (s.staff_id ? `#${s.staff_id}` : '?')}
-                    {s.status && (
-                      <span className="prp-modal-status">{s.status}</span>
-                    )}
-                  </li>
+                  <AdminShiftBlock key={s.id} shift={s} />
                 ))}
-              </ul>
+              </div>
             )}
           </div>
         </div>
@@ -542,30 +534,106 @@ function FeedbackModal({ apiUrl, authHeader, runId, shift, shiftIndex, onClose }
 
 function ShiftDetail({ shift }) {
   return (
-    <ul className="prp-modal-shift-list">
-      <li>
-        <strong>Time:</strong> {shift.start_time}–{shift.end_time}
-      </li>
-      <li>
-        <strong>Date:</strong> {shift.date}
-      </li>
-      <li>
-        <strong>Staff:</strong>{' '}
-        {shift.staff_id ? shift.staff_initials || `#${shift.staff_id}` : '? unassigned'}
-      </li>
-      <li>
-        <strong>Type:</strong> {shift.shift_type || 'custom'}
-      </li>
-      <li>
-        <strong>Kind:</strong> {shift.kind || 'new'}
-      </li>
-      {shift.linked_booking_refs?.length > 0 && (
-        <li>
-          <strong>Bookings:</strong> {shift.linked_booking_refs.join(', ')}
-        </li>
+    <div className="prp-shift-detail">
+      <div className="prp-shift-detail-meta">
+        <span><strong>Time:</strong> {formatTime(shift.start_time)}–{formatTime(shift.end_time)}</span>
+        <span><strong>Date:</strong> {shift.date}</span>
+        <span>
+          <strong>Staff:</strong>{' '}
+          {shift.staff_id ? shift.staff_initials || `#${shift.staff_id}` : '? unassigned'}
+        </span>
+        <span><strong>Type:</strong> {shift.shift_type || 'custom'}</span>
+        <span><strong>Kind:</strong> {shift.kind || 'new'}</span>
+      </div>
+      {shift.events?.length > 0 ? (
+        <ul className="prp-event-list">
+          {shift.events.map((e, i) => (
+            <EventRow key={`${e.booking_id}-${e.event_type}-${i}`} event={e} />
+          ))}
+        </ul>
+      ) : (
+        <div className="prp-empty">No bookings linked to this shift.</div>
       )}
-    </ul>
+    </div>
   )
+}
+
+function AdminShiftBlock({ shift }) {
+  // /api/roster returns RosterShiftResponse with linked_bookings (LinkedBookingInfo).
+  const bookings = shift.linked_bookings || []
+  return (
+    <div className="prp-admin-shift">
+      <div className="prp-admin-shift-head">
+        <strong>
+          {formatTime(shift.start_time)}–{formatTime(shift.end_time)}
+        </strong>
+        <span>
+          {shift.staff_initials || (shift.staff_id ? `#${shift.staff_id}` : '? unassigned')}
+        </span>
+        {shift.status && <span className="prp-modal-status">{shift.status}</span>}
+      </div>
+      {bookings.length > 0 && (
+        <ul className="prp-event-list">
+          {bookings.map((b) => (
+            <li
+              key={`${b.id}-${b.type}`}
+              className={`prp-event prp-event-${b.type === 'dropoff' ? 'dropoff' : 'pickup'}`}
+            >
+              <div className="prp-event-head">
+                <span className="prp-event-icon">{b.type === 'dropoff' ? '🚗' : '🛬'}</span>
+                <span className="prp-event-ref">{b.reference}</span>
+                {b.customer_name && (
+                  <span className="prp-event-customer">{b.customer_name}</span>
+                )}
+              </div>
+              <div className="prp-event-line">
+                {b.time && <span>@ {b.time}</span>}
+                {b.flight_number && <span> · {b.flight_number}</span>}
+                {b.destination && <span> · → {b.destination}</span>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function EventRow({ event }) {
+  const isDropoff = event.event_type === 'drop_off'
+  const eventTime = formatEventTime(event.event_time)
+  return (
+    <li className={`prp-event prp-event-${isDropoff ? 'dropoff' : 'pickup'}`}>
+      <div className="prp-event-head">
+        <span className="prp-event-icon">{isDropoff ? '🚗' : '🛬'}</span>
+        <span className="prp-event-ref">{event.booking_reference}</span>
+        {event.customer_name && (
+          <span className="prp-event-customer">{event.customer_name}</span>
+        )}
+      </div>
+      <div className="prp-event-line">
+        {eventTime && <span>@ {eventTime}</span>}
+        {event.flight_number && <span> · {event.flight_number}</span>}
+        {event.destination && <span> · → {event.destination}</span>}
+      </div>
+    </li>
+  )
+}
+
+function formatEventTime(t) {
+  if (!t) return null
+  // Engine emits ISO datetime like "2026-04-25T04:55:00+01:00"; show HH:MM only.
+  try {
+    const d = new Date(t)
+    if (isNaN(d.getTime())) return String(t).slice(11, 16) || null
+    return d.toLocaleTimeString('en-GB', {
+      timeZone: 'Europe/London',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return null
+  }
 }
 
 function formatTime(t) {

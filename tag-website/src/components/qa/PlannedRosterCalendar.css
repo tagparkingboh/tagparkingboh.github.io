@@ -432,6 +432,102 @@
   border: 1px solid #e5e7eb;
 }
 
+/* Engine ShiftDetail (left col of modal) */
+.prp-shift-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.8rem;
+  color: #4b5563;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px dashed #e5e7eb;
+}
+
+/* Admin column shift stack */
+.prp-admin-shift-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.prp-admin-shift {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+}
+
+.prp-admin-shift-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #1f2937;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px dashed #e5e7eb;
+  margin-bottom: 0.4rem;
+}
+
+/* Per-event rows — same shape on both sides of the modal */
+.prp-event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.prp-event {
+  background: #f9fafb;
+  border-left: 3px solid #2563eb;
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+  color: #1f2937;
+}
+
+.prp-event-pickup {
+  border-left-color: #10b981;
+}
+
+.prp-event-dropoff {
+  border-left-color: #2563eb;
+}
+
+.prp-event-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: baseline;
+  font-weight: 600;
+}
+
+.prp-event-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.prp-event-ref {
+  color: #2563eb;
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.01em;
+}
+
+.prp-event-customer {
+  color: #1f2937;
+  font-weight: 500;
+}
+
+.prp-event-line {
+  font-size: 0.78rem;
+  color: #4b5563;
+  margin-top: 1px;
+}
+
 .prp-modal-feedback-form {
   background: #fffbeb;
   border: 1px solid #fde68a;

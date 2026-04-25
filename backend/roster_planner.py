@@ -84,6 +84,12 @@ class Event:
     booking_reference: str
     event_type: str  # "drop_off" | "pick_up"
     event_time: datetime  # tz-aware Europe/London
+    # Enriched fields so the QA modal can drill into a shift and see the
+    # job the engine assigned, matching the admin calendar's render.
+    # All optional — engine logic doesn't depend on them.
+    customer_name: Optional[str] = None
+    flight_number: Optional[str] = None
+    destination: Optional[str] = None  # destination for drop_off, origin for pick_up
 
 
 @dataclass
@@ -399,6 +405,10 @@ def propose_roster(
     for b in bookings:
         if b.status != BookingStatus.CONFIRMED:
             continue
+        customer_name = (
+            f"{getattr(b, 'customer_first_name', '') or ''} "
+            f"{getattr(b, 'customer_last_name', '') or ''}".strip() or None
+        )
         if window_start <= b.dropoff_date < window_end:
             events.append(
                 Event(
@@ -406,6 +416,9 @@ def propose_roster(
                     booking_reference=b.reference,
                     event_type="drop_off",
                     event_time=_combine_uk(b.dropoff_date, b.dropoff_time),
+                    customer_name=customer_name,
+                    flight_number=getattr(b, "dropoff_flight_number", None),
+                    destination=getattr(b, "dropoff_destination", None),
                 )
             )
         if window_start <= b.pickup_date < window_end:
@@ -415,6 +428,9 @@ def propose_roster(
                     booking_reference=b.reference,
                     event_type="pick_up",
                     event_time=_combine_uk(b.pickup_date, b.pickup_time),
+                    customer_name=customer_name,
+                    flight_number=getattr(b, "pickup_flight_number", None),
+                    destination=getattr(b, "pickup_origin", None),
                 )
             )
 
@@ -456,6 +472,9 @@ def propose_roster(
                 "booking_reference": e.booking_reference,
                 "event_type": e.event_type,
                 "event_time": e.event_time,
+                "customer_name": e.customer_name,
+                "flight_number": e.flight_number,
+                "destination": e.destination,
             }
             for e in cluster.events
         ]
