@@ -44,7 +44,8 @@ class PlannerSettings:
     window_days: int
     gap_max_minutes: int
     mixed_gap_max_minutes: int
-    buffer_minutes: int
+    start_buffer_minutes: int
+    end_buffer_minutes: int
     staffing_thresholds: tuple[dict, ...]
     max_hours_per_week: int
     min_rest_hours: int
@@ -57,12 +58,19 @@ class PlannerSettings:
         The DB stores JSON-encoded strings; callers decode before calling this.
         Missing keys fall back to locked-2026-04-24 defaults so the engine never
         crashes on a partial settings row set.
+
+        Buffer compat: the legacy single `buffer_minutes` key (symmetric)
+        falls back to start_buffer_minutes / end_buffer_minutes when the
+        new keys aren't present. Lets old DB rows keep working until they
+        get rewritten by an admin PATCH or a data migration.
         """
+        legacy_buffer = int(rows.get("buffer_minutes", 30))
         return PlannerSettings(
             window_days=int(rows.get("window_days", 28)),
             gap_max_minutes=int(rows.get("gap_max_minutes", 150)),
             mixed_gap_max_minutes=int(rows.get("mixed_gap_max_minutes", 150)),
-            buffer_minutes=int(rows.get("buffer_minutes", 30)),
+            start_buffer_minutes=int(rows.get("start_buffer_minutes", 20 if "buffer_minutes" not in rows else legacy_buffer)),
+            end_buffer_minutes=int(rows.get("end_buffer_minutes", 30 if "buffer_minutes" not in rows else legacy_buffer)),
             staffing_thresholds=tuple(
                 rows.get(
                     "staffing_thresholds",
@@ -480,11 +488,12 @@ def propose_roster(
     proposed_shifts_out: list[dict] = []
     warnings: list[dict] = []
     proposed_hours_by_staff_week: dict[tuple[int, date], float] = {}
-    buffer = timedelta(minutes=settings.buffer_minutes)
+    start_buffer = timedelta(minutes=settings.start_buffer_minutes)
+    end_buffer = timedelta(minutes=settings.end_buffer_minutes)
 
     for cluster in clusters:
-        shift_start_dt = cluster.start - buffer
-        shift_end_dt = cluster.end + buffer
+        shift_start_dt = cluster.start - start_buffer
+        shift_end_dt = cluster.end + end_buffer
         shift_type, is_custom = round_to_shift_type(shift_start_dt, shift_end_dt)
         peak = peak_concurrent_count(cluster.events, window_minutes=15)
         required = required_staff_count(peak, settings.staffing_thresholds)

@@ -2485,7 +2485,8 @@ _PLANNER_DEFAULT_SETTINGS = {
     "window_days": 28,
     "gap_max_minutes": 150,
     "mixed_gap_max_minutes": 150,
-    "buffer_minutes": 30,
+    "start_buffer_minutes": 20,
+    "end_buffer_minutes": 30,
     "staffing_thresholds": [
         {"max_peak": 3, "staff": 1},
         {"max_peak": 999, "staff": 2},

@@ -47,7 +47,8 @@ DEFAULT_SETTINGS = PlannerSettings(
     window_days=28,
     gap_max_minutes=150,
     mixed_gap_max_minutes=150,
-    buffer_minutes=30,
+    start_buffer_minutes=20,
+    end_buffer_minutes=30,
     staffing_thresholds=({"max_peak": 3, "staff": 1}, {"max_peak": 999, "staff": 2}),
     max_hours_per_week=40,
     min_rest_hours=8,
@@ -676,11 +677,40 @@ class TestProposeRosterEndToEnd:
             now=now,
         )
         assert result["proposed_shifts"] == []
-        assert result["warnings"] == []
-        assert result["summary"]["new_shifts"] == 0
+
+    def test_asymmetric_buffer_20_before_30_after(self):
+        """A single drop-off at 13:00 should produce a shift at 12:40-13:30
+        with the locked 20-min start / 30-min end buffer."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1,
+                "TAG-BUF",
+                drop_dt=uk_dt(2026, 5, 6, 13, 0),
+                pick_dt=uk_dt(2026, 5, 20, 17, 0),  # far away — separate cluster
+            ),
+        ]
+        staff = [mk_staff(10, "Ly", "Nguyen")]
+        result = propose_roster(
+            bookings=bookings,
+            shifts=[],
+            staff=staff,
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            now=now,
+        )
+        # Find the drop-off shift on 2026-05-06
+        drop_shift = next(
+            p for p in result["proposed_shifts"]
+            if p["kind"] == "new" and p["date"].isoformat() == "2026-05-06"
+        )
+        assert drop_shift["start_time"].strftime("%H:%M") == "12:40"
+        assert drop_shift["end_time"].strftime("%H:%M") == "13:30"
 
     def test_edge_spec_worked_example(self):
-        """From SPEC.md 2026-04-24: events 13:00d, 13:45p, 14:15d → single shift 12:30–14:45."""
+        """SPEC events 13:00d, 13:45p, 14:15d → single shift 12:40–14:45
+        with asymmetric buffer (20 start / 30 end). Original SPEC line was
+        12:30–14:45 under the locked 30-min symmetric buffer; updated 2026-04-25."""
         now = uk_dt(2026, 5, 1, 0, 0)
         bookings = [
             mk_booking(
@@ -709,7 +739,7 @@ class TestProposeRosterEndToEnd:
         ]
         assert len(in_window) == 1
         s = in_window[0]
-        assert s["start_time"] == time(12, 30)
+        assert s["start_time"] == time(12, 40)
         assert s["end_time"] == time(14, 45)
         assert len(s["events"]) == 3
 

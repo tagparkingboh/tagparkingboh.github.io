@@ -62,7 +62,8 @@ def default_settings_rows():
     return [
         mk_settings_row("window_days", 28),
         mk_settings_row("gap_max_minutes", 120),
-        mk_settings_row("buffer_minutes", 30),
+        mk_settings_row("start_buffer_minutes", 20),
+        mk_settings_row("end_buffer_minutes", 30),
         mk_settings_row(
             "staffing_thresholds",
             [{"max_peak": 3, "staff": 1}, {"max_peak": 999, "staff": 2}],
@@ -516,7 +517,8 @@ class TestPatchSettings:
         assert body["max_hours_per_week"] == 45
         # Other fields remain at their locked defaults — nothing clobbered.
         assert body["min_rest_hours"] == 8
-        assert body["buffer_minutes"] == 30
+        assert body["start_buffer_minutes"] == 20
+        assert body["end_buffer_minutes"] == 30
         # Exactly one row was added — the one key the admin sent.
         assert mock_db.add.call_count == 1
         assert mock_db._committed is True

@@ -624,7 +624,8 @@ class RosterPlannerSettingsResponse(BaseModel):
     window_days: int
     gap_max_minutes: int
     mixed_gap_max_minutes: int
-    buffer_minutes: int
+    start_buffer_minutes: int
+    end_buffer_minutes: int
     staffing_thresholds: List[RosterPlannerStaffingThreshold]
     max_hours_per_week: int
     min_rest_hours: int
@@ -643,7 +644,8 @@ class RosterPlannerSettingsUpdate(BaseModel):
     window_days: Optional[int] = Field(default=None, ge=1, le=90)
     gap_max_minutes: Optional[int] = Field(default=None, ge=0, le=480)
     mixed_gap_max_minutes: Optional[int] = Field(default=None, ge=0, le=720)
-    buffer_minutes: Optional[int] = Field(default=None, ge=0, le=120)
+    start_buffer_minutes: Optional[int] = Field(default=None, ge=0, le=120)
+    end_buffer_minutes: Optional[int] = Field(default=None, ge=0, le=120)
     staffing_thresholds: Optional[List[RosterPlannerStaffingThreshold]] = None
     max_hours_per_week: Optional[int] = Field(default=None, ge=1, le=168)
     min_rest_hours: Optional[int] = Field(default=None, ge=0, le=48)
