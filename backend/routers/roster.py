@@ -24,7 +24,7 @@ from models import (
     RosterPlannerSettingsResponse, RosterPlannerSettingsUpdate,
     RosterProposalResponse,
     PlannerRunListItem, PlannerRunDetail,
-    PlannerRunFeedbackCreate, PlannerRunFeedbackResponse,
+    PlannerRunFeedbackCreate, PlannerRunFeedbackResponse, PlannerRunFeedbackOverride,
 )
 from roster_planner import propose_roster, PlannerSettings, UK_TZ
 from roster_planner_runner import (
@@ -386,16 +386,22 @@ def calculate_shift_hours(start_time, end_time, is_overnight: bool = False) -> f
 @router.get("/staff", response_model=List[EmployeeResponse])
 async def list_all_staff(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    auto_assign_excluded: Optional[bool] = Query(
+        None,
+        description="Filter by auto_assign_excluded status. Pass false to get the assignable pool (excluded users hidden — used by the QA Roster Planner edit modal).",
+    ),
     db: Session = Depends(get_db)
 ):
     """
     List ALL users (both admins and employees) for shift assignment.
-    Optionally filter by is_active status.
+    Optionally filter by is_active and/or auto_assign_excluded status.
     """
     query = db.query(User)
 
     if is_active is not None:
         query = query.filter(User.is_active == is_active)
+    if auto_assign_excluded is not None:
+        query = query.filter(User.auto_assign_excluded == auto_assign_excluded)
 
     users = query.order_by(User.first_name, User.last_name).all()
     return [EmployeeResponse.model_validate(user) for user in users]
@@ -2781,6 +2787,11 @@ async def submit_planner_run_feedback(
     if not parent:
         raise HTTPException(status_code=404, detail="planner run not found")
 
+    override_json = None
+    if payload.override is not None:
+        # Stored as JSON text — see PlannerRunFeedback.override_json docstring.
+        override_json = json.dumps(payload.override.model_dump(mode="json"))
+
     row = PlannerRunFeedback(
         run_id=run_id,
         shift_date=payload.shift_date,
@@ -2790,12 +2801,37 @@ async def submit_planner_run_feedback(
         proposed_shift_index=payload.proposed_shift_index,
         severity=payload.severity,
         comment=payload.comment,
+        override_json=override_json,
         submitted_by=current_user.id,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
-    return row
+    return _feedback_row_to_response(row)
+
+
+def _feedback_row_to_response(row) -> PlannerRunFeedbackResponse:
+    """Hydrate the JSON-stored override back into the typed response."""
+    override = None
+    if row.override_json:
+        try:
+            override = PlannerRunFeedbackOverride.model_validate(json.loads(row.override_json))
+        except (ValueError, TypeError):
+            override = None
+    return PlannerRunFeedbackResponse(
+        id=row.id,
+        run_id=row.run_id,
+        shift_date=row.shift_date,
+        shift_start_time=row.shift_start_time,
+        shift_end_time=row.shift_end_time,
+        shift_staff_id=row.shift_staff_id,
+        proposed_shift_index=row.proposed_shift_index,
+        severity=row.severity,
+        comment=row.comment,
+        override=override,
+        submitted_by=row.submitted_by,
+        submitted_at=row.submitted_at,
+    )
 
 
 @router.get(
@@ -2836,4 +2872,5 @@ async def list_planner_run_feedback(
         q = q.filter(PlannerRunFeedback.shift_start_time == parsed)
     if run_id:
         q = q.filter(PlannerRunFeedback.run_id == run_id)
-    return q.order_by(PlannerRunFeedback.submitted_at.desc()).limit(limit).all()
+    rows = q.order_by(PlannerRunFeedback.submitted_at.desc()).limit(limit).all()
+    return [_feedback_row_to_response(r) for r in rows]

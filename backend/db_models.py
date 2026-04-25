@@ -1297,6 +1297,12 @@ class PlannerRunFeedback(Base):
     severity = Column(String(20), nullable=False)
     comment = Column(Text, nullable=False)
 
+    # Structured override — JSON blob, all fields optional. Initial shape:
+    #   {"staff_id": 7, "start_time": "07:30:00", "end_time": "11:00:00"}
+    # Engine does NOT consume this. It's QA-side "what I would have done"
+    # data alongside the comment, for shadow-mode review.
+    override_json = Column(Text, nullable=True)
+
     submitted_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     submitted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

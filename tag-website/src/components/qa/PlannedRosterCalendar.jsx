@@ -352,32 +352,39 @@ function ShiftCard({ shift, onClick }) {
 function FeedbackModal({ apiUrl, authHeader, runId, shift, shiftIndex, onClose }) {
   const [adminShifts, setAdminShifts] = useState([])
   const [priorFeedback, setPriorFeedback] = useState([])
+  const [assignableStaff, setAssignableStaff] = useState([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
   const [severity, setSeverity] = useState('issue')
   const [comment, setComment] = useState('')
+  // Override fields — prefill from engine values; admin tweaks if needed.
+  const [overrideStaffId, setOverrideStaffId] = useState(shift.staff_id ?? '')
+  const [overrideStart, setOverrideStart] = useState(shortTime(shift.start_time))
+  const [overrideEnd, setOverrideEnd] = useState(shortTime(shift.end_time))
 
-  // Fetch admin calendar for this date + prior feedback for the same date.
   useEffect(() => {
     let cancelled = false
     async function load() {
       setLoading(true)
       try {
-        const [adminRes, fbRes] = await Promise.all([
-          fetch(`${apiUrl}/api/roster?date=${shift.date}`, {
-            headers: authHeader,
-          }),
+        const [adminRes, fbRes, staffRes] = await Promise.all([
+          fetch(`${apiUrl}/api/roster?date=${shift.date}`, { headers: authHeader }),
           fetch(
             `${apiUrl}/api/admin/qa/roster-planner/feedback?shift_date=${shift.date}`,
             { headers: authHeader }
           ),
+          // Assignable pool — active staff who are NOT auto_assign_excluded
+          // (Mark Custard, John Penney, Uber Driver, Jez Taylor stay out).
+          fetch(
+            `${apiUrl}/api/staff?is_active=true&auto_assign_excluded=false`,
+            { headers: authHeader }
+          ),
         ])
         if (cancelled) return
-        const adminBody = adminRes.ok ? await adminRes.json() : []
-        const fbBody = fbRes.ok ? await fbRes.json() : []
-        setAdminShifts(adminBody)
-        setPriorFeedback(fbBody)
+        setAdminShifts(adminRes.ok ? await adminRes.json() : [])
+        setPriorFeedback(fbRes.ok ? await fbRes.json() : [])
+        setAssignableStaff(staffRes.ok ? await staffRes.json() : [])
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -388,11 +395,32 @@ function FeedbackModal({ apiUrl, authHeader, runId, shift, shiftIndex, onClose }
     }
   }, [apiUrl, authHeader, shift.date])
 
+  function buildOverridePayload() {
+    // Only include the override block if at least one field differs from
+    // the engine's original decision.
+    const original = {
+      staff_id: shift.staff_id ?? null,
+      start_time: shortTime(shift.start_time),
+      end_time: shortTime(shift.end_time),
+    }
+    const proposed = {
+      staff_id: overrideStaffId === '' ? null : Number(overrideStaffId),
+      start_time: overrideStart,
+      end_time: overrideEnd,
+    }
+    const diff = {}
+    if (proposed.staff_id !== original.staff_id) diff.staff_id = proposed.staff_id
+    if (proposed.start_time && proposed.start_time !== original.start_time) diff.start_time = `${proposed.start_time}:00`
+    if (proposed.end_time && proposed.end_time !== original.end_time) diff.end_time = `${proposed.end_time}:00`
+    return Object.keys(diff).length > 0 ? diff : null
+  }
+
   async function submit() {
     if (!comment.trim()) return
     setSubmitting(true)
     setSubmitError(null)
     try {
+      const override = buildOverridePayload()
       const res = await fetch(
         `${apiUrl}/api/admin/qa/roster-planner/runs/${runId}/feedback`,
         {
@@ -406,6 +434,7 @@ function FeedbackModal({ apiUrl, authHeader, runId, shift, shiftIndex, onClose }
             proposed_shift_index: shiftIndex,
             severity,
             comment: comment.trim(),
+            ...(override ? { override } : {}),
           }),
         }
       )
@@ -413,7 +442,6 @@ function FeedbackModal({ apiUrl, authHeader, runId, shift, shiftIndex, onClose }
         const detail = await res.text()
         throw new Error(detail || `HTTP ${res.status}`)
       }
-      // Refresh prior feedback to include the new row.
       const fbRes = await fetch(
         `${apiUrl}/api/admin/qa/roster-planner/feedback?shift_date=${shift.date}`,
         { headers: authHeader }
@@ -428,26 +456,65 @@ function FeedbackModal({ apiUrl, authHeader, runId, shift, shiftIndex, onClose }
     }
   }
 
+  const engineStaffLabel = shift.staff_id
+    ? shift.staff_initials || `staff #${shift.staff_id}`
+    : '? unassigned'
+
   return (
-    <div className="prp-modal-backdrop" onClick={onClose}>
-      <div className="prp-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="prp-modal-header">
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-content qa-shift-edit-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header">
           <h3>
-            Engine decision · {shift.start_time}–{shift.end_time} ·{' '}
-            {shift.staff_initials || (shift.staff_id ? `staff #${shift.staff_id}` : '? unassigned')}
+            Edit shift · {formatTime(shift.start_time)}–{formatTime(shift.end_time)} · {engineStaffLabel}
           </h3>
-          <button className="prp-modal-close" onClick={onClose} aria-label="Close">
-            ×
+          <button className="modal-close" onClick={onClose} aria-label="Close">
+            &times;
           </button>
         </div>
 
-        <div className="prp-modal-grid">
-          <div className="prp-modal-col">
+        <div className="modal-body">
+          {/* Engine proposal — read-only */}
+          <div className="customer-detail-section">
             <h4>Engine proposal</h4>
-            <ShiftDetail shift={shift} />
+            <div className="customer-info-grid">
+              <div className="info-row">
+                <span className="info-label">Date:</span>
+                <span className="info-value">{formatUkDate(shift.date)}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Time:</span>
+                <span className="info-value">
+                  {formatTime(shift.start_time)}–{formatTime(shift.end_time)}
+                </span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Staff:</span>
+                <span className="info-value">{engineStaffLabel}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Type:</span>
+                <span className="info-value">{shift.shift_type || 'custom'}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">Kind:</span>
+                <span className="info-value">{shift.kind || 'new'}</span>
+              </div>
+            </div>
+            {shift.events?.length > 0 && (
+              <ul className="prp-event-list" style={{ marginTop: '0.75rem' }}>
+                {shift.events.map((e, i) => (
+                  <EventRow key={`${e.booking_id}-${e.event_type}-${i}`} event={e} />
+                ))}
+              </ul>
+            )}
           </div>
-          <div className="prp-modal-col">
-            <h4>Admin calendar (live)</h4>
+
+          {/* Admin calendar (live) */}
+          <div className="customer-detail-section">
+            <h4>Admin calendar (live) · {formatUkDate(shift.date)}</h4>
             {loading ? (
               <div className="prp-empty">Loading…</div>
             ) : adminShifts.length === 0 ? (
@@ -460,76 +527,154 @@ function FeedbackModal({ apiUrl, authHeader, runId, shift, shiftIndex, onClose }
               </div>
             )}
           </div>
-        </div>
 
-        <div className="prp-modal-feedback-form">
-          <h4>Flag this decision</h4>
-          <div className="prp-feedback-row">
-            <label>
-              Severity
-              <select
-                value={severity}
-                onChange={(e) => setSeverity(e.target.value)}
-              >
-                <option value="blocker">blocker</option>
-                <option value="issue">issue</option>
-                <option value="note">note</option>
-              </select>
-            </label>
+          {/* Override (structured "what I would have done") */}
+          <div className="customer-detail-section">
+            <h4>Override</h4>
+            <div className="customer-edit-form">
+              <div className="form-row">
+                <label>Staff:</label>
+                <select
+                  className="form-input"
+                  value={overrideStaffId}
+                  onChange={(e) => setOverrideStaffId(e.target.value)}
+                >
+                  <option value="">? unassigned</option>
+                  {assignableStaff.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.first_name} {u.last_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-row">
+                <label>Start time:</label>
+                <input
+                  type="time"
+                  className="form-input"
+                  value={overrideStart}
+                  onChange={(e) => setOverrideStart(e.target.value)}
+                />
+              </div>
+              <div className="form-row">
+                <label>End time:</label>
+                <input
+                  type="time"
+                  className="form-input"
+                  value={overrideEnd}
+                  onChange={(e) => setOverrideEnd(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="What's wrong with this assignment? (Who should it be, why, what's the right grouping?)"
-            rows={3}
-          />
-          {submitError && <div className="prp-error">{submitError}</div>}
-          <div className="prp-feedback-actions">
-            <button
-              className="prp-run-btn"
-              onClick={submit}
-              disabled={submitting || !comment.trim()}
-            >
-              {submitting ? 'Submitting…' : 'Submit feedback'}
-            </button>
-          </div>
-        </div>
 
-        <div className="prp-modal-prior">
-          <h4>Prior feedback for this date ({priorFeedback.length})</h4>
-          {priorFeedback.length === 0 ? (
-            <div className="prp-empty">None yet.</div>
-          ) : (
-            <ul className="prp-modal-feedback-list">
-              {priorFeedback.map((f) => (
-                <li key={f.id} className={`prp-feedback-${f.severity}`}>
-                  <div className="prp-feedback-meta">
-                    <span className={`prp-severity-tag prp-severity-${f.severity}`}>
-                      {f.severity}
-                    </span>
-                    <span>
-                      {formatTime(f.shift_start_time)}–{formatTime(f.shift_end_time)}{' '}
-                      {f.shift_staff_id ? `· staff #${f.shift_staff_id}` : ''}
-                    </span>
-                    <span className="prp-feedback-when">
-                      {new Date(f.submitted_at).toLocaleString('en-GB', {
-                        timeZone: 'Europe/London',
-                        day: '2-digit',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                  </div>
-                  <div className="prp-feedback-comment">{f.comment}</div>
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* Feedback */}
+          <div className="customer-detail-section">
+            <h4>Feedback</h4>
+            <div className="customer-edit-form">
+              <div className="form-row">
+                <label>Severity:</label>
+                <select
+                  className="form-input"
+                  value={severity}
+                  onChange={(e) => setSeverity(e.target.value)}
+                >
+                  <option value="blocker">Blocker</option>
+                  <option value="issue">Issue</option>
+                  <option value="note">Note</option>
+                </select>
+              </div>
+              <div className="form-row">
+                <label>Comment:</label>
+                <textarea
+                  className="form-input"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="What's wrong with this assignment? (Who should it be, why, what's the right grouping?)"
+                  rows={3}
+                />
+              </div>
+              {submitError && <div className="prp-error">{submitError}</div>}
+              <div className="form-actions">
+                <button
+                  className="btn-primary"
+                  onClick={submit}
+                  disabled={submitting || !comment.trim()}
+                >
+                  {submitting ? 'Saving…' : 'Save'}
+                </button>
+                <button className="btn-secondary" onClick={onClose}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Prior feedback */}
+          <div className="customer-detail-section">
+            <h4>Prior feedback for {formatUkDate(shift.date)} ({priorFeedback.length})</h4>
+            {priorFeedback.length === 0 ? (
+              <div className="prp-empty">None yet.</div>
+            ) : (
+              <ul className="prp-modal-feedback-list">
+                {priorFeedback.map((f) => (
+                  <li key={f.id} className={`prp-feedback-${f.severity}`}>
+                    <div className="prp-feedback-meta">
+                      <span className={`prp-severity-tag prp-severity-${f.severity}`}>
+                        {f.severity}
+                      </span>
+                      <span>
+                        {formatTime(f.shift_start_time)}–{formatTime(f.shift_end_time)}{' '}
+                        {f.shift_staff_id ? `· staff #${f.shift_staff_id}` : ''}
+                      </span>
+                      <span className="prp-feedback-when">
+                        {new Date(f.submitted_at).toLocaleString('en-GB', {
+                          timeZone: 'Europe/London',
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                    <div className="prp-feedback-comment">{f.comment}</div>
+                    {f.override && (
+                      <div className="prp-feedback-override">
+                        Override:{' '}
+                        {f.override.staff_id != null && (
+                          <span>staff #{f.override.staff_id} </span>
+                        )}
+                        {f.override.start_time && (
+                          <span>· start {shortTime(f.override.start_time)} </span>
+                        )}
+                        {f.override.end_time && (
+                          <span>· end {shortTime(f.override.end_time)}</span>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
     </div>
   )
+}
+
+function shortTime(t) {
+  // Trim "HH:MM:SS" to "HH:MM" for <input type="time"> compatibility.
+  if (!t) return ''
+  return String(t).slice(0, 5)
+}
+
+function formatUkDate(yyyymmdd) {
+  // SPEC: DD/MM/YYYY display.
+  if (!yyyymmdd) return ''
+  const [y, m, d] = String(yyyymmdd).split('-')
+  if (!y || !m || !d) return yyyymmdd
+  return `${d}/${m}/${y}`
 }
 
 function ShiftDetail({ shift }) {

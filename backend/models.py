@@ -494,6 +494,7 @@ class EmployeeResponse(BaseModel):
     phone: Optional[str] = None
     is_admin: bool
     is_active: bool
+    auto_assign_excluded: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     last_login: Optional[datetime] = None
@@ -740,6 +741,18 @@ class PlannerRunDetail(BaseModel):
     error_text: Optional[str] = None
 
 
+class PlannerRunFeedbackOverride(BaseModel):
+    """Structured "what I would have done" capture from the edit modal.
+
+    All fields optional — admin overrides only what they want to change.
+    Engine never consumes this; it's QA-side review data sitting next to
+    the free-text comment.
+    """
+    staff_id: Optional[int] = None
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+
+
 class PlannerRunFeedbackCreate(BaseModel):
     """Body of POST /api/admin/qa/roster-planner/runs/{run_id}/feedback.
 
@@ -755,6 +768,7 @@ class PlannerRunFeedbackCreate(BaseModel):
     proposed_shift_index: Optional[int] = None
     severity: Literal["blocker", "issue", "note"]
     comment: str = Field(min_length=1, max_length=4000)
+    override: Optional[PlannerRunFeedbackOverride] = None
 
 
 class PlannerRunFeedbackResponse(BaseModel):
@@ -768,5 +782,6 @@ class PlannerRunFeedbackResponse(BaseModel):
     proposed_shift_index: Optional[int] = None
     severity: str
     comment: str
+    override: Optional[PlannerRunFeedbackOverride] = None
     submitted_by: Optional[int] = None
     submitted_at: datetime

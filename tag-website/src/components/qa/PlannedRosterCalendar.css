@@ -172,10 +172,11 @@
 .prp-shift {
   background: #ecfdf5;
   border: 1px solid #6ee7b7;
-  border-radius: 4px;
-  padding: 0.4rem 0.6rem;
-  min-width: 160px;
-  font-size: 0.85rem;
+  border-radius: 6px;
+  padding: 0.7rem 0.9rem;
+  min-width: 220px;
+  font-size: 0.95rem;
+  line-height: 1.35;
 }
 
 .prp-shift.unassigned {
@@ -189,20 +190,23 @@
 }
 
 .prp-shift-time {
-  font-weight: 600;
+  font-weight: 700;
   color: #1f2937;
+  font-size: 1rem;
 }
 
 .prp-shift-staff {
-  color: #4b5563;
-  margin-top: 2px;
+  color: #1f2937;
+  margin-top: 4px;
+  font-weight: 600;
 }
 
 .prp-shift-type {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: #6b7280;
   text-transform: uppercase;
-  margin-top: 2px;
+  letter-spacing: 0.04em;
+  margin-top: 4px;
 }
 
 .prp-shift-bookings {
@@ -654,4 +658,20 @@
   font-size: 0.85rem;
   color: #1f2937;
   white-space: pre-wrap;
+}
+
+.prp-feedback-override {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed #e5e7eb;
+  font-size: 0.78rem;
+  color: #2563eb;
+  font-family: ui-monospace, monospace;
+}
+
+/* Modal scoped to QA Roster Planner — wider than customer-detail's
+   default 550px to fit the two info sections + form comfortably. */
+.qa-shift-edit-modal {
+  max-width: 720px;
+  width: 100%;
 }

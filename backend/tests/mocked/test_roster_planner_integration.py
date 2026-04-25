@@ -821,6 +821,7 @@ class TestFeedbackEndpoints:
                 proposed_shift_index=2,
                 severity="issue",
                 comment="KW shouldn't be on mornings",
+                override_json=None,
                 submitted_by=1,
                 submitted_at=datetime(2026, 5, 4, 9, 0, 0),
             ),
@@ -832,6 +833,50 @@ class TestFeedbackEndpoints:
         assert len(body) == 1
         assert body[0]["severity"] == "issue"
         assert body[0]["shift_staff_id"] == 7
+        assert body[0]["override"] is None
+
+    def test_post_feedback_with_override_persists_json(self, client, mock_db):
+        """When the edit modal includes a structured override, it round-trips
+        as JSON in override_json and as a typed PlannerRunFeedbackOverride
+        in the response."""
+        from db_models import PlannerRun, PlannerRunFeedback
+        import json as _json
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        def _fake_refresh(obj):
+            if isinstance(obj, PlannerRunFeedback):
+                if obj.id is None:
+                    obj.id = 1
+                if obj.submitted_at is None:
+                    obj.submitted_at = datetime(2026, 5, 4, 9, 0, 0)
+        mock_db.refresh.side_effect = _fake_refresh
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/r-A/feedback",
+            json={
+                "shift_date": "2026-05-04",
+                "shift_start_time": "07:00:00",
+                "shift_end_time": "11:00:00",
+                "shift_staff_id": 7,
+                "severity": "note",
+                "comment": "Would assign MS instead, change start to 07:30",
+                "override": {
+                    "staff_id": 20,
+                    "start_time": "07:30:00",
+                    "end_time": "11:00:00",
+                },
+            },
+        )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["override"]["staff_id"] == 20
+        assert body["override"]["start_time"] == "07:30:00"
+
+        # Stored as JSON text on the row.
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        rows = [a for a in added if isinstance(a, PlannerRunFeedback)]
+        decoded = _json.loads(rows[0].override_json)
+        assert decoded["staff_id"] == 20
 
     def test_list_feedback_invalid_shift_start_time_rejected(self, client, mock_db):
         r = client.get(
