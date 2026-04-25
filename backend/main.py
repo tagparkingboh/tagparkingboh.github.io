@@ -2588,6 +2588,7 @@ async def mark_booking_paid(
 @app.post("/api/admin/bookings/{booking_id}/cancel")
 async def cancel_booking_admin(
     booking_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -2633,6 +2634,13 @@ async def cancel_booking_admin(
     # Update booking status
     booking.status = BookingStatus.CANCELLED
     db.commit()
+
+    # Roster planner shadow mode: a cancelled booking can free up shifts
+    # in the rolling 28-day window. Fire engine in background.
+    from roster_planner_runner import fire_engine_async, TRIGGER_BOOKING_CANCELLED
+    background_tasks.add_task(
+        fire_engine_async, TRIGGER_BOOKING_CANCELLED, booking.reference
+    )
 
     message = f"Booking {booking.reference} has been cancelled"
     if slot_released:
@@ -2727,6 +2735,7 @@ async def delete_booking(
 async def update_booking(
     booking_id: int,
     request: UpdateBookingRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -2828,6 +2837,19 @@ async def update_booking(
 
     db.commit()
     db.refresh(booking)
+
+    # Roster planner shadow mode: only fire when fields the engine cares
+    # about changed — drop-off / pick-up dates and times move events
+    # within the rolling window. Customer-detail edits (name, vehicle reg)
+    # don't.
+    if any(
+        f in updates_made
+        for f in ("dropoff_date", "dropoff_time", "pickup_date", "pickup_time", "flight_arrival_time")
+    ):
+        from roster_planner_runner import fire_engine_async, TRIGGER_BOOKING_RESCHEDULED
+        background_tasks.add_task(
+            fire_engine_async, TRIGGER_BOOKING_RESCHEDULED, booking.reference
+        )
 
     return {
         "success": True,
@@ -10938,6 +10960,7 @@ async def check_payment_status(payment_intent_id: str):
 @app.post("/api/webhooks/stripe")
 async def stripe_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     stripe_signature: str = Header(None, alias="Stripe-Signature"),
     db: Session = Depends(get_db),
 ):
@@ -11000,6 +11023,14 @@ async def stripe_webhook(
                 print(f"[WEBHOOK] Payment intent {payment_intent_id} not found in database - likely a manual booking payment link (admin confirms manually)")
             elif was_already_processed:
                 print(f"[WEBHOOK] Duplicate webhook - already processed for {booking_reference}")
+            else:
+                # Real new confirmation — fire shadow-mode planner. Skip on
+                # duplicates and on missing-payment (manual flow handles
+                # its own trigger via mark_booking_paid).
+                from roster_planner_runner import fire_engine_async, TRIGGER_BOOKING_CONFIRMED
+                background_tasks.add_task(
+                    fire_engine_async, TRIGGER_BOOKING_CONFIRMED, booking_reference
+                )
         except Exception as e:
             log_error(
                 db=db,

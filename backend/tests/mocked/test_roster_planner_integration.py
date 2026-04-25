@@ -553,4 +553,50 @@ class TestPatchSettings:
         )
         assert r2.status_code == 422
 
+    def test_settings_change_fires_engine_in_background(self, client, mock_db, monkeypatch):
+        """A rule change must trigger the engine in shadow mode — the next
+        /runs page should reflect the new constraints. This test locks
+        the wire-up pattern. The other six trigger sites (Stripe webhook,
+        cancel, reschedule, holiday CRUD) replicate the same pattern."""
+        import routers.roster as _roster_router
+
+        calls: list = []
+
+        def _capture(trigger, ref):
+            calls.append((trigger, ref))
+
+        monkeypatch.setattr(_roster_router, "fire_engine_async", _capture)
+
+        rows: list = []
+        mock_db._tables[DbRosterPlannerSettings] = rows
+        mock_db.add.side_effect = lambda r: rows.append(r)
+
+        r = client.patch(
+            "/api/admin/qa/roster-planner/settings",
+            json={"max_hours_per_week": 35},
+        )
+        assert r.status_code == 200
+
+        # BackgroundTasks runs synchronously after the response in TestClient.
+        assert len(calls) == 1, "settings PATCH did not schedule the engine"
+        trigger, ref = calls[0]
+        assert trigger == "settings_changed"
+        assert "max_hours_per_week" in ref
+
+    def test_empty_settings_patch_does_not_fire_engine(self, client, mock_db, monkeypatch):
+        """No-op PATCH must not pollute the audit log with redundant runs."""
+        import routers.roster as _roster_router
+
+        calls: list = []
+        monkeypatch.setattr(
+            _roster_router,
+            "fire_engine_async",
+            lambda t, r: calls.append((t, r)),
+        )
+
+        mock_db._tables[DbRosterPlannerSettings] = default_settings_rows()
+        r = client.patch("/api/admin/qa/roster-planner/settings", json={})
+        assert r.status_code == 200
+        assert calls == []
+
 

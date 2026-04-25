@@ -10,7 +10,7 @@ This module provides endpoints for:
 
 from datetime import date as date_type, time, datetime, timedelta
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
@@ -25,7 +25,13 @@ from models import (
     RosterProposalResponse,
 )
 from roster_planner import propose_roster, PlannerSettings, UK_TZ
-from roster_planner_runner import record_run, TRIGGER_MANUAL
+from roster_planner_runner import (
+    fire_engine_async,
+    record_run,
+    TRIGGER_HOLIDAY_CHANGED,
+    TRIGGER_MANUAL,
+    TRIGGER_SETTINGS_CHANGED,
+)
 import json
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -2210,6 +2216,7 @@ async def create_holiday(
     staff_id: int,
     start_date: date_type,
     end_date: date_type,
+    background_tasks: BackgroundTasks,
     holiday_type: str = "holiday",
     notes: Optional[str] = None,
     start_time: Optional[str] = Query(None, description="Start time in HH:MM format (for partial day unavailability)"),
@@ -2310,12 +2317,19 @@ async def create_holiday(
     db.commit()
     db.refresh(new_holiday)
 
+    # Roster planner shadow mode: a new holiday changes which staff are
+    # eligible across the rolling window. Re-evaluate.
+    background_tasks.add_task(
+        fire_engine_async, TRIGGER_HOLIDAY_CHANGED, str(new_holiday.id)
+    )
+
     return holiday_to_response(new_holiday)
 
 
 @router.put("/holidays/{holiday_id}")
 async def update_holiday(
     holiday_id: int,
+    background_tasks: BackgroundTasks,
     start_date: Optional[date_type] = None,
     end_date: Optional[date_type] = None,
     holiday_type: Optional[str] = None,
@@ -2415,12 +2429,19 @@ async def update_holiday(
     db.commit()
     db.refresh(holiday)
 
+    # Roster planner shadow mode: a changed holiday can shift staff
+    # eligibility across the rolling window. Re-evaluate.
+    background_tasks.add_task(
+        fire_engine_async, TRIGGER_HOLIDAY_CHANGED, str(holiday.id)
+    )
+
     return holiday_to_response(holiday)
 
 
 @router.delete("/holidays/{holiday_id}")
 async def delete_holiday(
     holiday_id: int,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
@@ -2430,8 +2451,15 @@ async def delete_holiday(
     if not holiday:
         raise HTTPException(status_code=404, detail="Holiday not found")
 
+    holiday_id_for_audit = str(holiday.id)
     db.delete(holiday)
     db.commit()
+
+    # Roster planner shadow mode: a deleted holiday returns staff to the
+    # eligible pool across the rolling window. Re-evaluate.
+    background_tasks.add_task(
+        fire_engine_async, TRIGGER_HOLIDAY_CHANGED, holiday_id_for_audit
+    )
 
     return {"success": True, "message": "Holiday deleted"}
 
@@ -2500,6 +2528,7 @@ async def get_roster_planner_settings(
 )
 async def patch_roster_planner_settings(
     payload: RosterPlannerSettingsUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(require_qa_admin),
     db: Session = Depends(get_db),
 ):
@@ -2525,6 +2554,13 @@ async def patch_roster_planner_settings(
             row.updated_at = datetime.utcnow()
     if changes:
         db.commit()
+        # Roster planner shadow mode: rule changes (gap, caps, thresholds)
+        # change engine output for the same input data. Re-evaluate.
+        background_tasks.add_task(
+            fire_engine_async,
+            TRIGGER_SETTINGS_CHANGED,
+            ",".join(sorted(changes.keys())),
+        )
     return _settings_response(_load_planner_settings_rows(db))
 
 
