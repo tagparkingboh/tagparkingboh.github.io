@@ -60,7 +60,7 @@ class PlannerSettings:
         """
         return PlannerSettings(
             window_days=int(rows.get("window_days", 28)),
-            gap_max_minutes=int(rows.get("gap_max_minutes", 120)),
+            gap_max_minutes=int(rows.get("gap_max_minutes", 150)),
             mixed_gap_max_minutes=int(rows.get("mixed_gap_max_minutes", 150)),
             buffer_minutes=int(rows.get("buffer_minutes", 30)),
             staffing_thresholds=tuple(

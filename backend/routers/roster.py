@@ -2477,7 +2477,7 @@ QA_USER_IDS = {1, 2}
 
 _PLANNER_DEFAULT_SETTINGS = {
     "window_days": 28,
-    "gap_max_minutes": 120,
+    "gap_max_minutes": 150,
     "mixed_gap_max_minutes": 150,
     "buffer_minutes": 30,
     "staffing_thresholds": [
