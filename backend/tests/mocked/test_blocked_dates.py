@@ -2548,3 +2548,141 @@ class TestBackendBookingValidationWithTimeSlots:
 
         result = self._check_time_blocked(blocked_date, dropoff_time, "dropoff")
         assert result is True, "Booking at 06:16 should be blocked (inside 06:01-13:00)"
+
+
+# =============================================================================
+# pickup_time_from_arrival — locks the +30 min offset that was inlined in 8+
+# places, and that the create_payment block check missed (causing a 16:59
+# arrival to slip past a 17:00-17:30 blocked window because the engine
+# checked 16:59 instead of 17:29).
+# =============================================================================
+
+
+class TestPickupTimeFromArrival:
+    def test_happy_adds_30_minutes(self):
+        from main import pickup_time_from_arrival
+        # Repro the prod bug: 16:59 arrival → 17:29 meet (caught by block).
+        assert pickup_time_from_arrival("16:59") == "17:29"
+        # Second screenshot from the user: 16:31 arrival → 17:01 meet.
+        assert pickup_time_from_arrival("16:31") == "17:01"
+
+    def test_boundary_top_of_hour_adds_30(self):
+        from main import pickup_time_from_arrival
+        assert pickup_time_from_arrival("17:00") == "17:30"
+        assert pickup_time_from_arrival("00:00") == "00:30"
+
+    def test_boundary_minute_carry(self):
+        from main import pickup_time_from_arrival
+        # 12:35 + 30 = 13:05 (carry into next hour)
+        assert pickup_time_from_arrival("12:35") == "13:05"
+
+    def test_edge_midnight_wraps(self):
+        from main import pickup_time_from_arrival
+        # 23:45 + 30 = 24:15 → 00:15 next day
+        assert pickup_time_from_arrival("23:45") == "00:15"
+        # 23:30 + 30 = 24:00 → 00:00
+        assert pickup_time_from_arrival("23:30") == "00:00"
+
+    def test_unhappy_none_returns_none(self):
+        from main import pickup_time_from_arrival
+        assert pickup_time_from_arrival(None) is None
+        assert pickup_time_from_arrival("") is None
+
+    def test_unhappy_malformed_returns_none(self):
+        from main import pickup_time_from_arrival
+        # Malformed must not crash — returns None so callers can fall back.
+        assert pickup_time_from_arrival("garbage") is None
+        assert pickup_time_from_arrival("25:00") is None  # invalid hour
+        assert pickup_time_from_arrival("12:99") is None  # invalid minute
+        assert pickup_time_from_arrival(":") is None
+        assert pickup_time_from_arrival("noon") is None
+
+    def test_edge_with_seconds_suffix_tolerated(self):
+        from main import pickup_time_from_arrival
+        # The engine sometimes passes "HH:MM:SS"; helper truncates to HH:MM.
+        assert pickup_time_from_arrival("16:59:00") == "17:29"
+
+
+# =============================================================================
+# Block check end-to-end with offset — locks the regression where
+# create_payment was matching arrival_time against blocked windows
+# instead of the customer-meet time. This is the same shape as
+# self._check_time_blocked the rest of the file uses for dropoffs.
+# =============================================================================
+
+
+class TestPickupBlockUsesMeetTime:
+    """Reproduces the screenshot bug: blocked window 17:00-17:30, customer
+    booking with arrival 16:59 → meet 17:29 → must be rejected. With the
+    old code (checking 16:59 against 17:00-17:30) the booking slipped
+    through. With the offset applied (17:29), it is correctly blocked."""
+
+    def _check_time_blocked(self, blocked_date, check_time_str, check_type):
+        # Mirrors the inner closure in main.py:create_payment.
+        if not blocked_date.get("time_slots"):
+            return blocked_date.get(f"block_{check_type}s", False)
+        if not check_time_str:
+            return False
+        from datetime import time as time_type
+        try:
+            h, m = map(int, check_time_str.split(":")[:2])
+            check_time = time_type(h, m)
+        except (ValueError, AttributeError):
+            return False
+        for ts in blocked_date["time_slots"]:
+            sh, sm = map(int, ts["start_time"].split(":"))
+            eh, em = map(int, ts["end_time"].split(":"))
+            if time_type(sh, sm) <= check_time < time_type(eh, em):
+                if check_type == "dropoff" and ts.get("block_dropoffs"):
+                    return True
+                if check_type == "pickup" and ts.get("block_pickups"):
+                    return True
+        return False
+
+    BLOCKED_17_TO_1730 = {
+        "block_dropoffs": False,
+        "block_pickups": True,
+        "time_slots": [
+            {"start_time": "17:00", "end_time": "17:30",
+             "block_dropoffs": False, "block_pickups": True}
+        ],
+    }
+
+    def test_arrival_1659_meet_1729_is_blocked(self):
+        from main import pickup_time_from_arrival
+        meet = pickup_time_from_arrival("16:59")
+        assert meet == "17:29"
+        assert self._check_time_blocked(
+            self.BLOCKED_17_TO_1730, meet, "pickup"
+        ) is True
+
+    def test_arrival_1631_meet_1701_is_blocked(self):
+        from main import pickup_time_from_arrival
+        meet = pickup_time_from_arrival("16:31")
+        assert meet == "17:01"
+        assert self._check_time_blocked(
+            self.BLOCKED_17_TO_1730, meet, "pickup"
+        ) is True
+
+    def test_arrival_1701_meet_1731_is_NOT_blocked(self):
+        """Outside the block window once the offset is applied."""
+        from main import pickup_time_from_arrival
+        meet = pickup_time_from_arrival("17:01")
+        assert meet == "17:31"
+        assert self._check_time_blocked(
+            self.BLOCKED_17_TO_1730, meet, "pickup"
+        ) is False
+
+    def test_old_buggy_behavior_would_have_let_it_through(self):
+        """Documents the regression: if you check the *arrival* time
+        instead of the meet time, the 16:59 booking would NOT be blocked.
+        Locks the bug from coming back via a refactor that strips the offset."""
+        # arrival 16:59 — outside the 17:00-17:30 window
+        assert self._check_time_blocked(
+            self.BLOCKED_17_TO_1730, "16:59", "pickup"
+        ) is False, (
+            "Sanity: arrival time alone is outside the block. The fix is to "
+            "convert arrival → meet time BEFORE the check."
+        )
+
+

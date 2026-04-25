@@ -30,6 +30,31 @@ def title_case_name(name: str) -> str:
     return name.strip().title()
 
 
+# 30-min offset between flight arrival and the time the team meets the
+# customer to hand back the car. Defined here as a single source of
+# truth — historically inlined in 8+ places (Booking model, create_payment,
+# manual booking flows, etc.). Update in one place if it ever changes.
+PICKUP_OFFSET_MINUTES = 30
+
+
+def pickup_time_from_arrival(arrival_hhmm: Optional[str]) -> Optional[str]:
+    """Compute the customer-meet time (HH:MM) from a flight arrival HH:MM.
+
+    Returns None for empty / malformed input — callers can fall back as
+    they see fit. Wraps midnight: '23:45' → '00:15'.
+    """
+    if not arrival_hhmm:
+        return None
+    try:
+        h, m = map(int, arrival_hhmm.split(":")[:2])
+        if not (0 <= h < 24 and 0 <= m < 60):
+            return None
+        total_mins = (h * 60 + m + PICKUP_OFFSET_MINUTES) % (24 * 60)
+        return f"{total_mins // 60:02d}:{total_mins % 60:02d}"
+    except (ValueError, AttributeError):
+        return None
+
+
 def log_promo(message: str, data: dict = None):
     """
     Log promotion-related messages to console.
@@ -9956,21 +9981,14 @@ async def create_payment(
         ).first()
 
         if blocked_pickup:
-            # Get the pickup time to check against time slots.
-            # pickup_time is the customer-meet time = arrival_time + 30 min
-            # (the team meets returning customers 30 min after landing —
-            # see Booking model + main.py:2826). Falling back to
-            # pickup_flight_time directly was wrong: a 16:59 arrival
-            # produces a 17:29 meet, and only the meet time should be
-            # checked against block windows.
-            pickup_time_str = request.pickup_time
-            if not pickup_time_str and request.pickup_flight_time:
-                try:
-                    h, m = map(int, request.pickup_flight_time.split(":"))
-                    total_mins = (h * 60 + m + 30) % (24 * 60)
-                    pickup_time_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
-                except (ValueError, TypeError):
-                    pickup_time_str = request.pickup_flight_time
+            # The customer-meet time is arrival + PICKUP_OFFSET_MINUTES (see
+            # pickup_time_from_arrival) — only the meet time should be
+            # checked against block windows. A 16:59 arrival ⇒ 17:29 meet.
+            pickup_time_str = (
+                request.pickup_time
+                or pickup_time_from_arrival(request.pickup_flight_time)
+                or request.pickup_flight_time
+            )
 
             if check_time_blocked(blocked_pickup, pickup_time_str, "pickup"):
                 raise HTTPException(
