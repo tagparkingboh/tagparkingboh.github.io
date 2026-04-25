@@ -574,12 +574,17 @@ function Bookings() {
 
     // If blocked date has time slots, check against those
     if (blockedDate.time_slots && blockedDate.time_slots.length > 0) {
-      const pickupTime = manualArrivalData.flightTime
-      if (!pickupTime) {
+      const arrival = manualArrivalData.flightTime
+      if (!arrival) {
         // No time selected yet - don't block, let user select time first
         return false
       }
-      // Check if the selected time falls within a blocked slot
+      // Customer-meet time = arrival + 30 min. Block windows must be
+      // checked against meet time, not raw arrival (mirrors backend
+      // pickup_time_from_arrival).
+      const [ah, am] = arrival.split(':').map(Number)
+      if (Number.isNaN(ah) || Number.isNaN(am)) return false
+      const pickupTime = formatMinutesToTime(ah * 60 + am + 30)
       return blockedDate.time_slots.some(slot =>
         slot.block_pickups && isTimeInSlot(pickupTime, slot)
       )
@@ -2844,7 +2849,14 @@ function Bookings() {
                       {isPickupDateBlocked && formData.pickupDate && (
                         <div className="blocked-date-message">
                           {(() => {
-                            const blockedInfo = getBlockedDateInfo(formData.pickupDate, false, manualArrivalData.flightTime)
+                            const blockedInfo = (() => {
+                              const arrival = manualArrivalData.flightTime
+                              if (!arrival) return getBlockedDateInfo(formData.pickupDate, false, null)
+                              const [ah, am] = arrival.split(':').map(Number)
+                              if (Number.isNaN(ah) || Number.isNaN(am)) return getBlockedDateInfo(formData.pickupDate, false, arrival)
+                              const meet = formatMinutesToTime(ah * 60 + am + 30)
+                              return getBlockedDateInfo(formData.pickupDate, false, meet)
+                            })()
                             if (blockedInfo?.blocked_slot) {
                               return (
                                 <p>
