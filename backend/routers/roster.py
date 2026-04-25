@@ -25,6 +25,7 @@ from models import (
     RosterProposalResponse,
 )
 from roster_planner import propose_roster, PlannerSettings, UK_TZ
+from roster_planner_runner import record_run, TRIGGER_MANUAL
 import json
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -2535,6 +2536,7 @@ async def propose_roster_endpoint(
     current_user: User = Depends(require_qa_admin),
     db: Session = Depends(get_db),
 ):
+    started_at = datetime.utcnow()
     parsed = _load_planner_settings_rows(db)
     settings_snapshot = _settings_response(parsed)
     engine_settings = PlannerSettings.from_kv(parsed)
@@ -2590,4 +2592,14 @@ async def propose_roster_endpoint(
         now=now,
     )
     result["settings_snapshot"] = settings_snapshot.model_dump()
+
+    # Shadow mode: every /propose run leaves an audit row. Failure is
+    # swallowed by record_run so the response still reaches the caller.
+    record_run(
+        db,
+        trigger_event=TRIGGER_MANUAL,
+        trigger_ref=None,
+        proposal=result,
+        started_at=started_at,
+    )
     return result

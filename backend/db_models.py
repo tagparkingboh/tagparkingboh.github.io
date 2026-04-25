@@ -1229,6 +1229,41 @@ class RosterPlannerSettings(Base):
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 
+class PlannerRun(Base):
+    """One row per engine invocation in shadow mode.
+
+    The planner runs on every booking / holiday / settings event and on every
+    manual /propose call, but in shadow mode does NOT write to roster_shifts.
+    Each run appends here so QA can review what the engine would have produced
+    before we flip the kill switch to live writes. Append-only by convention —
+    no UPDATE / DELETE paths in the codebase.
+
+    `trigger_event` is one of: 'manual', 'booking_confirmed',
+    'booking_cancelled', 'booking_rescheduled', 'holiday_changed',
+    'settings_changed'. Stored as String(50) rather than Enum to avoid the
+    Postgres enum-add-value migration overhead — the set is closed but
+    rare-to-extend.
+    """
+    __tablename__ = "planner_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    run_id = Column(String(64), unique=True, nullable=False, index=True)
+    triggered_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    trigger_event = Column(String(50), nullable=False, index=True)
+    trigger_ref = Column(String(100), nullable=True)  # e.g. booking reference, holiday id
+
+    window_start = Column(Date, nullable=False)
+    window_end = Column(Date, nullable=False)
+
+    proposal_json = Column(Text, nullable=True)
+    diff_vs_current_json = Column(Text, nullable=True)
+    warnings_json = Column(Text, nullable=True)
+
+    duration_ms = Column(Integer, nullable=True)
+    error_text = Column(Text, nullable=True)
+
+
 class RosterShift(Base):
     """Roster shift for staff scheduling."""
     __tablename__ = "roster_shifts"

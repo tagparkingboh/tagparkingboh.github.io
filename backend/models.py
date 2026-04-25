@@ -704,3 +704,35 @@ class RosterProposalResponse(BaseModel):
     proposed_shifts: List[ProposedShift]
     warnings: List[RosterProposalWarning]
     summary: dict  # counts: { new_shifts, extended_shifts, untouched_shifts, unmanned_events, staff_hit_max_hours }
+
+
+class PlannerRunListItem(BaseModel):
+    """One row in `GET /runs` — slim list view for the QA history strip."""
+    run_id: str
+    triggered_at: datetime
+    trigger_event: str
+    trigger_ref: Optional[str] = None
+    window_start: date_type
+    window_end: date_type
+    duration_ms: Optional[int] = None
+    has_error: bool = False
+    summary: Optional[dict] = None  # counts pulled from proposal_json so the strip shows volume at a glance
+
+
+class PlannerRunDetail(BaseModel):
+    """Full row body for `GET /runs/{run_id}` — the proposal as recorded.
+
+    `proposal_json` and `diff_vs_current_json` are returned as already-parsed
+    objects so the QA UI can render directly without a second JSON.parse step.
+    """
+    run_id: str
+    triggered_at: datetime
+    trigger_event: str
+    trigger_ref: Optional[str] = None
+    window_start: date_type
+    window_end: date_type
+    proposal: Optional[dict] = None
+    diff_vs_current: Optional[dict] = None
+    warnings: List[dict] = Field(default_factory=list)
+    duration_ms: Optional[int] = None
+    error_text: Optional[str] = None

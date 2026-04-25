@@ -327,17 +327,26 @@ class TestProposeEndpoint:
         assert body["warnings"] == []
         assert body["summary"]["new_shifts"] == 0
 
-    def test_edge_propose_is_read_only(self, client, mock_db):
-        """The preview endpoint must not issue any DB commits."""
+    def test_edge_propose_is_read_only_for_roster_shifts(self, client, mock_db):
+        """The preview endpoint must not write to roster_shifts. It DOES
+        write one PlannerRun audit row (shadow mode), but no RosterShift
+        rows ever go through this code path."""
+        from db_models import PlannerRun, RosterShift
         staff = [mk_user(user_id=10, is_admin=False)]
         bookings = [mk_db_booking()]
         self._prime(mock_db, bookings=bookings, staff=staff)
 
         r = client.post("/api/admin/qa/roster-planner/propose")
         assert r.status_code == 200
-        assert mock_db._committed is False
-        mock_db.add.assert_not_called()
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        # No RosterShift writes — the shadow-mode invariant.
+        assert not any(isinstance(a, RosterShift) for a in added), (
+            "shadow mode: /propose must not write any RosterShift rows"
+        )
         mock_db.delete.assert_not_called()
+        # Exactly one PlannerRun audit row — that's the only allowed write.
+        runs = [a for a in added if isinstance(a, PlannerRun)]
+        assert len(runs) == 1
 
     def test_edge_unmanned_warning_when_no_eligible_staff(self, client, mock_db):
         self._prime(mock_db, bookings=[mk_db_booking()], staff=[])
@@ -356,6 +365,58 @@ class TestProposeEndpoint:
         ws = date.fromisoformat(body["window_start"])
         we = date.fromisoformat(body["window_end"])
         assert (we - ws).days == 28
+
+
+# =====================================================================================
+# Shadow-mode audit — every /propose call must persist a planner_runs row
+# =====================================================================================
+
+
+class TestPlannerRunsAudit:
+    """`/propose` is the first trigger wired into the shadow-mode runner.
+    Booking / holiday / settings triggers come in follow-up commits. Each
+    call must leave one PlannerRun row tagged trigger_event='manual'."""
+
+    def _prime_minimal(self, mock_db):
+        mock_db._tables[DbRosterPlannerSettings] = default_settings_rows()
+        mock_db._tables[__import__('db_models').User] = [mk_user(user_id=10, is_admin=False)]
+
+    def test_propose_writes_one_planner_run(self, client, mock_db):
+        from db_models import PlannerRun
+        self._prime_minimal(mock_db)
+
+        r = client.post("/api/admin/qa/roster-planner/propose")
+        assert r.status_code == 200
+        body = r.json()
+
+        # mock_db.add gets called with the PlannerRun instance.
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        runs = [a for a in added if isinstance(a, PlannerRun)]
+        assert len(runs) == 1, f"expected 1 planner_runs row, got {len(runs)}"
+        row = runs[0]
+        assert row.run_id == body["run_id"]
+        assert row.trigger_event == "manual"
+        assert row.trigger_ref is None
+        # Window dates on the row match the response dates.
+        assert row.window_start.isoformat() == body["window_start"]
+        assert row.window_end.isoformat() == body["window_end"]
+        # proposal_json round-trips back to the response.
+        decoded = json.loads(row.proposal_json)
+        assert decoded["run_id"] == body["run_id"]
+
+    def test_audit_failure_does_not_break_propose(self, client, mock_db):
+        """Force the runner's internal try/except to fire (commit raises).
+        The /propose endpoint must still return 200 — the booking flow
+        safety invariant — and the audit row is simply dropped."""
+        self._prime_minimal(mock_db)
+
+        def _explode():
+            raise RuntimeError("simulated commit failure")
+
+        mock_db.commit.side_effect = _explode
+
+        r = client.post("/api/admin/qa/roster-planner/propose")
+        assert r.status_code == 200
 
 
 # =====================================================================================
