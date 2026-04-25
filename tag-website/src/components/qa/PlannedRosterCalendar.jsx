@@ -559,8 +559,23 @@ function ShiftDetail({ shift }) {
 }
 
 function AdminShiftBlock({ shift }) {
-  // /api/roster returns RosterShiftResponse with linked_bookings (LinkedBookingInfo).
-  const bookings = shift.linked_bookings || []
+  // /api/roster returns RosterShiftResponse with .bookings (List[LinkedBookingInfo]).
+  // The DEPRECATED single booking_* fields are also kept on the response for
+  // backwards-compat — fall back to those if bookings is empty.
+  let bookings = shift.bookings || []
+  if (bookings.length === 0 && shift.booking_reference) {
+    bookings = [
+      {
+        id: shift.booking_id,
+        reference: shift.booking_reference,
+        type: shift.booking_type,
+        customer_name: shift.booking_customer_name,
+        time: shift.booking_time,
+        flight_number: shift.booking_flight_number,
+        destination: shift.booking_destination,
+      },
+    ]
+  }
   return (
     <div className="prp-admin-shift">
       <div className="prp-admin-shift-head">
