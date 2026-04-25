@@ -736,3 +736,35 @@ class PlannerRunDetail(BaseModel):
     warnings: List[dict] = Field(default_factory=list)
     duration_ms: Optional[int] = None
     error_text: Optional[str] = None
+
+
+class PlannerRunFeedbackCreate(BaseModel):
+    """Body of POST /api/admin/qa/roster-planner/runs/{run_id}/feedback.
+
+    Captures one QA review of an engine assignment decision. The shift
+    fingerprint (date + start/end + staff_id) is denormalised onto the row
+    so it survives the parent run being pruned and supports cross-run
+    pattern queries (see PlannerRunFeedback model docstring).
+    """
+    shift_date: date_type
+    shift_start_time: Optional[time] = None
+    shift_end_time: Optional[time] = None
+    shift_staff_id: Optional[int] = None
+    proposed_shift_index: Optional[int] = None
+    severity: Literal["blocker", "issue", "note"]
+    comment: str = Field(min_length=1, max_length=4000)
+
+
+class PlannerRunFeedbackResponse(BaseModel):
+    """One feedback row, suitable for the modal's prior-feedback list."""
+    id: int
+    run_id: str
+    shift_date: date_type
+    shift_start_time: Optional[time] = None
+    shift_end_time: Optional[time] = None
+    shift_staff_id: Optional[int] = None
+    proposed_shift_index: Optional[int] = None
+    severity: str
+    comment: str
+    submitted_by: Optional[int] = None
+    submitted_at: datetime

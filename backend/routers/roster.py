@@ -24,6 +24,7 @@ from models import (
     RosterPlannerSettingsResponse, RosterPlannerSettingsUpdate,
     RosterProposalResponse,
     PlannerRunListItem, PlannerRunDetail,
+    PlannerRunFeedbackCreate, PlannerRunFeedbackResponse,
 )
 from roster_planner import propose_roster, PlannerSettings, UK_TZ
 from roster_planner_runner import (
@@ -2747,3 +2748,91 @@ async def get_planner_run(
         duration_ms=row.duration_ms,
         error_text=row.error_text,
     )
+
+
+# =====================================================================================
+# Shadow-mode QA feedback — per-engine-decision review notes
+# =====================================================================================
+
+
+@router.post(
+    "/admin/qa/roster-planner/runs/{run_id}/feedback",
+    response_model=PlannerRunFeedbackResponse,
+    status_code=201,
+)
+async def submit_planner_run_feedback(
+    run_id: str,
+    payload: PlannerRunFeedbackCreate,
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    """Capture QA's verdict on one engine assignment decision.
+
+    Tied to a specific (run_id, shift fingerprint). The shift fingerprint
+    is denormalised onto the row so feedback survives if the parent run
+    is later pruned, and so cross-run pattern queries work.
+    """
+    from db_models import PlannerRun, PlannerRunFeedback
+
+    parent = (
+        db.query(PlannerRun).filter(PlannerRun.run_id == run_id).one_or_none()
+    )
+    if not parent:
+        raise HTTPException(status_code=404, detail="planner run not found")
+
+    row = PlannerRunFeedback(
+        run_id=run_id,
+        shift_date=payload.shift_date,
+        shift_start_time=payload.shift_start_time,
+        shift_end_time=payload.shift_end_time,
+        shift_staff_id=payload.shift_staff_id,
+        proposed_shift_index=payload.proposed_shift_index,
+        severity=payload.severity,
+        comment=payload.comment,
+        submitted_by=current_user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.get(
+    "/admin/qa/roster-planner/feedback",
+    response_model=List[PlannerRunFeedbackResponse],
+)
+async def list_planner_run_feedback(
+    shift_date: Optional[date_type] = Query(None),
+    shift_staff_id: Optional[int] = Query(None),
+    shift_start_time: Optional[str] = Query(
+        None, description="HH:MM — used with shift_staff_id for cross-run pattern queries"
+    ),
+    run_id: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    """Retrieve feedback rows. Common access patterns:
+
+    - `?shift_date=YYYY-MM-DD` — all feedback on shifts on this date,
+      across runs (the modal's "prior feedback for this date" panel).
+    - `?shift_staff_id=N&shift_start_time=HH:MM` — pattern detection
+      ("this staff on this shift type keeps getting flagged").
+    - `?run_id=X` — all feedback recorded against one specific run.
+    """
+    from db_models import PlannerRunFeedback
+
+    q = db.query(PlannerRunFeedback)
+    if shift_date is not None:
+        q = q.filter(PlannerRunFeedback.shift_date == shift_date)
+    if shift_staff_id is not None:
+        q = q.filter(PlannerRunFeedback.shift_staff_id == shift_staff_id)
+    if shift_start_time:
+        try:
+            parsed = time.fromisoformat(shift_start_time)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="shift_start_time must be HH:MM")
+        q = q.filter(PlannerRunFeedback.shift_start_time == parsed)
+    if run_id:
+        q = q.filter(PlannerRunFeedback.run_id == run_id)
+    return q.order_by(PlannerRunFeedback.submitted_at.desc()).limit(limit).all()

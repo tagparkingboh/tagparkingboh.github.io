@@ -1264,6 +1264,43 @@ class PlannerRun(Base):
     error_text = Column(Text, nullable=True)
 
 
+class PlannerRunFeedback(Base):
+    """QA feedback on a single engine assignment decision.
+
+    Tied to one shift's worth of decision (date + start/end + staff_id),
+    not to a calendar date as a whole — the dates aren't decisions, the
+    *assignments* are. Schema denormalises the shift fingerprint so:
+      (a) feedback survives if the parent run row is later pruned, and
+      (b) "all complaints about KW being assigned mornings" can be
+          queried across runs via (shift_staff_id, shift_start_time).
+    """
+    __tablename__ = "planner_run_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    run_id = Column(
+        String(64),
+        ForeignKey("planner_runs.run_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Denormalised shift fingerprint — see class docstring.
+    shift_date = Column(Date, nullable=False, index=True)
+    shift_start_time = Column(Time, nullable=True)
+    shift_end_time = Column(Time, nullable=True)
+    shift_staff_id = Column(Integer, nullable=True)
+    proposed_shift_index = Column(Integer, nullable=True)
+
+    # Closed set: 'blocker' | 'issue' | 'note'. String not Enum to skip
+    # the Postgres add-value migration tax — trigger set is closed but
+    # rare-to-extend.
+    severity = Column(String(20), nullable=False)
+    comment = Column(Text, nullable=False)
+
+    submitted_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    submitted_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class RosterShift(Base):
     """Roster shift for staff scheduling."""
     __tablename__ = "roster_shifts"

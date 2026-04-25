@@ -714,3 +714,135 @@ class TestRunsEndpoints:
         assert r.json()["error_text"] == "ZeroDivisionError"
 
 
+# =====================================================================================
+# POST /runs/{id}/feedback and GET /feedback — per-engine-decision QA review
+# =====================================================================================
+
+
+class TestFeedbackEndpoints:
+    def test_post_feedback_persists_row_tied_to_run(self, client, mock_db):
+        from db_models import PlannerRun, PlannerRunFeedback
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        # Simulate the DB filling in id + submitted_at on refresh
+        # (server_default/primary key would do this in real Postgres).
+        def _fake_refresh(obj):
+            if isinstance(obj, PlannerRunFeedback):
+                if obj.id is None:
+                    obj.id = 1
+                if obj.submitted_at is None:
+                    obj.submitted_at = datetime(2026, 5, 4, 9, 0, 0)
+        mock_db.refresh.side_effect = _fake_refresh
+
+        body = {
+            "shift_date": "2026-05-04",
+            "shift_start_time": "07:00:00",
+            "shift_end_time": "11:00:00",
+            "shift_staff_id": 7,
+            "proposed_shift_index": 2,
+            "severity": "issue",
+            "comment": "KW prefers afternoons; this morning shift goes against the soft pref.",
+        }
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/r-A/feedback",
+            json=body,
+        )
+        assert r.status_code == 201, r.text
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        rows = [a for a in added if isinstance(a, PlannerRunFeedback)]
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.run_id == "r-A"
+        assert row.severity == "issue"
+        assert row.shift_staff_id == 7
+        assert "KW prefers afternoons" in row.comment
+
+    def test_post_feedback_unknown_run_returns_404(self, client, mock_db):
+        from db_models import PlannerRun
+        mock_db._tables[PlannerRun] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/missing/feedback",
+            json={
+                "shift_date": "2026-05-04",
+                "severity": "note",
+                "comment": "no such run",
+            },
+        )
+        assert r.status_code == 404
+
+    def test_post_feedback_rejects_unknown_severity(self, client, mock_db):
+        from db_models import PlannerRun
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/r-A/feedback",
+            json={
+                "shift_date": "2026-05-04",
+                "severity": "showstopper",  # not in {blocker, issue, note}
+                "comment": "x",
+            },
+        )
+        assert r.status_code == 422
+
+    def test_post_feedback_rejects_empty_comment(self, client, mock_db):
+        from db_models import PlannerRun
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/r-A/feedback",
+            json={
+                "shift_date": "2026-05-04",
+                "severity": "note",
+                "comment": "",  # min_length=1
+            },
+        )
+        assert r.status_code == 422
+
+    def test_list_feedback_empty(self, client, mock_db):
+        from db_models import PlannerRunFeedback
+        mock_db._tables[PlannerRunFeedback] = []
+
+        r = client.get("/api/admin/qa/roster-planner/feedback")
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_list_feedback_returns_rows(self, client, mock_db):
+        from db_models import PlannerRunFeedback
+        mock_db._tables[PlannerRunFeedback] = [
+            SimpleNamespace(
+                id=1,
+                run_id="r-A",
+                shift_date=date(2026, 5, 4),
+                shift_start_time=time(7, 0),
+                shift_end_time=time(11, 0),
+                shift_staff_id=7,
+                proposed_shift_index=2,
+                severity="issue",
+                comment="KW shouldn't be on mornings",
+                submitted_by=1,
+                submitted_at=datetime(2026, 5, 4, 9, 0, 0),
+            ),
+        ]
+
+        r = client.get("/api/admin/qa/roster-planner/feedback?shift_date=2026-05-04")
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body) == 1
+        assert body[0]["severity"] == "issue"
+        assert body[0]["shift_staff_id"] == 7
+
+    def test_list_feedback_invalid_shift_start_time_rejected(self, client, mock_db):
+        r = client.get(
+            "/api/admin/qa/roster-planner/feedback?shift_start_time=not-a-time"
+        )
+        assert r.status_code == 422
+
+    def test_list_feedback_limit_out_of_range(self, client, mock_db):
+        r = client.get("/api/admin/qa/roster-planner/feedback?limit=0")
+        assert r.status_code == 422
+        r2 = client.get("/api/admin/qa/roster-planner/feedback?limit=600")
+        assert r2.status_code == 422
+
+
