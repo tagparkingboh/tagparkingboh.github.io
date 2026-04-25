@@ -43,6 +43,7 @@ UK_TZ = zoneinfo.ZoneInfo("Europe/London")
 class PlannerSettings:
     window_days: int
     gap_max_minutes: int
+    mixed_gap_max_minutes: int
     buffer_minutes: int
     staffing_thresholds: tuple[dict, ...]
     max_hours_per_week: int
@@ -60,6 +61,7 @@ class PlannerSettings:
         return PlannerSettings(
             window_days=int(rows.get("window_days", 28)),
             gap_max_minutes=int(rows.get("gap_max_minutes", 120)),
+            mixed_gap_max_minutes=int(rows.get("mixed_gap_max_minutes", 150)),
             buffer_minutes=int(rows.get("buffer_minutes", 30)),
             staffing_thresholds=tuple(
                 rows.get(
@@ -156,13 +158,29 @@ def round_to_shift_type(start: datetime, end: datetime) -> tuple[ShiftType, bool
 
 
 def group_events_by_gap(
-    events: Iterable[Event], gap_max_minutes: int
+    events: Iterable[Event],
+    gap_max_minutes: int,
+    mixed_gap_max_minutes: Optional[int] = None,
 ) -> list[EventCluster]:
-    """Group events into clusters where consecutive events are ≤ `gap_max_minutes` apart.
+    """Group events into clusters by adjacent-event gap.
 
-    The 2-hour rule is inclusive: a gap of exactly `gap_max_minutes` keeps events in
-    the same cluster. Greater than that splits.
+    Two thresholds — pick the one matching the event-type pair:
+      - same-type gap (drop_off→drop_off, pick_up→pick_up): use `gap_max_minutes`
+      - mixed-type gap (drop_off→pick_up, pick_up→drop_off): use `mixed_gap_max_minutes`
+
+    The mixed threshold captures the round-trip efficiency: a driver doing a
+    drop-off can pre-position pick-up cars on the same airport trip, so events
+    that bridge the two types tolerate a wider gap than two same-type events.
+
+    Both thresholds are inclusive — a gap of exactly the threshold keeps events
+    in the same cluster, anything greater splits.
+
+    `mixed_gap_max_minutes=None` falls back to `gap_max_minutes` for backwards
+    compatibility (older callers that don't pass the new threshold).
     """
+    if mixed_gap_max_minutes is None:
+        mixed_gap_max_minutes = gap_max_minutes
+
     ordered = sorted(events, key=lambda e: e.event_time)
     if not ordered:
         return []
@@ -171,7 +189,12 @@ def group_events_by_gap(
     current = [ordered[0]]
     for ev in ordered[1:]:
         gap_minutes = (ev.event_time - current[-1].event_time).total_seconds() / 60
-        if gap_minutes <= gap_max_minutes:
+        threshold = (
+            mixed_gap_max_minutes
+            if ev.event_type != current[-1].event_type
+            else gap_max_minutes
+        )
+        if gap_minutes <= threshold:
             current.append(ev)
         else:
             clusters.append(EventCluster(events=current))
@@ -447,7 +470,11 @@ def propose_roster(
     events = [e for e in events if e.booking_id not in covered_booking_ids]
 
     # 3. Cluster events by the gap rule.
-    clusters = group_events_by_gap(events, settings.gap_max_minutes)
+    clusters = group_events_by_gap(
+        events,
+        settings.gap_max_minutes,
+        mixed_gap_max_minutes=settings.mixed_gap_max_minutes,
+    )
 
     # 4. Walk clusters, compute shift bounds + staffing, assign staff.
     proposed_shifts_out: list[dict] = []

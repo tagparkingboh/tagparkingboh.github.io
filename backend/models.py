@@ -622,6 +622,7 @@ class RosterPlannerSettingsResponse(BaseModel):
     """Read-only snapshot of current planner settings."""
     window_days: int
     gap_max_minutes: int
+    mixed_gap_max_minutes: int
     buffer_minutes: int
     staffing_thresholds: List[RosterPlannerStaffingThreshold]
     max_hours_per_week: int
@@ -640,6 +641,7 @@ class RosterPlannerSettingsUpdate(BaseModel):
     """
     window_days: Optional[int] = Field(default=None, ge=1, le=90)
     gap_max_minutes: Optional[int] = Field(default=None, ge=0, le=480)
+    mixed_gap_max_minutes: Optional[int] = Field(default=None, ge=0, le=720)
     buffer_minutes: Optional[int] = Field(default=None, ge=0, le=120)
     staffing_thresholds: Optional[List[RosterPlannerStaffingThreshold]] = None
     max_hours_per_week: Optional[int] = Field(default=None, ge=1, le=168)

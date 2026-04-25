@@ -46,6 +46,7 @@ from roster_planner import (
 DEFAULT_SETTINGS = PlannerSettings(
     window_days=28,
     gap_max_minutes=120,
+    mixed_gap_max_minutes=150,
     buffer_minutes=30,
     staffing_thresholds=({"max_peak": 3, "staff": 1}, {"max_peak": 999, "staff": 2}),
     max_hours_per_week=40,
@@ -201,6 +202,77 @@ class TestGapSplitting:
         ]
         clusters = group_events_by_gap(events, gap_max_minutes=120)
         assert [len(c.events) for c in clusters] == [2, 2, 1]
+
+
+class TestMixedTypeGap:
+    """Drop-off → pick-up bridging tolerates a wider gap than two same-type
+    events. Mirrors the operational reality: a driver doing a drop-off can
+    pre-position pick-up cars on the same airport trip, so the round-trip
+    chain merits a longer gap allowance."""
+
+    def test_mixed_gap_merges_across_2h15_when_types_differ(self):
+        # Reproduces prod 2026-05-01: drop-off cluster at 11:55-12:00,
+        # pick-up cluster at 14:15+. Gap 12:00 → 14:15 = 2h15m. With
+        # gap=120 + mixed_gap=150, the mixed bridge merges.
+        base = uk_dt(2026, 5, 1, 11, 55)
+        events = [
+            mk_event(1, base, "drop_off"),
+            mk_event(2, base + timedelta(minutes=5), "drop_off"),
+            mk_event(3, base + timedelta(hours=2, minutes=20), "pick_up"),
+            mk_event(4, base + timedelta(hours=3, minutes=25), "pick_up"),
+        ]
+        clusters = group_events_by_gap(
+            events, gap_max_minutes=120, mixed_gap_max_minutes=150
+        )
+        assert len(clusters) == 1
+        assert len(clusters[0].events) == 4
+
+    def test_same_type_gap_at_2h15_still_splits(self):
+        # Two drop-offs 2h15m apart → same-type gap rule applies (120),
+        # mixed_gap doesn't kick in. Splits as before.
+        base = uk_dt(2026, 5, 1, 11, 0)
+        events = [
+            mk_event(1, base, "drop_off"),
+            mk_event(2, base + timedelta(hours=2, minutes=15), "drop_off"),
+        ]
+        clusters = group_events_by_gap(
+            events, gap_max_minutes=120, mixed_gap_max_minutes=150
+        )
+        assert len(clusters) == 2
+
+    def test_boundary_mixed_gap_exactly_at_threshold_stays_same(self):
+        base = uk_dt(2026, 5, 1, 12, 0)
+        events = [
+            mk_event(1, base, "drop_off"),
+            mk_event(2, base + timedelta(minutes=150), "pick_up"),
+        ]
+        clusters = group_events_by_gap(
+            events, gap_max_minutes=120, mixed_gap_max_minutes=150
+        )
+        assert len(clusters) == 1
+
+    def test_boundary_mixed_gap_one_second_over_splits(self):
+        base = uk_dt(2026, 5, 1, 12, 0)
+        events = [
+            mk_event(1, base, "drop_off"),
+            mk_event(2, base + timedelta(minutes=150, seconds=1), "pick_up"),
+        ]
+        clusters = group_events_by_gap(
+            events, gap_max_minutes=120, mixed_gap_max_minutes=150
+        )
+        assert len(clusters) == 2
+
+    def test_mixed_gap_default_falls_back_to_same_type(self):
+        """Backwards compatibility — older callers passing only
+        gap_max_minutes get the original behaviour."""
+        base = uk_dt(2026, 5, 1, 12, 0)
+        events = [
+            mk_event(1, base, "drop_off"),
+            mk_event(2, base + timedelta(minutes=140), "pick_up"),
+        ]
+        # No mixed_gap kwarg — must split at 140min (>120) just like before.
+        clusters = group_events_by_gap(events, gap_max_minutes=120)
+        assert len(clusters) == 2
 
 
 # =====================================================================================
