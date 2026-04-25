@@ -2405,6 +2405,7 @@ async def create_manual_booking(
 @app.post("/api/admin/bookings/{booking_id}/mark-paid")
 async def mark_booking_paid(
     booking_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -2465,6 +2466,14 @@ async def mark_booking_paid(
             payment.paid_at = booking.created_at or datetime.utcnow()
 
     db.commit()
+
+    # Roster planner shadow mode: a new CONFIRMED booking can reshape the
+    # rolling 28-day roster. Fire the engine in the background — failure
+    # inside the runner must never break this confirmation flow.
+    from roster_planner_runner import fire_engine_async, TRIGGER_BOOKING_CONFIRMED
+    background_tasks.add_task(
+        fire_engine_async, TRIGGER_BOOKING_CONFIRMED, booking.reference
+    )
 
     # Send confirmation email
     email_sent = False

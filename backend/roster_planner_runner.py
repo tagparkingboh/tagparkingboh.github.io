@@ -17,12 +17,20 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from db_models import PlannerRun
+from db_models import (
+    Booking,
+    BookingStatus,
+    EmployeeHoliday,
+    PlannerRun,
+    RosterShift,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +55,123 @@ def _safe_json(payload) -> Optional[str]:
     except (TypeError, ValueError) as e:
         logger.warning("planner_runs serialise failed (%s); writing null", e)
         return None
+
+
+def fire_engine(
+    db: Session,
+    *,
+    trigger_event: str,
+    trigger_ref: Optional[str] = None,
+) -> Optional[str]:
+    """Run the engine end-to-end and audit the result. Returns run_id or None.
+
+    Owns the full read path: settings → bookings/shifts/staff/holidays →
+    propose_roster() → record_run(). Same query shape as the /propose
+    endpoint, kept inline here so the BackgroundTask-safe call site has
+    no external dependency on the FastAPI request lifecycle.
+
+    Failure isolation: any exception (DB, engine, serialise) is caught and
+    logged. Caller never sees a raise. This is what makes it safe to fire
+    from booking-confirmation handlers — a planner bug must not break
+    payment processing.
+    """
+    # Imports here (not module-level) to avoid an import cycle:
+    # roster_planner_runner is imported from routers.roster, and
+    # roster_planner imports from db_models which is fine, but settings
+    # loading lives in routers.roster which would close the cycle.
+    from roster_planner import propose_roster, PlannerSettings, UK_TZ
+    from routers.roster import _load_planner_settings_rows
+
+    try:
+        started_at = datetime.utcnow()
+        parsed = _load_planner_settings_rows(db)
+        engine_settings = PlannerSettings.from_kv(parsed)
+        now = datetime.now(UK_TZ)
+        window_start = now.date()
+        window_end = window_start + timedelta(days=engine_settings.window_days)
+
+        bookings = (
+            db.query(Booking)
+            .filter(
+                Booking.status == BookingStatus.CONFIRMED,
+                or_(
+                    and_(
+                        Booking.dropoff_date >= window_start,
+                        Booking.dropoff_date < window_end,
+                    ),
+                    and_(
+                        Booking.pickup_date >= window_start,
+                        Booking.pickup_date < window_end,
+                    ),
+                ),
+            )
+            .all()
+        )
+        shifts = (
+            db.query(RosterShift)
+            .filter(
+                RosterShift.date >= window_start,
+                RosterShift.date < window_end,
+            )
+            .all()
+        )
+        staff = (
+            db.query(User)
+            .filter(User.is_active == True, User.is_admin == False)
+            .all()
+        )
+        holidays = (
+            db.query(EmployeeHoliday)
+            .filter(
+                EmployeeHoliday.start_date < window_end,
+                EmployeeHoliday.end_date >= window_start,
+            )
+            .all()
+        )
+
+        proposal = propose_roster(
+            bookings=bookings,
+            shifts=shifts,
+            staff=staff,
+            holidays=holidays,
+            settings=engine_settings,
+            now=now,
+        )
+        return record_run(
+            db,
+            trigger_event=trigger_event,
+            trigger_ref=trigger_ref,
+            proposal=proposal,
+            started_at=started_at,
+        )
+    except Exception as e:
+        logger.exception("fire_engine failed (trigger=%s ref=%s): %s",
+                         trigger_event, trigger_ref, e)
+        return None
+
+
+def fire_engine_async(
+    trigger_event: str,
+    trigger_ref: Optional[str] = None,
+) -> None:
+    """BackgroundTasks-safe entry — owns its own DB session.
+
+    The caller's request session ends as soon as the response is sent;
+    BackgroundTasks runs after that, so we can't reuse the request session.
+    Open a fresh one, fire the engine, close.
+    """
+    from database import SessionLocal
+    if SessionLocal is None:
+        # No DB configured (test/import context). Silently no-op.
+        return
+    db = SessionLocal()
+    try:
+        fire_engine(db, trigger_event=trigger_event, trigger_ref=trigger_ref)
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 def record_run(

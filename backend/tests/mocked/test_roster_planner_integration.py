@@ -420,6 +420,71 @@ class TestPlannerRunsAudit:
 
 
 # =====================================================================================
+# Direct runner tests — fire_engine() is called from booking / holiday /
+# settings event hooks via BackgroundTasks. Tests bypass TestClient and
+# call the runner directly with a mocked Session.
+# =====================================================================================
+
+
+class TestFireEngine:
+    def _prime(self, mock_db):
+        from db_models import User
+        mock_db._tables[DbRosterPlannerSettings] = default_settings_rows()
+        mock_db._tables[User] = [mk_user(user_id=10, is_admin=False)]
+
+    def test_fire_engine_writes_planner_run_for_booking_confirmed(self, mock_db):
+        from db_models import PlannerRun
+        from roster_planner_runner import fire_engine, TRIGGER_BOOKING_CONFIRMED
+
+        self._prime(mock_db)
+        run_id = fire_engine(
+            mock_db,
+            trigger_event=TRIGGER_BOOKING_CONFIRMED,
+            trigger_ref="TAG-12345",
+        )
+
+        assert run_id is not None
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        runs = [a for a in added if isinstance(a, PlannerRun)]
+        assert len(runs) == 1
+        row = runs[0]
+        assert row.run_id == run_id
+        assert row.trigger_event == "booking_confirmed"
+        assert row.trigger_ref == "TAG-12345"
+
+    def test_fire_engine_swallows_internal_failures(self, mock_db):
+        """Engine bug or DB issue inside the runner must not bubble — the
+        booking-confirmation flow that triggered this must not break
+        because the planner crashed."""
+        from roster_planner_runner import fire_engine, TRIGGER_BOOKING_CONFIRMED
+
+        self._prime(mock_db)
+
+        def _explode():
+            raise RuntimeError("simulated commit failure")
+        mock_db.commit.side_effect = _explode
+
+        # Must return None, not raise.
+        run_id = fire_engine(
+            mock_db,
+            trigger_event=TRIGGER_BOOKING_CONFIRMED,
+        )
+        assert run_id is None
+
+    def test_fire_engine_async_no_op_when_session_missing(self, monkeypatch):
+        """When DATABASE_URL is unset (e.g. CI without staging DB),
+        SessionLocal is None — fire_engine_async must silently no-op
+        rather than crash. This is what protects the booking flow when
+        the planner DB infra isn't configured."""
+        import roster_planner_runner as _runner
+        import database
+        monkeypatch.setattr(database, "SessionLocal", None)
+
+        # Must not raise.
+        _runner.fire_engine_async("booking_confirmed", "TAG-1")
+
+
+# =====================================================================================
 # PATCH /settings — explicit-fields semantics (2026-04-06 regression guard)
 # =====================================================================================
 
