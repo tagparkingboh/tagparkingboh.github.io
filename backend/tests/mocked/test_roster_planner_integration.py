@@ -173,9 +173,14 @@ def client(mock_db, qa_admin):
     app.dependency_overrides[require_qa_admin] = override_require_qa_admin
     app.dependency_overrides[require_admin] = override_require_admin
 
-    with TestClient(app) as c:
-        yield c
-    app.dependency_overrides.clear()
+    # NB: do NOT use `with TestClient(app) as ...` — that would fire FastAPI's
+    # lifespan events, which include init_db() + migration checks against the
+    # real DB URL and add several seconds per test. Plain TestClient(app) just
+    # wraps the ASGI app without running startup.
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
 
 
 # =====================================================================================
@@ -233,9 +238,9 @@ class TestAuth:
 
         app.dependency_overrides[get_db] = override_get_db
         try:
-            with TestClient(app) as c:
-                r = c.get("/api/admin/qa/roster-planner/settings")
-                assert r.status_code == 401
+            c = TestClient(app)
+            r = c.get("/api/admin/qa/roster-planner/settings")
+            assert r.status_code == 401
         finally:
             app.dependency_overrides.clear()
 
@@ -252,9 +257,9 @@ class TestAuth:
         app.dependency_overrides[get_db] = override_get_db
         app.dependency_overrides[require_admin] = override_require_admin
         try:
-            with TestClient(app) as c:
-                r = c.get("/api/admin/qa/roster-planner/settings")
-                assert r.status_code == 403
+            c = TestClient(app)
+            r = c.get("/api/admin/qa/roster-planner/settings")
+            assert r.status_code == 403
         finally:
             app.dependency_overrides.clear()
 
@@ -272,9 +277,9 @@ class TestAuth:
         app.dependency_overrides[require_admin] = override_require_admin
         mock_db._tables[DbRosterPlannerSettings] = default_settings_rows()
         try:
-            with TestClient(app) as c:
-                r = c.get("/api/admin/qa/roster-planner/settings")
-                assert r.status_code == 200
+            c = TestClient(app)
+            r = c.get("/api/admin/qa/roster-planner/settings")
+            assert r.status_code == 200
         finally:
             app.dependency_overrides.clear()
 
