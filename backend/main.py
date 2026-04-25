@@ -9956,10 +9956,21 @@ async def create_payment(
         ).first()
 
         if blocked_pickup:
-            # Get the pickup time to check against time slots
+            # Get the pickup time to check against time slots.
+            # pickup_time is the customer-meet time = arrival_time + 30 min
+            # (the team meets returning customers 30 min after landing —
+            # see Booking model + main.py:2826). Falling back to
+            # pickup_flight_time directly was wrong: a 16:59 arrival
+            # produces a 17:29 meet, and only the meet time should be
+            # checked against block windows.
             pickup_time_str = request.pickup_time
             if not pickup_time_str and request.pickup_flight_time:
-                pickup_time_str = request.pickup_flight_time
+                try:
+                    h, m = map(int, request.pickup_flight_time.split(":"))
+                    total_mins = (h * 60 + m + 30) % (24 * 60)
+                    pickup_time_str = f"{total_mins // 60:02d}:{total_mins % 60:02d}"
+                except (ValueError, TypeError):
+                    pickup_time_str = request.pickup_flight_time
 
             if check_time_blocked(blocked_pickup, pickup_time_str, "pickup"):
                 raise HTTPException(
