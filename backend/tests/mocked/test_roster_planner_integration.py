@@ -118,6 +118,9 @@ class FakeQuery:
     def order_by(self, *_):
         return self
 
+    def limit(self, _n):
+        return self
+
     def one_or_none(self):
         return self.rows[0] if self.rows else None
 
@@ -598,5 +601,116 @@ class TestPatchSettings:
         r = client.patch("/api/admin/qa/roster-planner/settings", json={})
         assert r.status_code == 200
         assert calls == []
+
+
+# =====================================================================================
+# GET /runs and /runs/{id} — shadow-mode run history (QA UI history strip)
+# =====================================================================================
+
+
+def _mk_run_row(
+    run_id="r-1",
+    triggered_at=None,
+    trigger_event="manual",
+    trigger_ref=None,
+    proposal=None,
+    duration_ms=42,
+    error_text=None,
+):
+    """Build a PlannerRun-shaped SimpleNamespace. The handler reads
+    attributes off the row, so a namespace is sufficient."""
+    if triggered_at is None:
+        triggered_at = datetime(2026, 4, 24, 12, 0, 0)
+    if proposal is None:
+        proposal = {
+            "run_id": run_id,
+            "summary": {"new_shifts": 3, "extended_shifts": 1, "unmanned_events": 0},
+        }
+    return SimpleNamespace(
+        run_id=run_id,
+        triggered_at=triggered_at,
+        trigger_event=trigger_event,
+        trigger_ref=trigger_ref,
+        window_start=date(2026, 4, 24),
+        window_end=date(2026, 5, 22),
+        proposal_json=json.dumps(proposal),
+        diff_vs_current_json=None,
+        warnings_json=json.dumps([]),
+        duration_ms=duration_ms,
+        error_text=error_text,
+    )
+
+
+class TestRunsEndpoints:
+    def test_list_runs_empty(self, client, mock_db):
+        from db_models import PlannerRun
+        mock_db._tables[PlannerRun] = []
+
+        r = client.get("/api/admin/qa/roster-planner/runs")
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_list_runs_returns_summary_extracted_from_proposal(self, client, mock_db):
+        from db_models import PlannerRun
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        r = client.get("/api/admin/qa/roster-planner/runs")
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body) == 1
+        item = body[0]
+        assert item["run_id"] == "r-A"
+        assert item["trigger_event"] == "manual"
+        assert item["has_error"] is False
+        # Summary lifted out of proposal_json so the strip can show
+        # volume without loading the full proposal.
+        assert item["summary"]["new_shifts"] == 3
+
+    def test_list_runs_pagination_limit_default_50(self, client, mock_db):
+        from db_models import PlannerRun
+        # Order/limit are applied via FakeQuery — the fixture currently
+        # ignores .limit() and .order_by(), so verify defaults pass.
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id=f"r-{i}") for i in range(3)]
+
+        r = client.get("/api/admin/qa/roster-planner/runs?limit=10")
+        assert r.status_code == 200
+        assert len(r.json()) == 3
+
+    def test_list_runs_limit_out_of_range_rejected(self, client, mock_db):
+        r = client.get("/api/admin/qa/roster-planner/runs?limit=0")
+        assert r.status_code == 422
+        r2 = client.get("/api/admin/qa/roster-planner/runs?limit=300")
+        assert r2.status_code == 422
+
+    def test_run_detail_happy(self, client, mock_db):
+        from db_models import PlannerRun
+        row = _mk_run_row(run_id="r-detail")
+        mock_db._tables[PlannerRun] = [row]
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-detail")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["run_id"] == "r-detail"
+        assert body["proposal"]["run_id"] == "r-detail"
+        assert body["error_text"] is None
+
+    def test_run_detail_404_when_missing(self, client, mock_db):
+        from db_models import PlannerRun
+        mock_db._tables[PlannerRun] = []
+
+        r = client.get("/api/admin/qa/roster-planner/runs/does-not-exist")
+        assert r.status_code == 404
+
+    def test_run_detail_surfaces_error_text(self, client, mock_db):
+        """Failed runs must still be retrievable so QA can see *why* the
+        engine crashed without grepping logs."""
+        from db_models import PlannerRun
+        mock_db._tables[PlannerRun] = [
+            _mk_run_row(run_id="r-err", error_text="ZeroDivisionError")
+        ]
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-err")
+        assert r.status_code == 200
+        assert r.json()["error_text"] == "ZeroDivisionError"
 
 

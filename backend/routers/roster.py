@@ -23,6 +23,7 @@ from models import (
     ShiftTypeEnum, ShiftStatusEnum, LinkedBookingInfo,
     RosterPlannerSettingsResponse, RosterPlannerSettingsUpdate,
     RosterProposalResponse,
+    PlannerRunListItem, PlannerRunDetail,
 )
 from roster_planner import propose_roster, PlannerSettings, UK_TZ
 from roster_planner_runner import (
@@ -2639,3 +2640,110 @@ async def propose_roster_endpoint(
         started_at=started_at,
     )
     return result
+
+
+# =====================================================================================
+# Shadow-mode run history — the QA tab's history strip and detail view
+# =====================================================================================
+
+
+@router.get(
+    "/admin/qa/roster-planner/runs",
+    response_model=List[PlannerRunListItem],
+)
+async def list_planner_runs(
+    limit: int = Query(50, ge=1, le=200),
+    trigger_event: Optional[str] = Query(None, description="Filter by trigger_event (e.g. booking_confirmed)"),
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    """List recent shadow-mode engine runs, newest first.
+
+    Each row is the slim summary the QA history strip needs (timestamp,
+    trigger, window, duration). Full proposal lives at /runs/{run_id}.
+    """
+    from db_models import PlannerRun
+
+    q = db.query(PlannerRun)
+    if trigger_event:
+        q = q.filter(PlannerRun.trigger_event == trigger_event)
+    rows = q.order_by(PlannerRun.triggered_at.desc()).limit(limit).all()
+
+    out = []
+    for r in rows:
+        # Pull summary out of proposal_json so the strip can show volume
+        # at a glance without loading the full proposal.
+        summary = None
+        if r.proposal_json:
+            try:
+                summary = json.loads(r.proposal_json).get("summary")
+            except (TypeError, ValueError):
+                summary = None
+        out.append(
+            PlannerRunListItem(
+                run_id=r.run_id,
+                triggered_at=r.triggered_at,
+                trigger_event=r.trigger_event,
+                trigger_ref=r.trigger_ref,
+                window_start=r.window_start,
+                window_end=r.window_end,
+                duration_ms=r.duration_ms,
+                has_error=bool(r.error_text),
+                summary=summary,
+            )
+        )
+    return out
+
+
+@router.get(
+    "/admin/qa/roster-planner/runs/{run_id}",
+    response_model=PlannerRunDetail,
+)
+async def get_planner_run(
+    run_id: str,
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    """Full proposal for one run — feeds the calendar render in the QA tab."""
+    from db_models import PlannerRun
+
+    row = (
+        db.query(PlannerRun)
+        .filter(PlannerRun.run_id == run_id)
+        .one_or_none()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="planner run not found")
+
+    proposal = None
+    if row.proposal_json:
+        try:
+            proposal = json.loads(row.proposal_json)
+        except (TypeError, ValueError):
+            proposal = None
+    diff = None
+    if row.diff_vs_current_json:
+        try:
+            diff = json.loads(row.diff_vs_current_json)
+        except (TypeError, ValueError):
+            diff = None
+    warnings = []
+    if row.warnings_json:
+        try:
+            warnings = json.loads(row.warnings_json)
+        except (TypeError, ValueError):
+            warnings = []
+
+    return PlannerRunDetail(
+        run_id=row.run_id,
+        triggered_at=row.triggered_at,
+        trigger_event=row.trigger_event,
+        trigger_ref=row.trigger_ref,
+        window_start=row.window_start,
+        window_end=row.window_end,
+        proposal=proposal,
+        diff_vs_current=diff,
+        warnings=warnings,
+        duration_ms=row.duration_ms,
+        error_text=row.error_text,
+    )
