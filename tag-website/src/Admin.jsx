@@ -8,6 +8,7 @@ import BookingCalendar from './components/BookingCalendar'
 import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
 import Payroll from './components/Payroll'
+import PlannedRosterCalendar from './components/qa/PlannedRosterCalendar'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -83,6 +84,7 @@ const NAV_STRUCTURE = [
       { id: 'qa-audit', label: 'Audit Logs' },
       { id: 'qa-errors', label: 'Error Logs' },
       { id: 'qa-sql', label: 'SQL Interface' },
+      { id: 'qa-roster-planner', label: 'Roster Planner' },
     ]
   },
 ]
@@ -14443,6 +14445,13 @@ function Admin() {
                     </div>
                   </div>
                 )}
+          </div>
+        )}
+
+        {/* QA - Roster Planner (shadow mode, read-only) */}
+        {activeTab === 'qa-roster-planner' && (
+          <div className="admin-section">
+            <PlannedRosterCalendar apiUrl={API_URL} token={token} />
           </div>
         )}
 
