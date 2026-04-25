@@ -19,6 +19,8 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [feedbackShift, setFeedbackShift] = useState(null)
+  const [feedbackShiftIndex, setFeedbackShiftIndex] = useState(null)
 
   const authHeader = useMemo(
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
@@ -103,17 +105,18 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
     }
   }
 
-  // Group proposed_shifts by date for the calendar render.
+  // Group proposed_shifts by date. Stamp the original index onto each
+  // shift so feedback can reference proposed_shift_index even after the
+  // group-and-sort scrambles ordering.
   const shiftsByDate = useMemo(() => {
     const proposal = detail?.proposal
     if (!proposal?.proposed_shifts) return {}
     const grouped = {}
-    for (const s of proposal.proposed_shifts) {
+    proposal.proposed_shifts.forEach((s, idx) => {
       const key = s.date
       if (!grouped[key]) grouped[key] = []
-      grouped[key].push(s)
-    }
-    // Sort each day's shifts by start time.
+      grouped[key].push({ ...s, __index: idx })
+    })
     for (const day of Object.keys(grouped)) {
       grouped[day].sort((a, b) => (a.start_time > b.start_time ? 1 : -1))
     }
@@ -158,6 +161,10 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
               <ProposalCalendar
                 shiftsByDate={shiftsByDate}
                 sortedDates={sortedDates}
+                onShiftClick={(shift, idx) => {
+                  setFeedbackShift(shift)
+                  setFeedbackShiftIndex(idx)
+                }}
               />
               <WarningsList warnings={detail.warnings || []} />
             </>
@@ -201,6 +208,20 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           ))}
         </div>
       </div>
+
+      {feedbackShift && detail && (
+        <FeedbackModal
+          apiUrl={apiUrl}
+          authHeader={authHeader}
+          runId={detail.run_id}
+          shift={feedbackShift}
+          shiftIndex={feedbackShiftIndex}
+          onClose={() => {
+            setFeedbackShift(null)
+            setFeedbackShiftIndex(null)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -261,7 +282,7 @@ function Counter({ label, value, tone = 'neutral' }) {
   )
 }
 
-function ProposalCalendar({ shiftsByDate, sortedDates }) {
+function ProposalCalendar({ shiftsByDate, sortedDates, onShiftClick }) {
   if (sortedDates.length === 0) {
     return (
       <div className="prp-empty">
@@ -283,8 +304,12 @@ function ProposalCalendar({ shiftsByDate, sortedDates }) {
             })}
           </div>
           <div className="prp-day-shifts">
-            {shiftsByDate[dateStr].map((s, i) => (
-              <ShiftCard key={i} shift={s} />
+            {shiftsByDate[dateStr].map((s) => (
+              <ShiftCard
+                key={s.__index}
+                shift={s}
+                onClick={() => onShiftClick?.(s, s.__index)}
+              />
             ))}
           </div>
         </div>
@@ -293,10 +318,15 @@ function ProposalCalendar({ shiftsByDate, sortedDates }) {
   )
 }
 
-function ShiftCard({ shift }) {
+function ShiftCard({ shift, onClick }) {
   const unassigned = !shift.staff_id
   return (
-    <div className={`prp-shift ${unassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`prp-shift ${unassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'}`}
+      title="Click to give feedback on this engine decision"
+    >
       <div className="prp-shift-time">
         {shift.start_time}–{shift.end_time}
       </div>
@@ -315,8 +345,233 @@ function ShiftCard({ shift }) {
           ))}
         </div>
       )}
+    </button>
+  )
+}
+
+function FeedbackModal({ apiUrl, authHeader, runId, shift, shiftIndex, onClose }) {
+  const [adminShifts, setAdminShifts] = useState([])
+  const [priorFeedback, setPriorFeedback] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState(null)
+  const [severity, setSeverity] = useState('issue')
+  const [comment, setComment] = useState('')
+
+  // Fetch admin calendar for this date + prior feedback for the same date.
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      try {
+        const [adminRes, fbRes] = await Promise.all([
+          fetch(`${apiUrl}/api/roster?date=${shift.date}`, {
+            headers: authHeader,
+          }),
+          fetch(
+            `${apiUrl}/api/admin/qa/roster-planner/feedback?shift_date=${shift.date}`,
+            { headers: authHeader }
+          ),
+        ])
+        if (cancelled) return
+        const adminBody = adminRes.ok ? await adminRes.json() : []
+        const fbBody = fbRes.ok ? await fbRes.json() : []
+        setAdminShifts(adminBody)
+        setPriorFeedback(fbBody)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [apiUrl, authHeader, shift.date])
+
+  async function submit() {
+    if (!comment.trim()) return
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      const res = await fetch(
+        `${apiUrl}/api/admin/qa/roster-planner/runs/${runId}/feedback`,
+        {
+          method: 'POST',
+          headers: { ...authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            shift_date: shift.date,
+            shift_start_time: shift.start_time,
+            shift_end_time: shift.end_time,
+            shift_staff_id: shift.staff_id ?? null,
+            proposed_shift_index: shiftIndex,
+            severity,
+            comment: comment.trim(),
+          }),
+        }
+      )
+      if (!res.ok) {
+        const detail = await res.text()
+        throw new Error(detail || `HTTP ${res.status}`)
+      }
+      // Refresh prior feedback to include the new row.
+      const fbRes = await fetch(
+        `${apiUrl}/api/admin/qa/roster-planner/feedback?shift_date=${shift.date}`,
+        { headers: authHeader }
+      )
+      if (fbRes.ok) setPriorFeedback(await fbRes.json())
+      setComment('')
+      setSeverity('issue')
+    } catch (err) {
+      setSubmitError(err.message || 'Failed to submit feedback')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="prp-modal-backdrop" onClick={onClose}>
+      <div className="prp-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="prp-modal-header">
+          <h3>
+            Engine decision · {shift.start_time}–{shift.end_time} ·{' '}
+            {shift.staff_initials || (shift.staff_id ? `staff #${shift.staff_id}` : '? unassigned')}
+          </h3>
+          <button className="prp-modal-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+
+        <div className="prp-modal-grid">
+          <div className="prp-modal-col">
+            <h4>Engine proposal</h4>
+            <ShiftDetail shift={shift} />
+          </div>
+          <div className="prp-modal-col">
+            <h4>Admin calendar (live)</h4>
+            {loading ? (
+              <div className="prp-empty">Loading…</div>
+            ) : adminShifts.length === 0 ? (
+              <div className="prp-empty">No shifts scheduled on this date.</div>
+            ) : (
+              <ul className="prp-modal-shift-list">
+                {adminShifts.map((s) => (
+                  <li key={s.id}>
+                    <strong>
+                      {formatTime(s.start_time)}–{formatTime(s.end_time)}
+                    </strong>{' '}
+                    {s.staff_initials || (s.staff_id ? `#${s.staff_id}` : '?')}
+                    {s.status && (
+                      <span className="prp-modal-status">{s.status}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        <div className="prp-modal-feedback-form">
+          <h4>Flag this decision</h4>
+          <div className="prp-feedback-row">
+            <label>
+              Severity
+              <select
+                value={severity}
+                onChange={(e) => setSeverity(e.target.value)}
+              >
+                <option value="blocker">blocker</option>
+                <option value="issue">issue</option>
+                <option value="note">note</option>
+              </select>
+            </label>
+          </div>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="What's wrong with this assignment? (Who should it be, why, what's the right grouping?)"
+            rows={3}
+          />
+          {submitError && <div className="prp-error">{submitError}</div>}
+          <div className="prp-feedback-actions">
+            <button
+              className="prp-run-btn"
+              onClick={submit}
+              disabled={submitting || !comment.trim()}
+            >
+              {submitting ? 'Submitting…' : 'Submit feedback'}
+            </button>
+          </div>
+        </div>
+
+        <div className="prp-modal-prior">
+          <h4>Prior feedback for this date ({priorFeedback.length})</h4>
+          {priorFeedback.length === 0 ? (
+            <div className="prp-empty">None yet.</div>
+          ) : (
+            <ul className="prp-modal-feedback-list">
+              {priorFeedback.map((f) => (
+                <li key={f.id} className={`prp-feedback-${f.severity}`}>
+                  <div className="prp-feedback-meta">
+                    <span className={`prp-severity-tag prp-severity-${f.severity}`}>
+                      {f.severity}
+                    </span>
+                    <span>
+                      {formatTime(f.shift_start_time)}–{formatTime(f.shift_end_time)}{' '}
+                      {f.shift_staff_id ? `· staff #${f.shift_staff_id}` : ''}
+                    </span>
+                    <span className="prp-feedback-when">
+                      {new Date(f.submitted_at).toLocaleString('en-GB', {
+                        timeZone: 'Europe/London',
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                  <div className="prp-feedback-comment">{f.comment}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   )
+}
+
+function ShiftDetail({ shift }) {
+  return (
+    <ul className="prp-modal-shift-list">
+      <li>
+        <strong>Time:</strong> {shift.start_time}–{shift.end_time}
+      </li>
+      <li>
+        <strong>Date:</strong> {shift.date}
+      </li>
+      <li>
+        <strong>Staff:</strong>{' '}
+        {shift.staff_id ? shift.staff_initials || `#${shift.staff_id}` : '? unassigned'}
+      </li>
+      <li>
+        <strong>Type:</strong> {shift.shift_type || 'custom'}
+      </li>
+      <li>
+        <strong>Kind:</strong> {shift.kind || 'new'}
+      </li>
+      {shift.linked_booking_refs?.length > 0 && (
+        <li>
+          <strong>Bookings:</strong> {shift.linked_booking_refs.join(', ')}
+        </li>
+      )}
+    </ul>
+  )
+}
+
+function formatTime(t) {
+  if (!t) return '–'
+  // Backend returns "HH:MM:SS" or "HH:MM"; trim seconds for display.
+  return String(t).slice(0, 5)
 }
 
 function WarningsList({ warnings }) {
