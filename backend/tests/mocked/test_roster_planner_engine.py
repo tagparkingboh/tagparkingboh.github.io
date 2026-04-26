@@ -520,11 +520,10 @@ class TestPickStaff:
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
             staff=staff,
-            shifts=[],
             holidays=[],
             settings=DEFAULT_SETTINGS,
             already_chosen_ids=set(),
-            proposed_hours_by_staff_week={},
+            proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is not None and chosen.id == 10
 
@@ -540,11 +539,10 @@ class TestPickStaff:
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
             staff=[ms, ln],
-            shifts=[existing],
             holidays=[],
             settings=DEFAULT_SETTINGS,
             already_chosen_ids=set(),
-            proposed_hours_by_staff_week={},
+            proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen.id == 21
 
@@ -555,11 +553,10 @@ class TestPickStaff:
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
             staff=[mc],
-            shifts=[],
             holidays=[],
             settings=DEFAULT_SETTINGS,
             already_chosen_ids=set(),
-            proposed_hours_by_staff_week={},
+            proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is None
 
@@ -573,10 +570,9 @@ class TestPickStaff:
             shift_start_dt=uk_dt(2026, 5, 6, 7, 0),
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
-            staff=[fleet_only],
-            shifts=[], holidays=[],
+            staff=[fleet_only], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is None
 
@@ -588,10 +584,9 @@ class TestPickStaff:
             shift_start_dt=uk_dt(2026, 5, 6, 7, 0),
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
-            staff=[admin_ish],
-            shifts=[], holidays=[],
+            staff=[admin_ish], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is None
 
@@ -602,10 +597,9 @@ class TestPickStaff:
             shift_start_dt=uk_dt(2026, 5, 6, 7, 0),
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
-            staff=[aaron, ms],
-            shifts=[], holidays=[],
+            staff=[aaron, ms], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is not None and chosen.id == 7
 
@@ -625,10 +619,9 @@ class TestPickStaff:
             shift_start_dt=uk_dt(2026, 5, 6, 7, 0),
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
-            staff=[kw, ka],
-            shifts=[], holidays=[],
+            staff=[kw, ka], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen.id == 2
 
@@ -650,10 +643,9 @@ class TestPickStaff:
             shift_start_dt=uk_dt(2026, 5, 6, 21, 0),
             shift_end_dt=uk_dt(2026, 5, 7, 0, 30),
             shift_type=ShiftType.EVENING,
-            staff=[ms, kw],
-            shifts=[], holidays=[],
+            staff=[ms, kw], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen.id == 8
 
@@ -669,10 +661,9 @@ class TestPickStaff:
             shift_start_dt=uk_dt(2026, 5, 6, 21, 0),
             shift_end_dt=uk_dt(2026, 5, 7, 0, 30),
             shift_type=ShiftType.EVENING,
-            staff=[kw],
-            shifts=[], holidays=[],
+            staff=[kw], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is not None and chosen.id == 8
 
@@ -689,10 +680,9 @@ class TestPickStaff:
             shift_start_dt=uk_dt(2026, 5, 7, 0, 30),
             shift_end_dt=uk_dt(2026, 5, 7, 0, 45),
             shift_type=ShiftType.EVENING,
-            staff=[kw],
-            shifts=[], holidays=[],
+            staff=[kw], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is not None and chosen.id == 8
 
@@ -717,10 +707,9 @@ class TestPickStaff:
             shift_start_dt=uk_dt(2026, 5, 6, 9, 0),
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
-            staff=[ms, ka],
-            shifts=[], holidays=[],
+            staff=[ms, ka], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen.id == 7
 
@@ -742,10 +731,9 @@ class TestPickStaff:
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
             staff=[ms, ka],
-            shifts=[],
             holidays=[mk_holiday(7, date(2026, 5, 6))],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen.id == 2
 
@@ -769,10 +757,9 @@ class TestPickStaff:
             shift_end_dt=uk_dt(2026, 5, 6, 6, 0),
             shift_type=ShiftType.EARLY_MORNING,
             staff=[ms, ka],
-            shifts=[],
             holidays=[mk_holiday(7, date(2026, 5, 6))],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is None
 
@@ -790,9 +777,9 @@ class TestPickStaff:
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
             staff=[zach, anna],   # input order favours Zach if id were used
-            shifts=[], holidays=[],
+            holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen.id == 99, "Anna (alphabetical first_name) wins, not the lower id"
 
@@ -808,10 +795,9 @@ class TestPickStaff:
             shift_start_dt=uk_dt(2026, 5, 9, 7, 0),
             shift_end_dt=uk_dt(2026, 5, 9, 11, 0),
             shift_type=ShiftType.MORNING,
-            staff=[ms, ka],
-            shifts=[], holidays=[],
+            staff=[ms, ka], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is not None and chosen.id == 2
 
@@ -823,10 +809,9 @@ class TestPickStaff:
             shift_start_dt=uk_dt(2026, 5, 8, 7, 0),
             shift_end_dt=uk_dt(2026, 5, 8, 11, 0),
             shift_type=ShiftType.MORNING,
-            staff=[ms],
-            shifts=[], holidays=[],
+            staff=[ms], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is not None and chosen.id == 7
 
@@ -837,11 +822,10 @@ class TestPickStaff:
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
             staff=[s],
-            shifts=[],
             holidays=[mk_holiday(40, date(2026, 5, 6))],
             settings=DEFAULT_SETTINGS,
             already_chosen_ids=set(),
-            proposed_hours_by_staff_week={},
+            proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is None
 
@@ -861,63 +845,61 @@ class TestPickStaff:
             shift_end_dt=uk_dt(2026, 5, 6, 18, 0),
             shift_type=ShiftType.AFTERNOON,
             staff=[ms, ln],
-            shifts=existing,
             holidays=[],
             settings=DEFAULT_SETTINGS,
             already_chosen_ids=set(),
-            proposed_hours_by_staff_week={},
+            proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen.id == 21, "MS over cap → LN picked"
 
-    def test_boundary_exactly_40h_existing_excluded_from_more(self):
+    def test_boundary_exactly_40h_in_run_excluded_from_more(self):
+        """Hard 40h cap counts against IN-RUN proposed hours only — saved
+        roster_shifts are never consulted (engine = pure simulation)."""
         s = mk_staff(50)
-        existing = [
-            mk_shift(200, 50, date(2026, 5, 4), time(0, 0), time(0, 0), end_date=date(2026, 5, 5)),  # 24h
-            mk_shift(201, 50, date(2026, 5, 6), time(0, 0), time(16, 0)),  # 16h → total 40h
-        ]
+        week_start = iso_monday(date(2026, 5, 7))
         chosen = pick_staff(
             shift_start_dt=uk_dt(2026, 5, 7, 8, 0),
             shift_end_dt=uk_dt(2026, 5, 7, 10, 0),
             shift_type=ShiftType.MORNING,
             staff=[s],
-            shifts=existing,
             holidays=[],
             settings=DEFAULT_SETTINGS,
             already_chosen_ids=set(),
-            proposed_hours_by_staff_week={},
+            proposed_hours_by_staff_week={(50, week_start): 40},  # at cap
+            proposed_last_end_by_staff={},
         )
-        assert chosen is None, "at exactly 40h, any more over caps"
+        assert chosen is None, "at exactly 40h in this run, any more over caps"
 
     def test_boundary_8h_rest_exactly_ok_7h59m_blocked(self):
+        """Engine enforces 8h min rest against the IN-RUN previous pick.
+        Saved roster_shifts are never consulted."""
         s = mk_staff(60)
-        # Prior shift ends Sun 23:00
-        prior = mk_shift(300, 60, date(2026, 5, 3), time(15, 0), time(23, 0))
+        # Pretend this run already picked staff 60 for a shift ending Sun 23:00.
+        prior_end = uk_dt(2026, 5, 3, 23, 0)
 
-        # Next shift 8h later — OK
         ok = pick_staff(
-            shift_start_dt=uk_dt(2026, 5, 4, 7, 0),
+            shift_start_dt=uk_dt(2026, 5, 4, 7, 0),  # exactly 8h later
             shift_end_dt=uk_dt(2026, 5, 4, 11, 0),
             shift_type=ShiftType.MORNING,
             staff=[s],
-            shifts=[prior],
             holidays=[],
             settings=DEFAULT_SETTINGS,
             already_chosen_ids=set(),
             proposed_hours_by_staff_week={},
+            proposed_last_end_by_staff={60: prior_end},
         )
         assert ok is not None
 
-        # 7h59m later — blocked
         blocked = pick_staff(
-            shift_start_dt=uk_dt(2026, 5, 4, 6, 59),
+            shift_start_dt=uk_dt(2026, 5, 4, 6, 59),  # 7h59m later
             shift_end_dt=uk_dt(2026, 5, 4, 10, 59),
             shift_type=ShiftType.MORNING,
             staff=[s],
-            shifts=[prior],
             holidays=[],
             settings=DEFAULT_SETTINGS,
             already_chosen_ids=set(),
             proposed_hours_by_staff_week={},
+            proposed_last_end_by_staff={60: prior_end},
         )
         assert blocked is None
 
@@ -1171,17 +1153,19 @@ class TestSpecGapFillers:
         assert drop["staff_id"] is None
         assert any(w["rule"] == "unmanned" for w in result["warnings"])
 
-    def test_all_shifts_confirmed_produces_read_only_proposal(self):
-        """When every existing shift in the window is CONFIRMED, the
-        engine reports them as untouched and emits no new shifts."""
+    def test_existing_confirmed_shifts_do_not_suppress_new_proposals(self):
+        """Engine is a pure simulation — it plans every booking in window
+        regardless of what's saved in roster_shifts. A CONFIRMED saved
+        shift covering the same booking still surfaces in the comparison
+        view (kind='untouched_for_reason') but does NOT prevent the
+        engine emitting its own 'new' proposal for the same time. See
+        SPEC.md § Roster Planner."""
         now = uk_dt(2026, 5, 1, 0, 0)
         bookings = [
             mk_booking(1, "TAG-A",
                 drop_dt=uk_dt(2026, 5, 6, 8, 0),
                 pick_dt=uk_dt(2026, 5, 20, 10, 0)),
         ]
-        # Confirmed shift covering the drop-off event — booking already
-        # serviced, engine shouldn't re-plan.
         b = SimpleNamespace(id=1, dropoff_date=date(2026, 5, 6), pickup_date=date(2026, 5, 20))
         confirmed = mk_shift(
             99, 7, date(2026, 5, 6), time(7, 30), time(9, 0),
@@ -1192,11 +1176,12 @@ class TestSpecGapFillers:
             bookings=bookings, shifts=[confirmed], staff=[mk_staff(7, "Marek", "S")],
             holidays=[], settings=DEFAULT_SETTINGS, now=now,
         )
-        # No new-kind shifts generated for the covered booking.
+        # The engine STILL emits a new shift for the drop-off — saved
+        # shifts no longer suppress planning.
         new_drop = [p for p in result["proposed_shifts"]
                     if p["kind"] == "new" and p["date"].isoformat() == "2026-05-06"]
-        assert new_drop == []
-        # Existing confirmed shift surfaced as untouched.
+        assert len(new_drop) == 1
+        # The existing confirmed shift is rendered alongside (comparison view).
         untouched = [p for p in result["proposed_shifts"]
                      if p["kind"] == "untouched_for_reason"]
         assert any(p["shift_id"] == 99 for p in untouched)
@@ -1216,10 +1201,9 @@ class TestSpecGapFillers:
             shift_start_dt=uk_dt(2026, 5, 7, 12, 0),
             shift_end_dt=uk_dt(2026, 5, 7, 12, 1),  # 1 minute
             shift_type=ShiftType.MIDDAY,
-            staff=[mk_staff(7, "Marek", "S")],
-            shifts=[existing], holidays=[],
+            staff=[mk_staff(7, "Marek", "S")], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         # 39h59m + 1m = 40h0m, which is NOT > 40 → eligible.
         assert chosen is not None and chosen.id == 7
@@ -1232,10 +1216,9 @@ class TestSpecGapFillers:
             shift_end_dt=uk_dt(2026, 5, 7, 17, 0),
             shift_type=ShiftType.MIDDAY,
             staff=[mk_staff(7, "Marek", "S")],
-            shifts=[],
             holidays=[mk_holiday(7, date(2026, 5, 7))],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(), proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is None
 
@@ -1287,35 +1270,32 @@ class TestDstRegression:
                    if p["kind"] == "new")
 
     @pytest.mark.xfail(
-        reason="Engine bug: last_shift_end_for / weekly_hours_for use naive "
-               "datetime arithmetic on RosterShift.date+end_time, so the rest "
-               "gap is computed as wall-clock minutes. Across the Oct fall-back "
-               "this under-counts elapsed time by 1h, blocking eligible staff. "
-               "SPEC.md § 'Regression guards' calls for tz-aware Europe/London "
-               "math — fix is its own commit (audit gap 2026-04-26).",
+        reason="Engine bug: pick_staff computes rest as "
+               "(shift_start_dt - last_end).total_seconds() with same-ZoneInfo "
+               "tz-aware datetimes. Python 3.9 zoneinfo subtraction returns "
+               "wall-clock seconds across DST instead of true elapsed UTC "
+               "seconds — under-counts by 1h across the Oct fall-back, "
+               "blocking eligible staff. Fix needs UTC conversion before "
+               "subtraction; tracked separately.",
         strict=True,
     )
     def test_fall_back_rest_gap_crosses_dst_correctly(self):
         """Sun 25 Oct 2026 falls back: 02:00 BST → 01:00 GMT, so the
-        clock shows 01:00–02:00 twice. A shift ending Sat 23:00 BST,
-        next eligible at 07:00 Sun GMT — clock-time looks like 8h
-        but real elapsed time is 9h. Engine uses real elapsed time
-        (datetime arithmetic), so 8h rest is satisfied."""
-        # Existing shift Sat 22:00–23:00 BST
-        existing = mk_shift(
-            1, 7, date(2026, 10, 24), time(22, 0), time(23, 0),
-            status=ShiftStatus.SCHEDULED,
-        )
-        # Try to schedule Sun 06:30 GMT — that's 7h30m wall-clock from
-        # 23:00 Sat, but with the fall-back, real elapsed is 8h30m.
+        clock shows 01:00–02:00 twice. An in-run pick ending Sat 23:00 BST,
+        next eligible at 06:30 GMT — wall-clock looks like 7h30m but real
+        elapsed time is 8h30m. The engine SHOULD compare in UTC and treat
+        8.5h as ≥ 8h required."""
+        # Pretend this run already picked Marek for a shift ending Sat 23:00 BST.
+        prior_end = uk_dt(2026, 10, 24, 23, 0)
         chosen = pick_staff(
             shift_start_dt=uk_dt(2026, 10, 25, 6, 30),
             shift_end_dt=uk_dt(2026, 10, 25, 8, 0),
             shift_type=ShiftType.EARLY_MORNING,
-            staff=[mk_staff(7, "Marek", "S")],
-            shifts=[existing], holidays=[],
+            staff=[mk_staff(7, "Marek", "S")], holidays=[],
             settings=DEFAULT_SETTINGS,
-            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+            already_chosen_ids=set(),
+            proposed_hours_by_staff_week={},
+            proposed_last_end_by_staff={7: prior_end},
         )
         # Real elapsed across DST: 8h30m ≥ 8h → eligible.
         assert chosen is not None and chosen.id == 7

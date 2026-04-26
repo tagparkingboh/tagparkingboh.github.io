@@ -392,11 +392,11 @@ def explain_unmanned(
     shift_start_dt: datetime,
     shift_end_dt: datetime,
     staff: Iterable[User],
-    shifts: Iterable[RosterShift],
     holidays: Iterable[EmployeeHoliday],
     settings: PlannerSettings,
     already_chosen_ids: set[int],
     proposed_hours_by_staff_week: dict[tuple[int, date], float],
+    proposed_last_end_by_staff: dict[int, datetime],
 ) -> list[dict]:
     """Per-jockey reason for being excluded from this shift.
 
@@ -405,6 +405,9 @@ def explain_unmanned(
     they're not auto-assignable in any scenario, so listing them as
     "excluded" is noise. The output is intended for a debugging panel
     next to an `unmanned` warning.
+
+    Like `pick_staff()`, this never reads saved `roster_shifts` — only
+    the in-run state matters. See SPEC.md § Roster Planner.
     """
     shift_date = shift_start_dt.date()
     week_start = iso_monday(shift_date)
@@ -435,20 +438,18 @@ def explain_unmanned(
         if is_staff_on_holiday(s.id, shift_date, holidays):
             out.append({"initials": initials, "reason": "on holiday"})
             continue
-        existing_hours = weekly_hours_for(s.id, week_start, shifts)
         proposed_hours = proposed_hours_by_staff_week.get((s.id, week_start), 0)
-        total = existing_hours + proposed_hours
-        if total + this_shift_hours > settings.max_hours_per_week:
+        if proposed_hours + this_shift_hours > settings.max_hours_per_week:
             out.append({
                 "initials": initials,
                 "reason": (
                     f"would exceed weekly cap "
-                    f"({total:.1f}h + {this_shift_hours:.1f}h > "
+                    f"({proposed_hours:.1f}h + {this_shift_hours:.1f}h > "
                     f"{settings.max_hours_per_week}h)"
                 ),
             })
             continue
-        last_end = last_shift_end_for(s.id, shift_start_dt, shifts)
+        last_end = proposed_last_end_by_staff.get(s.id)
         if last_end is not None:
             rest_hours = (shift_start_dt - last_end).total_seconds() / 3600
             if rest_hours < settings.min_rest_hours:
@@ -538,13 +539,20 @@ def pick_staff(
     shift_end_dt: datetime,
     shift_type: ShiftType,
     staff: Iterable[User],
-    shifts: Iterable[RosterShift],
     holidays: Iterable[EmployeeHoliday],
     settings: PlannerSettings,
     already_chosen_ids: set[int],
     proposed_hours_by_staff_week: dict[tuple[int, date], float],
+    proposed_last_end_by_staff: dict[int, datetime],
 ) -> Optional[User]:
     """Choose the best eligible staff member, or None if every one is blocked.
+
+    Pure simulation: this function never consults saved `roster_shifts`.
+    Weekly-hour and rest-gap checks use only in-run state — `proposed_*_by_*`
+    dicts the caller threads through across `pick_staff` calls. See SPEC.md
+    § Roster Planner for why (admins manually-edit the saved roster outside
+    the engine; mixing that into availability decisions produces opaque
+    warnings whose causes aren't visible in the preview UI).
 
     Hard constraints (any one → exclude):
       - `is_active=False`
@@ -555,8 +563,8 @@ def pick_staff(
       - `weekday(shift_date) ∈ preferred_days_off` — hard day-off rule.
       - already picked for this exact shift (multi-staff shift)
       - on holiday that day
-      - existing weekly hours + proposed weekly hours + this shift > `max_hours_per_week`
-      - < `min_rest_hours` since last shift ended
+      - in-run proposed weekly hours + this shift > `max_hours_per_week`
+      - < `min_rest_hours` since this run's last assigned shift ended
       - shift not contained in driver's working window (`preferred_start_time`
         / `preferred_end_time`) — replaces the old shift-type bucket model.
 
@@ -567,7 +575,7 @@ def pick_staff(
       in for MS / KW (primaries) when neither is available.
 
     Tiebreaker (lower is better):
-      - total weekly hours (existing + proposed in this run) — load-balances
+      - total in-run weekly hours — load-balances within the run
       - first_name alphabetical — deterministic without using `id` as a
         ranking signal (true ties carry no semantic meaning, but tests need
         a stable choice).
@@ -592,11 +600,10 @@ def pick_staff(
             continue
         if is_staff_on_holiday(s.id, shift_date, holidays):
             continue
-        existing_hours = weekly_hours_for(s.id, week_start, shifts)
         proposed_hours = proposed_hours_by_staff_week.get((s.id, week_start), 0)
-        if existing_hours + proposed_hours + this_shift_hours > settings.max_hours_per_week:
+        if proposed_hours + this_shift_hours > settings.max_hours_per_week:
             continue
-        last_end = last_shift_end_for(s.id, shift_start_dt, shifts)
+        last_end = proposed_last_end_by_staff.get(s.id)
         if last_end is not None:
             rest_hours = (shift_start_dt - last_end).total_seconds() / 3600
             if rest_hours < settings.min_rest_hours:
@@ -614,9 +621,7 @@ def pick_staff(
         return None
 
     def score(candidate: User) -> tuple[float, str]:
-        total_hours = weekly_hours_for(candidate.id, week_start, shifts) + (
-            proposed_hours_by_staff_week.get((candidate.id, week_start), 0)
-        )
+        total_hours = proposed_hours_by_staff_week.get((candidate.id, week_start), 0)
         return (total_hours, candidate.first_name or "")
 
     return sorted(pool, key=score)[0]
@@ -687,29 +692,22 @@ def propose_roster(
                 )
             )
 
-    # 2. Drop events already covered by untouchable shifts — the engine reports those
-    #    shifts separately but won't re-plan their events.
-    untouchable_shift_ids: set[int] = set()
-    covered_booking_ids: set[int] = set()
-    for s in shifts:
-        unt, _reason = is_shift_untouchable(s, now, settings.untouchable_hours)
-        if unt:
-            untouchable_shift_ids.add(s.id)
-            for linked in getattr(s, "bookings", []) or []:
-                covered_booking_ids.add(linked.id)
-    events = [e for e in events if e.booking_id not in covered_booking_ids]
-
-    # 3. Cluster events by the gap rule.
+    # 2. Cluster events by the gap rule. The engine plans every booking
+    #    in window from a clean slate — saved roster_shifts are NOT used
+    #    to skip events. (Pre-rebuild the engine could mute clusters
+    #    "covered" by untouchable shifts; that conflated availability
+    #    with reality and produced opaque proposals. See SPEC.md.)
     clusters = group_events_by_gap(
         events,
         settings.gap_max_minutes,
         mixed_gap_max_minutes=settings.mixed_gap_max_minutes,
     )
 
-    # 4. Walk clusters, compute shift bounds + staffing, assign staff.
+    # 3. Walk clusters, compute shift bounds + staffing, assign staff.
     proposed_shifts_out: list[dict] = []
     warnings: list[dict] = []
     proposed_hours_by_staff_week: dict[tuple[int, date], float] = {}
+    proposed_last_end_by_staff: dict[int, datetime] = {}
     start_buffer = timedelta(minutes=settings.start_buffer_minutes)
     end_buffer = timedelta(minutes=settings.end_buffer_minutes)
 
@@ -751,11 +749,11 @@ def propose_roster(
                 shift_end_dt=shift_end_dt,
                 shift_type=shift_type,
                 staff=staff,
-                shifts=shifts,
                 holidays=holidays,
                 settings=settings,
                 already_chosen_ids=already_chosen,
                 proposed_hours_by_staff_week=proposed_hours_by_staff_week,
+                proposed_last_end_by_staff=proposed_last_end_by_staff,
             )
 
             proposed_shifts_out.append(
@@ -790,11 +788,11 @@ def propose_roster(
                     shift_start_dt=shift_start_dt,
                     shift_end_dt=shift_end_dt,
                     staff=staff,
-                    shifts=shifts,
                     holidays=holidays,
                     settings=settings,
                     already_chosen_ids=already_chosen,
                     proposed_hours_by_staff_week=proposed_hours_by_staff_week,
+                    proposed_last_end_by_staff=proposed_last_end_by_staff,
                 )
                 warnings.append(
                     {
@@ -819,6 +817,12 @@ def propose_roster(
                     proposed_hours_by_staff_week.get((chosen.id, week_start), 0)
                     + (shift_end_dt - shift_start_dt).total_seconds() / 3600
                 )
+                # Track this run's last end per jockey so the next pick
+                # respects min_rest_hours against in-run picks (not against
+                # saved roster_shifts).
+                prior_end = proposed_last_end_by_staff.get(chosen.id)
+                if prior_end is None or shift_end_dt > prior_end:
+                    proposed_last_end_by_staff[chosen.id] = shift_end_dt
 
     # 5. Append untouchable existing shifts so the UI renders the full picture.
     for s in shifts:
