@@ -101,6 +101,9 @@ def mk_staff(
     driver_type: str = "jockey",          # default to jockey so existing tests keep their behaviour
     excluded_shift_types: Optional[list[ShiftType]] = None,
     preferred_days_off: Optional[list[int]] = None,
+    preferred_start_time: Optional[time] = None,
+    preferred_end_time: Optional[time] = None,
+    is_fallback_driver: bool = False,
 ):
     return SimpleNamespace(
         id=user_id,
@@ -112,6 +115,9 @@ def mk_staff(
         driver_type=driver_type,
         excluded_shift_types=excluded_shift_types or [],
         preferred_days_off=preferred_days_off or [],
+        preferred_start_time=preferred_start_time,
+        preferred_end_time=preferred_end_time,
+        is_fallback_driver=is_fallback_driver,
     )
 
 
@@ -522,21 +528,25 @@ class TestPickStaff:
         )
         assert chosen is not None and chosen.id == 10
 
-    def test_happy_preferred_staff_beats_flexible(self):
-        ms = mk_staff(20, "M", "S", preferred=[ShiftType.MORNING])
+    def test_happy_lower_weekly_hours_wins_tiebreaker(self):
+        """With both candidates eligible (same window, same fallback
+        status), the one with fewer weekly hours wins — load balancer."""
+        # MS already has 8h existing this week, LN has none.
+        existing = mk_shift(100, 20, date(2026, 5, 4), time(0, 0), time(8, 0))
+        ms = mk_staff(20, "M", "S")
         ln = mk_staff(21, "L", "N")
         chosen = pick_staff(
             shift_start_dt=uk_dt(2026, 5, 6, 7, 0),
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
             shift_type=ShiftType.MORNING,
             staff=[ms, ln],
-            shifts=[],
+            shifts=[existing],
             holidays=[],
             settings=DEFAULT_SETTINGS,
             already_chosen_ids=set(),
             proposed_hours_by_staff_week={},
         )
-        assert chosen.id == 20
+        assert chosen.id == 21
 
     def test_unhappy_auto_assign_excluded_never_picked(self):
         mc = mk_staff(30, "M", "C", excluded=True)
@@ -599,17 +609,18 @@ class TestPickStaff:
         )
         assert chosen is not None and chosen.id == 7
 
-    # -- excluded_shift_types -------------------------------------------
+    # -- working window (preferred_start_time / preferred_end_time) -----
 
-    def test_unhappy_kw_blocked_from_morning_via_excluded_shift_types(self):
-        """Reproduces the prod rule: KW (id=8) excluded from earlies."""
+    def test_unhappy_kw_blocked_from_morning_via_window(self):
+        """KW's window is 16:00–01:00 (next day). A 07:00–11:00 morning
+        shift is outside that window → KW excluded. KA (the fallback,
+        no window configured) covers it."""
         kw = mk_staff(
             8, "Karl", "Walden",
-            excluded_shift_types=[
-                ShiftType.EARLY_MORNING, ShiftType.MORNING, ShiftType.FULL_MORNING,
-            ],
+            preferred_start_time=time(16, 0),
+            preferred_end_time=time(1, 0),
         )
-        ka = mk_staff(2, "Kristian", "AB")  # flexible
+        ka = mk_staff(2, "Kristian", "AB", is_fallback_driver=True)
         chosen = pick_staff(
             shift_start_dt=uk_dt(2026, 5, 6, 7, 0),
             shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
@@ -619,18 +630,22 @@ class TestPickStaff:
             settings=DEFAULT_SETTINGS,
             already_chosen_ids=set(), proposed_hours_by_staff_week={},
         )
-        # KW excluded → only KA eligible.
         assert chosen.id == 2
 
-    def test_unhappy_ms_blocked_from_evening_via_excluded_shift_types(self):
-        """Reproduces the prod rule: MS (id=7) excluded from lates."""
+    def test_unhappy_ms_blocked_from_evening_via_window(self):
+        """MS's window is 03:00–12:00. A 21:00–00:30 evening shift is
+        outside that window → MS excluded. KW (window 16:00–01:00 next
+        day) covers it."""
         ms = mk_staff(
             7, "Marek", "Smolarek",
-            excluded_shift_types=[
-                ShiftType.LATE_AFTERNOON, ShiftType.EVENING, ShiftType.FULL_EVENING,
-            ],
+            preferred_start_time=time(3, 0),
+            preferred_end_time=time(12, 0),
         )
-        kw = mk_staff(8, "Karl", "Walden")
+        kw = mk_staff(
+            8, "Karl", "Walden",
+            preferred_start_time=time(16, 0),
+            preferred_end_time=time(1, 0),
+        )
         chosen = pick_staff(
             shift_start_dt=uk_dt(2026, 5, 6, 21, 0),
             shift_end_dt=uk_dt(2026, 5, 7, 0, 30),
@@ -640,17 +655,15 @@ class TestPickStaff:
             settings=DEFAULT_SETTINGS,
             already_chosen_ids=set(), proposed_hours_by_staff_week={},
         )
-        # MS excluded → KW gets the evening.
         assert chosen.id == 8
 
-    def test_excluded_shift_types_only_blocks_listed_types(self):
-        """KW excluded from earlies must STILL be eligible for an
-        evening shift — the exclusion is per shift type, not blanket."""
+    def test_window_only_blocks_shifts_outside_it(self):
+        """KW's window 16:00–01:00 (next day) must still let KW take an
+        evening shift — the window restricts time-of-day, not shift type."""
         kw = mk_staff(
             8, "Karl", "Walden",
-            excluded_shift_types=[
-                ShiftType.EARLY_MORNING, ShiftType.MORNING, ShiftType.FULL_MORNING,
-            ],
+            preferred_start_time=time(16, 0),
+            preferred_end_time=time(1, 0),
         )
         chosen = pick_staff(
             shift_start_dt=uk_dt(2026, 5, 6, 21, 0),
@@ -662,6 +675,126 @@ class TestPickStaff:
             already_chosen_ids=set(), proposed_hours_by_staff_week={},
         )
         assert chosen is not None and chosen.id == 8
+
+    def test_overnight_window_accepts_post_midnight_tail(self):
+        """KW's window 16:00–01:00 wraps midnight. A 00:30–00:45 shift
+        (early next day) belongs to the previous day's window and KW
+        must still be eligible."""
+        kw = mk_staff(
+            8, "Karl", "Walden",
+            preferred_start_time=time(16, 0),
+            preferred_end_time=time(1, 0),
+        )
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 7, 0, 30),
+            shift_end_dt=uk_dt(2026, 5, 7, 0, 45),
+            shift_type=ShiftType.EVENING,
+            staff=[kw],
+            shifts=[], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen is not None and chosen.id == 8
+
+    # -- primary vs fallback (is_fallback_driver) -----------------------
+
+    def test_primary_beats_fallback_when_both_eligible(self):
+        """KA (fallback) is only used when no primary is available.
+        With MS (primary, window contains shift) and KA (fallback, no
+        window) both eligible for a 09:00–11:00 shift, MS wins."""
+        ms = mk_staff(
+            7, "Marek", "Smolarek",
+            preferred_start_time=time(3, 0),
+            preferred_end_time=time(12, 0),
+        )
+        ka = mk_staff(
+            2, "Kristian", "AB",
+            preferred_start_time=time(9, 0),
+            preferred_end_time=time(17, 0),
+            is_fallback_driver=True,
+        )
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 6, 9, 0),
+            shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
+            shift_type=ShiftType.MORNING,
+            staff=[ms, ka],
+            shifts=[], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen.id == 7
+
+    def test_fallback_fires_when_primary_on_holiday(self):
+        """MS on holiday → KA (fallback) covers."""
+        ms = mk_staff(
+            7, "Marek", "Smolarek",
+            preferred_start_time=time(3, 0),
+            preferred_end_time=time(12, 0),
+        )
+        ka = mk_staff(
+            2, "Kristian", "AB",
+            preferred_start_time=time(9, 0),
+            preferred_end_time=time(17, 0),
+            is_fallback_driver=True,
+        )
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 6, 9, 0),
+            shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
+            shift_type=ShiftType.MORNING,
+            staff=[ms, ka],
+            shifts=[],
+            holidays=[mk_holiday(7, date(2026, 5, 6))],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen.id == 2
+
+    def test_fallback_skipped_if_shift_outside_their_window(self):
+        """KA (fallback, window 09:00–17:00) cannot cover a 05:00–06:00
+        shift even when MS (primary) is on holiday — the shift is
+        outside KA's window. Returns None (unmanned)."""
+        ms = mk_staff(
+            7, "Marek", "Smolarek",
+            preferred_start_time=time(3, 0),
+            preferred_end_time=time(12, 0),
+        )
+        ka = mk_staff(
+            2, "Kristian", "AB",
+            preferred_start_time=time(9, 0),
+            preferred_end_time=time(17, 0),
+            is_fallback_driver=True,
+        )
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 6, 5, 0),
+            shift_end_dt=uk_dt(2026, 5, 6, 6, 0),
+            shift_type=ShiftType.EARLY_MORNING,
+            staff=[ms, ka],
+            shifts=[],
+            holidays=[mk_holiday(7, date(2026, 5, 6))],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen is None
+
+    # -- tiebreaker semantics -------------------------------------------
+
+    def test_tiebreaker_does_not_use_user_id(self):
+        """When two primaries are equally eligible with equal weekly
+        hours, the lower user.id MUST NOT win — id is identity, not a
+        ranking signal. Final tiebreaker is alphabetical first_name."""
+        # Higher id, alphabetically-earlier first name → should win.
+        anna = mk_staff(99, "Anna", "Z")
+        zach = mk_staff(2, "Zach", "A")
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 6, 7, 0),
+            shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
+            shift_type=ShiftType.MORNING,
+            staff=[zach, anna],   # input order favours Zach if id were used
+            shifts=[], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen.id == 99, "Anna (alphabetical first_name) wins, not the lower id"
 
     # -- preferred_days_off --------------------------------------------
 
@@ -712,11 +845,11 @@ class TestPickStaff:
         )
         assert chosen is None
 
-    def test_edge_preferred_at_max_hours_falls_back_to_flex(self):
-        """MS prefers MORNING but is at 40h already — should fall back to LN."""
-        ms = mk_staff(20, "M", "S", preferred=[ShiftType.MORNING])
+    def test_edge_at_max_hours_falls_back_to_other_jockey(self):
+        """MS is at 40h already — must be excluded by max_hours_per_week
+        even though both candidates have no window restriction."""
+        ms = mk_staff(20, "M", "S")
         ln = mk_staff(21, "L", "N")
-        week_start = iso_monday(date(2026, 5, 6))
         # MS has 38h existing; new 4h shift would push to 42 → over cap
         existing = [
             mk_shift(100, 20, date(2026, 5, 4), time(0, 0), time(12, 0), end_date=date(2026, 5, 4)),

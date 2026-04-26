@@ -751,6 +751,16 @@ class User(Base):
     # (admins / inactive / undecided).
     driver_type = Column(String(20), nullable=True)
 
+    # Working window — engine assigns shifts whose [start, end] is fully
+    # contained in this window. preferred_end_time < preferred_start_time
+    # means the window crosses midnight (e.g. KW 16:00–01:00 next day).
+    # NULL = no window configured → treated as always-open.
+    preferred_start_time = Column(Time, nullable=True)
+    preferred_end_time = Column(Time, nullable=True)
+    # Fallback driver only fills shifts when no primary driver in the same
+    # window is available (e.g. KA covers MS / KW when they're off).
+    is_fallback_driver = Column(Boolean, nullable=False, server_default="false")
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

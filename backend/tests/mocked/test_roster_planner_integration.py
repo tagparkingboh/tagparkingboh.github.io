@@ -48,6 +48,12 @@ def mk_user(user_id=1, is_admin=True, is_active=True):
     u.is_active = is_active
     u.auto_assign_excluded = False
     u.preferred_shift_types = []
+    u.excluded_shift_types = []
+    u.preferred_days_off = []
+    u.driver_type = "jockey"
+    u.preferred_start_time = None
+    u.preferred_end_time = None
+    u.is_fallback_driver = False
     return u
 
 

@@ -337,6 +337,47 @@ def _combine_uk(d: date, t: time) -> datetime:
 # =====================================================================================
 
 
+def shift_in_window(
+    staff_member: User,
+    shift_start_dt: datetime,
+    shift_end_dt: datetime,
+) -> bool:
+    """True if the shift fits inside the staff member's working window.
+
+    NULL window (either bound unset) → always-open, returns True.
+
+    A window with `preferred_end_time < preferred_start_time` wraps midnight
+    (e.g. KW 16:00–01:00 next day). For overnight windows we accept a shift
+    that fits in either today's window OR the previous day's window — the
+    post-midnight tail.
+    """
+    pst = getattr(staff_member, "preferred_start_time", None)
+    pet = getattr(staff_member, "preferred_end_time", None)
+    if pst is None or pet is None:
+        return True
+
+    tz = shift_start_dt.tzinfo
+    shift_date = shift_start_dt.date()
+
+    window_start = datetime.combine(shift_date, pst, tzinfo=tz)
+    if pet > pst:
+        window_end = datetime.combine(shift_date, pet, tzinfo=tz)
+    else:
+        window_end = datetime.combine(shift_date + timedelta(days=1), pet, tzinfo=tz)
+    if window_start <= shift_start_dt and shift_end_dt <= window_end:
+        return True
+
+    # Overnight windows also cover shifts in the post-midnight tail.
+    if pet < pst:
+        prev_date = shift_date - timedelta(days=1)
+        ws = datetime.combine(prev_date, pst, tzinfo=tz)
+        we = datetime.combine(shift_date, pet, tzinfo=tz)
+        if ws <= shift_start_dt and shift_end_dt <= we:
+            return True
+
+    return False
+
+
 def pick_staff(
     *,
     shift_start_dt: datetime,
@@ -357,33 +398,39 @@ def pick_staff(
       - `driver_type != 'jockey'` — only jockeys are auto-assigned. Fleet
         drivers handle taxi runs (future feature). NULL driver_type also
         excluded (admins, undecided).
-      - `shift_type ∈ excluded_shift_types` — e.g. KW excluded from earlies.
       - `weekday(shift_date) ∈ preferred_days_off` — hard day-off rule.
       - already picked for this exact shift (multi-staff shift)
       - on holiday that day
       - existing weekly hours + proposed weekly hours + this shift > `max_hours_per_week`
       - < `min_rest_hours` since last shift ended
+      - shift not contained in driver's working window (`preferred_start_time`
+        / `preferred_end_time`) — replaces the old shift-type bucket model.
 
-    Soft preferences (tiebreaker ranking, lower is better):
-      - 0 if shift_type is in `preferred_shift_types`, else 1
-      - Then: total weekly hours (existing + proposed) — load-balances
-      - Then: user id — final deterministic tiebreaker for test stability
+    Selection (primary vs fallback):
+      Eligible candidates split into `primaries` (`is_fallback_driver=False`)
+      and `fallbacks` (`is_fallback_driver=True`). Fallbacks are only
+      considered if no primary is eligible — e.g. KA (fallback) only fills
+      in for MS / KW (primaries) when neither is available.
+
+    Tiebreaker (lower is better):
+      - total weekly hours (existing + proposed in this run) — load-balances
+      - first_name alphabetical — deterministic without using `id` as a
+        ranking signal (true ties carry no semantic meaning, but tests need
+        a stable choice).
     """
     shift_date = shift_start_dt.date()
     week_start = iso_monday(shift_date)
     this_shift_hours = (shift_end_dt - shift_start_dt).total_seconds() / 3600
     shift_weekday = shift_date.weekday()  # 0=Mon..6=Sun
 
-    eligible: list[User] = []
+    primaries: list[User] = []
+    fallbacks: list[User] = []
     for s in staff:
         if not s.is_active:
             continue
         if s.auto_assign_excluded:
             continue
-        # Phase 2 hierarchy: only jockeys are auto-assigned. NULL = excluded.
         if getattr(s, "driver_type", None) != "jockey":
-            continue
-        if shift_type in (getattr(s, "excluded_shift_types", None) or []):
             continue
         if shift_weekday in (getattr(s, "preferred_days_off", None) or []):
             continue
@@ -400,19 +447,25 @@ def pick_staff(
             rest_hours = (shift_start_dt - last_end).total_seconds() / 3600
             if rest_hours < settings.min_rest_hours:
                 continue
-        eligible.append(s)
+        if not shift_in_window(s, shift_start_dt, shift_end_dt):
+            continue
 
-    if not eligible:
+        if getattr(s, "is_fallback_driver", False):
+            fallbacks.append(s)
+        else:
+            primaries.append(s)
+
+    pool = primaries if primaries else fallbacks
+    if not pool:
         return None
 
-    def score(candidate: User) -> tuple[int, float, int]:
-        pref_match = 0 if (shift_type in (candidate.preferred_shift_types or [])) else 1
+    def score(candidate: User) -> tuple[float, str]:
         total_hours = weekly_hours_for(candidate.id, week_start, shifts) + (
             proposed_hours_by_staff_week.get((candidate.id, week_start), 0)
         )
-        return (pref_match, total_hours, candidate.id)
+        return (total_hours, candidate.first_name or "")
 
-    return sorted(eligible, key=score)[0]
+    return sorted(pool, key=score)[0]
 
 
 # =====================================================================================
