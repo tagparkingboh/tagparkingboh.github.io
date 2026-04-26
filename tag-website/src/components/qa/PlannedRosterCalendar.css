@@ -198,10 +198,70 @@
   border-top: 1px dashed rgba(0, 0, 0, 0.08);
   padding-top: 0.5rem;
 }
+/* Pill-shaped action buttons on cards. Border-radius 999px gives the
+   fully-rounded pill look regardless of button width. */
 .prp-shift-actions .action-btn {
   margin-right: 0;
   font-size: 11px;
-  padding: 4px 10px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Pill-shaped buttons in QA modals (Edit shift + the four action
+   dialogs). Targets the existing .btn-primary / .btn-secondary /
+   .btn-danger so the customer-detail-modal scope's 6px-radius rule
+   doesn't override. */
+.modal-content.qa-shift-edit-modal .btn-primary,
+.modal-content.qa-shift-edit-modal .btn-secondary,
+.modal-content.qa-shift-edit-modal .btn-danger,
+.modal-content.qa-action-dialog .btn-primary,
+.modal-content.qa-action-dialog .btn-secondary,
+.modal-content.qa-action-dialog .btn-danger {
+  border-radius: 999px;
+  padding: 8px 22px;
+  font-weight: 600;
+  font-size: 14px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.modal-content.qa-shift-edit-modal .btn-primary,
+.modal-content.qa-action-dialog .btn-primary {
+  background: #2563eb;
+  color: white;
+}
+.modal-content.qa-shift-edit-modal .btn-primary:hover:not(:disabled),
+.modal-content.qa-action-dialog .btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+.modal-content.qa-shift-edit-modal .btn-primary:disabled,
+.modal-content.qa-action-dialog .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modal-content.qa-shift-edit-modal .btn-secondary,
+.modal-content.qa-action-dialog .btn-secondary {
+  background: white;
+  color: #374151;
+  border-color: #d1d5db;
+}
+.modal-content.qa-shift-edit-modal .btn-secondary:hover:not(:disabled),
+.modal-content.qa-action-dialog .btn-secondary:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.modal-content.qa-shift-edit-modal .btn-danger,
+.modal-content.qa-action-dialog .btn-danger {
+  background: #dc2626;
+  color: white;
+}
+.modal-content.qa-shift-edit-modal .btn-danger:hover:not(:disabled),
+.modal-content.qa-action-dialog .btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
 }
 
 .prp-shift.unassigned {
@@ -682,6 +742,11 @@
 }
 
 /* Modal scoped to QA Roster Planner.
+   Specificity note: Admin.css `.modal-content` carries `max-width: 450px`
+   which would tie with a single-class `.qa-shift-edit-modal` selector and
+   win on source order. Combine both classes (specificity 0,2,0) so this
+   reliably overrides regardless of bundle order.
+
    - Desktop: 1100px lets the engine-proposal info grid + admin shifts +
      override form breathe without scrolling sideways.
    - Tablet (≤1100px viewport): claim 96vw so the panel fills the screen
@@ -690,33 +755,33 @@
      stacks vertically because 100px-wide labels eat too much space.
    - Phone (≤480px): edge-to-edge — drop the panel border-radius, tighten
      padding further, allow the body to scroll the whole viewport. */
-.qa-shift-edit-modal {
-  max-width: 1100px;
+.modal-content.qa-shift-edit-modal {
+  max-width: 900px;
   width: 100%;
 }
 
-@media (max-width: 1100px) {
-  .qa-shift-edit-modal {
+@media (max-width: 900px) {
+  .modal-content.qa-shift-edit-modal {
     max-width: 96vw;
   }
 }
 
 @media (max-width: 768px) {
-  .qa-shift-edit-modal {
+  .modal-content.qa-shift-edit-modal {
     max-width: 100%;
     padding: 16px;
   }
-  .qa-shift-edit-modal .info-row {
+  .modal-content.qa-shift-edit-modal .info-row {
     flex-direction: column;
     gap: 2px;
   }
-  .qa-shift-edit-modal .info-label {
+  .modal-content.qa-shift-edit-modal .info-label {
     min-width: auto;
   }
 }
 
 @media (max-width: 480px) {
-  .qa-shift-edit-modal {
+  .modal-content.qa-shift-edit-modal {
     border-radius: 0;
     padding: 12px;
     max-height: 100vh;
@@ -724,14 +789,15 @@
 }
 
 /* Action dialogs (Delete / Duplicate / Merge / Split) — narrower than
-   the edit modal because each is a single focused step. */
-.qa-action-dialog {
+   the edit modal because each is a single focused step. Specificity
+   bump same as above for the same Admin.css source-order reason. */
+.modal-content.qa-action-dialog {
   max-width: 520px;
   width: 100%;
 }
 
 @media (max-width: 600px) {
-  .qa-action-dialog {
+  .modal-content.qa-action-dialog {
     max-width: 96vw;
   }
 }
