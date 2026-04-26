@@ -2617,7 +2617,7 @@ async def propose_roster_endpoint(
     )
     staff = (
         db.query(User)
-        .filter(User.is_active == True, User.is_admin == False)
+        .filter(User.is_active == True)
         .all()
     )
     holidays = (
