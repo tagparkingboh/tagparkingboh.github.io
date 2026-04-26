@@ -694,6 +694,9 @@ class RosterProposalWarning(BaseModel):
     message: str
     booking_references: List[str] = Field(default_factory=list)
     staff_id: Optional[int] = None
+    # Per-jockey reason for being filtered out of this shift. Only populated
+    # for `rule="unmanned"` warnings — see explain_unmanned() in the engine.
+    exclusions: List[dict] = Field(default_factory=list)
 
 
 class RosterProposalResponse(BaseModel):
@@ -709,6 +712,9 @@ class RosterProposalResponse(BaseModel):
     proposed_shifts: List[ProposedShift]
     warnings: List[RosterProposalWarning]
     summary: dict  # counts: { new_shifts, extended_shifts, untouched_shifts, unmanned_events, staff_hit_max_hours }
+    # Snapshot of jockey preferences + in-window holidays — rendered in
+    # the QA panel so admins can sanity-check assignments.
+    jockeys: List[dict] = Field(default_factory=list)
 
 
 class PlannerRunListItem(BaseModel):

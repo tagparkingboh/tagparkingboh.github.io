@@ -340,6 +340,81 @@
   border-radius: 3px;
 }
 
+.prp-warning-exclusions {
+  margin: 0.4rem 0 0.5rem 0;
+  padding-left: 1.25rem;
+  font-size: 0.8rem;
+  color: #92580f;
+  list-style: circle;
+}
+
+.prp-warning-exclusions li {
+  margin: 0.1rem 0;
+}
+
+.prp-jockeys {
+  margin-top: 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.prp-jockeys h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.95rem;
+  color: #334155;
+}
+
+.prp-jockeys-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.prp-jockeys-table th,
+.prp-jockeys-table td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+
+.prp-jockeys-table th {
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.prp-jockeys-table tr:last-child td {
+  border-bottom: none;
+}
+
+.prp-jockeys-name {
+  color: #64748b;
+  font-weight: 400;
+}
+
+.prp-jockeys-muted {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.prp-jockeys-primary {
+  color: #15803d;
+  font-weight: 500;
+}
+
+.prp-jockeys-fallback {
+  color: #b45309;
+  font-weight: 500;
+}
+
+.prp-jockeys-disabled {
+  color: #b91c1c;
+  font-size: 0.8rem;
+}
+
 .prp-history {
   display: flex;
   flex-direction: column;

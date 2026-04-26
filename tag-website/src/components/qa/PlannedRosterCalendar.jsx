@@ -166,6 +166,7 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           {!loading && detail && (
             <>
               <RunSummary detail={detail} loading={detailLoading} />
+              <JockeyPreferences jockeys={detail.proposal?.jockeys || []} />
               <ProposalCalendar
                 shiftsByDate={shiftsByDate}
                 sortedDates={sortedDates}
@@ -1300,9 +1301,77 @@ function WarningsList({ warnings }) {
           <li key={i} className={`prp-warning prp-warning-${w.severity || 'info'}`}>
             <code>{w.rule}</code>
             {w.message && <> — {w.message}</>}
+            {Array.isArray(w.exclusions) && w.exclusions.length > 0 && (
+              <ul className="prp-warning-exclusions">
+                {w.exclusions.map((ex, j) => (
+                  <li key={j}>
+                    <strong>{ex.initials}</strong> — {ex.reason}
+                  </li>
+                ))}
+              </ul>
+            )}
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+function JockeyPreferences({ jockeys }) {
+  if (!jockeys || jockeys.length === 0) return null
+  return (
+    <div className="prp-jockeys">
+      <h4>Jockey drivers ({jockeys.length})</h4>
+      <table className="prp-jockeys-table">
+        <thead>
+          <tr>
+            <th>Driver</th>
+            <th>Window</th>
+            <th>Days off</th>
+            <th>Holidays in window</th>
+            <th>Role</th>
+          </tr>
+        </thead>
+        <tbody>
+          {jockeys.map((j) => (
+            <tr key={j.id}>
+              <td>
+                <strong>{j.initials}</strong>{' '}
+                <span className="prp-jockeys-name">
+                  {j.first_name} {j.last_name}
+                </span>
+              </td>
+              <td>
+                {j.preferred_start_time && j.preferred_end_time
+                  ? `${formatTime(j.preferred_start_time)}–${formatTime(j.preferred_end_time)}`
+                  : <span className="prp-jockeys-muted">no window</span>}
+              </td>
+              <td>
+                {j.preferred_days_off && j.preferred_days_off.length > 0
+                  ? j.preferred_days_off.join(', ')
+                  : <span className="prp-jockeys-muted">none</span>}
+              </td>
+              <td>
+                {j.holidays_in_window && j.holidays_in_window.length > 0
+                  ? j.holidays_in_window.map((h, i) => (
+                      <div key={i}>
+                        {h.start_date} → {h.end_date}
+                      </div>
+                    ))
+                  : <span className="prp-jockeys-muted">none</span>}
+              </td>
+              <td>
+                {j.is_fallback_driver
+                  ? <span className="prp-jockeys-fallback">fallback</span>
+                  : <span className="prp-jockeys-primary">primary</span>}
+                {j.auto_assign_excluded && (
+                  <span className="prp-jockeys-disabled"> (auto-assign off)</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

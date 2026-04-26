@@ -378,6 +378,160 @@ def shift_in_window(
     return False
 
 
+_WEEKDAY_SHORT = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def _initials(s: User) -> str:
+    if s.first_name and s.last_name:
+        return f"{s.first_name[0]}{s.last_name[0]}".upper()
+    return f"#{s.id}"
+
+
+def explain_unmanned(
+    *,
+    shift_start_dt: datetime,
+    shift_end_dt: datetime,
+    staff: Iterable[User],
+    shifts: Iterable[RosterShift],
+    holidays: Iterable[EmployeeHoliday],
+    settings: PlannerSettings,
+    already_chosen_ids: set[int],
+    proposed_hours_by_staff_week: dict[tuple[int, date], float],
+) -> list[dict]:
+    """Per-jockey reason for being excluded from this shift.
+
+    Mirrors the hard-constraint order in `pick_staff()`. Inactive users,
+    fleet drivers, and admins (driver_type=None) are silently skipped —
+    they're not auto-assignable in any scenario, so listing them as
+    "excluded" is noise. The output is intended for a debugging panel
+    next to an `unmanned` warning.
+    """
+    shift_date = shift_start_dt.date()
+    week_start = iso_monday(shift_date)
+    this_shift_hours = (shift_end_dt - shift_start_dt).total_seconds() / 3600
+    shift_weekday = shift_date.weekday()
+
+    out: list[dict] = []
+    for s in staff:
+        if not s.is_active:
+            continue
+        if getattr(s, "driver_type", None) != "jockey":
+            continue
+
+        initials = _initials(s)
+
+        if s.auto_assign_excluded:
+            out.append({"initials": initials, "reason": "auto-assign disabled"})
+            continue
+        if shift_weekday in (getattr(s, "preferred_days_off", None) or []):
+            out.append({
+                "initials": initials,
+                "reason": f"preferred day off ({_WEEKDAY_SHORT[shift_weekday]})",
+            })
+            continue
+        if s.id in already_chosen_ids:
+            out.append({"initials": initials, "reason": "already on this shift"})
+            continue
+        if is_staff_on_holiday(s.id, shift_date, holidays):
+            out.append({"initials": initials, "reason": "on holiday"})
+            continue
+        existing_hours = weekly_hours_for(s.id, week_start, shifts)
+        proposed_hours = proposed_hours_by_staff_week.get((s.id, week_start), 0)
+        total = existing_hours + proposed_hours
+        if total + this_shift_hours > settings.max_hours_per_week:
+            out.append({
+                "initials": initials,
+                "reason": (
+                    f"would exceed weekly cap "
+                    f"({total:.1f}h + {this_shift_hours:.1f}h > "
+                    f"{settings.max_hours_per_week}h)"
+                ),
+            })
+            continue
+        last_end = last_shift_end_for(s.id, shift_start_dt, shifts)
+        if last_end is not None:
+            rest_hours = (shift_start_dt - last_end).total_seconds() / 3600
+            if rest_hours < settings.min_rest_hours:
+                out.append({
+                    "initials": initials,
+                    "reason": (
+                        f"insufficient rest "
+                        f"({rest_hours:.1f}h < {settings.min_rest_hours}h required)"
+                    ),
+                })
+                continue
+        if not shift_in_window(s, shift_start_dt, shift_end_dt):
+            pst = getattr(s, "preferred_start_time", None)
+            pet = getattr(s, "preferred_end_time", None)
+            window_str = (
+                f"{pst.strftime('%H:%M')}–{pet.strftime('%H:%M')}"
+                if pst and pet else "no window set"
+            )
+            out.append({
+                "initials": initials,
+                "reason": f"outside working window ({window_str})",
+            })
+            continue
+        # Reaching here means hard constraints all pass — the only
+        # remaining filter is the primary/fallback split. If a primary
+        # was eligible we wouldn't be unmanned, so this must be a
+        # fallback whose primary partner failed.
+        if getattr(s, "is_fallback_driver", False):
+            out.append({
+                "initials": initials,
+                "reason": "fallback only — no primary needed coverage in this window",
+            })
+
+    return out
+
+
+def jockey_summary(
+    staff: Iterable[User],
+    holidays: Iterable[EmployeeHoliday],
+    window_start: date,
+    window_end: date,
+) -> list[dict]:
+    """Snapshot of every active jockey's preferences and in-window
+    holidays — rendered in the QA panel below the run summary so
+    admins can sanity-check assignments at a glance."""
+    holidays_by_staff: dict[int, list[EmployeeHoliday]] = {}
+    for h in holidays:
+        if h.start_date > window_end or h.end_date < window_start:
+            continue
+        holidays_by_staff.setdefault(h.staff_id, []).append(h)
+
+    out: list[dict] = []
+    for s in staff:
+        if not s.is_active:
+            continue
+        if getattr(s, "driver_type", None) != "jockey":
+            continue
+        pst = getattr(s, "preferred_start_time", None)
+        pet = getattr(s, "preferred_end_time", None)
+        out.append({
+            "id": s.id,
+            "initials": _initials(s),
+            "first_name": s.first_name,
+            "last_name": s.last_name,
+            "preferred_start_time": pst,
+            "preferred_end_time": pet,
+            "is_fallback_driver": bool(getattr(s, "is_fallback_driver", False)),
+            "auto_assign_excluded": bool(s.auto_assign_excluded),
+            "preferred_days_off": [
+                _WEEKDAY_SHORT[d]
+                for d in (getattr(s, "preferred_days_off", None) or [])
+                if 0 <= d <= 6
+            ],
+            "holidays_in_window": [
+                {"start_date": h.start_date, "end_date": h.end_date}
+                for h in holidays_by_staff.get(s.id, [])
+            ],
+        })
+    # Primaries first (alphabetical), fallbacks last.
+    out.sort(key=lambda j: (j["is_fallback_driver"], j["first_name"] or ""))
+    return out
+
+
 def pick_staff(
     *,
     shift_start_dt: datetime,
@@ -632,6 +786,16 @@ def propose_roster(
             )
 
             if chosen is None:
+                exclusions = explain_unmanned(
+                    shift_start_dt=shift_start_dt,
+                    shift_end_dt=shift_end_dt,
+                    staff=staff,
+                    shifts=shifts,
+                    holidays=holidays,
+                    settings=settings,
+                    already_chosen_ids=already_chosen,
+                    proposed_hours_by_staff_week=proposed_hours_by_staff_week,
+                )
                 warnings.append(
                     {
                         "rule": "unmanned",
@@ -645,6 +809,7 @@ def propose_roster(
                             e.booking_reference for e in cluster.events
                         ],
                         "staff_id": None,
+                        "exclusions": exclusions,
                     }
                 )
             else:
@@ -702,6 +867,7 @@ def propose_roster(
         "proposed_shifts": proposed_shifts_out,
         "warnings": warnings,
         "summary": summary,
+        "jockeys": jockey_summary(staff, holidays, window_start, window_end),
     }
 
 
