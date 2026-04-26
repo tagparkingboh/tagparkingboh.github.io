@@ -51,6 +51,12 @@ class PlannerSettings:
     min_rest_hours: int
     untouchable_hours: int
     min_shift_minutes: int
+    # How far past a jockey's preferred_end_time a shift may extend
+    # without being rejected as "outside working window". Avoids the
+    # silly "shift ends 17:55, KA's window ends 17:00, unmanned" case
+    # where 55 min of overrun would just be soaked up by the existing
+    # end_buffer. Default 60 min; tunable via settings.
+    window_overrun_minutes: int = 60
 
     @staticmethod
     def from_kv(rows: dict[str, object]) -> "PlannerSettings":
@@ -82,6 +88,7 @@ class PlannerSettings:
             min_rest_hours=int(rows.get("min_rest_hours", 8)),
             untouchable_hours=int(rows.get("untouchable_hours", 24)),
             min_shift_minutes=int(rows.get("min_shift_minutes", 60)),
+            window_overrun_minutes=int(rows.get("window_overrun_minutes", 60)),
         )
 
 
@@ -341,6 +348,7 @@ def shift_in_window(
     staff_member: User,
     shift_start_dt: datetime,
     shift_end_dt: datetime,
+    end_overrun_minutes: int = 0,
 ) -> bool:
     """True if the shift fits inside the staff member's working window.
 
@@ -350,6 +358,12 @@ def shift_in_window(
     (e.g. KW 16:00–01:00 next day). For overnight windows we accept a shift
     that fits in either today's window OR the previous day's window — the
     post-midnight tail.
+
+    `end_overrun_minutes` extends the effective window end so a shift may
+    run that many minutes past the jockey's preferred_end_time. Lets a
+    17:00-window driver pick up a 13:40–17:55 shift (55 min over) without
+    being filtered out — matches operational reality where the end_buffer
+    on each shift naturally lands ~30 min past the last event.
     """
     pst = getattr(staff_member, "preferred_start_time", None)
     pet = getattr(staff_member, "preferred_end_time", None)
@@ -358,12 +372,13 @@ def shift_in_window(
 
     tz = shift_start_dt.tzinfo
     shift_date = shift_start_dt.date()
+    overrun = timedelta(minutes=end_overrun_minutes)
 
     window_start = datetime.combine(shift_date, pst, tzinfo=tz)
     if pet > pst:
-        window_end = datetime.combine(shift_date, pet, tzinfo=tz)
+        window_end = datetime.combine(shift_date, pet, tzinfo=tz) + overrun
     else:
-        window_end = datetime.combine(shift_date + timedelta(days=1), pet, tzinfo=tz)
+        window_end = datetime.combine(shift_date + timedelta(days=1), pet, tzinfo=tz) + overrun
     if window_start <= shift_start_dt and shift_end_dt <= window_end:
         return True
 
@@ -371,7 +386,7 @@ def shift_in_window(
     if pet < pst:
         prev_date = shift_date - timedelta(days=1)
         ws = datetime.combine(prev_date, pst, tzinfo=tz)
-        we = datetime.combine(shift_date, pet, tzinfo=tz)
+        we = datetime.combine(shift_date, pet, tzinfo=tz) + overrun
         if ws <= shift_start_dt and shift_end_dt <= we:
             return True
 
@@ -450,18 +465,20 @@ def explain_unmanned(
             })
             continue
         last_end = proposed_last_end_by_staff.get(s.id)
-        if last_end is not None:
+        # Min rest only applies between calendar days — split shifts on
+        # the same day are fine (no 8h gap required).
+        if last_end is not None and last_end.date() != shift_start_dt.date():
             rest_hours = (shift_start_dt - last_end).total_seconds() / 3600
             if rest_hours < settings.min_rest_hours:
                 out.append({
                     "initials": initials,
                     "reason": (
-                        f"insufficient rest "
+                        f"insufficient overnight rest "
                         f"({rest_hours:.1f}h < {settings.min_rest_hours}h required)"
                     ),
                 })
                 continue
-        if not shift_in_window(s, shift_start_dt, shift_end_dt):
+        if not shift_in_window(s, shift_start_dt, shift_end_dt, settings.window_overrun_minutes):
             pst = getattr(s, "preferred_start_time", None)
             pet = getattr(s, "preferred_end_time", None)
             window_str = (
@@ -564,9 +581,14 @@ def pick_staff(
       - already picked for this exact shift (multi-staff shift)
       - on holiday that day
       - in-run proposed weekly hours + this shift > `max_hours_per_week`
-      - < `min_rest_hours` since this run's last assigned shift ended
+      - < `min_rest_hours` since this run's last assigned shift ended,
+        BUT only when the prior shift ended on a different calendar day —
+        same-day split shifts are allowed without an 8h gap.
       - shift not contained in driver's working window (`preferred_start_time`
-        / `preferred_end_time`) — replaces the old shift-type bucket model.
+        / `preferred_end_time`), allowing up to
+        `settings.window_overrun_minutes` past the preferred end time
+        (default 60 min) so the natural end-of-shift buffer doesn't
+        disqualify a driver. Replaces the old shift-type bucket model.
 
     Selection (primary vs fallback):
       Eligible candidates split into `primaries` (`is_fallback_driver=False`)
@@ -604,11 +626,13 @@ def pick_staff(
         if proposed_hours + this_shift_hours > settings.max_hours_per_week:
             continue
         last_end = proposed_last_end_by_staff.get(s.id)
-        if last_end is not None:
+        # Min rest only applies between calendar days — split shifts on
+        # the same day are fine (no 8h gap required).
+        if last_end is not None and last_end.date() != shift_start_dt.date():
             rest_hours = (shift_start_dt - last_end).total_seconds() / 3600
             if rest_hours < settings.min_rest_hours:
                 continue
-        if not shift_in_window(s, shift_start_dt, shift_end_dt):
+        if not shift_in_window(s, shift_start_dt, shift_end_dt, settings.window_overrun_minutes):
             continue
 
         if getattr(s, "is_fallback_driver", False):

@@ -903,6 +903,88 @@ class TestPickStaff:
         )
         assert blocked is None
 
+    def test_same_day_split_shifts_skip_min_rest(self):
+        """Min rest only applies between calendar days. A jockey can
+        do a morning + afternoon split on the same day with < 8h gap
+        (operational reality: short-turnaround coverage)."""
+        s = mk_staff(70, "KA", "F", preferred_start_time=time(9, 0),
+                     preferred_end_time=time(17, 0))
+        # In-run pick ended same-day at 12:00; new shift starts 14:00 (2h gap).
+        prior_end = uk_dt(2026, 5, 6, 12, 0)
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 6, 14, 0),
+            shift_end_dt=uk_dt(2026, 5, 6, 16, 0),
+            shift_type=ShiftType.AFTERNOON,
+            staff=[s],
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(),
+            proposed_hours_by_staff_week={},
+            proposed_last_end_by_staff={70: prior_end},
+        )
+        assert chosen is not None and chosen.id == 70
+
+    def test_min_rest_still_enforced_across_midnight(self):
+        """Same-day rule does NOT relax cross-day rest. KW finishing
+        Sat 23:30 and starting again Sun 02:00 = 2h30m gap across days
+        → blocked. The previous ok-at-8h test covers the boundary; this
+        guards the cross-day intent."""
+        kw = mk_staff(80, "Karl", "Walden",
+                      preferred_start_time=time(16, 0),
+                      preferred_end_time=time(1, 0))
+        prior_end = uk_dt(2026, 5, 9, 23, 30)  # Sat
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 10, 2, 0),  # Sun, 2h30m later
+            shift_end_dt=uk_dt(2026, 5, 10, 5, 0),
+            shift_type=ShiftType.EARLY_MORNING,
+            staff=[kw],
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(),
+            proposed_hours_by_staff_week={},
+            proposed_last_end_by_staff={80: prior_end},
+        )
+        assert chosen is None
+
+    # -- window_overrun_minutes -----------------------------------------
+
+    def test_window_overrun_allows_shift_to_extend_past_preferred_end(self):
+        """KA window 09:00–17:00 + default 60-min overrun → a 13:40–17:55
+        shift (55 min past) is eligible. Without overrun this was the
+        '?unassigned' bug from 30 Apr."""
+        ka = mk_staff(2, "Kristian", "AB",
+                      preferred_start_time=time(9, 0),
+                      preferred_end_time=time(17, 0))
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 7, 13, 40),
+            shift_end_dt=uk_dt(2026, 5, 7, 17, 55),
+            shift_type=ShiftType.AFTERNOON,
+            staff=[ka],
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(),
+            proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
+        )
+        assert chosen is not None and chosen.id == 2
+
+    def test_window_overrun_does_not_help_when_overrun_exceeded(self):
+        """Default overrun is 60 min. A shift ending 18:01 (61 min past
+        17:00) is still rejected — the buffer is a courtesy, not infinite."""
+        ka = mk_staff(2, "Kristian", "AB",
+                      preferred_start_time=time(9, 0),
+                      preferred_end_time=time(17, 0))
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 7, 13, 40),
+            shift_end_dt=uk_dt(2026, 5, 7, 18, 1),
+            shift_type=ShiftType.AFTERNOON,
+            staff=[ka],
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(),
+            proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
+        )
+        assert chosen is None
+
 
 # =====================================================================================
 # propose_roster — end-to-end integration on pure inputs
