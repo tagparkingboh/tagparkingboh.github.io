@@ -51,12 +51,6 @@ class PlannerSettings:
     min_rest_hours: int
     untouchable_hours: int
     min_shift_minutes: int
-    # How far past a jockey's preferred_end_time a shift may extend
-    # without being rejected as "outside working window". Avoids the
-    # silly "shift ends 17:55, KA's window ends 17:00, unmanned" case
-    # where 55 min of overrun would just be soaked up by the existing
-    # end_buffer. Default 60 min; tunable via settings.
-    window_overrun_minutes: int = 60
 
     @staticmethod
     def from_kv(rows: dict[str, object]) -> "PlannerSettings":
@@ -88,7 +82,6 @@ class PlannerSettings:
             min_rest_hours=int(rows.get("min_rest_hours", 8)),
             untouchable_hours=int(rows.get("untouchable_hours", 24)),
             min_shift_minutes=int(rows.get("min_shift_minutes", 60)),
-            window_overrun_minutes=int(rows.get("window_overrun_minutes", 60)),
         )
 
 
@@ -478,7 +471,7 @@ def explain_unmanned(
                     ),
                 })
                 continue
-        if not shift_in_window(s, shift_start_dt, shift_end_dt, settings.window_overrun_minutes):
+        if not shift_in_window(s, shift_start_dt, shift_end_dt, getattr(s, "window_overrun_minutes", 60) or 60):
             pst = getattr(s, "preferred_start_time", None)
             pet = getattr(s, "preferred_end_time", None)
             window_str = (
@@ -534,6 +527,7 @@ def jockey_summary(
             "preferred_start_time": pst,
             "preferred_end_time": pet,
             "is_fallback_driver": bool(getattr(s, "is_fallback_driver", False)),
+            "window_overrun_minutes": int(getattr(s, "window_overrun_minutes", 60) or 60),
             "auto_assign_excluded": bool(s.auto_assign_excluded),
             "preferred_days_off": [
                 _WEEKDAY_SHORT[d]
@@ -586,9 +580,10 @@ def pick_staff(
         same-day split shifts are allowed without an 8h gap.
       - shift not contained in driver's working window (`preferred_start_time`
         / `preferred_end_time`), allowing up to
-        `settings.window_overrun_minutes` past the preferred end time
-        (default 60 min) so the natural end-of-shift buffer doesn't
-        disqualify a driver. Replaces the old shift-type bucket model.
+        `users.window_overrun_minutes` past the preferred end time
+        (per-driver, default 60) so the natural end-of-shift buffer
+        doesn't disqualify a driver. Replaces the old shift-type bucket
+        model.
 
     Selection (primary vs fallback):
       Eligible candidates split into `primaries` (`is_fallback_driver=False`)
@@ -632,7 +627,7 @@ def pick_staff(
             rest_hours = (shift_start_dt - last_end).total_seconds() / 3600
             if rest_hours < settings.min_rest_hours:
                 continue
-        if not shift_in_window(s, shift_start_dt, shift_end_dt, settings.window_overrun_minutes):
+        if not shift_in_window(s, shift_start_dt, shift_end_dt, getattr(s, "window_overrun_minutes", 60) or 60):
             continue
 
         if getattr(s, "is_fallback_driver", False):

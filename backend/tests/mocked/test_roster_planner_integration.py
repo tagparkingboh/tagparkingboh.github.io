@@ -54,6 +54,7 @@ def mk_user(user_id=1, is_admin=True, is_active=True):
     u.preferred_start_time = None
     u.preferred_end_time = None
     u.is_fallback_driver = False
+    u.window_overrun_minutes = 60
     return u
 
 

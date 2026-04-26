@@ -104,6 +104,7 @@ def mk_staff(
     preferred_start_time: Optional[time] = None,
     preferred_end_time: Optional[time] = None,
     is_fallback_driver: bool = False,
+    window_overrun_minutes: int = 60,
 ):
     return SimpleNamespace(
         id=user_id,
@@ -118,6 +119,7 @@ def mk_staff(
         preferred_start_time=preferred_start_time,
         preferred_end_time=preferred_end_time,
         is_fallback_driver=is_fallback_driver,
+        window_overrun_minutes=window_overrun_minutes,
     )
 
 
@@ -984,6 +986,26 @@ class TestPickStaff:
             proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
         )
         assert chosen is None
+
+    def test_per_user_window_overrun_overrides_default(self):
+        """KA gets a 150-min override (operationally she covers late
+        finishes); a 17:00 → 19:30 finish (2.5h past) is still inside
+        her elastic window."""
+        ka = mk_staff(2, "Kristian", "AB",
+                      preferred_start_time=time(9, 0),
+                      preferred_end_time=time(17, 0),
+                      window_overrun_minutes=150)
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 7, 14, 0),
+            shift_end_dt=uk_dt(2026, 5, 7, 19, 30),
+            shift_type=ShiftType.AFTERNOON,
+            staff=[ka],
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(),
+            proposed_hours_by_staff_week={}, proposed_last_end_by_staff={},
+        )
+        assert chosen is not None and chosen.id == 2
 
 
 # =====================================================================================

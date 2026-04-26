@@ -760,6 +760,11 @@ class User(Base):
     # Fallback driver only fills shifts when no primary driver in the same
     # window is available (e.g. KA covers MS / KW when they're off).
     is_fallback_driver = Column(Boolean, nullable=False, server_default="false")
+    # End-of-shift elasticity in minutes. Engine assigns this driver to
+    # shifts that finish up to this many minutes past preferred_end_time.
+    # Per-driver because operational reality varies (e.g. KA covers late
+    # finishes — 150 min; everyone else 60 min).
+    window_overrun_minutes = Column(Integer, nullable=False, server_default="60")
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
