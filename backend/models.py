@@ -775,7 +775,9 @@ class PlannerRunFeedbackOverride(BaseModel):
 
     # Split
     split_at_time: Optional[time] = None
+    first_half_start_time: Optional[time] = None  # extends BEFORE source.start_time
     first_half_staff_id: Optional[int] = None
+    second_half_end_time: Optional[time] = None   # extends AFTER  source.end_time
     second_half_staff_id: Optional[int] = None
 
 

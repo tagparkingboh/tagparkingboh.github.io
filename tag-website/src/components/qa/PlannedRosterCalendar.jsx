@@ -349,15 +349,17 @@ function ActionDialog({
         apiUrl={apiUrl} authHeader={authHeader}
         shift={shift} submitting={submitting} error={error}
         onCancel={onClose}
-        onSubmit={(splitAt, firstStaffId, secondStaffId) => postOverride(
-          {
+        onSubmit={({ splitAt, firstStart, secondEnd, firstStaffId, secondStaffId }) => {
+          const override = {
             action: 'split',
             split_at_time: splitAt + ':00',
             first_half_staff_id: firstStaffId,
             second_half_staff_id: secondStaffId,
-          },
-          `Split at ${splitAt}`,
-        )}
+          }
+          if (firstStart) override.first_half_start_time = firstStart + ':00'
+          if (secondEnd) override.second_half_end_time = secondEnd + ':00'
+          postOverride(override, `Split at ${splitAt}`)
+        }}
       />
     )
   }
@@ -534,29 +536,43 @@ function MergeDialog({ apiUrl, authHeader, shift, dayShifts, posInDay, submittin
 
 function SplitDialog({ apiUrl, authHeader, shift, submitting, error, onCancel, onSubmit }) {
   const staff = useAssignableStaff(apiUrl, authHeader)
+  const sourceStart = formatTime(shift.start_time)
+  const sourceEnd = formatTime(shift.end_time)
+
+  // Three time points (each is editable):
+  //   firstStart ≤ splitAt ≤ secondEnd
+  // firstStart can be earlier than the source's start (extending the
+  // first half backward — e.g. for vehicle prep before the first event).
+  // secondEnd can be later than the source's end (extending the second
+  // half forward — e.g. for cleaning duties after the last event).
+  const [firstStart, setFirstStart] = useState(sourceStart)
   const [splitAt, setSplitAt] = useState(midpointTime(shift.start_time, shift.end_time))
+  const [secondEnd, setSecondEnd] = useState(sourceEnd)
   const [firstStaffId, setFirstStaffId] = useState(shift.staff_id || '')
   const [secondStaffId, setSecondStaffId] = useState('')
 
-  const minTime = formatTime(shift.start_time)
-  const maxTime = formatTime(shift.end_time)
-  const inRange = splitAt > minTime && splitAt < maxTime
+  const validOrder = firstStart < splitAt && splitAt < secondEnd
+  const canSave = !submitting && validOrder && secondStaffId !== ''
+
+  // Only send the outer-bound overrides when they actually differ from
+  // the source — keeps the audit row minimal when no extension was made.
+  function handleSave() {
+    onSubmit({
+      splitAt,
+      firstStart: firstStart !== sourceStart ? firstStart : null,
+      secondEnd: secondEnd !== sourceEnd ? secondEnd : null,
+      firstStaffId: firstStaffId === '' ? null : Number(firstStaffId),
+      secondStaffId: secondStaffId === '' ? null : Number(secondStaffId),
+    })
+  }
 
   return (
     <DialogShell
-      title={`Split · ${formatTime(shift.start_time)}–${formatTime(shift.end_time)}`}
+      title={`Split · ${sourceStart}–${sourceEnd}`}
       error={error}
       footer={
         <>
-          <button
-            className="btn-primary"
-            onClick={() => onSubmit(
-              splitAt,
-              firstStaffId === '' ? null : Number(firstStaffId),
-              secondStaffId === '' ? null : Number(secondStaffId),
-            )}
-            disabled={submitting || !inRange || secondStaffId === ''}
-          >
+          <button className="btn-primary" onClick={handleSave} disabled={!canSave}>
             {submitting ? 'Saving…' : 'Save'}
           </button>
           <button className="btn-secondary" onClick={onCancel}>Cancel</button>
@@ -564,41 +580,76 @@ function SplitDialog({ apiUrl, authHeader, shift, submitting, error, onCancel, o
       }
     >
       <p style={{ marginTop: 0 }}>
-        Splits this shift into two halves. Pick the split time and who
-        staffs each half.
+        Splits this shift into two halves. Outer ends are editable —
+        you can extend the first half backward (vehicle prep) or the
+        second half forward (cleaning duties).
       </p>
-      <div className="form-row">
-        <label>Split at:</label>
-        <input
-          type="time" className="form-input"
-          value={splitAt}
-          min={minTime} max={maxTime}
-          onChange={(e) => setSplitAt(e.target.value)}
-        />
-        {!inRange && (
-          <small style={{ color: '#b91c1c' }}>
-            Must be strictly between {minTime} and {maxTime}.
-          </small>
-        )}
+
+      <div className="customer-edit-form" style={{ marginBottom: '0.75rem' }}>
+        <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem' }}>First half</h4>
+        <div className="form-row">
+          <label>Start:</label>
+          <input
+            type="time" className="form-input"
+            value={firstStart}
+            onChange={(e) => setFirstStart(e.target.value)}
+          />
+          {firstStart !== sourceStart && (
+            <small style={{ color: '#6b7280' }}>extends source ({sourceStart})</small>
+          )}
+        </div>
+        <div className="form-row">
+          <label>End (split at):</label>
+          <input
+            type="time" className="form-input"
+            value={splitAt}
+            onChange={(e) => setSplitAt(e.target.value)}
+          />
+        </div>
+        <div className="form-row">
+          <label>Staff:</label>
+          <select className="form-input" value={firstStaffId} onChange={(e) => setFirstStaffId(e.target.value)}>
+            <option value="">? unassigned</option>
+            {staff.map((s) => (
+              <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>
+            ))}
+          </select>
+        </div>
       </div>
-      <div className="form-row">
-        <label>First half staff ({minTime}–{splitAt}):</label>
-        <select className="form-input" value={firstStaffId} onChange={(e) => setFirstStaffId(e.target.value)}>
-          <option value="">? unassigned</option>
-          {staff.map((s) => (
-            <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>
-          ))}
-        </select>
+
+      <div className="customer-edit-form">
+        <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem' }}>Second half</h4>
+        <div className="form-row">
+          <label>Start (split at):</label>
+          <input type="time" className="form-input" value={splitAt} disabled />
+        </div>
+        <div className="form-row">
+          <label>End:</label>
+          <input
+            type="time" className="form-input"
+            value={secondEnd}
+            onChange={(e) => setSecondEnd(e.target.value)}
+          />
+          {secondEnd !== sourceEnd && (
+            <small style={{ color: '#6b7280' }}>extends source ({sourceEnd})</small>
+          )}
+        </div>
+        <div className="form-row">
+          <label>Staff:</label>
+          <select className="form-input" value={secondStaffId} onChange={(e) => setSecondStaffId(e.target.value)}>
+            <option value="">? select staff</option>
+            {staff.map((s) => (
+              <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>
+            ))}
+          </select>
+        </div>
       </div>
-      <div className="form-row">
-        <label>Second half staff ({splitAt}–{maxTime}):</label>
-        <select className="form-input" value={secondStaffId} onChange={(e) => setSecondStaffId(e.target.value)}>
-          <option value="">? select staff</option>
-          {staff.map((s) => (
-            <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>
-          ))}
-        </select>
-      </div>
+
+      {!validOrder && (
+        <small style={{ color: '#b91c1c' }}>
+          Times must satisfy: first-half start &lt; split &lt; second-half end.
+        </small>
+      )}
     </DialogShell>
   )
 }

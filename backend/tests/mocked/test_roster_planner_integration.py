@@ -953,6 +953,45 @@ class TestFeedbackEndpoints:
         assert body["override"]["first_half_staff_id"] == 7
         assert body["override"]["second_half_staff_id"] == 12
 
+    def test_post_feedback_with_action_split_extends_outer_bounds(self, client, mock_db):
+        """Split lets each half extend past the source's bounds —
+        first_half can start earlier (vehicle prep), second_half can
+        end later (cleaning duties). Both fields optional; the audit
+        row carries them when set."""
+        from db_models import PlannerRun, PlannerRunFeedback
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        def _fake_refresh(obj):
+            if isinstance(obj, PlannerRunFeedback):
+                obj.id = obj.id or 1
+                obj.submitted_at = obj.submitted_at or datetime(2026, 5, 4, 9, 0, 0)
+        mock_db.refresh.side_effect = _fake_refresh
+
+        # Source 11:10–14:20, split at 12:45. First half pre-extended to
+        # 10:30, second half post-extended to 15:00.
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/r-A/feedback",
+            json={
+                "shift_date": "2026-05-04",
+                "shift_start_time": "11:10:00",
+                "shift_end_time": "14:20:00",
+                "severity": "note",
+                "comment": "Extended both ends for prep + cleaning",
+                "override": {
+                    "action": "split",
+                    "split_at_time": "12:45:00",
+                    "first_half_start_time": "10:30:00",
+                    "first_half_staff_id": 7,
+                    "second_half_end_time": "15:00:00",
+                    "second_half_staff_id": 12,
+                },
+            },
+        )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["override"]["first_half_start_time"] == "10:30:00"
+        assert body["override"]["second_half_end_time"] == "15:00:00"
+
     def test_post_feedback_rejects_unknown_action(self, client, mock_db):
         from db_models import PlannerRun
         mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
