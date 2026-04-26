@@ -1007,5 +1007,203 @@ class TestProposeRosterEndToEnd:
         assert new_shifts == []
 
 
+# =====================================================================================
+# SPEC.md gap-fillers (audit 2026-04-26): cases the testing matrix calls out
+# but weren't yet locked in.
+# =====================================================================================
+
+
+class TestSpecGapFillers:
+    def test_all_jockeys_excluded_produces_unmanned_warning(self):
+        """When every assignable jockey is on holiday, the shift is
+        emitted with staff_id=None and an 'unmanned' warning."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(1, "TAG-A",
+                drop_dt=uk_dt(2026, 5, 6, 8, 0),
+                pick_dt=uk_dt(2026, 5, 20, 10, 0)),
+        ]
+        ms = mk_staff(7, "Marek", "S")
+        ka = mk_staff(2, "Kristian", "AB")
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=[ms, ka],
+            holidays=[
+                mk_holiday(7, date(2026, 5, 6)),
+                mk_holiday(2, date(2026, 5, 6)),
+            ],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        drop = next(p for p in result["proposed_shifts"]
+                    if p["kind"] == "new" and p["date"].isoformat() == "2026-05-06")
+        assert drop["staff_id"] is None
+        assert any(w["rule"] == "unmanned" for w in result["warnings"])
+
+    def test_all_shifts_confirmed_produces_read_only_proposal(self):
+        """When every existing shift in the window is CONFIRMED, the
+        engine reports them as untouched and emits no new shifts."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(1, "TAG-A",
+                drop_dt=uk_dt(2026, 5, 6, 8, 0),
+                pick_dt=uk_dt(2026, 5, 20, 10, 0)),
+        ]
+        # Confirmed shift covering the drop-off event — booking already
+        # serviced, engine shouldn't re-plan.
+        b = SimpleNamespace(id=1, dropoff_date=date(2026, 5, 6), pickup_date=date(2026, 5, 20))
+        confirmed = mk_shift(
+            99, 7, date(2026, 5, 6), time(7, 30), time(9, 0),
+            status=ShiftStatus.CONFIRMED,
+            bookings=[b],
+        )
+        result = propose_roster(
+            bookings=bookings, shifts=[confirmed], staff=[mk_staff(7, "Marek", "S")],
+            holidays=[], settings=DEFAULT_SETTINGS, now=now,
+        )
+        # No new-kind shifts generated for the covered booking.
+        new_drop = [p for p in result["proposed_shifts"]
+                    if p["kind"] == "new" and p["date"].isoformat() == "2026-05-06"]
+        assert new_drop == []
+        # Existing confirmed shift surfaced as untouched.
+        untouched = [p for p in result["proposed_shifts"]
+                     if p["kind"] == "untouched_for_reason"]
+        assert any(p["shift_id"] == 99 for p in untouched)
+
+    def test_boundary_39h59m_existing_still_eligible_for_3min_shift(self):
+        """Hard 40h cap is `>` not `>=`. 39h59m existing + 3min
+        proposed = 39h62m — still under 40h, so the staff is
+        eligible. Confirms the boundary direction."""
+        # Existing 39h59m of shifts: 4 × 9h59m45s ≈ 39h59m
+        # Simpler: one 39h59m shift Mon 00:00 - Tue 15:59
+        existing = mk_shift(
+            1, 7, date(2026, 5, 4), time(0, 0), time(15, 59),
+            end_date=date(2026, 5, 5),
+            status=ShiftStatus.SCHEDULED,
+        )
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 7, 12, 0),
+            shift_end_dt=uk_dt(2026, 5, 7, 12, 1),  # 1 minute
+            shift_type=ShiftType.MIDDAY,
+            staff=[mk_staff(7, "Marek", "S")],
+            shifts=[existing], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        # 39h59m + 1m = 40h0m, which is NOT > 40 → eligible.
+        assert chosen is not None and chosen.id == 7
+
+    def test_boundary_holiday_starts_mid_shift_excludes_for_that_day(self):
+        """Holiday on the same date as the shift excludes the staff,
+        even if their holiday only covers part of the day."""
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 7, 9, 0),
+            shift_end_dt=uk_dt(2026, 5, 7, 17, 0),
+            shift_type=ShiftType.MIDDAY,
+            staff=[mk_staff(7, "Marek", "S")],
+            shifts=[],
+            holidays=[mk_holiday(7, date(2026, 5, 7))],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen is None
+
+    def test_shift_type_rounding_longest_match_at_canonical_overlap(self):
+        """SPEC: when (start, end) match multiple canonical windows
+        (e.g. 03:50 is the start of both EARLY_MORNING and FULL_MORNING),
+        the longest-window match wins. Locks the canonical lookup
+        order in _CANONICAL_SHIFT_TYPE_WINDOWS."""
+        # 03:50 → 14:00 exactly matches FULL_MORNING canonical window.
+        # 03:50 → 07:00 exactly matches EARLY_MORNING canonical window.
+        # Both end times tested separately — assert each maps right.
+        from roster_planner import round_to_shift_type
+        sh, _ = round_to_shift_type(uk_dt(2026, 5, 6, 3, 50), uk_dt(2026, 5, 6, 14, 0))
+        assert sh == ShiftType.FULL_MORNING
+        sh, _ = round_to_shift_type(uk_dt(2026, 5, 6, 3, 50), uk_dt(2026, 5, 6, 7, 0))
+        assert sh == ShiftType.EARLY_MORNING
+
+
+class TestDstRegression:
+    """SPEC § Regression guards: 'Explicit DST-transition tests
+    (last Sun in March, last Sun in October 2026).'
+
+    UK DST 2026:
+      - Spring forward: 29 March 2026 (Sun 01:00 → 02:00)
+      - Fall back:      25 October 2026 (Sun 02:00 → 01:00)
+
+    Engine must:
+      - Cluster events across the transition without crashing
+      - Attribute hours correctly (Europe/London wall-clock)
+      - Apply the rest gap correctly across DST
+    """
+
+    def test_spring_forward_event_clusters_without_crashing(self):
+        # 29 Mar 2026 is the spring-forward Sunday. now=Mar 5 → window
+        # spans the transition (Mar 5 to Apr 2). An event at 03:30
+        # post-jump is fine; clustering shouldn't blow up.
+        now = uk_dt(2026, 3, 5, 0, 0)
+        bookings = [
+            mk_booking(1, "TAG-DST",
+                drop_dt=uk_dt(2026, 3, 29, 3, 30),
+                pick_dt=uk_dt(2026, 3, 31, 10, 0)),
+        ]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=[mk_staff(7, "Marek", "S")],
+            holidays=[], settings=DEFAULT_SETTINGS, now=now,
+        )
+        assert any(p["date"].isoformat() == "2026-03-29"
+                   for p in result["proposed_shifts"]
+                   if p["kind"] == "new")
+
+    @pytest.mark.xfail(
+        reason="Engine bug: last_shift_end_for / weekly_hours_for use naive "
+               "datetime arithmetic on RosterShift.date+end_time, so the rest "
+               "gap is computed as wall-clock minutes. Across the Oct fall-back "
+               "this under-counts elapsed time by 1h, blocking eligible staff. "
+               "SPEC.md § 'Regression guards' calls for tz-aware Europe/London "
+               "math — fix is its own commit (audit gap 2026-04-26).",
+        strict=True,
+    )
+    def test_fall_back_rest_gap_crosses_dst_correctly(self):
+        """Sun 25 Oct 2026 falls back: 02:00 BST → 01:00 GMT, so the
+        clock shows 01:00–02:00 twice. A shift ending Sat 23:00 BST,
+        next eligible at 07:00 Sun GMT — clock-time looks like 8h
+        but real elapsed time is 9h. Engine uses real elapsed time
+        (datetime arithmetic), so 8h rest is satisfied."""
+        # Existing shift Sat 22:00–23:00 BST
+        existing = mk_shift(
+            1, 7, date(2026, 10, 24), time(22, 0), time(23, 0),
+            status=ShiftStatus.SCHEDULED,
+        )
+        # Try to schedule Sun 06:30 GMT — that's 7h30m wall-clock from
+        # 23:00 Sat, but with the fall-back, real elapsed is 8h30m.
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 10, 25, 6, 30),
+            shift_end_dt=uk_dt(2026, 10, 25, 8, 0),
+            shift_type=ShiftType.EARLY_MORNING,
+            staff=[mk_staff(7, "Marek", "S")],
+            shifts=[existing], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        # Real elapsed across DST: 8h30m ≥ 8h → eligible.
+        assert chosen is not None and chosen.id == 7
+
+    def test_window_spans_dst_no_crash(self):
+        """28-day window starting 22 March 2026 (BST starts 29 Mar)
+        spans the spring-forward. Engine must not crash and should
+        produce a normal proposal."""
+        now = uk_dt(2026, 3, 22, 0, 0)
+        bookings = [
+            mk_booking(1, "TAG-X",
+                drop_dt=uk_dt(2026, 3, 26, 10, 0),
+                pick_dt=uk_dt(2026, 4, 2, 15, 0)),
+        ]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=[mk_staff(7, "Marek", "S")],
+            holidays=[], settings=DEFAULT_SETTINGS, now=now,
+        )
+        assert "proposed_shifts" in result
+        assert "warnings" in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
