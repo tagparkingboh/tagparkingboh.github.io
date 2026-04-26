@@ -669,9 +669,44 @@
   font-family: ui-monospace, monospace;
 }
 
-/* Modal scoped to QA Roster Planner — wider than customer-detail's
-   default 550px to fit the two info sections + form comfortably. */
+/* Modal scoped to QA Roster Planner.
+   - Desktop: 1100px lets the engine-proposal info grid + admin shifts +
+     override form breathe without scrolling sideways.
+   - Tablet (≤1100px viewport): claim 96vw so the panel fills the screen
+     minus a thin gutter.
+   - Mobile (≤768px): full-width, tighter padding, and info-row label/value
+     stacks vertically because 100px-wide labels eat too much space.
+   - Phone (≤480px): edge-to-edge — drop the panel border-radius, tighten
+     padding further, allow the body to scroll the whole viewport. */
 .qa-shift-edit-modal {
-  max-width: 720px;
+  max-width: 1100px;
   width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .qa-shift-edit-modal {
+    max-width: 96vw;
+  }
+}
+
+@media (max-width: 768px) {
+  .qa-shift-edit-modal {
+    max-width: 100%;
+    padding: 16px;
+  }
+  .qa-shift-edit-modal .info-row {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .qa-shift-edit-modal .info-label {
+    min-width: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .qa-shift-edit-modal {
+    border-radius: 0;
+    padding: 12px;
+    max-height: 100vh;
+  }
 }
