@@ -730,8 +730,26 @@ class User(Base):
         nullable=False,
         server_default="{}",
     )
+    # Hard exclusion: engine never proposes or extends a shift for this user
+    # whose shift_type is in this list. e.g. KW excluded from earlies.
+    excluded_shift_types = Column(
+        ARRAY(Enum(ShiftType, values_callable=lambda x: [e.value for e in x], name="shifttype", create_type=False)),
+        nullable=False,
+        server_default="{}",
+    )
+    # Hard exclusion: engine never proposes a shift for this user on a
+    # weekday in this list (0=Mon..6=Sun).
+    preferred_days_off = Column(
+        ARRAY(Integer),
+        nullable=False,
+        server_default="{}",
+    )
     # Hard exclusion: engine never proposes or extends a shift for this user.
     auto_assign_excluded = Column(Boolean, nullable=False, server_default="false")
+    # Driver classification — only 'jockey' is auto-assignable by the engine.
+    # 'fleet' drivers handle taxi runs (future feature). NULL = neither
+    # (admins / inactive / undecided).
+    driver_type = Column(String(20), nullable=True)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

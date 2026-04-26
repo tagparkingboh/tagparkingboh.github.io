@@ -53,6 +53,7 @@ DEFAULT_SETTINGS = PlannerSettings(
     max_hours_per_week=40,
     min_rest_hours=8,
     untouchable_hours=24,
+    min_shift_minutes=60,
 )
 
 
@@ -96,6 +97,10 @@ def mk_staff(
     preferred: Optional[list[ShiftType]] = None,
     excluded: bool = False,
     active: bool = True,
+    *,
+    driver_type: str = "jockey",          # default to jockey so existing tests keep their behaviour
+    excluded_shift_types: Optional[list[ShiftType]] = None,
+    preferred_days_off: Optional[list[int]] = None,
 ):
     return SimpleNamespace(
         id=user_id,
@@ -104,6 +109,9 @@ def mk_staff(
         preferred_shift_types=preferred or [],
         auto_assign_excluded=excluded,
         is_active=active,
+        driver_type=driver_type,
+        excluded_shift_types=excluded_shift_types or [],
+        preferred_days_off=preferred_days_off or [],
     )
 
 
@@ -545,6 +553,150 @@ class TestPickStaff:
         )
         assert chosen is None
 
+    # -- driver_type ---------------------------------------------------
+
+    def test_unhappy_fleet_driver_never_picked(self):
+        """Phase 2: only jockeys are auto-assigned. A fleet-only pool
+        leaves the shift unassigned even though they're otherwise eligible."""
+        fleet_only = mk_staff(50, "Aaron", "S", driver_type="fleet")
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 6, 7, 0),
+            shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
+            shift_type=ShiftType.MORNING,
+            staff=[fleet_only],
+            shifts=[], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen is None
+
+    def test_unhappy_null_driver_type_never_picked(self):
+        """Admins / undecided users have driver_type=None and must
+        also be skipped."""
+        admin_ish = mk_staff(60, "Admin", "Ish", driver_type=None)
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 6, 7, 0),
+            shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
+            shift_type=ShiftType.MORNING,
+            staff=[admin_ish],
+            shifts=[], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen is None
+
+    def test_happy_jockey_picked_over_fleet_in_mixed_pool(self):
+        ms = mk_staff(7, "M", "S", driver_type="jockey")
+        aaron = mk_staff(50, "Aaron", "S", driver_type="fleet")
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 6, 7, 0),
+            shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
+            shift_type=ShiftType.MORNING,
+            staff=[aaron, ms],
+            shifts=[], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen is not None and chosen.id == 7
+
+    # -- excluded_shift_types -------------------------------------------
+
+    def test_unhappy_kw_blocked_from_morning_via_excluded_shift_types(self):
+        """Reproduces the prod rule: KW (id=8) excluded from earlies."""
+        kw = mk_staff(
+            8, "Karl", "Walden",
+            excluded_shift_types=[
+                ShiftType.EARLY_MORNING, ShiftType.MORNING, ShiftType.FULL_MORNING,
+            ],
+        )
+        ka = mk_staff(2, "Kristian", "AB")  # flexible
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 6, 7, 0),
+            shift_end_dt=uk_dt(2026, 5, 6, 11, 0),
+            shift_type=ShiftType.MORNING,
+            staff=[kw, ka],
+            shifts=[], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        # KW excluded → only KA eligible.
+        assert chosen.id == 2
+
+    def test_unhappy_ms_blocked_from_evening_via_excluded_shift_types(self):
+        """Reproduces the prod rule: MS (id=7) excluded from lates."""
+        ms = mk_staff(
+            7, "Marek", "Smolarek",
+            excluded_shift_types=[
+                ShiftType.LATE_AFTERNOON, ShiftType.EVENING, ShiftType.FULL_EVENING,
+            ],
+        )
+        kw = mk_staff(8, "Karl", "Walden")
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 6, 21, 0),
+            shift_end_dt=uk_dt(2026, 5, 7, 0, 30),
+            shift_type=ShiftType.EVENING,
+            staff=[ms, kw],
+            shifts=[], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        # MS excluded → KW gets the evening.
+        assert chosen.id == 8
+
+    def test_excluded_shift_types_only_blocks_listed_types(self):
+        """KW excluded from earlies must STILL be eligible for an
+        evening shift — the exclusion is per shift type, not blanket."""
+        kw = mk_staff(
+            8, "Karl", "Walden",
+            excluded_shift_types=[
+                ShiftType.EARLY_MORNING, ShiftType.MORNING, ShiftType.FULL_MORNING,
+            ],
+        )
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 6, 21, 0),
+            shift_end_dt=uk_dt(2026, 5, 7, 0, 30),
+            shift_type=ShiftType.EVENING,
+            staff=[kw],
+            shifts=[], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen is not None and chosen.id == 8
+
+    # -- preferred_days_off --------------------------------------------
+
+    def test_unhappy_preferred_day_off_hard_excludes(self):
+        """preferred_days_off [5] = Sat. A Saturday morning shift must
+        skip a jockey marked Sat-off, picking the next eligible."""
+        # 2026-05-09 is a Saturday → weekday() = 5
+        ms = mk_staff(7, "Marek", "S", preferred_days_off=[5])
+        ka = mk_staff(2, "Kristian", "AB")
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 9, 7, 0),
+            shift_end_dt=uk_dt(2026, 5, 9, 11, 0),
+            shift_type=ShiftType.MORNING,
+            staff=[ms, ka],
+            shifts=[], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen is not None and chosen.id == 2
+
+    def test_preferred_days_off_does_not_affect_other_days(self):
+        """Same MS with Sat-off — a Friday shift still works."""
+        # 2026-05-08 = Friday → weekday() = 4
+        ms = mk_staff(7, "Marek", "S", preferred_days_off=[5])
+        chosen = pick_staff(
+            shift_start_dt=uk_dt(2026, 5, 8, 7, 0),
+            shift_end_dt=uk_dt(2026, 5, 8, 11, 0),
+            shift_type=ShiftType.MORNING,
+            staff=[ms],
+            shifts=[], holidays=[],
+            settings=DEFAULT_SETTINGS,
+            already_chosen_ids=set(), proposed_hours_by_staff_week={},
+        )
+        assert chosen is not None and chosen.id == 7
+
     def test_unhappy_all_on_holiday_returns_none(self):
         s = mk_staff(40)
         chosen = pick_staff(
@@ -679,8 +831,9 @@ class TestProposeRosterEndToEnd:
         assert result["proposed_shifts"] == []
 
     def test_asymmetric_buffer_20_before_30_after(self):
-        """A single drop-off at 13:00 should produce a shift at 12:40-13:30
-        with the locked 20-min start / 30-min end buffer."""
+        """Single 13:00 drop-off: buffered window 12:40–13:30 (50min) gets
+        EXTENDED by the 60-min min_shift_minutes rule to 12:40–13:40.
+        Locks both behaviours at once: asymmetric buffer + min length."""
         now = uk_dt(2026, 5, 1, 0, 0)
         bookings = [
             mk_booking(
@@ -699,13 +852,34 @@ class TestProposeRosterEndToEnd:
             settings=DEFAULT_SETTINGS,
             now=now,
         )
-        # Find the drop-off shift on 2026-05-06
         drop_shift = next(
             p for p in result["proposed_shifts"]
             if p["kind"] == "new" and p["date"].isoformat() == "2026-05-06"
         )
         assert drop_shift["start_time"].strftime("%H:%M") == "12:40"
-        assert drop_shift["end_time"].strftime("%H:%M") == "13:30"
+        assert drop_shift["end_time"].strftime("%H:%M") == "13:40"
+
+    def test_min_shift_minutes_does_not_extend_already_long_enough(self):
+        """Three events spanning 13:00–14:15 → shift 12:40–14:45 (125 min)
+        exceeds 60 min, so no extension needed."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(1, "TAG-A",
+                drop_dt=uk_dt(2026, 5, 6, 13, 0),
+                pick_dt=uk_dt(2026, 5, 6, 13, 45)),
+            mk_booking(2, "TAG-B",
+                drop_dt=uk_dt(2026, 5, 6, 14, 15),
+                pick_dt=uk_dt(2026, 6, 30, 10, 0)),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        s = next(p for p in result["proposed_shifts"]
+                 if p["kind"] == "new" and p["date"].isoformat() == "2026-05-06")
+        assert s["start_time"].strftime("%H:%M") == "12:40"
+        assert s["end_time"].strftime("%H:%M") == "14:45"
 
     def test_edge_spec_worked_example(self):
         """SPEC events 13:00d, 13:45p, 14:15d → single shift 12:40–14:45

@@ -50,6 +50,7 @@ class PlannerSettings:
     max_hours_per_week: int
     min_rest_hours: int
     untouchable_hours: int
+    min_shift_minutes: int
 
     @staticmethod
     def from_kv(rows: dict[str, object]) -> "PlannerSettings":
@@ -80,6 +81,7 @@ class PlannerSettings:
             max_hours_per_week=int(rows.get("max_hours_per_week", 40)),
             min_rest_hours=int(rows.get("min_rest_hours", 8)),
             untouchable_hours=int(rows.get("untouchable_hours", 24)),
+            min_shift_minutes=int(rows.get("min_shift_minutes", 60)),
         )
 
 
@@ -352,6 +354,11 @@ def pick_staff(
     Hard constraints (any one → exclude):
       - `is_active=False`
       - `auto_assign_excluded=True`
+      - `driver_type != 'jockey'` — only jockeys are auto-assigned. Fleet
+        drivers handle taxi runs (future feature). NULL driver_type also
+        excluded (admins, undecided).
+      - `shift_type ∈ excluded_shift_types` — e.g. KW excluded from earlies.
+      - `weekday(shift_date) ∈ preferred_days_off` — hard day-off rule.
       - already picked for this exact shift (multi-staff shift)
       - on holiday that day
       - existing weekly hours + proposed weekly hours + this shift > `max_hours_per_week`
@@ -365,12 +372,20 @@ def pick_staff(
     shift_date = shift_start_dt.date()
     week_start = iso_monday(shift_date)
     this_shift_hours = (shift_end_dt - shift_start_dt).total_seconds() / 3600
+    shift_weekday = shift_date.weekday()  # 0=Mon..6=Sun
 
     eligible: list[User] = []
     for s in staff:
         if not s.is_active:
             continue
         if s.auto_assign_excluded:
+            continue
+        # Phase 2 hierarchy: only jockeys are auto-assigned. NULL = excluded.
+        if getattr(s, "driver_type", None) != "jockey":
+            continue
+        if shift_type in (getattr(s, "excluded_shift_types", None) or []):
+            continue
+        if shift_weekday in (getattr(s, "preferred_days_off", None) or []):
             continue
         if s.id in already_chosen_ids:
             continue
@@ -494,6 +509,13 @@ def propose_roster(
     for cluster in clusters:
         shift_start_dt = cluster.start - start_buffer
         shift_end_dt = cluster.end + end_buffer
+        # Min shift length — extend the END (not the start) when the
+        # buffered window is shorter than the floor. A single drop-off
+        # at 13:00 with 20/30 buffer would otherwise give 12:40-13:30
+        # (50 min); we extend to 12:40-13:40.
+        min_duration = timedelta(minutes=settings.min_shift_minutes)
+        if shift_end_dt - shift_start_dt < min_duration:
+            shift_end_dt = shift_start_dt + min_duration
         shift_type, is_custom = round_to_shift_type(shift_start_dt, shift_end_dt)
         peak = peak_concurrent_count(cluster.events, window_minutes=15)
         required = required_staff_count(peak, settings.staffing_thresholds)
