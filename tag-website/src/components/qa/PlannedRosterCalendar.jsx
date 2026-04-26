@@ -871,7 +871,13 @@ function FeedbackModal({ apiUrl, authHeader, runId, shift, shiftIndex, onClose }
           ),
         ])
         if (cancelled) return
-        setAdminShifts(adminRes.ok ? await adminRes.json() : [])
+        // The /api/roster?date= endpoint returns any shift whose start
+        // OR end falls on the date — fine for the main calendar (which
+        // renders overnight shifts on both days), but here we want only
+        // shifts that actually START on this date. A 23:30–01:00 shift
+        // belongs to its start day, not its end day.
+        const allAdmin = adminRes.ok ? await adminRes.json() : []
+        setAdminShifts(allAdmin.filter((s) => s.date === shift.date))
         setPriorFeedback(fbRes.ok ? await fbRes.json() : [])
         setAssignableStaff(staffRes.ok ? await staffRes.json() : [])
       } finally {
