@@ -837,6 +837,137 @@ class TestFeedbackEndpoints:
         assert body[0]["shift_staff_id"] == 7
         assert body[0]["override"] is None
 
+    def test_post_feedback_with_action_delete(self, client, mock_db):
+        """Action override variants — delete carries no extra fields."""
+        from db_models import PlannerRun, PlannerRunFeedback
+        import json as _json
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        def _fake_refresh(obj):
+            if isinstance(obj, PlannerRunFeedback):
+                obj.id = obj.id or 1
+                obj.submitted_at = obj.submitted_at or datetime(2026, 5, 4, 9, 0, 0)
+        mock_db.refresh.side_effect = _fake_refresh
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/r-A/feedback",
+            json={
+                "shift_date": "2026-05-04",
+                "severity": "issue",
+                "comment": "Marked for deletion",
+                "override": {"action": "delete"},
+            },
+        )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["override"]["action"] == "delete"
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        rows = [a for a in added if isinstance(a, PlannerRunFeedback)]
+        decoded = _json.loads(rows[0].override_json)
+        assert decoded["action"] == "delete"
+
+    def test_post_feedback_with_action_duplicate_carries_target_staff_ids(self, client, mock_db):
+        from db_models import PlannerRun, PlannerRunFeedback
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        def _fake_refresh(obj):
+            if isinstance(obj, PlannerRunFeedback):
+                obj.id = obj.id or 1
+                obj.submitted_at = obj.submitted_at or datetime(2026, 5, 4, 9, 0, 0)
+        mock_db.refresh.side_effect = _fake_refresh
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/r-A/feedback",
+            json={
+                "shift_date": "2026-05-04",
+                "severity": "note",
+                "comment": "Duplicate to 3 drivers",
+                "override": {
+                    "action": "duplicate",
+                    "target_staff_ids": [7, 12, 9],
+                },
+            },
+        )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["override"]["action"] == "duplicate"
+        assert body["override"]["target_staff_ids"] == [7, 12, 9]
+
+    def test_post_feedback_with_action_merge_carries_direction_and_staff(self, client, mock_db):
+        from db_models import PlannerRun, PlannerRunFeedback
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        def _fake_refresh(obj):
+            if isinstance(obj, PlannerRunFeedback):
+                obj.id = obj.id or 1
+                obj.submitted_at = obj.submitted_at or datetime(2026, 5, 4, 9, 0, 0)
+        mock_db.refresh.side_effect = _fake_refresh
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/r-A/feedback",
+            json={
+                "shift_date": "2026-05-04",
+                "severity": "note",
+                "comment": "Merge with previous shift",
+                "override": {
+                    "action": "merge",
+                    "merge_direction": "left",
+                    "merged_staff_id": 7,
+                },
+            },
+        )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["override"]["merge_direction"] == "left"
+        assert body["override"]["merged_staff_id"] == 7
+
+    def test_post_feedback_with_action_split_carries_time_and_two_staff(self, client, mock_db):
+        from db_models import PlannerRun, PlannerRunFeedback
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        def _fake_refresh(obj):
+            if isinstance(obj, PlannerRunFeedback):
+                obj.id = obj.id or 1
+                obj.submitted_at = obj.submitted_at or datetime(2026, 5, 4, 9, 0, 0)
+        mock_db.refresh.side_effect = _fake_refresh
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/r-A/feedback",
+            json={
+                "shift_date": "2026-05-04",
+                "severity": "note",
+                "comment": "Split at midpoint",
+                "override": {
+                    "action": "split",
+                    "split_at_time": "13:00:00",
+                    "first_half_staff_id": 7,
+                    "second_half_staff_id": 12,
+                },
+            },
+        )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["override"]["action"] == "split"
+        assert body["override"]["split_at_time"] == "13:00:00"
+        assert body["override"]["first_half_staff_id"] == 7
+        assert body["override"]["second_half_staff_id"] == 12
+
+    def test_post_feedback_rejects_unknown_action(self, client, mock_db):
+        from db_models import PlannerRun
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/r-A/feedback",
+            json={
+                "shift_date": "2026-05-04",
+                "severity": "note",
+                "comment": "x",
+                "override": {"action": "evaporate"},
+            },
+        )
+        assert r.status_code == 422
+
     def test_post_feedback_with_override_persists_json(self, client, mock_db):
         """When the edit modal includes a structured override, it round-trips
         as JSON in override_json and as a typed PlannerRunFeedbackOverride

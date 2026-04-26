@@ -744,15 +744,39 @@ class PlannerRunDetail(BaseModel):
 
 
 class PlannerRunFeedbackOverride(BaseModel):
-    """Structured "what I would have done" capture from the edit modal.
+    """Structured "what I would have done" capture from the edit modal
+    and the per-card action buttons (Duplicate / Merge / Split / Delete).
 
-    All fields optional — admin overrides only what they want to change.
+    All fields optional — admin captures only what they want to change.
     Engine never consumes this; it's QA-side review data sitting next to
     the free-text comment.
+
+    Field set by action:
+      - (no action set) → free edit (staff_id / start_time / end_time)
+      - action='delete' → no extra fields
+      - action='duplicate' → target_staff_ids list
+      - action='merge' → merge_direction ('left' or 'right')
+      - action='split' → split_at_time + first_half_staff_id + second_half_staff_id
     """
+    # Existing free-edit fields (no `action` set)
     staff_id: Optional[int] = None
     start_time: Optional[time] = None
     end_time: Optional[time] = None
+
+    # Action button fields
+    action: Optional[Literal["delete", "duplicate", "merge", "split"]] = None
+
+    # Duplicate
+    target_staff_ids: Optional[List[int]] = None
+
+    # Merge
+    merge_direction: Optional[Literal["left", "right"]] = None
+    merged_staff_id: Optional[int] = None  # staff for the resulting merged shift
+
+    # Split
+    split_at_time: Optional[time] = None
+    first_half_staff_id: Optional[int] = None
+    second_half_staff_id: Optional[int] = None
 
 
 class PlannerRunFeedbackCreate(BaseModel):

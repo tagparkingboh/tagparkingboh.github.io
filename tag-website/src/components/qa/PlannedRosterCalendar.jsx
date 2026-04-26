@@ -21,6 +21,14 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
   const [error, setError] = useState(null)
   const [feedbackShift, setFeedbackShift] = useState(null)
   const [feedbackShiftIndex, setFeedbackShiftIndex] = useState(null)
+  // Action dialog state — one shift + one action open at a time.
+  // dayShifts is the same-date sibling list, used by Merge to know
+  // which adjacent shift goes left/right.
+  const [actionShift, setActionShift] = useState(null)
+  const [actionShiftIndex, setActionShiftIndex] = useState(null)
+  const [actionType, setActionType] = useState(null)
+  const [actionDayShifts, setActionDayShifts] = useState([])
+  const [actionPos, setActionPos] = useState(0)
 
   const authHeader = useMemo(
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
@@ -165,6 +173,13 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
                   setFeedbackShift(shift)
                   setFeedbackShiftIndex(idx)
                 }}
+                onShiftAction={(shift, idx, action, posInDay, dayShifts) => {
+                  setActionShift(shift)
+                  setActionShiftIndex(idx)
+                  setActionType(action)
+                  setActionDayShifts(dayShifts)
+                  setActionPos(posInDay)
+                }}
               />
               <WarningsList warnings={detail.warnings || []} />
             </>
@@ -222,8 +237,384 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           }}
         />
       )}
+
+      {actionShift && actionType && detail && (
+        <ActionDialog
+          apiUrl={apiUrl}
+          authHeader={authHeader}
+          runId={detail.run_id}
+          shift={actionShift}
+          shiftIndex={actionShiftIndex}
+          actionType={actionType}
+          dayShifts={actionDayShifts}
+          posInDay={actionPos}
+          onClose={() => {
+            setActionShift(null)
+            setActionShiftIndex(null)
+            setActionType(null)
+          }}
+        />
+      )}
     </div>
   )
+}
+
+// =============================================================================
+// ActionDialog — single component that switches body by actionType.
+// All four action variants share the modal frame (modal-overlay +
+// customer-detail-modal) and post to the same /feedback endpoint with
+// a structured override payload.
+// =============================================================================
+
+function ActionDialog({
+  apiUrl, authHeader, runId, shift, shiftIndex,
+  actionType, dayShifts, posInDay, onClose,
+}) {
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function postOverride(override, comment, severity = 'note') {
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch(
+        `${apiUrl}/api/admin/qa/roster-planner/runs/${runId}/feedback`,
+        {
+          method: 'POST',
+          headers: { ...authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            shift_date: shift.date,
+            shift_start_time: shift.start_time,
+            shift_end_time: shift.end_time,
+            shift_staff_id: shift.staff_id ?? null,
+            proposed_shift_index: shiftIndex,
+            severity,
+            comment,
+            override,
+          }),
+        }
+      )
+      if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`)
+      onClose()
+    } catch (err) {
+      setError(err.message || 'Failed to submit')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (actionType === 'delete') {
+    return (
+      <DeleteDialog
+        shift={shift} submitting={submitting} error={error}
+        onCancel={onClose}
+        onConfirm={() => postOverride(
+          { action: 'delete' },
+          'Marked for deletion',
+          'issue',
+        )}
+      />
+    )
+  }
+  if (actionType === 'duplicate') {
+    return (
+      <DuplicateDialog
+        apiUrl={apiUrl} authHeader={authHeader}
+        shift={shift} submitting={submitting} error={error}
+        onCancel={onClose}
+        onSubmit={(staffIds) => postOverride(
+          { action: 'duplicate', target_staff_ids: staffIds },
+          `Duplicate to ${staffIds.length} additional driver(s)`,
+        )}
+      />
+    )
+  }
+  if (actionType === 'merge') {
+    return (
+      <MergeDialog
+        apiUrl={apiUrl} authHeader={authHeader}
+        shift={shift} dayShifts={dayShifts} posInDay={posInDay}
+        submitting={submitting} error={error}
+        onCancel={onClose}
+        onSubmit={(direction, mergedStaffId) => postOverride(
+          { action: 'merge', merge_direction: direction, merged_staff_id: mergedStaffId },
+          `Merge with ${direction} shift`,
+        )}
+      />
+    )
+  }
+  if (actionType === 'split') {
+    return (
+      <SplitDialog
+        apiUrl={apiUrl} authHeader={authHeader}
+        shift={shift} submitting={submitting} error={error}
+        onCancel={onClose}
+        onSubmit={(splitAt, firstStaffId, secondStaffId) => postOverride(
+          {
+            action: 'split',
+            split_at_time: splitAt + ':00',
+            first_half_staff_id: firstStaffId,
+            second_half_staff_id: secondStaffId,
+          },
+          `Split at ${splitAt}`,
+        )}
+      />
+    )
+  }
+  return null
+}
+
+function DialogShell({ title, error, footer, children }) {
+  return (
+    <div className="modal-overlay" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-content qa-action-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>{title}</h3>
+        </div>
+        <div className="modal-body">
+          {children}
+          {error && <div className="prp-error">{error}</div>}
+        </div>
+        <div className="form-actions">{footer}</div>
+      </div>
+    </div>
+  )
+}
+
+function DeleteDialog({ shift, submitting, error, onCancel, onConfirm }) {
+  return (
+    <DialogShell
+      title={`Delete shift · ${formatTime(shift.start_time)}–${formatTime(shift.end_time)}`}
+      error={error}
+      footer={
+        <>
+          <button className="btn-danger" onClick={onConfirm} disabled={submitting}>
+            {submitting ? 'Saving…' : 'Mark for deletion'}
+          </button>
+          <button className="btn-secondary" onClick={onCancel}>Cancel</button>
+        </>
+      }
+    >
+      <p>
+        Records this engine decision as one to delete on review.
+        No <code>roster_shifts</code> rows are touched (shadow mode).
+      </p>
+    </DialogShell>
+  )
+}
+
+function useAssignableStaff(apiUrl, authHeader) {
+  const [staff, setStaff] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${apiUrl}/api/staff?is_active=true&auto_assign_excluded=false`, { headers: authHeader })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((body) => { if (!cancelled) setStaff(body) })
+    return () => { cancelled = true }
+  }, [apiUrl, authHeader])
+  return staff
+}
+
+function DuplicateDialog({ apiUrl, authHeader, shift, submitting, error, onCancel, onSubmit }) {
+  const staff = useAssignableStaff(apiUrl, authHeader)
+  const [picked, setPicked] = useState(new Set())
+
+  function toggle(id) {
+    const next = new Set(picked)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    setPicked(next)
+  }
+
+  return (
+    <DialogShell
+      title={`Duplicate · ${formatTime(shift.start_time)}–${formatTime(shift.end_time)} · ${formatUkDate(shift.date)}`}
+      error={error}
+      footer={
+        <>
+          <button
+            className="btn-primary"
+            onClick={() => onSubmit(Array.from(picked))}
+            disabled={submitting || picked.size === 0}
+          >
+            {submitting ? 'Saving…' : `Save (${picked.size} driver${picked.size === 1 ? '' : 's'})`}
+          </button>
+          <button className="btn-secondary" onClick={onCancel}>Cancel</button>
+        </>
+      }
+    >
+      <p style={{ marginTop: 0 }}>
+        Add drivers to this same shift window. Each selection becomes a
+        carbon-copy assignment.
+      </p>
+      <ul className="prp-staff-picker">
+        {staff.length === 0 && <li className="prp-empty">No assignable staff loaded.</li>}
+        {staff.map((s) => (
+          <li key={s.id}>
+            <label>
+              <input
+                type="checkbox"
+                checked={picked.has(s.id)}
+                onChange={() => toggle(s.id)}
+                disabled={s.id === shift.staff_id}
+              />
+              <span>{s.first_name} {s.last_name}</span>
+              {s.id === shift.staff_id && (
+                <span className="prp-staff-tag">on this shift</span>
+              )}
+            </label>
+          </li>
+        ))}
+      </ul>
+    </DialogShell>
+  )
+}
+
+function MergeDialog({ apiUrl, authHeader, shift, dayShifts, posInDay, submitting, error, onCancel, onSubmit }) {
+  const staff = useAssignableStaff(apiUrl, authHeader)
+  const prev = posInDay > 0 ? dayShifts[posInDay - 1] : null
+  const next = posInDay < dayShifts.length - 1 ? dayShifts[posInDay + 1] : null
+  const [direction, setDirection] = useState(prev ? 'left' : 'right')
+  const [mergedStaffId, setMergedStaffId] = useState(shift.staff_id || '')
+
+  return (
+    <DialogShell
+      title={`Merge · ${formatTime(shift.start_time)}–${formatTime(shift.end_time)}`}
+      error={error}
+      footer={
+        <>
+          <button
+            className="btn-primary"
+            onClick={() => onSubmit(direction, mergedStaffId === '' ? null : Number(mergedStaffId))}
+            disabled={submitting || (!prev && !next)}
+          >
+            {submitting ? 'Saving…' : 'Save'}
+          </button>
+          <button className="btn-secondary" onClick={onCancel}>Cancel</button>
+        </>
+      }
+    >
+      <p style={{ marginTop: 0 }}>
+        Merge two shifts into one (e.g. cleaning duties between event clusters).
+        Pick which adjacent shift to merge with and who staffs the result.
+      </p>
+      <div className="prp-merge-options">
+        <label className={`prp-merge-option ${!prev ? 'disabled' : ''}`}>
+          <input
+            type="radio" name="merge-direction" value="left"
+            checked={direction === 'left'}
+            disabled={!prev}
+            onChange={() => setDirection('left')}
+          />
+          <strong>← Previous</strong>
+          <span>{prev ? `${formatTime(prev.start_time)}–${formatTime(prev.end_time)} · ${prev.staff_initials || (prev.staff_id ? `#${prev.staff_id}` : '?')}` : 'no previous shift'}</span>
+        </label>
+        <label className={`prp-merge-option ${!next ? 'disabled' : ''}`}>
+          <input
+            type="radio" name="merge-direction" value="right"
+            checked={direction === 'right'}
+            disabled={!next}
+            onChange={() => setDirection('right')}
+          />
+          <strong>Next →</strong>
+          <span>{next ? `${formatTime(next.start_time)}–${formatTime(next.end_time)} · ${next.staff_initials || (next.staff_id ? `#${next.staff_id}` : '?')}` : 'no next shift'}</span>
+        </label>
+      </div>
+      <div className="form-row">
+        <label>Staff for the merged shift:</label>
+        <select className="form-input" value={mergedStaffId} onChange={(e) => setMergedStaffId(e.target.value)}>
+          <option value="">? unassigned</option>
+          {staff.map((s) => (
+            <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>
+          ))}
+        </select>
+      </div>
+    </DialogShell>
+  )
+}
+
+function SplitDialog({ apiUrl, authHeader, shift, submitting, error, onCancel, onSubmit }) {
+  const staff = useAssignableStaff(apiUrl, authHeader)
+  const [splitAt, setSplitAt] = useState(midpointTime(shift.start_time, shift.end_time))
+  const [firstStaffId, setFirstStaffId] = useState(shift.staff_id || '')
+  const [secondStaffId, setSecondStaffId] = useState('')
+
+  const minTime = formatTime(shift.start_time)
+  const maxTime = formatTime(shift.end_time)
+  const inRange = splitAt > minTime && splitAt < maxTime
+
+  return (
+    <DialogShell
+      title={`Split · ${formatTime(shift.start_time)}–${formatTime(shift.end_time)}`}
+      error={error}
+      footer={
+        <>
+          <button
+            className="btn-primary"
+            onClick={() => onSubmit(
+              splitAt,
+              firstStaffId === '' ? null : Number(firstStaffId),
+              secondStaffId === '' ? null : Number(secondStaffId),
+            )}
+            disabled={submitting || !inRange || secondStaffId === ''}
+          >
+            {submitting ? 'Saving…' : 'Save'}
+          </button>
+          <button className="btn-secondary" onClick={onCancel}>Cancel</button>
+        </>
+      }
+    >
+      <p style={{ marginTop: 0 }}>
+        Splits this shift into two halves. Pick the split time and who
+        staffs each half.
+      </p>
+      <div className="form-row">
+        <label>Split at:</label>
+        <input
+          type="time" className="form-input"
+          value={splitAt}
+          min={minTime} max={maxTime}
+          onChange={(e) => setSplitAt(e.target.value)}
+        />
+        {!inRange && (
+          <small style={{ color: '#b91c1c' }}>
+            Must be strictly between {minTime} and {maxTime}.
+          </small>
+        )}
+      </div>
+      <div className="form-row">
+        <label>First half staff ({minTime}–{splitAt}):</label>
+        <select className="form-input" value={firstStaffId} onChange={(e) => setFirstStaffId(e.target.value)}>
+          <option value="">? unassigned</option>
+          {staff.map((s) => (
+            <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>
+          ))}
+        </select>
+      </div>
+      <div className="form-row">
+        <label>Second half staff ({splitAt}–{maxTime}):</label>
+        <select className="form-input" value={secondStaffId} onChange={(e) => setSecondStaffId(e.target.value)}>
+          <option value="">? select staff</option>
+          {staff.map((s) => (
+            <option key={s.id} value={s.id}>{s.first_name} {s.last_name}</option>
+          ))}
+        </select>
+      </div>
+    </DialogShell>
+  )
+}
+
+function midpointTime(start, end) {
+  // Best-effort midpoint pre-fill. Both inputs may be HH:MM:SS or HH:MM.
+  const [sh, sm] = String(start).split(':').slice(0, 2).map(Number)
+  const [eh, em] = String(end).split(':').slice(0, 2).map(Number)
+  if ([sh, sm, eh, em].some(Number.isNaN)) return ''
+  let s = sh * 60 + sm
+  let e = eh * 60 + em
+  if (e <= s) e += 24 * 60 // overnight
+  const mid = Math.floor((s + e) / 2) % (24 * 60)
+  const h = Math.floor(mid / 60)
+  const m = mid % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
 function RunSummary({ detail, loading }) {
@@ -282,7 +673,7 @@ function Counter({ label, value, tone = 'neutral' }) {
   )
 }
 
-function ProposalCalendar({ shiftsByDate, sortedDates, onShiftClick }) {
+function ProposalCalendar({ shiftsByDate, sortedDates, onShiftClick, onShiftAction }) {
   if (sortedDates.length === 0) {
     return (
       <div className="prp-empty">
@@ -293,59 +684,105 @@ function ProposalCalendar({ shiftsByDate, sortedDates, onShiftClick }) {
   }
   return (
     <div className="prp-calendar">
-      {sortedDates.map((dateStr) => (
-        <div key={dateStr} className="prp-day">
-          <div className="prp-day-header">
-            {new Date(dateStr).toLocaleDateString('en-GB', {
-              timeZone: 'Europe/London',
-              weekday: 'short',
-              day: '2-digit',
-              month: 'short',
-            })}
+      {sortedDates.map((dateStr) => {
+        const dayShifts = shiftsByDate[dateStr]
+        return (
+          <div key={dateStr} className="prp-day">
+            <div className="prp-day-header">
+              {new Date(dateStr).toLocaleDateString('en-GB', {
+                timeZone: 'Europe/London',
+                weekday: 'short',
+                day: '2-digit',
+                month: 'short',
+              })}
+            </div>
+            <div className="prp-day-shifts">
+              {dayShifts.map((s, posInDay) => (
+                <ShiftCard
+                  key={s.__index}
+                  shift={s}
+                  onCardClick={() => onShiftClick?.(s, s.__index)}
+                  onAction={(action) => onShiftAction?.(s, s.__index, action, posInDay, dayShifts)}
+                  hasPrev={posInDay > 0}
+                  hasNext={posInDay < dayShifts.length - 1}
+                />
+              ))}
+            </div>
           </div>
-          <div className="prp-day-shifts">
-            {shiftsByDate[dateStr].map((s) => (
-              <ShiftCard
-                key={s.__index}
-                shift={s}
-                onClick={() => onShiftClick?.(s, s.__index)}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
 
-function ShiftCard({ shift, onClick }) {
+function ShiftCard({ shift, onCardClick, onAction, hasPrev, hasNext }) {
   const unassigned = !shift.staff_id
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={`prp-shift ${unassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'}`}
-      title="Click to give feedback on this engine decision"
     >
-      <div className="prp-shift-time">
-        {shift.start_time}–{shift.end_time}
-      </div>
-      <div className="prp-shift-staff">
-        {unassigned ? '? unassigned' : shift.staff_initials || `staff #${shift.staff_id}`}
-      </div>
-      {shift.shift_type && (
-        <div className="prp-shift-type">{shift.shift_type}</div>
-      )}
-      {shift.linked_booking_refs?.length > 0 && (
-        <div className="prp-shift-bookings">
-          {shift.linked_booking_refs.map((ref) => (
-            <span key={ref} className="prp-shift-booking">
-              {ref}
-            </span>
-          ))}
+      <div
+        className="prp-shift-body"
+        role="button"
+        tabIndex={0}
+        onClick={onCardClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onCardClick?.()
+          }
+        }}
+        title="Click to give feedback / edit this shift"
+      >
+        <div className="prp-shift-time">
+          {formatTime(shift.start_time)}–{formatTime(shift.end_time)}
         </div>
-      )}
-    </button>
+        <div className="prp-shift-staff">
+          {unassigned ? '? unassigned' : shift.staff_initials || `staff #${shift.staff_id}`}
+        </div>
+        {shift.linked_booking_refs?.length > 0 && (
+          <div className="prp-shift-bookings">
+            {shift.linked_booking_refs.map((ref) => (
+              <span key={ref} className="prp-shift-booking">
+                {ref}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="prp-shift-actions booking-actions">
+        <button
+          type="button"
+          className="action-btn edit-btn"
+          onClick={(e) => { e.stopPropagation(); onAction?.('duplicate') }}
+        >
+          Duplicate
+        </button>
+        <button
+          type="button"
+          className="action-btn paid-btn"
+          onClick={(e) => { e.stopPropagation(); onAction?.('merge') }}
+          disabled={!hasPrev && !hasNext}
+          title={!hasPrev && !hasNext ? 'No adjacent shift on this date' : ''}
+        >
+          Merge
+        </button>
+        <button
+          type="button"
+          className="action-btn refund-btn"
+          onClick={(e) => { e.stopPropagation(); onAction?.('split') }}
+        >
+          Split
+        </button>
+        <button
+          type="button"
+          className="action-btn cancel-btn"
+          onClick={(e) => { e.stopPropagation(); onAction?.('delete') }}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
   )
 }
 
