@@ -501,15 +501,25 @@ def jockey_summary(
     holidays: Iterable[EmployeeHoliday],
     window_start: date,
     window_end: date,
+    proposed_hours_by_staff_week: Optional[dict[tuple[int, date], float]] = None,
 ) -> list[dict]:
-    """Snapshot of every active jockey's preferences and in-window
-    holidays — rendered in the QA panel below the run summary so
-    admins can sanity-check assignments at a glance."""
+    """Snapshot of every active jockey's preferences, in-window holidays,
+    and predicted hours per ISO week (Mon-anchored). Rendered in the QA
+    panel below the run summary so admins can sanity-check assignments
+    at a glance.
+
+    `proposed_hours_by_staff_week` is the engine's in-run accumulator
+    keyed by (staff_id, iso_monday). When passed, each jockey row gets
+    a `predicted_hours_by_week` map (week_start_iso → hours) and a
+    `predicted_hours_total` rolled up across the window.
+    """
     holidays_by_staff: dict[int, list[EmployeeHoliday]] = {}
     for h in holidays:
         if h.start_date > window_end or h.end_date < window_start:
             continue
         holidays_by_staff.setdefault(h.staff_id, []).append(h)
+
+    proposed_hours_by_staff_week = proposed_hours_by_staff_week or {}
 
     out: list[dict] = []
     for s in staff:
@@ -519,6 +529,18 @@ def jockey_summary(
             continue
         pst = getattr(s, "preferred_start_time", None)
         pet = getattr(s, "preferred_end_time", None)
+        # Pull predicted hours for this jockey across every week we've
+        # seen in this run. Sorted by week start so the UI can render
+        # in chronological order without re-sorting.
+        per_week = sorted(
+            (
+                (week_start, hours)
+                for (sid, week_start), hours in proposed_hours_by_staff_week.items()
+                if sid == s.id
+            ),
+            key=lambda kv: kv[0],
+        )
+        predicted_total = sum(h for _, h in per_week)
         out.append({
             "id": s.id,
             "initials": _initials(s),
@@ -538,6 +560,11 @@ def jockey_summary(
                 {"start_date": h.start_date, "end_date": h.end_date}
                 for h in holidays_by_staff.get(s.id, [])
             ],
+            "predicted_hours_by_week": [
+                {"week_start": ws, "hours": round(h, 2)}
+                for ws, h in per_week
+            ],
+            "predicted_hours_total": round(predicted_total, 2),
         })
     # Primaries first (alphabetical), fallbacks last.
     out.sort(key=lambda j: (j["is_fallback_driver"], j["first_name"] or ""))
@@ -890,7 +917,11 @@ def propose_roster(
         "proposed_shifts": proposed_shifts_out,
         "warnings": warnings,
         "summary": summary,
-        "jockeys": jockey_summary(staff, holidays, window_start, window_end),
+        "jockeys": jockey_summary(
+            staff, holidays, window_start, window_end,
+            proposed_hours_by_staff_week=proposed_hours_by_staff_week,
+        ),
+        "max_hours_per_week": settings.max_hours_per_week,
     }
 
 

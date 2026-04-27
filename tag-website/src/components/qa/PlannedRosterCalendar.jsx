@@ -167,6 +167,12 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
             <>
               <RunSummary detail={detail} loading={detailLoading} />
               <JockeyPreferences jockeys={detail.proposal?.jockeys || []} />
+              <PredictedHoursBreakdown
+                jockeys={detail.proposal?.jockeys || []}
+                maxHoursPerWeek={detail.proposal?.max_hours_per_week ?? 40}
+                windowStart={detail.window_start}
+                windowEnd={detail.window_end}
+              />
               <ProposalCalendar
                 shiftsByDate={shiftsByDate}
                 sortedDates={sortedDates}
@@ -1380,4 +1386,132 @@ function JockeyPreferences({ jockeys }) {
       </table>
     </div>
   )
+}
+
+function PredictedHoursBreakdown({ jockeys, maxHoursPerWeek = 40, windowStart, windowEnd }) {
+  const [expanded, setExpanded] = useState(true)
+  const [expandedWeeks, setExpandedWeeks] = useState({})
+  const [totalsExpanded, setTotalsExpanded] = useState(false)
+
+  if (!jockeys || jockeys.length === 0) return null
+
+  // Union of every week any jockey appears in, ascending.
+  const weekKeys = Array.from(
+    new Set(
+      jockeys.flatMap((j) =>
+        (j.predicted_hours_by_week || []).map((w) => w.week_start)
+      )
+    )
+  ).sort()
+
+  if (weekKeys.length === 0) return null
+
+  const fmtHours = (h) => `${Number(h || 0).toFixed(1)}h`
+  const windowLabel = windowStart && windowEnd
+    ? `${formatUkDate(windowStart)} → ${formatUkDate(windowEnd)}`
+    : ''
+
+  return (
+    <div className="hours-breakdown-section prp-predicted-hours">
+      <h3
+        className="hours-breakdown-title hours-breakdown-clickable"
+        onClick={() => setExpanded((e) => !e)}
+      >
+        <span className={`hours-section-caret ${expanded ? 'expanded' : ''}`}>▶</span>
+        Predicted hours <span className="week-range">({windowLabel})</span>
+      </h3>
+      {expanded && (
+        <div className="hours-breakdown-container">
+          {weekKeys.map((wk, idx) => {
+            const weekEnd = isoAddDays(wk, 6)
+            return (
+              <div key={wk} className="hours-week-container">
+                <div
+                  className="hours-week-header"
+                  onClick={() =>
+                    setExpandedWeeks((p) => ({ ...p, [idx]: !p[idx] }))
+                  }
+                >
+                  <span className={`hours-caret ${expandedWeeks[idx] ? 'expanded' : ''}`}>▶</span>
+                  <span className="hours-week-label">Week of {formatUkDate(wk)}</span>
+                  <span className="hours-week-range">
+                    ({formatUkDate(wk)} – {formatUkDate(weekEnd)})
+                  </span>
+                </div>
+                {expandedWeeks[idx] && (
+                  <div className="hours-week-content">
+                    <div className="weekly-hours-grid">
+                      {jockeys.map((j) => {
+                        const wkHours =
+                          (j.predicted_hours_by_week || []).find(
+                            (w) => w.week_start === wk
+                          )?.hours ?? 0
+                        const atCap = wkHours >= maxHoursPerWeek
+                        return (
+                          <div
+                            key={j.id}
+                            className={`weekly-hours-card${atCap ? ' weekly-hours-card-over' : ''}`}
+                          >
+                            <div className="employee-name">
+                              {j.initials} · {j.first_name} {j.last_name}
+                            </div>
+                            <div className="hours-summary">
+                              <span className="total-hours">{fmtHours(wkHours)}</span>
+                              {atCap && (
+                                <span className="shift-count">at/over cap</span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Monthly Totals — total predicted across the window */}
+          <div className="hours-week-container monthly-totals">
+            <div
+              className="hours-week-header monthly-header"
+              onClick={() => setTotalsExpanded((e) => !e)}
+            >
+              <span className={`hours-caret ${totalsExpanded ? 'expanded' : ''}`}>▶</span>
+              <span className="hours-week-label">Monthly Totals</span>
+            </div>
+            {totalsExpanded && (
+              <div className="hours-week-content">
+                <div className="weekly-hours-grid">
+                  {jockeys.map((j) => (
+                    <div key={j.id} className="weekly-hours-card">
+                      <div className="employee-name">
+                        {j.initials} · {j.first_name} {j.last_name}
+                      </div>
+                      <div className="hours-summary">
+                        <span className="total-hours">
+                          {fmtHours(j.predicted_hours_total)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function isoAddDays(iso, days) {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() + days)
+  const yy = dt.getUTCFullYear()
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getUTCDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
 }

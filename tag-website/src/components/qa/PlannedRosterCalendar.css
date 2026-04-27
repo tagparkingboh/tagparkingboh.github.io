@@ -415,6 +415,160 @@
   font-size: 0.8rem;
 }
 
+/* Predicted hours breakdown — light-mode mirror of RosterCalendar's
+   .hours-breakdown-* / .weekly-hours-* / .hours-week-* classes so the
+   QA Planner can use the same DOM structure. Same class names are
+   redefined here under the .prp-predicted-hours scope. */
+
+.prp-predicted-hours.hours-breakdown-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-top: 1rem;
+}
+
+.prp-predicted-hours .hours-breakdown-title {
+  color: #334155;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.prp-predicted-hours .hours-breakdown-title.hours-breakdown-clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.prp-predicted-hours .hours-breakdown-title.hours-breakdown-clickable:hover {
+  opacity: 0.85;
+}
+
+.prp-predicted-hours .hours-section-caret,
+.prp-predicted-hours .hours-caret {
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+  color: #475569;
+  width: 0.75rem;
+  display: inline-block;
+}
+
+.prp-predicted-hours .hours-section-caret.expanded,
+.prp-predicted-hours .hours-caret.expanded {
+  transform: rotate(90deg);
+}
+
+.prp-predicted-hours .hours-breakdown-title .week-range {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 400;
+}
+
+.prp-predicted-hours .hours-breakdown-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.prp-predicted-hours .hours-week-container {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.prp-predicted-hours .hours-week-container.monthly-totals {
+  margin-top: 0.4rem;
+  border-color: #94a3b8;
+  background: #f1f5f9;
+}
+
+.prp-predicted-hours .hours-week-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+
+.prp-predicted-hours .hours-week-header:hover {
+  background: #f1f5f9;
+}
+
+.prp-predicted-hours .hours-week-label {
+  color: #1e293b;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.prp-predicted-hours .hours-week-range {
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.prp-predicted-hours .hours-week-content {
+  padding: 0.5rem 0.75rem 0.75rem;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.prp-predicted-hours .weekly-hours-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.prp-predicted-hours .weekly-hours-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  min-width: 9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.prp-predicted-hours .weekly-hours-card-over {
+  border-color: #b91c1c;
+  background: #fef2f2;
+}
+
+.prp-predicted-hours .employee-name {
+  color: #1e293b;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.prp-predicted-hours .hours-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.prp-predicted-hours .total-hours {
+  color: #1e293b;
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.prp-predicted-hours .weekly-hours-card-over .total-hours {
+  color: #b91c1c;
+}
+
+.prp-predicted-hours .shift-count {
+  color: #b91c1c;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
 .prp-history {
   display: flex;
   flex-direction: column;

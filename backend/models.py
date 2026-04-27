@@ -713,8 +713,14 @@ class RosterProposalResponse(BaseModel):
     warnings: List[RosterProposalWarning]
     summary: dict  # counts: { new_shifts, extended_shifts, untouched_shifts, unmanned_events, staff_hit_max_hours }
     # Snapshot of jockey preferences + in-window holidays — rendered in
-    # the QA panel so admins can sanity-check assignments.
+    # the QA panel so admins can sanity-check assignments. Each jockey
+    # entry also carries `predicted_hours_by_week` + `predicted_hours_total`
+    # computed from the engine's in-run accumulator (purely from this
+    # proposal — saved roster_shifts hours are not counted).
     jockeys: List[dict] = Field(default_factory=list)
+    # Pulled out alongside jockeys for the UI's at-cap highlighting;
+    # mirrors settings_snapshot.max_hours_per_week.
+    max_hours_per_week: Optional[int] = None
 
 
 class PlannerRunListItem(BaseModel):
