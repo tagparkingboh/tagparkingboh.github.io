@@ -2119,8 +2119,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   className="roster-add-btn-small"
                   onClick={() => openNewShiftModal(formatDateUK(selectedDate))}
                 >
-                  <span className="btn-text-full">+ Add Shift</span>
-                  <span className="btn-text-short">+ Shift</span>
+                  + Shift
                 </button>
                 <button
                   className="roster-add-holiday-btn-small"
