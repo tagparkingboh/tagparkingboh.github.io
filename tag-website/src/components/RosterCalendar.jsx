@@ -52,6 +52,19 @@ const formatDateISO = (date) => {
   return `${year}-${month}-${day}`
 }
 
+// Previous day as ISO string. UTC math avoids any DST drift.
+const prevIsoDate = (isoDate) => {
+  if (!isoDate) return ''
+  const [y, m, d] = isoDate.split('-').map(Number)
+  if (!y || !m || !d) return ''
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() - 1)
+  const yy = dt.getUTCFullYear()
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getUTCDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
 // Convert UK date (DD/MM/YYYY) to ISO (YYYY-MM-DD)
 const ukToISO = (ukDate) => {
   if (!ukDate) return ''
@@ -697,31 +710,72 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return { year, month, weeks, daysInMonth }
   }, [currentDate])
 
-  // Group bookings by date
+  // Per-day cutoff: latest end_time of an overnight shift starting on
+  // that date. e.g. shift 09/05 22:50 → 10/05 00:50 produces
+  // overnightTailEndByDate["2026-05-09"] = "00:50". Used to re-bucket
+  // bookings whose calendar date is the *next* day but whose time
+  // falls inside the operational shift that started yesterday.
+  const overnightTailEndByDate = useMemo(() => {
+    const map = {}
+    shifts.forEach((shift) => {
+      if (!shift.end_date || !shift.end_time) return
+      if (shift.end_date === shift.date) return  // same-day shift
+      const start = shift.date
+      const end = String(shift.end_time).slice(0, 5)
+      const prev = map[start]
+      if (!prev || end > prev) map[start] = end
+    })
+    return map
+  }, [shifts])
+
+  // Group bookings by date. A pickup or drop-off whose calendar time
+  // falls before the previous day's overnight-shift end is bucketed to
+  // that previous day, not its calendar date — keeps an overnight shift's
+  // events on a single operational day in the drill-down view (per spec).
   const bookingsByDate = useMemo(() => {
     const grouped = {}
-    const confirmedBookings = bookings.filter((b) => b.status === 'confirmed')
+    const ensureDay = (key) => {
+      if (!grouped[key]) grouped[key] = { dropoffs: [], pickups: [] }
+      return grouped[key]
+    }
+    const claimDate = (rawDate, rawTime) => {
+      if (!rawDate) return null
+      if (!rawTime) return rawDate
+      const prev = prevIsoDate(rawDate)
+      const cutoff = overnightTailEndByDate[prev]
+      const t = String(rawTime).slice(0, 5)
+      if (cutoff && t < cutoff) return prev
+      return rawDate
+    }
+    const sortKey = (date, time) => `${date}T${(time ? String(time).slice(0, 5) : '00:00')}`
 
+    const confirmedBookings = bookings.filter((b) => b.status === 'confirmed')
     confirmedBookings.forEach((booking) => {
       if (booking.dropoff_date) {
-        const dropoffKey = booking.dropoff_date
-        if (!grouped[dropoffKey]) {
-          grouped[dropoffKey] = { dropoffs: [], pickups: [] }
-        }
-        grouped[dropoffKey].dropoffs.push(booking)
+        const key = claimDate(booking.dropoff_date, booking.dropoff_time)
+        if (key) ensureDay(key).dropoffs.push(booking)
       }
-
       if (booking.pickup_date) {
-        const pickupKey = booking.pickup_date
-        if (!grouped[pickupKey]) {
-          grouped[pickupKey] = { dropoffs: [], pickups: [] }
-        }
-        grouped[pickupKey].pickups.push(booking)
+        const key = claimDate(booking.pickup_date, booking.pickup_time)
+        if (key) ensureDay(key).pickups.push(booking)
       }
     })
 
+    Object.values(grouped).forEach((day) => {
+      day.dropoffs.sort((a, b) =>
+        sortKey(a.dropoff_date, a.dropoff_time).localeCompare(
+          sortKey(b.dropoff_date, b.dropoff_time)
+        )
+      )
+      day.pickups.sort((a, b) =>
+        sortKey(a.pickup_date, a.pickup_time).localeCompare(
+          sortKey(b.pickup_date, b.pickup_time)
+        )
+      )
+    })
+
     return grouped
-  }, [bookings])
+  }, [bookings, overnightTailEndByDate])
 
   // Group shifts by date (overnight shifts show entirely on start date)
   const shiftsByDate = useMemo(() => {
