@@ -404,6 +404,9 @@
   min-width: 100px;
   justify-content: center;
   text-align: center;
+  /* Keep all three buttons on a single line so heights match — without
+     this "Block Date" wraps and looks taller than its siblings. */
+  white-space: nowrap;
 }
 
 /* Button text - show full text by default, hide short text */
