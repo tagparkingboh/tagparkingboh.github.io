@@ -347,11 +347,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         date_to: formatDateISO(endDate),
       })
 
-      // Both admin and employee use /api/roster — no auth difference for
-      // shifts data, and the Employee page needs every shift in range
-      // (not just its own) so the overnight-tail re-bucketing in
-      // computeBookingsByDate has the right cutoffs.
-      const endpoint = '/api/roster'
+      const endpoint = isAdmin ? '/api/roster' : '/api/employee/shifts'
       const response = await fetch(`${API_URL}${endpoint}?${params}`, {
         headers: {
           Authorization: `Bearer ${token}`,
