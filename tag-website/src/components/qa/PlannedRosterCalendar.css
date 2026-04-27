@@ -500,6 +500,15 @@
   background: #f1f5f9;
 }
 
+/* Beat the Admin Calendar's dark .hours-week-header.monthly-header
+   rules on specificity (4 classes vs 3) — without these the QA panel
+   inherits the dark theme and the row renders almost-black. */
+.prp-predicted-hours .hours-week-container.monthly-totals .hours-week-header.monthly-header,
+.prp-predicted-hours .hours-week-container.monthly-totals .hours-week-header.monthly-header:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
 .prp-predicted-hours .hours-week-label {
   color: #1e293b;
   font-weight: 600;

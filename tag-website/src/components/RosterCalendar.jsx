@@ -76,7 +76,9 @@ const ukToISO = (ukDate) => {
 // Per-day cutoff: latest end_time across overnight shifts that started
 // on each date. e.g. shift on 09/05 ending 10/05 00:50 yields
 // { '2026-05-09': '00:50' }. Used to claim post-midnight events back
-// to the operational day they belong to.
+// to the operational day they belong to. Both Admin and Employee
+// calendars fetch the full shift list from /api/roster, so this works
+// the same on both views.
 export const computeOvernightTailEndByDate = (shifts) => {
   const map = {}
   ;(shifts || []).forEach((shift) => {
@@ -345,7 +347,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         date_to: formatDateISO(endDate),
       })
 
-      const endpoint = isAdmin ? '/api/roster' : '/api/employee/shifts'
+      // Both admin and employee use /api/roster — no auth difference for
+      // shifts data, and the Employee page needs every shift in range
+      // (not just its own) so the overnight-tail re-bucketing in
+      // computeBookingsByDate has the right cutoffs.
+      const endpoint = '/api/roster'
       const response = await fetch(`${API_URL}${endpoint}?${params}`, {
         headers: {
           Authorization: `Bearer ${token}`,
