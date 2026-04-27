@@ -2263,7 +2263,15 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 </h4>
                 <div className={`detail-bookings collapsible-content ${collapsedSections.dropoffs ? 'hidden' : ''}`}>
                   {selectedDateBookings.dropoffs
-                    .sort((a, b) => (a.dropoff_time || '').localeCompare(b.dropoff_time || ''))
+                    .slice()
+                    .sort((a, b) => {
+                      // Real datetime — ensures overnight tail (e.g.
+                      // 00:15 next day re-bucketed onto today) sorts AFTER
+                      // today's 23:55, not before today's 08:00.
+                      const ka = `${a.dropoff_date || ''}T${(a.dropoff_time || '').slice(0, 5)}`
+                      const kb = `${b.dropoff_date || ''}T${(b.dropoff_time || '').slice(0, 5)}`
+                      return ka.localeCompare(kb)
+                    })
                     .map((booking) => (
                       <div key={booking.id} className="detail-booking-card">
                         <div className="booking-header-row">
@@ -2319,7 +2327,15 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 </h4>
                 <div className={`detail-bookings collapsible-content ${collapsedSections.pickups ? 'hidden' : ''}`}>
                   {selectedDateBookings.pickups
-                    .sort((a, b) => (a.pickup_time || '').localeCompare(b.pickup_time || ''))
+                    .slice()
+                    .sort((a, b) => {
+                      // Real datetime — ensures overnight tail (e.g.
+                      // 00:25 next day re-bucketed onto today) sorts AFTER
+                      // today's 23:55, not before today's 08:15.
+                      const ka = `${a.pickup_date || ''}T${(a.pickup_time || '').slice(0, 5)}`
+                      const kb = `${b.pickup_date || ''}T${(b.pickup_time || '').slice(0, 5)}`
+                      return ka.localeCompare(kb)
+                    })
                     .map((booking) => (
                       <div key={booking.id} className="detail-booking-card">
                         <div className="booking-header-row">
