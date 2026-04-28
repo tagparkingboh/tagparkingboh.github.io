@@ -1,18 +1,18 @@
 /**
  * Unit tests for RosterCalendar's date helpers + bookings grouping.
  *
- * Covers the two recent regressions:
+ * Covers the two regressions:
  * 1. prevIsoDate must use UTC math so DST and leap years don't drift.
- * 2. computeBookingsByDate must re-bucket post-midnight events back to
- *    the previous day when an overnight shift on that day extends past
- *    the event's time, and sort each day's events chronologically by
- *    real datetime (not by time-of-day alone).
+ * 2. computeBookingsByDate must re-bucket post-midnight pickups (and
+ *    only pickups — never drop-offs) when the time is strictly before
+ *    PICKUP_OVERNIGHT_CUTOFF, and each day's list must sort by real
+ *    datetime so re-bucketed events land last.
  */
 import { describe, it, expect } from 'vitest'
 import {
   prevIsoDate,
-  computeOvernightTailEndByDate,
   computeBookingsByDate,
+  PICKUP_OVERNIGHT_CUTOFF,
 } from '../components/RosterCalendar'
 
 describe('prevIsoDate', () => {
@@ -50,49 +50,13 @@ describe('prevIsoDate', () => {
   })
 })
 
-describe('computeOvernightTailEndByDate', () => {
-  it('captures overnight shifts (end_date != date)', () => {
-    const shifts = [
-      { date: '2026-05-09', end_date: '2026-05-10', start_time: '22:50', end_time: '00:50' },
-    ]
-    expect(computeOvernightTailEndByDate(shifts)).toEqual({ '2026-05-09': '00:50' })
-  })
-
-  it('ignores same-day shifts', () => {
-    const shifts = [
-      { date: '2026-05-09', end_date: '2026-05-09', start_time: '08:00', end_time: '16:00' },
-    ]
-    expect(computeOvernightTailEndByDate(shifts)).toEqual({})
-  })
-
-  it('takes the latest end_time when multiple overnight shifts share a start date', () => {
-    const shifts = [
-      { date: '2026-05-09', end_date: '2026-05-10', start_time: '22:50', end_time: '00:50' },
-      { date: '2026-05-09', end_date: '2026-05-10', start_time: '23:00', end_time: '02:00' },
-    ]
-    expect(computeOvernightTailEndByDate(shifts)).toEqual({ '2026-05-09': '02:00' })
-  })
-
-  it('skips shifts missing end_date or end_time', () => {
-    const shifts = [
-      { date: '2026-05-09', end_date: null, start_time: '08:00', end_time: '16:00' },
-      { date: '2026-05-09', end_date: '2026-05-10', start_time: '22:50', end_time: null },
-    ]
-    expect(computeOvernightTailEndByDate(shifts)).toEqual({})
+describe('PICKUP_OVERNIGHT_CUTOFF', () => {
+  it('is 02:30 UK time', () => {
+    expect(PICKUP_OVERNIGHT_CUTOFF).toBe('02:30')
   })
 })
 
 describe('computeBookingsByDate', () => {
-  // The canonical fixture from the bug report: a 22:50–00:50 overnight
-  // shift on the 9th, plus an 00:25 pickup on the 10th. The 00:25 belongs
-  // to the 9th's operational day.
-  const overnightShift = {
-    date: '2026-05-09',
-    end_date: '2026-05-10',
-    start_time: '22:50',
-    end_time: '00:50',
-  }
-
   const mkPickup = (id, pickup_date, pickup_time, status = 'confirmed') => ({
     id,
     status,
@@ -107,72 +71,67 @@ describe('computeBookingsByDate', () => {
     dropoff_time,
   })
 
-  it('re-buckets a post-midnight pickup to the previous day when an overnight shift covers it', () => {
-    const bookings = [mkPickup(1, '2026-05-10', '00:25')]
-    const grouped = computeBookingsByDate(bookings, [overnightShift])
+  it('re-buckets a post-midnight pickup (00:25) to the previous calendar day', () => {
+    const grouped = computeBookingsByDate([
+      mkPickup(1, '2026-05-10', '00:25'),
+    ])
 
-    // 00:25 < 00:50 cutoff for the 9th → claimed by the 9th.
     expect(grouped['2026-05-09']?.pickups).toHaveLength(1)
     expect(grouped['2026-05-09'].pickups[0].id).toBe(1)
-    // …and removed from the 10th.
     expect(grouped['2026-05-10']?.pickups ?? []).toHaveLength(0)
   })
 
-  it('does NOT re-bucket a pickup that falls AFTER the overnight shift ends', () => {
-    const bookings = [mkPickup(1, '2026-05-10', '01:30')]
-    const grouped = computeBookingsByDate(bookings, [overnightShift])
+  it('re-buckets a 02:29 pickup but NOT a 02:30 pickup (cutoff is exclusive)', () => {
+    const grouped = computeBookingsByDate([
+      mkPickup(1, '2026-05-10', '02:29'),
+      mkPickup(2, '2026-05-10', '02:30'),
+    ])
 
-    // 01:30 > 00:50 cutoff → stays on the 10th.
-    expect(grouped['2026-05-09']?.pickups ?? []).toHaveLength(0)
-    expect(grouped['2026-05-10']?.pickups).toHaveLength(1)
-    expect(grouped['2026-05-10'].pickups[0].id).toBe(1)
+    expect(grouped['2026-05-09']?.pickups.map((b) => b.id)).toEqual([1])
+    expect(grouped['2026-05-10']?.pickups.map((b) => b.id)).toEqual([2])
   })
 
-  it('sorts re-bucketed events AFTER the same day\'s late evening events (chronological)', () => {
-    const bookings = [
+  it('sorts re-bucketed pickups AFTER the same day\'s late evening pickups', () => {
+    const grouped = computeBookingsByDate([
       mkPickup(1, '2026-05-09', '08:15'),
       mkPickup(2, '2026-05-09', '16:10'),
       mkPickup(3, '2026-05-09', '23:55'),
       mkPickup(4, '2026-05-10', '00:25'),  // re-bucketed onto the 9th
-    ]
-    const grouped = computeBookingsByDate(bookings, [overnightShift])
+    ])
 
     expect(grouped['2026-05-09'].pickups.map((b) => b.id)).toEqual([1, 2, 3, 4])
   })
 
-  it('drop-offs follow the same re-bucketing rule', () => {
-    const bookings = [mkDropoff(99, '2026-05-10', '00:30')]
-    const grouped = computeBookingsByDate(bookings, [overnightShift])
+  it('does NOT re-bucket drop-offs — only pickups have an overnight cutoff', () => {
+    const grouped = computeBookingsByDate([
+      mkDropoff(99, '2026-05-10', '00:30'),
+    ])
 
-    expect(grouped['2026-05-09']?.dropoffs).toHaveLength(1)
-    expect(grouped['2026-05-09'].dropoffs[0].id).toBe(99)
-    expect(grouped['2026-05-10']?.dropoffs ?? []).toHaveLength(0)
+    // Drop-off stays on its calendar date regardless of time.
+    expect(grouped['2026-05-09']?.dropoffs ?? []).toHaveLength(0)
+    expect(grouped['2026-05-10']?.dropoffs).toHaveLength(1)
+    expect(grouped['2026-05-10'].dropoffs[0].id).toBe(99)
   })
 
   it('ignores non-confirmed bookings', () => {
-    const bookings = [
+    const grouped = computeBookingsByDate([
       mkPickup(1, '2026-05-09', '08:15', 'pending'),
       mkPickup(2, '2026-05-09', '12:00', 'cancelled'),
       mkPickup(3, '2026-05-09', '16:00'),
-    ]
-    const grouped = computeBookingsByDate(bookings, [])
+    ])
     expect(grouped['2026-05-09'].pickups.map((b) => b.id)).toEqual([3])
   })
 
-  it('handles an empty shifts array (no re-bucketing)', () => {
-    const bookings = [mkPickup(1, '2026-05-10', '00:25')]
-    const grouped = computeBookingsByDate(bookings, [])
-    // No overnight shift → 00:25 stays on the 10th.
+  it('handles missing pickup_time as no-op (no re-bucketing)', () => {
+    const grouped = computeBookingsByDate([
+      mkPickup(1, '2026-05-10', null),
+    ])
+    expect(grouped['2026-05-10']?.pickups).toHaveLength(1)
     expect(grouped['2026-05-09']?.pickups ?? []).toHaveLength(0)
-    expect(grouped['2026-05-10'].pickups).toHaveLength(1)
   })
 
-  it('does not re-bucket when the overnight cutoff is earlier than the event time', () => {
-    // KW finishes at 00:30; a 00:45 pickup the next day stays on day 2.
-    const earlyEnd = { ...overnightShift, end_time: '00:30' }
-    const bookings = [mkPickup(1, '2026-05-10', '00:45')]
-    const grouped = computeBookingsByDate(bookings, [earlyEnd])
-    expect(grouped['2026-05-09']?.pickups ?? []).toHaveLength(0)
-    expect(grouped['2026-05-10'].pickups).toHaveLength(1)
+  it('returns empty object for empty / missing bookings input', () => {
+    expect(computeBookingsByDate([])).toEqual({})
+    expect(computeBookingsByDate(undefined)).toEqual({})
   })
 })

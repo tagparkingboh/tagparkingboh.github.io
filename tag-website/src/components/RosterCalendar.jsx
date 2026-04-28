@@ -73,43 +73,32 @@ const ukToISO = (ukDate) => {
   return `${parts[2]}-${parts[1]}-${parts[0]}`
 }
 
-// Per-day cutoff: latest end_time across overnight shifts that started
-// on each date. e.g. shift on 09/05 ending 10/05 00:50 yields
-// { '2026-05-09': '00:50' }. Used to claim post-midnight events back
-// to the operational day they belong to. Both Admin and Employee
-// calendars fetch the full shift list from /api/roster, so this works
-// the same on both views.
-export const computeOvernightTailEndByDate = (shifts) => {
-  const map = {}
-  ;(shifts || []).forEach((shift) => {
-    if (!shift || !shift.end_date || !shift.end_time) return
-    if (shift.end_date === shift.date) return
-    const start = shift.date
-    const end = String(shift.end_time).slice(0, 5)
-    const prev = map[start]
-    if (!prev || end > prev) map[start] = end
-  })
-  return map
-}
+// Pickups before this UK clock-time on date D+1 are bucketed back to
+// date D's operational day (e.g. a 00:25 pickup on the 10th is shown
+// under the 9th, where the overnight shift covering it started).
+// Drop-offs are NOT re-bucketed — early-AM drop-offs aren't an
+// operational reality in this business. Heuristic chosen over reading
+// shifts data so the Employee page (which only has access to its own
+// shifts) and the Admin page produce identical groupings.
+export const PICKUP_OVERNIGHT_CUTOFF = '02:30'
 
-// Group confirmed bookings by operational day. A pickup or drop-off
-// whose calendar time falls before the previous day's overnight-shift
-// end is bucketed back to that previous day so an overnight shift's
-// events stay on a single operational row in the drill-down.
-export const computeBookingsByDate = (bookings, shifts) => {
-  const overnightTailEndByDate = computeOvernightTailEndByDate(shifts)
+// Group confirmed bookings by operational day. Drop-offs key on
+// `dropoff_date` directly. Pickups key on `pickup_date` unless the
+// pickup_time is strictly before PICKUP_OVERNIGHT_CUTOFF, in which
+// case they're attributed to the previous calendar day. Each day's
+// list is sorted by real datetime so re-bucketed events land at the
+// bottom (chronologically later than 23:55 of the same operational day).
+export const computeBookingsByDate = (bookings) => {
   const grouped = {}
   const ensureDay = (key) => {
     if (!grouped[key]) grouped[key] = { dropoffs: [], pickups: [] }
     return grouped[key]
   }
-  const claimDate = (rawDate, rawTime) => {
+  const claimPickupDate = (rawDate, rawTime) => {
     if (!rawDate) return null
     if (!rawTime) return rawDate
-    const prev = prevIsoDate(rawDate)
-    const cutoff = overnightTailEndByDate[prev]
     const t = String(rawTime).slice(0, 5)
-    if (cutoff && t < cutoff) return prev
+    if (t < PICKUP_OVERNIGHT_CUTOFF) return prevIsoDate(rawDate)
     return rawDate
   }
   const sortKey = (date, time) =>
@@ -119,11 +108,10 @@ export const computeBookingsByDate = (bookings, shifts) => {
     .filter((b) => b && b.status === 'confirmed')
     .forEach((booking) => {
       if (booking.dropoff_date) {
-        const key = claimDate(booking.dropoff_date, booking.dropoff_time)
-        if (key) ensureDay(key).dropoffs.push(booking)
+        ensureDay(booking.dropoff_date).dropoffs.push(booking)
       }
       if (booking.pickup_date) {
-        const key = claimDate(booking.pickup_date, booking.pickup_time)
+        const key = claimPickupDate(booking.pickup_date, booking.pickup_time)
         if (key) ensureDay(key).pickups.push(booking)
       }
     })
@@ -782,11 +770,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   }, [currentDate])
 
   // Per-operational-day grouping — see computeBookingsByDate above.
-  // Re-buckets post-midnight events to the previous day when an
-  // overnight shift covers them, then sorts each day chronologically.
+  // Pickups before 02:30 are bucketed back to the previous calendar
+  // day, then each day is sorted chronologically.
   const bookingsByDate = useMemo(
-    () => computeBookingsByDate(bookings, shifts),
-    [bookings, shifts]
+    () => computeBookingsByDate(bookings),
+    [bookings]
   )
 
   // Group shifts by date (overnight shifts show entirely on start date)
