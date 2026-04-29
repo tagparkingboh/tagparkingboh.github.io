@@ -46,8 +46,13 @@ router = APIRouter(prefix="/api", tags=["roster"])
 
 def parse_time_string(time_str: str) -> time:
     """Parse HH:MM string to time object."""
-    parts = time_str.split(":")
-    return time(int(parts[0]), int(parts[1]))
+    parts = (time_str or "").split(":")
+    if len(parts) < 2 or not parts[0] or not parts[1]:
+        raise HTTPException(status_code=400, detail=f"Invalid time format: {time_str!r} (expected HH:MM)")
+    try:
+        return time(int(parts[0]), int(parts[1]))
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid time format: {time_str!r} (expected HH:MM)")
 
 
 def format_time(t: time) -> str:
