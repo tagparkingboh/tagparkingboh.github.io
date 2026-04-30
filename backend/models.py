@@ -2,7 +2,7 @@
 Data models for the TAG booking system.
 """
 from datetime import date as date_type, time, datetime
-from typing import Optional, Literal, List, Union
+from typing import Optional, Literal, List, Union, Dict
 from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 
@@ -758,6 +758,13 @@ class PlannerRunDetail(BaseModel):
 
     `proposal_json` and `diff_vs_current_json` are returned as already-parsed
     objects so the QA UI can render directly without a second JSON.parse step.
+
+    `committed_indexes` lists the proposed_shifts positions that currently
+    have at least one matching scheduled row in roster_shifts (matched by
+    date + start_time + end_time on rows where planner_run_id == this run).
+    Survives undo (drops back to empty) and re-commit (refills). FE uses it
+    to hide the commit checkbox on already-committed proposals so admins
+    can't accidentally re-tick and hit a 409 overlap.
     """
     run_id: str
     triggered_at: datetime
@@ -770,6 +777,29 @@ class PlannerRunDetail(BaseModel):
     warnings: List[dict] = Field(default_factory=list)
     duration_ms: Optional[int] = None
     error_text: Optional[str] = None
+    committed_indexes: List[int] = Field(default_factory=list)
+
+
+class ProposalOverride(BaseModel):
+    """Per-proposal commit-time override.
+
+    Mirrors the action-button shapes admins use in the planner UI. Sent on
+    POST /commit alongside proposal_indexes so the admin's "what I'd do
+    differently" choice actually reaches the roster.
+
+    Phase 3.5 honours: 'unassign', 'delete', 'duplicate'. Phase 3.6 will add
+    'merge' and 'split' (those need multi-proposal coordination).
+    """
+    action: Literal["unassign", "delete", "duplicate", "merge", "split"]
+    # duplicate
+    target_staff_ids: Optional[List[int]] = None
+    # merge (Phase 3.6)
+    merge_with_index: Optional[int] = None
+    merged_staff_id: Optional[int] = None
+    # split (Phase 3.6)
+    split_at_time: Optional[time] = None
+    first_half_staff_id: Optional[int] = None
+    second_half_staff_id: Optional[int] = None
 
 
 class PlannerCommitRequest(BaseModel):
@@ -779,9 +809,15 @@ class PlannerCommitRequest(BaseModel):
     (by position). Phase 3 commits only `kind == 'new'` proposals on empty
     slots; any proposal whose [start, end] overlaps an existing shift for the
     same staff_id is rejected with the whole transaction aborted (atomic).
+
+    `overrides` (optional) maps proposal_index → ProposalOverride for shifts
+    the admin wants to modify before commit (unassign / delete / duplicate /
+    merge / split). An override applies only if its index is also in
+    proposal_indexes; an override on an unticked index is ignored.
     """
     run_id: str
     proposal_indexes: List[int]
+    overrides: Dict[int, ProposalOverride] = Field(default_factory=dict)
 
 
 class PlannerCommitResponse(BaseModel):

@@ -2892,9 +2892,33 @@ async def commit_planner_run(
             )
         selected.append(ps)
 
+    # Reject Phase 3.6+ override actions early — surfaces "not yet supported"
+    # to the FE instead of silently dropping the override.
+    for idx, override in (request.overrides or {}).items():
+        if override.action in ("merge", "split"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Override action '{override.action}' not yet supported on commit "
+                    f"(Phase 3.6 work). Use feedback-only for now."
+                ),
+            )
+
     created_ids: list[int] = []
+    applied_overrides: list[dict] = []  # for audit
     try:
-        for ps in selected:
+        for idx, ps in zip(request.proposal_indexes, selected):
+            override = request.overrides.get(idx) if request.overrides else None
+
+            # ---- Action: delete → skip writing this proposal entirely. ----
+            if override and override.action == "delete":
+                applied_overrides.append({
+                    "proposal_index": idx,
+                    "action": "delete",
+                    "shift_ids": [],
+                })
+                continue
+
             shift_date = date_type.fromisoformat(ps["date"]) if isinstance(ps["date"], str) else ps["date"]
             end_date_val = ps.get("end_date")
             if end_date_val and isinstance(end_date_val, str):
@@ -2903,63 +2927,94 @@ async def commit_planner_run(
             end_t = parse_time_string(ps["end_time"]) if isinstance(ps["end_time"], str) else ps["end_time"]
             staff_id = ps.get("staff_id")  # may be None (unassigned shift)
 
-            # Phase 3 conflict check — only meaningful when staff is assigned.
-            if staff_id is not None:
-                conflict = _shifts_overlap_for_staff(
-                    db,
-                    staff_id=staff_id,
-                    shift_date=shift_date,
-                    end_date=end_date_val,
-                    start_time=start_t,
-                    end_time=end_t,
-                )
-                if conflict is not None:
+            # ---- Action: unassign → drop staff_id to None. ----
+            if override and override.action == "unassign":
+                staff_id = None
+
+            # ---- Action: duplicate → original staff_id + each target staff. ----
+            # Original staff_id can be None (admin chose to fan out an
+            # unassigned proposal); we still write one row per target.
+            staff_ids_to_write: list[Optional[int]] = [staff_id]
+            if override and override.action == "duplicate":
+                if not override.target_staff_ids:
                     raise HTTPException(
-                        status_code=409,
-                        detail=(
-                            f"Proposal at {shift_date} {start_t.strftime('%H:%M')}-"
-                            f"{end_t.strftime('%H:%M')} for staff_id={staff_id} "
-                            f"overlaps existing shift id={conflict.id} "
-                            f"({conflict.start_time.strftime('%H:%M')}-"
-                            f"{conflict.end_time.strftime('%H:%M')}). "
-                            "Phase 3 is additive only — resolve manually or wait for Phase 4."
-                        ),
+                        status_code=400,
+                        detail=f"duplicate override at index {idx} requires target_staff_ids",
                     )
+                # de-dupe in case admin ticks the same staff twice; skip
+                # original staff_id so we don't double-write the same row.
+                seen_targets: set[int] = set()
+                for tid in override.target_staff_ids:
+                    if tid == staff_id or tid in seen_targets:
+                        continue
+                    seen_targets.add(tid)
+                    staff_ids_to_write.append(tid)
 
             shift_type_str = ps.get("shift_type", "morning")
-            new_shift = RosterShift(
-                staff_id=staff_id,
-                date=shift_date,
-                end_date=end_date_val or shift_date,
-                start_time=start_t,
-                end_time=end_t,
-                shift_type=ShiftType(shift_type_str),
-                status=ShiftStatus.SCHEDULED,
-                notes=ps.get("reason"),
-                created_source="planner",
-                planner_run_id=request.run_id,
-            )
-            db.add(new_shift)
-            db.flush()  # populate new_shift.id
-            created_ids.append(new_shift.id)
-
-            for event in ps.get("events") or []:
-                booking_id = event.get("booking_id")
-                if booking_id is None:
-                    continue
-                # Defensive: skip if a link already exists (shouldn't happen
-                # for a brand-new shift, but cheap insurance).
-                existing_link = (
-                    db.query(ShiftBookingLink)
-                    .filter(
-                        ShiftBookingLink.shift_id == new_shift.id,
-                        ShiftBookingLink.booking_id == booking_id,
+            for write_staff_id in staff_ids_to_write:
+                # Phase 3 conflict check — only meaningful when staff is assigned.
+                if write_staff_id is not None:
+                    conflict = _shifts_overlap_for_staff(
+                        db,
+                        staff_id=write_staff_id,
+                        shift_date=shift_date,
+                        end_date=end_date_val,
+                        start_time=start_t,
+                        end_time=end_t,
                     )
-                    .first()
+                    if conflict is not None:
+                        raise HTTPException(
+                            status_code=409,
+                            detail=(
+                                f"Proposal at {shift_date} {start_t.strftime('%H:%M')}-"
+                                f"{end_t.strftime('%H:%M')} for staff_id={write_staff_id} "
+                                f"overlaps existing shift id={conflict.id} "
+                                f"({conflict.start_time.strftime('%H:%M')}-"
+                                f"{conflict.end_time.strftime('%H:%M')}). "
+                                "Phase 3 is additive only — resolve manually or wait for Phase 4."
+                            ),
+                        )
+
+                new_shift = RosterShift(
+                    staff_id=write_staff_id,
+                    date=shift_date,
+                    end_date=end_date_val or shift_date,
+                    start_time=start_t,
+                    end_time=end_t,
+                    shift_type=ShiftType(shift_type_str),
+                    status=ShiftStatus.SCHEDULED,
+                    notes=ps.get("reason"),
+                    created_source="planner",
+                    planner_run_id=request.run_id,
                 )
-                if existing_link:
-                    continue
-                db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=booking_id))
+                db.add(new_shift)
+                db.flush()  # populate new_shift.id
+                created_ids.append(new_shift.id)
+
+                for event in ps.get("events") or []:
+                    booking_id = event.get("booking_id")
+                    if booking_id is None:
+                        continue
+                    # Defensive: skip if a link already exists.
+                    existing_link = (
+                        db.query(ShiftBookingLink)
+                        .filter(
+                            ShiftBookingLink.shift_id == new_shift.id,
+                            ShiftBookingLink.booking_id == booking_id,
+                        )
+                        .first()
+                    )
+                    if existing_link:
+                        continue
+                    db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=booking_id))
+
+            if override:
+                applied_overrides.append({
+                    "proposal_index": idx,
+                    "action": override.action,
+                    "shift_ids": created_ids[-len(staff_ids_to_write):],
+                    "target_staff_ids": override.target_staff_ids,
+                })
 
         _audit_planner(
             db,
@@ -2970,6 +3025,7 @@ async def commit_planner_run(
                 "shifts_created": len(created_ids),
                 "shift_ids": created_ids,
                 "proposal_indexes": request.proposal_indexes,
+                "applied_overrides": applied_overrides,
             },
         )
 
@@ -3141,6 +3197,34 @@ async def get_planner_run(
         except (TypeError, ValueError):
             warnings = []
 
+    # Compute committed_indexes — proposal positions that currently have at
+    # least one matching scheduled roster_shift for this run. Survives undo
+    # (re-fetch returns []), survives re-commit (returns the new set).
+    # Match key: (date, start_time, end_time). staff_id is intentionally not
+    # in the key — duplicate produces multiple shifts with different staff
+    # for the same proposal, and unassign drops staff_id to None.
+    committed_indexes: list[int] = []
+    if proposal and proposal.get("proposed_shifts"):
+        committed_shifts = (
+            db.query(RosterShift)
+            .filter(
+                RosterShift.planner_run_id == run_id,
+                RosterShift.status == ShiftStatus.SCHEDULED,
+            )
+            .all()
+        )
+        # Bucket existing shifts by their (date, start_time, end_time) key
+        # so the per-proposal lookup is O(1).
+        committed_keys = set()
+        for s in committed_shifts:
+            committed_keys.add((s.date, s.start_time, s.end_time))
+        for idx, ps in enumerate(proposal["proposed_shifts"]):
+            ps_date = date_type.fromisoformat(ps["date"]) if isinstance(ps["date"], str) else ps["date"]
+            ps_start = parse_time_string(ps["start_time"]) if isinstance(ps["start_time"], str) else ps["start_time"]
+            ps_end = parse_time_string(ps["end_time"]) if isinstance(ps["end_time"], str) else ps["end_time"]
+            if (ps_date, ps_start, ps_end) in committed_keys:
+                committed_indexes.append(idx)
+
     return PlannerRunDetail(
         run_id=row.run_id,
         triggered_at=row.triggered_at,
@@ -3153,6 +3237,7 @@ async def get_planner_run(
         warnings=warnings,
         duration_ms=row.duration_ms,
         error_text=row.error_text,
+        committed_indexes=committed_indexes,
     )
 
 

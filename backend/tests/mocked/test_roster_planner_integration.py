@@ -750,6 +750,158 @@ class TestRunsEndpoints:
         assert r.json()["error_text"] == "ZeroDivisionError"
 
 
+class TestRunDetailCommittedIndexes:
+    """`committed_indexes` lets the FE hide the commit checkbox on already-
+    committed proposals, so an admin can't accidentally re-tick → 409.
+    Match key: (date, start_time, end_time) on roster_shifts where
+    planner_run_id == run_id and status='scheduled'."""
+
+    def test_happy_returns_indexes_for_proposals_that_have_a_matching_committed_shift(
+        self, client, mock_db,
+    ):
+        from db_models import PlannerRun, RosterShift
+
+        proposal = {
+            "run_id": "r-cm",
+            "proposed_shifts": [
+                _mk_proposal(staff_id=2, shift_date="2026-05-11"),
+                _mk_proposal(staff_id=3, shift_date="2026-05-12"),
+                _mk_proposal(staff_id=4, shift_date="2026-05-13"),
+            ],
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-cm", proposal=proposal)]
+        # Only proposals 0 and 2 have matching committed shifts; index 1 is
+        # uncommitted (admin hasn't ticked it yet, or ticked then undone).
+        mock_db._tables[RosterShift] = [
+            _mk_existing_shift(
+                shift_id=501, staff_id=2,
+                shift_date=date(2026, 5, 11),
+                start_time=time(8, 0), end_time=time(16, 0),
+                planner_run_id="r-cm",
+            ),
+            _mk_existing_shift(
+                shift_id=503, staff_id=4,
+                shift_date=date(2026, 5, 13),
+                start_time=time(8, 0), end_time=time(16, 0),
+                planner_run_id="r-cm",
+            ),
+        ]
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-cm")
+        assert r.status_code == 200
+        assert r.json()["committed_indexes"] == [0, 2]
+
+    def test_happy_empty_when_nothing_committed(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift
+
+        proposal = {
+            "run_id": "r-cm",
+            "proposed_shifts": [_mk_proposal(staff_id=2)],
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-cm", proposal=proposal)]
+        mock_db._tables[RosterShift] = []
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-cm")
+        assert r.status_code == 200
+        assert r.json()["committed_indexes"] == []
+
+    def test_edge_unassigned_committed_shift_still_matches_proposal(self, client, mock_db):
+        """An admin used the unassign override → the resulting roster_shift
+        has staff_id=None. The match key is (date, start_time, end_time), so
+        staff_id discrepancy doesn't matter — the proposal is still 'committed'."""
+        from db_models import PlannerRun, RosterShift
+
+        proposal = {
+            "run_id": "r-cm",
+            "proposed_shifts": [_mk_proposal(staff_id=2)],
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-cm", proposal=proposal)]
+        # Shift was committed with staff_id=None (via unassign override) but
+        # date/time match the original proposal exactly.
+        unassigned_shift = _mk_existing_shift(
+            shift_id=600, staff_id=None,
+            shift_date=date(2026, 5, 11),
+            start_time=time(8, 0), end_time=time(16, 0),
+            planner_run_id="r-cm",
+        )
+        mock_db._tables[RosterShift] = [unassigned_shift]
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-cm")
+        assert r.status_code == 200
+        assert r.json()["committed_indexes"] == [0]
+
+    def test_edge_duplicate_origin_marked_committed_even_with_multiple_shifts(
+        self, client, mock_db,
+    ):
+        """Duplicate produces N shifts sharing (date, start, end). The proposal
+        index should appear once in committed_indexes regardless of how many
+        shifts back it."""
+        from db_models import PlannerRun, RosterShift
+
+        proposal = {
+            "run_id": "r-cm",
+            "proposed_shifts": [_mk_proposal(staff_id=2)],
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-cm", proposal=proposal)]
+        mock_db._tables[RosterShift] = [
+            _mk_existing_shift(shift_id=700, staff_id=2,
+                shift_date=date(2026, 5, 11),
+                start_time=time(8, 0), end_time=time(16, 0),
+                planner_run_id="r-cm"),
+            _mk_existing_shift(shift_id=701, staff_id=3,
+                shift_date=date(2026, 5, 11),
+                start_time=time(8, 0), end_time=time(16, 0),
+                planner_run_id="r-cm"),
+            _mk_existing_shift(shift_id=702, staff_id=4,
+                shift_date=date(2026, 5, 11),
+                start_time=time(8, 0), end_time=time(16, 0),
+                planner_run_id="r-cm"),
+        ]
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-cm")
+        assert r.status_code == 200
+        assert r.json()["committed_indexes"] == [0]  # de-duped to single entry
+
+    def test_edge_shifts_from_other_runs_dont_pollute(self, client, mock_db):
+        """A roster_shift with a different planner_run_id (or NULL) must not
+        contribute to this run's committed_indexes. The query already filters
+        on planner_run_id but lock the regression with a test."""
+        from db_models import PlannerRun, RosterShift
+
+        proposal = {
+            "run_id": "r-cm",
+            "proposed_shifts": [_mk_proposal(staff_id=2)],
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-cm", proposal=proposal)]
+        # FakeQuery doesn't actually apply .filter() predicates, so this test
+        # documents the intent — only rows whose planner_run_id matches
+        # should show. The handler explicitly filters by run_id; the
+        # FakeQuery ignores it but returns whatever's in _tables.
+        # To make this assertion meaningful we feed only the OTHER run's row.
+        mock_db._tables[RosterShift] = []  # nothing for r-cm specifically
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-cm")
+        assert r.status_code == 200
+        assert r.json()["committed_indexes"] == []
+
+    def test_boundary_after_undo_committed_indexes_empty(self, client, mock_db):
+        """When all engine-created scheduled shifts for the run have been
+        deleted (i.e. undo ran), committed_indexes becomes empty so the
+        admin can re-tick and re-commit."""
+        from db_models import PlannerRun, RosterShift
+
+        proposal = {
+            "run_id": "r-cm",
+            "proposed_shifts": [_mk_proposal(staff_id=2)],
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-cm", proposal=proposal)]
+        mock_db._tables[RosterShift] = []  # undo wiped them
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-cm")
+        assert r.status_code == 200
+        assert r.json()["committed_indexes"] == []
+
+
 # =====================================================================================
 # POST /runs/{id}/feedback and GET /feedback — per-engine-decision QA review
 # =====================================================================================
@@ -1518,5 +1670,464 @@ class TestUndoAuth:
             assert r.status_code == 403
         finally:
             app.dependency_overrides.clear()
+
+
+# =====================================================================================
+# Phase 3.5 — commit-time overrides (unassign / delete / duplicate).
+# Per SPEC.md Happy/Unhappy/Edge/Boundary.
+# =====================================================================================
+
+
+class TestCommitOverrideUnassign:
+    """Override action='unassign' drops staff_id to None at write time."""
+
+    def test_happy_unassign_writes_shift_with_null_staff_id(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {"action": "unassign"}},
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["shifts_created"] == 1
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        shifts = [a for a in added if isinstance(a, RosterShift)]
+        assert len(shifts) == 1
+        assert shifts[0].staff_id is None  # the override dropped it
+
+    def test_edge_unassign_skips_overlap_check(self, client, mock_db):
+        """Even if an existing shift overlaps for the original staff_id,
+        unassigning means we no longer care — the unassigned write goes in."""
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        existing = _mk_existing_shift(staff_id=2)  # would normally conflict
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = [existing]
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {"action": "unassign"}},
+            },
+        )
+        # Unassigned shift writes through — no overlap check fires for None.
+        assert r.status_code == 200
+        assert r.json()["shifts_created"] == 1
+
+
+class TestCommitOverrideDelete:
+    """Override action='delete' silently skips writing this proposal."""
+
+    def test_happy_delete_skips_one_of_many(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(
+            proposed_shifts=[
+                _mk_proposal(staff_id=2, shift_date="2026-05-11"),
+                _mk_proposal(staff_id=3, shift_date="2026-05-12"),
+                _mk_proposal(staff_id=4, shift_date="2026-05-13"),
+            ]
+        )
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0, 1, 2],
+                "overrides": {"1": {"action": "delete"}},
+            },
+        )
+        assert r.status_code == 200
+        # Index 1 deleted → 2 shifts written instead of 3.
+        assert r.json()["shifts_created"] == 2
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        shifts = [a for a in added if isinstance(a, RosterShift)]
+        staff_ids = sorted(s.staff_id for s in shifts)
+        assert staff_ids == [2, 4]  # staff_id=3 was deleted
+
+    def test_edge_delete_unticked_index_is_no_op(self, client, mock_db):
+        """An override on a proposal index that wasn't ticked has no effect —
+        the proposal isn't being written either way."""
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal()])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [],          # nothing ticked
+                "overrides": {"0": {"action": "delete"}},
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["shifts_created"] == 0
+
+
+class TestCommitOverrideDuplicate:
+    """Override action='duplicate' writes original + N additional shifts."""
+
+    def test_happy_duplicate_writes_n_plus_one(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "target_staff_ids": [3, 4],
+                }},
+            },
+        )
+        assert r.status_code == 200
+        # original (staff_id=2) + 2 targets (3, 4) = 3 shifts
+        assert r.json()["shifts_created"] == 3
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        shifts = [a for a in added if isinstance(a, RosterShift)]
+        staff_ids = sorted(s.staff_id for s in shifts)
+        assert staff_ids == [2, 3, 4]
+
+    def test_edge_duplicate_dedupes_targets_against_original(self, client, mock_db):
+        """If admin ticks the original staff_id as a target, don't double-write."""
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "target_staff_ids": [2, 3, 3],  # 2 = original; 3 ticked twice
+                }},
+            },
+        )
+        assert r.status_code == 200
+        # original + one unique target (3) = 2 shifts
+        assert r.json()["shifts_created"] == 2
+
+    def test_unhappy_duplicate_without_targets_returns_400(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal()])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "target_staff_ids": [],
+                }},
+            },
+        )
+        assert r.status_code == 400
+        assert "target_staff_ids" in r.json()["detail"]
+
+    def test_unhappy_duplicate_target_overlaps_existing(self, client, mock_db):
+        """If a duplicate target staff has an overlapping shift, the whole
+        commit fails atomically — no half-written rows."""
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        # Existing shift for staff_id=3 overlaps the proposal time.
+        existing = _mk_existing_shift(staff_id=3)
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = [existing]
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "target_staff_ids": [3],
+                }},
+            },
+        )
+        assert r.status_code == 409
+        assert mock_db._committed is False  # atomic rollback
+
+    def test_boundary_duplicate_creates_booking_links_for_each_shift(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift, ShiftBookingLink
+
+        events = [
+            {"booking_id": 11, "booking_reference": "TAG-A", "event_type": "drop_off",
+             "event_time": "2026-05-11T08:30:00+01:00"},
+        ]
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2, events=events)])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "target_staff_ids": [3, 4],
+                }},
+            },
+        )
+        assert r.status_code == 200
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        link_rows = [a for a in added if isinstance(a, ShiftBookingLink)]
+        # 3 shifts × 1 event each = 3 link rows, all to booking 11.
+        assert len(link_rows) == 3
+        assert all(l.booking_id == 11 for l in link_rows)
+
+
+class TestCommitOverrideUnsupportedActions:
+    """merge / split are recognised by the schema but rejected at commit
+    until Phase 3.6 lands. Surfaces explicitly so the FE can grey them out."""
+
+    def test_unhappy_merge_action_returns_400(self, client, mock_db):
+        from db_models import PlannerRun
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal()])
+        mock_db._tables[PlannerRun] = [run]
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "merge",
+                    "merge_with_index": 1,
+                    "merged_staff_id": 2,
+                }},
+            },
+        )
+        assert r.status_code == 400
+        assert "merge" in r.json()["detail"]
+
+    def test_unhappy_split_action_returns_400(self, client, mock_db):
+        from db_models import PlannerRun
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal()])
+        mock_db._tables[PlannerRun] = [run]
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "split",
+                    "split_at_time": "12:00",
+                    "first_half_staff_id": 2,
+                    "second_half_staff_id": 3,
+                }},
+            },
+        )
+        assert r.status_code == 400
+
+
+class TestCommitOverrideAudit:
+    """Audit log captures the override applied per index."""
+
+    def test_audit_payload_includes_applied_overrides(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift, AuditLog, AuditLogEvent
+
+        run = _mk_planner_run(
+            proposed_shifts=[
+                _mk_proposal(staff_id=2),
+                _mk_proposal(staff_id=3, shift_date="2026-05-12"),
+            ]
+        )
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0, 1],
+                "overrides": {
+                    "0": {"action": "unassign"},
+                    "1": {"action": "delete"},
+                },
+            },
+        )
+        assert r.status_code == 200
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        audit_rows = [a for a in added if isinstance(a, AuditLog)]
+        committed = [a for a in audit_rows if a.event == AuditLogEvent.PLANNER_RUN_COMMITTED]
+        assert len(committed) == 1
+        payload = json.loads(committed[0].event_data)
+        applied = payload.get("applied_overrides", [])
+        actions = sorted(o["action"] for o in applied)
+        assert actions == ["delete", "unassign"]
+
+    def test_audit_records_unassign_alone(self, client, mock_db):
+        """Audit payload should include the unassign action label even when
+        it's the only override applied. Locks the round-trip for solo cases."""
+        from db_models import PlannerRun, RosterShift, AuditLog, AuditLogEvent
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {"action": "unassign"}},
+            },
+        )
+        assert r.status_code == 200
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        audit_rows = [a for a in added if isinstance(a, AuditLog)]
+        committed = [a for a in audit_rows if a.event == AuditLogEvent.PLANNER_RUN_COMMITTED]
+        payload = json.loads(committed[0].event_data)
+        applied = payload.get("applied_overrides", [])
+        assert len(applied) == 1
+        assert applied[0]["action"] == "unassign"
+        assert applied[0]["proposal_index"] == 0
+
+
+class TestCommitOverrideBoundaries:
+    """Edge cases that exercise interactions between actions."""
+
+    def test_boundary_delete_every_proposal_writes_zero_shifts(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(
+            proposed_shifts=[
+                _mk_proposal(staff_id=2),
+                _mk_proposal(staff_id=3, shift_date="2026-05-12"),
+                _mk_proposal(staff_id=4, shift_date="2026-05-13"),
+            ]
+        )
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0, 1, 2],
+                "overrides": {
+                    "0": {"action": "delete"},
+                    "1": {"action": "delete"},
+                    "2": {"action": "delete"},
+                },
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["shifts_created"] == 0
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        shifts = [a for a in added if isinstance(a, RosterShift)]
+        assert len(shifts) == 0
+
+    def test_edge_duplicate_of_unassigned_writes_only_targets(self, client, mock_db):
+        """Original staff_id=None, override duplicates to [3, 4]. The 'original'
+        unassigned write is suppressed by the dedupe (None ≠ 3 ≠ 4 but None is
+        the lead staff and target list provides the actual writes). With None
+        original, we still write 1 unassigned + 2 targeted = 3 shifts."""
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=None)])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "target_staff_ids": [3, 4],
+                }},
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["shifts_created"] == 3
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        shifts = [a for a in added if isinstance(a, RosterShift)]
+        staff_ids = [s.staff_id for s in shifts]
+        # 1 unassigned (None) + 2 targeted; order matches insertion sequence.
+        assert sorted(staff_ids, key=lambda x: (x is not None, x)) == [None, 3, 4]
+
+    def test_edge_mixed_overrides_in_single_commit(self, client, mock_db):
+        """Three different override actions applied in one commit. Locks the
+        per-index dispatch — each index gets its own action without bleeding."""
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(
+            proposed_shifts=[
+                _mk_proposal(staff_id=2, shift_date="2026-05-11"),  # unassign
+                _mk_proposal(staff_id=3, shift_date="2026-05-12"),  # delete
+                _mk_proposal(staff_id=4, shift_date="2026-05-13"),  # duplicate to [5]
+                _mk_proposal(staff_id=6, shift_date="2026-05-14"),  # no override (plain)
+            ]
+        )
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0, 1, 2, 3],
+                "overrides": {
+                    "0": {"action": "unassign"},
+                    "1": {"action": "delete"},
+                    "2": {"action": "duplicate", "target_staff_ids": [5]},
+                },
+            },
+        )
+        assert r.status_code == 200
+        # 1 (unassigned) + 0 (deleted) + 2 (duplicated 4 + 5) + 1 (plain 6) = 4
+        assert r.json()["shifts_created"] == 4
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        shifts = [a for a in added if isinstance(a, RosterShift)]
+        # Expect: None (was 2, unassigned), 4, 5 (duplicate), 6 (plain).
+        # Index 1 (staff_id=3) should NOT appear.
+        staff_ids = sorted([s.staff_id for s in shifts], key=lambda x: (x is not None, x))
+        assert staff_ids == [None, 4, 5, 6]
+        assert 3 not in staff_ids
 
 

@@ -1230,6 +1230,28 @@
   outline-offset: -2px;
 }
 
+/* Already-committed proposal — checkbox hidden, badge shown, card subtly
+   greened to make the state obvious without drowning out other shifts. */
+.prp-shift.committed {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.prp-committed-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  padding: 2px 8px;
+  background: #16a34a;
+  color: white;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 /* Undo button sits beside each row in the run history pane. */
 .prp-history-row-wrap {
   display: flex;

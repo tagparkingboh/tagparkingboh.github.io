@@ -146,6 +146,17 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
     } catch {/* non-fatal — list is informational */}
   }
 
+  async function refreshSelectedDetail() {
+    if (!selectedRunId) return
+    try {
+      const res = await fetch(
+        `${apiUrl}/api/admin/qa/roster-planner/runs/${selectedRunId}`,
+        { headers: authHeader }
+      )
+      if (res.ok) setDetail(await res.json())
+    } catch {/* non-fatal — banner already informs the user */}
+  }
+
   function toggleCommitTick(idx) {
     setSelectedToCommit((prev) => {
       const next = new Set(prev)
@@ -157,9 +168,11 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
 
   function selectAllNew() {
     if (!detail?.proposal?.proposed_shifts) return
+    const committed = new Set(detail.committed_indexes || [])
     const all = new Set()
     detail.proposal.proposed_shifts.forEach((s, idx) => {
-      if (s.kind === 'new') all.add(idx)
+      // Skip committed proposals — re-ticking them would just hit a 409 overlap.
+      if (s.kind === 'new' && !committed.has(idx)) all.add(idx)
     })
     setSelectedToCommit(all)
   }
@@ -197,7 +210,7 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
       )
       setSelectedToCommit(new Set())
       setCommitConfirmOpen(false)
-      await refreshRunsList()
+      await Promise.all([refreshRunsList(), refreshSelectedDetail()])
     } catch (err) {
       setError(err.message || 'Commit failed')
       setCommitConfirmOpen(false)
@@ -227,7 +240,7 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           : 'Undo had nothing to remove (run was not committed or already undone).'
       )
       setUndoConfirmRunId(null)
-      await refreshRunsList()
+      await Promise.all([refreshRunsList(), refreshSelectedDetail()])
     } catch (err) {
       setError(err.message || 'Undo failed')
       setUndoConfirmRunId(null)
@@ -321,6 +334,7 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
                 shiftsByDate={shiftsByDate}
                 sortedDates={sortedDates}
                 selectedToCommit={selectedToCommit}
+                committedIndexes={new Set(detail.committed_indexes || [])}
                 onToggleCommitTick={toggleCommitTick}
                 onShiftClick={(shift, idx) => {
                   setFeedbackShift(shift)
@@ -910,6 +924,7 @@ function ProposalCalendar({
   shiftsByDate,
   sortedDates,
   selectedToCommit,
+  committedIndexes,
   onToggleCommitTick,
   onShiftClick,
   onShiftAction,
@@ -942,6 +957,7 @@ function ProposalCalendar({
                   key={s.__index}
                   shift={s}
                   isCommitTicked={selectedToCommit?.has(s.__index) ?? false}
+                  isCommitted={committedIndexes?.has(s.__index) ?? false}
                   onToggleCommitTick={() => onToggleCommitTick?.(s.__index)}
                   onCardClick={() => onShiftClick?.(s, s.__index)}
                   onAction={(action) => onShiftAction?.(s, s.__index, action, posInDay, dayShifts)}
@@ -960,6 +976,7 @@ function ProposalCalendar({
 function ShiftCard({
   shift,
   isCommitTicked,
+  isCommitted,
   onToggleCommitTick,
   onCardClick,
   onAction,
@@ -974,9 +991,17 @@ function ShiftCard({
     <div
       className={`prp-shift ${unassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'} ${
         isCommitTicked ? 'commit-ticked' : ''
-      }`}
+      } ${isCommitted ? 'committed' : ''}`}
     >
-      {isCommittable && (
+      {isCommittable && isCommitted && (
+        <span
+          className="prp-committed-badge"
+          title="This proposal has already been committed to the live roster — undo the run if you want to remove it"
+        >
+          ✓ Committed
+        </span>
+      )}
+      {isCommittable && !isCommitted && (
         <label
           className="prp-commit-tick"
           onClick={(e) => e.stopPropagation()}
