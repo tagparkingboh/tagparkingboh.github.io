@@ -5651,7 +5651,7 @@ async def get_session_tracking_report(
                 period_key = log_time.strftime("%Y-%m-%d")
 
             event_key = log.event.value if hasattr(log.event, 'value') else str(log.event)
-            session_key = log.session_id or f"anon_{log.id}"
+            session_key = log.session_id or (f"ref_{log.booking_reference}" if log.booking_reference else f"anon_{log.id}")
             period_data[period_key][event_key].add(session_key)
 
     # Build response data

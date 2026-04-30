@@ -311,6 +311,67 @@ class TestSessionTrackingWithData:
         assert cumulative["dates_selected"] == 2
         assert cumulative["flight_selected"] == 1
 
+    def test_dedupes_by_booking_reference_when_session_missing(self, client, mock_db):
+        """Repeat events with no session_id but the same booking_reference collapse to one."""
+        import pytz
+        from datetime import datetime as dt
+
+        uk_tz = pytz.timezone('Europe/London')
+        now = dt.now(uk_tz)
+
+        mock_logs = [
+            MagicMock(
+                id=101,
+                session_id=None,
+                booking_reference="TAG-DEQ61923",
+                event=AuditLogEvent.BOOKING_CONFIRMED,
+                created_at=now,
+            ),
+            MagicMock(
+                id=102,
+                session_id=None,
+                booking_reference="TAG-DEQ61923",
+                event=AuditLogEvent.BOOKING_CONFIRMED,
+                created_at=now,
+            ),
+            MagicMock(
+                id=103,
+                session_id=None,
+                booking_reference=None,
+                event=AuditLogEvent.BOOKING_CONFIRMED,
+                created_at=now,
+            ),
+            MagicMock(
+                id=104,
+                session_id=None,
+                booking_reference=None,
+                event=AuditLogEvent.BOOKING_CONFIRMED,
+                created_at=now,
+            ),
+        ]
+
+        def query_side_effect(model):
+            query_mock = MagicMock()
+            if hasattr(model, '__name__') and model.__name__ == 'Booking':
+                query_mock.filter.return_value.all.return_value = []
+            else:
+                query_mock.filter.return_value.all.return_value = mock_logs
+            return query_mock
+
+        mock_db.query.side_effect = query_side_effect
+
+        response = client.get(
+            "/api/admin/reports/session-tracking?period=daily&refresh=true"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # 2 logs share booking_reference -> collapse to 1.
+        # 2 logs have no session and no booking_reference -> each counts via anon_{id} -> 2.
+        # Total: 1 + 2 = 3 unique "sessions" for booking_confirmed.
+        assert data["cumulative"]["counts"]["booking_confirmed"] == 3
+
 
 # =============================================================================
 # Tests - Authentication
