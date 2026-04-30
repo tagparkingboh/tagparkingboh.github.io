@@ -1737,6 +1737,16 @@
   padding: 1.25rem 1.5rem;
 }
 
+/* Override the global modal-h3 padding so the name lines up with the rest of
+   the popover body (date, time, phone). */
+.roster-calendar .team-shift-popover h3 {
+  padding: 0 0 0.75rem 0;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: inherit;
+  text-align: left;
+}
+
 .team-shift-popover .team-shift-phone {
   color: #D9FF00;
   text-decoration: none;
