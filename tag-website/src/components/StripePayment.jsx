@@ -101,18 +101,8 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentSucceeded, setPaymentSucceeded] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
-  const [formReady, setFormReady] = useState(false)
-
-  // Log when Stripe form becomes ready
-  useEffect(() => {
-    if (stripe && elements && !formReady) {
-      setFormReady(true)
-      logAuditEvent(sessionId, 'stripe_form_ready', {
-        customer_email: billingDetails.email,
-        booking_reference: bookingReference
-      })
-    }
-  }, [stripe, elements, formReady, sessionId, billingDetails.email, bookingReference])
+  const [elementReady, setElementReady] = useState(false)
+  const [elementComplete, setElementComplete] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -120,12 +110,13 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
     console.log('Stripe loaded:', !!stripe)
     console.log('Elements loaded:', !!elements)
 
-    if (!stripe || !elements) {
-      console.error('Stripe or Elements not loaded')
+    if (!stripe || !elements || !elementReady) {
+      console.error('Stripe, Elements, or PaymentElement not ready')
       logAuditEvent(sessionId, 'stripe_form_error', {
-        error: 'Stripe or Elements not loaded',
+        error: 'Stripe or Elements not ready',
         customer_email: billingDetails.email,
-        booking_reference: bookingReference
+        booking_reference: bookingReference,
+        element_ready: elementReady
       })
       return
     }
@@ -259,6 +250,14 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
   return (
     <div className="stripe-form">
       <PaymentElement
+        onReady={() => {
+          setElementReady(true)
+          logAuditEvent(sessionId, 'stripe_form_ready', {
+            customer_email: billingDetails.email,
+            booking_reference: bookingReference
+          })
+        }}
+        onChange={(e) => setElementComplete(!!e.complete)}
         onLoadError={(error) => {
           console.error('PaymentElement load error:', error)
           logAuditEvent(sessionId, 'stripe_form_error', {
@@ -303,7 +302,7 @@ function CheckoutForm({ onSuccess, onError, bookingReference, amount, billingDet
       <button
         type="button"
         onClick={handleSubmit}
-        disabled={!stripe || isProcessing || paymentSucceeded}
+        disabled={!stripe || !elements || !elementReady || !elementComplete || isProcessing || paymentSucceeded}
         className="stripe-pay-btn"
       >
         {paymentSucceeded ? 'Payment Complete' : isProcessing ? 'Processing...' : `Pay ${amount}`}
