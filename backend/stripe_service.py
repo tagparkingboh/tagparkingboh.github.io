@@ -238,7 +238,8 @@ def calculate_price_in_pence(
     package: str = None,
     drop_off_date: Optional[date] = None,
     custom_price: Optional[float] = None,
-    duration_days: Optional[int] = None
+    duration_days: Optional[int] = None,
+    pickup_date: Optional[date] = None,
 ) -> int:
     """
     Calculate the price in pence for Stripe based on dynamic pricing.
@@ -248,6 +249,7 @@ def calculate_price_in_pence(
         drop_off_date: The drop-off date (used to determine advance booking tier)
         custom_price: Optional override price in pounds
         duration_days: Trip duration in days (1-14) - takes precedence over package
+        pickup_date: Actual pickup date (pre-billing-cutoff) used for peak-day check
 
     Returns:
         Price in pence
@@ -260,7 +262,7 @@ def calculate_price_in_pence(
 
     # Use flexible duration pricing if duration provided
     if duration_days is not None and drop_off_date:
-        price = BookingService.calculate_price_for_duration(duration_days, drop_off_date)
+        price = BookingService.calculate_price_for_duration(duration_days, drop_off_date, pickup_date)
     elif drop_off_date and package:
         # Legacy package-based pricing
         price = BookingService.calculate_price(package, drop_off_date)

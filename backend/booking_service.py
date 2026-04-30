@@ -323,6 +323,41 @@ class BookingService:
         prices = cls.get_package_prices()
         return prices[package][tier]
 
+    EARLY_PICKUP_CUTOFF_HHMM = (2, 30)
+
+    @classmethod
+    def billing_pickup_date(cls, pickup_date: date, pickup_collection_time: Optional[str]) -> date:
+        """Apply the early-morning pickup rule for billing.
+
+        If the customer-meet time is before the EARLY_PICKUP_CUTOFF_HHMM (02:30),
+        the pickup is billed as occurring on the previous calendar day. This
+        keeps a 7-night trip that lands at e.g. 00:50 from being charged as 8 days.
+
+        Aligns with the roster's pickup-only re-bucket heuristic at the same
+        cutoff (Roster Calendar, commit b2a747f).
+
+        Args:
+            pickup_date: The pickup calendar date as the request was built
+                (frontend already +1's for overnight collections that wrap midnight).
+            pickup_collection_time: HH:MM string for the customer-meet time
+                (= flight arrival + PICKUP_OFFSET_MINUTES). May be None / malformed —
+                in which case no adjustment is made.
+
+        Returns:
+            Effective billing pickup date.
+        """
+        if not pickup_collection_time:
+            return pickup_date
+        try:
+            h, m = map(int, pickup_collection_time.split(":")[:2])
+        except (ValueError, AttributeError):
+            return pickup_date
+        if not (0 <= h < 24 and 0 <= m < 60):
+            return pickup_date
+        if (h, m) < cls.EARLY_PICKUP_CUTOFF_HHMM:
+            return pickup_date - timedelta(days=1)
+        return pickup_date
+
     @classmethod
     def get_duration_days(cls, drop_off_date: date, pickup_date: date) -> int:
         """

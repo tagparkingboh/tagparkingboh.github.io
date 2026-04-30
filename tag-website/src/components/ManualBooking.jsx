@@ -208,12 +208,25 @@ function ManualBooking({ token }) {
       try {
         const dropoffStr = format(formData.dropoffDate, 'yyyy-MM-dd')
         const pickupStr = format(formData.pickupDate, 'yyyy-MM-dd')
+
+        // Customer-meet time = arrival + 30. Backend uses this to apply the
+        // 02:30 cutoff (early-morning pickups bill as the previous day).
+        let pickupTimeStr = null
+        if (formData.arrivalTime) {
+          const [h, m] = formData.arrivalTime.split(':').map(Number)
+          if (Number.isInteger(h) && Number.isInteger(m)) {
+            const totalMins = (h * 60 + m + 30) % (24 * 60)
+            pickupTimeStr = `${String(Math.floor(totalMins / 60)).padStart(2, '0')}:${String(totalMins % 60).padStart(2, '0')}`
+          }
+        }
+
         const response = await fetch(`${API_URL}/api/pricing/calculate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             drop_off_date: dropoffStr,
             pickup_date: pickupStr,
+            ...(pickupTimeStr ? { pickup_time: pickupTimeStr } : {}),
           }),
         })
         if (response.ok) {
@@ -234,7 +247,7 @@ function ManualBooking({ token }) {
     }
 
     calculatePrice()
-  }, [formData.dropoffDate, formData.pickupDate])
+  }, [formData.dropoffDate, formData.pickupDate, formData.arrivalTime])
 
   // Parse time string (HH:MM) to hours and minutes
   const parseTimeString = (timeStr) => {

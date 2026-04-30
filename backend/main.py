@@ -792,6 +792,7 @@ class PriceCalculationRequest(BaseModel):
     """Request to calculate booking price."""
     drop_off_date: date
     pickup_date: date
+    pickup_time: Optional[str] = None  # HH:MM customer-meet time; pickups before 02:30 bill as previous day
 
 
 class PriceCalculationResponse(BaseModel):
@@ -823,7 +824,10 @@ async def calculate_price(request: PriceCalculationRequest):
     """
     from booking_service import BookingService
 
-    duration = (request.pickup_date - request.drop_off_date).days
+    # Apply 02:30 cutoff: pickups before 02:30 are billed as the previous day.
+    billing_pickup = BookingService.billing_pickup_date(request.pickup_date, request.pickup_time)
+
+    duration = (billing_pickup - request.drop_off_date).days
 
     # Validate duration (1-60 days supported)
     if duration < 1 or duration > 60:
@@ -833,7 +837,7 @@ async def calculate_price(request: PriceCalculationRequest):
         )
 
     # Determine package (for legacy compatibility)
-    package = BookingService.get_package_for_duration(request.drop_off_date, request.pickup_date)
+    package = BookingService.get_package_for_duration(request.drop_off_date, billing_pickup)
 
     # Generate package name based on duration
     if duration == 7:
@@ -850,8 +854,10 @@ async def calculate_price(request: PriceCalculationRequest):
     days_in_advance = (request.drop_off_date - today).days
     advance_tier = BookingService.get_advance_tier(request.drop_off_date)
 
-    # Calculate price using anchor pricing with daily increment
-    price = BookingService.calculate_price_for_duration(duration, request.drop_off_date)
+    # Calculate price using anchor pricing with daily increment.
+    # Pass the *actual* pickup_date (pre-cutoff) for peak-day check — peak applies
+    # to the day the customer is actually present, not the day we bill them for.
+    price = BookingService.calculate_price_for_duration(duration, request.drop_off_date, request.pickup_date)
 
     # Get all prices for this duration (keyed by day number as string)
     all_duration_prices = BookingService.get_all_duration_prices()
@@ -10196,15 +10202,25 @@ async def create_payment(
         pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
         print(f"[DEBUG] Parsed dropoff_date: {dropoff_date}, pickup_date: {pickup_date}")
 
-        # Calculate duration for flexible pricing
-        duration_days = (pickup_date - dropoff_date).days
-        print(f"[DEBUG] Trip duration: {duration_days} days")
+        # Apply 02:30 cutoff: collection times before 02:30 bill as the previous day.
+        # Collection time = flight arrival + PICKUP_OFFSET_MINUTES (handled by helper).
+        billing_pickup_date = BookingService.billing_pickup_date(
+            pickup_date,
+            pickup_time_from_arrival(request.pickup_flight_time),
+        )
 
-        # Calculate base amount in pence (using flexible duration pricing)
+        # Calculate duration for flexible pricing using the billing pickup date.
+        duration_days = (billing_pickup_date - dropoff_date).days
+        print(f"[DEBUG] Trip duration: {duration_days} days (billing_pickup={billing_pickup_date}, actual_pickup={pickup_date})")
+
+        # Calculate base amount in pence (using flexible duration pricing).
+        # Pass actual pickup_date (pre-cutoff) for peak-day check — peak applies
+        # to the day the customer is physically present, not the billing day.
         original_amount = calculate_price_in_pence(
             package=request.package,
             drop_off_date=dropoff_date,
-            duration_days=duration_days
+            duration_days=duration_days,
+            pickup_date=pickup_date,
         )
 
         # Check for promo code and apply discount if valid

@@ -855,48 +855,8 @@ function Bookings() {
     fetchArrivals()
   }, [formData.pickupDate, API_BASE_URL])
 
-  // Fetch dynamic pricing when dates change
-  useEffect(() => {
-    const fetchPricing = async () => {
-      if (!formData.dropoffDate || !formData.pickupDate) {
-        setPricingInfo(null)
-        return
-      }
-
-      setPricingLoading(true)
-      try {
-        const dropoffStr = format(formData.dropoffDate, 'yyyy-MM-dd')
-        const pickupStr = format(formData.pickupDate, 'yyyy-MM-dd')
-
-        const response = await fetch(`${API_BASE_URL}/api/pricing/calculate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            drop_off_date: dropoffStr,
-            pickup_date: pickupStr,
-          }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          setPricingInfo(data)
-          // Auto-set the package based on duration
-          setFormData(prev => ({
-            ...prev,
-            package: data.package, // "quick" or "longer"
-          }))
-        } else {
-          setPricingInfo(null)
-        }
-      } catch (error) {
-        console.error('Error fetching pricing:', error)
-        setPricingInfo(null)
-      } finally {
-        setPricingLoading(false)
-      }
-    }
-    fetchPricing()
-  }, [formData.dropoffDate, formData.pickupDate, API_BASE_URL])
+  // Pricing useEffect lives below, after `selectedArrivalFlight` is declared,
+  // because it needs the resolved arrival time to apply the 02:30 cutoff.
 
   // Auto-select return origin based on departure destination
   useEffect(() => {
@@ -1008,6 +968,63 @@ function Bookings() {
     }
     return formData.pickupDate
   }, [formData.pickupDate, selectedArrivalFlight])
+
+  // Fetch dynamic pricing when dates or arrival time change.
+  // Lives here (rather than alongside other date useEffects) because it needs
+  // selectedArrivalFlight, declared just above.
+  useEffect(() => {
+    const fetchPricing = async () => {
+      if (!formData.dropoffDate || !formData.pickupDate) {
+        setPricingInfo(null)
+        return
+      }
+
+      setPricingLoading(true)
+      try {
+        const dropoffStr = format(formData.dropoffDate, 'yyyy-MM-dd')
+        const pickupStr = format(actualPickupDate || formData.pickupDate, 'yyyy-MM-dd')
+
+        // Customer-meet time = arrival + 30. Backend uses this to apply the
+        // 02:30 cutoff (early-morning pickups bill as the previous day).
+        const arrivalHHMM = arrivalTimeOverride || manualArrivalData.flightTime || selectedArrivalFlight?.time || null
+        let pickupTimeStr = null
+        if (arrivalHHMM) {
+          const [h, m] = arrivalHHMM.split(':').map(Number)
+          if (Number.isInteger(h) && Number.isInteger(m)) {
+            const totalMins = (h * 60 + m + 30) % (24 * 60)
+            pickupTimeStr = `${String(Math.floor(totalMins / 60)).padStart(2, '0')}:${String(totalMins % 60).padStart(2, '0')}`
+          }
+        }
+
+        const response = await fetch(`${API_BASE_URL}/api/pricing/calculate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            drop_off_date: dropoffStr,
+            pickup_date: pickupStr,
+            ...(pickupTimeStr ? { pickup_time: pickupTimeStr } : {}),
+          }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setPricingInfo(data)
+          setFormData(prev => ({
+            ...prev,
+            package: data.package, // "quick" or "longer"
+          }))
+        } else {
+          setPricingInfo(null)
+        }
+      } catch (error) {
+        console.error('Error fetching pricing:', error)
+        setPricingInfo(null)
+      } finally {
+        setPricingLoading(false)
+      }
+    }
+    fetchPricing()
+  }, [formData.dropoffDate, formData.pickupDate, actualPickupDate, arrivalTimeOverride, manualArrivalData.flightTime, selectedArrivalFlight?.time, API_BASE_URL])
 
   // Helper function to format minutes to HH:MM
   function formatMinutesToTime(totalMinutes) {
