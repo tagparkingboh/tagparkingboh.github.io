@@ -1179,11 +1179,13 @@
   font-size: 0.85rem;
 }
 
-/* Per-shift checkbox sits in the top-left corner of the proposal card. */
+/* Per-shift checkbox sits in the top-right corner of the proposal card —
+   uses otherwise-empty whitespace, doesn't fight the time/staff text on
+   the left or the action buttons below the divider. */
 .prp-commit-tick {
   position: absolute;
-  top: 6px;
-  left: 6px;
+  top: 8px;
+  right: 8px;
   z-index: 2;
   display: flex;
   align-items: center;
@@ -1192,8 +1194,8 @@
 }
 
 .prp-commit-tick input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   cursor: pointer;
   accent-color: #D9FF00;
 }
