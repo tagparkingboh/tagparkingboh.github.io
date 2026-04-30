@@ -269,9 +269,19 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
             holidays, and the locked rules. Never writes.
           </p>
         </div>
-        <button className="prp-run-btn" onClick={runNow}>
-          Run engine now
-        </button>
+        <div className="prp-header-actions">
+          <button className="prp-run-btn" onClick={runNow}>
+            Run engine now
+          </button>
+          <button
+            type="button"
+            className="prp-refresh-btn"
+            onClick={() => window.location.reload()}
+            title="Refresh the page (reloads runs, settings, and FE bundle)"
+          >
+            ⟳ Refresh
+          </button>
+        </div>
       </div>
 
       {error && <div className="prp-error">{error}</div>}
