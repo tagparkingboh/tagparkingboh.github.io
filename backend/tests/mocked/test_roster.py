@@ -646,6 +646,10 @@ class TestEmployeeAPI:
             obj.last_login = None
             obj.is_admin = False
             obj.is_active = True
+            # Roster Planner schema field added 2026-04 (User.auto_assign_excluded
+            # boolean NOT NULL DEFAULT false). Pydantic EmployeeResponse rejects
+            # the MagicMock placeholder otherwise.
+            obj.auto_assign_excluded = False
 
         mock_db.refresh.side_effect = mock_refresh
 
@@ -1269,6 +1273,10 @@ class TestPhoneNumberValidation:
             obj.last_login = None
             obj.is_admin = False
             obj.is_active = True
+            # Roster Planner schema field added 2026-04 (User.auto_assign_excluded
+            # boolean NOT NULL DEFAULT false). Pydantic EmployeeResponse rejects
+            # the MagicMock placeholder otherwise.
+            obj.auto_assign_excluded = False
 
         mock_db.refresh.side_effect = mock_refresh
 
@@ -1295,6 +1303,10 @@ class TestPhoneNumberValidation:
             obj.last_login = None
             obj.is_admin = False
             obj.is_active = True
+            # Roster Planner schema field added 2026-04 (User.auto_assign_excluded
+            # boolean NOT NULL DEFAULT false). Pydantic EmployeeResponse rejects
+            # the MagicMock placeholder otherwise.
+            obj.auto_assign_excluded = False
 
         mock_db.refresh.side_effect = mock_refresh
 
@@ -1321,6 +1333,10 @@ class TestPhoneNumberValidation:
             obj.last_login = None
             obj.is_admin = False
             obj.is_active = True
+            # Roster Planner schema field added 2026-04 (User.auto_assign_excluded
+            # boolean NOT NULL DEFAULT false). Pydantic EmployeeResponse rejects
+            # the MagicMock placeholder otherwise.
+            obj.auto_assign_excluded = False
 
         mock_db.refresh.side_effect = mock_refresh
 

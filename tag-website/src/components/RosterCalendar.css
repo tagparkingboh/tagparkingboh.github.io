@@ -1709,6 +1709,45 @@
   border: 1px solid #f0d080;
 }
 
+/* Teammates' shifts (employee mode, view-only): muted, dashed border, clickable */
+.day-shift-badge.team-only {
+  background: #2a2a35;
+  opacity: 0.65;
+  border: 1px dashed #6a6a8a;
+  cursor: pointer;
+}
+
+.day-shift-badge.team-only:hover {
+  opacity: 1;
+  background: #34344a;
+}
+
+.day-shift-badge.team-only .shift-initials {
+  background: #6a6a8a;
+  color: #fff;
+}
+
+.day-shift-badge.team-only .shift-time-mini {
+  color: #b0b0c0;
+}
+
+/* Team-shift popover */
+.team-shift-popover {
+  max-width: 420px;
+  padding: 1.25rem 1.5rem;
+}
+
+.team-shift-popover .team-shift-phone {
+  color: #D9FF00;
+  text-decoration: none;
+  font-family: monospace;
+  font-size: 1rem;
+}
+
+.team-shift-popover .team-shift-phone:hover {
+  text-decoration: underline;
+}
+
 .shift-time-mini {
   font-family: monospace;
   font-size: 0.65rem;

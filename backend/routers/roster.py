@@ -25,6 +25,7 @@ from models import (
     RosterProposalResponse,
     PlannerRunListItem, PlannerRunDetail,
     PlannerRunFeedbackCreate, PlannerRunFeedbackResponse, PlannerRunFeedbackOverride,
+    TeamShiftResponse,
 )
 from roster_planner import propose_roster, PlannerSettings, UK_TZ
 from roster_planner_runner import (
@@ -93,6 +94,31 @@ def get_staff_initials(user: User) -> str:
     if user:
         return f"{user.first_name[0]}{user.last_name[0]}".upper()
     return None
+
+
+def normalise_uk_phone(phone: Optional[str]) -> Optional[str]:
+    """Normalise a UK phone number to E.164 (+44...) for display + tel: links.
+
+    Handles the common storage variations across the users table:
+      '07911123456' → '+447911123456'
+      '+447911123456' → '+447911123456'
+      '447911123456' → '+447911123456'
+      '07911 123 456' → '+447911123456' (spaces stripped)
+    Empty / None / unrecognisable input → None.
+    """
+    if not phone:
+        return None
+    digits_only = "".join(c for c in phone if c.isdigit() or c == "+")
+    if not digits_only or digits_only == "+":
+        return None
+    if digits_only.startswith("+"):
+        return digits_only
+    if digits_only.startswith("44"):
+        return "+" + digits_only
+    if digits_only.startswith("0"):
+        return "+44" + digits_only[1:]
+    # Unrecognised — surface as-is so it's visible rather than silently dropped.
+    return digits_only
 
 
 def check_shift_overlap(
@@ -1497,6 +1523,62 @@ async def get_employee_shifts(
     shifts = query.order_by(RosterShift.date, RosterShift.start_time).all()
 
     return [shift_to_response(shift, db) for shift in shifts]
+
+
+@router.get("/employee/team-shifts", response_model=List[TeamShiftResponse])
+async def get_team_shifts(
+    date_from: Optional[date_type] = Query(None, description="Filter from date (YYYY-MM-DD)"),
+    date_to: Optional[date_type] = Query(None, description="Filter to date (YYYY-MM-DD)"),
+    week_start: Optional[date_type] = Query(None, description="Filter by week starting date"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """View-only feed of teammates' shifts for the Employee calendar.
+
+    Excludes the requester's own shifts (those come from /api/employee/shifts)
+    and unassigned shifts (those come from /api/employee/available-shifts).
+    Returns a deliberately stripped shape — initials, name, phone, date, hours
+    — so a future bug can't render bookings/notes/customer details on the
+    Employee page.
+    """
+    query = db.query(RosterShift).filter(
+        RosterShift.staff_id.isnot(None),
+        RosterShift.staff_id != current_user.id,
+    )
+
+    # Apply date filters (include overnight shifts that end in range)
+    if date_from and date_to:
+        query = query.filter(
+            or_(
+                and_(RosterShift.date >= date_from, RosterShift.date <= date_to),
+                and_(RosterShift.end_date >= date_from, RosterShift.end_date <= date_to),
+            )
+        )
+    elif week_start:
+        week_end = week_start + timedelta(days=6)
+        query = query.filter(
+            or_(
+                and_(RosterShift.date >= week_start, RosterShift.date <= week_end),
+                and_(RosterShift.end_date >= week_start, RosterShift.end_date <= week_end),
+            )
+        )
+
+    shifts = query.order_by(RosterShift.date, RosterShift.start_time).all()
+
+    return [
+        TeamShiftResponse(
+            initials=get_staff_initials(s.staff),
+            first_name=s.staff.first_name,
+            last_name=s.staff.last_name,
+            phone=normalise_uk_phone(s.staff.phone),
+            date=s.date,
+            end_date=s.end_date or s.date,
+            start_time=format_time(s.start_time),
+            end_time=format_time(s.end_time),
+        )
+        for s in shifts
+        if s.staff is not None
+    ]
 
 
 @router.get("/employee/weekly-hours")

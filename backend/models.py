@@ -607,6 +607,23 @@ class OperationalWarning(BaseModel):
     severity: str = "warning"  # "warning" or "error"
 
 
+class TeamShiftResponse(BaseModel):
+    """View-only response for teammates' shifts on the Employee calendar.
+
+    Deliberately stripped: no shift id, no staff_id, no shift_type, no notes,
+    no booking refs. Initials render in the grid; full name + phone show in
+    the per-shift popover for coworker coordination.
+    """
+    initials: str
+    first_name: str
+    last_name: str
+    phone: Optional[str] = None
+    date: date_type
+    end_date: date_type
+    start_time: str  # HH:MM
+    end_time: str    # HH:MM
+
+
 # =====================================================================================
 # Roster Planner — Phase 1 (read-only preview)
 # Rules locked 2026-04-24, see backend/docs/SPEC.md § Roster Planner.

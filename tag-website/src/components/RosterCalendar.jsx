@@ -164,6 +164,10 @@ const formatTimeInput24h = (input, previousValue = '') => {
 function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrigger = 0, renderBookingActions = null }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [shifts, setShifts] = useState([])
+  // Teammates' shifts (view-only, employee mode only). Stripped shape from
+  // /api/employee/team-shifts — no id, no staff_id, no shift_type.
+  const [teamShifts, setTeamShifts] = useState([])
+  const [teamShiftPopover, setTeamShiftPopover] = useState(null) // { initials, first_name, last_name, phone, date, end_date, start_time, end_time }
   const [bookings, setBookings] = useState([])
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(false)
@@ -350,6 +354,38 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       }
     } catch (err) {
       console.error('Failed to load shifts:', err)
+    }
+  }, [token, currentDate, isAdmin])
+
+  // Fetch teammates' shifts (view-only, employee mode only).
+  const fetchTeamShifts = useCallback(async () => {
+    if (!token || isAdmin) {
+      setTeamShifts([])
+      return
+    }
+    try {
+      const year = currentDate.getFullYear()
+      const month = currentDate.getMonth()
+      const startDate = new Date(year, month, 1)
+      const endDate = new Date(year, month + 1, 0)
+
+      const params = new URLSearchParams({
+        date_from: formatDateISO(startDate),
+        date_to: formatDateISO(endDate),
+      })
+
+      const response = await fetch(`${API_URL}/api/employee/team-shifts?${params}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setTeamShifts(Array.isArray(data) ? data : [])
+      }
+    } catch (err) {
+      console.error('Failed to load team shifts:', err)
     }
   }, [token, currentDate, isAdmin])
 
@@ -573,13 +609,13 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     setLoading(true)
     setError('')
     try {
-      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates(), fetchHolidays(), fetchAvailableShifts(), fetchUnavailabilities()])
+      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates(), fetchHolidays(), fetchAvailableShifts(), fetchUnavailabilities(), fetchTeamShifts()])
     } catch (err) {
       setError('Failed to load data')
     } finally {
       setLoading(false)
     }
-  }, [fetchBookings, fetchShifts, fetchBlockedDates, fetchHolidays, fetchAvailableShifts, fetchUnavailabilities])
+  }, [fetchBookings, fetchShifts, fetchBlockedDates, fetchHolidays, fetchAvailableShifts, fetchUnavailabilities, fetchTeamShifts])
 
   // Fetch all staff (admin only) - includes both admins and employees
   const fetchStaff = useCallback(async () => {
@@ -805,6 +841,21 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     return grouped
   }, [shifts])
 
+  // Group teammates' view-only shifts by date (employee mode only).
+  const teamShiftsByDate = useMemo(() => {
+    const grouped = {}
+    teamShifts.forEach((shift) => {
+      const isOvernight = shift.end_date && shift.end_date !== shift.date
+      const startKey = shift.date
+      if (!grouped[startKey]) grouped[startKey] = []
+      grouped[startKey].push({ ...shift, isOvernight })
+    })
+    Object.keys(grouped).forEach((d) => {
+      grouped[d].sort((a, b) => a.start_time.localeCompare(b.start_time))
+    })
+    return grouped
+  }, [teamShifts])
+
   // Get data for a specific date
   const getDateKey = (day) => {
     if (!day) return null
@@ -817,6 +868,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
   const getBookingsForDay = (day) => {
     const dateKey = getDateKey(day)
     return bookingsByDate[dateKey] || { dropoffs: [], pickups: [] }
+  }
+
+  const getTeamShiftsForDay = (day) => {
+    const dateKey = getDateKey(day)
+    return teamShiftsByDate[dateKey] || []
   }
 
   const getShiftsForDay = (day) => {
@@ -1881,14 +1937,16 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
               {week.map((day, dayIndex) => {
                 const dayBookings = getBookingsForDay(day)
                 const dayShifts = getShiftsForDay(day)
+                const dayTeamShifts = !isAdmin ? getTeamShiftsForDay(day) : []
                 const dateKey = getDateKey(day)
                 const blockedInfo = getBlockedInfoForDay(day)
                 const dayHolidays = dateKey ? getHolidaysForDate(dateKey) : []
                 const hasDropoffs = dayBookings.dropoffs.length > 0
                 const hasPickups = dayBookings.pickups.length > 0
                 const hasShifts = dayShifts.length > 0
+                const hasTeamShifts = dayTeamShifts.length > 0
                 const hasHolidays = dayHolidays.length > 0
-                const hasContent = hasDropoffs || hasPickups || hasShifts || blockedInfo || hasHolidays
+                const hasContent = hasDropoffs || hasPickups || hasShifts || hasTeamShifts || blockedInfo || hasHolidays
 
                 return (
                   <div
@@ -1960,6 +2018,23 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                               </span>
                               {shift.staff_initials && <span className="shift-initials">{shift.staff_initials}</span>}
                               {!shift.staff_initials && <span className="shift-unassigned-mini">?</span>}
+                            </div>
+                          ))}
+                          {/* Teammates' shifts (employee mode, view-only) */}
+                          {hasTeamShifts && dayTeamShifts.map((tShift, idx) => (
+                            <div
+                              key={`team-${idx}-${tShift.start_time}`}
+                              className={`day-shift-badge team-only ${tShift.isOvernight ? 'overnight' : ''}`}
+                              title={`${tShift.first_name} ${tShift.last_name}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setTeamShiftPopover(tShift)
+                              }}
+                            >
+                              <span className="shift-time-mini">
+                                {formatTime(tShift.start_time)}-{formatTime(tShift.end_time)}
+                              </span>
+                              <span className="shift-initials">{tShift.initials}</span>
                             </div>
                           ))}
                         </div>
@@ -3723,6 +3798,36 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 disabled={savingUnavail || !unavailForm.start_date || !unavailForm.end_date}
               >
                 {savingUnavail ? 'Saving...' : 'Mark Unavailable'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Team shift popover (view-only, employee mode) */}
+      {teamShiftPopover && (
+        <div className="modal-overlay" onClick={() => setTeamShiftPopover(null)}>
+          <div className="modal-content team-shift-popover" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>{teamShiftPopover.first_name} {teamShiftPopover.last_name}</h3>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <strong>{formatDateUK(teamShiftPopover.date)}</strong>
+              {teamShiftPopover.end_date && teamShiftPopover.end_date !== teamShiftPopover.date && (
+                <> – {formatDateUK(teamShiftPopover.end_date)}</>
+              )}
+            </div>
+            <div style={{ marginBottom: '0.75rem' }}>
+              {formatTime(teamShiftPopover.start_time)} – {formatTime(teamShiftPopover.end_time)}
+            </div>
+            {teamShiftPopover.phone && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <a href={`tel:${teamShiftPopover.phone}`} className="team-shift-phone">
+                  {teamShiftPopover.phone}
+                </a>
+              </div>
+            )}
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setTeamShiftPopover(null)}>
+                Close
               </button>
             </div>
           </div>
