@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from database import get_db
-from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession, BookingStatus, ShiftBookingLink, EmployeeHoliday, HolidayType, RosterPlannerSettings as DbRosterPlannerSettings
+from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Session as DbSession, BookingStatus, ShiftBookingLink, EmployeeHoliday, HolidayType, RosterPlannerSettings as DbRosterPlannerSettings, AuditLog, AuditLogEvent
 from models import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     RosterShiftCreate, RosterShiftUpdate, RosterShiftResponse,
@@ -25,6 +25,7 @@ from models import (
     RosterProposalResponse,
     PlannerRunListItem, PlannerRunDetail,
     PlannerRunFeedbackCreate, PlannerRunFeedbackResponse, PlannerRunFeedbackOverride,
+    PlannerCommitRequest, PlannerCommitResponse, PlannerUndoResponse,
     TeamShiftResponse,
 )
 from roster_planner import propose_roster, PlannerSettings, UK_TZ
@@ -2736,6 +2737,316 @@ async def propose_roster_endpoint(
         started_at=started_at,
     )
     return result
+
+
+# =====================================================================================
+# Phase 3 — additive commit + undo (locked rules per SPEC.md 2026-04-24)
+#   - Writes ONLY new shifts on empty slots (no overwrites).
+#   - Each created row carries planner_run_id + created_source='planner'.
+#   - Undo = DELETE WHERE planner_run_id = ? AND status = 'scheduled'
+#     (CONFIRMED engine shifts are deliberately excluded from undo).
+#   - QA-only: defence-in-depth gate via require_qa_admin.
+#   - Audit: PLANNER_RUN_COMMITTED / PLANNER_RUN_UNDONE.
+# =====================================================================================
+
+
+def _shifts_overlap_for_staff(
+    db: Session,
+    *,
+    staff_id: int,
+    shift_date: date_type,
+    end_date: Optional[date_type],
+    start_time: time,
+    end_time: time,
+) -> Optional[RosterShift]:
+    """Return any existing shift for this staff that overlaps the proposal.
+
+    Same-day match is the common case; for overnight proposals (end_date >
+    date) the check fans across both dates so we don't write a Mon 22:00 →
+    Tue 02:00 shift on top of someone's Tue 00:00 → Tue 06:00.
+    """
+    candidate_dates = {shift_date}
+    if end_date and end_date != shift_date:
+        candidate_dates.add(end_date)
+    existing = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.staff_id == staff_id,
+            or_(
+                RosterShift.date.in_(candidate_dates),
+                RosterShift.end_date.in_(candidate_dates),
+            ),
+        )
+        .all()
+    )
+    for s in existing:
+        # Same-day strict overlap — for overnight cases we approximate by
+        # treating any shift on the same date as a candidate (Phase 3 is
+        # additive only; if the admin really wants to overwrite they must
+        # delete the existing shift manually first).
+        if start_time < (s.end_time) and end_time > (s.start_time):
+            return s
+        # Cross-day adjacency: existing covers candidate's tail / head
+        if end_date and end_date != shift_date and s.date == end_date:
+            if s.start_time < end_time:
+                return s
+        if s.end_date and s.end_date != s.date and s.end_date == shift_date:
+            if s.end_time > start_time:
+                return s
+    return None
+
+
+def _audit_planner(
+    db: Session,
+    *,
+    event: AuditLogEvent,
+    user: User,
+    run_id: str,
+    payload: dict,
+) -> None:
+    """Append-only audit row for planner commit / undo."""
+    try:
+        log = AuditLog(
+            session_id=f"planner-{run_id}",
+            booking_reference=None,
+            event=event,
+            event_data=json.dumps({
+                "run_id": run_id,
+                "by_user_id": user.id,
+                "by_user_email": user.email,
+                **payload,
+            }),
+        )
+        db.add(log)
+    except Exception:
+        # Never fail the operation because of an audit write.
+        pass
+
+
+@router.post(
+    "/admin/qa/roster-planner/commit",
+    response_model=PlannerCommitResponse,
+)
+async def commit_planner_run(
+    request: PlannerCommitRequest,
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    """Commit selected proposals from a recorded run as new roster_shifts.
+
+    Phase 3 semantics (locked):
+      - Only `kind='new'` proposals are eligible. `extend` and
+        `untouched_for_reason` are rejected.
+      - Each created row carries `planner_run_id` + `created_source='planner'`.
+      - For each proposal's events, a `ShiftBookingLink` row is created so
+        the shift covers the customer's drop-off / pick-up.
+      - If any selected proposal overlaps an existing shift for the same
+        staff_id, the entire request fails with 409 — atomic.
+      - Defensive: same proposal_index requested twice in the body is rejected.
+
+    Body:
+      - run_id: str — must reference an existing planner_runs row
+      - proposal_indexes: list[int] — positions in the run's proposed_shifts
+    """
+    from db_models import PlannerRun, AuditLog as _AuditLogImported  # noqa: F401
+
+    run = db.query(PlannerRun).filter(PlannerRun.run_id == request.run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run {request.run_id} not found")
+    if not run.proposal_json:
+        raise HTTPException(status_code=400, detail="Run has no proposal payload")
+
+    try:
+        proposal = json.loads(run.proposal_json)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail=f"Run proposal_json corrupt: {exc}")
+
+    proposed_shifts = proposal.get("proposed_shifts", [])
+
+    # Reject duplicate indexes early so we don't commit the same proposal twice.
+    seen: set[int] = set()
+    for idx in request.proposal_indexes:
+        if idx in seen:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Duplicate proposal_index {idx}",
+            )
+        seen.add(idx)
+
+    # Validate every requested index before doing any writes (atomicity).
+    selected: list[dict] = []
+    for idx in request.proposal_indexes:
+        if idx < 0 or idx >= len(proposed_shifts):
+            raise HTTPException(
+                status_code=400,
+                detail=f"proposal_index {idx} out of range (0..{len(proposed_shifts) - 1})",
+            )
+        ps = proposed_shifts[idx]
+        if ps.get("kind") != "new":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"proposal_index {idx} has kind={ps.get('kind')!r}; "
+                    "Phase 3 commits only kind='new' proposals."
+                ),
+            )
+        selected.append(ps)
+
+    created_ids: list[int] = []
+    try:
+        for ps in selected:
+            shift_date = date_type.fromisoformat(ps["date"]) if isinstance(ps["date"], str) else ps["date"]
+            end_date_val = ps.get("end_date")
+            if end_date_val and isinstance(end_date_val, str):
+                end_date_val = date_type.fromisoformat(end_date_val)
+            start_t = parse_time_string(ps["start_time"]) if isinstance(ps["start_time"], str) else ps["start_time"]
+            end_t = parse_time_string(ps["end_time"]) if isinstance(ps["end_time"], str) else ps["end_time"]
+            staff_id = ps.get("staff_id")  # may be None (unassigned shift)
+
+            # Phase 3 conflict check — only meaningful when staff is assigned.
+            if staff_id is not None:
+                conflict = _shifts_overlap_for_staff(
+                    db,
+                    staff_id=staff_id,
+                    shift_date=shift_date,
+                    end_date=end_date_val,
+                    start_time=start_t,
+                    end_time=end_t,
+                )
+                if conflict is not None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Proposal at {shift_date} {start_t.strftime('%H:%M')}-"
+                            f"{end_t.strftime('%H:%M')} for staff_id={staff_id} "
+                            f"overlaps existing shift id={conflict.id} "
+                            f"({conflict.start_time.strftime('%H:%M')}-"
+                            f"{conflict.end_time.strftime('%H:%M')}). "
+                            "Phase 3 is additive only — resolve manually or wait for Phase 4."
+                        ),
+                    )
+
+            shift_type_str = ps.get("shift_type", "morning")
+            new_shift = RosterShift(
+                staff_id=staff_id,
+                date=shift_date,
+                end_date=end_date_val or shift_date,
+                start_time=start_t,
+                end_time=end_t,
+                shift_type=ShiftType(shift_type_str),
+                status=ShiftStatus.SCHEDULED,
+                notes=ps.get("reason"),
+                created_source="planner",
+                planner_run_id=request.run_id,
+            )
+            db.add(new_shift)
+            db.flush()  # populate new_shift.id
+            created_ids.append(new_shift.id)
+
+            for event in ps.get("events") or []:
+                booking_id = event.get("booking_id")
+                if booking_id is None:
+                    continue
+                # Defensive: skip if a link already exists (shouldn't happen
+                # for a brand-new shift, but cheap insurance).
+                existing_link = (
+                    db.query(ShiftBookingLink)
+                    .filter(
+                        ShiftBookingLink.shift_id == new_shift.id,
+                        ShiftBookingLink.booking_id == booking_id,
+                    )
+                    .first()
+                )
+                if existing_link:
+                    continue
+                db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=booking_id))
+
+        _audit_planner(
+            db,
+            event=AuditLogEvent.PLANNER_RUN_COMMITTED,
+            user=current_user,
+            run_id=request.run_id,
+            payload={
+                "shifts_created": len(created_ids),
+                "shift_ids": created_ids,
+                "proposal_indexes": request.proposal_indexes,
+            },
+        )
+
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Commit failed: {exc}")
+
+    return PlannerCommitResponse(
+        run_id=request.run_id,
+        shifts_created=len(created_ids),
+        shift_ids=created_ids,
+    )
+
+
+@router.delete(
+    "/admin/qa/roster-planner/runs/{run_id}",
+    response_model=PlannerUndoResponse,
+)
+async def undo_planner_run(
+    run_id: str,
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    """Undo a committed run by deleting its engine-created scheduled shifts.
+
+    Idempotent — a run that was never committed (or already undone) returns
+    `shifts_deleted=0` with no error.
+
+    Locked rules:
+      - Only deletes `status = 'scheduled'` rows. Once a shift becomes
+        CONFIRMED (jockey accepted, etc.) it is permanently the saved
+        roster's responsibility — undo can't pull it back.
+      - `shift_booking_links` cascade-delete via the FK, so customer
+        bookings are simply unlinked, not deleted.
+    """
+    targets = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.planner_run_id == run_id,
+            RosterShift.status == ShiftStatus.SCHEDULED,
+        )
+        .all()
+    )
+    deleted_ids: list[int] = []
+
+    try:
+        for shift in targets:
+            # Remove links first so we don't rely on FK cascade behaviour
+            # (which is set up via UniqueConstraint, not ON DELETE on the
+            # SQLAlchemy mapping in all cases — be explicit).
+            db.query(ShiftBookingLink).filter(
+                ShiftBookingLink.shift_id == shift.id
+            ).delete(synchronize_session=False)
+            deleted_ids.append(shift.id)
+            db.delete(shift)
+
+        _audit_planner(
+            db,
+            event=AuditLogEvent.PLANNER_RUN_UNDONE,
+            user=current_user,
+            run_id=run_id,
+            payload={
+                "shifts_deleted": len(deleted_ids),
+                "shift_ids": deleted_ids,
+            },
+        )
+
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Undo failed: {exc}")
+
+    return PlannerUndoResponse(run_id=run_id, shifts_deleted=len(deleted_ids))
 
 
 # =====================================================================================

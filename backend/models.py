@@ -772,6 +772,35 @@ class PlannerRunDetail(BaseModel):
     error_text: Optional[str] = None
 
 
+class PlannerCommitRequest(BaseModel):
+    """Body of POST /api/admin/qa/roster-planner/commit.
+
+    `proposal_indexes` references entries in the run's `proposed_shifts` list
+    (by position). Phase 3 commits only `kind == 'new'` proposals on empty
+    slots; any proposal whose [start, end] overlaps an existing shift for the
+    same staff_id is rejected with the whole transaction aborted (atomic).
+    """
+    run_id: str
+    proposal_indexes: List[int]
+
+
+class PlannerCommitResponse(BaseModel):
+    """Response from POST /api/admin/qa/roster-planner/commit."""
+    run_id: str
+    shifts_created: int
+    shift_ids: List[int]
+
+
+class PlannerUndoResponse(BaseModel):
+    """Response from DELETE /api/admin/qa/roster-planner/runs/{run_id}.
+
+    Idempotent — undoing a run with no remaining engine-created scheduled
+    shifts returns shifts_deleted=0, no error.
+    """
+    run_id: str
+    shifts_deleted: int
+
+
 class PlannerRunFeedbackOverride(BaseModel):
     """Structured "what I would have done" capture from the edit modal
     and the per-card action buttons (Duplicate / Merge / Split / Delete).

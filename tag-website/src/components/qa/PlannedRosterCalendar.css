@@ -1102,3 +1102,135 @@
   border-color: #2563eb;
   background: #eff6ff;
 }
+
+/* =============================================================================
+   Phase 3 — commit bar, per-shift checkbox, undo button.
+   ========================================================================== */
+.prp-commit-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 12px 0;
+  background: #1a1a2e;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  color: #e8e8f0;
+}
+
+.prp-commit-counter {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.prp-commit-counter strong {
+  color: #D9FF00;
+}
+
+.prp-commit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.prp-commit-secondary {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid #4a4a5a;
+  color: #cccccc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.prp-commit-secondary:hover:not(:disabled) {
+  border-color: #D9FF00;
+  color: #D9FF00;
+}
+
+.prp-commit-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.prp-commit-primary {
+  padding: 6px 16px;
+  background: #D9FF00;
+  border: 1px solid #D9FF00;
+  color: #1a1a2e;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.prp-commit-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.prp-commit-message {
+  flex-basis: 100%;
+  padding: 8px 10px;
+  background: #0f3a1f;
+  border: 1px solid #1f6a37;
+  border-radius: 6px;
+  color: #b8e8c8;
+  font-size: 0.85rem;
+}
+
+/* Per-shift checkbox sits in the top-left corner of the proposal card. */
+.prp-commit-tick {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.prp-commit-tick input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #D9FF00;
+}
+
+.prp-shift {
+  position: relative;
+}
+
+.prp-shift.commit-ticked {
+  outline: 2px solid #D9FF00;
+  outline-offset: -2px;
+}
+
+/* Undo button sits beside each row in the run history pane. */
+.prp-history-row-wrap {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  margin-bottom: 4px;
+}
+
+.prp-history-row-wrap .prp-history-row {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.prp-history-undo-btn {
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid #4a4a5a;
+  color: #cccccc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.prp-history-undo-btn:hover {
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}

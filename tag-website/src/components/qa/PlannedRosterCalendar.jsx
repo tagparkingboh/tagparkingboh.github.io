@@ -30,6 +30,21 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
   const [actionDayShifts, setActionDayShifts] = useState([])
   const [actionPos, setActionPos] = useState(0)
 
+  // Phase 3 commit / undo state.
+  // selectedToCommit: Set of proposed_shifts indexes the admin has ticked.
+  //   Reset whenever the run selection changes (a different run = different
+  //   index space).
+  // commitConfirmOpen: shows the confirm dialog before POSTing /commit.
+  // committing: true while the POST is in flight, disables UI.
+  // commitMessage: success / error banner shown briefly after a commit.
+  // undoConfirmRunId: the run_id whose undo confirm dialog is open (or null).
+  const [selectedToCommit, setSelectedToCommit] = useState(() => new Set())
+  const [commitConfirmOpen, setCommitConfirmOpen] = useState(false)
+  const [committing, setCommitting] = useState(false)
+  const [commitMessage, setCommitMessage] = useState(null)
+  const [undoConfirmRunId, setUndoConfirmRunId] = useState(null)
+  const [undoing, setUndoing] = useState(false)
+
   const authHeader = useMemo(
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
     [token]
@@ -62,6 +77,14 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
       cancelled = true
     }
   }, [apiUrl, authHeader])
+
+  // Reset commit selection whenever the active run changes — index space
+  // is per-run, so leaving stale ticks across runs would commit the wrong
+  // proposals.
+  useEffect(() => {
+    setSelectedToCommit(new Set())
+    setCommitMessage(null)
+  }, [selectedRunId])
 
   // Detail load — when the selection changes.
   useEffect(() => {
@@ -110,6 +133,106 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
       if (list.length > 0) setSelectedRunId(list[0].run_id)
     } catch (err) {
       setError(err.message || 'Failed to run engine')
+    }
+  }
+
+  async function refreshRunsList() {
+    try {
+      const res = await fetch(
+        `${apiUrl}/api/admin/qa/roster-planner/runs?limit=50`,
+        { headers: authHeader }
+      )
+      if (res.ok) setRuns(await res.json())
+    } catch {/* non-fatal — list is informational */}
+  }
+
+  function toggleCommitTick(idx) {
+    setSelectedToCommit((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
+  function selectAllNew() {
+    if (!detail?.proposal?.proposed_shifts) return
+    const all = new Set()
+    detail.proposal.proposed_shifts.forEach((s, idx) => {
+      if (s.kind === 'new') all.add(idx)
+    })
+    setSelectedToCommit(all)
+  }
+
+  function clearSelection() {
+    setSelectedToCommit(new Set())
+  }
+
+  async function performCommit() {
+    if (!selectedRunId || selectedToCommit.size === 0) return
+    setCommitting(true)
+    setError(null)
+    setCommitMessage(null)
+    try {
+      const indexes = Array.from(selectedToCommit).sort((a, b) => a - b)
+      const res = await fetch(
+        `${apiUrl}/api/admin/qa/roster-planner/commit`,
+        {
+          method: 'POST',
+          headers: { ...authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            run_id: selectedRunId,
+            proposal_indexes: indexes,
+          }),
+        }
+      )
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(body?.detail || `Commit failed (HTTP ${res.status})`)
+      }
+      setCommitMessage(
+        `Committed ${body.shifts_created} shift${
+          body.shifts_created === 1 ? '' : 's'
+        }. They are now live in the roster.`
+      )
+      setSelectedToCommit(new Set())
+      setCommitConfirmOpen(false)
+      await refreshRunsList()
+    } catch (err) {
+      setError(err.message || 'Commit failed')
+      setCommitConfirmOpen(false)
+    } finally {
+      setCommitting(false)
+    }
+  }
+
+  async function performUndo(runId) {
+    setUndoing(true)
+    setError(null)
+    setCommitMessage(null)
+    try {
+      const res = await fetch(
+        `${apiUrl}/api/admin/qa/roster-planner/runs/${runId}`,
+        { method: 'DELETE', headers: authHeader }
+      )
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(body?.detail || `Undo failed (HTTP ${res.status})`)
+      }
+      setCommitMessage(
+        body.shifts_deleted > 0
+          ? `Undone — ${body.shifts_deleted} shift${
+              body.shifts_deleted === 1 ? '' : 's'
+            } removed.`
+          : 'Undo had nothing to remove (run was not committed or already undone).'
+      )
+      setUndoConfirmRunId(null)
+      await refreshRunsList()
+    } catch (err) {
+      setError(err.message || 'Undo failed')
+      setUndoConfirmRunId(null)
+    } finally {
+      setUndoing(false)
     }
   }
 
@@ -173,9 +296,22 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
                 windowStart={detail.window_start}
                 windowEnd={detail.window_end}
               />
+              <CommitBar
+                selectedCount={selectedToCommit.size}
+                newProposalCount={
+                  detail.proposal?.proposed_shifts?.filter((s) => s.kind === 'new').length ?? 0
+                }
+                onSelectAll={selectAllNew}
+                onClear={clearSelection}
+                onCommit={() => setCommitConfirmOpen(true)}
+                committing={committing}
+                message={commitMessage}
+              />
               <ProposalCalendar
                 shiftsByDate={shiftsByDate}
                 sortedDates={sortedDates}
+                selectedToCommit={selectedToCommit}
+                onToggleCommitTick={toggleCommitTick}
                 onShiftClick={(shift, idx) => {
                   setFeedbackShift(shift)
                   setFeedbackShiftIndex(idx)
@@ -197,39 +333,68 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           <h3>Recent runs</h3>
           {runs.length === 0 && <div className="prp-empty">No history yet.</div>}
           {runs.map((r) => (
-            <button
+            <div
               key={r.run_id}
-              className={`prp-history-row ${
-                r.run_id === selectedRunId ? 'selected' : ''
-              } ${r.has_error ? 'errored' : ''}`}
-              onClick={() => setSelectedRunId(r.run_id)}
-              title={r.run_id}
+              className={`prp-history-row-wrap ${r.run_id === selectedRunId ? 'selected' : ''}`}
             >
-              <div className="prp-history-time">
-                {new Date(r.triggered_at).toLocaleString('en-GB', {
-                  timeZone: 'Europe/London',
-                  day: '2-digit',
-                  month: 'short',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </div>
-              <div className="prp-history-trigger">{r.trigger_event}</div>
-              {r.summary && (
-                <div className="prp-history-summary">
-                  {r.summary.new_shifts ?? 0} new
-                  {r.summary.unmanned_events
-                    ? ` · ${r.summary.unmanned_events} unmanned`
-                    : ''}
+              <button
+                className={`prp-history-row ${
+                  r.run_id === selectedRunId ? 'selected' : ''
+                } ${r.has_error ? 'errored' : ''}`}
+                onClick={() => setSelectedRunId(r.run_id)}
+                title={r.run_id}
+              >
+                <div className="prp-history-time">
+                  {new Date(r.triggered_at).toLocaleString('en-GB', {
+                    timeZone: 'Europe/London',
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
                 </div>
-              )}
-              {r.has_error && (
-                <div className="prp-history-error">⚠ error</div>
-              )}
-            </button>
+                <div className="prp-history-trigger">{r.trigger_event}</div>
+                {r.summary && (
+                  <div className="prp-history-summary">
+                    {r.summary.new_shifts ?? 0} new
+                    {r.summary.unmanned_events
+                      ? ` · ${r.summary.unmanned_events} unmanned`
+                      : ''}
+                  </div>
+                )}
+                {r.has_error && (
+                  <div className="prp-history-error">⚠ error</div>
+                )}
+              </button>
+              <button
+                className="prp-history-undo-btn"
+                onClick={() => setUndoConfirmRunId(r.run_id)}
+                title="Undo this run — deletes engine-created shifts that haven't been confirmed"
+              >
+                Undo
+              </button>
+            </div>
           ))}
         </div>
       </div>
+
+      {commitConfirmOpen && (
+        <CommitConfirmModal
+          count={selectedToCommit.size}
+          onCancel={() => setCommitConfirmOpen(false)}
+          onConfirm={performCommit}
+          submitting={committing}
+        />
+      )}
+
+      {undoConfirmRunId && (
+        <UndoConfirmModal
+          runId={undoConfirmRunId}
+          onCancel={() => setUndoConfirmRunId(null)}
+          onConfirm={() => performUndo(undoConfirmRunId)}
+          submitting={undoing}
+        />
+      )}
 
       {feedbackShift && detail && (
         <FeedbackModal
@@ -731,7 +896,14 @@ function Counter({ label, value, tone = 'neutral' }) {
   )
 }
 
-function ProposalCalendar({ shiftsByDate, sortedDates, onShiftClick, onShiftAction }) {
+function ProposalCalendar({
+  shiftsByDate,
+  sortedDates,
+  selectedToCommit,
+  onToggleCommitTick,
+  onShiftClick,
+  onShiftAction,
+}) {
   if (sortedDates.length === 0) {
     return (
       <div className="prp-empty">
@@ -759,6 +931,8 @@ function ProposalCalendar({ shiftsByDate, sortedDates, onShiftClick, onShiftActi
                 <ShiftCard
                   key={s.__index}
                   shift={s}
+                  isCommitTicked={selectedToCommit?.has(s.__index) ?? false}
+                  onToggleCommitTick={() => onToggleCommitTick?.(s.__index)}
                   onCardClick={() => onShiftClick?.(s, s.__index)}
                   onAction={(action) => onShiftAction?.(s, s.__index, action, posInDay, dayShifts)}
                   hasPrev={posInDay > 0}
@@ -773,12 +947,38 @@ function ProposalCalendar({ shiftsByDate, sortedDates, onShiftClick, onShiftActi
   )
 }
 
-function ShiftCard({ shift, onCardClick, onAction, hasPrev, hasNext }) {
+function ShiftCard({
+  shift,
+  isCommitTicked,
+  onToggleCommitTick,
+  onCardClick,
+  onAction,
+  hasPrev,
+  hasNext,
+}) {
   const unassigned = !shift.staff_id
+  // Phase 3: only `kind === 'new'` proposals can be committed. Other kinds
+  // ('extend', 'untouched_for_reason') are display-only.
+  const isCommittable = shift.kind === 'new' || !shift.kind
   return (
     <div
-      className={`prp-shift ${unassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'}`}
+      className={`prp-shift ${unassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'} ${
+        isCommitTicked ? 'commit-ticked' : ''
+      }`}
     >
+      {isCommittable && (
+        <label
+          className="prp-commit-tick"
+          onClick={(e) => e.stopPropagation()}
+          title="Tick to include this shift when committing"
+        >
+          <input
+            type="checkbox"
+            checked={!!isCommitTicked}
+            onChange={onToggleCommitTick}
+          />
+        </label>
+      )}
       <div
         className="prp-shift-body"
         role="button"
@@ -1514,4 +1714,103 @@ function isoAddDays(iso, days) {
   const mm = String(dt.getUTCMonth() + 1).padStart(2, '0')
   const dd = String(dt.getUTCDate()).padStart(2, '0')
   return `${yy}-${mm}-${dd}`
+}
+
+// =============================================================================
+// CommitBar — toolbar above the proposal calendar.
+// Shows tick count, select-all / clear / commit buttons, last-action banner.
+// =============================================================================
+function CommitBar({ selectedCount, newProposalCount, onSelectAll, onClear, onCommit, committing, message }) {
+  return (
+    <div className="prp-commit-bar">
+      <div className="prp-commit-counter">
+        <strong>{selectedCount}</strong> of <strong>{newProposalCount}</strong> new proposal{newProposalCount === 1 ? '' : 's'} selected
+      </div>
+      <div className="prp-commit-actions">
+        <button
+          type="button"
+          className="prp-commit-secondary"
+          onClick={onSelectAll}
+          disabled={committing || newProposalCount === 0 || selectedCount === newProposalCount}
+        >
+          Select all
+        </button>
+        <button
+          type="button"
+          className="prp-commit-secondary"
+          onClick={onClear}
+          disabled={committing || selectedCount === 0}
+        >
+          Clear
+        </button>
+        <button
+          type="button"
+          className="prp-commit-primary"
+          onClick={onCommit}
+          disabled={committing || selectedCount === 0}
+        >
+          {committing ? 'Committing…' : `Commit ${selectedCount} shift${selectedCount === 1 ? '' : 's'}`}
+        </button>
+      </div>
+      {message && <div className="prp-commit-message">{message}</div>}
+    </div>
+  )
+}
+
+// =============================================================================
+// CommitConfirmModal — second-step confirmation before /commit POST.
+// Phase 3 commits are additive only, so this is a single-click confirm
+// (Phase 4 will add a stricter confirm for within-24h discards).
+// =============================================================================
+function CommitConfirmModal({ count, onCancel, onConfirm, submitting }) {
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+        <h3 style={{ marginTop: 0 }}>Commit {count} shift{count === 1 ? '' : 's'}?</h3>
+        <p style={{ color: '#444' }}>
+          These shifts will be written to the live roster, tagged with the run ID
+          so an undo can remove them later. Phase 3 is additive only — any
+          proposal that overlaps an existing shift will be rejected and nothing
+          will be committed.
+        </p>
+        <div className="modal-actions">
+          <button className="modal-btn modal-btn-secondary" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </button>
+          <button className="modal-btn modal-btn-primary" onClick={onConfirm} disabled={submitting}>
+            {submitting ? 'Committing…' : 'Yes, commit'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// =============================================================================
+// UndoConfirmModal — for DELETE /runs/{run_id}.
+// =============================================================================
+function UndoConfirmModal({ runId, onCancel, onConfirm, submitting }) {
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+        <h3 style={{ marginTop: 0 }}>Undo this run?</h3>
+        <p style={{ color: '#444' }}>
+          Deletes every shift this run created (status = scheduled). Already-confirmed
+          shifts are <strong>kept</strong>. Customer bookings linked to deleted shifts
+          are unlinked, not removed.
+        </p>
+        <p style={{ color: '#777', fontSize: '0.85rem' }}>
+          Run: <code>{runId}</code>
+        </p>
+        <div className="modal-actions">
+          <button className="modal-btn modal-btn-secondary" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </button>
+          <button className="modal-btn modal-btn-primary" onClick={onConfirm} disabled={submitting}>
+            {submitting ? 'Undoing…' : 'Yes, undo'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
