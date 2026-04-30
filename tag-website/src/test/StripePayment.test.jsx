@@ -9,6 +9,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import StripePayment from '../components/StripePayment'
 
+// Capture the latest PaymentElement props so tests can fire onReady / onChange.
+// Reset in beforeEach.
+let paymentElementProps = null
+
 // Mock Stripe
 vi.mock('@stripe/stripe-js', () => ({
   loadStripe: vi.fn(() => Promise.resolve({
@@ -19,7 +23,10 @@ vi.mock('@stripe/stripe-js', () => ({
 
 vi.mock('@stripe/react-stripe-js', () => ({
   Elements: ({ children }) => <div data-testid="stripe-elements">{children}</div>,
-  PaymentElement: () => <div data-testid="payment-element">Payment Element</div>,
+  PaymentElement: (props) => {
+    paymentElementProps = props
+    return <div data-testid="payment-element">Payment Element</div>
+  },
   useStripe: () => ({
     confirmPayment: vi.fn(),
   }),
@@ -252,6 +259,7 @@ describe('StripePayment - Duplicate Prevention', () => {
         sessionId="test-session-123"
         promoCode="FREETEST"
         promoCodeDiscount={100}
+        promoCodeType="free_100"
         onPaymentSuccess={vi.fn()}
         onPaymentError={vi.fn()}
       />
@@ -366,7 +374,8 @@ describe('StripePayment - Manual Flight Entry', () => {
       flightNumber: '1234',
       flightTime: '10:30',
       destinationCode: 'FAO',
-      destinationName: 'Faro, Portugal'
+      destinationName: 'Faro, Portugal',
+      dropoffSlot: '120'  // 2h before — manual entry slot id (90/120/150)
     }
 
     render(
@@ -397,7 +406,7 @@ describe('StripePayment - Manual Flight Entry', () => {
     expect(capturedRequest.dropoff_airline_name).toBe('TUI')
     expect(capturedRequest.flight_number).toBe('1234')
     expect(capturedRequest.departure_id).toBe(null)
-    expect(capturedRequest.drop_off_slot).toBe(null)
+    expect(capturedRequest.drop_off_slot).toBe('120')
   })
 
   it('should include manual arrival data in payment request', async () => {
@@ -687,7 +696,8 @@ describe('StripePayment - Edge Cases for Manual Entry', () => {
       flightNumber: '1234',
       flightTime: '14:30',
       destinationCode: 'FAO',
-      destinationName: 'Faro, Portugal'
+      destinationName: 'Faro, Portugal',
+      dropoffSlot: '120'
     }
 
     const manualArrivalData = {
@@ -727,7 +737,7 @@ describe('StripePayment - Edge Cases for Manual Entry', () => {
     expect(capturedRequest.dropoff_airline_code).toBe('BY')
     expect(capturedRequest.flight_number).toBe('1234')
     expect(capturedRequest.departure_id).toBe(null)
-    expect(capturedRequest.drop_off_slot).toBe(null)
+    expect(capturedRequest.drop_off_slot).toBe('120')
 
     expect(capturedRequest.pickup_manual_entry).toBe(true)
     expect(capturedRequest.pickup_airline_code).toBe('BY')
@@ -833,7 +843,8 @@ describe('StripePayment - Edge Cases for Manual Entry', () => {
       flightNumber: '5678',
       flightTime: '22:50',
       destinationCode: 'TFS',
-      destinationName: 'Tenerife, Spain'
+      destinationName: 'Tenerife, Spain',
+      dropoffSlot: '90'  // 1.5h before — late slot
     }
 
     render(
@@ -1371,5 +1382,150 @@ describe('StripePayment - Elements Remount on Promo Code Change', () => {
     // The key={clientSecret} on Elements should cause it to remount
     // with the new clientSecret, showing the correct discounted amount
     expect(clientSecrets[0]).not.toBe(clientSecrets[1])
+  })
+})
+
+// =============================================================================
+// Pay Button Gating — elementReady + elementComplete
+// Regression: customer TAG-ZQY10874 hit "Element not mounted/ready" because
+// the Pay button was enabled before the PaymentElement iframe was ready.
+// Coverage categories: Happy / Unhappy / Edge / Boundary (per backend SPEC.md).
+// =============================================================================
+
+describe('StripePayment - Pay Button Gating', () => {
+  const baseProps = {
+    formData: mockFormData,
+    selectedFlight: mockSelectedFlight,
+    selectedArrivalFlight: mockSelectedArrivalFlight,
+    customerId: 1,
+    vehicleId: 1,
+    sessionId: 'test-session-gating',
+    promoCode: null,
+    promoCodeDiscount: 0,
+    onPaymentSuccess: vi.fn(),
+    onPaymentError: vi.fn(),
+  }
+
+  beforeEach(() => {
+    setupFetchMocks()
+    paymentElementProps = null
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const renderAndWaitForElement = async (extraProps = {}) => {
+    const result = render(<StripePayment {...baseProps} {...extraProps} />)
+    await waitFor(() => {
+      expect(paymentElementProps).not.toBeNull()
+    }, { timeout: 3000 })
+    return result
+  }
+
+  it('Boundary: Pay button is disabled in initial state before any callbacks fire', async () => {
+    const { container } = await renderAndWaitForElement()
+    const button = container.querySelector('button.stripe-pay-btn')
+    expect(button).toBeDisabled()
+    expect(button.textContent).toMatch(/^Pay /)
+  })
+
+  it('Happy: Pay button enables only after onReady AND onChange(complete:true)', async () => {
+    const { container } = await renderAndWaitForElement()
+    const button = container.querySelector('button.stripe-pay-btn')
+
+    expect(button).toBeDisabled()
+
+    act(() => paymentElementProps.onReady())
+    expect(button).toBeDisabled()  // ready, but card form not complete
+
+    act(() => paymentElementProps.onChange({ complete: true }))
+    expect(button).not.toBeDisabled()
+  })
+
+  it('Edge: Pay button stays disabled if onReady fires but card fields incomplete', async () => {
+    const { container } = await renderAndWaitForElement()
+    const button = container.querySelector('button.stripe-pay-btn')
+
+    act(() => paymentElementProps.onReady())
+    act(() => paymentElementProps.onChange({ complete: false }))
+
+    expect(button).toBeDisabled()
+  })
+
+  it('Edge: Pay button stays disabled if onChange(complete:true) fires before onReady', async () => {
+    // Defensive — Stripe should not fire onChange before onReady, but the gate
+    // requires both, so the button must stay disabled either way.
+    const { container } = await renderAndWaitForElement()
+    const button = container.querySelector('button.stripe-pay-btn')
+
+    act(() => paymentElementProps.onChange({ complete: true }))
+
+    expect(button).toBeDisabled()
+  })
+
+  it('Edge: Pay button re-disables when user removes a digit (complete flips back to false)', async () => {
+    const { container } = await renderAndWaitForElement()
+    const button = container.querySelector('button.stripe-pay-btn')
+
+    act(() => paymentElementProps.onReady())
+    act(() => paymentElementProps.onChange({ complete: true }))
+    expect(button).not.toBeDisabled()
+
+    act(() => paymentElementProps.onChange({ complete: false }))
+    expect(button).toBeDisabled()
+  })
+
+  it('Happy: stripe_form_ready audit fires when PaymentElement onReady fires (not just on SDK load)', async () => {
+    const auditCalls = []
+    global.fetch = vi.fn((url, options) => {
+      if (url.includes('/api/stripe/config')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ publishable_key: 'pk_test_123' }) })
+      }
+      if (url.includes('/api/payments/create-intent')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            client_secret: 'pi_test_secret_audit',
+            booking_reference: 'TAG-AUDIT',
+            amount_display: '£89.00',
+            is_free_booking: false,
+          }),
+        })
+      }
+      if (url.includes('/api/booking/audit-event')) {
+        auditCalls.push(JSON.parse(options.body))
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+      }
+      return Promise.reject(new Error(`Unhandled fetch: ${url}`))
+    })
+
+    await renderAndWaitForElement()
+
+    // Before onReady fires — no stripe_form_ready audit yet
+    const readyBefore = auditCalls.filter(c => c.event === 'stripe_form_ready')
+    expect(readyBefore.length).toBe(0)
+
+    act(() => paymentElementProps.onReady())
+
+    await waitFor(() => {
+      const readyAfter = auditCalls.filter(c => c.event === 'stripe_form_ready')
+      expect(readyAfter.length).toBe(1)
+    }, { timeout: 1000 })
+  })
+
+  it('Unhappy: button text shows "Pay £…" (not Processing/Complete) while gated', async () => {
+    // Confirms the gate keeps the user-facing CTA in its idle state, not a
+    // misleading "Processing..." or "Payment Complete" while we're really just
+    // waiting on the Element. (The handleSubmit defence-in-depth check on
+    // elementReady cannot be tested here — React's synthetic event system
+    // suppresses clicks on a disabled button regardless of the DOM attribute.)
+    const { container } = await renderAndWaitForElement()
+    const button = container.querySelector('button.stripe-pay-btn')
+
+    expect(button).toBeDisabled()
+    expect(button.textContent).toMatch(/^Pay /)
+    expect(button.textContent).not.toMatch(/Processing/)
+    expect(button.textContent).not.toMatch(/Complete/)
   })
 })
