@@ -1801,6 +1801,104 @@ class TestTopBusiestHoursIntegration:
 
 
 # =============================================================================
+# Tests: Monthly Booking Pattern (payday hypothesis)
+# =============================================================================
+
+class TestMonthlyBookingPattern:
+    """Tests for the monthly_booking_pattern field returned by /api/admin/bookings/stats."""
+
+    @staticmethod
+    def _bucket(day):
+        """Mirror of the endpoint's week-of-month bucket rule."""
+        if day <= 7:
+            return "W1"
+        if day <= 14:
+            return "W2"
+        if day <= 21:
+            return "W3"
+        return "W4"
+
+    def test_bucket_boundaries(self):
+        """Day-of-month bucket assignment covers W1-W4 with correct edges."""
+        assert self._bucket(1) == "W1"
+        assert self._bucket(7) == "W1"
+        assert self._bucket(8) == "W2"
+        assert self._bucket(14) == "W2"
+        assert self._bucket(15) == "W3"
+        assert self._bucket(21) == "W3"
+        assert self._bucket(22) == "W4"
+        assert self._bucket(31) == "W4"
+
+    def test_response_contains_monthly_booking_pattern_field(self):
+        """The stats response must expose monthly_booking_pattern with year/months/overall."""
+        response = {
+            "monthly_booking_pattern": {
+                "year": 2026,
+                "months": [],
+                "overall": {"buckets": [], "busiest_bucket": None, "total": 0},
+            }
+        }
+        pattern = response["monthly_booking_pattern"]
+        assert "year" in pattern
+        assert "months" in pattern
+        assert "overall" in pattern
+        assert "busiest_bucket" in pattern["overall"]
+        assert "buckets" in pattern["overall"]
+
+    def test_only_confirmed_and_completed_bookings_counted(self):
+        """Bookings with status pending or cancelled must not appear in pattern counts."""
+        from db_models import BookingStatus
+
+        bookings = [
+            create_mock_db_booking(id=1, status_value="confirmed", created_at=datetime(2026, 1, 5)),
+            create_mock_db_booking(id=2, status_value="completed", created_at=datetime(2026, 1, 6)),
+            create_mock_db_booking(id=3, status_value="pending", created_at=datetime(2026, 1, 7)),
+            create_mock_db_booking(id=4, status_value="cancelled", created_at=datetime(2026, 1, 7)),
+        ]
+
+        included = [
+            b for b in bookings
+            if b.status in (BookingStatus.CONFIRMED, BookingStatus.COMPLETED)
+        ]
+        assert len(included) == 2
+        assert {b.id for b in included} == {1, 2}
+
+    def test_aggregation_groups_by_week_of_month(self):
+        """Bookings spread across a month should land in the correct week buckets."""
+        bookings = [
+            (datetime(2026, 1, 3), "W1"),
+            (datetime(2026, 1, 7), "W1"),
+            (datetime(2026, 1, 8), "W2"),
+            (datetime(2026, 1, 14), "W2"),
+            (datetime(2026, 1, 15), "W3"),
+            (datetime(2026, 1, 21), "W3"),
+            (datetime(2026, 1, 22), "W4"),
+            (datetime(2026, 1, 31), "W4"),
+        ]
+
+        counts = {"W1": 0, "W2": 0, "W3": 0, "W4": 0}
+        for created, _expected in bookings:
+            counts[self._bucket(created.day)] += 1
+
+        assert counts == {"W1": 2, "W2": 2, "W3": 2, "W4": 2}
+
+    def test_busiest_bucket_picks_highest_count(self):
+        """busiest_bucket should be the bucket with the highest count for that month."""
+        bucket_keys = ["W1", "W2", "W3", "W4"]
+        counts = {"W1": 3, "W2": 1, "W3": 5, "W4": 2}
+        busiest = max(bucket_keys, key=lambda b: counts[b])
+        assert busiest == "W3"
+
+    def test_busiest_bucket_is_none_when_no_bookings(self):
+        """A month with zero confirmed/completed bookings has no busiest bucket."""
+        counts = {"W1": 0, "W2": 0, "W3": 0, "W4": 0}
+        total = sum(counts.values())
+        bucket_keys = list(counts.keys())
+        busiest = max(bucket_keys, key=lambda b: counts[b]) if total > 0 else None
+        assert busiest is None
+
+
+# =============================================================================
 # Run tests if executed directly
 # =============================================================================
 

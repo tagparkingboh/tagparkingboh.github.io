@@ -2019,6 +2019,82 @@ async def get_booking_stats(
     day_order = {day: i for i, day in enumerate(day_names)}
     bid_recommendations_sorted = sorted(bid_recommendations, key=lambda x: day_order[x["day"]])
 
+    # Monthly booking pattern: confirmed/completed bookings (any source) bucketed
+    # by week-of-month within each elapsed month of the current year. Tests the
+    # hypothesis that bookings cluster around UK monthly payday.
+    import calendar as _calendar
+    import pytz as _pytz
+    _uk_tz = _pytz.timezone('Europe/London')
+    _now_uk = datetime.now(_uk_tz)
+    _current_month = _now_uk.month
+    _bucket_keys = ["W1", "W2", "W3", "W4"]
+    _bucket_labels = {
+        "W1": "Days 1-7",
+        "W2": "Days 8-14",
+        "W3": "Days 15-21",
+        "W4": "Days 22-end",
+    }
+
+    def _week_bucket(d: int) -> str:
+        if d <= 7:
+            return "W1"
+        if d <= 14:
+            return "W2"
+        if d <= 21:
+            return "W3"
+        return "W4"
+
+    _pattern_counts = {m: {b: 0 for b in _bucket_keys} for m in range(1, _current_month + 1)}
+    for booking in all_bookings:
+        if not booking.created_at:
+            continue
+        if booking.status not in (BookingStatus.CONFIRMED, BookingStatus.COMPLETED):
+            continue
+        created = booking.created_at
+        if created.tzinfo is None:
+            created = _uk_tz.localize(created)
+        else:
+            created = created.astimezone(_uk_tz)
+        if created.year != _now_uk.year or created.month > _current_month:
+            continue
+        _pattern_counts[created.month][_week_bucket(created.day)] += 1
+
+    months_pattern = []
+    overall_buckets = {b: 0 for b in _bucket_keys}
+    for m in range(1, _current_month + 1):
+        counts = _pattern_counts[m]
+        total = sum(counts.values())
+        busiest = max(_bucket_keys, key=lambda b: counts[b]) if total > 0 else None
+        months_pattern.append({
+            "month": f"{_now_uk.year}-{m:02d}",
+            "label": _calendar.month_name[m],
+            "buckets": [
+                {"key": b, "label": _bucket_labels[b], "count": counts[b]}
+                for b in _bucket_keys
+            ],
+            "busiest_bucket": busiest,
+            "total": total,
+        })
+        for b in _bucket_keys:
+            overall_buckets[b] += counts[b]
+
+    overall_total = sum(overall_buckets.values())
+    overall_busiest = (
+        max(_bucket_keys, key=lambda b: overall_buckets[b]) if overall_total > 0 else None
+    )
+    monthly_booking_pattern = {
+        "year": _now_uk.year,
+        "months": months_pattern,
+        "overall": {
+            "buckets": [
+                {"key": b, "label": _bucket_labels[b], "count": overall_buckets[b]}
+                for b in _bucket_keys
+            ],
+            "busiest_bucket": overall_busiest,
+            "total": overall_total,
+        },
+    }
+
     return {
         "total_bookings": len(all_bookings),
         "total_successful": total_successful,
@@ -2056,6 +2132,7 @@ async def get_booking_stats(
         "bid_recommendations": bid_recommendations_sorted,
         "overall_conversion_rate": overall_conversion,
         "bid_total_bookings": bid_total_bookings,  # Bookings since search tracking started
+        "monthly_booking_pattern": monthly_booking_pattern,
     }
 
 

@@ -11218,6 +11218,89 @@ function Admin() {
                       </div>
                     )}
 
+                    {/* Monthly Booking Pattern (payday hypothesis) */}
+                    {bookingStats?.monthly_booking_pattern && bookingStats.monthly_booking_pattern.months.length > 0 && (
+                      <div className="monthly-pattern-section">
+                        <h3>Monthly Booking Pattern</h3>
+                        <p className="section-subtitle">
+                          Bookings (confirmed + completed, all sources) grouped by week-of-month.
+                          Testing whether bookings cluster around UK monthly payday.
+                          <br />
+                          <strong>Year:</strong> {bookingStats.monthly_booking_pattern.year}
+                        </p>
+                        <div className="monthly-pattern-grid">
+                          {bookingStats.monthly_booking_pattern.months.map((month) => {
+                            const max = Math.max(...month.buckets.map(b => b.count), 1)
+                            return (
+                              <div key={month.month} className="monthly-pattern-card">
+                                <div className="monthly-pattern-header">
+                                  <span className="monthly-pattern-label">{month.label}</span>
+                                  <span className="monthly-pattern-total">{month.total} bookings</span>
+                                </div>
+                                <div className="monthly-pattern-bars">
+                                  {month.buckets.map((b) => (
+                                    <div
+                                      key={b.key}
+                                      className={`monthly-pattern-bar-row ${b.key === month.busiest_bucket ? 'busiest' : ''}`}
+                                    >
+                                      <span className="bucket-label">{b.label}</span>
+                                      <div className="bucket-bar-track">
+                                        <div
+                                          className="bucket-bar-fill"
+                                          style={{ width: `${(b.count / max) * 100}%` }}
+                                        />
+                                      </div>
+                                      <span className="bucket-count">{b.count}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {month.busiest_bucket && (
+                                  <p className="monthly-pattern-insight">
+                                    Busiest: <strong>{month.buckets.find(b => b.key === month.busiest_bucket)?.label}</strong>
+                                  </p>
+                                )}
+                              </div>
+                            )
+                          })}
+                          {/* Overall card */}
+                          {(() => {
+                            const overall = bookingStats.monthly_booking_pattern.overall
+                            const max = Math.max(...overall.buckets.map(b => b.count), 1)
+                            return (
+                              <div className="monthly-pattern-card overall">
+                                <div className="monthly-pattern-header">
+                                  <span className="monthly-pattern-label">Overall</span>
+                                  <span className="monthly-pattern-total">{overall.total} bookings</span>
+                                </div>
+                                <div className="monthly-pattern-bars">
+                                  {overall.buckets.map((b) => (
+                                    <div
+                                      key={b.key}
+                                      className={`monthly-pattern-bar-row ${b.key === overall.busiest_bucket ? 'busiest' : ''}`}
+                                    >
+                                      <span className="bucket-label">{b.label}</span>
+                                      <div className="bucket-bar-track">
+                                        <div
+                                          className="bucket-bar-fill"
+                                          style={{ width: `${(b.count / max) * 100}%` }}
+                                        />
+                                      </div>
+                                      <span className="bucket-count">{b.count}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {overall.busiest_bucket && (
+                                  <p className="monthly-pattern-insight">
+                                    Busiest overall: <strong>{overall.buckets.find(b => b.key === overall.busiest_bucket)?.label}</strong>
+                                  </p>
+                                )}
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Fun Facts */}
                     {funFacts && (
                       <div className="fun-facts-section">

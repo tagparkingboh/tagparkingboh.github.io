@@ -4709,6 +4709,134 @@
   color: #1a1a2e;
 }
 
+/* Monthly Booking Pattern (payday hypothesis) */
+.monthly-pattern-section {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e5e7eb;
+}
+
+.monthly-pattern-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 8px 0;
+}
+
+.monthly-pattern-section .section-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}
+
+.monthly-pattern-section .section-subtitle strong {
+  color: #1a1a2e;
+}
+
+.monthly-pattern-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.monthly-pattern-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.monthly-pattern-card.overall {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.monthly-pattern-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 8px;
+}
+
+.monthly-pattern-card.overall .monthly-pattern-header {
+  border-bottom-color: #c7d2fe;
+}
+
+.monthly-pattern-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.monthly-pattern-total {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.monthly-pattern-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.monthly-pattern-bar-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 32px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+.monthly-pattern-bar-row.busiest .bucket-label,
+.monthly-pattern-bar-row.busiest .bucket-count {
+  color: #1a1a2e;
+  font-weight: 600;
+}
+
+.bucket-bar-track {
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bucket-bar-fill {
+  height: 100%;
+  background: #6366f1;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.monthly-pattern-bar-row.busiest .bucket-bar-fill {
+  background: #4f46e5;
+}
+
+.bucket-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.monthly-pattern-insight {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0;
+  padding-top: 4px;
+  border-top: 1px dashed #e5e7eb;
+}
+
+.monthly-pattern-insight strong {
+  color: #1a1a2e;
+}
+
 /* Fun Facts Section */
 .fun-facts-section {
   background: white;
