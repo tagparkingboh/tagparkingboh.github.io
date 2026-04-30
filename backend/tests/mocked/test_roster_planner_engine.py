@@ -77,8 +77,15 @@ def mk_booking(
     drop_dt: datetime,
     pick_dt: datetime,
     status: BookingStatus = BookingStatus.CONFIRMED,
+    *,
+    flight_arrival_time=None,
 ):
-    """Lightweight booking stand-in — the engine only reads a handful of attributes."""
+    """Lightweight booking stand-in — the engine only reads a handful of attributes.
+
+    `flight_arrival_time` (when set) is the actual plane-landing time and
+    drives pickup-shift START in the engine; pick_dt continues to represent
+    the customer-meet time (= flight_arrival_time + 30 by convention).
+    """
     return SimpleNamespace(
         id=booking_id,
         reference=ref,
@@ -87,6 +94,7 @@ def mk_booking(
         dropoff_time=drop_dt.time(),
         pickup_date=pick_dt.date(),
         pickup_time=pick_dt.time(),
+        flight_arrival_time=flight_arrival_time,
     )
 
 
@@ -1230,6 +1238,155 @@ class TestProposeRosterEndToEnd:
 # SPEC.md gap-fillers (audit 2026-04-26): cases the testing matrix calls out
 # but weren't yet locked in.
 # =====================================================================================
+
+
+class TestPickupAnchorsToArrival:
+    """Pickup shift START anchors to flight_arrival_time, not pickup_time.
+
+    The jockey must be at the airport before the plane lands so the car is
+    ready when the customer comes through. Locked 2026-04-30.
+
+    Convention: pickup_time = flight_arrival_time + 30 min (collection time).
+    With start_buffer = 20 (default), shift_start should be:
+      flight_arrival_time - 20 min (when arrival is on the booking)
+      pickup_time - 50 min            (fallback when arrival is missing)
+    """
+
+    def test_happy_pickup_with_arrival_anchors_shift_start_to_arrival(self):
+        """Pickup with flight_arrival_time=14:00 → shift starts 13:40
+        (arrival - 20), not 14:10 (the old pickup_time - 20)."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1,
+                "TAG-PU",
+                drop_dt=uk_dt(2026, 4, 1, 9, 0),  # far past — outside window, ignored
+                pick_dt=uk_dt(2026, 5, 6, 14, 30),  # collection at 14:30
+                flight_arrival_time=time(14, 0),    # plane lands at 14:00
+            ),
+        ]
+        staff = [mk_staff(10, "Ly", "Nguyen")]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        # Only the pickup falls inside window (drop_dt is 1 month past).
+        # cluster.start = 14:00 (arrival-anchored), shift_start = 14:00 - 20 = 13:40
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        assert s["start_time"].strftime("%H:%M") == "13:40"
+
+    def test_fallback_no_arrival_uses_pickup_time_minus_30(self):
+        """Booking with flight_arrival_time=None → engine derives arrival as
+        pickup_time - 30 → shift_start = (pickup_time - 30) - 20 = pickup_time - 50.
+
+        For a 14:30 pickup_time → 13:40 shift_start, identical to the
+        canonical case above. This is intentional: when arrival isn't
+        recorded, the engine assumes the standard +30 collection rule held."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1,
+                "TAG-PU-FB",
+                drop_dt=uk_dt(2026, 4, 1, 9, 0),  # outside window
+                pick_dt=uk_dt(2026, 5, 6, 14, 30),
+                # flight_arrival_time deliberately NOT set
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 1
+        assert new_shifts[0]["start_time"].strftime("%H:%M") == "13:40"
+
+    def test_edge_pickup_in_mixed_cluster_does_not_pull_cluster_start_when_drop_is_earlier(self):
+        """When a drop-off is the cluster's earliest event, the pickup's
+        arrival-anchored event_time doesn't shift cluster.start backwards
+        unless the pickup itself is now the earliest. Drop@13:00 stays
+        cluster.start; arrival-anchored pickup at 13:30 trails behind."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-DROP",
+                drop_dt=uk_dt(2026, 5, 6, 13, 0),
+                pick_dt=uk_dt(2026, 6, 30, 10, 0),  # outside window
+            ),
+            mk_booking(
+                2, "TAG-PU",
+                drop_dt=uk_dt(2026, 4, 1, 9, 0),  # outside window
+                pick_dt=uk_dt(2026, 5, 6, 14, 0),
+                flight_arrival_time=time(13, 30),  # arrival 13:30, collection 14:00
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        # Single mixed cluster: drop@13:00 + arrival-anchored pickup@13:30
+        # cluster.start = 13:00 (drop is earliest), shift_start = 12:40
+        # cluster.end = 13:30 (arrival-anchored pickup), shift_end = 14:00
+        # min_shift_minutes = 60 → extends end to at least 13:40 → already 14:00 → OK
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        assert s["start_time"].strftime("%H:%M") == "12:40"
+
+    def test_edge_pickup_earliest_event_pulls_cluster_start_via_arrival(self):
+        """If the pickup's arrival is earlier than any drop-off in the cluster,
+        cluster.start follows the arrival, NOT pickup_time."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-PU-EARLY",
+                drop_dt=uk_dt(2026, 4, 1, 9, 0),  # outside window
+                pick_dt=uk_dt(2026, 5, 6, 13, 30),  # collection 13:30
+                flight_arrival_time=time(13, 0),    # arrival 13:00 ← earliest
+            ),
+            mk_booking(
+                2, "TAG-DROP-LATER",
+                drop_dt=uk_dt(2026, 5, 6, 14, 0),
+                pick_dt=uk_dt(2026, 6, 30, 10, 0),  # outside window
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        # cluster.start = 13:00 (arrival-anchored pickup wins),
+        # shift_start = 13:00 - 20 = 12:40
+        assert len(new_shifts) == 1
+        assert new_shifts[0]["start_time"].strftime("%H:%M") == "12:40"
+
+    def test_boundary_arrival_at_midnight_anchors_correctly(self):
+        """Late-night arrivals at 00:50 (collection 01:20) → shift_start
+        = 00:30 same day. Confirms tz-aware combining works at the day
+        boundary without rolling into the previous day."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-LATE",
+                drop_dt=uk_dt(2026, 4, 1, 9, 0),
+                pick_dt=uk_dt(2026, 5, 19, 1, 20),
+                flight_arrival_time=time(0, 50),
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        assert s["start_time"].strftime("%H:%M") == "00:30"
+        assert s["date"].isoformat() == "2026-05-19"
 
 
 class TestSpecGapFillers:

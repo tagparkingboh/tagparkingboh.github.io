@@ -726,12 +726,25 @@ def propose_roster(
                 )
             )
         if window_start <= b.pickup_date < window_end:
+            # Pick-up shift anchors to the *flight arrival time*, not the
+            # customer-meet time (= arrival + 30). The jockey needs to be
+            # at the airport before the plane lands so the car is ready
+            # when the customer comes through.
+            #   event_time = arrival_time (preferred) | pickup_time - 30 (fallback)
+            # Downstream: shift_start = event_time - start_buffer
+            # so a 20-min start_buffer puts the jockey on duty 20 min
+            # before the plane lands.
+            arrival_t = getattr(b, "flight_arrival_time", None)
+            if arrival_t is not None:
+                anchor_time = _combine_uk(b.pickup_date, arrival_t)
+            else:
+                anchor_time = _combine_uk(b.pickup_date, b.pickup_time) - timedelta(minutes=30)
             events.append(
                 Event(
                     booking_id=b.id,
                     booking_reference=b.reference,
                     event_type="pick_up",
-                    event_time=_combine_uk(b.pickup_date, b.pickup_time),
+                    event_time=anchor_time,
                     customer_name=customer_name,
                     flight_number=getattr(b, "pickup_flight_number", None),
                     destination=getattr(b, "pickup_origin", None),
