@@ -1178,12 +1178,12 @@ function ShiftCard({
       }`}
     >
       {isCommittable && isCommitted && (
-        <span
-          className="prp-committed-badge"
+        <div
+          className="prp-committed-banner"
           title="This proposal has already been committed to the live roster — undo the run if you want to remove it"
         >
-          ✓ Committed
-        </span>
+          ✓ Committed — live in roster
+        </div>
       )}
       {isCommittable && !isCommitted && (
         <label
@@ -1196,6 +1196,7 @@ function ShiftCard({
             checked={!!isCommitTicked}
             onChange={onToggleCommitTick}
           />
+          <span className="prp-commit-tick-label">Include in commit</span>
         </label>
       )}
       {overrideAction && !isCommitted && (
@@ -1241,47 +1242,49 @@ function ShiftCard({
           </div>
         )}
       </div>
-      <div className="prp-shift-actions booking-actions">
-        <button
-          type="button"
-          className="action-btn edit-btn"
-          onClick={(e) => { e.stopPropagation(); onAction?.('duplicate') }}
-        >
-          Duplicate
-        </button>
-        <button
-          type="button"
-          className="action-btn paid-btn"
-          onClick={(e) => { e.stopPropagation(); onAction?.('merge') }}
-          disabled={!hasPrev && !hasNext}
-          title={!hasPrev && !hasNext ? 'No adjacent shift on this date' : ''}
-        >
-          Merge
-        </button>
-        <button
-          type="button"
-          className="action-btn refund-btn"
-          onClick={(e) => { e.stopPropagation(); onAction?.('split') }}
-        >
-          Split
-        </button>
-        <button
-          type="button"
-          className="action-btn unassign-btn"
-          onClick={(e) => { e.stopPropagation(); onAction?.('unassign') }}
-          disabled={!shift.staff_id}
-          title={!shift.staff_id ? 'Already unassigned' : 'Drop staff_id so any jockey can claim it'}
-        >
-          Unassign
-        </button>
-        <button
-          type="button"
-          className="action-btn cancel-btn"
-          onClick={(e) => { e.stopPropagation(); onAction?.('delete') }}
-        >
-          Delete
-        </button>
-      </div>
+      {!isCommitted && (
+        <div className="prp-shift-actions booking-actions">
+          <button
+            type="button"
+            className="action-btn edit-btn"
+            onClick={(e) => { e.stopPropagation(); onAction?.('duplicate') }}
+          >
+            Duplicate
+          </button>
+          <button
+            type="button"
+            className="action-btn paid-btn"
+            onClick={(e) => { e.stopPropagation(); onAction?.('merge') }}
+            disabled={!hasPrev && !hasNext}
+            title={!hasPrev && !hasNext ? 'No adjacent shift on this date' : ''}
+          >
+            Merge
+          </button>
+          <button
+            type="button"
+            className="action-btn refund-btn"
+            onClick={(e) => { e.stopPropagation(); onAction?.('split') }}
+          >
+            Split
+          </button>
+          <button
+            type="button"
+            className="action-btn unassign-btn"
+            onClick={(e) => { e.stopPropagation(); onAction?.('unassign') }}
+            disabled={!shift.staff_id}
+            title={!shift.staff_id ? 'Already unassigned' : 'Drop staff_id so any jockey can claim it'}
+          >
+            Unassign
+          </button>
+          <button
+            type="button"
+            className="action-btn cancel-btn"
+            onClick={(e) => { e.stopPropagation(); onAction?.('delete') }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -1297,12 +1300,12 @@ function DuplicateShiftCard({ shift, liveShift }) {
     <div
       className={`prp-shift prp-shift-duplicate ${isUnassigned ? 'unassigned' : ''} committed`}
     >
-      <span
-        className="prp-committed-badge"
+      <div
+        className="prp-committed-banner prp-duplicate-banner"
         title="Live duplicate shift created at commit time"
       >
-        ⎘ Duplicate
-      </span>
+        ⎘ Duplicate — live in roster
+      </div>
       <div className="prp-shift-body" title="Live duplicate shift">
         <div className="prp-shift-time">
           {formatTime(shift.start_time)}–{formatTime(shift.end_time)}

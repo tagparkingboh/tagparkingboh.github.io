@@ -191,8 +191,8 @@
 }
 
 .prp-shift {
-  background: #ecfdf5;
-  border: 1px solid #6ee7b7;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
   border-radius: 8px;
   padding: 1rem;
   min-width: 280px;
@@ -1200,25 +1200,34 @@
   font-size: 0.85rem;
 }
 
-/* Per-shift checkbox sits in the top-right corner of the proposal card —
-   uses otherwise-empty whitespace, doesn't fight the time/staff text on
-   the left or the action buttons below the divider. */
+/* Per-shift "Include in commit" tick row sits at the top of the card with a
+   visible label so admins can scan: empty box = pending review, ticked box
+   = will land on next Commit click. */
 .prp-commit-tick {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
   cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #f3f4f6;
+  border: 1px dashed #9ca3af;
+  align-self: flex-start;
 }
 
 .prp-commit-tick input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   cursor: pointer;
   accent-color: #D9FF00;
+  margin: 0;
+}
+
+.prp-commit-tick-label {
+  letter-spacing: 0.01em;
 }
 
 .prp-shift {
@@ -1230,11 +1239,24 @@
   outline-offset: -2px;
 }
 
-/* Already-committed proposal — checkbox hidden, badge shown, card subtly
-   greened to make the state obvious without drowning out other shifts. */
+/* Already-committed proposal — banner across the top, action buttons hidden,
+   card greened so it's obvious at a glance the row is live in the roster
+   and not awaiting review. */
 .prp-shift.committed {
   background: #f0fdf4;
   border-color: #86efac;
+}
+
+.prp-committed-banner {
+  background: #16a34a;
+  color: white;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  text-align: center;
+  padding: 6px 8px;
+  margin: -1rem -1rem 0 -1rem;  /* edge-to-edge inside the card padding */
+  border-radius: 8px 8px 0 0;
 }
 
 /* Slim "duplicate" card rendered next to the original proposal card. One
@@ -1245,7 +1267,7 @@
   border-style: dashed;
   border-color: #86efac;
 }
-.prp-shift.prp-shift-duplicate .prp-committed-badge {
+.prp-shift.prp-shift-duplicate .prp-duplicate-banner {
   background: #6366f1;  /* indigo to distinguish from the green ✓ Committed */
 }
 
