@@ -12,7 +12,7 @@ All tests use mocked database to avoid state conflicts.
 """
 import pytest
 from unittest.mock import MagicMock, patch
-from datetime import date, time, datetime, timedelta
+from datetime import date, time, datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 import sys
@@ -94,6 +94,7 @@ def create_mock_payment(
     paid_at=None,
     refund_id=None,
     refund_amount_pence=None,
+    refund_reason=None,
     refunded_at=None,
 ):
     """Create a mock payment object."""
@@ -110,6 +111,7 @@ def create_mock_payment(
     payment.paid_at = paid_at or datetime.utcnow()
     payment.refund_id = refund_id
     payment.refund_amount_pence = refund_amount_pence
+    payment.refund_reason = refund_reason
     payment.refunded_at = refunded_at
     return payment
 
@@ -710,3 +712,154 @@ class TestFrontendDisplayExpectations:
         # Frontend can show: "WED10 (10% OFF)"
         display = f"{booking_data['promo_code']} ({booking_data['discount_percent']}% OFF)"
         assert display == "WED10 (10% OFF)"
+
+
+# =============================================================================
+# GET /api/admin/bookings - Refund Payload Tests (Integration)
+# =============================================================================
+# The Admin booking page shows a "Refunded" section when a booking has been
+# refunded. That section reads payment.refund_id, refund_amount_pence,
+# refund_reason, and refunded_at off the bookings list response. The
+# refund_reason field was previously omitted from the payload — these tests
+# pin the four refund fields' presence and shape across H/U/E/B cases per
+# backend/docs/SPEC.md.
+
+
+class TestAdminBookingsRefundPayloadIntegration:
+    """Integration tests for refund fields in admin bookings list response."""
+
+    @pytest.fixture
+    def mock_admin_user(self):
+        return create_mock_admin_user()
+
+    @pytest.fixture
+    def mock_db_session(self):
+        return MagicMock()
+
+    def _wire_query_overrides(self, mock_db_session, booking, mock_admin_user):
+        from main import app, get_db, require_admin
+
+        mock_booking_query = MagicMock()
+        mock_booking_query.options.return_value = mock_booking_query
+        mock_booking_query.filter.return_value = mock_booking_query
+        mock_booking_query.order_by.return_value = mock_booking_query
+        mock_booking_query.limit.return_value = mock_booking_query
+        mock_booking_query.all.return_value = [booking]
+
+        mock_usage_query = MagicMock()
+        mock_usage_query.options.return_value = mock_usage_query
+        mock_usage_query.filter.return_value = mock_usage_query
+        mock_usage_query.all.return_value = []
+
+        def query_side_effect(model):
+            from db_models import Booking, PromoCodeUsage
+            if model == Booking:
+                return mock_booking_query
+            if model == PromoCodeUsage:
+                return mock_usage_query
+            return MagicMock()
+
+        mock_db_session.query.side_effect = query_side_effect
+        app.dependency_overrides[get_db] = lambda: mock_db_session
+        app.dependency_overrides[require_admin] = lambda: mock_admin_user
+
+    def test_happy_refunded_booking_payload_includes_all_four_refund_fields(
+        self, mock_admin_user, mock_db_session
+    ):
+        """Refunded booking surfaces refund_id + amount + reason + refunded_at."""
+        from main import app
+        from db_models import PaymentStatus
+
+        refunded_at = datetime(2026, 4, 17, 13, 4, 27, tzinfo=timezone.utc)
+        payment = create_mock_payment(
+            amount_pence=6800,
+            status=PaymentStatus.REFUNDED,
+            refund_id="re_3TG1enRtbty1KUNz1KWZop1f",
+            refund_amount_pence=6800,
+            refund_reason="requested_by_customer",
+            refunded_at=refunded_at,
+        )
+        booking = create_mock_booking(
+            id=42, reference="TAG-DYC21950", status="refunded", payment=payment,
+        )
+        self._wire_query_overrides(mock_db_session, booking, mock_admin_user)
+
+        try:
+            response = TestClient(app).get("/api/admin/bookings?days=30")
+            assert response.status_code == 200
+            payload = response.json()["bookings"][0]["payment"]
+            assert payload["refund_id"] == "re_3TG1enRtbty1KUNz1KWZop1f"
+            assert payload["refund_amount_pence"] == 6800
+            assert payload["refund_reason"] == "requested_by_customer"
+            assert payload["refunded_at"].startswith("2026-04-17T13:04:27")
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_unhappy_unrefunded_booking_keeps_refund_fields_null(
+        self, mock_admin_user, mock_db_session
+    ):
+        """A normal succeeded booking returns null for every refund field
+        (regression guard: refund_reason must appear in the dict, not be omitted)."""
+        from main import app
+
+        payment = create_mock_payment(amount_pence=8500, status="succeeded")
+        booking = create_mock_booking(id=10, reference="TAG-NOREF000", payment=payment)
+        self._wire_query_overrides(mock_db_session, booking, mock_admin_user)
+
+        try:
+            response = TestClient(app).get("/api/admin/bookings?days=30")
+            assert response.status_code == 200
+            payload = response.json()["bookings"][0]["payment"]
+            assert "refund_reason" in payload
+            assert payload["refund_id"] is None
+            assert payload["refund_amount_pence"] is None
+            assert payload["refund_reason"] is None
+            assert payload["refunded_at"] is None
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_edge_partial_refund_payload_carries_reason_and_amount(
+        self, mock_admin_user, mock_db_session
+    ):
+        """Partial refund (refund < amount) still surfaces the reason text
+        so the Refunded section can render the reason for the partial."""
+        from main import app
+        from db_models import PaymentStatus
+
+        refunded_at = datetime(2026, 4, 17, 13, 4, 27, tzinfo=timezone.utc)
+        payment = create_mock_payment(
+            amount_pence=8500,
+            status=PaymentStatus.PARTIALLY_REFUNDED,
+            refund_id="re_partial_001",
+            refund_amount_pence=2500,
+            refund_reason="duplicate",
+            refunded_at=refunded_at,
+        )
+        booking = create_mock_booking(id=11, reference="TAG-PART0001", payment=payment)
+        self._wire_query_overrides(mock_db_session, booking, mock_admin_user)
+
+        try:
+            response = TestClient(app).get("/api/admin/bookings?days=30")
+            assert response.status_code == 200
+            payload = response.json()["bookings"][0]["payment"]
+            assert payload["refund_amount_pence"] == 2500
+            assert payload["refund_reason"] == "duplicate"
+            assert payload["status"] == "partially_refunded"
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_boundary_no_payment_returns_null_payment(
+        self, mock_admin_user, mock_db_session
+    ):
+        """Booking with no payment row returns payment=None (no KeyError on refund_reason)."""
+        from main import app
+
+        booking = create_mock_booking(id=12, reference="TAG-NOPAY0001", payment=None)
+        self._wire_query_overrides(mock_db_session, booking, mock_admin_user)
+
+        try:
+            response = TestClient(app).get("/api/admin/bookings?days=30")
+            assert response.status_code == 200
+            assert response.json()["bookings"][0]["payment"] is None
+        finally:
+            app.dependency_overrides.clear()

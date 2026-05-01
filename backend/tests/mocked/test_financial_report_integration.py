@@ -84,6 +84,7 @@ def create_mock_booking(
         "completed": BookingStatus.COMPLETED,
         "pending": BookingStatus.PENDING,
         "cancelled": BookingStatus.CANCELLED,
+        "refunded": BookingStatus.REFUNDED,
     }
     booking.status = status_map.get(status, BookingStatus.CONFIRMED)
 
@@ -121,8 +122,15 @@ def simulate_financial_report_endpoint(
     elif status_filter == "refunded":
         bookings = [b for b in bookings if b.payment.status in [PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED]]
     else:
-        # All - include confirmed, completed
-        bookings = [b for b in bookings if b.status in [BookingStatus.CONFIRMED, BookingStatus.COMPLETED]]
+        # All - include confirmed, completed, cancelled, refunded.
+        # Mirrors the real endpoint: refunded bookings have negative revenue
+        # impact and belong in the default view.
+        bookings = [b for b in bookings if b.status in [
+            BookingStatus.CONFIRMED,
+            BookingStatus.COMPLETED,
+            BookingStatus.CANCELLED,
+            BookingStatus.REFUNDED,
+        ]]
 
     # Date filters
     if from_date:
@@ -593,18 +601,57 @@ class TestIntegrationEdgeCases:
         assert response["summary"]["totalGross"] in ["£5,000.00", "£5000.00"]
 
     def test_mixed_status_bookings(self):
-        """Mixed status bookings should filter correctly."""
+        """Mixed status bookings should filter correctly under the default 'all' view.
+
+        The 'all' view now includes confirmed, completed, cancelled, and refunded
+        (refunds carry negative revenue impact and should not silently disappear).
+        Only PENDING is excluded because pending bookings have no completed
+        payment to attribute revenue from.
+        """
         bookings = [
             create_mock_booking(id=1, status="confirmed"),
             create_mock_booking(id=2, status="completed"),
             create_mock_booking(id=3, status="pending"),
             create_mock_booking(id=4, status="cancelled"),
+            create_mock_booking(id=5, status="refunded", payment=create_mock_payment(status="refunded", refund_amount_pence=6800)),
         ]
 
         response = simulate_financial_report_endpoint(bookings)
 
-        # Only confirmed and completed (default filter)
-        assert response["summary"]["totalBookings"] == 2
+        # confirmed + completed + cancelled + refunded — pending excluded
+        assert response["summary"]["totalBookings"] == 4
+
+    def test_refunded_booking_appears_in_default_all_view(self):
+        """Regression: a booking with status='refunded' must surface in the
+        default Financial view, not silently drop out. (2026-05 fix — the
+        'all' branch previously filtered to [CONFIRMED, COMPLETED, CANCELLED]
+        and excluded REFUNDED, so backfilled refunds disappeared from the
+        Financial table even though Total Refunds counted them elsewhere.)
+        """
+        bookings = [
+            create_mock_booking(
+                id=1,
+                reference="TAG-DYC21950",
+                status="refunded",
+                payment=create_mock_payment(
+                    booking_id=1,
+                    status="refunded",
+                    amount_pence=6800,
+                    refund_amount_pence=6800,
+                ),
+            ),
+        ]
+
+        response = simulate_financial_report_endpoint(bookings)
+
+        assert response["summary"]["totalBookings"] == 1
+        # And the booking is visible in the monthly breakdown
+        all_refs = [
+            b["reference"]
+            for month in response["monthlyData"]
+            for b in month["bookings"]
+        ]
+        assert "TAG-DYC21950" in all_refs
 
     def test_trip_days_calculation(self):
         """Trip days should be calculated correctly."""

@@ -1426,6 +1426,7 @@ async def get_all_bookings(
                 "paid_at": b.payment.paid_at.isoformat() if b.payment.paid_at else None,
                 "refund_id": b.payment.refund_id,
                 "refund_amount_pence": b.payment.refund_amount_pence,
+                "refund_reason": b.payment.refund_reason,
                 "refunded_at": b.payment.refunded_at.isoformat() if b.payment.refunded_at else None,
             } if b.payment else None,
             # Promo code fields (from PromoCodeUsage table)
@@ -4982,8 +4983,16 @@ async def get_financial_report(
     elif status_filter == "refunded":
         query = query.filter(Payment.status.in_([PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED]))
     else:
-        # All - include confirmed, completed, and cancelled (which may have refunds)
-        query = query.filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.CANCELLED]))
+        # All - include confirmed, completed, cancelled, and refunded.
+        # Refunded bookings still have revenue impact (negative) so they belong
+        # in the default view; without REFUNDED here a booking flipped to
+        # status='refunded' silently disappears from the Financial section.
+        query = query.filter(Booking.status.in_([
+            BookingStatus.CONFIRMED,
+            BookingStatus.COMPLETED,
+            BookingStatus.CANCELLED,
+            BookingStatus.REFUNDED,
+        ]))
 
     # Date filters (based on payment date)
     if from_date:
@@ -5456,8 +5465,16 @@ async def export_financial_report(
     elif status_filter == "refunded":
         query = query.filter(Payment.status.in_([PaymentStatus.REFUNDED, PaymentStatus.PARTIALLY_REFUNDED]))
     else:
-        # All - include confirmed, completed, and cancelled (which may have refunds)
-        query = query.filter(Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.CANCELLED]))
+        # All - include confirmed, completed, cancelled, and refunded.
+        # Refunded bookings still have revenue impact (negative) so they belong
+        # in the default view; without REFUNDED here a booking flipped to
+        # status='refunded' silently disappears from the Financial section.
+        query = query.filter(Booking.status.in_([
+            BookingStatus.CONFIRMED,
+            BookingStatus.COMPLETED,
+            BookingStatus.CANCELLED,
+            BookingStatus.REFUNDED,
+        ]))
 
     if from_date:
         try:

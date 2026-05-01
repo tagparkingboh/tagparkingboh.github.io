@@ -3778,13 +3778,16 @@ function Admin() {
     return todays
   }, [bookings, hideTestEmails])
 
-  // Group bookings by status
+  // Group bookings by status. Refunded is its own bucket (TAG-initiated:
+  // we made the customer's experience go wrong); Cancelled is customer-
+  // initiated ("can't travel"). Don't conflate the two.
   const bookingsByStatus = useMemo(() => {
     const groups = {
       confirmed: [],
       completed: [],
       pending: [],
-      cancelled: []
+      cancelled: [],
+      refunded: [],
     }
 
     filteredBookings.forEach(booking => {
@@ -3792,7 +3795,7 @@ function Admin() {
       if (groups[status]) {
         groups[status].push(booking)
       } else {
-        // Handle refunded or other statuses - put in cancelled
+        // Truly unknown status — fall back to cancelled so it's visible.
         groups.cancelled.push(booking)
       }
     })
@@ -4058,6 +4061,51 @@ function Admin() {
               </div>
             </div>
           </div>
+
+          {/* Refunded Section — only when the booking has been refunded.
+              Surfaces the Stripe refund metadata so admins can see why/when
+              without digging into the Financial report or Stripe dashboard. */}
+          {booking.status?.toLowerCase() === 'refunded' && booking.payment?.refund_amount_pence && (
+            <div className="booking-section booking-refund-section">
+              <h4>Refunded</h4>
+              <div className="booking-section-content">
+                <div className="booking-detail-row">
+                  <div className="booking-detail">
+                    <span className="detail-label">Refund Amount</span>
+                    <span className="detail-value" style={{ color: '#ef4444', fontWeight: 600 }}>
+                      −£{(booking.payment.refund_amount_pence / 100).toFixed(2)}
+                    </span>
+                  </div>
+                  {booking.payment.refunded_at && (
+                    <div className="booking-detail">
+                      <span className="detail-label">Refunded At</span>
+                      <span className="detail-value">
+                        {new Date(booking.payment.refunded_at).toLocaleString('en-GB', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                          timeZone: 'Europe/London',
+                        })}
+                      </span>
+                    </div>
+                  )}
+                  {booking.payment.refund_reason && (
+                    <div className="booking-detail">
+                      <span className="detail-label">Reason</span>
+                      <span className="detail-value">{booking.payment.refund_reason}</span>
+                    </div>
+                  )}
+                  {booking.payment.refund_id && (
+                    <div className="booking-detail">
+                      <span className="detail-label">Stripe Refund ID</span>
+                      <span className="detail-value" style={{ fontFamily: 'monospace', fontSize: '0.85em' }}>
+                        {booking.payment.refund_id}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Actions Section */}
           <div className="booking-section booking-actions-section">
@@ -5976,12 +6024,15 @@ function Admin() {
               </p>
             ) : (
               <div className="bookings-by-status">
-                {/* Render each status section in order: Confirmed, Completed, Pending, Cancelled */}
+                {/* Render each status section in order: Confirmed, Completed, Pending, Cancelled, Refunded.
+                    Cancelled and Refunded are deliberately separate — Cancelled is customer-initiated
+                    ("can't travel"); Refunded is TAG-initiated when we've messed up the experience. */}
                 {[
                   { key: 'confirmed', label: 'Confirmed', color: '#28a745' },
                   { key: 'completed', label: 'Completed', color: '#6c757d' },
                   { key: 'pending', label: 'Pending', color: '#ffc107' },
-                  { key: 'cancelled', label: 'Cancelled', color: '#dc3545' }
+                  { key: 'cancelled', label: 'Cancelled', color: '#dc3545' },
+                  { key: 'refunded', label: 'Refunded', color: '#f97316' },
                 ].map(({ key: statusKey, label, color }) => {
                   const statusBookings = bookingsByStatus[statusKey]
                   if (statusBookings.length === 0) return null
@@ -6036,7 +6087,7 @@ function Admin() {
                               })
                             })()
                           ) : (
-                            /* For pending and cancelled, show flat list */
+                            /* For pending, cancelled, and refunded, show flat list */
                             statusBookings.map(booking => renderBookingCard(booking))
                           )}
                         </div>
