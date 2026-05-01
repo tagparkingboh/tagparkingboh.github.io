@@ -374,6 +374,7 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
                 sortedDates={sortedDates}
                 selectedToCommit={selectedToCommit}
                 committedIndexes={new Set(detail.committed_indexes || [])}
+                committedShiftsByIndex={detail.committed_shifts_by_index || {}}
                 overridesByIndex={overridesByIndex}
                 onToggleCommitTick={toggleCommitTick}
                 onClearOverride={clearOverride}
@@ -1016,6 +1017,7 @@ function ProposalCalendar({
   sortedDates,
   selectedToCommit,
   committedIndexes,
+  committedShiftsByIndex,
   overridesByIndex,
   onToggleCommitTick,
   onClearOverride,
@@ -1051,6 +1053,7 @@ function ProposalCalendar({
                   shift={s}
                   isCommitTicked={selectedToCommit?.has(s.__index) ?? false}
                   isCommitted={committedIndexes?.has(s.__index) ?? false}
+                  committedShifts={committedShiftsByIndex?.[s.__index] ?? null}
                   override={overridesByIndex?.[s.__index] ?? null}
                   onClearOverride={() => onClearOverride?.(s.__index)}
                   onToggleCommitTick={() => onToggleCommitTick?.(s.__index)}
@@ -1072,6 +1075,7 @@ function ShiftCard({
   shift,
   isCommitTicked,
   isCommitted,
+  committedShifts,
   override,
   onClearOverride,
   onToggleCommitTick,
@@ -1089,14 +1093,19 @@ function ShiftCard({
   const isDeleted = overrideAction === 'delete'
   const isUnassignOverride = overrideAction === 'unassign'
   const duplicateCount = overrideAction === 'duplicate' ? (override.target_staff_ids?.length || 0) : 0
-  // Display values incorporate the override so the card shows what will
-  // actually land on commit.
-  const displayInitials = isUnassignOverride
-    ? '?'
-    : (shift.staff_initials || (shift.staff_id ? `staff #${shift.staff_id}` : '?'))
+  // Live committed state takes precedence: once the shift is on the live roster,
+  // show the actual claim status (could differ from the proposal if a jockey grabbed it).
+  const liveCommitted = isCommitted && Array.isArray(committedShifts) && committedShifts.length > 0
+  const displayInitials = liveCommitted
+    ? committedShifts.map((c) => c.staff_initials || '?').join(' · ')
+    : (isUnassignOverride
+      ? '?'
+      : (shift.staff_initials || (shift.staff_id ? `staff #${shift.staff_id}` : '?')))
+  const liveUnassigned = liveCommitted && committedShifts.every((c) => !c.staff_id)
+  const showUnassigned = liveCommitted ? liveUnassigned : unassigned
   return (
     <div
-      className={`prp-shift ${unassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'} ${
+      className={`prp-shift ${showUnassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'} ${
         isCommitTicked ? 'commit-ticked' : ''
       } ${isCommitted ? 'committed' : ''} ${isDeleted ? 'override-delete' : ''} ${
         overrideAction ? 'has-override' : ''
@@ -1154,7 +1163,7 @@ function ShiftCard({
           {formatTime(shift.start_time)}–{formatTime(shift.end_time)}
         </div>
         <div className="prp-shift-staff">
-          {unassigned ? '? unassigned' : displayInitials}
+          {showUnassigned ? '? unassigned' : displayInitials}
         </div>
         {shift.linked_booking_refs?.length > 0 && (
           <div className="prp-shift-bookings">

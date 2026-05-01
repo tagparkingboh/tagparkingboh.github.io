@@ -760,6 +760,21 @@ class PlannerRunListItem(BaseModel):
     summary: Optional[dict] = None  # counts pulled from proposal_json so the strip shows volume at a glance
 
 
+class CommittedShiftSnapshot(BaseModel):
+    """Live state of a committed roster_shift, for the planner detail UI.
+
+    Represents what's actually on disk *now* for a proposal that the admin
+    committed via /api/admin/qa/roster-planner/commit. Reflects post-commit
+    overrides (unassign → staff_id=None) AND any subsequent claims/edits
+    (jockey claimed an unassigned shift → staff_id=that jockey).
+    """
+    shift_id: int
+    staff_id: Optional[int] = None
+    staff_initials: Optional[str] = None
+    status: str  # 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
+    intended_driver_type: Optional[str] = None
+
+
 class PlannerRunDetail(BaseModel):
     """Full row body for `GET /runs/{run_id}` — the proposal as recorded.
 
@@ -772,6 +787,12 @@ class PlannerRunDetail(BaseModel):
     Survives undo (drops back to empty) and re-commit (refills). FE uses it
     to hide the commit checkbox on already-committed proposals so admins
     can't accidentally re-tick and hit a 409 overlap.
+
+    `committed_shifts_by_index` maps each committed proposal index to the
+    list of live roster_shifts that index produced. Lets the FE render the
+    *current* state (unassigned `?`, claimed by X, duplicated to N drivers)
+    instead of the engine's original suggestion. List-per-index because a
+    duplicate override yields one proposal → N shifts.
     """
     run_id: str
     triggered_at: datetime
@@ -785,6 +806,9 @@ class PlannerRunDetail(BaseModel):
     duration_ms: Optional[int] = None
     error_text: Optional[str] = None
     committed_indexes: List[int] = Field(default_factory=list)
+    committed_shifts_by_index: Dict[int, List[CommittedShiftSnapshot]] = Field(
+        default_factory=dict
+    )
 
 
 class ProposalOverride(BaseModel):

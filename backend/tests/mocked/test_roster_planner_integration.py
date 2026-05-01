@@ -902,6 +902,150 @@ class TestRunDetailCommittedIndexes:
         assert r.json()["committed_indexes"] == []
 
 
+class TestRunDetailCommittedShiftsByIndex:
+    """`committed_shifts_by_index` reflects the *live* state of each
+    committed proposal — not the engine's original suggestion. Lets the
+    planner UI render unassigned cards as `?`, claimed cards with the
+    claimer's initials, and duplicates with multiple initials."""
+
+    def test_happy_unassigned_committed_shift_shows_null_staff(self, client, mock_db):
+        """Admin committed with unassign override → snapshot has staff_id=None.
+        The original proposal said staff_id=2 (MS), but the live state is
+        unassigned. UI should render `?`, not `MS`."""
+        from db_models import PlannerRun, RosterShift
+
+        proposal = {
+            "run_id": "r-snap",
+            "proposed_shifts": [_mk_proposal(staff_id=2)],  # engine said MS
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-snap", proposal=proposal)]
+        mock_db._tables[RosterShift] = [
+            _mk_existing_shift(
+                shift_id=900, staff_id=None,  # unassign override applied
+                shift_date=date(2026, 5, 11),
+                start_time=time(8, 0), end_time=time(16, 0),
+                planner_run_id="r-snap",
+            ),
+        ]
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-snap")
+        assert r.status_code == 200
+        snap = r.json()["committed_shifts_by_index"]
+        assert "0" in snap
+        assert len(snap["0"]) == 1
+        assert snap["0"][0]["staff_id"] is None
+        assert snap["0"][0]["staff_initials"] is None
+        assert snap["0"][0]["status"] == "scheduled"
+
+    def test_happy_claimed_shift_shows_claimer_initials(self, client, mock_db):
+        """A jockey claimed the unassigned shift → the snapshot now has
+        their staff_id and initials, even though the original proposal
+        had a different (or no) assignee."""
+        from db_models import PlannerRun, RosterShift
+
+        proposal = {
+            "run_id": "r-snap",
+            "proposed_shifts": [_mk_proposal(staff_id=None)],  # engine left it ?
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-snap", proposal=proposal)]
+        # KW (id=8) claimed it after commit.
+        claimer = mk_user(user_id=8, is_admin=False)
+        claimer.first_name = "Karl"
+        claimer.last_name = "Walden"
+        claimed_shift = _mk_existing_shift(
+            shift_id=901, staff_id=8,
+            shift_date=date(2026, 5, 11),
+            start_time=time(8, 0), end_time=time(16, 0),
+            planner_run_id="r-snap",
+        )
+        claimed_shift.staff = claimer
+        mock_db._tables[RosterShift] = [claimed_shift]
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-snap")
+        assert r.status_code == 200
+        snap = r.json()["committed_shifts_by_index"]["0"]
+        assert len(snap) == 1
+        assert snap[0]["staff_id"] == 8
+        assert snap[0]["staff_initials"] == "KW"
+
+    def test_happy_duplicate_committed_shows_all_initials(self, client, mock_db):
+        """Duplicate override → multiple shifts share the proposal's
+        (date, start, end). Snapshot list contains one entry per shift."""
+        from db_models import PlannerRun, RosterShift
+
+        proposal = {
+            "run_id": "r-snap",
+            "proposed_shifts": [_mk_proposal(staff_id=2)],
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-snap", proposal=proposal)]
+        ms = mk_user(user_id=2)
+        ms.first_name, ms.last_name = "Marek", "Smolarek"
+        kw = mk_user(user_id=8)
+        kw.first_name, kw.last_name = "Karl", "Walden"
+        shifts = []
+        for i, u in enumerate([ms, kw]):
+            s = _mk_existing_shift(
+                shift_id=910 + i, staff_id=u.id,
+                shift_date=date(2026, 5, 11),
+                start_time=time(8, 0), end_time=time(16, 0),
+                planner_run_id="r-snap",
+            )
+            s.staff = u
+            shifts.append(s)
+        mock_db._tables[RosterShift] = shifts
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-snap")
+        assert r.status_code == 200
+        snap = r.json()["committed_shifts_by_index"]["0"]
+        assert len(snap) == 2
+        initials = sorted(s["staff_initials"] for s in snap)
+        assert initials == ["KW", "MS"]
+
+    def test_edge_uncommitted_proposal_index_absent_from_map(self, client, mock_db):
+        """A proposal index that hasn't been committed shouldn't appear in
+        the map at all (FE renders engine's original suggestion in that
+        case, no badge)."""
+        from db_models import PlannerRun, RosterShift
+
+        proposal = {
+            "run_id": "r-snap",
+            "proposed_shifts": [
+                _mk_proposal(staff_id=2, shift_date="2026-05-11"),
+                _mk_proposal(staff_id=3, shift_date="2026-05-12"),
+            ],
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-snap", proposal=proposal)]
+        # Only proposal index 0 has been committed.
+        mock_db._tables[RosterShift] = [
+            _mk_existing_shift(
+                shift_id=920, staff_id=2,
+                shift_date=date(2026, 5, 11),
+                start_time=time(8, 0), end_time=time(16, 0),
+                planner_run_id="r-snap",
+            ),
+        ]
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-snap")
+        assert r.status_code == 200
+        snap = r.json()["committed_shifts_by_index"]
+        assert "0" in snap
+        assert "1" not in snap
+
+    def test_boundary_after_undo_snapshot_map_empty(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift
+
+        proposal = {
+            "run_id": "r-snap",
+            "proposed_shifts": [_mk_proposal(staff_id=2)],
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-snap", proposal=proposal)]
+        mock_db._tables[RosterShift] = []  # undo wiped them
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-snap")
+        assert r.status_code == 200
+        assert r.json()["committed_shifts_by_index"] == {}
+
+
 # =====================================================================================
 # POST /runs/{id}/feedback and GET /feedback — per-engine-decision QA review
 # =====================================================================================
@@ -1348,6 +1492,10 @@ def _mk_existing_shift(*, shift_id=99, staff_id=2, shift_date=date(2026, 5, 11),
     s.status = status
     s.planner_run_id = planner_run_id
     s.created_source = "manual" if planner_run_id is None else "planner"
+    # Default staff to None when staff_id is None — endpoints that check
+    # `if s.staff` would otherwise see a MagicMock and produce gibberish
+    # initials. Test that wants a real staff object overrides s.staff after.
+    s.staff = None if staff_id is None else MagicMock()
     return s
 
 

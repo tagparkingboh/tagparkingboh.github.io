@@ -26,6 +26,7 @@ from models import (
     PlannerRunListItem, PlannerRunDetail,
     PlannerRunFeedbackCreate, PlannerRunFeedbackResponse, PlannerRunFeedbackOverride,
     PlannerCommitRequest, PlannerCommitResponse, PlannerUndoResponse,
+    CommittedShiftSnapshot,
     TeamShiftResponse,
 )
 from roster_planner import propose_roster, PlannerSettings, UK_TZ
@@ -3259,33 +3260,54 @@ async def get_planner_run(
         except (TypeError, ValueError):
             warnings = []
 
-    # Compute committed_indexes — proposal positions that currently have at
-    # least one matching scheduled roster_shift for this run. Survives undo
-    # (re-fetch returns []), survives re-commit (returns the new set).
+    # Compute committed_indexes + committed_shifts_by_index — proposal
+    # positions that currently have at least one matching roster_shift for
+    # this run, and the *live* state of each (snapshot includes any
+    # post-commit overrides like unassign + any subsequent claims).
     # Match key: (date, start_time, end_time). staff_id is intentionally not
-    # in the key — duplicate produces multiple shifts with different staff
-    # for the same proposal, and unassign drops staff_id to None.
+    # in the key — duplicate produces multiple shifts with different staff,
+    # and unassign drops staff_id to None.
     committed_indexes: list[int] = []
+    committed_shifts_by_index: dict[int, list[CommittedShiftSnapshot]] = {}
     if proposal and proposal.get("proposed_shifts"):
+        # Include any status (not just SCHEDULED) so the FE can reflect
+        # CONFIRMED / IN_PROGRESS too. Cancelled rows still surface — admin
+        # can see what happened to their commit.
         committed_shifts = (
             db.query(RosterShift)
-            .filter(
-                RosterShift.planner_run_id == run_id,
-                RosterShift.status == ShiftStatus.SCHEDULED,
-            )
+            .filter(RosterShift.planner_run_id == run_id)
             .all()
         )
-        # Bucket existing shifts by their (date, start_time, end_time) key
-        # so the per-proposal lookup is O(1).
-        committed_keys = set()
+        # Bucket existing shifts by (date, start_time, end_time) for O(1)
+        # per-proposal lookup. Multiple shifts can share a key (duplicate).
+        shifts_by_key: dict[tuple, list[RosterShift]] = {}
         for s in committed_shifts:
-            committed_keys.add((s.date, s.start_time, s.end_time))
+            shifts_by_key.setdefault(
+                (s.date, s.start_time, s.end_time), []
+            ).append(s)
+
         for idx, ps in enumerate(proposal["proposed_shifts"]):
             ps_date = date_type.fromisoformat(ps["date"]) if isinstance(ps["date"], str) else ps["date"]
             ps_start = parse_time_string(ps["start_time"]) if isinstance(ps["start_time"], str) else ps["start_time"]
             ps_end = parse_time_string(ps["end_time"]) if isinstance(ps["end_time"], str) else ps["end_time"]
-            if (ps_date, ps_start, ps_end) in committed_keys:
-                committed_indexes.append(idx)
+            matched = shifts_by_key.get((ps_date, ps_start, ps_end))
+            if not matched:
+                continue
+            committed_indexes.append(idx)
+            committed_shifts_by_index[idx] = [
+                CommittedShiftSnapshot(
+                    shift_id=s.id,
+                    staff_id=s.staff_id,
+                    staff_initials=get_staff_initials(s.staff) if s.staff else None,
+                    status=s.status.value if hasattr(s.status, "value") else str(s.status),
+                    intended_driver_type=(
+                        s.intended_driver_type
+                        if isinstance(getattr(s, "intended_driver_type", None), str)
+                        else None
+                    ),
+                )
+                for s in matched
+            ]
 
     return PlannerRunDetail(
         run_id=row.run_id,
@@ -3300,6 +3322,7 @@ async def get_planner_run(
         duration_ms=row.duration_ms,
         error_text=row.error_text,
         committed_indexes=committed_indexes,
+        committed_shifts_by_index=committed_shifts_by_index,
     )
 
 
