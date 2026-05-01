@@ -2613,8 +2613,6 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                   </h4>
                   <div className={`shift-list available-shift-list collapsible-content ${collapsedSections.availableShifts ? 'hidden' : ''}`}>
                     {availableForDate.map((shift) => {
-                      const typeConfig = SHIFT_TYPE_CONFIG[shift.shift_type] || SHIFT_TYPE_CONFIG.morning
-
                       return (
                         <div key={shift.id} className="shift-card available-shift-card">
                           <div className="shift-card-header">
@@ -2624,9 +2622,6 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                               <span className="shift-time">{formatTime(shift.end_time)}</span>
                             </div>
                             <div className="shift-card-pills">
-                              <div className="shift-type-badge" style={{ background: typeConfig.color }}>
-                                {typeConfig.icon} {typeConfig.label}
-                              </div>
                               {shift.intended_driver_type === 'fleet' ? (
                                 <div className="driver-type-badge driver-type-fleet" title="Fleet driver shift">
                                   🚐 Fleet
