@@ -161,6 +161,48 @@ class TestAuditEventEndpoint:
 
         assert response.status_code == 200
 
+    # -- Regression guard: every event name the FE actually emits must be -----
+    # accepted by the BE. Pre-Apr 30 2026 the event_map was missing
+    # stripe_form_ready / stripe_form_error / payment_requires_action, so
+    # those POSTs returned 400 and the audit rows silently disappeared.
+    # Sourced from grep over StripePayment.jsx + BookingsNew.jsx.
+    @pytest.mark.parametrize("event_name", [
+        "dates_selected",
+        "flight_selected",
+        "tnc_accepted",
+        "tnc_unchecked",
+        "promo_code_added",
+        "promo_code_removed",
+        "checkout_loaded",
+        "stripe_form_ready",
+        "stripe_form_error",
+        "payment_processing",
+        "payment_initiated",
+        "payment_succeeded",
+        "payment_failed",
+        "payment_requires_action",
+    ])
+    def test_every_fe_emitted_event_name_is_accepted(self, client, mock_db, event_name):
+        """Every event name the FE emits must round-trip as 200. Add new
+        names here AND to main.py event_map whenever the FE adds a new
+        logAuditEvent call, otherwise the audit row is silently dropped."""
+        response = client.post(
+            "/api/booking/audit-event",
+            json={
+                "session_id": "sess_regression",
+                "event": event_name,
+                "event_data": {},
+            },
+        )
+        assert response.status_code == 200, (
+            f"event {event_name!r} returned {response.status_code} — "
+            f"likely missing from main.py event_map. "
+            f"Body: {response.text}"
+        )
+        body = response.json()
+        assert body["success"] is True
+        assert body["event"] == event_name
+
 
 # =============================================================================
 # Tests - GET /api/admin/reports/session-tracking

@@ -9101,6 +9101,11 @@ async def log_checkout_event(
     - promo_code_removed: User removed a promo code
     - checkout_loaded: Stripe checkout page loaded successfully
     """
+    # Allowlist of event names the FE may POST. Must include every value the
+    # FE actually emits — anything missing here returns 400 and the audit row
+    # is dropped (booking flow still completes since these are observability
+    # events). Cross-reference: tag-website/src/components/StripePayment.jsx
+    # `logAuditEvent` call sites and BookingsNew.jsx audit-event POSTs.
     event_map = {
         "dates_selected": AuditLogEvent.DATES_SELECTED,
         "flight_selected": AuditLogEvent.FLIGHT_SELECTED,
@@ -9109,10 +9114,13 @@ async def log_checkout_event(
         "promo_code_added": AuditLogEvent.PROMO_CODE_ADDED,
         "promo_code_removed": AuditLogEvent.PROMO_CODE_REMOVED,
         "checkout_loaded": AuditLogEvent.CHECKOUT_LOADED,
+        "stripe_form_ready": AuditLogEvent.STRIPE_FORM_READY,
+        "stripe_form_error": AuditLogEvent.STRIPE_FORM_ERROR,
         "payment_processing": AuditLogEvent.PAYMENT_PROCESSING,
         "payment_initiated": AuditLogEvent.PAYMENT_INITIATED,
         "payment_succeeded": AuditLogEvent.PAYMENT_SUCCEEDED,
         "payment_failed": AuditLogEvent.PAYMENT_FAILED,
+        "payment_requires_action": AuditLogEvent.PAYMENT_REQUIRES_ACTION,
     }
 
     audit_event = event_map.get(request.event)
