@@ -1177,6 +1177,11 @@ function ShiftCard({
         ? { label: 'Engine', cls: 'prp-source-engine', title: shift.planner_run_id ? `Engine commit (run ${shift.planner_run_id.slice(0, 8)})` : 'Created by a previous engine commit' }
         : { label: 'Calendar', cls: 'prp-source-manual', title: 'Created manually via the admin Calendar' })
     : null
+  // Cards backed by an admin-created Calendar shift are read-only in the
+  // planner — Duplicate / Merge / Split / Unassign / Delete belong on the
+  // Calendar UI, not here. Hide the action row to avoid implying the planner
+  // can mutate them.
+  const isAdminCreated = shift.kind === 'untouched_for_reason' && shift.created_source === 'manual'
   return (
     <div
       className={`prp-shift ${showUnassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'} ${
@@ -1255,7 +1260,7 @@ function ShiftCard({
           </div>
         )}
       </div>
-      {!isCommitted && (
+      {!isCommitted && !isAdminCreated && (
         <div className="prp-shift-actions booking-actions">
           <button
             type="button"
