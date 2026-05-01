@@ -1045,6 +1045,71 @@ class TestRunDetailCommittedShiftsByIndex:
         assert r.status_code == 200
         assert r.json()["committed_shifts_by_index"] == {}
 
+    def test_boundary_two_proposals_same_time_dont_merge_buckets(self, client, mock_db):
+        """Regression: two proposals at the exact same (date, start, end)
+        used to share a bucket — proposal 0's card showed proposal 1's
+        committed shifts too. Now we use the audit-log per-proposal mapping
+        to attribute shifts precisely. Reported May 2026 ('? · KW · ?')."""
+        from db_models import PlannerRun, RosterShift, AuditLog, AuditLogEvent
+
+        proposal = {
+            "run_id": "r-collide",
+            "proposed_shifts": [
+                _mk_proposal(staff_id=None),  # idx 0 — unassigned slot
+                _mk_proposal(staff_id=8),     # idx 1 — KW slot, same time window
+            ],
+        }
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-collide", proposal=proposal)]
+        # Three shifts all at 08:00-16:00 / 2026-05-11:
+        #   shift 940 → unassigned (proposal 0)
+        #   shift 941 → unassigned-fleet duplicate of proposal 0
+        #   shift 942 → KW (proposal 1)
+        kw = mk_user(user_id=8)
+        kw.first_name, kw.last_name = "Karl", "Walden"
+        s940 = _mk_existing_shift(
+            shift_id=940, staff_id=None,
+            shift_date=date(2026, 5, 11),
+            start_time=time(8, 0), end_time=time(16, 0),
+            planner_run_id="r-collide",
+        )
+        s941 = _mk_existing_shift(
+            shift_id=941, staff_id=None,
+            shift_date=date(2026, 5, 11),
+            start_time=time(8, 0), end_time=time(16, 0),
+            planner_run_id="r-collide",
+        )
+        s942 = _mk_existing_shift(
+            shift_id=942, staff_id=8,
+            shift_date=date(2026, 5, 11),
+            start_time=time(8, 0), end_time=time(16, 0),
+            planner_run_id="r-collide",
+        )
+        s942.staff = kw
+        mock_db._tables[RosterShift] = [s940, s941, s942]
+
+        # Audit-log mapping written by the commit endpoint — proposal 0 owns
+        # shifts 940 + 941, proposal 1 owns shift 942. Without this, the
+        # detail endpoint would bucket all three shifts together by time.
+        audit = AuditLog(
+            session_id="planner-r-collide",
+            event=AuditLogEvent.PLANNER_RUN_COMMITTED,
+            event_data=json.dumps({
+                "run_id": "r-collide",
+                "proposal_to_shift_ids": {"0": [940, 941], "1": [942]},
+            }),
+        )
+        mock_db._tables[AuditLog] = [audit]
+
+        r = client.get("/api/admin/qa/roster-planner/runs/r-collide")
+        assert r.status_code == 200
+        snap = r.json()["committed_shifts_by_index"]
+        # Proposal 0 owns its 2 unassigned shifts only — KW must NOT leak in.
+        assert sorted(s["shift_id"] for s in snap["0"]) == [940, 941]
+        assert all(s["staff_id"] is None for s in snap["0"])
+        # Proposal 1 owns just KW.
+        assert [s["shift_id"] for s in snap["1"]] == [942]
+        assert snap["1"][0]["staff_initials"] == "KW"
+
 
 # =====================================================================================
 # POST /runs/{id}/feedback and GET /feedback — per-engine-decision QA review

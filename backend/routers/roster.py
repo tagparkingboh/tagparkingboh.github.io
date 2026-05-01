@@ -2956,6 +2956,11 @@ async def commit_planner_run(
 
     created_ids: list[int] = []
     applied_overrides: list[dict] = []  # for audit
+    # Per-proposal mapping so the GET-detail endpoint can attribute live
+    # shifts back to their source proposal precisely. Bucketing by
+    # (date, start, end) collides when the engine plans multiple shifts
+    # in the same time window — see the duplicate-fleet bug from May 2026.
+    proposal_to_shift_ids: dict[int, list[int]] = {}
     try:
         for idx, ps in zip(request.proposal_indexes, selected):
             override = request.overrides.get(idx) if request.overrides else None
@@ -2967,6 +2972,7 @@ async def commit_planner_run(
                     "action": "delete",
                     "shift_ids": [],
                 })
+                proposal_to_shift_ids[idx] = []
                 continue
 
             shift_date = date_type.fromisoformat(ps["date"]) if isinstance(ps["date"], str) else ps["date"]
@@ -3014,6 +3020,7 @@ async def commit_planner_run(
                     writes.append((None, "fleet"))
 
             shift_type_str = ps.get("shift_type", "morning")
+            this_proposal_shift_ids: list[int] = []
             for write_staff_id, forced_intended in writes:
                 # Phase 3 conflict check — only meaningful when staff is assigned.
                 if write_staff_id is not None:
@@ -3067,6 +3074,7 @@ async def commit_planner_run(
                 db.add(new_shift)
                 db.flush()  # populate new_shift.id
                 created_ids.append(new_shift.id)
+                this_proposal_shift_ids.append(new_shift.id)
 
                 for event in ps.get("events") or []:
                     booking_id = event.get("booking_id")
@@ -3085,11 +3093,12 @@ async def commit_planner_run(
                         continue
                     db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=booking_id))
 
+            proposal_to_shift_ids[idx] = this_proposal_shift_ids
             if override:
                 applied_overrides.append({
                     "proposal_index": idx,
                     "action": override.action,
-                    "shift_ids": created_ids[-len(writes):],
+                    "shift_ids": list(this_proposal_shift_ids),
                     "target_staff_ids": override.target_staff_ids,
                     "add_unassigned_jockey": getattr(override, "add_unassigned_jockey", False),
                     "add_unassigned_fleet": getattr(override, "add_unassigned_fleet", False),
@@ -3105,6 +3114,9 @@ async def commit_planner_run(
                 "shift_ids": created_ids,
                 "proposal_indexes": request.proposal_indexes,
                 "applied_overrides": applied_overrides,
+                # Authoritative per-proposal mapping. GET-detail reads this
+                # back to avoid the (date,start,end) bucketing collision.
+                "proposal_to_shift_ids": {str(k): v for k, v in proposal_to_shift_ids.items()},
             },
         )
 
@@ -3280,34 +3292,59 @@ async def get_planner_run(
     # positions that currently have at least one matching roster_shift for
     # this run, and the *live* state of each (snapshot includes any
     # post-commit overrides like unassign + any subsequent claims).
-    # Match key: (date, start_time, end_time). staff_id is intentionally not
-    # in the key — duplicate produces multiple shifts with different staff,
-    # and unassign drops staff_id to None.
+    #
+    # Source of truth: PLANNER_RUN_COMMITTED audit-log rows for this run.
+    # Each commit records `proposal_to_shift_ids` so we can attribute live
+    # shifts back to their source proposal precisely. Bucketing by
+    # (date, start, end) collides when the engine plans multiple shifts in
+    # the same time window (e.g. duplicate-fleet on one shows another
+    # proposal's KW too) — see May 2026 bug report.
     committed_indexes: list[int] = []
     committed_shifts_by_index: dict[int, list[CommittedShiftSnapshot]] = {}
     if proposal and proposal.get("proposed_shifts"):
-        # Include any status (not just SCHEDULED) so the FE can reflect
-        # CONFIRMED / IN_PROGRESS too. Cancelled rows still surface — admin
-        # can see what happened to their commit.
-        committed_shifts = (
-            db.query(RosterShift)
-            .filter(RosterShift.planner_run_id == run_id)
+        # Aggregate proposal_index → set of shift_ids across every commit
+        # that's happened on this run (multiple commits can stack).
+        idx_to_shift_ids: dict[int, set[int]] = {}
+        commit_audits = (
+            db.query(AuditLog)
+            .filter(
+                AuditLog.session_id == f"planner-{run_id}",
+                AuditLog.event == AuditLogEvent.PLANNER_RUN_COMMITTED,
+            )
+            .order_by(AuditLog.created_at.asc())
             .all()
         )
-        # Bucket existing shifts by (date, start_time, end_time) for O(1)
-        # per-proposal lookup. Multiple shifts can share a key (duplicate).
-        shifts_by_key: dict[tuple, list[RosterShift]] = {}
-        for s in committed_shifts:
-            shifts_by_key.setdefault(
-                (s.date, s.start_time, s.end_time), []
-            ).append(s)
+        for audit_row in commit_audits:
+            try:
+                payload = json.loads(audit_row.event_data or "{}")
+            except (TypeError, ValueError):
+                continue
+            mapping = payload.get("proposal_to_shift_ids") or {}
+            for k, v in mapping.items():
+                try:
+                    pi = int(k)
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(v, list):
+                    continue
+                idx_to_shift_ids.setdefault(pi, set()).update(int(x) for x in v if isinstance(x, int))
 
-        for idx, ps in enumerate(proposal["proposed_shifts"]):
-            ps_date = date_type.fromisoformat(ps["date"]) if isinstance(ps["date"], str) else ps["date"]
-            ps_start = parse_time_string(ps["start_time"]) if isinstance(ps["start_time"], str) else ps["start_time"]
-            ps_end = parse_time_string(ps["end_time"]) if isinstance(ps["end_time"], str) else ps["end_time"]
-            matched = shifts_by_key.get((ps_date, ps_start, ps_end))
-            if not matched:
+        # Cross-reference with currently-live shifts so undo / manual delete
+        # is reflected. Live = exists in DB and still belongs to this run.
+        live_by_id: dict[int, RosterShift] = {
+            s.id: s
+            for s in db.query(RosterShift)
+            .filter(RosterShift.planner_run_id == run_id)
+            .all()
+        }
+
+        for idx in sorted(idx_to_shift_ids.keys()):
+            live_for_idx = [
+                live_by_id[sid]
+                for sid in sorted(idx_to_shift_ids[idx])
+                if sid in live_by_id
+            ]
+            if not live_for_idx:
                 continue
             committed_indexes.append(idx)
             committed_shifts_by_index[idx] = [
@@ -3322,8 +3359,45 @@ async def get_planner_run(
                         else None
                     ),
                 )
-                for s in matched
+                for s in live_for_idx
             ]
+
+        # Backward-compat: if no commit audit ever recorded a per-proposal
+        # mapping (run was committed before the fix), fall back to the old
+        # (date, start, end) bucketing so the FE doesn't go blank.
+        if not committed_shifts_by_index:
+            committed_shifts = (
+                db.query(RosterShift)
+                .filter(RosterShift.planner_run_id == run_id)
+                .all()
+            )
+            shifts_by_key: dict[tuple, list[RosterShift]] = {}
+            for s in committed_shifts:
+                shifts_by_key.setdefault(
+                    (s.date, s.start_time, s.end_time), []
+                ).append(s)
+            for idx, ps in enumerate(proposal["proposed_shifts"]):
+                ps_date = date_type.fromisoformat(ps["date"]) if isinstance(ps["date"], str) else ps["date"]
+                ps_start = parse_time_string(ps["start_time"]) if isinstance(ps["start_time"], str) else ps["start_time"]
+                ps_end = parse_time_string(ps["end_time"]) if isinstance(ps["end_time"], str) else ps["end_time"]
+                matched = shifts_by_key.get((ps_date, ps_start, ps_end))
+                if not matched:
+                    continue
+                committed_indexes.append(idx)
+                committed_shifts_by_index[idx] = [
+                    CommittedShiftSnapshot(
+                        shift_id=s.id,
+                        staff_id=s.staff_id,
+                        staff_initials=get_staff_initials(s.staff) if s.staff else None,
+                        status=s.status.value if hasattr(s.status, "value") else str(s.status),
+                        intended_driver_type=(
+                            s.intended_driver_type
+                            if isinstance(getattr(s, "intended_driver_type", None), str)
+                            else None
+                        ),
+                    )
+                    for s in matched
+                ]
 
     return PlannerRunDetail(
         run_id=row.run_id,
