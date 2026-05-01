@@ -905,6 +905,8 @@ def propose_roster(
                 "required_staff_count": 1,
                 "reason": "existing shift — not proposed for change",
                 "untouched_reason": reason,
+                "created_source": getattr(s, "created_source", "manual") or "manual",
+                "planner_run_id": getattr(s, "planner_run_id", None),
             }
         )
 

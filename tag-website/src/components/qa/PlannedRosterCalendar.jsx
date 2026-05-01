@@ -1169,6 +1169,14 @@ function ShiftCard({
       : (shift.staff_initials || (shift.staff_id ? `staff #${shift.staff_id}` : '?')))
   const liveUnassigned = liveCommitted && committedShifts.every((c) => !c.staff_id)
   const showUnassigned = liveCommitted ? liveUnassigned : unassigned
+  // Source badge for already-saved shifts so admins can tell at a glance
+  // whether an `untouched_for_reason` row came from a manual Calendar
+  // entry or a previous engine run.
+  const sourceBadge = shift.kind === 'untouched_for_reason'
+    ? (shift.created_source === 'planner'
+        ? { label: 'Engine', cls: 'prp-source-engine', title: shift.planner_run_id ? `Engine commit (run ${shift.planner_run_id.slice(0, 8)})` : 'Created by a previous engine commit' }
+        : { label: 'Calendar', cls: 'prp-source-manual', title: 'Created manually via the admin Calendar' })
+    : null
   return (
     <div
       className={`prp-shift ${showUnassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'} ${
@@ -1226,6 +1234,11 @@ function ShiftCard({
         }}
         title="Click to give feedback / edit this shift"
       >
+        {sourceBadge && (
+          <div className={`prp-source-badge ${sourceBadge.cls}`} title={sourceBadge.title}>
+            {sourceBadge.label}
+          </div>
+        )}
         <div className="prp-shift-time">
           {formatTime(shift.start_time)}–{formatTime(shift.end_time)}
         </div>

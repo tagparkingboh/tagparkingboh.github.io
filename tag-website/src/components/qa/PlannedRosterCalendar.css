@@ -1286,6 +1286,29 @@
   white-space: nowrap;
 }
 
+/* Source-of-truth badge on untouched_for_reason cards so admins can tell
+   manual Calendar entries apart from prior engine commits at a glance. */
+.prp-source-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  margin-bottom: 6px;
+}
+.prp-source-badge.prp-source-manual {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+.prp-source-badge.prp-source-engine {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+}
+
 /* Phase 3.5 — per-card override badges. Sit BELOW the commit checkbox so
    both can coexist (admin ticks AND applies override). Click to clear. */
 .prp-override-badge {

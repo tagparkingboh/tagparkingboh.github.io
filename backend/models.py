@@ -709,6 +709,10 @@ class ProposedShift(BaseModel):
     required_staff_count: int
     reason: str  # human-readable rationale, e.g. "3 drop-offs within 45 min"
     untouched_reason: Optional[str] = None  # set when kind=untouched_for_reason
+    # Provenance of an existing saved shift (kind=untouched_for_reason only):
+    # 'manual' = admin created via Calendar; 'planner' = engine commit.
+    created_source: Optional[str] = None
+    planner_run_id: Optional[str] = None
 
 
 class RosterProposalWarning(BaseModel):

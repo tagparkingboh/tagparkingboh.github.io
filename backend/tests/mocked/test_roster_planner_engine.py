@@ -1163,6 +1163,69 @@ class TestProposeRosterEndToEnd:
         assert untouched[0]["shift_id"] == 99
         assert untouched[0]["untouched_reason"] == "status=confirmed"
 
+    def test_happy_untouched_payload_carries_manual_source(self):
+        """Manually-created Calendar shifts surface with created_source='manual'."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        manual = mk_shift(
+            99, 10, date(2026, 5, 10), time(8, 0), time(14, 0),
+            status=ShiftStatus.CONFIRMED,
+        )
+        manual.created_source = "manual"
+        manual.planner_run_id = None
+        result = propose_roster(
+            bookings=[],
+            shifts=[manual],
+            staff=[mk_staff(10)],
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            now=now,
+        )
+        untouched = [p for p in result["proposed_shifts"] if p["kind"] == "untouched_for_reason"]
+        assert untouched[0]["created_source"] == "manual"
+        assert untouched[0]["planner_run_id"] is None
+
+    def test_edge_untouched_payload_carries_engine_source(self):
+        """Previously-engine-committed shifts surface with created_source='planner' + run_id."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        engine_made = mk_shift(
+            99, 10, date(2026, 5, 10), time(8, 0), time(14, 0),
+            status=ShiftStatus.CONFIRMED,
+        )
+        engine_made.created_source = "planner"
+        engine_made.planner_run_id = "run-abc-123"
+        result = propose_roster(
+            bookings=[],
+            shifts=[engine_made],
+            staff=[mk_staff(10)],
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            now=now,
+        )
+        untouched = [p for p in result["proposed_shifts"] if p["kind"] == "untouched_for_reason"]
+        assert untouched[0]["created_source"] == "planner"
+        assert untouched[0]["planner_run_id"] == "run-abc-123"
+
+    def test_boundary_untouched_payload_defaults_to_manual_when_attr_missing(self):
+        """Shifts with no created_source attribute (legacy/test stubs) default to manual."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        legacy = mk_shift(
+            99, 10, date(2026, 5, 10), time(8, 0), time(14, 0),
+            status=ShiftStatus.CONFIRMED,
+        )
+        # mk_shift doesn't set created_source — engine should fall back to 'manual'.
+        assert not hasattr(legacy, "created_source")
+        result = propose_roster(
+            bookings=[],
+            shifts=[legacy],
+            staff=[mk_staff(10)],
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            now=now,
+        )
+        untouched = [p for p in result["proposed_shifts"] if p["kind"] == "untouched_for_reason"]
+        assert untouched[0]["created_source"] == "manual"
+        assert untouched[0]["planner_run_id"] is None
+
     def test_edge_excluded_staff_never_proposed(self):
         """Mark Custard & John Penney style: excluded flag → never assigned."""
         now = uk_dt(2026, 5, 1, 0, 0)
