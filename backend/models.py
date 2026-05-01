@@ -858,7 +858,7 @@ class PlannerRunFeedbackOverride(BaseModel):
     end_time: Optional[time] = None
 
     # Action button fields
-    action: Optional[Literal["delete", "duplicate", "merge", "split"]] = None
+    action: Optional[Literal["delete", "duplicate", "merge", "split", "unassign"]] = None
 
     # Duplicate
     target_staff_ids: Optional[List[int]] = None

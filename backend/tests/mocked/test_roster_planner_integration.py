@@ -1053,6 +1053,40 @@ class TestFeedbackEndpoints:
         decoded = _json.loads(rows[0].override_json)
         assert decoded["action"] == "delete"
 
+    def test_post_feedback_with_action_unassign(self, client, mock_db):
+        """Regression for the 30-Apr-2026 bug: PlannerRunFeedbackOverride
+        had Literal["delete","duplicate","merge","split"] but the FE was
+        emitting action='unassign' (after Phase 3.5 added the Unassign
+        button). The feedback POST 422'd, the dialog showed the raw
+        Pydantic error, and the local override never registered."""
+        from db_models import PlannerRun, PlannerRunFeedback
+        import json as _json
+        mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
+
+        def _fake_refresh(obj):
+            if isinstance(obj, PlannerRunFeedback):
+                obj.id = obj.id or 1
+                obj.submitted_at = obj.submitted_at or datetime(2026, 5, 4, 9, 0, 0)
+        mock_db.refresh.side_effect = _fake_refresh
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/runs/r-A/feedback",
+            json={
+                "shift_date": "2026-05-04",
+                "severity": "note",
+                "comment": "Marked for unassign",
+                "override": {"action": "unassign"},
+            },
+        )
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["override"]["action"] == "unassign"
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        rows = [a for a in added if isinstance(a, PlannerRunFeedback)]
+        decoded = _json.loads(rows[0].override_json)
+        assert decoded["action"] == "unassign"
+
     def test_post_feedback_with_action_duplicate_carries_target_staff_ids(self, client, mock_db):
         from db_models import PlannerRun, PlannerRunFeedback
         mock_db._tables[PlannerRun] = [_mk_run_row(run_id="r-A")]
