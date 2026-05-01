@@ -1312,8 +1312,9 @@
 /* Phase 3.5 — Unassign action button. Yellow-orange to sit between the
    blue/purple action buttons and the red delete. */
 .prp-shift-actions .action-btn.unassign-btn {
+  background: #fffbeb;
   color: #b45309;
-  border-color: #fcd34d;
+  border: 1px solid #fcd34d;
 }
 .prp-shift-actions .action-btn.unassign-btn:hover:not(:disabled) {
   background: #fef3c7;
