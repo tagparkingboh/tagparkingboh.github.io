@@ -12290,8 +12290,16 @@ async def mark_booking_completed(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    if booking.status != BookingStatus.CONFIRMED:
-        raise HTTPException(status_code=400, detail=f"Booking must be confirmed to complete. Current status: {booking.status.value}")
+    # Accept both CONFIRMED and REFUNDED — a refunded booking can still
+    # have the trip happen (TAG issued a goodwill refund but the customer
+    # parked). The refund metadata on payments stays untouched; only the
+    # booking status flips to completed so the post-trip flow (thank-you
+    # email, reporting) fires.
+    if booking.status not in (BookingStatus.CONFIRMED, BookingStatus.REFUNDED):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Booking must be confirmed or refunded to complete. Current status: {booking.status.value}",
+        )
 
     booking.status = BookingStatus.COMPLETED
     booking.completed_at = datetime.utcnow()  # Set completion time for thank you email scheduling

@@ -4062,10 +4062,11 @@ function Admin() {
             </div>
           </div>
 
-          {/* Refunded Section — only when the booking has been refunded.
-              Surfaces the Stripe refund metadata so admins can see why/when
-              without digging into the Financial report or Stripe dashboard. */}
-          {booking.status?.toLowerCase() === 'refunded' && booking.payment?.refund_amount_pence && (
+          {/* Refunded Section — shown whenever the payment row carries refund
+              metadata, regardless of booking.status. This way the refund
+              history stays visible after a `refunded → completed` transition
+              (TAG-initiated goodwill refund + customer still parks). */}
+          {booking.payment?.refund_amount_pence > 0 && (
             <div className="booking-section booking-refund-section">
               <h4>Refunded</h4>
               <div className="booking-section-content">

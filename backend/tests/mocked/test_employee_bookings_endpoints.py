@@ -600,7 +600,7 @@ class TestMarkBookingCompletedLogic:
         """Should reject completing a cancelled booking."""
         booking = create_mock_booking(status="cancelled")
 
-        can_complete = booking.status.value == "confirmed"
+        can_complete = booking.status.value in ("confirmed", "refunded")
 
         assert can_complete is False
 
@@ -608,9 +608,19 @@ class TestMarkBookingCompletedLogic:
         """Should reject already completed booking."""
         booking = create_mock_booking(status="completed")
 
-        can_complete = booking.status.value == "confirmed"
+        can_complete = booking.status.value in ("confirmed", "refunded")
 
         assert can_complete is False
+
+    def test_allows_refunded_booking_to_complete(self):
+        """A refunded booking can still be marked completed when the trip
+        actually happened (TAG-initiated goodwill refund — customer still
+        parked). Refund metadata on the payment row stays attached."""
+        booking = create_mock_booking(status="refunded")
+
+        can_complete = booking.status.value in ("confirmed", "refunded")
+
+        assert can_complete is True
 
 
 # ============================================================================
@@ -795,6 +805,97 @@ class TestEmployeeBoundaries:
         stored = json.loads(inspection.photos)
 
         assert len(stored) == 20
+
+
+# ============================================================================
+# POST /api/employee/bookings/{id}/complete — TestClient integration tests
+#
+# Hits the real endpoint via TestClient(app) so coverage counts. Asserts
+# the post-2026-05 behaviour: a refunded booking is now allowed to flip
+# to completed (TAG-initiated goodwill refund + customer still parks).
+# ============================================================================
+
+class TestCompleteBookingRefundedTransition:
+    """Real integration tests for refunded → completed transition."""
+
+    def _wire(self, mock_db_session, booking, current_user):
+        from main import app, get_db, get_current_user
+
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.first.return_value = booking
+        mock_db_session.query.return_value = mock_query
+
+        app.dependency_overrides[get_db] = lambda: mock_db_session
+        app.dependency_overrides[get_current_user] = lambda: current_user
+
+    def test_happy_refunded_booking_flips_to_completed(self):
+        """Refunded booking can be marked completed; status flips, completed_at
+        is set, refund metadata on the payment row is left alone (caller's
+        responsibility — the endpoint doesn't touch payments)."""
+        from fastapi.testclient import TestClient
+        from main import app
+        from db_models import BookingStatus
+
+        booking = MagicMock()
+        booking.id = 42
+        booking.reference = "TAG-REFCOMP1"
+        booking.status = BookingStatus.REFUNDED
+        booking.completed_at = None
+        mock_db = MagicMock()
+        user = MagicMock()
+        self._wire(mock_db, booking, user)
+
+        try:
+            response = TestClient(app).post("/api/employee/bookings/42/complete")
+            assert response.status_code == 200, response.text
+            assert response.json()["success"] is True
+            assert booking.status == BookingStatus.COMPLETED
+            assert booking.completed_at is not None
+            mock_db.commit.assert_called_once()
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_unhappy_cancelled_booking_still_rejected_with_400(self):
+        """Cancelled bookings remain terminal (no completion path)."""
+        from fastapi.testclient import TestClient
+        from main import app
+        from db_models import BookingStatus
+
+        booking = MagicMock()
+        booking.id = 43
+        booking.reference = "TAG-CANC0001"
+        booking.status = BookingStatus.CANCELLED
+        mock_db = MagicMock()
+        user = MagicMock()
+        self._wire(mock_db, booking, user)
+
+        try:
+            response = TestClient(app).post("/api/employee/bookings/43/complete")
+            assert response.status_code == 400
+            assert "must be confirmed or refunded" in response.json()["detail"]
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_edge_already_completed_booking_rejected(self):
+        """Re-completing a completed booking is a 400 (no-op guard)."""
+        from fastapi.testclient import TestClient
+        from main import app
+        from db_models import BookingStatus
+
+        booking = MagicMock()
+        booking.id = 44
+        booking.reference = "TAG-DONE0001"
+        booking.status = BookingStatus.COMPLETED
+        mock_db = MagicMock()
+        user = MagicMock()
+        self._wire(mock_db, booking, user)
+
+        try:
+            response = TestClient(app).post("/api/employee/bookings/44/complete")
+            assert response.status_code == 400
+        finally:
+            app.dependency_overrides.clear()
 
 
 # ============================================================================
