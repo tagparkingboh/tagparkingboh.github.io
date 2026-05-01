@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import './PlannedRosterCalendar.css'
 
 /**
@@ -1091,22 +1091,40 @@ function ProposalCalendar({
               })}
             </div>
             <div className="prp-day-shifts">
-              {dayShifts.map((s, posInDay) => (
-                <ShiftCard
-                  key={s.__index}
-                  shift={s}
-                  isCommitTicked={selectedToCommit?.has(s.__index) ?? false}
-                  isCommitted={committedIndexes?.has(s.__index) ?? false}
-                  committedShifts={committedShiftsByIndex?.[s.__index] ?? null}
-                  override={overridesByIndex?.[s.__index] ?? null}
-                  onClearOverride={() => onClearOverride?.(s.__index)}
-                  onToggleCommitTick={() => onToggleCommitTick?.(s.__index)}
-                  onCardClick={() => onShiftClick?.(s, s.__index)}
-                  onAction={(action) => onShiftAction?.(s, s.__index, action, posInDay, dayShifts)}
-                  hasPrev={posInDay > 0}
-                  hasNext={posInDay < dayShifts.length - 1}
-                />
-              ))}
+              {dayShifts.map((s, posInDay) => {
+                // Once committed, the proposal can map to N live shifts
+                // (original + duplicates). The first committed shift is the
+                // proposal's "primary" — render it on the main card. Each
+                // extra shift gets its own slim DuplicateShiftCard so the
+                // admin sees one card per actual roster row.
+                const committed = committedShiftsByIndex?.[s.__index] ?? []
+                const primary = committed.length > 0 ? [committed[0]] : null
+                const dups = committed.slice(1)
+                return (
+                  <Fragment key={s.__index}>
+                    <ShiftCard
+                      shift={s}
+                      isCommitTicked={selectedToCommit?.has(s.__index) ?? false}
+                      isCommitted={committedIndexes?.has(s.__index) ?? false}
+                      committedShifts={primary}
+                      override={overridesByIndex?.[s.__index] ?? null}
+                      onClearOverride={() => onClearOverride?.(s.__index)}
+                      onToggleCommitTick={() => onToggleCommitTick?.(s.__index)}
+                      onCardClick={() => onShiftClick?.(s, s.__index)}
+                      onAction={(action) => onShiftAction?.(s, s.__index, action, posInDay, dayShifts)}
+                      hasPrev={posInDay > 0}
+                      hasNext={posInDay < dayShifts.length - 1}
+                    />
+                    {dups.map((dup, dupIdx) => (
+                      <DuplicateShiftCard
+                        key={`${s.__index}-dup-${dup.shift_id ?? dupIdx}`}
+                        shift={s}
+                        liveShift={dup}
+                      />
+                    ))}
+                  </Fragment>
+                )
+              })}
             </div>
           </div>
         )
@@ -1263,6 +1281,35 @@ function ShiftCard({
         >
           Delete
         </button>
+      </div>
+    </div>
+  )
+}
+
+// Slim card rendered for each duplicate of a committed proposal — one card
+// per live shift on the roster. No commit/override controls (the shift is
+// already live; admins manage it via the regular roster admin UI).
+function DuplicateShiftCard({ shift, liveShift }) {
+  const isUnassigned = !liveShift?.staff_id
+  const initials = liveShift?.staff_initials || '?'
+  const isFleet = liveShift?.intended_driver_type === 'fleet'
+  return (
+    <div
+      className={`prp-shift prp-shift-duplicate ${isUnassigned ? 'unassigned' : ''} committed`}
+    >
+      <span
+        className="prp-committed-badge"
+        title="Live duplicate shift created at commit time"
+      >
+        ⎘ Duplicate
+      </span>
+      <div className="prp-shift-body" title="Live duplicate shift">
+        <div className="prp-shift-time">
+          {formatTime(shift.start_time)}–{formatTime(shift.end_time)}
+        </div>
+        <div className="prp-shift-staff">
+          {isUnassigned ? `? unassigned (${isFleet ? 'fleet' : 'jockey'})` : initials}
+        </div>
       </div>
     </div>
   )

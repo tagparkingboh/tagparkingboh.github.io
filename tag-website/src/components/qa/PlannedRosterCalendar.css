@@ -1237,6 +1237,18 @@
   border-color: #86efac;
 }
 
+/* Slim "duplicate" card rendered next to the original proposal card. One
+   per extra committed roster_shift. Distinguished with a dashed border so
+   admins can tell at a glance it's not a separate proposal. */
+.prp-shift.prp-shift-duplicate {
+  background: #f0fdf4;
+  border-style: dashed;
+  border-color: #86efac;
+}
+.prp-shift.prp-shift-duplicate .prp-committed-badge {
+  background: #6366f1;  /* indigo to distinguish from the green ✓ Committed */
+}
+
 .prp-committed-badge {
   position: absolute;
   top: 8px;
