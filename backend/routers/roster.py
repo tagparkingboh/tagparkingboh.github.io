@@ -2954,6 +2954,51 @@ async def commit_planner_run(
                 ),
             )
 
+    # Reject re-commits of a proposal_index that already has live shifts in
+    # this run — Phase 3 commits each proposal once. Without this guard a
+    # second commit silently re-writes the original row and any duplicates,
+    # producing ghost shifts (May 2026: proposal 50 ended up with 3 rows
+    # because three commits stacked).
+    prior_committed: set[int] = set()
+    prior_audits = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.session_id == f"planner-{request.run_id}",
+            AuditLog.event == AuditLogEvent.PLANNER_RUN_COMMITTED,
+        )
+        .all()
+    )
+    live_shift_ids = {
+        s.id
+        for s in db.query(RosterShift)
+        .filter(RosterShift.planner_run_id == request.run_id)
+        .all()
+    }
+    for audit_row in prior_audits:
+        try:
+            payload = json.loads(audit_row.event_data or "{}")
+        except (TypeError, ValueError):
+            continue
+        for k, v in (payload.get("proposal_to_shift_ids") or {}).items():
+            try:
+                pi = int(k)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(v, list) and any(
+                isinstance(sid, int) and sid in live_shift_ids for sid in v
+            ):
+                prior_committed.add(pi)
+    already = sorted(set(request.proposal_indexes) & prior_committed)
+    if already:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"proposal_index(es) {already} already committed in this run. "
+                "Undo the run first if you want to re-commit, or edit the "
+                "live shift directly via the roster admin UI."
+            ),
+        )
+
     created_ids: list[int] = []
     applied_overrides: list[dict] = []  # for audit
     # Per-proposal mapping so the GET-detail endpoint can attribute live

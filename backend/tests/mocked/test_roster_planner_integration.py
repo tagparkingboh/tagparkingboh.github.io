@@ -2295,6 +2295,83 @@ class TestCommitOverrideDuplicateUnassignedExtras:
         assert r.json()["shifts_created"] == 3
 
 
+class TestCommitGuardAgainstReCommit:
+    """A proposal_index that already has a live shift in this run cannot be
+    committed a second time — Phase 3 commits each proposal once. Without
+    this guard a second commit re-writes the original (and any duplicate
+    extras) silently, producing ghost shifts. May 2026 incident:
+    proposal 50 ended up with 3 live rows after three stacked commits."""
+
+    def test_unhappy_recommit_of_already_committed_proposal_returns_409(
+        self, client, mock_db
+    ):
+        from db_models import PlannerRun, RosterShift, AuditLog, AuditLogEvent
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        mock_db._tables[PlannerRun] = [run]
+        # Live shift 393 is what the previous commit left behind for
+        # proposal 0; the audit row maps it back to proposal_index 0.
+        existing = _mk_existing_shift(shift_id=393, staff_id=2)
+        existing.planner_run_id = "run-test-1"
+        mock_db._tables[RosterShift] = [existing]
+        mock_db._tables[AuditLog] = [
+            AuditLog(
+                session_id="planner-run-test-1",
+                event=AuditLogEvent.PLANNER_RUN_COMMITTED,
+                event_data=json.dumps({
+                    "run_id": "run-test-1",
+                    "proposal_to_shift_ids": {"0": [393]},
+                }),
+            )
+        ]
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "target_staff_ids": [3],
+                }},
+            },
+        )
+        assert r.status_code == 409
+        assert "already committed" in r.json()["detail"]
+        assert mock_db._committed is False
+
+    def test_edge_recommit_after_undo_is_allowed(self, client, mock_db):
+        """Once the run is undone (live shifts gone), the audit row's
+        shift_ids no longer match any live row → guard skips this proposal."""
+        from db_models import PlannerRun, RosterShift, AuditLog, AuditLogEvent
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        mock_db._tables[PlannerRun] = [run]
+        # Audit row from a previous (now-undone) commit references shift 393,
+        # but no live RosterShift with that id exists anymore.
+        mock_db._tables[RosterShift] = []
+        mock_db._tables[AuditLog] = [
+            AuditLog(
+                session_id="planner-run-test-1",
+                event=AuditLogEvent.PLANNER_RUN_COMMITTED,
+                event_data=json.dumps({
+                    "run_id": "run-test-1",
+                    "proposal_to_shift_ids": {"0": [393]},
+                }),
+            )
+        ]
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["shifts_created"] == 1
+
+
 class TestCommitOverrideUnsupportedActions:
     """merge / split are recognised by the schema but rejected at commit
     until Phase 3.6 lands. Surfaces explicitly so the FE can grey them out."""
