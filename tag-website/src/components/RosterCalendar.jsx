@@ -2483,7 +2483,6 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                 </div>
                 <div className={`shift-list collapsible-content ${collapsedSections.shifts ? 'hidden' : ''}`}>
                   {selectedDateShifts.map((shift) => {
-                    const typeConfig = SHIFT_TYPE_CONFIG[shift.shift_type] || SHIFT_TYPE_CONFIG.other
                     const statusConfig = SHIFT_STATUS_CONFIG[shift.status] || SHIFT_STATUS_CONFIG.scheduled
 
                     return (
@@ -2504,9 +2503,15 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                             <span className="shift-time-separator">to</span>
                             <span className="shift-time">{formatTime(shift.end_time)}</span>
                           </div>
-                          <div className="shift-type-badge" style={{ background: typeConfig.color }}>
-                            {typeConfig.icon} {typeConfig.label}
-                          </div>
+                          {shift.intended_driver_type === 'fleet' ? (
+                            <div className="driver-type-badge driver-type-fleet" title="Fleet driver shift">
+                              🚐 Fleet
+                            </div>
+                          ) : (
+                            <div className="driver-type-badge driver-type-jockey" title="Jockey shift">
+                              🏇 Jockey
+                            </div>
+                          )}
                           <div
                             className="shift-status-badge"
                             style={{ borderColor: statusConfig.color, color: statusConfig.color }}
