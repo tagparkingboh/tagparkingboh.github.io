@@ -1185,7 +1185,8 @@ function ShiftCard({
   return (
     <div
       className={`prp-shift ${showUnassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'} ${
-        isCommitTicked ? 'commit-ticked' : ''
+        isAdminCreated ? 'prp-shift-calendar-source' : ''
+      } ${isCommitTicked ? 'commit-ticked' : ''
       } ${isCommitted ? 'committed' : ''} ${isDeleted ? 'override-delete' : ''} ${
         overrideAction ? 'has-override' : ''
       }`}

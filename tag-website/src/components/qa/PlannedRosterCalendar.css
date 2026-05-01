@@ -1286,6 +1286,14 @@
   white-space: nowrap;
 }
 
+/* Calendar-sourced cards (admin-created via the Calendar UI). Light sky-blue
+   background distinguishes them at a glance from engine proposals so admins
+   know the planner is showing them, not proposing to change them. */
+.prp-shift.prp-shift-calendar-source {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
 /* Source-of-truth badge on untouched_for_reason cards so admins can tell
    manual Calendar entries apart from prior engine commits at a glance. */
 .prp-source-badge {
