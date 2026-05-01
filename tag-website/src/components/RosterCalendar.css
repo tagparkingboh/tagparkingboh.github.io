@@ -531,6 +531,28 @@
   border-radius: 10px;
   padding: 15px;
   border-left: 3px solid #D9FF00;
+  position: relative;
+}
+
+/* Refunded bookings stay on the calendar so operators have visibility,
+   but they're visually muted (the customer may not show up) and labelled
+   so it's obvious at a glance. */
+.detail-booking-card.detail-booking-refunded {
+  border-left-color: #f97316;
+  opacity: 0.75;
+}
+
+.booking-refunded-badge {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: #f97316;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
 }
 
 .booking-header-row {

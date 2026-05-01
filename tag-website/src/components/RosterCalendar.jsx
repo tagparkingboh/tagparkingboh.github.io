@@ -82,12 +82,16 @@ const ukToISO = (ukDate) => {
 // shifts) and the Admin page produce identical groupings.
 export const PICKUP_OVERNIGHT_CUTOFF = '02:30'
 
-// Group confirmed bookings by operational day. Drop-offs key on
+// Group confirmed and refunded bookings by operational day. Drop-offs key on
 // `dropoff_date` directly. Pickups key on `pickup_date` unless the
 // pickup_time is strictly before PICKUP_OVERNIGHT_CUTOFF, in which
 // case they're attributed to the previous calendar day. Each day's
 // list is sorted by real datetime so re-bucketed events land at the
 // bottom (chronologically later than 23:55 of the same operational day).
+//
+// Refunded bookings are surfaced too so operators have full visibility
+// into TAG-initiated refund situations on the day; the rendering layer
+// is responsible for visual differentiation.
 export const computeBookingsByDate = (bookings) => {
   const grouped = {}
   const ensureDay = (key) => {
@@ -105,7 +109,7 @@ export const computeBookingsByDate = (bookings) => {
     `${date}T${time ? String(time).slice(0, 5) : '00:00'}`
 
   ;(bookings || [])
-    .filter((b) => b && b.status === 'confirmed')
+    .filter((b) => b && (b.status === 'confirmed' || b.status === 'refunded'))
     .forEach((booking) => {
       if (booking.dropoff_date) {
         ensureDay(booking.dropoff_date).dropoffs.push(booking)
@@ -2352,7 +2356,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                       return ka.localeCompare(kb)
                     })
                     .map((booking) => (
-                      <div key={booking.id} className="detail-booking-card">
+                      <div key={booking.id} className={`detail-booking-card ${booking.status === 'refunded' ? 'detail-booking-refunded' : ''}`}>
+                        {booking.status === 'refunded' && (
+                          <span className="booking-refunded-badge" title="This booking was refunded — customer may not arrive">REFUNDED</span>
+                        )}
                         <div className="booking-header-row">
                           <div className="booking-time">{formatTime(booking.dropoff_time)}</div>
                           <div className="booking-flight">
@@ -2416,7 +2423,10 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                       return ka.localeCompare(kb)
                     })
                     .map((booking) => (
-                      <div key={booking.id} className="detail-booking-card">
+                      <div key={booking.id} className={`detail-booking-card ${booking.status === 'refunded' ? 'detail-booking-refunded' : ''}`}>
+                        {booking.status === 'refunded' && (
+                          <span className="booking-refunded-badge" title="This booking was refunded — customer may not arrive">REFUNDED</span>
+                        )}
                         <div className="booking-header-row">
                           <div className="booking-time">{formatTime(booking.pickup_time)}</div>
                           <div className="booking-flight">

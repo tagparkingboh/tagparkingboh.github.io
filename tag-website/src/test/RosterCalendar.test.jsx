@@ -113,13 +113,23 @@ describe('computeBookingsByDate', () => {
     expect(grouped['2026-05-10'].dropoffs[0].id).toBe(99)
   })
 
-  it('ignores non-confirmed bookings', () => {
+  it('ignores pending and cancelled bookings (but keeps confirmed and refunded)', () => {
     const grouped = computeBookingsByDate([
       mkPickup(1, '2026-05-09', '08:15', 'pending'),
       mkPickup(2, '2026-05-09', '12:00', 'cancelled'),
       mkPickup(3, '2026-05-09', '16:00'),
+      mkPickup(4, '2026-05-09', '18:00', 'refunded'),
     ])
-    expect(grouped['2026-05-09'].pickups.map((b) => b.id)).toEqual([3])
+    expect(grouped['2026-05-09'].pickups.map((b) => b.id)).toEqual([3, 4])
+  })
+
+  it('includes refunded bookings so operators see them on the calendar', () => {
+    const grouped = computeBookingsByDate([
+      mkDropoff(1, '2026-05-09', '07:00', 'refunded'),
+      mkPickup(2, '2026-05-09', '17:00', 'refunded'),
+    ])
+    expect(grouped['2026-05-09'].dropoffs.map((b) => b.id)).toEqual([1])
+    expect(grouped['2026-05-09'].pickups.map((b) => b.id)).toEqual([2])
   })
 
   it('handles missing pickup_time as no-op (no re-bucketing)', () => {
