@@ -2093,6 +2093,143 @@ class TestCommitOverrideDuplicate:
         assert all(l.booking_id == 11 for l in link_rows)
 
 
+class TestCommitOverrideDuplicateUnassignedExtras:
+    """Override action='duplicate' can also fan out unassigned slots tagged
+    for jockey or fleet — admins use these to leave a claimable hole rather
+    than picking a specific person."""
+
+    def test_happy_duplicate_with_unassigned_jockey_writes_extra_row(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "target_staff_ids": [],
+                    "add_unassigned_jockey": True,
+                }},
+            },
+        )
+        assert r.status_code == 200
+        # original (staff=2) + 1 unassigned-jockey extra = 2 shifts
+        assert r.json()["shifts_created"] == 2
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        shifts = [a for a in added if isinstance(a, RosterShift)]
+        assert len(shifts) == 2
+        extra = next(s for s in shifts if s.staff_id is None)
+        assert extra.intended_driver_type == "jockey"
+
+    def test_happy_duplicate_with_unassigned_fleet_writes_fleet_tagged_row(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "add_unassigned_fleet": True,
+                }},
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["shifts_created"] == 2
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        shifts = [a for a in added if isinstance(a, RosterShift)]
+        extra = next(s for s in shifts if s.staff_id is None)
+        assert extra.intended_driver_type == "fleet"
+
+    def test_happy_duplicate_combines_targets_and_both_unassigned_extras(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "target_staff_ids": [3],
+                    "add_unassigned_jockey": True,
+                    "add_unassigned_fleet": True,
+                }},
+            },
+        )
+        assert r.status_code == 200
+        # original + 1 target + 2 unassigned extras = 4 shifts
+        assert r.json()["shifts_created"] == 4
+
+        added = [c.args[0] for c in mock_db.add.call_args_list]
+        shifts = [a for a in added if isinstance(a, RosterShift)]
+        unassigned_types = sorted(
+            s.intended_driver_type for s in shifts if s.staff_id is None
+        )
+        assert unassigned_types == ["fleet", "jockey"]
+
+    def test_unhappy_duplicate_with_no_targets_or_extras_returns_400(self, client, mock_db):
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "target_staff_ids": [],
+                    "add_unassigned_jockey": False,
+                    "add_unassigned_fleet": False,
+                }},
+            },
+        )
+        assert r.status_code == 400
+        assert "add_unassigned" in r.json()["detail"]
+
+    def test_edge_unassigned_extras_default_false_preserves_old_behaviour(self, client, mock_db):
+        """Old commit payloads (no flags) keep working — flags default to False."""
+        from db_models import PlannerRun, RosterShift
+
+        run = _mk_planner_run(proposed_shifts=[_mk_proposal(staff_id=2)])
+        mock_db._tables[PlannerRun] = [run]
+        mock_db._tables[RosterShift] = []
+
+        r = client.post(
+            "/api/admin/qa/roster-planner/commit",
+            json={
+                "run_id": "run-test-1",
+                "proposal_indexes": [0],
+                "overrides": {"0": {
+                    "action": "duplicate",
+                    "target_staff_ids": [3, 4],
+                }},
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["shifts_created"] == 3
+
+
 class TestCommitOverrideUnsupportedActions:
     """merge / split are recognised by the schema but rejected at commit
     until Phase 3.6 lands. Surfaces explicitly so the FE can grey them out."""

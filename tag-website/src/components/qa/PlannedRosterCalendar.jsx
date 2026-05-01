@@ -580,10 +580,23 @@ function ActionDialog({
         apiUrl={apiUrl} authHeader={authHeader}
         shift={shift} submitting={submitting} error={error}
         onCancel={onClose}
-        onSubmit={(staffIds) => postOverride(
-          { action: 'duplicate', target_staff_ids: staffIds },
-          `Duplicate to ${staffIds.length} additional driver(s)`,
-        )}
+        onSubmit={({ staffIds, addUnassignedJockey, addUnassignedFleet }) => {
+          const extras = (addUnassignedJockey ? 1 : 0) + (addUnassignedFleet ? 1 : 0)
+          const total = staffIds.length + extras
+          const parts = []
+          if (staffIds.length) parts.push(`${staffIds.length} driver${staffIds.length === 1 ? '' : 's'}`)
+          if (addUnassignedJockey) parts.push('1 unassigned jockey')
+          if (addUnassignedFleet) parts.push('1 unassigned fleet')
+          return postOverride(
+            {
+              action: 'duplicate',
+              target_staff_ids: staffIds,
+              add_unassigned_jockey: addUnassignedJockey,
+              add_unassigned_fleet: addUnassignedFleet,
+            },
+            `Duplicate to ${total} additional row(s): ${parts.join(' + ')}`,
+          )
+        }}
       />
     )
   }
@@ -708,12 +721,16 @@ function useAssignableStaff(apiUrl, authHeader) {
 function DuplicateDialog({ apiUrl, authHeader, shift, submitting, error, onCancel, onSubmit }) {
   const staff = useAssignableStaff(apiUrl, authHeader)
   const [picked, setPicked] = useState(new Set())
+  const [addUnassignedJockey, setAddUnassignedJockey] = useState(false)
+  const [addUnassignedFleet, setAddUnassignedFleet] = useState(false)
 
   function toggle(id) {
     const next = new Set(picked)
     if (next.has(id)) next.delete(id); else next.add(id)
     setPicked(next)
   }
+
+  const totalExtras = picked.size + (addUnassignedJockey ? 1 : 0) + (addUnassignedFleet ? 1 : 0)
 
   return (
     <DialogShell
@@ -723,10 +740,14 @@ function DuplicateDialog({ apiUrl, authHeader, shift, submitting, error, onCance
         <>
           <button
             className="btn-primary"
-            onClick={() => onSubmit(Array.from(picked))}
-            disabled={submitting || picked.size === 0}
+            onClick={() => onSubmit({
+              staffIds: Array.from(picked),
+              addUnassignedJockey,
+              addUnassignedFleet,
+            })}
+            disabled={submitting || totalExtras === 0}
           >
-            {submitting ? 'Saving…' : `Save (${picked.size} driver${picked.size === 1 ? '' : 's'})`}
+            {submitting ? 'Saving…' : `Save (${totalExtras} row${totalExtras === 1 ? '' : 's'})`}
           </button>
           <button className="btn-secondary" onClick={onCancel}>Cancel</button>
         </>
@@ -734,9 +755,32 @@ function DuplicateDialog({ apiUrl, authHeader, shift, submitting, error, onCance
     >
       <p style={{ marginTop: 0 }}>
         Add drivers to this same shift window. Each selection becomes a
-        carbon-copy assignment.
+        carbon-copy assignment. Tick "Unassigned Jockey" or "Unassigned
+        Fleet" to fan out an extra slot anyone of that type can claim.
       </p>
       <ul className="prp-staff-picker">
+        <li>
+          <label>
+            <input
+              type="checkbox"
+              checked={addUnassignedJockey}
+              onChange={() => setAddUnassignedJockey((v) => !v)}
+            />
+            <span>🏇 Unassigned Jockey</span>
+            <span className="prp-staff-tag">+1 open slot</span>
+          </label>
+        </li>
+        <li>
+          <label>
+            <input
+              type="checkbox"
+              checked={addUnassignedFleet}
+              onChange={() => setAddUnassignedFleet((v) => !v)}
+            />
+            <span>🚐 Unassigned Fleet</span>
+            <span className="prp-staff-tag">+1 open slot</span>
+          </label>
+        </li>
         {staff.length === 0 && <li className="prp-empty">No assignable staff loaded.</li>}
         {staff.map((s) => (
           <li key={s.id}>
@@ -1092,7 +1136,11 @@ function ShiftCard({
   const overrideAction = override?.action ?? null
   const isDeleted = overrideAction === 'delete'
   const isUnassignOverride = overrideAction === 'unassign'
-  const duplicateCount = overrideAction === 'duplicate' ? (override.target_staff_ids?.length || 0) : 0
+  const duplicateCount = overrideAction === 'duplicate'
+    ? (override.target_staff_ids?.length || 0)
+      + (override.add_unassigned_jockey ? 1 : 0)
+      + (override.add_unassigned_fleet ? 1 : 0)
+    : 0
   // Live committed state takes precedence: once the shift is on the live roster,
   // show the actual claim status (could differ from the proposal if a jockey grabbed it).
   const liveCommitted = isCommitted && Array.isArray(committedShifts) && committedShifts.length > 0

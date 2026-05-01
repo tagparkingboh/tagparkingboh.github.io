@@ -824,6 +824,11 @@ class ProposalOverride(BaseModel):
     action: Literal["unassign", "delete", "duplicate", "merge", "split"]
     # duplicate
     target_staff_ids: Optional[List[int]] = None
+    # duplicate — extra unassigned copies tagged for jockey/fleet so admins
+    # can fan out a shift into "+1 unassigned jockey slot" without picking
+    # a specific person upfront.
+    add_unassigned_jockey: bool = False
+    add_unassigned_fleet: bool = False
     # merge (Phase 3.6)
     merge_with_index: Optional[int] = None
     merged_staff_id: Optional[int] = None

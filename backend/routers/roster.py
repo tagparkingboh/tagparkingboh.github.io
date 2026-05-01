@@ -2984,24 +2984,37 @@ async def commit_planner_run(
             # ---- Action: duplicate → original staff_id + each target staff. ----
             # Original staff_id can be None (admin chose to fan out an
             # unassigned proposal); we still write one row per target.
-            staff_ids_to_write: list[Optional[int]] = [staff_id]
+            # Each entry is (staff_id, intended_driver_type_override) — the
+            # override is only set for explicit unassigned-jockey / -fleet
+            # extras so we can tag those rows correctly without a user lookup.
+            writes: list[tuple[Optional[int], Optional[str]]] = [(staff_id, None)]
             if override and override.action == "duplicate":
-                if not override.target_staff_ids:
+                has_targets = bool(override.target_staff_ids)
+                wants_extra_jockey = bool(getattr(override, "add_unassigned_jockey", False))
+                wants_extra_fleet = bool(getattr(override, "add_unassigned_fleet", False))
+                if not (has_targets or wants_extra_jockey or wants_extra_fleet):
                     raise HTTPException(
                         status_code=400,
-                        detail=f"duplicate override at index {idx} requires target_staff_ids",
+                        detail=(
+                            f"duplicate override at index {idx} requires target_staff_ids "
+                            "or add_unassigned_jockey / add_unassigned_fleet"
+                        ),
                     )
                 # de-dupe in case admin ticks the same staff twice; skip
                 # original staff_id so we don't double-write the same row.
                 seen_targets: set[int] = set()
-                for tid in override.target_staff_ids:
+                for tid in (override.target_staff_ids or []):
                     if tid == staff_id or tid in seen_targets:
                         continue
                     seen_targets.add(tid)
-                    staff_ids_to_write.append(tid)
+                    writes.append((tid, None))
+                if wants_extra_jockey:
+                    writes.append((None, "jockey"))
+                if wants_extra_fleet:
+                    writes.append((None, "fleet"))
 
             shift_type_str = ps.get("shift_type", "morning")
-            for write_staff_id in staff_ids_to_write:
+            for write_staff_id, forced_intended in writes:
                 # Phase 3 conflict check — only meaningful when staff is assigned.
                 if write_staff_id is not None:
                     conflict = _shifts_overlap_for_staff(
@@ -3030,9 +3043,10 @@ async def commit_planner_run(
                 # automatically tags the new row 'fleet'). For unassigned
                 # writes (engine output without override, or unassign
                 # override), default to 'jockey' since the engine only
-                # auto-creates jockey work.
-                row_intended = "jockey"
-                if write_staff_id is not None:
+                # auto-creates jockey work — except when the duplicate
+                # override explicitly asks for an unassigned-fleet row.
+                row_intended = forced_intended or "jockey"
+                if write_staff_id is not None and forced_intended is None:
                     target_user = db.query(User).filter(User.id == write_staff_id).first()
                     if target_user and getattr(target_user, "driver_type", None) in ("jockey", "fleet"):
                         row_intended = target_user.driver_type
@@ -3075,8 +3089,10 @@ async def commit_planner_run(
                 applied_overrides.append({
                     "proposal_index": idx,
                     "action": override.action,
-                    "shift_ids": created_ids[-len(staff_ids_to_write):],
+                    "shift_ids": created_ids[-len(writes):],
                     "target_staff_ids": override.target_staff_ids,
+                    "add_unassigned_jockey": getattr(override, "add_unassigned_jockey", False),
+                    "add_unassigned_fleet": getattr(override, "add_unassigned_fleet", False),
                 })
 
         _audit_planner(
