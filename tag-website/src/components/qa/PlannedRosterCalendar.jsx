@@ -45,6 +45,13 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
   const [undoConfirmRunId, setUndoConfirmRunId] = useState(null)
   const [undoing, setUndoing] = useState(false)
 
+  // Per-proposal-index override state. Populated when an admin clicks an
+  // action button (Unassign / Delete / Duplicate) and confirms the dialog.
+  // Sent in the /commit body as `overrides`. Resets when the active run
+  // changes (index space is per-run).
+  // Shape: { [proposalIndex: number]: { action, target_staff_ids?, ... } }
+  const [overridesByIndex, setOverridesByIndex] = useState({})
+
   const authHeader = useMemo(
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
     [token]
@@ -78,11 +85,12 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
     }
   }, [apiUrl, authHeader])
 
-  // Reset commit selection whenever the active run changes — index space
-  // is per-run, so leaving stale ticks across runs would commit the wrong
-  // proposals.
+  // Reset commit selection + overrides whenever the active run changes —
+  // index space is per-run, so leaving stale state across runs would
+  // commit the wrong proposals or apply the wrong overrides.
   useEffect(() => {
     setSelectedToCommit(new Set())
+    setOverridesByIndex({})
     setCommitMessage(null)
   }, [selectedRunId])
 
@@ -166,6 +174,22 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
     })
   }
 
+  // Set / clear a per-proposal override (called by ActionDialog after the
+  // admin confirms an action). Auto-ticks the proposal so the override
+  // doesn't get filtered out at commit time for being unticked.
+  function setOverride(idx, override) {
+    setOverridesByIndex((prev) => ({ ...prev, [idx]: override }))
+    setSelectedToCommit((prev) => new Set([...prev, idx]))
+  }
+
+  function clearOverride(idx) {
+    setOverridesByIndex((prev) => {
+      const next = { ...prev }
+      delete next[idx]
+      return next
+    })
+  }
+
   function selectAllNew() {
     if (!detail?.proposal?.proposed_shifts) return
     const committed = new Set(detail.committed_indexes || [])
@@ -188,6 +212,13 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
     setCommitMessage(null)
     try {
       const indexes = Array.from(selectedToCommit).sort((a, b) => a - b)
+      // Strip overrides whose index isn't ticked — the backend ignores them
+      // anyway but cleaner not to send dead data.
+      const tickedSet = new Set(indexes)
+      const filteredOverrides = Object.fromEntries(
+        Object.entries(overridesByIndex)
+          .filter(([k]) => tickedSet.has(Number(k)))
+      )
       const res = await fetch(
         `${apiUrl}/api/admin/qa/roster-planner/commit`,
         {
@@ -196,6 +227,7 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           body: JSON.stringify({
             run_id: selectedRunId,
             proposal_indexes: indexes,
+            overrides: filteredOverrides,
           }),
         }
       )
@@ -208,7 +240,14 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           body.shifts_created === 1 ? '' : 's'
         }. They are now live in the roster.`
       )
+      // Clear local state for indexes we just committed — committed_indexes
+      // from refreshSelectedDetail() will own the visual state from now on.
       setSelectedToCommit(new Set())
+      setOverridesByIndex((prev) => {
+        const next = { ...prev }
+        for (const idx of indexes) delete next[idx]
+        return next
+      })
       setCommitConfirmOpen(false)
       await Promise.all([refreshRunsList(), refreshSelectedDetail()])
     } catch (err) {
@@ -335,7 +374,9 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
                 sortedDates={sortedDates}
                 selectedToCommit={selectedToCommit}
                 committedIndexes={new Set(detail.committed_indexes || [])}
+                overridesByIndex={overridesByIndex}
                 onToggleCommitTick={toggleCommitTick}
+                onClearOverride={clearOverride}
                 onShiftClick={(shift, idx) => {
                   setFeedbackShift(shift)
                   setFeedbackShiftIndex(idx)
@@ -444,6 +485,7 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           actionType={actionType}
           dayShifts={actionDayShifts}
           posInDay={actionPos}
+          onActionApplied={setOverride}
           onClose={() => {
             setActionShift(null)
             setActionShiftIndex(null)
@@ -464,12 +506,12 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
 
 function ActionDialog({
   apiUrl, authHeader, runId, shift, shiftIndex,
-  actionType, dayShifts, posInDay, onClose,
+  actionType, dayShifts, posInDay, onClose, onActionApplied,
 }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
-  async function postOverride(override, comment, severity = 'note') {
+  async function postOverride(override, comment, severity = 'note', applyToCommit = true) {
     setSubmitting(true)
     setError(null)
     try {
@@ -491,6 +533,12 @@ function ActionDialog({
         }
       )
       if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`)
+      // Phase 3.5: actions the backend honours at commit time → apply to
+      // local override state. merge / split are still feedback-only (Phase
+      // 3.6) — pass applyToCommit=false for those.
+      if (applyToCommit && onActionApplied) {
+        onActionApplied(shiftIndex, override)
+      }
       onClose()
     } catch (err) {
       setError(err.message || 'Failed to submit')
@@ -508,6 +556,19 @@ function ActionDialog({
           { action: 'delete' },
           'Marked for deletion',
           'issue',
+        )}
+      />
+    )
+  }
+  if (actionType === 'unassign') {
+    return (
+      <UnassignDialog
+        shift={shift} submitting={submitting} error={error}
+        onCancel={onClose}
+        onConfirm={() => postOverride(
+          { action: 'unassign' },
+          'Marked for unassign — shift will be committed without a jockey',
+          'note',
         )}
       />
     )
@@ -535,6 +596,8 @@ function ActionDialog({
         onSubmit={(direction, mergedStaffId) => postOverride(
           { action: 'merge', merge_direction: direction, merged_staff_id: mergedStaffId },
           `Merge with ${direction} shift`,
+          'note',
+          false,  // Phase 3.6 — feedback only, backend rejects on commit
         )}
       />
     )
@@ -554,12 +617,40 @@ function ActionDialog({
           }
           if (firstStart) override.first_half_start_time = firstStart + ':00'
           if (secondEnd) override.second_half_end_time = secondEnd + ':00'
-          postOverride(override, `Split at ${splitAt}`)
+          postOverride(override, `Split at ${splitAt}`, 'note', false)  // Phase 3.6
         }}
       />
     )
   }
   return null
+}
+
+// =============================================================================
+// UnassignDialog — confirm dialog for the new Unassign action.
+// =============================================================================
+function UnassignDialog({ shift, submitting, error, onCancel, onConfirm }) {
+  const currentStaff = shift.staff_initials || (shift.staff_id ? `staff #${shift.staff_id}` : 'unassigned')
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+        <h3 style={{ marginTop: 0 }}>Unassign this shift?</h3>
+        <p style={{ color: '#444' }}>
+          This shift is currently proposed for <strong>{currentStaff}</strong>. Unassigning
+          drops the assignment so the shift commits as <strong>?</strong> — any eligible
+          jockey can then claim it from the Employee app.
+        </p>
+        {error && <div className="prp-error" style={{ marginTop: '0.5rem' }}>{error}</div>}
+        <div className="modal-actions">
+          <button className="modal-btn modal-btn-secondary" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </button>
+          <button className="modal-btn modal-btn-primary" onClick={onConfirm} disabled={submitting}>
+            {submitting ? 'Marking…' : 'Yes, unassign'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function DialogShell({ title, error, footer, children }) {
@@ -925,7 +1016,9 @@ function ProposalCalendar({
   sortedDates,
   selectedToCommit,
   committedIndexes,
+  overridesByIndex,
   onToggleCommitTick,
+  onClearOverride,
   onShiftClick,
   onShiftAction,
 }) {
@@ -958,6 +1051,8 @@ function ProposalCalendar({
                   shift={s}
                   isCommitTicked={selectedToCommit?.has(s.__index) ?? false}
                   isCommitted={committedIndexes?.has(s.__index) ?? false}
+                  override={overridesByIndex?.[s.__index] ?? null}
+                  onClearOverride={() => onClearOverride?.(s.__index)}
                   onToggleCommitTick={() => onToggleCommitTick?.(s.__index)}
                   onCardClick={() => onShiftClick?.(s, s.__index)}
                   onAction={(action) => onShiftAction?.(s, s.__index, action, posInDay, dayShifts)}
@@ -977,6 +1072,8 @@ function ShiftCard({
   shift,
   isCommitTicked,
   isCommitted,
+  override,
+  onClearOverride,
   onToggleCommitTick,
   onCardClick,
   onAction,
@@ -987,11 +1084,23 @@ function ShiftCard({
   // Phase 3: only `kind === 'new'` proposals can be committed. Other kinds
   // ('extend', 'untouched_for_reason') are display-only.
   const isCommittable = shift.kind === 'new' || !shift.kind
+  // Override-derived display state.
+  const overrideAction = override?.action ?? null
+  const isDeleted = overrideAction === 'delete'
+  const isUnassignOverride = overrideAction === 'unassign'
+  const duplicateCount = overrideAction === 'duplicate' ? (override.target_staff_ids?.length || 0) : 0
+  // Display values incorporate the override so the card shows what will
+  // actually land on commit.
+  const displayInitials = isUnassignOverride
+    ? '?'
+    : (shift.staff_initials || (shift.staff_id ? `staff #${shift.staff_id}` : '?'))
   return (
     <div
       className={`prp-shift ${unassigned ? 'unassigned' : ''} prp-shift-${shift.kind || 'new'} ${
         isCommitTicked ? 'commit-ticked' : ''
-      } ${isCommitted ? 'committed' : ''}`}
+      } ${isCommitted ? 'committed' : ''} ${isDeleted ? 'override-delete' : ''} ${
+        overrideAction ? 'has-override' : ''
+      }`}
     >
       {isCommittable && isCommitted && (
         <span
@@ -1014,6 +1123,20 @@ function ShiftCard({
           />
         </label>
       )}
+      {overrideAction && !isCommitted && (
+        <button
+          type="button"
+          className={`prp-override-badge prp-override-${overrideAction}`}
+          onClick={(e) => { e.stopPropagation(); onClearOverride?.() }}
+          title="Click to clear this override"
+        >
+          {overrideAction === 'delete' && '✕ Delete'}
+          {overrideAction === 'unassign' && '? Unassign'}
+          {overrideAction === 'duplicate' && `+${duplicateCount} Duplicate`}
+          {overrideAction === 'merge' && '⇔ Merge'}
+          {overrideAction === 'split' && '⇆ Split'}
+        </button>
+      )}
       <div
         className="prp-shift-body"
         role="button"
@@ -1031,7 +1154,7 @@ function ShiftCard({
           {formatTime(shift.start_time)}–{formatTime(shift.end_time)}
         </div>
         <div className="prp-shift-staff">
-          {unassigned ? '? unassigned' : shift.staff_initials || `staff #${shift.staff_id}`}
+          {unassigned ? '? unassigned' : displayInitials}
         </div>
         {shift.linked_booking_refs?.length > 0 && (
           <div className="prp-shift-bookings">
@@ -1066,6 +1189,15 @@ function ShiftCard({
           onClick={(e) => { e.stopPropagation(); onAction?.('split') }}
         >
           Split
+        </button>
+        <button
+          type="button"
+          className="action-btn unassign-btn"
+          onClick={(e) => { e.stopPropagation(); onAction?.('unassign') }}
+          disabled={!shift.staff_id}
+          title={!shift.staff_id ? 'Already unassigned' : 'Drop staff_id so any jockey can claim it'}
+        >
+          Unassign
         </button>
         <button
           type="button"

@@ -1252,6 +1252,77 @@
   white-space: nowrap;
 }
 
+/* Phase 3.5 — per-card override badges. Sit BELOW the commit checkbox so
+   both can coexist (admin ticks AND applies override). Click to clear. */
+.prp-override-badge {
+  position: absolute;
+  top: 36px;
+  right: 8px;
+  z-index: 2;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.prp-override-delete {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+.prp-override-unassign {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+.prp-override-duplicate {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #93c5fd;
+}
+.prp-override-merge,
+.prp-override-split {
+  background: #ede9fe;
+  color: #5b21b6;
+  border-color: #c4b5fd;
+}
+.prp-override-badge:hover {
+  filter: brightness(0.95);
+}
+
+/* Card visual when an override is applied (especially delete — strike
+   the time/staff so it's obvious it won't land). */
+.prp-shift.override-delete .prp-shift-time,
+.prp-shift.override-delete .prp-shift-staff {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.prp-shift.override-delete {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.prp-shift.has-override:not(.override-delete) .prp-shift-staff {
+  font-weight: 600;
+}
+
+/* Phase 3.5 — Unassign action button. Yellow-orange to sit between the
+   blue/purple action buttons and the red delete. */
+.prp-shift-actions .action-btn.unassign-btn {
+  color: #b45309;
+  border-color: #fcd34d;
+}
+.prp-shift-actions .action-btn.unassign-btn:hover:not(:disabled) {
+  background: #fef3c7;
+}
+.prp-shift-actions .action-btn.unassign-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Undo button sits beside each row in the run history pane. */
 .prp-history-row-wrap {
   display: flex;
