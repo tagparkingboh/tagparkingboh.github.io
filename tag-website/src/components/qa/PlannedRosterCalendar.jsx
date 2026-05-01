@@ -328,8 +328,8 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           <button
             type="button"
             className="prp-refresh-btn"
-            onClick={() => window.location.reload()}
-            title="Refresh the page (reloads runs, settings, and FE bundle)"
+            onClick={() => Promise.all([refreshRunsList(), refreshSelectedDetail()])}
+            title="Re-fetch runs + selected run detail (no page reload)"
           >
             ⟳ Refresh
           </button>
