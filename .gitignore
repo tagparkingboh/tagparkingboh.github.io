@@ -45,3 +45,8 @@ backend/docs/SPEC.md
 
 # Migration scripts (contain sensitive patterns)
 backend/migrations/
+
+# One-off operational backfill scripts (refund reconciliation etc.) —
+# contain customer references / Stripe metadata; keep out of public history.
+backend/scripts/backfill_refund_*.py
+backend/scripts/backfill_stripe_refund.py
