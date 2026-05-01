@@ -326,6 +326,11 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
         shift_type=shift.shift_type.value,
         status=shift.status.value,
         notes=shift.notes,
+        intended_driver_type=(
+            shift.intended_driver_type
+            if isinstance(getattr(shift, "intended_driver_type", None), str)
+            else "jockey"
+        ),
         created_at=shift.created_at,
         updated_at=shift.updated_at
     )
@@ -1163,6 +1168,15 @@ async def create_shift(
             raise HTTPException(status_code=400, detail="Booking not found")
         booking_ids_to_link.append(shift_data.booking_id)
 
+    # If staff is assigned, intended_driver_type follows that user's
+    # driver_type — the assigned user is the source of truth. Only when
+    # staff_id is None does the request's intended_driver_type matter.
+    intended = shift_data.intended_driver_type or "jockey"
+    if shift_data.staff_id:
+        assigned = db.query(User).filter(User.id == shift_data.staff_id).first()
+        if assigned and getattr(assigned, "driver_type", None) in ("jockey", "fleet"):
+            intended = assigned.driver_type
+
     # Create shift
     new_shift = RosterShift(
         staff_id=shift_data.staff_id,
@@ -1173,7 +1187,8 @@ async def create_shift(
         end_time=end_time,
         shift_type=ShiftType(shift_data.shift_type.value),
         status=ShiftStatus(shift_data.status.value),
-        notes=shift_data.notes
+        notes=shift_data.notes,
+        intended_driver_type=intended,
     )
 
     db.add(new_shift)
@@ -1259,6 +1274,14 @@ async def update_shift(
         shift.status = ShiftStatus(updates.status.value)
     if updates.notes is not None:
         shift.notes = updates.notes
+    # If staff is now assigned, intended_driver_type follows the assigned
+    # user's driver_type (source of truth). Otherwise honour the request.
+    if updates.staff_id_provided and updates.staff_id:
+        assigned = db.query(User).filter(User.id == updates.staff_id).first()
+        if assigned and getattr(assigned, "driver_type", None) in ("jockey", "fleet"):
+            shift.intended_driver_type = assigned.driver_type
+    elif updates.intended_driver_type is not None:
+        shift.intended_driver_type = updates.intended_driver_type
 
     # Handle booking links update
     if updates.booking_ids is not None:
@@ -1566,6 +1589,20 @@ async def get_team_shifts(
 
     shifts = query.order_by(RosterShift.date, RosterShift.start_time).all()
 
+    # Driver-type relevance filter (locked 2026-04-30):
+    #   jockey users see all teammates (mixed pool)
+    #   fleet  users see only fleet teammates
+    user_driver_type = getattr(current_user, "driver_type", None)
+
+    def _visible(s):
+        if s.staff is None:
+            return False
+        if user_driver_type == "jockey":
+            return True
+        if user_driver_type == "fleet":
+            return getattr(s.staff, "driver_type", None) == "fleet"
+        return False  # admin / undefined → no team feed
+
     return [
         TeamShiftResponse(
             initials=get_staff_initials(s.staff),
@@ -1578,7 +1615,7 @@ async def get_team_shifts(
             end_time=format_time(s.end_time),
         )
         for s in shifts
-        if s.staff is not None
+        if _visible(s)
     ]
 
 
@@ -1638,19 +1675,31 @@ async def get_available_shifts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Get all unassigned shifts from today onwards.
-    Returns shifts that are available for employees to claim.
+    """Unassigned shifts the current user is eligible to claim.
+
+    Filter rule (locked 2026-04-30):
+      jockey users see all unassigned shifts (jockey- and fleet-intended)
+      fleet  users see only fleet-intended unassigned shifts
+
+    Anyone without a driver_type (e.g. admins not configured as drivers)
+    sees nothing — they shouldn't be claiming jockey/fleet work anyway.
     """
     today = date_type.today()
 
-    # Get all unassigned shifts from today onwards
-    shifts = db.query(RosterShift).filter(
+    query = db.query(RosterShift).filter(
         RosterShift.staff_id.is_(None),
         RosterShift.date >= today,
-        RosterShift.status != ShiftStatus.CANCELLED
-    ).order_by(RosterShift.date, RosterShift.start_time).all()
+        RosterShift.status != ShiftStatus.CANCELLED,
+    )
 
+    user_driver_type = getattr(current_user, "driver_type", None)
+    if user_driver_type == "fleet":
+        query = query.filter(RosterShift.intended_driver_type == "fleet")
+    elif user_driver_type != "jockey":
+        # No driver_type set → not a driver → no claimable shifts.
+        return []
+
+    shifts = query.order_by(RosterShift.date, RosterShift.start_time).all()
     return [shift_to_response(shift, db) for shift in shifts]
 
 
@@ -2975,6 +3024,18 @@ async def commit_planner_run(
                             ),
                         )
 
+                # intended_driver_type follows the assigned user's
+                # driver_type when present (so a duplicate-to-fleet
+                # automatically tags the new row 'fleet'). For unassigned
+                # writes (engine output without override, or unassign
+                # override), default to 'jockey' since the engine only
+                # auto-creates jockey work.
+                row_intended = "jockey"
+                if write_staff_id is not None:
+                    target_user = db.query(User).filter(User.id == write_staff_id).first()
+                    if target_user and getattr(target_user, "driver_type", None) in ("jockey", "fleet"):
+                        row_intended = target_user.driver_type
+
                 new_shift = RosterShift(
                     staff_id=write_staff_id,
                     date=shift_date,
@@ -2986,6 +3047,7 @@ async def commit_planner_run(
                     notes=ps.get("reason"),
                     created_source="planner",
                     planner_run_id=request.run_id,
+                    intended_driver_type=row_intended,
                 )
                 db.add(new_shift)
                 db.flush()  # populate new_shift.id

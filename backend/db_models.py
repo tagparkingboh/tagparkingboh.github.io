@@ -1384,6 +1384,14 @@ class RosterShift(Base):
     # via `DELETE FROM roster_shifts WHERE planner_run_id = ? AND status = 'scheduled'`.
     planner_run_id = Column(String(64), nullable=True, index=True)
 
+    # Driver-type targeting for unassigned shifts. Values: 'jockey' | 'fleet'.
+    # Filter rule (locked 2026-04-30):
+    #   jockey users see all unassigned shifts (jockey- and fleet-intended)
+    #   fleet  users see only fleet-intended unassigned shifts
+    # Engine sets to 'jockey' for everything it auto-creates. Admin manual-create
+    # picks via dropdown, defaulting to 'jockey'.
+    intended_driver_type = Column(String(20), nullable=False, server_default="jockey")
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

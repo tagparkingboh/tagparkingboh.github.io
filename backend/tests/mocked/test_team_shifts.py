@@ -33,12 +33,13 @@ from routers.roster import get_current_user
 # Factories
 # =============================================================================
 
-def make_user(*, id, first_name="Marek", last_name="Smolarek", phone="+447111000111"):
+def make_user(*, id, first_name="Marek", last_name="Smolarek", phone="+447111000111", driver_type="jockey"):
     u = MagicMock()
     u.id = id
     u.first_name = first_name
     u.last_name = last_name
     u.phone = phone
+    u.driver_type = driver_type
     return u
 
 

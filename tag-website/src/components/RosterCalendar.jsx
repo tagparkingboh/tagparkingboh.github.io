@@ -188,6 +188,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     end_time: '',
     shift_type: 'morning',
     notes: '',
+    intended_driver_type: 'jockey',
   })
   const [savingShift, setSavingShift] = useState(false)
   const [dateBookings, setDateBookings] = useState([])
@@ -961,6 +962,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       end_time: formatTime(shift.end_time),
       shift_type: shift.shift_type,
       notes: shift.notes || '',
+      intended_driver_type: shift.intended_driver_type || 'jockey',
     })
     // Fetch bookings for both dates if overnight shift
     fetchBookingsForDate(dateUK, endDateUK !== dateUK ? endDateUK : null)
@@ -1019,6 +1021,9 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         end_time: shiftForm.end_time,
         shift_type: shiftForm.shift_type,
         notes: shiftForm.notes || null,
+        // Backend overrides this with the assigned user's driver_type when
+        // staff_id is set; for unassigned shifts it's the source of truth.
+        intended_driver_type: shiftForm.intended_driver_type || 'jockey',
       }
 
       if (editingShift) {
@@ -2798,6 +2803,25 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
                       <option value="full_evening">Full Evening (17:30 - 01:20)</option>
                     </optgroup>
                   </select>
+                </div>
+                <div className="modal-form-group">
+                  <label>Driver Type</label>
+                  <select
+                    value={shiftForm.intended_driver_type}
+                    onChange={(e) => handleShiftFormChange('intended_driver_type', e.target.value)}
+                    disabled={!!shiftForm.staff_id}
+                    title={shiftForm.staff_id
+                      ? "When assigned, the driver type follows the assigned user's record automatically."
+                      : "Choose who can claim this shift if left unassigned."}
+                  >
+                    <option value="jockey">Jockey</option>
+                    <option value="fleet">Fleet</option>
+                  </select>
+                  <small style={{ color: '#888', fontSize: '0.75rem' }}>
+                    {shiftForm.staff_id
+                      ? "Auto from assigned staff"
+                      : "Jockey shifts visible to jockeys only · Fleet shifts visible to all drivers"}
+                  </small>
                 </div>
                 <div className="modal-form-group">
                   <label>Assign Staff</label>

@@ -515,6 +515,11 @@ class RosterShiftCreate(BaseModel):
     shift_type: ShiftTypeEnum
     status: ShiftStatusEnum = ShiftStatusEnum.SCHEDULED
     notes: Optional[str] = None
+    # Driver-type targeting for unassigned shifts. Defaults to 'jockey' for
+    # back-compat. Admin sets to 'fleet' when creating fleet-only shifts.
+    # When staff_id is set, the assigned user's driver_type is the source of
+    # truth at filter time — this field is informational for `?` shifts.
+    intended_driver_type: Literal["jockey", "fleet"] = "jockey"
 
 
 class RosterShiftUpdate(BaseModel):
@@ -532,6 +537,7 @@ class RosterShiftUpdate(BaseModel):
     shift_type: Optional[ShiftTypeEnum] = None
     status: Optional[ShiftStatusEnum] = None
     notes: Optional[str] = None
+    intended_driver_type: Optional[Literal["jockey", "fleet"]] = None
 
     @model_validator(mode='before')
     @classmethod
@@ -577,6 +583,7 @@ class RosterShiftResponse(BaseModel):
     shift_type: str
     status: str
     notes: Optional[str] = None
+    intended_driver_type: str = "jockey"  # 'jockey' | 'fleet'
     created_at: datetime
     updated_at: Optional[datetime] = None
 
