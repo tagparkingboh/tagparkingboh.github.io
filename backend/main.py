@@ -2578,10 +2578,19 @@ async def mark_booking_paid(
     # Roster planner shadow mode: a new CONFIRMED booking can reshape the
     # rolling 28-day roster. Fire the engine in the background — failure
     # inside the runner must never break this confirmation flow.
-    from roster_planner_runner import fire_engine_async, TRIGGER_BOOKING_CONFIRMED
+    from roster_planner_runner import (
+        fire_engine_async,
+        auto_link_booking_async,
+        TRIGGER_BOOKING_CONFIRMED,
+    )
     background_tasks.add_task(
         fire_engine_async, TRIGGER_BOOKING_CONFIRMED, booking.reference
     )
+    # Also try to auto-link this booking to any live planner-sourced jockey
+    # shift whose window already covers the drop-off / pickup time. Keeps
+    # the existing roster up to date without forcing the admin to recommit
+    # a fresh proposal for every new booking.
+    background_tasks.add_task(auto_link_booking_async, booking.id)
 
     # Send confirmation email
     email_sent = False
