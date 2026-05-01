@@ -863,6 +863,22 @@
   margin-top: 1px;
 }
 
+/* Event rows for bookings the customer was refunded for. Visible muting +
+   pill so admins can spot them on shift cards alongside confirmed work. */
+.prp-event.prp-event-refunded {
+  opacity: 0.7;
+}
+.prp-event-refunded-pill {
+  background: #f97316;
+  color: white;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 4px;
+}
+
 .prp-modal-feedback-form {
   background: #fffbeb;
   border: 1px solid #fde68a;

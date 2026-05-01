@@ -684,6 +684,14 @@ class ProposedEvent(BaseModel):
     booking_reference: str
     event_type: Literal["drop_off", "pick_up"]
     event_time: datetime  # Europe/London aware
+    customer_name: Optional[str] = None
+    flight_number: Optional[str] = None
+    destination: Optional[str] = None
+    # booking.status at the time the proposal was rendered. Mostly 'confirmed'
+    # (engine only plans for those), but untouched_for_reason cards surface
+    # whatever's actually linked to the saved shift — including 'refunded'
+    # so the planner UI can render the REFUNDED indicator.
+    status: Optional[str] = None
 
 
 class ProposedShift(BaseModel):

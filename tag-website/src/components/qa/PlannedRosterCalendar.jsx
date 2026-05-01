@@ -1755,12 +1755,16 @@ function AdminShiftBlock({ shift }) {
 
 function EventRow({ event }) {
   const isDropoff = event.event_type === 'drop_off'
+  const isRefunded = event.status === 'refunded'
   const eventTime = formatEventTime(event.event_time)
   return (
-    <li className={`prp-event prp-event-${isDropoff ? 'dropoff' : 'pickup'}`}>
+    <li className={`prp-event prp-event-${isDropoff ? 'dropoff' : 'pickup'} ${isRefunded ? 'prp-event-refunded' : ''}`}>
       <div className="prp-event-head">
         <span className="prp-event-icon">{isDropoff ? '🚗' : '🛬'}</span>
         <span className="prp-event-ref">{event.booking_reference}</span>
+        {isRefunded && (
+          <span className="prp-event-refunded-pill" title="This booking was refunded">REFUNDED</span>
+        )}
         {event.customer_name && (
           <span className="prp-event-customer">{event.customer_name}</span>
         )}

@@ -1205,6 +1205,83 @@ class TestProposeRosterEndToEnd:
         assert untouched[0]["created_source"] == "planner"
         assert untouched[0]["planner_run_id"] == "run-abc-123"
 
+    def test_happy_untouched_card_surfaces_linked_booking_events(self):
+        """An untouched_for_reason card surfaces its saved shift's linked
+        bookings as events (so the planner UI can render them on the card,
+        matching the admin Calendar's render). Engine-emitted events for
+        new clusters carry status='confirmed'."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        # A confirmed booking linked to a CONFIRMED (untouchable) saved shift.
+        booking = mk_booking(
+            7, "TAG-LINKED01",
+            drop_dt=uk_dt(2026, 5, 10, 8, 0),
+            pick_dt=uk_dt(2026, 5, 20, 14, 0),
+        )
+        shift = mk_shift(
+            99, 10, date(2026, 5, 10), time(7, 30), time(14, 30),
+            status=ShiftStatus.CONFIRMED,
+            bookings=[booking],
+        )
+        result = propose_roster(
+            bookings=[],  # no engine input — focus on untouched
+            shifts=[shift],
+            staff=[mk_staff(10)],
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            now=now,
+        )
+        untouched = [p for p in result["proposed_shifts"] if p["kind"] == "untouched_for_reason"]
+        assert len(untouched[0]["events"]) == 1
+        ev = untouched[0]["events"][0]
+        assert ev["booking_reference"] == "TAG-LINKED01"
+        assert ev["event_type"] == "drop_off"
+        assert ev["status"] == "confirmed"
+
+    def test_edge_untouched_card_marks_refunded_booking_events(self):
+        """Refunded bookings linked to an untouched saved shift surface with
+        status='refunded' so the planner UI can render the REFUNDED pill."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        refunded_booking = mk_booking(
+            8, "TAG-REF000001",
+            drop_dt=uk_dt(2026, 5, 10, 8, 0),
+            pick_dt=uk_dt(2026, 5, 20, 14, 0),
+            status=BookingStatus.REFUNDED,
+        )
+        shift = mk_shift(
+            99, 10, date(2026, 5, 10), time(7, 30), time(14, 30),
+            status=ShiftStatus.CONFIRMED,
+            bookings=[refunded_booking],
+        )
+        result = propose_roster(
+            bookings=[],
+            shifts=[shift],
+            staff=[mk_staff(10)],
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            now=now,
+        )
+        untouched = [p for p in result["proposed_shifts"] if p["kind"] == "untouched_for_reason"]
+        assert untouched[0]["events"][0]["status"] == "refunded"
+
+    def test_happy_engine_proposed_events_carry_confirmed_status(self):
+        """Engine-emitted events on `kind='new'` cards carry status='confirmed'."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [mk_booking(
+            1, "TAG-NEW00001",
+            drop_dt=uk_dt(2026, 5, 6, 8, 0),
+            pick_dt=uk_dt(2026, 5, 13, 14, 0),
+        )]
+        result = propose_roster(
+            bookings=bookings,
+            shifts=[],
+            staff=[mk_staff(10)],
+            holidays=[],
+            settings=DEFAULT_SETTINGS,
+            now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert all(ev["status"] == "confirmed" for s in new_shifts for ev in s["events"])
+
     def test_boundary_untouched_payload_defaults_to_manual_when_attr_missing(self):
         """Shifts with no created_source attribute (legacy/test stubs) default to manual."""
         now = uk_dt(2026, 5, 1, 0, 0)

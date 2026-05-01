@@ -102,6 +102,10 @@ class Event:
     customer_name: Optional[str] = None
     flight_number: Optional[str] = None
     destination: Optional[str] = None  # destination for drop_off, origin for pick_up
+    # Booking status at the time of proposal — 'confirmed' for engine-emitted
+    # events (engine only plans for confirmed), or whatever's actually on the
+    # saved shift's linked bookings for untouched_for_reason cards.
+    status: Optional[str] = None
 
 
 @dataclass
@@ -723,6 +727,7 @@ def propose_roster(
                     customer_name=customer_name,
                     flight_number=getattr(b, "dropoff_flight_number", None),
                     destination=getattr(b, "dropoff_destination", None),
+                    status="confirmed",
                 )
             )
         if window_start <= b.pickup_date < window_end:
@@ -748,6 +753,7 @@ def propose_roster(
                     customer_name=customer_name,
                     flight_number=getattr(b, "pickup_flight_number", None),
                     destination=getattr(b, "pickup_origin", None),
+                    status="confirmed",
                 )
             )
 
@@ -797,6 +803,7 @@ def propose_roster(
                 "customer_name": e.customer_name,
                 "flight_number": e.flight_number,
                 "destination": e.destination,
+                "status": e.status,
             }
             for e in cluster.events
         ]
@@ -888,6 +895,50 @@ def propose_roster(
         unt, reason = is_shift_untouchable(s, now, settings.untouchable_hours)
         if not unt:
             continue
+        # Surface the linked bookings on the saved shift so the planner UI
+        # can render them on the card (matches the admin Calendar's render).
+        # Each booking produces an event for whichever side (drop-off / pick-up)
+        # falls within the shift's date range. Status is included verbatim so
+        # the UI can distinguish e.g. refunded bookings with the REFUNDED pill.
+        shift_dates = {s.date}
+        if s.end_date and s.end_date != s.date:
+            shift_dates.add(s.end_date)
+        untouched_events: list[dict] = []
+        for b in getattr(s, "bookings", None) or []:
+            b_status = (
+                b.status.value if getattr(b, "status", None) is not None
+                and hasattr(b.status, "value") else getattr(b, "status", None)
+            )
+            customer_name = (
+                f"{getattr(b, 'customer_first_name', '') or ''} "
+                f"{getattr(b, 'customer_last_name', '') or ''}".strip() or None
+            )
+            d_date = getattr(b, "dropoff_date", None)
+            d_time = getattr(b, "dropoff_time", None)
+            p_date = getattr(b, "pickup_date", None)
+            p_time = getattr(b, "pickup_time", None)
+            if d_date in shift_dates and d_time:
+                untouched_events.append({
+                    "booking_id": b.id,
+                    "booking_reference": getattr(b, "reference", "") or "",
+                    "event_type": "drop_off",
+                    "event_time": _combine_uk(d_date, d_time),
+                    "customer_name": customer_name,
+                    "flight_number": getattr(b, "dropoff_flight_number", None),
+                    "destination": getattr(b, "dropoff_destination", None),
+                    "status": b_status,
+                })
+            elif p_date in shift_dates and p_time:
+                untouched_events.append({
+                    "booking_id": b.id,
+                    "booking_reference": getattr(b, "reference", "") or "",
+                    "event_type": "pick_up",
+                    "event_time": _combine_uk(p_date, p_time),
+                    "customer_name": customer_name,
+                    "flight_number": getattr(b, "pickup_flight_number", None),
+                    "destination": getattr(b, "pickup_origin", None),
+                    "status": b_status,
+                })
         proposed_shifts_out.append(
             {
                 "kind": "untouched_for_reason",
@@ -900,7 +951,7 @@ def propose_roster(
                 "is_custom_range": False,
                 "staff_id": s.staff_id,
                 "staff_initials": getattr(s, "staff_initials", None),
-                "events": [],
+                "events": untouched_events,
                 "peak_concurrent_count": 0,
                 "required_staff_count": 1,
                 "reason": "existing shift — not proposed for change",
