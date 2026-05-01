@@ -670,6 +670,36 @@
   color: #fff;
 }
 
+/* Driver-type pill — sits next to shift-type badge in the header.
+   Strong colour + white border so it's impossible to miss when scanning
+   the available-shifts list before claiming. */
+.shift-card-pills {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.driver-type-badge {
+  padding: 4px 10px;
+  border-radius: 999px;       /* pill shape, distinct from rectangular shift-type-badge */
+  font-size: 0.8rem;
+  font-weight: 700;           /* heavier than shift-type-badge for emphasis */
+  letter-spacing: 0.02em;
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.driver-type-jockey {
+  background: #1d4ed8;        /* deep blue — jockey work */
+}
+
+.driver-type-fleet {
+  background: #c2410c;        /* deep orange — fleet work, harder to miss */
+}
+
 .shift-status-badge {
   padding: 4px 10px;
   border-radius: 4px;

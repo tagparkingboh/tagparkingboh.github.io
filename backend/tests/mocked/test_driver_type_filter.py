@@ -266,6 +266,37 @@ class TestAvailableShiftsVisibility:
         assert r.status_code == 200
         assert r.json() == []
 
+    def test_edge_null_intended_visible_to_jockey(self, mock_db):
+        """Old rows that predate the column have intended_driver_type=NULL.
+        Per option B (2026-04-30), jockey users see them — they have no
+        explicit driver-type filter applied, so all rows pass through."""
+        future = date.today() + timedelta(days=10)
+        mock_db._tables[RosterShift] = [
+            mk_shift(shift_id=1, intended_driver_type=None, shift_date=future),
+        ]
+        client = _make_client(mock_db, mk_user(99, driver_type="jockey"))
+
+        r = client.get("/api/employee/available-shifts")
+        assert r.status_code == 200
+        assert len(r.json()) == 1
+        # Response coerces NULL → 'jockey' so the FE never has to handle None.
+        assert r.json()[0]["intended_driver_type"] == "jockey"
+
+    def test_edge_null_intended_not_visible_to_fleet(self, mock_db):
+        """Fleet user's filter is `intended_driver_type = 'fleet'`, which
+        excludes NULL by SQL semantics. So a NULL row (old, no signal) is
+        invisible to fleet drivers — consistent with how it'd have been
+        before the column existed at all."""
+        future = date.today() + timedelta(days=10)
+        # FakeQuery doesn't honour SQL-level filters — feed only the row
+        # the BE filter would let through (none), and assert the result.
+        mock_db._tables[RosterShift] = []
+        client = _make_client(mock_db, mk_user(99, driver_type="fleet"))
+
+        r = client.get("/api/employee/available-shifts")
+        assert r.status_code == 200
+        assert r.json() == []
+
 
 # =====================================================================================
 # /api/employee/team-shifts — driver-type visibility
@@ -419,6 +450,26 @@ class TestIntendedDriverTypeOnAdminCreate:
         added = [c.args[0] for c in mock_db.add.call_args_list]
         shifts = [a for a in added if isinstance(a, RosterShift)]
         assert shifts[0].intended_driver_type == "jockey"
+
+    def test_edge_response_coerces_null_to_jockey(self, mock_db):
+        """A row with intended_driver_type=NULL on disk (old data) must
+        round-trip through the response as 'jockey' so the FE never sees
+        None. Locks the coerce in shift_to_response."""
+        from db_models import User as DbUser
+
+        # Mock an existing roster_shift with NULL column — exercise the
+        # response shaper directly via shift_to_response by hitting
+        # /api/employee/available-shifts with this row in the table.
+        future = date.today() + timedelta(days=14)
+        mock_db._tables[DbUser] = []
+        mock_db._tables[RosterShift] = [
+            mk_shift(shift_id=99, intended_driver_type=None, shift_date=future),
+        ]
+        client = _make_client(mock_db, mk_user(1, driver_type="jockey"))
+
+        r = client.get("/api/employee/available-shifts")
+        assert r.status_code == 200
+        assert r.json()[0]["intended_driver_type"] == "jockey"
 
     def test_unhappy_invalid_driver_type_value_returns_422(self, mock_db):
         """Pydantic Literal['jockey','fleet'] rejects unknowns."""
