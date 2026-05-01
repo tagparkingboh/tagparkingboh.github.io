@@ -908,6 +908,26 @@ def propose_roster(
             }
         )
 
+    # Dedupe: when a `new` proposal has the same (date, start, end, staff_id)
+    # as an `untouched_for_reason` row, the existing live shift already
+    # covers it — drop the new one to avoid showing two cards for the same
+    # actual shift. Keeps clean-slate planning logic intact; just cleans up
+    # the output presentation. Without this, the FE shows e.g. two LN cards
+    # at 04:30-06:45 when LN already has a committed shift there. See
+    # 2026-05-01 user report.
+    untouched_keys = {
+        (p["date"], p["start_time"], p["end_time"], p["staff_id"])
+        for p in proposed_shifts_out
+        if p["kind"] == "untouched_for_reason"
+    }
+    proposed_shifts_out = [
+        p for p in proposed_shifts_out
+        if not (
+            p["kind"] == "new"
+            and (p["date"], p["start_time"], p["end_time"], p["staff_id"]) in untouched_keys
+        )
+    ]
+
     summary = {
         "new_shifts": sum(1 for p in proposed_shifts_out if p["kind"] == "new"),
         "extended_shifts": sum(1 for p in proposed_shifts_out if p["kind"] == "extend"),

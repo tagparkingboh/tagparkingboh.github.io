@@ -1579,5 +1579,128 @@ class TestDstRegression:
         assert "warnings" in result
 
 
+class TestUntouchedDedupe:
+    """When the engine's `new` proposal happens to match an existing
+    untouchable shift on (date, start_time, end_time, staff_id), the new
+    proposal is dropped — the existing live shift already covers it.
+    Without this, the FE would render two cards for the same actual shift
+    (2026-05-01 user report: LN appearing twice at 04:30-06:45).
+    """
+
+    def test_happy_new_for_same_staff_and_window_dropped(self):
+        """Engine picks LN for the cluster; LN already has a confirmed
+        shift at exactly the same (date, start, end) → only one card
+        stays. Engine produces 04:30-05:30 for one drop-off at 04:50
+        (start_buffer=20, end_buffer=30, min_shift_minutes=60)."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        booking = mk_booking(
+            1, "TAG-DEDUPE",
+            drop_dt=uk_dt(2026, 5, 1, 4, 50),
+            pick_dt=uk_dt(2026, 6, 30, 0, 0),
+        )
+        ln = mk_staff(15, "Lee", "Naylor")
+        existing = mk_shift(
+            99, 15, date(2026, 5, 1), time(4, 30), time(5, 30),
+            status=ShiftStatus.CONFIRMED,
+        )
+        result = propose_roster(
+            bookings=[booking], shifts=[existing], staff=[ln],
+            holidays=[], settings=DEFAULT_SETTINGS, now=now,
+        )
+        slots = [
+            p for p in result["proposed_shifts"]
+            if p["date"] == date(2026, 5, 1)
+        ]
+        # Exactly one card for that window/staff (the untouched), not two.
+        assert len(slots) == 1
+        assert slots[0]["kind"] == "untouched_for_reason"
+        assert slots[0]["staff_id"] == 15
+
+    def test_unhappy_different_staff_both_kept(self):
+        """Existing shift assigned to LN; engine forced to pick MS (LN is
+        excluded from auto-assign) → both cards stay because they're
+        actually different shifts on the live roster."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        booking = mk_booking(
+            1, "TAG-X",
+            drop_dt=uk_dt(2026, 5, 1, 4, 50),
+            pick_dt=uk_dt(2026, 6, 30, 0, 0),
+        )
+        ln = mk_staff(15, "Lee", "Naylor", excluded=True)
+        ms = mk_staff(7, "Marek", "Smolarek")
+        existing = mk_shift(
+            99, 15, date(2026, 5, 1), time(4, 30), time(5, 30),
+            status=ShiftStatus.CONFIRMED,
+        )
+        result = propose_roster(
+            bookings=[booking], shifts=[existing], staff=[ms, ln],
+            holidays=[], settings=DEFAULT_SETTINGS, now=now,
+        )
+        slots = [
+            p for p in result["proposed_shifts"]
+            if p["date"] == date(2026, 5, 1)
+        ]
+        kinds_staff = sorted((p["kind"], p["staff_id"]) for p in slots)
+        # Two distinct actual shifts (LN existing + MS new), both kept.
+        assert ("new", 7) in kinds_staff
+        assert ("untouched_for_reason", 15) in kinds_staff
+
+    def test_edge_existing_unassigned_engine_picks_someone_both_kept(self):
+        """Existing shift staff_id=None, engine picks LN → both kept
+        (one is the unassigned slot, the other is LN-assigned). Different
+        staff_id values, so the dedupe key differs and neither is dropped."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        booking = mk_booking(
+            1, "TAG-Y",
+            drop_dt=uk_dt(2026, 5, 1, 4, 50),
+            pick_dt=uk_dt(2026, 6, 30, 0, 0),
+        )
+        ln = mk_staff(15, "Lee", "Naylor")
+        existing = mk_shift(
+            99, None, date(2026, 5, 1), time(4, 30), time(5, 30),
+            status=ShiftStatus.CONFIRMED,
+        )
+        result = propose_roster(
+            bookings=[booking], shifts=[existing], staff=[ln],
+            holidays=[], settings=DEFAULT_SETTINGS, now=now,
+        )
+        slots = [
+            p for p in result["proposed_shifts"]
+            if p["date"] == date(2026, 5, 1)
+        ]
+        keys = sorted((p["kind"], p["staff_id"]) for p in slots)
+        assert ("new", 15) in keys
+        assert ("untouched_for_reason", None) in keys
+
+    def test_boundary_existing_one_minute_off_window_both_kept(self):
+        """Existing shift 04:31-05:30 (1 min off) vs engine new 04:30-05:30
+        → not deduped. Window keys must match exactly."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        booking = mk_booking(
+            1, "TAG-Z",
+            drop_dt=uk_dt(2026, 5, 1, 4, 50),
+            pick_dt=uk_dt(2026, 6, 30, 0, 0),
+        )
+        ln = mk_staff(15, "Lee", "Naylor")
+        existing = mk_shift(
+            99, 15, date(2026, 5, 1), time(4, 31), time(5, 30),
+            status=ShiftStatus.CONFIRMED,
+        )
+        result = propose_roster(
+            bookings=[booking], shifts=[existing], staff=[ln],
+            holidays=[], settings=DEFAULT_SETTINGS, now=now,
+        )
+        slots = [
+            p for p in result["proposed_shifts"]
+            if p["date"] == date(2026, 5, 1)
+        ]
+        # Both kept — start_time differs by 1 minute, dedupe key doesn't match.
+        # The "new" might end up unassigned (LN booked elsewhere) but the
+        # untouched still appears.
+        assert any(p["kind"] == "untouched_for_reason" for p in slots)
+        # 2+ slots overall (untouched + at least one new).
+        assert len(slots) >= 2
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
