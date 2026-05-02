@@ -2592,6 +2592,12 @@ async def mark_booking_paid(
     # the existing roster up to date without forcing the admin to recommit
     # a fresh proposal for every new booking.
     background_tasks.add_task(auto_link_booking_async, booking.id)
+    # 2026-05-02: live-write auto-roster takeover. If the booking isn't
+    # already covered by an existing shift, create or extend a `created_
+    # source='auto'` shift to cover its drop-off and pick-up. See
+    # backend/auto_roster.py.
+    from auto_roster import auto_create_or_extend_async
+    background_tasks.add_task(auto_create_or_extend_async, booking.id)
 
     # Send confirmation email
     email_sent = False
@@ -9960,6 +9966,7 @@ async def get_stripe_config():
 async def create_payment(
     request: CreatePaymentRequest,
     http_request: Request,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """
@@ -10773,6 +10780,9 @@ async def create_payment(
                 booking.updated_at = datetime.utcnow()
                 db.commit()
                 db.refresh(booking)
+                # 2026-05-02 live auto-roster takeover (free booking path).
+                from auto_roster import auto_create_or_extend_async
+                background_tasks.add_task(auto_create_or_extend_async, booking.id)
 
             # Create payment record with £0 amount and mark as SUCCEEDED
             payment = db_service.create_payment(
@@ -11187,6 +11197,12 @@ async def stripe_webhook(
                 background_tasks.add_task(
                     fire_engine_async, TRIGGER_BOOKING_CONFIRMED, booking_reference
                 )
+                # 2026-05-02 live auto-roster takeover (matches manual confirm).
+                if payment.booking_id:
+                    from auto_roster import auto_create_or_extend_async
+                    background_tasks.add_task(
+                        auto_create_or_extend_async, payment.booking_id
+                    )
         except Exception as e:
             log_error(
                 db=db,
