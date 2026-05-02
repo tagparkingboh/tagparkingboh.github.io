@@ -1342,6 +1342,33 @@
 
 /* 2026-05-02 — Auto Roster Calendar embed (live writes from auto_roster.py).
    Sits above the shadow-mode planner output and is the new primary surface. */
+.prp-auto-calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+.prp-clear-all-btn {
+  background: #fff;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.prp-clear-all-btn:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #f87171;
+}
+.prp-clear-all-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .prp-section.prp-auto-calendar {
   margin: 1.25rem 0 2rem;
   padding: 1rem;

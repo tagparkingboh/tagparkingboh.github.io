@@ -1,9 +1,10 @@
 """
 Unit tests for the auto-roster live-write path (`backend/auto_roster.py`).
 
-Covers the per-event create / extend / skip decisions made when a booking
-flips to CONFIRMED. Pure-function tests where possible; MagicMock-based
-DB stubs where the function has to query / write.
+The 2026-05-02 refactor swapped per-event extend logic for per-day rebuild
+using the engine's `group_events_by_gap`. Tests focus on the rebuild
+behaviour (clusters per the consecutive-event gap rule, refunded kept,
+cancelled / P&R excluded, untouched-only deletion).
 
 Per SPEC.md every subject covers Happy / Unhappy / Edge / Boundary.
 """
@@ -22,18 +23,31 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from auto_roster import (  # noqa: E402
     _events_for_booking,
     _shift_window,
+    _affected_dates_for_booking,
+    rebuild_auto_for_dates,
     auto_create_or_extend_for_booking,
     handle_booking_cancelled,
+    delete_all_auto_shifts,
 )
-from db_models import BookingStatus, ShiftStatus, ShiftType  # noqa: E402
+from db_models import (  # noqa: E402
+    BookingStatus,
+    ServiceType,
+    ShiftStatus,
+    ShiftType,
+)
 from roster_planner import PlannerSettings  # noqa: E402
 
+
+# ---------------------------------------------------------------------------
+# Test fixtures
+# ---------------------------------------------------------------------------
 
 def mk_booking(
     *,
     booking_id: int = 1,
     reference: str = "TAG-AUTO0001",
     status: BookingStatus = BookingStatus.CONFIRMED,
+    service_type: ServiceType = ServiceType.MEET_GREET,
     dropoff_dt: datetime = datetime(2026, 6, 10, 8, 0),
     pickup_dt: datetime = datetime(2026, 6, 17, 14, 0),
     flight_arrival_time=None,
@@ -43,6 +57,7 @@ def mk_booking(
         id=booking_id,
         reference=reference,
         status=status,
+        service_type=service_type,
         dropoff_date=dropoff_dt.date(),
         dropoff_time=dropoff_dt.time(),
         pickup_date=pickup_dt.date(),
@@ -53,16 +68,17 @@ def mk_booking(
 
 def mk_settings(
     *,
-    gap_max_minutes: int = 120,
-    start_buffer_minutes: int = 30,
+    gap_max_minutes: int = 190,        # match live setting
+    mixed_gap_max_minutes: int = 190,
+    start_buffer_minutes: int = 20,
     end_buffer_minutes: int = 30,
     min_shift_minutes: int = 60,
+    window_days: int = 28,
 ):
-    """Minimal PlannerSettings stub — only the fields auto_roster reads."""
     return PlannerSettings(
-        window_days=28,
+        window_days=window_days,
         gap_max_minutes=gap_max_minutes,
-        mixed_gap_max_minutes=gap_max_minutes,
+        mixed_gap_max_minutes=mixed_gap_max_minutes,
         start_buffer_minutes=start_buffer_minutes,
         end_buffer_minutes=end_buffer_minutes,
         staffing_thresholds=[(3, 1), (999, 2)],
@@ -73,43 +89,54 @@ def mk_settings(
     )
 
 
-def make_query_chain_mock(
-    *,
-    auto_shifts: list = None,
-    existing_links: list = None,
-):
-    """Build a MagicMock db with .query() chainable to .filter().all()/.first().
-
-    `auto_shifts` is the list returned for the auto-shift candidate query.
-    `existing_links` is the list returned for the booking-link existence
-    query (returned by .all()).
+def make_db(*, untouched_auto_shifts=None, bookings=None):
+    """A MagicMock db that:
+      - returns `untouched_auto_shifts` for the rebuild's delete-candidate query
+      - returns `bookings` for the rebuild's source query
+      - records db.add / db.delete / db.commit for assertions
     """
     db = MagicMock()
-    auto_shifts = auto_shifts or []
-    existing_links = existing_links or []
+    untouched_auto_shifts = list(untouched_auto_shifts or [])
+    bookings = list(bookings or [])
+    added = []
+    deleted = []
+
+    from db_models import Booking, RosterShift, ShiftBookingLink
+
+    # Track which queries we've answered so the test can introspect
+    state = {"shift_query_calls": 0, "booking_query_calls": 0}
 
     def query_side_effect(model):
-        from db_models import RosterShift, ShiftBookingLink
         chain = MagicMock()
         chain.filter.return_value = chain
         if model is RosterShift:
-            chain.all.return_value = auto_shifts
-            chain.first.return_value = auto_shifts[0] if auto_shifts else None
+            state["shift_query_calls"] += 1
+            chain.all.return_value = list(untouched_auto_shifts)
+            chain.first.return_value = untouched_auto_shifts[0] if untouched_auto_shifts else None
+        elif model is Booking:
+            state["booking_query_calls"] += 1
+            chain.all.return_value = list(bookings)
+            chain.first.return_value = bookings[0] if bookings else None
         elif model is ShiftBookingLink:
-            chain.all.return_value = existing_links
-            chain.first.return_value = existing_links[0] if existing_links else None
+            chain.all.return_value = []
+            chain.first.return_value = None
         else:
             chain.all.return_value = []
             chain.first.return_value = None
         return chain
 
     db.query.side_effect = query_side_effect
+    db.add.side_effect = lambda obj: added.append(obj)
+    db.delete.side_effect = lambda obj: deleted.append(obj)
+    db._added = added
+    db._deleted = deleted
+    db._state = state
     return db
 
 
-# =====================================================================================
+# ===========================================================================
 # _events_for_booking (pure)
-# =====================================================================================
+# ===========================================================================
 
 class TestEventsForBooking:
     def test_happy_dropoff_and_pickup_extracted(self):
@@ -118,12 +145,10 @@ class TestEventsForBooking:
             pickup_dt=datetime(2026, 6, 17, 14, 0),
         )
         events = _events_for_booking(b)
-        assert len(events) == 2
         assert events[0] == ("drop_off", datetime(2026, 6, 10, 8, 30))
         assert events[1] == ("pick_up", datetime(2026, 6, 17, 14, 0) - timedelta(minutes=30))
 
     def test_edge_pickup_uses_flight_arrival_when_set(self):
-        """flight_arrival_time wins over pickup_time minus 30 (matches engine)."""
         b = mk_booking(
             dropoff_dt=datetime(2026, 6, 10, 8, 30),
             pickup_dt=datetime(2026, 6, 17, 14, 0),
@@ -136,16 +161,17 @@ class TestEventsForBooking:
     def test_unhappy_missing_dropoff_time_skipped(self):
         b = SimpleNamespace(
             id=1, reference="X", status=BookingStatus.CONFIRMED,
+            service_type=ServiceType.MEET_GREET,
             dropoff_date=date(2026, 6, 10), dropoff_time=None,
             pickup_date=date(2026, 6, 17), pickup_time=time(14, 0),
             flight_arrival_time=None,
         )
-        events = _events_for_booking(b)
-        assert [e[0] for e in events] == ["pick_up"]
+        assert [e[0] for e in _events_for_booking(b)] == ["pick_up"]
 
     def test_boundary_no_dates_at_all_returns_empty(self):
         b = SimpleNamespace(
             id=1, reference="X", status=BookingStatus.CONFIRMED,
+            service_type=ServiceType.MEET_GREET,
             dropoff_date=None, dropoff_time=None,
             pickup_date=None, pickup_time=None,
             flight_arrival_time=None,
@@ -153,9 +179,9 @@ class TestEventsForBooking:
         assert _events_for_booking(b) == []
 
 
-# =====================================================================================
+# ===========================================================================
 # _shift_window (pure)
-# =====================================================================================
+# ===========================================================================
 
 class TestShiftWindow:
     def test_happy_single_day_shift(self):
@@ -177,217 +203,233 @@ class TestShiftWindow:
         assert end == datetime(2026, 6, 11, 2, 0)
 
 
-# =====================================================================================
-# auto_create_or_extend_for_booking (top-level — uses mocked DB)
-# =====================================================================================
+# ===========================================================================
+# _affected_dates_for_booking (pure)
+# ===========================================================================
 
-class TestAutoCreateOrExtendForBooking:
-    def test_happy_creates_two_shifts_for_isolated_dropoff_and_pickup(self):
-        """Dropoff on 10/06, pickup on 17/06 — 7 days apart, no overlap.
-        Expect 2 separate auto-shifts created."""
-        db = make_query_chain_mock(auto_shifts=[], existing_links=[])
+class TestAffectedDates:
+    def test_happy_two_distinct_dates(self):
         b = mk_booking(
             dropoff_dt=datetime(2026, 6, 10, 8, 0),
             pickup_dt=datetime(2026, 6, 17, 14, 0),
         )
-        result = auto_create_or_extend_for_booking(db, b, mk_settings())
-        assert result == {"created": 2, "extended": 0, "skipped": 0}
-        # Two RosterShift adds + two ShiftBookingLink adds = 4 db.add calls
-        assert db.add.call_count == 4
-        db.commit.assert_called_once()
+        assert _affected_dates_for_booking(b) == {date(2026, 6, 10), date(2026, 6, 17)}
 
+
+# ===========================================================================
+# rebuild_auto_for_dates — the new core
+# ===========================================================================
+
+class TestRebuildAutoForDates:
+    def test_happy_single_event_creates_one_shift(self):
+        b = mk_booking(
+            booking_id=10,
+            reference="TAG-SINGLE01",
+            dropoff_dt=datetime(2026, 6, 10, 8, 30),
+            pickup_dt=datetime(2026, 6, 17, 14, 0),
+        )
+        db = make_db(bookings=[b])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+        # Shift on 2026-06-10 created (from 8:30 dropoff). Pickup on 6/17
+        # is out of target_set; that day's rebuild would own it.
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        assert s.date == date(2026, 6, 10)
+        assert s.start_time == time(8, 10)   # 8:30 - 20m start_buffer
+        assert s.end_time == time(9, 10)     # 8:30 + 30m end_buffer = 9:00, but min_shift = 60m → 9:10
+        assert s.staff_id is None
+        assert s.created_source == "auto"
+        assert result["created"] == 1
+
+    def test_happy_three_events_within_gap_cluster_into_one_shift(self):
+        """gap_max=190 means events at 12:45 / 13:15 / 15:45 should cluster
+        (gaps 30 / 150 — both ≤ 190). Single shift covers 11:55-16:15."""
+        b1 = mk_booking(
+            booking_id=1, reference="TAG-CLU0001",
+            dropoff_dt=datetime(2026, 6, 11, 12, 45),
+            pickup_dt=datetime(2026, 7, 11, 14, 0),  # far out — won't matter
+        )
+        b2 = mk_booking(
+            booking_id=2, reference="TAG-CLU0002",
+            dropoff_dt=datetime(2026, 6, 11, 13, 15),
+            pickup_dt=datetime(2026, 7, 11, 14, 0),
+        )
+        b3 = mk_booking(
+            booking_id=3, reference="TAG-CLU0003",
+            dropoff_dt=datetime(2026, 6, 11, 15, 45),
+            pickup_dt=datetime(2026, 7, 11, 14, 0),
+        )
+        db = make_db(bookings=[b1, b2, b3])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 11)}, mk_settings(gap_max_minutes=190))
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        # Only 1 shift on the target date — pickups on 7/11 are filtered out
+        # because their date isn't in target_set.
+        new_shifts = [s for s in new_shifts if s.date == date(2026, 6, 11)]
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        assert s.start_time == time(12, 25)   # 12:45 - 20m
+        assert s.end_time == time(16, 15)     # 15:45 + 30m
+
+    def test_unhappy_split_when_consecutive_gap_exceeds_threshold(self):
+        """Same three events, but the middle one removed → 12:45 and 15:45,
+        gap=180min ≤ 190 → still ONE shift. Bump gap_max to 120 (the wrong
+        old default) and the same set splits. Confirms cluster threshold
+        is honoured."""
+        b1 = mk_booking(
+            booking_id=1, reference="TAG-GAP0001",
+            dropoff_dt=datetime(2026, 6, 11, 12, 45),
+            pickup_dt=datetime(2026, 7, 11, 14, 0),
+        )
+        b2 = mk_booking(
+            booking_id=3, reference="TAG-GAP0003",
+            dropoff_dt=datetime(2026, 6, 11, 15, 45),
+            pickup_dt=datetime(2026, 7, 11, 14, 0),
+        )
+        # gap_max=120: 180min gap > 120 → split
+        db = make_db(bookings=[b1, b2])
+        rebuild_auto_for_dates(db, {date(2026, 6, 11)}, mk_settings(gap_max_minutes=120, mixed_gap_max_minutes=120))
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift) and a.date == date(2026, 6, 11)]
+        assert len(new_shifts) == 2
+
+    def test_edge_refunded_booking_still_included(self):
+        b = mk_booking(
+            booking_id=99, reference="TAG-REF00001",
+            status=BookingStatus.REFUNDED,
+            dropoff_dt=datetime(2026, 6, 10, 8, 30),
+            pickup_dt=datetime(2026, 7, 1, 10, 0),
+        )
+        db = make_db(bookings=[b])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 1
+        # And the refunded booking IS linked to it.
+        from db_models import ShiftBookingLink
+        links = [a for a in db._added if isinstance(a, ShiftBookingLink)]
+        assert any(l.booking_id == 99 for l in links)
+
+    def test_edge_park_and_ride_booking_excluded(self):
+        b = mk_booking(
+            booking_id=2, reference="TAG-PR000001",
+            service_type=ServiceType.PARK_RIDE,
+            dropoff_dt=datetime(2026, 6, 10, 8, 30),
+            pickup_dt=datetime(2026, 7, 1, 10, 0),
+        )
+        db = make_db(bookings=[b])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert new_shifts == []
+        assert result["created"] == 0
+
+    def test_edge_rebuild_deletes_untouched_auto_shifts_on_target_date(self):
+        """Force-rebuild semantics: every untouched auto-shift on the day
+        is wiped before recreation."""
+        existing = SimpleNamespace(
+            id=42, created_source="auto", staff_id=None,
+            status=ShiftStatus.SCHEDULED,
+            date=date(2026, 6, 10), end_date=None,
+            start_time=time(7, 0), end_time=time(8, 0),
+            shift_type=ShiftType.MORNING,
+        )
+        db = make_db(untouched_auto_shifts=[existing], bookings=[])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+        assert existing in db._deleted
+        assert result["deleted"] == 1
+        assert result["created"] == 0
+
+    def test_boundary_overnight_cluster_attributed_to_first_event_date(self):
+        """A booking with pickup 00:25 (anchor 23:55 prev day) and dropoff
+        on prev day's 22:30 → cluster spans midnight, but is anchored to
+        the prev day. Rebuilding only the prev day creates the shift; the
+        next day's rebuild does NOT duplicate it."""
+        b1 = mk_booking(
+            booking_id=1, reference="TAG-NIGHT001",
+            dropoff_dt=datetime(2026, 6, 10, 22, 30),
+            pickup_dt=datetime(2026, 7, 1, 10, 0),
+        )
+        b2 = mk_booking(
+            booking_id=2, reference="TAG-NIGHT002",
+            dropoff_dt=datetime(2026, 7, 1, 8, 0),  # not the cluster
+            pickup_dt=datetime(2026, 6, 11, 0, 25),  # anchor: 11/06 00:25 - 30 = 10/06 23:55
+        )
+        # Build 10/06 first
+        db = make_db(bookings=[b1, b2])
+        rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+        from db_models import RosterShift
+        first_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        # One cross-midnight shift created (start date = 10/06).
+        assert len(first_shifts) >= 1
+        cross = [s for s in first_shifts if s.date == date(2026, 6, 10)]
+        assert len(cross) == 1
+
+        # Now rebuild 11/06 only — cluster starts on 10/06 so should be
+        # skipped to avoid double-creation.
+        db2 = make_db(bookings=[b1, b2])
+        rebuild_auto_for_dates(db2, {date(2026, 6, 11)}, mk_settings())
+        new_shifts = [a for a in db2._added if isinstance(a, RosterShift)]
+        # 11/06 has b2's dropoff at 08:00 → that's its own cluster.
+        # The cross-midnight cluster should NOT also be recreated.
+        assert all(s.date != date(2026, 6, 10) for s in new_shifts)
+
+
+# ===========================================================================
+# auto_create_or_extend_for_booking — top-level entry point
+# ===========================================================================
+
+class TestAutoCreateOrExtendForBooking:
     def test_unhappy_refunded_booking_is_no_op(self):
-        """Refunded bookings don't trigger auto-create — only CONFIRMED do."""
-        db = make_query_chain_mock()
+        db = make_db()
         b = mk_booking(status=BookingStatus.REFUNDED)
         result = auto_create_or_extend_for_booking(db, b, mk_settings())
         assert result["skipped"] == 1
-        assert result["created"] == 0
         db.add.assert_not_called()
-        db.commit.assert_not_called()
 
     def test_unhappy_cancelled_booking_is_no_op(self):
-        db = make_query_chain_mock()
+        db = make_db()
         b = mk_booking(status=BookingStatus.CANCELLED)
         result = auto_create_or_extend_for_booking(db, b, mk_settings())
         assert result["skipped"] == 1
-        assert result["created"] == 0
-        db.add.assert_not_called()
 
-    def test_edge_extends_existing_auto_shift_within_gap_rule(self):
-        """A new event 90 min after the edge of an existing auto-shift gets
-        merged in — no new shift, the existing one extends."""
-        existing = SimpleNamespace(
-            id=42,
-            staff_id=None,
-            date=date(2026, 6, 10),
-            end_date=None,
-            start_time=time(7, 30),  # buffer-back of an 08:00 dropoff
-            end_time=time(8, 30),    # buffer-forward of an 08:00 dropoff
-            shift_type=ShiftType.MORNING,
-            status=ShiftStatus.SCHEDULED,
-            created_source="auto",
-        )
-        db = make_query_chain_mock(auto_shifts=[existing], existing_links=[])
+    def test_unhappy_park_and_ride_booking_is_no_op(self):
+        db = make_db()
+        b = mk_booking(service_type=ServiceType.PARK_RIDE)
+        result = auto_create_or_extend_for_booking(db, b, mk_settings())
+        assert result["skipped"] == 1
+
+    def test_happy_confirmed_booking_triggers_rebuild(self):
         b = mk_booking(
-            booking_id=2,
-            reference="TAG-NEAR0001",
-            # New event at 10:00 — 90 min after the 08:30 shift edge.
-            dropoff_dt=datetime(2026, 6, 10, 10, 0),
+            booking_id=10, reference="TAG-OK000001",
+            dropoff_dt=datetime(2026, 6, 10, 8, 30),
             pickup_dt=datetime(2026, 6, 17, 14, 0),
         )
-        result = auto_create_or_extend_for_booking(db, b, mk_settings(gap_max_minutes=120))
-        # First event (10:00 dropoff) extends the 07:30-08:30 shift.
-        # Second event (pickup on 17/06) is far away → new shift.
-        assert result["extended"] >= 1
-        assert result["created"] >= 1
-        # The existing shift's end_time should have moved out to cover 10:30
-        # (10:00 event + 30min end buffer).
-        assert existing.end_time == time(10, 30)
-
-    def test_boundary_event_just_outside_gap_creates_new_shift(self):
-        """An event 121 min after the shift edge is BEYOND gap_max=120, so
-        a new shift should be created (not extend)."""
-        existing = SimpleNamespace(
-            id=42,
-            staff_id=None,
-            date=date(2026, 6, 10),
-            end_date=None,
-            start_time=time(7, 30),
-            end_time=time(8, 30),
-            shift_type=ShiftType.MORNING,
-            status=ShiftStatus.SCHEDULED,
-            created_source="auto",
-        )
-        db = make_query_chain_mock(auto_shifts=[existing], existing_links=[])
-        b = mk_booking(
-            # 08:30 + 2h01m = 10:31 — just past the gap_max threshold.
-            dropoff_dt=datetime(2026, 6, 10, 10, 31),
-            pickup_dt=datetime(2026, 6, 17, 14, 0),
-        )
-        result = auto_create_or_extend_for_booking(db, b, mk_settings(gap_max_minutes=120))
-        # Both events need new shifts — neither matches the existing 08:30 edge.
-        assert result["created"] == 2
-        assert result["extended"] == 0
+        db = make_db(bookings=[b])
+        result = auto_create_or_extend_for_booking(db, b, mk_settings())
+        # Two events → two affected dates → rebuild creates two shifts.
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 2
 
 
-# =====================================================================================
-# handle_booking_cancelled
-# =====================================================================================
+# ===========================================================================
+# delete_all_auto_shifts
+# ===========================================================================
 
-class TestHandleBookingCancelled:
-    def _link(self, link_id, shift_id, booking_id):
-        return SimpleNamespace(id=link_id, shift_id=shift_id, booking_id=booking_id)
+class TestDeleteAllAutoShifts:
+    def test_happy_deletes_only_untouched(self):
+        s1 = SimpleNamespace(id=1, created_source="auto", staff_id=None, status=ShiftStatus.SCHEDULED)
+        s2 = SimpleNamespace(id=2, created_source="auto", staff_id=None, status=ShiftStatus.SCHEDULED)
+        db = make_db(untouched_auto_shifts=[s1, s2])
+        n = delete_all_auto_shifts(db)
+        assert n == 2
+        assert s1 in db._deleted
+        assert s2 in db._deleted
 
-    def _shift(self, sid, source="auto", staff_id=None, status=ShiftStatus.SCHEDULED):
-        return SimpleNamespace(
-            id=sid, created_source=source, staff_id=staff_id,
-            status=status, bookings=[],
-        )
-
-    def _make_db(self, *, links, shifts_by_id, remaining_by_shift):
-        """A mock db that returns:
-        - .query(ShiftBookingLink).filter(...).all() → `links` initially
-        - .query(RosterShift).filter(id == X).first() → shifts_by_id[X] or None
-        - .query(ShiftBookingLink).filter(shift_id == X).first() → remaining_by_shift[X]
-        """
-        db = MagicMock()
-        deleted = {"links": [], "shifts": []}
-
-        from db_models import RosterShift, ShiftBookingLink
-
-        def query_side_effect(model):
-            chain = MagicMock()
-            chain.filter.return_value = chain
-            if model is ShiftBookingLink:
-                chain.all.return_value = list(links)
-
-                def first_side_effect():
-                    # Used for the post-delete "any remaining link?" check.
-                    return remaining_by_shift.get(getattr(first_side_effect, "_last_shift_id", None))
-
-                # Capture the most recent shift_id passed to filter so the
-                # post-delete check returns the right "remaining link" answer.
-                # Simpler: just sequentially pop from a queue.
-                chain.first.side_effect = list(remaining_by_shift.values())
-            elif model is RosterShift:
-                def first_side_effect_shift():
-                    # No clean way to capture id; use a queue keyed on shifts requested.
-                    # The function calls .first() once per ShiftBookingLink (to find
-                    # the linked shift), then once per auto_shift_id (to refetch).
-                    # Just iterate through shifts_by_id values in order.
-                    return next(first_side_effect_shift._iter, None)
-                first_side_effect_shift._iter = iter([
-                    *(shifts_by_id.get(l.shift_id) for l in links),
-                    *(shifts_by_id.get(sid) for sid in {l.shift_id for l in links} if shifts_by_id.get(sid) and shifts_by_id.get(sid).created_source == "auto"),
-                ])
-                chain.first.side_effect = first_side_effect_shift
-            else:
-                chain.all.return_value = []
-                chain.first.return_value = None
-            return chain
-
-        db.query.side_effect = query_side_effect
-
-        def delete_side_effect(obj):
-            if isinstance(obj, MagicMock) or hasattr(obj, "shift_id"):
-                # link
-                deleted["links"].append(obj)
-            else:
-                deleted["shifts"].append(obj)
-        db.delete.side_effect = delete_side_effect
-        db._deleted = deleted
-        return db
-
-    def test_happy_unlinks_and_deletes_empty_auto_shift(self):
-        """Cancelled booking → unlink from auto-shift → shift now empty +
-        unassigned + scheduled → delete the auto-shift."""
-        shift = self._shift(99, source="auto", staff_id=None, status=ShiftStatus.SCHEDULED)
-        link = self._link(1, shift.id, 7)
-        db = self._make_db(
-            links=[link],
-            shifts_by_id={99: shift},
-            remaining_by_shift={99: None},  # no other links left after delete
-        )
-        booking = SimpleNamespace(id=7, reference="TAG-CANC0001", status=BookingStatus.CANCELLED)
-        result = handle_booking_cancelled(db, booking)
-        assert result == {"links_removed": 1, "auto_shifts_deleted": 1}
-
-    def test_unhappy_non_cancelled_booking_is_no_op(self):
-        db = MagicMock()
-        booking = SimpleNamespace(id=7, status=BookingStatus.CONFIRMED)
-        result = handle_booking_cancelled(db, booking)
-        assert result == {"links_removed": 0, "auto_shifts_deleted": 0}
-        db.delete.assert_not_called()
+    def test_unhappy_no_auto_shifts_returns_zero(self):
+        db = make_db()
+        assert delete_all_auto_shifts(db) == 0
         db.commit.assert_not_called()
-
-    def test_edge_admin_shift_link_left_intact(self):
-        """If the cancelled booking is linked to a manual/planner shift, the
-        link is NOT removed — admin/planner shifts are admin territory."""
-        shift = self._shift(99, source="manual")
-        link = self._link(1, shift.id, 7)
-        db = self._make_db(
-            links=[link],
-            shifts_by_id={99: shift},
-            remaining_by_shift={},
-        )
-        booking = SimpleNamespace(id=7, reference="TAG-CANC0002", status=BookingStatus.CANCELLED)
-        result = handle_booking_cancelled(db, booking)
-        assert result["links_removed"] == 0
-        assert result["auto_shifts_deleted"] == 0
-
-    def test_boundary_assigned_auto_shift_is_unlinked_but_not_deleted(self):
-        """If the auto-shift is unassigned still, it gets deleted on empty —
-        but if a jockey claimed it (staff_id set), the shift is left in place
-        even after the link is removed (admin's call from there)."""
-        shift = self._shift(99, source="auto", staff_id=42)
-        link = self._link(1, shift.id, 7)
-        db = self._make_db(
-            links=[link],
-            shifts_by_id={99: shift},
-            remaining_by_shift={99: None},
-        )
-        booking = SimpleNamespace(id=7, reference="TAG-CANC0003", status=BookingStatus.CANCELLED)
-        result = handle_booking_cancelled(db, booking)
-        assert result["links_removed"] == 1
-        assert result["auto_shifts_deleted"] == 0

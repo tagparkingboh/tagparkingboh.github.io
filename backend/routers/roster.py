@@ -3729,68 +3729,54 @@ async def regenerate_auto_roster(
 ):
     """Operator entry point for "(Re)generate auto-roster".
 
-    Pulls every CONFIRMED booking whose drop-off OR pick-up falls in the
-    chosen date set, then runs `auto_create_or_extend_for_booking` for each.
-    With `force_rebuild=True`, first deletes every auto-shift in scope that
-    is still SCHEDULED + unassigned (admin-touched ones — claimed or
-    confirmed — are left intact).
+    2026-05-02 refactor — uses `rebuild_auto_for_dates`, which clusters
+    events with the engine's `group_events_by_gap` (consecutive-event
+    semantics) instead of edge-based extension. Untouched auto-shifts on
+    target dates are always wiped before recreation; admin-claimed /
+    confirmed auto-shifts are preserved untouched. The `force_rebuild`
+    flag on the request is now informational only — every regenerate is
+    a clean rebuild for the days in scope.
 
-    Returns counts so the UI can render a "X created, Y extended" banner.
+    Returns counts so the UI can render a "X created, Y deleted" banner.
     """
+    from auto_roster import rebuild_auto_for_dates
+
     parsed = _load_planner_settings_rows(db)
     settings = PlannerSettings.from_kv(parsed)
     target_dates = _resolve_dates(req, settings)
     if not target_dates:
-        return {"deleted": 0, "created": 0, "extended": 0, "skipped": 0, "bookings_processed": 0}
+        return {
+            "deleted": 0, "created": 0, "extended": 0, "skipped": 0,
+            "bookings_processed": 0, "dates_covered": 0,
+        }
 
-    deleted = 0
-    if req.force_rebuild:
-        # Delete auto-shifts in scope that haven't been touched by an admin
-        # (still unassigned + still SCHEDULED). Cascade removes their
-        # shift_booking_links rows automatically.
-        candidates = (
-            db.query(RosterShift)
-            .filter(
-                RosterShift.created_source == "auto",
-                RosterShift.staff_id.is_(None),
-                RosterShift.status == ShiftStatus.SCHEDULED,
-                RosterShift.date.in_(target_dates),
-            )
-            .all()
-        )
-        for s in candidates:
-            db.delete(s)
-            deleted += 1
-        if deleted:
-            db.commit()
-
-    # Find every CONFIRMED booking with at least one event in scope.
-    bookings = (
-        db.query(Booking)
-        .filter(
-            Booking.status == BookingStatus.CONFIRMED,
-            or_(
-                Booking.dropoff_date.in_(target_dates),
-                Booking.pickup_date.in_(target_dates),
-            ),
-        )
-        .all()
-    )
-
-    from auto_roster import auto_create_or_extend_for_booking
-
-    totals = {"created": 0, "extended": 0, "skipped": 0}
-    for b in bookings:
-        result = auto_create_or_extend_for_booking(db, b, settings)
-        totals["created"] += result.get("created", 0)
-        totals["extended"] += result.get("extended", 0)
-        totals["skipped"] += result.get("skipped", 0)
-
+    result = rebuild_auto_for_dates(db, target_dates, settings)
     return {
-        "deleted": deleted,
-        "created": totals["created"],
-        "extended": totals["extended"],
-        "skipped": totals["skipped"],
-        "bookings_processed": len(bookings),
+        "deleted": result.get("deleted", 0),
+        "created": result.get("created", 0),
+        # Kept for backwards compat with the existing UI banner — extend
+        # is no longer a separate operation, but the field stays so the
+        # frontend doesn't need to change.
+        "extended": 0,
+        "skipped": 0,
+        "bookings_processed": result.get("bookings_in_scope", 0),
         "dates_covered": len(target_dates),
     }
+
+
+@router.delete("/admin/qa/roster-planner/auto-shifts")
+async def delete_all_auto_shifts_endpoint(
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    """Admin override: wipe every untouched auto-shift across all dates.
+
+    Touched / claimed auto-shifts are left intact. Useful for "I don't
+    trust the current state of the auto-roster, let me start fresh" —
+    and after this runs, the next booking confirmation (or a regenerate
+    call) will repopulate cleanly.
+    """
+    from auto_roster import delete_all_auto_shifts
+
+    count = delete_all_auto_shifts(db)
+    return {"deleted": count}

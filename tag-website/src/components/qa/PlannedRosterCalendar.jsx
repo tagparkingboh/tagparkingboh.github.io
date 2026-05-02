@@ -58,6 +58,10 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
   const [regenerateMessage, setRegenerateMessage] = useState(null)
   const [calendarRefreshTick, setCalendarRefreshTick] = useState(0)
 
+  // Clear-all-auto-shifts confirm dialog state.
+  const [clearAllOpen, setClearAllOpen] = useState(false)
+  const [clearAllRunning, setClearAllRunning] = useState(false)
+
   // Per-proposal-index override state. Populated when an admin clicks an
   // action button (Unassign / Delete / Duplicate) and confirms the dialog.
   // Sent in the /commit body as `overrides`. Resets when the active run
@@ -135,6 +139,31 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
       cancelled = true
     }
   }, [apiUrl, authHeader, selectedRunId])
+
+  async function performClearAll() {
+    setClearAllRunning(true)
+    setError(null)
+    setRegenerateMessage(null)
+    try {
+      const res = await fetch(
+        `${apiUrl}/api/admin/qa/roster-planner/auto-shifts`,
+        { method: 'DELETE', headers: authHeader },
+      )
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(body?.detail || `Clear failed (HTTP ${res.status})`)
+      }
+      setRegenerateMessage(
+        `Cleared ${body.deleted} untouched auto-shift${body.deleted === 1 ? '' : 's'}. Confirm a new booking or run Regenerate to repopulate.`
+      )
+      setClearAllOpen(false)
+      setCalendarRefreshTick((t) => t + 1)
+    } catch (err) {
+      setError(err.message || 'Clear failed')
+    } finally {
+      setClearAllRunning(false)
+    }
+  }
 
   async function performRegenerate(payload) {
     setRegenerateRunning(true)
@@ -400,12 +429,25 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           the regular admin Roster Calendar. The shadow-mode planner
           output below is left in place for QA reference. */}
       <div className="prp-section prp-auto-calendar">
-        <h3 className="prp-section-title">Auto Roster (live)</h3>
-        <p className="prp-section-blurb">
-          Shifts auto-created from confirmed bookings. Edits / duplicates
-          here flow into the regular roster once promoted (admin promotion
-          is a separate workflow — coming soon).
-        </p>
+        <div className="prp-auto-calendar-header">
+          <div>
+            <h3 className="prp-section-title">Auto Roster (live)</h3>
+            <p className="prp-section-blurb">
+              Shifts auto-created from confirmed bookings. Edits / duplicates
+              here flow into the regular roster once promoted (admin promotion
+              is a separate workflow — coming soon).
+            </p>
+          </div>
+          <button
+            type="button"
+            className="prp-clear-all-btn"
+            onClick={() => setClearAllOpen(true)}
+            disabled={clearAllRunning}
+            title="Wipe every untouched auto-shift across all dates. Claimed/confirmed auto-shifts are left intact."
+          >
+            Clear all auto-shifts
+          </button>
+        </div>
         {regenerateMessage && (
           <div className="prp-regenerate-message">{regenerateMessage}</div>
         )}
@@ -540,6 +582,39 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           onConfirm={performRegenerate}
           submitting={regenerateRunning}
         />
+      )}
+
+      {clearAllOpen && (
+        <div className="modal-overlay" onClick={() => setClearAllOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Clear all auto-shifts</h3>
+            <p>
+              This wipes <strong>every untouched auto-shift</strong> across all
+              dates. Auto-shifts that have been claimed by a jockey, or whose
+              status is no longer SCHEDULED, are <strong>kept</strong>.
+            </p>
+            <div className="modal-warning">
+              You'll need to confirm a new booking or run <em>Regenerate
+              auto-roster</em> to repopulate. There's no undo.
+            </div>
+            <div className="modal-actions">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setClearAllOpen(false)}
+                disabled={clearAllRunning}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-danger"
+                onClick={performClearAll}
+                disabled={clearAllRunning}
+              >
+                {clearAllRunning ? 'Clearing…' : 'Yes, clear them all'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {undoConfirmRunId && (
