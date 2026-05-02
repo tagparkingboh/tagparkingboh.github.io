@@ -21,6 +21,13 @@ class BookingStatus(enum.Enum):
     REFUNDED = "refunded"         # Payment refunded
 
 
+class ServiceType(enum.Enum):
+    """Booking service variant. M&G is the original valet flow (jockey
+    drives the customer's car); P&R is self-park, no jockey involvement."""
+    MEET_GREET = "meet_greet"
+    PARK_RIDE = "park_ride"
+
+
 class ShiftType(enum.Enum):
     """Type of roster shift - based on time slots throughout the day.
 
@@ -166,6 +173,21 @@ class Booking(Base):
     # Nullable for manual bookings where price is set via Stripe link
     package = Column(String(20), nullable=True)
     status = Column(Enum(BookingStatus), default=BookingStatus.PENDING, nullable=False)
+
+    # Park & Ride vs Meet & Greet. P&R rows skip flight/dispatch fields and
+    # are invisible to the auto-roster (customer parks themselves).
+    service_type = Column(
+        Enum(
+            ServiceType,
+            values_callable=lambda x: [e.value for e in x],
+            name="servicetype",
+            create_type=False,
+        ),
+        nullable=False,
+        default=ServiceType.MEET_GREET,
+    )
+    # Number of passengers needing the shuttle (P&R only; NULL for M&G).
+    traveller_count = Column(Integer, nullable=True)
 
     # Drop-off details
     dropoff_date = Column(Date, nullable=False)

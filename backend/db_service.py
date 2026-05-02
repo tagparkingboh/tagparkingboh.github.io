@@ -11,7 +11,7 @@ import string
 from db_models import (
     Customer, Vehicle, Booking, Payment, FlightDeparture, FlightArrival,
     FlightDepartureHistory, FlightArrivalHistory,
-    BookingStatus, PaymentStatus
+    BookingStatus, PaymentStatus, ServiceType
 )
 
 
@@ -270,6 +270,9 @@ def create_booking(
     # Actual flight times
     flight_departure_time: time = None,
     flight_arrival_time: time = None,
+    # Service variant (Park & Ride sets these; M&G omits and DB defaults apply)
+    service_type: ServiceType = ServiceType.MEET_GREET,
+    traveller_count: int = None,
 ) -> Booking:
     """Create a new booking."""
     # Generate unique reference
@@ -315,6 +318,9 @@ def create_booking(
         # Actual flight times
         flight_departure_time=flight_departure_time,
         flight_arrival_time=flight_arrival_time,
+        # Service variant
+        service_type=service_type,
+        traveller_count=traveller_count,
     )
     db.add(booking)
     db.commit()

@@ -29,6 +29,7 @@ from db_models import (
     EmployeeHoliday,
     PlannerRun,
     RosterShift,
+    ServiceType,
     ShiftBookingLink,
     ShiftStatus,
     User,
@@ -227,6 +228,8 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
     planner side-effect.
     """
     if booking is None or booking.id is None:
+        return []
+    if getattr(booking, "service_type", None) == ServiceType.PARK_RIDE:
         return []
     try:
         # Build the up-to-2 event timestamps we need to match against.
