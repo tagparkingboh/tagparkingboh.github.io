@@ -616,6 +616,14 @@ async def list_shifts(
     date_to: Optional[date_type] = Query(None, description="Filter to date (YYYY-MM-DD)"),
     staff_id: Optional[int] = Query(None, description="Filter by staff member"),
     week_start: Optional[date_type] = Query(None, description="Filter by week starting date (Mon-Sun)"),
+    source: Optional[str] = Query(
+        None,
+        description=(
+            "Filter by created_source. Pass 'auto' to limit to auto-created shifts "
+            "(used by the new self-contained Roster Planner Calendar). Default "
+            "excludes 'auto' shifts so the regular admin Calendar stays clean."
+        ),
+    ),
     db: Session = Depends(get_db)
 ):
     """
@@ -624,8 +632,19 @@ async def list_shifts(
     - date_from/date_to: Filter by date range
     - staff_id: Filter by staff member
     - week_start: Filter by week (Mon-Sun starting from this date)
+    - source: 'auto' to scope to auto-created shifts; default excludes them
     """
     query = db.query(RosterShift)
+
+    # Sever auto-shifts from the regular admin Roster Calendar by default.
+    # The new Calendar embedded on the Planner page passes source='auto' to
+    # opt in. Other named sources ('manual', 'planner') filter exactly.
+    if source == "auto":
+        query = query.filter(RosterShift.created_source == "auto")
+    elif source in ("manual", "planner"):
+        query = query.filter(RosterShift.created_source == source)
+    else:
+        query = query.filter(RosterShift.created_source != "auto")
 
     if date:
         # Include shifts that start on this date OR overnight shifts that end on this date
@@ -1691,6 +1710,9 @@ async def get_available_shifts(
         RosterShift.staff_id.is_(None),
         RosterShift.date >= today,
         RosterShift.status != ShiftStatus.CANCELLED,
+        # Self-contained: auto-created shifts live only on the Planner Calendar
+        # for now and aren't claimable until the admin promotes them.
+        RosterShift.created_source != "auto",
     )
 
     user_driver_type = getattr(current_user, "driver_type", None)

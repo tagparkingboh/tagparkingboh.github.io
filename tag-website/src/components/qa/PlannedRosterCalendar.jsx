@@ -12,6 +12,12 @@ import './PlannedRosterCalendar.css'
  * here is "what the engine would have done." The UI has no commit
  * affordance by design.
  */
+
+// 2026-05-02 — the planner→calendar commit pipeline is severed temporarily
+// while auto-create-on-booking takes over (see SPEC.md "Roster Planner v2"
+// note). Flip this back to false to re-enable the Phase 3 commit UI.
+const COMMIT_PIPELINE_DISABLED = true
+
 export default function PlannedRosterCalendar({ apiUrl, token }) {
   const [runs, setRuns] = useState([])
   const [selectedRunId, setSelectedRunId] = useState(null)
@@ -358,17 +364,19 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
                 windowStart={detail.window_start}
                 windowEnd={detail.window_end}
               />
-              <CommitBar
-                selectedCount={selectedToCommit.size}
-                newProposalCount={
-                  detail.proposal?.proposed_shifts?.filter((s) => s.kind === 'new').length ?? 0
-                }
-                onSelectAll={selectAllNew}
-                onClear={clearSelection}
-                onCommit={() => setCommitConfirmOpen(true)}
-                committing={committing}
-                message={commitMessage}
-              />
+              {!COMMIT_PIPELINE_DISABLED && (
+                <CommitBar
+                  selectedCount={selectedToCommit.size}
+                  newProposalCount={
+                    detail.proposal?.proposed_shifts?.filter((s) => s.kind === 'new').length ?? 0
+                  }
+                  onSelectAll={selectAllNew}
+                  onClear={clearSelection}
+                  onCommit={() => setCommitConfirmOpen(true)}
+                  committing={committing}
+                  message={commitMessage}
+                />
+              )}
               <ProposalCalendar
                 shiftsByDate={shiftsByDate}
                 sortedDates={sortedDates}
@@ -444,7 +452,7 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
         </div>
       </div>
 
-      {commitConfirmOpen && (
+      {!COMMIT_PIPELINE_DISABLED && commitConfirmOpen && (
         <CommitConfirmModal
           count={selectedToCommit.size}
           onCancel={() => setCommitConfirmOpen(false)}
@@ -1199,7 +1207,7 @@ function ShiftCard({
           ✓ Committed — live in roster
         </div>
       )}
-      {isCommittable && !isCommitted && (
+      {!COMMIT_PIPELINE_DISABLED && isCommittable && !isCommitted && (
         <label
           className="prp-commit-tick"
           onClick={(e) => e.stopPropagation()}
