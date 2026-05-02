@@ -754,6 +754,14 @@ async def get_bookings_for_date(
 async def get_weekly_hours(
     week_start: date_type = Query(..., description="Monday of the week (YYYY-MM-DD)"),
     staff_id: Optional[int] = Query(None, description="Filter by specific staff member (admin only)"),
+    source: Optional[str] = Query(
+        None,
+        description=(
+            "Same semantics as /roster/monthly-hours: 'auto' includes "
+            "unassigned auto-shifts under a virtual 'Unassigned' bucket; "
+            "default excludes auto and requires an assigned staff_id."
+        ),
+    ),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
@@ -767,8 +775,20 @@ async def get_weekly_hours(
     query = db.query(RosterShift).filter(
         RosterShift.date >= week_start,
         RosterShift.date <= week_end,
-        RosterShift.staff_id.isnot(None)  # Only assigned shifts
     )
+
+    if source == "auto":
+        query = query.filter(RosterShift.created_source == "auto")
+    elif source in ("manual", "planner"):
+        query = query.filter(
+            RosterShift.created_source == source,
+            RosterShift.staff_id.isnot(None),
+        )
+    else:
+        query = query.filter(
+            RosterShift.created_source != "auto",
+            RosterShift.staff_id.isnot(None),
+        )
 
     if staff_id:
         query = query.filter(RosterShift.staff_id == staff_id)
@@ -779,16 +799,25 @@ async def get_weekly_hours(
     employee_hours = {}
     for shift in shifts:
         if shift.staff_id not in employee_hours:
-            # Get employee info
-            employee = db.query(User).filter(User.id == shift.staff_id).first()
-            if employee:
-                employee_hours[shift.staff_id] = {
-                    "employee_id": shift.staff_id,
-                    "employee_name": f"{employee.first_name or ''} {employee.last_name or ''}".strip() or employee.email,
+            if shift.staff_id is None:
+                employee_hours[None] = {
+                    "employee_id": None,
+                    "employee_name": "Unassigned",
                     "total_hours": 0.0,
                     "shift_count": 0,
-                    "daily_hours": {str(week_start + timedelta(days=i)): 0.0 for i in range(7)}
+                    "daily_hours": {str(week_start + timedelta(days=i)): 0.0 for i in range(7)},
                 }
+            else:
+                # Get employee info
+                employee = db.query(User).filter(User.id == shift.staff_id).first()
+                if employee:
+                    employee_hours[shift.staff_id] = {
+                        "employee_id": shift.staff_id,
+                        "employee_name": f"{employee.first_name or ''} {employee.last_name or ''}".strip() or employee.email,
+                        "total_hours": 0.0,
+                        "shift_count": 0,
+                        "daily_hours": {str(week_start + timedelta(days=i)): 0.0 for i in range(7)}
+                    }
 
         if shift.staff_id in employee_hours:
             # Calculate hours for this shift
@@ -819,6 +848,16 @@ async def get_monthly_hours(
     year: int = Query(..., description="Year (YYYY)"),
     month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
     staff_id: Optional[int] = Query(None, description="Filter by specific staff member"),
+    source: Optional[str] = Query(
+        None,
+        description=(
+            "Filter by created_source. Pass 'auto' to scope to auto-roster "
+            "shifts (unassigned shifts are included and bucketed under a "
+            "virtual 'Unassigned' employee). Default excludes 'auto' shifts "
+            "and requires staff_id NOT NULL — same as the regular admin "
+            "Calendar's payroll view."
+        ),
+    ),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
@@ -859,24 +898,47 @@ async def get_monthly_hours(
     query = db.query(RosterShift).filter(
         RosterShift.date >= month_start,
         RosterShift.date <= month_end,
-        RosterShift.staff_id.isnot(None)  # Only assigned shifts
     )
+
+    # Source filter — keeps the regular admin payroll view exclusive of
+    # auto-roster shifts, while opting in via `?source=auto` includes
+    # unassigned auto-shifts (bucketed under a virtual 'Unassigned' row).
+    if source == "auto":
+        query = query.filter(RosterShift.created_source == "auto")
+    elif source in ("manual", "planner"):
+        query = query.filter(
+            RosterShift.created_source == source,
+            RosterShift.staff_id.isnot(None),
+        )
+    else:
+        query = query.filter(
+            RosterShift.created_source != "auto",
+            RosterShift.staff_id.isnot(None),
+        )
 
     if staff_id:
         query = query.filter(RosterShift.staff_id == staff_id)
 
     shifts = query.all()
 
-    # Build employee info cache
+    # Build employee info cache. Auto-roster mode includes unassigned shifts;
+    # those bucket under `staff_id=None` with a virtual 'Unassigned' label.
     employee_info = {}
     for shift in shifts:
-        if shift.staff_id not in employee_info:
-            employee = db.query(User).filter(User.id == shift.staff_id).first()
-            if employee:
-                employee_info[shift.staff_id] = {
-                    "employee_id": shift.staff_id,
-                    "employee_name": f"{employee.first_name or ''} {employee.last_name or ''}".strip() or employee.email,
-                }
+        if shift.staff_id in employee_info:
+            continue
+        if shift.staff_id is None:
+            employee_info[None] = {
+                "employee_id": None,
+                "employee_name": "Unassigned",
+            }
+            continue
+        employee = db.query(User).filter(User.id == shift.staff_id).first()
+        if employee:
+            employee_info[shift.staff_id] = {
+                "employee_id": shift.staff_id,
+                "employee_name": f"{employee.first_name or ''} {employee.last_name or ''}".strip() or employee.email,
+            }
 
     # Group shifts by employee and calculate total hours
     employee_totals = {}

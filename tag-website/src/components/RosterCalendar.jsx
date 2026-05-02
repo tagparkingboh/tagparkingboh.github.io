@@ -662,7 +662,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       const month = currentDate.getMonth() + 1  // API expects 1-12, JS uses 0-11
 
       const endpoint = isAdmin ? '/api/roster/monthly-hours' : '/api/employee/monthly-hours'
-      const response = await fetch(`${API_URL}${endpoint}?year=${year}&month=${month}`, {
+      // When the calendar is filtered to a specific source (e.g. the Planner
+      // page's auto-roster embed), the Hours panel should reflect that same
+      // scope. Default leaves the param off → existing payroll behaviour.
+      const sourceParam = sourceFilter && isAdmin ? `&source=${encodeURIComponent(sourceFilter)}` : ''
+      const response = await fetch(`${API_URL}${endpoint}?year=${year}&month=${month}${sourceParam}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -678,7 +682,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     } finally {
       setLoadingMonthlyHours(false)
     }
-  }, [token, currentDate, isAdmin])
+  }, [token, currentDate, isAdmin, sourceFilter])
 
   useEffect(() => {
     fetchData()
