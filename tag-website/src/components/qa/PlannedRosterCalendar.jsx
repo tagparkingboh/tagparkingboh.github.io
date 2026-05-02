@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import RosterCalendar from '../RosterCalendar'
 import './PlannedRosterCalendar.css'
 
 /**
@@ -343,6 +344,21 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
       </div>
 
       {error && <div className="prp-error">{error}</div>}
+
+      {/* 2026-05-02 self-contained auto-roster Calendar — wired to the
+          live `created_source='auto'` shifts created by auto_roster.py
+          on booking confirmation. Edit / duplicate UX is the same as
+          the regular admin Roster Calendar. The shadow-mode planner
+          output below is left in place for QA reference. */}
+      <div className="prp-section prp-auto-calendar">
+        <h3 className="prp-section-title">Auto Roster (live)</h3>
+        <p className="prp-section-blurb">
+          Shifts auto-created from confirmed bookings. Edits / duplicates
+          here flow into the regular roster once promoted (admin promotion
+          is a separate workflow — coming soon).
+        </p>
+        <RosterCalendar token={token} isAdmin={true} sourceFilter="auto" />
+      </div>
 
       <div className="prp-layout">
         <div className="prp-headline">

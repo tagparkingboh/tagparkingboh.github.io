@@ -165,7 +165,7 @@ const formatTimeInput24h = (input, previousValue = '') => {
   }
 }
 
-function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrigger = 0, renderBookingActions = null }) {
+function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrigger = 0, renderBookingActions = null, sourceFilter = null }) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [shifts, setShifts] = useState([])
   // Teammates' shifts (view-only, employee mode only). Stripped shape from
@@ -343,6 +343,12 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         date_from: formatDateISO(startDate),
         date_to: formatDateISO(endDate),
       })
+      // Auto-roster Planner Calendar embed passes sourceFilter='auto' to
+      // scope this calendar to auto-created shifts only. Default leaves
+      // it off, preserving the regular admin Calendar's behaviour.
+      if (sourceFilter && isAdmin) {
+        params.set('source', sourceFilter)
+      }
 
       const endpoint = isAdmin ? '/api/roster' : '/api/employee/shifts'
       const response = await fetch(`${API_URL}${endpoint}?${params}`, {
@@ -360,7 +366,7 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
     } catch (err) {
       console.error('Failed to load shifts:', err)
     }
-  }, [token, currentDate, isAdmin])
+  }, [token, currentDate, isAdmin, sourceFilter])
 
   // Fetch teammates' shifts (view-only, employee mode only).
   const fetchTeamShifts = useCallback(async () => {
