@@ -368,7 +368,7 @@ function Admin() {
   const [promotions, setPromotions] = useState([])
   const [loadingPromotions, setLoadingPromotions] = useState(false)
   const [showCreatePromotion, setShowCreatePromotion] = useState(false)
-  const [newPromotion, setNewPromotion] = useState({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '', custom_code: '', expiry_date: '', expiry_time: '', max_uses: '' })
+  const [newPromotion, setNewPromotion] = useState({ name: '', description: '', discount_percent: 10, discount_type: null, total_codes: 10, code_prefix: '', custom_code: '', expiry_date: '', expiry_time: '', max_uses: '' })
   const [creatingPromotion, setCreatingPromotion] = useState(false)
   const [expandedPromotionId, setExpandedPromotionId] = useState(null)
   const [promotionDetails, setPromotionDetails] = useState({}) // { [id]: { codes, loading } }
@@ -2478,7 +2478,7 @@ function Admin() {
         const data = await response.json()
         setPromotionMessage(`Created promotion "${data.name}" with ${data.total_codes} codes`)
         setShowCreatePromotion(false)
-        setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '', custom_code: '', expiry_date: '', expiry_time: '', max_uses: '' })
+        setNewPromotion({ name: '', description: '', discount_percent: 10, discount_type: null, total_codes: 10, code_prefix: '', custom_code: '', expiry_date: '', expiry_time: '', max_uses: '' })
         fetchPromotions()
       } else {
         const error = await response.json()
@@ -8202,16 +8202,26 @@ function Admin() {
                       <div className="form-group" style={{ flex: '1', minWidth: '120px' }}>
                         <label>Discount %</label>
                         <select
-                          value={newPromotion.discount_percent}
-                          onChange={(e) => setNewPromotion(prev => ({ ...prev, discount_percent: parseInt(e.target.value) }))}
+                          value={newPromotion.discount_percent === 100 ? (newPromotion.discount_type === 'free_week' ? '100_week' : '100_full') : String(newPromotion.discount_percent)}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            if (v === '100_full') {
+                              setNewPromotion(prev => ({ ...prev, discount_percent: 100, discount_type: 'free_100' }))
+                            } else if (v === '100_week') {
+                              setNewPromotion(prev => ({ ...prev, discount_percent: 100, discount_type: 'free_week' }))
+                            } else {
+                              setNewPromotion(prev => ({ ...prev, discount_percent: parseInt(v), discount_type: null }))
+                            }
+                          }}
                           className="admin-select"
                         >
-                          <option value={10}>10%</option>
-                          <option value={15}>15%</option>
-                          <option value={20}>20%</option>
-                          <option value={25}>25%</option>
-                          <option value={50}>50%</option>
-                          <option value={100}>100% (Free)</option>
+                          <option value="10">10%</option>
+                          <option value="15">15%</option>
+                          <option value="20">20%</option>
+                          <option value="25">25%</option>
+                          <option value="50">50%</option>
+                          <option value="100_full">100% (Free)</option>
+                          <option value="100_week">1 Week Free</option>
                         </select>
                       </div>
                       {!newPromotion.custom_code && (
@@ -8321,7 +8331,7 @@ function Admin() {
                     <div className="form-actions" style={{ display: 'flex', gap: '10px' }}>
                       <button
                         className="btn-secondary"
-                        onClick={() => { setShowCreatePromotion(false); setNewPromotion({ name: '', description: '', discount_percent: 10, total_codes: 10, code_prefix: '', custom_code: '', expiry_date: '', expiry_time: '', max_uses: '' }); }}
+                        onClick={() => { setShowCreatePromotion(false); setNewPromotion({ name: '', description: '', discount_percent: 10, discount_type: null, total_codes: 10, code_prefix: '', custom_code: '', expiry_date: '', expiry_time: '', max_uses: '' }); }}
                       >
                         Cancel
                       </button>
