@@ -2765,6 +2765,11 @@ async def cancel_booking_admin(
     background_tasks.add_task(
         fire_engine_async, TRIGGER_BOOKING_CANCELLED, booking.reference
     )
+    # 2026-05-02: live auto-roster cleanup. Unlink the cancelled booking
+    # from any auto-shift, and delete the auto-shift if it's now empty +
+    # unassigned + scheduled.
+    from auto_roster import handle_booking_cancelled_async
+    background_tasks.add_task(handle_booking_cancelled_async, booking.id)
 
     message = f"Booking {booking.reference} has been cancelled"
     if slot_released:

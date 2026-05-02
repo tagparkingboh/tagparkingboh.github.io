@@ -263,6 +263,98 @@ def auto_create_or_extend_for_booking(
     return summary
 
 
+def handle_booking_cancelled(db: Session, booking: Booking) -> dict:
+    """Cancellation cleanup for auto-shifts.
+
+    The user's framing (2026-05-02): cancelled = customer-initiated; the
+    booking shouldn't keep occupying an auto-shift. So we unlink the booking
+    from every auto-shift it's attached to, and delete any auto-shift that
+    is left with zero links AND still unassigned AND still SCHEDULED (i.e.
+    a phantom shift with no work to do). Admin / planner shifts are left
+    alone — those are admin territory and may carry the cancelled booking
+    for record-keeping.
+
+    Refunded bookings deliberately keep their links (per the same 2026-05
+    decision) — call this only on transition to CANCELLED.
+    """
+    summary = {"links_removed": 0, "auto_shifts_deleted": 0}
+    if booking is None or booking.status != BookingStatus.CANCELLED:
+        return summary
+
+    links = (
+        db.query(ShiftBookingLink)
+        .filter(ShiftBookingLink.booking_id == booking.id)
+        .all()
+    )
+    auto_shift_ids: set[int] = set()
+    for link in links:
+        shift = db.query(RosterShift).filter(RosterShift.id == link.shift_id).first()
+        if shift is None:
+            continue
+        if shift.created_source != "auto":
+            continue  # admin/planner shifts: leave the link in place
+        auto_shift_ids.add(shift.id)
+        db.delete(link)
+        summary["links_removed"] += 1
+
+    if not auto_shift_ids:
+        if summary["links_removed"]:
+            db.commit()
+        return summary
+
+    db.flush()
+    # Delete any auto-shift now stripped of all bookings, still unassigned,
+    # still SCHEDULED.
+    for shift_id in auto_shift_ids:
+        shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
+        if shift is None:
+            continue
+        if shift.staff_id is not None:
+            continue  # admin claimed it — leave alone
+        if shift.status != ShiftStatus.SCHEDULED:
+            continue  # confirmed / in-progress / completed — admin territory
+        remaining = (
+            db.query(ShiftBookingLink)
+            .filter(ShiftBookingLink.shift_id == shift_id)
+            .first()
+        )
+        if remaining is not None:
+            continue  # still has other bookings
+        db.delete(shift)
+        summary["auto_shifts_deleted"] += 1
+
+    db.commit()
+    return summary
+
+
+def handle_booking_cancelled_async(booking_id: int) -> None:
+    """FastAPI BackgroundTasks entry point — same isolation contract as
+    auto_create_or_extend_async."""
+    from database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        booking = db.query(Booking).filter(Booking.id == booking_id).first()
+        if booking is None:
+            logger.warning("handle_booking_cancelled_async: booking %s not found", booking_id)
+            return
+        result = handle_booking_cancelled(db, booking)
+        logger.info(
+            "handle_booking_cancelled_async booking=%s ref=%s result=%s",
+            booking.id, booking.reference, result,
+        )
+    except Exception as e:
+        logger.exception(
+            "handle_booking_cancelled_async failed booking_id=%s: %s", booking_id, e
+        )
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 def auto_create_or_extend_async(booking_id: int) -> None:
     """FastAPI BackgroundTasks entry point.
 

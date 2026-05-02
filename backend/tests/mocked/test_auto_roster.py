@@ -23,6 +23,7 @@ from auto_roster import (  # noqa: E402
     _events_for_booking,
     _shift_window,
     auto_create_or_extend_for_booking,
+    handle_booking_cancelled,
 )
 from db_models import BookingStatus, ShiftStatus, ShiftType  # noqa: E402
 from roster_planner import PlannerSettings  # noqa: E402
@@ -268,3 +269,125 @@ class TestAutoCreateOrExtendForBooking:
         # Both events need new shifts — neither matches the existing 08:30 edge.
         assert result["created"] == 2
         assert result["extended"] == 0
+
+
+# =====================================================================================
+# handle_booking_cancelled
+# =====================================================================================
+
+class TestHandleBookingCancelled:
+    def _link(self, link_id, shift_id, booking_id):
+        return SimpleNamespace(id=link_id, shift_id=shift_id, booking_id=booking_id)
+
+    def _shift(self, sid, source="auto", staff_id=None, status=ShiftStatus.SCHEDULED):
+        return SimpleNamespace(
+            id=sid, created_source=source, staff_id=staff_id,
+            status=status, bookings=[],
+        )
+
+    def _make_db(self, *, links, shifts_by_id, remaining_by_shift):
+        """A mock db that returns:
+        - .query(ShiftBookingLink).filter(...).all() → `links` initially
+        - .query(RosterShift).filter(id == X).first() → shifts_by_id[X] or None
+        - .query(ShiftBookingLink).filter(shift_id == X).first() → remaining_by_shift[X]
+        """
+        db = MagicMock()
+        deleted = {"links": [], "shifts": []}
+
+        from db_models import RosterShift, ShiftBookingLink
+
+        def query_side_effect(model):
+            chain = MagicMock()
+            chain.filter.return_value = chain
+            if model is ShiftBookingLink:
+                chain.all.return_value = list(links)
+
+                def first_side_effect():
+                    # Used for the post-delete "any remaining link?" check.
+                    return remaining_by_shift.get(getattr(first_side_effect, "_last_shift_id", None))
+
+                # Capture the most recent shift_id passed to filter so the
+                # post-delete check returns the right "remaining link" answer.
+                # Simpler: just sequentially pop from a queue.
+                chain.first.side_effect = list(remaining_by_shift.values())
+            elif model is RosterShift:
+                def first_side_effect_shift():
+                    # No clean way to capture id; use a queue keyed on shifts requested.
+                    # The function calls .first() once per ShiftBookingLink (to find
+                    # the linked shift), then once per auto_shift_id (to refetch).
+                    # Just iterate through shifts_by_id values in order.
+                    return next(first_side_effect_shift._iter, None)
+                first_side_effect_shift._iter = iter([
+                    *(shifts_by_id.get(l.shift_id) for l in links),
+                    *(shifts_by_id.get(sid) for sid in {l.shift_id for l in links} if shifts_by_id.get(sid) and shifts_by_id.get(sid).created_source == "auto"),
+                ])
+                chain.first.side_effect = first_side_effect_shift
+            else:
+                chain.all.return_value = []
+                chain.first.return_value = None
+            return chain
+
+        db.query.side_effect = query_side_effect
+
+        def delete_side_effect(obj):
+            if isinstance(obj, MagicMock) or hasattr(obj, "shift_id"):
+                # link
+                deleted["links"].append(obj)
+            else:
+                deleted["shifts"].append(obj)
+        db.delete.side_effect = delete_side_effect
+        db._deleted = deleted
+        return db
+
+    def test_happy_unlinks_and_deletes_empty_auto_shift(self):
+        """Cancelled booking → unlink from auto-shift → shift now empty +
+        unassigned + scheduled → delete the auto-shift."""
+        shift = self._shift(99, source="auto", staff_id=None, status=ShiftStatus.SCHEDULED)
+        link = self._link(1, shift.id, 7)
+        db = self._make_db(
+            links=[link],
+            shifts_by_id={99: shift},
+            remaining_by_shift={99: None},  # no other links left after delete
+        )
+        booking = SimpleNamespace(id=7, reference="TAG-CANC0001", status=BookingStatus.CANCELLED)
+        result = handle_booking_cancelled(db, booking)
+        assert result == {"links_removed": 1, "auto_shifts_deleted": 1}
+
+    def test_unhappy_non_cancelled_booking_is_no_op(self):
+        db = MagicMock()
+        booking = SimpleNamespace(id=7, status=BookingStatus.CONFIRMED)
+        result = handle_booking_cancelled(db, booking)
+        assert result == {"links_removed": 0, "auto_shifts_deleted": 0}
+        db.delete.assert_not_called()
+        db.commit.assert_not_called()
+
+    def test_edge_admin_shift_link_left_intact(self):
+        """If the cancelled booking is linked to a manual/planner shift, the
+        link is NOT removed — admin/planner shifts are admin territory."""
+        shift = self._shift(99, source="manual")
+        link = self._link(1, shift.id, 7)
+        db = self._make_db(
+            links=[link],
+            shifts_by_id={99: shift},
+            remaining_by_shift={},
+        )
+        booking = SimpleNamespace(id=7, reference="TAG-CANC0002", status=BookingStatus.CANCELLED)
+        result = handle_booking_cancelled(db, booking)
+        assert result["links_removed"] == 0
+        assert result["auto_shifts_deleted"] == 0
+
+    def test_boundary_assigned_auto_shift_is_unlinked_but_not_deleted(self):
+        """If the auto-shift is unassigned still, it gets deleted on empty —
+        but if a jockey claimed it (staff_id set), the shift is left in place
+        even after the link is removed (admin's call from there)."""
+        shift = self._shift(99, source="auto", staff_id=42)
+        link = self._link(1, shift.id, 7)
+        db = self._make_db(
+            links=[link],
+            shifts_by_id={99: shift},
+            remaining_by_shift={99: None},
+        )
+        booking = SimpleNamespace(id=7, reference="TAG-CANC0003", status=BookingStatus.CANCELLED)
+        result = handle_booking_cancelled(db, booking)
+        assert result["links_removed"] == 1
+        assert result["auto_shifts_deleted"] == 0
