@@ -2264,93 +2264,116 @@ function RegenerateAutoModal({ onCancel, onConfirm, submitting }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ marginTop: 0 }}>Regenerate auto-roster</h3>
-        <p style={{ color: '#444', marginTop: 0 }}>
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <h3>Regenerate auto-roster</h3>
+        <p>
           Pulls every CONFIRMED booking in scope and re-runs auto-create / extend.
           Refunded bookings keep their links; cancelled bookings unlink.
         </p>
 
-        <div className="prp-regen-section">
-          <label className="prp-regen-radio">
-            <input
-              type="radio"
-              name="regen-mode"
-              checked={mode === 'next_4_weeks'}
-              onChange={() => setMode('next_4_weeks')}
-            />
-            <span><strong>Next 4 weeks</strong> — rolling window from today.</span>
-          </label>
-          <label className="prp-regen-radio">
-            <input
-              type="radio"
-              name="regen-mode"
-              checked={mode === 'date_range'}
-              onChange={() => setMode('date_range')}
-            />
-            <span><strong>Date range</strong></span>
-          </label>
-          {mode === 'date_range' && (
-            <div className="prp-regen-inputs">
-              <label>
-                From <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-              </label>
-              <label>
-                To <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-              </label>
+        <div className="modal-form">
+          <div className="modal-form-group">
+            <label className="prp-regen-radio">
+              <input
+                type="radio"
+                name="regen-mode"
+                checked={mode === 'next_4_weeks'}
+                onChange={() => setMode('next_4_weeks')}
+              />
+              <span><strong>Next 4 weeks</strong> — rolling window from today.</span>
+            </label>
+          </div>
+
+          <div className="modal-form-group">
+            <label className="prp-regen-radio">
+              <input
+                type="radio"
+                name="regen-mode"
+                checked={mode === 'date_range'}
+                onChange={() => setMode('date_range')}
+              />
+              <span><strong>Date range</strong></span>
+            </label>
+            {mode === 'date_range' && (
+              <div className="prp-regen-inputs">
+                <div className="modal-form-group">
+                  <label>From</label>
+                  <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                </div>
+                <div className="modal-form-group">
+                  <label>To</label>
+                  <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="modal-form-group">
+            <label className="prp-regen-radio">
+              <input
+                type="radio"
+                name="regen-mode"
+                checked={mode === 'individual_dates'}
+                onChange={() => setMode('individual_dates')}
+              />
+              <span><strong>Individual dates</strong> — comma-separated YYYY-MM-DD</span>
+            </label>
+            {mode === 'individual_dates' && (
+              <div className="modal-form-group" style={{ marginLeft: '1.6rem', marginTop: '0.5rem' }}>
+                <input
+                  type="text"
+                  value={datesText}
+                  onChange={(e) => setDatesText(e.target.value)}
+                  placeholder="2026-06-04, 2026-06-05, 2026-06-11"
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="prp-regen-rebuild">
+            <label className="prp-regen-radio">
+              <input
+                type="checkbox"
+                checked={forceRebuild}
+                onChange={(e) => {
+                  setForceRebuild(e.target.checked)
+                  setShowRebuildConfirm(false)
+                }}
+              />
+              <span>
+                <strong>Force rebuild.</strong> Delete every still-unassigned, still-scheduled
+                auto-shift in the chosen scope before recreating. <em>Wipes admin edits to those
+                shifts.</em> Off by default.
+              </span>
+            </label>
+          </div>
+          {forceRebuild && showRebuildConfirm && (
+            <div className="modal-warning">
+              You're about to delete every untouched auto-shift in scope. Click Run again to confirm.
             </div>
           )}
-          <label className="prp-regen-radio">
-            <input
-              type="radio"
-              name="regen-mode"
-              checked={mode === 'individual_dates'}
-              onChange={() => setMode('individual_dates')}
-            />
-            <span><strong>Individual dates</strong> — comma-separated YYYY-MM-DD</span>
-          </label>
-          {mode === 'individual_dates' && (
-            <div className="prp-regen-inputs">
-              <input
-                type="text"
-                value={datesText}
-                onChange={(e) => setDatesText(e.target.value)}
-                placeholder="2026-06-04, 2026-06-05, 2026-06-11"
-                style={{ width: '100%' }}
-              />
+
+          {validationError && (
+            <div className="modal-warning" style={{ background: '#fee2e2', color: '#991b1b' }}>
+              {validationError}
             </div>
           )}
         </div>
 
-        <label className="prp-regen-rebuild">
-          <input
-            type="checkbox"
-            checked={forceRebuild}
-            onChange={(e) => {
-              setForceRebuild(e.target.checked)
-              setShowRebuildConfirm(false)
-            }}
-          />
-          <span>
-            <strong>Force rebuild.</strong> Delete every still-unassigned, still-scheduled
-            auto-shift in the chosen scope before recreating. <em>Wipes admin edits to those
-            shifts.</em> Off by default.
-          </span>
-        </label>
-        {forceRebuild && showRebuildConfirm && (
-          <div className="prp-regen-rebuild-confirm">
-            You're about to delete every untouched auto-shift in scope. Click Run again to confirm.
-          </div>
-        )}
-
-        {validationError && <div className="prp-error">{validationError}</div>}
-
         <div className="modal-actions">
-          <button className="modal-btn modal-btn-secondary" onClick={onCancel} disabled={submitting}>
+          <button
+            className="modal-btn modal-btn-secondary"
+            onClick={onCancel}
+            disabled={submitting}
+          >
             Cancel
           </button>
-          <button className="modal-btn modal-btn-primary" onClick={handleSubmit} disabled={submitting}>
+          <button
+            className={`modal-btn ${forceRebuild ? 'modal-btn-danger' : 'modal-btn-primary'}`}
+            onClick={handleSubmit}
+            disabled={submitting}
+          >
             {submitting ? 'Running…' : forceRebuild && showRebuildConfirm ? 'Yes, rebuild' : 'Run'}
           </button>
         </div>
