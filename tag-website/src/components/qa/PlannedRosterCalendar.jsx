@@ -52,6 +52,12 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
   const [undoConfirmRunId, setUndoConfirmRunId] = useState(null)
   const [undoing, setUndoing] = useState(false)
 
+  // Regenerate-auto-roster modal state.
+  const [regenerateOpen, setRegenerateOpen] = useState(false)
+  const [regenerateRunning, setRegenerateRunning] = useState(false)
+  const [regenerateMessage, setRegenerateMessage] = useState(null)
+  const [calendarRefreshTick, setCalendarRefreshTick] = useState(0)
+
   // Per-proposal-index override state. Populated when an admin clicks an
   // action button (Unassign / Delete / Duplicate) and confirms the dialog.
   // Sent in the /commit body as `overrides`. Resets when the active run
@@ -129,6 +135,37 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
       cancelled = true
     }
   }, [apiUrl, authHeader, selectedRunId])
+
+  async function performRegenerate(payload) {
+    setRegenerateRunning(true)
+    setError(null)
+    setRegenerateMessage(null)
+    try {
+      const res = await fetch(
+        `${apiUrl}/api/admin/qa/roster-planner/regenerate-auto`,
+        {
+          method: 'POST',
+          headers: { ...authHeader, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      )
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(body?.detail || `Regenerate failed (HTTP ${res.status})`)
+      }
+      setRegenerateMessage(
+        `${body.bookings_processed} booking${body.bookings_processed === 1 ? '' : 's'} processed across ${body.dates_covered} day${body.dates_covered === 1 ? '' : 's'}: ` +
+        `${body.created} created, ${body.extended} extended, ${body.deleted} cleared.`
+      )
+      setRegenerateOpen(false)
+      // Force the embedded auto-Calendar to refresh so the new shifts show up.
+      setCalendarRefreshTick((t) => t + 1)
+    } catch (err) {
+      setError(err.message || 'Regenerate failed')
+    } finally {
+      setRegenerateRunning(false)
+    }
+  }
 
   async function runNow() {
     setError(null)
@@ -329,8 +366,20 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           </p>
         </div>
         <div className="prp-header-actions">
-          <button className="prp-run-btn" onClick={runNow}>
-            Run engine now
+          <button
+            className="prp-run-btn"
+            onClick={() => setRegenerateOpen(true)}
+            title="Open the regenerate-auto-roster modal"
+          >
+            Regenerate auto-roster
+          </button>
+          <button
+            type="button"
+            className="prp-shadow-run-btn"
+            onClick={runNow}
+            title="Re-run the shadow-mode engine for QA review (no writes)"
+          >
+            Run shadow engine
           </button>
           <button
             type="button"
@@ -357,7 +406,15 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           here flow into the regular roster once promoted (admin promotion
           is a separate workflow — coming soon).
         </p>
-        <RosterCalendar token={token} isAdmin={true} sourceFilter="auto" />
+        {regenerateMessage && (
+          <div className="prp-regenerate-message">{regenerateMessage}</div>
+        )}
+        <RosterCalendar
+          token={token}
+          isAdmin={true}
+          sourceFilter="auto"
+          refreshTrigger={calendarRefreshTick}
+        />
       </div>
 
       <div className="prp-layout">
@@ -474,6 +531,14 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           onCancel={() => setCommitConfirmOpen(false)}
           onConfirm={performCommit}
           submitting={committing}
+        />
+      )}
+
+      {regenerateOpen && (
+        <RegenerateAutoModal
+          onCancel={() => setRegenerateOpen(false)}
+          onConfirm={performRegenerate}
+          submitting={regenerateRunning}
         />
       )}
 
@@ -2129,6 +2194,164 @@ function UndoConfirmModal({ runId, onCancel, onConfirm, submitting }) {
           </button>
           <button className="modal-btn modal-btn-primary" onClick={onConfirm} disabled={submitting}>
             {submitting ? 'Undoing…' : 'Yes, undo'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ===========================================================================
+// RegenerateAutoModal — date-scope picker for the (Re)generate auto-roster
+// flow. Three modes:
+//   * next_4_weeks (default) — rolling window from today.
+//   * date_range — admin picks from / to.
+//   * individual_dates — admin enters a comma-separated list of YYYY-MM-DD.
+// Force-rebuild is opt-in and double-confirmed because it deletes existing
+// untouched auto-shifts in scope before recreating.
+// ===========================================================================
+
+function RegenerateAutoModal({ onCancel, onConfirm, submitting }) {
+  const [mode, setMode] = useState('next_4_weeks')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [datesText, setDatesText] = useState('')
+  const [forceRebuild, setForceRebuild] = useState(false)
+  const [showRebuildConfirm, setShowRebuildConfirm] = useState(false)
+  const [validationError, setValidationError] = useState(null)
+
+  function buildPayload() {
+    const payload = { mode, force_rebuild: forceRebuild }
+    if (mode === 'date_range') {
+      if (!dateFrom || !dateTo) {
+        return { error: 'Pick both a from and a to date.' }
+      }
+      if (dateTo < dateFrom) {
+        return { error: 'To date must be on or after from date.' }
+      }
+      payload.date_from = dateFrom
+      payload.date_to = dateTo
+    } else if (mode === 'individual_dates') {
+      const tokens = datesText
+        .split(/[\s,]+/)
+        .map((t) => t.trim())
+        .filter(Boolean)
+      if (tokens.length === 0) {
+        return { error: 'Enter at least one date (YYYY-MM-DD, comma-separated).' }
+      }
+      const bad = tokens.filter((t) => !/^\d{4}-\d{2}-\d{2}$/.test(t))
+      if (bad.length) {
+        return { error: `Invalid date format: ${bad.join(', ')}. Use YYYY-MM-DD.` }
+      }
+      payload.dates = tokens
+    }
+    return { payload }
+  }
+
+  function handleSubmit() {
+    setValidationError(null)
+    const { payload, error } = buildPayload()
+    if (error) {
+      setValidationError(error)
+      return
+    }
+    if (forceRebuild && !showRebuildConfirm) {
+      setShowRebuildConfirm(true)
+      return
+    }
+    onConfirm(payload)
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ marginTop: 0 }}>Regenerate auto-roster</h3>
+        <p style={{ color: '#444', marginTop: 0 }}>
+          Pulls every CONFIRMED booking in scope and re-runs auto-create / extend.
+          Refunded bookings keep their links; cancelled bookings unlink.
+        </p>
+
+        <div className="prp-regen-section">
+          <label className="prp-regen-radio">
+            <input
+              type="radio"
+              name="regen-mode"
+              checked={mode === 'next_4_weeks'}
+              onChange={() => setMode('next_4_weeks')}
+            />
+            <span><strong>Next 4 weeks</strong> — rolling window from today.</span>
+          </label>
+          <label className="prp-regen-radio">
+            <input
+              type="radio"
+              name="regen-mode"
+              checked={mode === 'date_range'}
+              onChange={() => setMode('date_range')}
+            />
+            <span><strong>Date range</strong></span>
+          </label>
+          {mode === 'date_range' && (
+            <div className="prp-regen-inputs">
+              <label>
+                From <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </label>
+              <label>
+                To <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </label>
+            </div>
+          )}
+          <label className="prp-regen-radio">
+            <input
+              type="radio"
+              name="regen-mode"
+              checked={mode === 'individual_dates'}
+              onChange={() => setMode('individual_dates')}
+            />
+            <span><strong>Individual dates</strong> — comma-separated YYYY-MM-DD</span>
+          </label>
+          {mode === 'individual_dates' && (
+            <div className="prp-regen-inputs">
+              <input
+                type="text"
+                value={datesText}
+                onChange={(e) => setDatesText(e.target.value)}
+                placeholder="2026-06-04, 2026-06-05, 2026-06-11"
+                style={{ width: '100%' }}
+              />
+            </div>
+          )}
+        </div>
+
+        <label className="prp-regen-rebuild">
+          <input
+            type="checkbox"
+            checked={forceRebuild}
+            onChange={(e) => {
+              setForceRebuild(e.target.checked)
+              setShowRebuildConfirm(false)
+            }}
+          />
+          <span>
+            <strong>Force rebuild.</strong> Delete every still-unassigned, still-scheduled
+            auto-shift in the chosen scope before recreating. <em>Wipes admin edits to those
+            shifts.</em> Off by default.
+          </span>
+        </label>
+        {forceRebuild && showRebuildConfirm && (
+          <div className="prp-regen-rebuild-confirm">
+            You're about to delete every untouched auto-shift in scope. Click Run again to confirm.
+          </div>
+        )}
+
+        {validationError && <div className="prp-error">{validationError}</div>}
+
+        <div className="modal-actions">
+          <button className="modal-btn modal-btn-secondary" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </button>
+          <button className="modal-btn modal-btn-primary" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? 'Running…' : forceRebuild && showRebuildConfirm ? 'Yes, rebuild' : 'Run'}
           </button>
         </div>
       </div>

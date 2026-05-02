@@ -1287,6 +1287,80 @@
   background: #6366f1;  /* indigo to distinguish from the green ✓ Committed */
 }
 
+/* Regenerate-auto-roster modal — date scope picker + force-rebuild toggle. */
+.prp-regen-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
+}
+.prp-regen-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+.prp-regen-radio input { margin-top: 4px; }
+.prp-regen-inputs {
+  display: flex;
+  gap: 1rem;
+  margin-left: 1.6rem;
+  margin-bottom: 0.25rem;
+  flex-wrap: wrap;
+}
+.prp-regen-inputs label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  color: #555;
+}
+.prp-regen-rebuild {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  padding: 0.6rem 0.75rem;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  font-size: 0.86rem;
+}
+.prp-regen-rebuild input { margin-top: 4px; }
+.prp-regen-rebuild-confirm {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.prp-regenerate-message {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  color: #065f46;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+/* Secondary header button: Run shadow engine (the old behaviour). */
+.prp-shadow-run-btn {
+  background: transparent;
+  border: 1px solid #94a3b8;
+  color: #475569;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.prp-shadow-run-btn:hover {
+  background: #f1f5f9;
+}
+
 /* 2026-05-02 — Auto Roster Calendar embed (live writes from auto_roster.py).
    Sits above the shadow-mode planner output and is the new primary surface. */
 .prp-section.prp-auto-calendar {

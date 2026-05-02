@@ -3662,3 +3662,135 @@ async def list_planner_run_feedback(
         q = q.filter(PlannerRunFeedback.run_id == run_id)
     rows = q.order_by(PlannerRunFeedback.submitted_at.desc()).limit(limit).all()
     return [_feedback_row_to_response(r) for r in rows]
+
+
+# ============================================================================
+# POST /api/admin/qa/roster-planner/regenerate-auto
+#
+# Operator-triggered "(Re)generate auto-roster" — runs the live auto_roster
+# logic against every CONFIRMED booking with events in the chosen date set.
+# Replaces the shadow-mode "Run engine now" workflow as the primary affordance
+# on the Planner page (the engine endpoint at /propose stays for QA replay).
+# ============================================================================
+
+from pydantic import BaseModel, Field, field_validator  # noqa: E402
+
+
+class RegenerateAutoRequest(BaseModel):
+    """Body for /admin/qa/roster-planner/regenerate-auto.
+
+    `mode` controls how the date set is derived:
+      - `next_4_weeks`: rolling window from today.date() to today + window_days.
+      - `date_range`: requires `date_from` and `date_to` (inclusive).
+      - `individual_dates`: requires `dates` (list of explicit dates).
+
+    `force_rebuild`: if True, delete every auto-shift in the chosen scope that
+    is still SCHEDULED + unassigned BEFORE rebuilding. Sharp edge — wipes any
+    in-progress admin edits to those shifts. Off by default.
+    """
+
+    mode: str = Field(..., description="next_4_weeks | date_range | individual_dates")
+    date_from: Optional[date_type] = None
+    date_to: Optional[date_type] = None
+    dates: Optional[List[date_type]] = None
+    force_rebuild: bool = False
+
+    @field_validator("mode")
+    @classmethod
+    def _validate_mode(cls, v):
+        if v not in ("next_4_weeks", "date_range", "individual_dates"):
+            raise ValueError("mode must be next_4_weeks, date_range or individual_dates")
+        return v
+
+
+def _resolve_dates(req: RegenerateAutoRequest, settings: PlannerSettings) -> set[date_type]:
+    """Map a regenerate request to the explicit date set the run will cover."""
+    today = datetime.now(UK_TZ).date()
+    if req.mode == "next_4_weeks":
+        return {today + timedelta(days=i) for i in range(settings.window_days)}
+    if req.mode == "date_range":
+        if not req.date_from or not req.date_to:
+            raise HTTPException(status_code=422, detail="date_range mode requires date_from and date_to")
+        if req.date_to < req.date_from:
+            raise HTTPException(status_code=422, detail="date_to must be >= date_from")
+        days = (req.date_to - req.date_from).days
+        return {req.date_from + timedelta(days=i) for i in range(days + 1)}
+    # individual_dates
+    if not req.dates:
+        raise HTTPException(status_code=422, detail="individual_dates mode requires a non-empty `dates` list")
+    return set(req.dates)
+
+
+@router.post("/admin/qa/roster-planner/regenerate-auto")
+async def regenerate_auto_roster(
+    req: RegenerateAutoRequest,
+    current_user: User = Depends(require_qa_admin),
+    db: Session = Depends(get_db),
+):
+    """Operator entry point for "(Re)generate auto-roster".
+
+    Pulls every CONFIRMED booking whose drop-off OR pick-up falls in the
+    chosen date set, then runs `auto_create_or_extend_for_booking` for each.
+    With `force_rebuild=True`, first deletes every auto-shift in scope that
+    is still SCHEDULED + unassigned (admin-touched ones — claimed or
+    confirmed — are left intact).
+
+    Returns counts so the UI can render a "X created, Y extended" banner.
+    """
+    parsed = _load_planner_settings_rows(db)
+    settings = PlannerSettings.from_kv(parsed)
+    target_dates = _resolve_dates(req, settings)
+    if not target_dates:
+        return {"deleted": 0, "created": 0, "extended": 0, "skipped": 0, "bookings_processed": 0}
+
+    deleted = 0
+    if req.force_rebuild:
+        # Delete auto-shifts in scope that haven't been touched by an admin
+        # (still unassigned + still SCHEDULED). Cascade removes their
+        # shift_booking_links rows automatically.
+        candidates = (
+            db.query(RosterShift)
+            .filter(
+                RosterShift.created_source == "auto",
+                RosterShift.staff_id.is_(None),
+                RosterShift.status == ShiftStatus.SCHEDULED,
+                RosterShift.date.in_(target_dates),
+            )
+            .all()
+        )
+        for s in candidates:
+            db.delete(s)
+            deleted += 1
+        if deleted:
+            db.commit()
+
+    # Find every CONFIRMED booking with at least one event in scope.
+    bookings = (
+        db.query(Booking)
+        .filter(
+            Booking.status == BookingStatus.CONFIRMED,
+            or_(
+                Booking.dropoff_date.in_(target_dates),
+                Booking.pickup_date.in_(target_dates),
+            ),
+        )
+        .all()
+    )
+
+    from auto_roster import auto_create_or_extend_for_booking
+
+    totals = {"created": 0, "extended": 0, "skipped": 0}
+    for b in bookings:
+        result = auto_create_or_extend_for_booking(db, b, settings)
+        totals["created"] += result.get("created", 0)
+        totals["extended"] += result.get("extended", 0)
+        totals["skipped"] += result.get("skipped", 0)
+
+    return {
+        "deleted": deleted,
+        "created": totals["created"],
+        "extended": totals["extended"],
+        "skipped": totals["skipped"],
+        "bookings_processed": len(bookings),
+        "dates_covered": len(target_dates),
+    }

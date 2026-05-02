@@ -2592,3 +2592,106 @@ class TestCommitOverrideBoundaries:
         assert 3 not in staff_ids
 
 
+# ============================================================================
+# /regenerate-auto endpoint — date-resolution logic
+# Pure tests of `_resolve_dates`. Endpoint behaviour wraps it with auth and
+# the auto_create_or_extend loop, both already covered elsewhere.
+# ============================================================================
+
+class TestRegenerateAutoDateResolution:
+    def _settings(self, window_days=28):
+        from roster_planner import PlannerSettings
+        return PlannerSettings(
+            window_days=window_days,
+            gap_max_minutes=120,
+            mixed_gap_max_minutes=120,
+            start_buffer_minutes=30,
+            end_buffer_minutes=30,
+            staffing_thresholds=[(3, 1), (999, 2)],
+            max_hours_per_week=40,
+            min_rest_hours=8,
+            untouchable_hours=24,
+            min_shift_minutes=60,
+        )
+
+    def test_happy_next_4_weeks_returns_window_days_dates(self):
+        from routers.roster import _resolve_dates, RegenerateAutoRequest
+        req = RegenerateAutoRequest(mode="next_4_weeks")
+        out = _resolve_dates(req, self._settings(window_days=28))
+        assert len(out) == 28
+
+    def test_happy_date_range_returns_inclusive_dates(self):
+        from datetime import date as date_type
+        from routers.roster import _resolve_dates, RegenerateAutoRequest
+        req = RegenerateAutoRequest(
+            mode="date_range",
+            date_from=date_type(2026, 6, 1),
+            date_to=date_type(2026, 6, 7),
+        )
+        out = _resolve_dates(req, self._settings())
+        assert len(out) == 7
+        assert date_type(2026, 6, 1) in out
+        assert date_type(2026, 6, 7) in out
+        assert date_type(2026, 6, 8) not in out
+
+    def test_happy_individual_dates_returns_set_of_dates(self):
+        from datetime import date as date_type
+        from routers.roster import _resolve_dates, RegenerateAutoRequest
+        req = RegenerateAutoRequest(
+            mode="individual_dates",
+            dates=[date_type(2026, 6, 4), date_type(2026, 6, 11), date_type(2026, 6, 4)],  # dup
+        )
+        out = _resolve_dates(req, self._settings())
+        assert out == {date_type(2026, 6, 4), date_type(2026, 6, 11)}
+
+    def test_unhappy_invalid_mode_rejected_at_request_validation(self):
+        import pytest
+        from pydantic import ValidationError
+        from routers.roster import RegenerateAutoRequest
+        with pytest.raises(ValidationError):
+            RegenerateAutoRequest(mode="not_a_mode")
+
+    def test_unhappy_date_range_missing_endpoints_returns_422(self):
+        import pytest
+        from fastapi import HTTPException
+        from routers.roster import _resolve_dates, RegenerateAutoRequest
+        req = RegenerateAutoRequest(mode="date_range")
+        with pytest.raises(HTTPException) as exc:
+            _resolve_dates(req, self._settings())
+        assert exc.value.status_code == 422
+
+    def test_unhappy_date_range_to_before_from_returns_422(self):
+        import pytest
+        from datetime import date as date_type
+        from fastapi import HTTPException
+        from routers.roster import _resolve_dates, RegenerateAutoRequest
+        req = RegenerateAutoRequest(
+            mode="date_range",
+            date_from=date_type(2026, 6, 7),
+            date_to=date_type(2026, 6, 1),
+        )
+        with pytest.raises(HTTPException) as exc:
+            _resolve_dates(req, self._settings())
+        assert exc.value.status_code == 422
+
+    def test_edge_individual_dates_empty_list_rejected(self):
+        import pytest
+        from fastapi import HTTPException
+        from routers.roster import _resolve_dates, RegenerateAutoRequest
+        req = RegenerateAutoRequest(mode="individual_dates", dates=[])
+        with pytest.raises(HTTPException) as exc:
+            _resolve_dates(req, self._settings())
+        assert exc.value.status_code == 422
+
+    def test_boundary_date_range_single_day_returns_one_date(self):
+        from datetime import date as date_type
+        from routers.roster import _resolve_dates, RegenerateAutoRequest
+        req = RegenerateAutoRequest(
+            mode="date_range",
+            date_from=date_type(2026, 6, 4),
+            date_to=date_type(2026, 6, 4),
+        )
+        out = _resolve_dates(req, self._settings())
+        assert out == {date_type(2026, 6, 4)}
+
+
