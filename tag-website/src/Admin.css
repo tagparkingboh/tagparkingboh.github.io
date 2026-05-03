@@ -6535,8 +6535,16 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: 8px;
   gap: 2px;
+  /* Position absolutely below the bar so the bar gets the full
+     wrapper height to scale against. Otherwise bars at >=95% all
+     visually clip to the same ceiling because the day/date labels
+     compete with the bar for space inside the flex wrapper.
+     The chart-area reserves 50px below the chart for these. */
+  position: absolute;
+  bottom: -38px;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .bar-label-day {
