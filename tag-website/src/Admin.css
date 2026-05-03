@@ -6273,7 +6273,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  /* Larger gap below the header gives the percent labels above tall
+     (>=100%) bars room to breathe without bumping the card's top edge. */
+  margin-bottom: 56px;
 }
 
 .occupancy-chart-container h4 {
