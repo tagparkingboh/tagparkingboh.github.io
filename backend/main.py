@@ -2595,9 +2595,14 @@ async def mark_booking_paid(
     # 2026-05-02: live-write auto-roster takeover. If the booking isn't
     # already covered by an existing shift, create or extend a `created_
     # source='auto'` shift to cover its drop-off and pick-up. See
-    # backend/auto_roster.py.
-    from auto_roster import auto_create_or_extend_async
-    background_tasks.add_task(auto_create_or_extend_async, booking.id)
+    # backend/auto_roster.py. Swallow any import / scheduling error —
+    # the booking confirmation must not 500 because of a planner
+    # side-effect (matches the Stripe webhook isolation pattern).
+    try:
+        from auto_roster import auto_create_or_extend_async
+        background_tasks.add_task(auto_create_or_extend_async, booking.id)
+    except Exception as e:
+        print(f"[auto_roster] Failed to schedule auto-create for booking {booking.id}: {e}")
 
     # Send confirmation email
     email_sent = False
@@ -2767,9 +2772,13 @@ async def cancel_booking_admin(
     )
     # 2026-05-02: live auto-roster cleanup. Unlink the cancelled booking
     # from any auto-shift, and delete the auto-shift if it's now empty +
-    # unassigned + scheduled.
-    from auto_roster import handle_booking_cancelled_async
-    background_tasks.add_task(handle_booking_cancelled_async, booking.id)
+    # unassigned + scheduled. Swallow any import / scheduling error —
+    # cancel must not 500 because of a planner side-effect.
+    try:
+        from auto_roster import handle_booking_cancelled_async
+        background_tasks.add_task(handle_booking_cancelled_async, booking.id)
+    except Exception as e:
+        print(f"[auto_roster] Failed to schedule cancel cleanup for booking {booking.id}: {e}")
 
     message = f"Booking {booking.reference} has been cancelled"
     if slot_released:
@@ -10786,8 +10795,14 @@ async def create_payment(
                 db.commit()
                 db.refresh(booking)
                 # 2026-05-02 live auto-roster takeover (free booking path).
-                from auto_roster import auto_create_or_extend_async
-                background_tasks.add_task(auto_create_or_extend_async, booking.id)
+                # Swallow any import / scheduling error — the customer's
+                # free-booking flow must not 500 because of a planner
+                # side-effect.
+                try:
+                    from auto_roster import auto_create_or_extend_async
+                    background_tasks.add_task(auto_create_or_extend_async, booking.id)
+                except Exception as e:
+                    print(f"[auto_roster] Failed to schedule auto-create for free booking {booking.id}: {e}")
 
             # Create payment record with £0 amount and mark as SUCCEEDED
             payment = db_service.create_payment(
