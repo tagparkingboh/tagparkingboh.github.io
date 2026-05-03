@@ -379,7 +379,7 @@ class TestSendBookingConfirmationEmail:
         )
 
         html_content = mock_send_email.call_args[0][2]
-        assert "Short Stay Car Park" in html_content
+        assert "Drop Off Car Park" in html_content
         assert "booking reference ready" in html_content
 
     @patch('email_service.send_email')

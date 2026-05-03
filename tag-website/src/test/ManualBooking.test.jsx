@@ -226,57 +226,11 @@ describe('ManualBooking Component', () => {
       expect(screen.getByText('Payment')).toBeInTheDocument()
     })
 
-    it('shows manual time toggle checkbox', () => {
+    it('renders Departure and Return flight subsections', () => {
       renderManualBooking()
 
-      expect(screen.getByText(/use manual time entry/i)).toBeInTheDocument()
-    })
-
-    it('shows hint to select drop-off date', () => {
-      renderManualBooking()
-
-      expect(screen.getByText(/select a drop-off date to see available flights/i)).toBeInTheDocument()
-    })
-  })
-
-  describe('Manual Time Toggle', () => {
-    it('shows time pickers when manual time is enabled', async () => {
-      const user = userEvent.setup()
-      renderManualBooking()
-
-      const checkbox = screen.getByRole('checkbox')
-      await user.click(checkbox)
-
-      expect(screen.getByLabelText(/drop-off time/i)).toBeInTheDocument()
-      expect(screen.getByLabelText(/pick-up time/i)).toBeInTheDocument()
-    })
-
-    it('hides flight selection when manual time is enabled', async () => {
-      const user = userEvent.setup()
-      renderManualBooking()
-
-      const checkbox = screen.getByRole('checkbox')
-      await user.click(checkbox)
-
-      expect(screen.queryByText(/departure flight/i)).not.toBeInTheDocument()
-      expect(screen.queryByText(/return flight/i)).not.toBeInTheDocument()
-    })
-  })
-
-  describe('Flight Selection Flow', () => {
-    it('fetches departures when drop-off date is selected', async () => {
-      renderManualBooking()
-
-      // The component would fetch when date is selected
-      // We verify the fetch mock was set up correctly
-      expect(global.fetch).toBeDefined()
-    })
-
-    it('displays loading state while fetching departures', async () => {
-      // This would require more complex async testing
-      // Kept simple for demonstration
-      renderManualBooking()
-      expect(screen.getByText(/select a drop-off date/i)).toBeInTheDocument()
+      expect(screen.getByText('Departure Flight')).toBeInTheDocument()
+      expect(screen.getByText('Return Flight')).toBeInTheDocument()
     })
   })
 
