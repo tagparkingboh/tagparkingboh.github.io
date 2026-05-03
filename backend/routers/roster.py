@@ -3739,7 +3739,20 @@ async def regenerate_auto_roster(
 
     Returns counts so the UI can render a "X created, Y deleted" banner.
     """
-    from auto_roster import rebuild_auto_for_dates
+    # Defensive import: a partial / lagging deploy where db_models.py and
+    # auto_roster.py are out of sync raises ImportError here. Catch it and
+    # return a clean 503 so the UI surfaces the actual cause instead of
+    # CORS-masked 500.
+    try:
+        from auto_roster import rebuild_auto_for_dates
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Auto-roster module unavailable on the current backend deploy "
+                f"({e}). Ask an engineer to redeploy the backend service."
+            ),
+        )
 
     parsed = _load_planner_settings_rows(db)
     settings = PlannerSettings.from_kv(parsed)
@@ -3776,7 +3789,16 @@ async def delete_all_auto_shifts_endpoint(
     and after this runs, the next booking confirmation (or a regenerate
     call) will repopulate cleanly.
     """
-    from auto_roster import delete_all_auto_shifts
+    try:
+        from auto_roster import delete_all_auto_shifts
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Auto-roster module unavailable on the current backend deploy "
+                f"({e}). Ask an engineer to redeploy the backend service."
+            ),
+        )
 
     count = delete_all_auto_shifts(db)
     return {"deleted": count}
