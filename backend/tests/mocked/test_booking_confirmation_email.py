@@ -474,6 +474,16 @@ def _stripe_event(payment_intent_id, amount, metadata, event_type="payment_inten
 class TestWebhookEmailIntegration:
     """Integration tests for email sending when payment succeeds."""
 
+    @pytest.fixture(autouse=True)
+    def _patch_stripe_configured(self):
+        """Webhook short-circuits with 503 when Stripe env vars are missing
+        (the CI production environment has none). The mocked tests don't
+        actually contact Stripe — they only need the webhook to proceed past
+        the configuration guard.
+        """
+        with patch('main.is_stripe_configured', return_value=True):
+            yield
+
     def _create_mock_booking(self, booking_reference="TAG-TEST1234"):
         """Create a mock booking object with all required fields."""
         mock_customer = MagicMock()
