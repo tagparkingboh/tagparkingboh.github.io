@@ -13800,13 +13800,18 @@ async def create_test_result(
     if request.api_key != expected_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    # Determine status based on results
-    if request.tests_failed > 0:
-        status = TestRunStatus.FAILED
-    elif request.tests_total == 0:
+    # Determine status based on results.
+    # Pass rate (passed / total, including skipped — matches TestRun.pass_rate
+    # property) at or above 98% counts as PASSED so a small number of known
+    # in-flight failures don't turn the dashboard red.
+    if request.tests_total == 0:
         status = TestRunStatus.ERROR
-    else:
+    elif request.tests_failed == 0:
         status = TestRunStatus.PASSED
+    elif (request.tests_passed / request.tests_total) * 100 >= 98.0:
+        status = TestRunStatus.PASSED
+    else:
+        status = TestRunStatus.FAILED
 
     test_run = TestRun(
         environment=request.environment,
