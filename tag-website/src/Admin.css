@@ -6351,7 +6351,7 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  height: 280px;
+  height: 400px;
   padding-right: 8px;
   border-right: 1px solid #e2e8f0;
 }
@@ -6367,7 +6367,7 @@
 .occupancy-chart-area {
   flex: 1;
   position: relative;
-  height: 280px;
+  height: 400px;
   overflow-x: auto;
 }
 
