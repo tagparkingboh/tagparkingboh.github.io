@@ -6368,7 +6368,11 @@
   flex: 1;
   position: relative;
   height: 400px;
-  overflow-x: auto;
+  /* No overflow-x:auto — that implicitly forces overflow-y:auto and
+     clips the percent labels that float above tall bars. The 21-day
+     window fits on a normal viewport; on narrow screens it overflows
+     gracefully (rare for an admin desk). */
+  overflow: visible;
 }
 
 .occupancy-gridlines {
