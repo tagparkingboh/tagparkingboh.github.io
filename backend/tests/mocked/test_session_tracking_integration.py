@@ -309,7 +309,6 @@ class TestSessionTrackingReportEndpoint:
 class TestSessionTrackingWithData:
     """Tests for session tracking with audit log data."""
 
-    @pytest.mark.skip(reason="Test pollution from other tests - passes individually")
     def test_counts_unique_sessions(self, client, mock_db):
         """Should count unique sessions, not total events."""
         import pytz
@@ -342,7 +341,9 @@ class TestSessionTrackingWithData:
 
         mock_db.query.return_value.filter.return_value.all.return_value = mock_logs
 
-        response = client.get("/api/admin/reports/session-tracking?period=daily")
+        # refresh=true bypasses the module-level _session_tracking_cache populated
+        # by earlier tests in this file
+        response = client.get("/api/admin/reports/session-tracking?period=daily&refresh=true")
 
         assert response.status_code == 200
         data = response.json()

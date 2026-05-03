@@ -136,12 +136,18 @@ async def client():
     admin_user = create_mock_admin_user()
     app.dependency_overrides[require_admin] = lambda: admin_user
 
+    # Reset the module-level _booking_locations_cache so prior tests in the
+    # suite don't leak cached results into this one.
+    import main as main_module
+    main_module._booking_locations_cache = {}
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
     # Clean up overrides
     app.dependency_overrides.clear()
+    main_module._booking_locations_cache = {}
 
 
 def create_mock_postcodes_response(postcodes_data):
@@ -168,13 +174,38 @@ def create_mock_db_for_bookings(mock_bookings):
 
 
 def create_mock_db_for_customers(mock_customers):
-    """Create a mock database session for customers queries."""
+    """Mock DB session for the journey-origins endpoint.
+
+    The endpoint builds a real `or_(latest_booking.c.last_booking_date.is_(None),
+    Customer.billing_updated_at > latest_booking.c.last_booking_date)` expression
+    BEFORE handing it to `.filter()`, so SQLAlchemy coerces both sides as SQL
+    elements. A pure MagicMock subquery breaks this. We construct a real
+    SQLAlchemy subquery (via `select(...).subquery()`) for the first query
+    call so the columns are real, then fall back to a chain mock for the
+    actual customer query whose `.all()` returns our list.
+    """
+    from sqlalchemy import select, func
+    from db_models import Booking
+
+    real_subquery = (
+        select(Booking.customer_id, func.max(Booking.created_at).label('last_booking_date'))
+        .group_by(Booking.customer_id)
+        .subquery()
+    )
+
+    customer_query = MagicMock()
+    customer_query.outerjoin.return_value = customer_query
+    customer_query.filter.return_value = customer_query
+    customer_query.order_by.return_value = customer_query
+    customer_query.all.return_value = mock_customers
+
+    subquery_query = MagicMock()
+    subquery_query.group_by.return_value.subquery.return_value = real_subquery
+
     mock_db = MagicMock()
-    mock_query = MagicMock()
-    mock_query.filter.return_value = mock_query
-    mock_query.order_by.return_value = mock_query
-    mock_query.all.return_value = mock_customers
-    mock_db.query.return_value = mock_query
+    # First .query() call constructs the subquery; subsequent calls hit the
+    # customer chain. Pad with the customer chain so log_error etc. don't blow up.
+    mock_db.query.side_effect = [subquery_query, customer_query, customer_query, customer_query]
     return mock_db
 
 
@@ -378,7 +409,6 @@ class TestGeocodingResponseParsing:
 # Integration Tests - Bookings Map (map_type=bookings)
 # =============================================================================
 
-@pytest.mark.skip(reason="Requires complex SQLAlchemy mocking with subqueries")
 class TestBookingLocationsIntegration:
     """Integration tests for bookings map with mocked database and postcodes.io API."""
 
@@ -545,7 +575,6 @@ class TestBookingLocationsIntegration:
 # Integration Tests - Journey Origins (map_type=origins)
 # =============================================================================
 
-@pytest.mark.skip(reason="Requires complex SQLAlchemy mocking with subqueries")
 class TestJourneyOrigins:
     """Integration tests for journey origins map (all customers/leads from Page 1)."""
 

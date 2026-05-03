@@ -442,6 +442,35 @@ class TestSendBookingConfirmationEmail:
 # Integration Tests for Email Sending in Webhook
 # =============================================================================
 
+class _StripeLikeDict(dict):
+    """Dict that also supports attribute access — mimics stripe.StripeObject.
+
+    The webhook uses both `data["amount"]` and `getattr(data, "metadata", {})`,
+    so a plain dict on the test side fails the getattr lookup. This class
+    bridges both shapes.
+    """
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError as e:
+            raise AttributeError(name) from e
+
+
+def _stripe_event(payment_intent_id, amount, metadata, event_type="payment_intent.succeeded"):
+    """Build a verify_webhook_signature return value that the webhook accepts."""
+    return {
+        "type": event_type,
+        "data": {
+            "object": _StripeLikeDict(
+                id=payment_intent_id,
+                amount=amount,
+                metadata=_StripeLikeDict(metadata),
+            )
+        },
+    }
+
+
 class TestWebhookEmailIntegration:
     """Integration tests for email sending when payment succeeds."""
 
@@ -466,6 +495,11 @@ class TestWebhookEmailIntegration:
         mock_booking = MagicMock()
         mock_booking.reference = booking_reference
         mock_booking.customer = mock_customer
+        # Webhook prefers the booking-snapshot fields via
+        # `booking.customer_first_name or booking.customer.first_name` —
+        # leave snapshots None so the fallback to the customer object kicks in.
+        mock_booking.customer_first_name = None
+        mock_booking.customer_last_name = None
         mock_booking.vehicle = mock_vehicle
         mock_booking.package = "quick"
         mock_booking.dropoff_date = FUTURE_DATE
@@ -484,6 +518,7 @@ class TestWebhookEmailIntegration:
         mock_booking.status = BookingStatus.CONFIRMED
         # Additional fields that the webhook accesses
         mock_booking.flight_arrival_time = None
+        mock_booking.flight_departure_time = None
         mock_booking.id = 1
 
         return mock_booking
@@ -569,7 +604,6 @@ class TestWebhookEmailIntegration:
 
         return booking
 
-    @pytest.mark.skip(reason="Requires complex webhook mocking infrastructure")
     @pytest.mark.asyncio
     @patch('main.send_booking_confirmation_email')
     @patch('main.db_service.get_booking_by_reference')
@@ -582,21 +616,15 @@ class TestWebhookEmailIntegration:
         mock_booking = self._create_mock_booking()
         mock_payment = self._create_mock_payment()
 
-        mock_verify.return_value = {
-            "type": "payment_intent.succeeded",
-            "data": {
-                "object": {
-                    "id": "pi_test_123456",
-                    "amount": 9900,
-                    "metadata": {
-                        "booking_reference": mock_booking.reference,
-                        "departure_id": "",
-                        "drop_off_slot": "",
-                        "promo_code": "",
-                    }
-                }
-            }
-        }
+        mock_verify.return_value = _stripe_event(
+            "pi_test_123456", 9900,
+            {
+                "booking_reference": mock_booking.reference,
+                "departure_id": "",
+                "drop_off_slot": "",
+                "promo_code": "",
+            },
+        )
         mock_update_payment.return_value = (mock_payment, False)
         mock_get_booking.return_value = mock_booking
 
@@ -617,7 +645,6 @@ class TestWebhookEmailIntegration:
         assert "Ford" in call_kwargs["vehicle_make"]
         assert "Focus" in call_kwargs["vehicle_model"]
 
-    @pytest.mark.skip(reason="Requires complex webhook mocking infrastructure")
     @pytest.mark.asyncio
     @patch('main.send_booking_confirmation_email')
     @patch('main.db_service.get_booking_by_reference')
@@ -631,21 +658,15 @@ class TestWebhookEmailIntegration:
         mock_booking.promo_code = "TESTPROMO10"
         mock_payment = self._create_mock_payment(amount_pence=8910)
 
-        mock_verify.return_value = {
-            "type": "payment_intent.succeeded",
-            "data": {
-                "object": {
-                    "id": "pi_test_123456",
-                    "amount": 8910,  # Discounted amount
-                    "metadata": {
-                        "booking_reference": mock_booking.reference,
-                        "departure_id": "",
-                        "drop_off_slot": "",
-                        "promo_code": "TESTPROMO10",
-                    }
-                }
-            }
-        }
+        mock_verify.return_value = _stripe_event(
+            "pi_test_123456", 8910,
+            {
+                "booking_reference": mock_booking.reference,
+                "departure_id": "",
+                "drop_off_slot": "",
+                "promo_code": "TESTPROMO10",
+            },
+        )
         mock_update_payment.return_value = (mock_payment, False)
         mock_get_booking.return_value = mock_booking
 
@@ -661,7 +682,6 @@ class TestWebhookEmailIntegration:
         assert call_kwargs["promo_code"] == "TESTPROMO10"
         assert call_kwargs["discount_amount"] is not None
 
-    @pytest.mark.skip(reason="Requires complex webhook mocking infrastructure")
     @pytest.mark.asyncio
     @patch('main.send_booking_confirmation_email')
     @patch('main.db_service.get_booking_by_reference')
@@ -674,21 +694,15 @@ class TestWebhookEmailIntegration:
         mock_booking = self._create_mock_booking()
         mock_payment = self._create_mock_payment(amount_pence=15000)
 
-        mock_verify.return_value = {
-            "type": "payment_intent.succeeded",
-            "data": {
-                "object": {
-                    "id": "pi_test_123456",
-                    "amount": 15000,  # £150.00
-                    "metadata": {
-                        "booking_reference": mock_booking.reference,
-                        "departure_id": "",
-                        "drop_off_slot": "",
-                        "promo_code": "",
-                    }
-                }
-            }
-        }
+        mock_verify.return_value = _stripe_event(
+            "pi_test_123456", 15000,
+            {
+                "booking_reference": mock_booking.reference,
+                "departure_id": "",
+                "drop_off_slot": "",
+                "promo_code": "",
+            },
+        )
         mock_update_payment.return_value = (mock_payment, False)
         mock_get_booking.return_value = mock_booking
 
@@ -774,7 +788,6 @@ class TestWebhookEmailIntegration:
         # Email should NOT be sent for failed payments
         mock_send_email.assert_not_called()
 
-    @pytest.mark.skip(reason="Requires complex webhook mocking infrastructure")
     @pytest.mark.asyncio
     @patch('main.send_booking_confirmation_email')
     @patch('main.db_service.get_booking_by_reference')
@@ -787,21 +800,15 @@ class TestWebhookEmailIntegration:
         mock_booking = self._create_mock_booking()
         mock_payment = self._create_mock_payment()
 
-        mock_verify.return_value = {
-            "type": "payment_intent.succeeded",
-            "data": {
-                "object": {
-                    "id": "pi_test_123456",
-                    "amount": 9900,
-                    "metadata": {
-                        "booking_reference": mock_booking.reference,
-                        "departure_id": "",
-                        "drop_off_slot": "",
-                        "promo_code": "",
-                    }
-                }
-            }
-        }
+        mock_verify.return_value = _stripe_event(
+            "pi_test_123456", 9900,
+            {
+                "booking_reference": mock_booking.reference,
+                "departure_id": "",
+                "drop_off_slot": "",
+                "promo_code": "",
+            },
+        )
         mock_update_payment.return_value = (mock_payment, False)
         mock_get_booking.return_value = mock_booking
 
@@ -821,7 +828,6 @@ class TestWebhookEmailIntegration:
         assert expected_month in call_kwargs["dropoff_date"]
         assert expected_pickup_month in call_kwargs["pickup_date"]
 
-    @pytest.mark.skip(reason="Requires complex webhook mocking infrastructure")
     @pytest.mark.asyncio
     @patch('main.send_booking_confirmation_email')
     @patch('main.db_service.get_booking_by_reference')
@@ -834,21 +840,15 @@ class TestWebhookEmailIntegration:
         mock_booking = self._create_mock_booking()
         mock_payment = self._create_mock_payment()
 
-        mock_verify.return_value = {
-            "type": "payment_intent.succeeded",
-            "data": {
-                "object": {
-                    "id": "pi_test_123456",
-                    "amount": 9900,
-                    "metadata": {
-                        "booking_reference": mock_booking.reference,
-                        "departure_id": "",
-                        "drop_off_slot": "",
-                        "promo_code": "",
-                    }
-                }
-            }
-        }
+        mock_verify.return_value = _stripe_event(
+            "pi_test_123456", 9900,
+            {
+                "booking_reference": mock_booking.reference,
+                "departure_id": "",
+                "drop_off_slot": "",
+                "promo_code": "",
+            },
+        )
         mock_update_payment.return_value = (mock_payment, False)
         mock_get_booking.return_value = mock_booking
 
@@ -864,7 +864,6 @@ class TestWebhookEmailIntegration:
         # Booking has pickup_time of 14:00, so pickup should be "From 14:00 onwards"
         assert call_kwargs["pickup_time"] == "From 14:00 onwards"
 
-    @pytest.mark.skip(reason="Requires complex webhook mocking infrastructure")
     @pytest.mark.asyncio
     @patch('main.send_booking_confirmation_email')
     @patch('main.db_service.get_booking_by_reference')
@@ -889,21 +888,15 @@ class TestWebhookEmailIntegration:
         mock_payment = self._create_mock_payment(amount_pence=15000)
         mock_payment.stripe_payment_intent_id = "pi_test_2week"
 
-        mock_verify.return_value = {
-            "type": "payment_intent.succeeded",
-            "data": {
-                "object": {
-                    "id": "pi_test_2week",
-                    "amount": 15000,
-                    "metadata": {
-                        "booking_reference": "TAG-2WEEK123",
-                        "departure_id": "",
-                        "drop_off_slot": "",
-                        "promo_code": "",
-                    }
-                }
-            }
-        }
+        mock_verify.return_value = _stripe_event(
+            "pi_test_2week", 15000,
+            {
+                "booking_reference": "TAG-2WEEK123",
+                "departure_id": "",
+                "drop_off_slot": "",
+                "promo_code": "",
+            },
+        )
         mock_update_payment.return_value = (mock_payment, False)
         mock_get_booking.return_value = mock_booking
 
