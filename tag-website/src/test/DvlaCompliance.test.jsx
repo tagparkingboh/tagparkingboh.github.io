@@ -64,10 +64,15 @@ describe('motStatusClass', () => {
   // Unhappy: every locked alert value paints red
   it.each([
     ['Not valid'],
-    ['No details held by DVLA'],
     ['No results returned'],
   ])('returns alert for "%s"', (value) => {
     expect(motStatusClass(value)).toBe('alert')
+  })
+
+  // Edge: "No details held by DVLA" is NOT alertable — it's how DVLA
+  // reports MOT-exempt cars under 3 years old. Renders grey, not red.
+  it('returns unknown for "No details held by DVLA"', () => {
+    expect(motStatusClass('No details held by DVLA')).toBe('unknown')
   })
 
   // Edge
@@ -116,7 +121,12 @@ describe('shouldShowAlert', () => {
 
   // Edge: both alert
   it('returns true when both alert', () => {
-    expect(shouldShowAlert('SORN', 'No details held by DVLA')).toBe(true)
+    expect(shouldShowAlert('SORN', 'Not valid')).toBe(true)
+  })
+
+  // Edge: "No details held by DVLA" alone does NOT trigger
+  it('does not trigger for "No details held by DVLA" alone', () => {
+    expect(shouldShowAlert('Taxed', 'No details held by DVLA')).toBe(false)
   })
 
   // Boundary: every alert-listed value individually triggers via shouldShowAlert
@@ -125,7 +135,6 @@ describe('shouldShowAlert', () => {
     ['SORN', 'Valid'],
     ['Not Taxed for on Road Use', 'Valid'],
     ['Taxed', 'Not valid'],
-    ['Taxed', 'No details held by DVLA'],
     ['Taxed', 'No results returned'],
   ])('triggers alert for tax="%s" mot="%s"', (tax, mot) => {
     expect(shouldShowAlert(tax, mot)).toBe(true)

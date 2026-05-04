@@ -6,10 +6,12 @@ can colour-code per value. This module encodes which exact values count
 as "alert Kristian" vs benign — kept here so Phase A persistence, Phase B
 display, and Phase C scheduler/email all agree.
 
-Locked 2026-05-03:
+Locked 2026-05-03 (revised same day):
   Tax email triggers:  Untaxed, SORN, Not Taxed for on Road Use
-  MOT email triggers:  Not valid, No details held by DVLA, No results returned
-  Safe (no email):     Taxed, Valid, Could not verify (retry policy handles)
+  MOT email triggers:  Not valid, No results returned
+  Safe (no email):     Taxed, Valid, Could not verify (retry policy handles),
+                       No details held by DVLA (mostly MOT-exempt cars under
+                         3 years old — would fire on every nearly-new car)
 """
 import logging
 from dataclasses import dataclass
@@ -40,7 +42,6 @@ TAX_ALERT_VALUES = frozenset({
 
 MOT_ALERT_VALUES = frozenset({
     "Not valid",
-    "No details held by DVLA",
     "No results returned",
 })
 

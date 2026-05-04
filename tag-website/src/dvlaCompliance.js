@@ -13,9 +13,11 @@ const TAX_ALERT_VALUES = new Set([
 
 const MOT_ALERT_VALUES = new Set([
   'Not valid',
-  'No details held by DVLA',
   'No results returned',
 ])
+// Note: "No details held by DVLA" is intentionally NOT alertable — it's
+// what DVLA returns for MOT-exempt cars under 3 years old. Renders grey
+// (unknown) so brand-new cars don't fire the badge.
 
 // Returns 'ok' | 'alert' | 'unknown' for a taxStatus value.
 // 'unknown' covers null, undefined, "Could not verify", and any DVLA value

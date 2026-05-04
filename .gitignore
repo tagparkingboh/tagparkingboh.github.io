@@ -50,3 +50,5 @@ backend/migrations/
 # contain customer references / Stripe metadata; keep out of public history.
 backend/scripts/backfill_refund_*.py
 backend/scripts/backfill_stripe_refund.py
+backend/scripts/backfill_dvla_compliance.py
+backend/scripts/enrich_dvla_compliance_csv.py
