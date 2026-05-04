@@ -79,7 +79,14 @@ def _events_for_booking(booking: Booking) -> list[tuple[str, datetime]]:
         ))
     if booking.pickup_date:
         if getattr(booking, "flight_arrival_time", None):
-            anchor = datetime.combine(booking.pickup_date, booking.flight_arrival_time)
+            # flight_arrival_time has no date column; it's normally on
+            # pickup_date, but for early-AM pickups the flight lands the
+            # previous calendar day (e.g. flight 23:55, pickup 00:25 next
+            # day). Detect that by comparing against pickup_time.
+            flight_date = booking.pickup_date
+            if booking.pickup_time and booking.flight_arrival_time > booking.pickup_time:
+                flight_date = booking.pickup_date - timedelta(days=1)
+            anchor = datetime.combine(flight_date, booking.flight_arrival_time)
         elif booking.pickup_time:
             anchor = datetime.combine(booking.pickup_date, booking.pickup_time) - timedelta(minutes=30)
         else:

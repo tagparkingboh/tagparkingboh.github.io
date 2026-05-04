@@ -1528,6 +1528,73 @@ class TestPickupAnchorsToArrival:
         assert s["start_time"].strftime("%H:%M") == "00:30"
         assert s["date"].isoformat() == "2026-05-19"
 
+    def test_edge_arrival_crosses_midnight_backwards_anchors_to_previous_day(self):
+        """flight_arrival_time has no date column. When arrival > pickup_time
+        the flight landed on the previous calendar day (e.g. 23:55 land,
+        00:25 collection). Anchor must back-date so the shift lands on
+        the right overnight slot — date=D-1, end_date=D."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-OVERNIGHT",
+                drop_dt=uk_dt(2026, 4, 1, 9, 0),
+                pick_dt=uk_dt(2026, 5, 10, 0, 25),
+                flight_arrival_time=time(23, 55),
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        assert s["date"].isoformat() == "2026-05-09"
+        assert s["end_date"].isoformat() == "2026-05-10"
+        assert s["start_time"].strftime("%H:%M") == "23:35"
+
+    def test_boundary_arrival_one_minute_after_pickup_back_dates(self):
+        """Arrival 1 min after pickup_time → back-date. Guards against
+        a regression that uses >= instead of >."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-BOUND-PLUS",
+                drop_dt=uk_dt(2026, 4, 1, 9, 0),
+                pick_dt=uk_dt(2026, 5, 10, 0, 25),
+                flight_arrival_time=time(0, 26),
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 1
+        assert new_shifts[0]["date"].isoformat() == "2026-05-09"
+
+    def test_boundary_arrival_equal_to_pickup_stays_same_day(self):
+        """Equal times → flight_arrival > pickup_time is False → no back-date."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-BOUND-EQ",
+                drop_dt=uk_dt(2026, 4, 1, 9, 0),
+                pick_dt=uk_dt(2026, 5, 10, 14, 0),
+                flight_arrival_time=time(14, 0),
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 1
+        assert new_shifts[0]["date"].isoformat() == "2026-05-10"
+
 
 class TestSpecGapFillers:
     def test_all_jockeys_excluded_produces_unmanned_warning(self):

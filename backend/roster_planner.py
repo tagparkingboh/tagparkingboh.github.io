@@ -741,7 +741,14 @@ def propose_roster(
             # before the plane lands.
             arrival_t = getattr(b, "flight_arrival_time", None)
             if arrival_t is not None:
-                anchor_time = _combine_uk(b.pickup_date, arrival_t)
+                # flight_arrival_time has no date column. Normally the
+                # flight lands on pickup_date, but for early-AM pickups
+                # (e.g. flight 23:55, pickup 00:25 next day) it lands the
+                # previous calendar day. Detect via pickup_time.
+                flight_date = b.pickup_date
+                if b.pickup_time and arrival_t > b.pickup_time:
+                    flight_date = b.pickup_date - timedelta(days=1)
+                anchor_time = _combine_uk(flight_date, arrival_t)
             else:
                 anchor_time = _combine_uk(b.pickup_date, b.pickup_time) - timedelta(minutes=30)
             events.append(

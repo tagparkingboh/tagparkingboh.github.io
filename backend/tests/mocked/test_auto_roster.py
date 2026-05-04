@@ -158,6 +158,55 @@ class TestEventsForBooking:
         pickup = next(e for e in events if e[0] == "pick_up")
         assert pickup[1] == datetime(2026, 6, 17, 13, 30)
 
+    def test_edge_pickup_flight_arrival_crosses_midnight_backwards(self):
+        # Flight lands 23:55 on day D-1, customer picks up car at 00:25 on
+        # day D. flight_arrival_time has no date column, so anchor must
+        # back-date the flight when arrival > pickup_time.
+        b = mk_booking(
+            dropoff_dt=datetime(2026, 6, 10, 8, 30),
+            pickup_dt=datetime(2026, 6, 18, 0, 25),
+            flight_arrival_time=time(23, 55),
+        )
+        pickup = next(e for e in _events_for_booking(b) if e[0] == "pick_up")
+        assert pickup[1] == datetime(2026, 6, 17, 23, 55)
+
+    def test_boundary_flight_arrival_equal_to_pickup_time_stays_same_day(self):
+        # Equal times — no overnight crossing (flight_arrival > pickup is False).
+        b = mk_booking(
+            pickup_dt=datetime(2026, 6, 17, 14, 0),
+            flight_arrival_time=time(14, 0),
+        )
+        pickup = next(e for e in _events_for_booking(b) if e[0] == "pick_up")
+        assert pickup[1] == datetime(2026, 6, 17, 14, 0)
+
+    def test_boundary_flight_arrival_one_minute_after_pickup_back_dates(self):
+        # 1-minute over the boundary triggers back-dating — guards against
+        # a regression that uses >= instead of >.
+        b = mk_booking(
+            pickup_dt=datetime(2026, 6, 17, 0, 25),
+            flight_arrival_time=time(0, 26),
+        )
+        pickup = next(e for e in _events_for_booking(b) if e[0] == "pick_up")
+        assert pickup[1] == datetime(2026, 6, 16, 0, 26)
+
+    def test_boundary_flight_arrival_one_minute_before_pickup_stays_same_day(self):
+        # Normal "land just before pickup" case must not back-date.
+        b = mk_booking(
+            pickup_dt=datetime(2026, 6, 17, 14, 0),
+            flight_arrival_time=time(13, 59),
+        )
+        pickup = next(e for e in _events_for_booking(b) if e[0] == "pick_up")
+        assert pickup[1] == datetime(2026, 6, 17, 13, 59)
+
+    def test_edge_pickup_at_midnight_with_late_evening_flight(self):
+        # Pickup exactly at 00:00 on day D, flight at 23:59 on D-1.
+        b = mk_booking(
+            pickup_dt=datetime(2026, 6, 17, 0, 0),
+            flight_arrival_time=time(23, 59),
+        )
+        pickup = next(e for e in _events_for_booking(b) if e[0] == "pick_up")
+        assert pickup[1] == datetime(2026, 6, 16, 23, 59)
+
     def test_unhappy_missing_dropoff_time_skipped(self):
         b = SimpleNamespace(
             id=1, reference="X", status=BookingStatus.CONFIRMED,
