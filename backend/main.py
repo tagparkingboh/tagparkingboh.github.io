@@ -792,7 +792,7 @@ class PriceCalculationRequest(BaseModel):
     """Request to calculate booking price."""
     drop_off_date: date
     pickup_date: date
-    pickup_time: Optional[str] = None  # HH:MM customer-meet time; pickups before 02:30 bill as previous day
+    pickup_time: Optional[str] = None  # HH:MM customer-meet time (= arrival + PICKUP_OFFSET_MINUTES); endpoint reverses the offset to apply the arrival-time billing cutoff
 
 
 class PriceCalculationResponse(BaseModel):
@@ -824,8 +824,18 @@ async def calculate_price(request: PriceCalculationRequest):
     """
     from booking_service import BookingService
 
-    # Apply 02:30 cutoff: pickups before 02:30 are billed as the previous day.
-    billing_pickup = BookingService.billing_pickup_date(request.pickup_date, request.pickup_time)
+    # Apply 02:00 arrival cutoff: flights arriving before 02:00 bill as the previous day.
+    # The pickup_time field carries the customer-meet time (arrival + PICKUP_OFFSET_MINUTES),
+    # so reverse the offset to recover the arrival time the rule keys off.
+    arrival_hhmm = None
+    if request.pickup_time:
+        try:
+            ph, pm = map(int, request.pickup_time.split(":")[:2])
+            total = (ph * 60 + pm - PICKUP_OFFSET_MINUTES) % (24 * 60)
+            arrival_hhmm = f"{total // 60:02d}:{total % 60:02d}"
+        except (ValueError, AttributeError):
+            arrival_hhmm = None
+    billing_pickup = BookingService.billing_pickup_date(request.pickup_date, arrival_hhmm)
 
     duration = (billing_pickup - request.drop_off_date).days
 
@@ -10439,11 +10449,10 @@ async def create_payment(
         pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
         print(f"[DEBUG] Parsed dropoff_date: {dropoff_date}, pickup_date: {pickup_date}")
 
-        # Apply 02:30 cutoff: collection times before 02:30 bill as the previous day.
-        # Collection time = flight arrival + PICKUP_OFFSET_MINUTES (handled by helper).
+        # Apply 02:00 arrival cutoff: flights arriving before 02:00 bill as the previous day.
         billing_pickup_date = BookingService.billing_pickup_date(
             pickup_date,
-            pickup_time_from_arrival(request.pickup_flight_time),
+            request.pickup_flight_time,
         )
 
         # Calculate duration for flexible pricing using the billing pickup date.

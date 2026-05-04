@@ -2865,14 +2865,6 @@ function Bookings() {
                           <span className="return-date-formatted">
                             {format(formData.pickupDate, 'EEEE, d MMMM yyyy')}
                           </span>
-                          <span className="trip-duration-display">
-                            {(() => {
-                              const days = Math.round((formData.pickupDate - formData.dropoffDate) / (1000 * 60 * 60 * 24))
-                              if (days === 7) return '(1 week trip)'
-                              if (days === 14) return '(2 week trip)'
-                              return `(${days} day${days !== 1 ? 's' : ''} trip)`
-                            })()}
-                          </span>
                         </div>
                       )}
                       {isPickupDateBlocked && formData.pickupDate && (
