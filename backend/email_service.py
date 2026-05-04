@@ -971,3 +971,74 @@ def send_vehicle_compliance_alert(
 <p>One alert per booking per day; the daily 24h-before check will not re-send.</p>
 """
     return send_email(FOUNDER_EMAIL, subject, html_content)
+
+
+def send_compliance_conflict_report(conflicts: list) -> bool:
+    """Weekly digest: bookings whose tax/MOT expires DURING the parking window.
+
+    Each item in `conflicts` is a dict with keys:
+      reference, dropoff_date, pickup_date, customer, registration,
+      vehicle_label, tax_conflict_date, mot_conflict_date
+
+    Either tax_conflict_date or mot_conflict_date is a date (or None).
+    Recipient is FOUNDER_EMAIL. Staging guard mirrors
+    `send_vehicle_compliance_alert`.
+
+    Returns True iff SendGrid 2xx'd. Returns False (without sending) on
+    non-prod environments OR when `conflicts` is empty (no point pinging).
+    """
+    from config import get_settings
+
+    settings = get_settings()
+    if settings.environment != "production":
+        logger.info(
+            "[staging] would send conflict report (%s rows) — staging guard active",
+            len(conflicts),
+        )
+        return False
+
+    if not conflicts:
+        logger.info("conflict report: no conflicts — skipping send")
+        return False
+
+    rows_html = []
+    for c in conflicts:
+        which = []
+        if c.get("tax_conflict_date"):
+            which.append(f"Tax due {c['tax_conflict_date'].strftime('%d/%m/%Y')}")
+        if c.get("mot_conflict_date"):
+            which.append(f"MOT expires {c['mot_conflict_date'].strftime('%d/%m/%Y')}")
+        rows_html.append(
+            "<tr>"
+            f"<td>{c['reference']}</td>"
+            f"<td>{c['dropoff_date'].strftime('%d/%m/%Y')} &ndash; {c['pickup_date'].strftime('%d/%m/%Y')}</td>"
+            f"<td>{c['customer']}</td>"
+            f"<td>{c['vehicle_label']}</td>"
+            f"<td style='color:#822727;'>{', '.join(which)}</td>"
+            "</tr>"
+        )
+
+    subject = f"[TAG] Weekly compliance conflicts — {len(conflicts)} booking{'s' if len(conflicts) != 1 else ''}"
+    html_content = f"""\
+<p>Hi,</p>
+<p><strong>{len(conflicts)}</strong> upcoming booking{'s have' if len(conflicts) != 1 else ' has'} a vehicle whose
+tax or MOT expires <em>during</em> the parking window. Customer arrives with
+valid documents, leaves with an expired one.</p>
+<p>This is separate from the daily 24h-before alert — that one only catches
+already-failed compliance, not upcoming expiries inside the trip.</p>
+<table style="border-collapse: collapse;" border="1" cellpadding="6">
+  <thead>
+    <tr style="background:#f7fafc;">
+      <th align="left">Booking</th>
+      <th align="left">Travel dates</th>
+      <th align="left">Customer</th>
+      <th align="left">Vehicle</th>
+      <th align="left">Conflict</th>
+    </tr>
+  </thead>
+  <tbody>
+    {''.join(rows_html)}
+  </tbody>
+</table>
+"""
+    return send_email(FOUNDER_EMAIL, subject, html_content)

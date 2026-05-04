@@ -10,6 +10,7 @@ import asyncio
 from datetime import datetime, timedelta, time
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
@@ -458,6 +459,98 @@ def process_pending_dvla_rechecks(db: Session):
         db.rollback()
 
 
+def process_weekly_conflict_report(db: Session = None):
+    """Weekly digest: bookings whose tax/MOT expires INSIDE the parking window.
+
+    Scope: status IN (CONFIRMED, REFUNDED) AND
+           (tax_status='Taxed' AND tax_due_date BETWEEN dropoff AND pickup)
+        OR (mot_status='Valid' AND mot_expiry_date BETWEEN dropoff AND pickup)
+
+    Excludes vehicles already failing compliance — those are handled by the
+    daily 24h-before alert. This report is the "look ahead at trips that
+    will fail mid-stay" view.
+
+    Wired to APScheduler CronTrigger (Mon 09:00 Europe/London) — see
+    start_scheduler. The function also accepts an optional `db` so it can
+    be called directly from tests.
+    """
+    from db_models import Vehicle, Customer
+    from email_service import send_compliance_conflict_report
+    from sqlalchemy import or_, and_
+
+    own_session = False
+    if db is None:
+        db = get_db()
+        own_session = True
+    try:
+        query = (
+            db.query(Booking, Vehicle, Customer)
+            .join(Vehicle, Vehicle.id == Booking.vehicle_id)
+            .outerjoin(Customer, Customer.id == Booking.customer_id)
+            .filter(
+                Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.REFUNDED]),
+                or_(
+                    and_(
+                        Vehicle.tax_status == "Taxed",
+                        Vehicle.tax_due_date.between(
+                            Booking.dropoff_date, Booking.pickup_date
+                        ),
+                    ),
+                    and_(
+                        Vehicle.mot_status == "Valid",
+                        Vehicle.mot_expiry_date.between(
+                            Booking.dropoff_date, Booking.pickup_date
+                        ),
+                    ),
+                ),
+            )
+            .order_by(Booking.dropoff_date.asc())
+        )
+        rows = query.all()
+
+        conflicts = []
+        for booking, vehicle, customer in rows:
+            first = booking.customer_first_name or (customer.first_name if customer else "")
+            last = booking.customer_last_name or (customer.last_name if customer else "")
+            tax_conf = (
+                vehicle.tax_due_date
+                if vehicle.tax_status == "Taxed"
+                and vehicle.tax_due_date is not None
+                and booking.dropoff_date <= vehicle.tax_due_date <= booking.pickup_date
+                else None
+            )
+            mot_conf = (
+                vehicle.mot_expiry_date
+                if vehicle.mot_status == "Valid"
+                and vehicle.mot_expiry_date is not None
+                and booking.dropoff_date <= vehicle.mot_expiry_date <= booking.pickup_date
+                else None
+            )
+            label_parts = [vehicle.colour, vehicle.make]
+            vehicle_label = f"{vehicle.registration} ({' '.join(p for p in label_parts if p)})".strip()
+            conflicts.append({
+                "reference": booking.reference,
+                "dropoff_date": booking.dropoff_date,
+                "pickup_date": booking.pickup_date,
+                "customer": f"{first} {last}".strip() or "—",
+                "registration": vehicle.registration,
+                "vehicle_label": vehicle_label,
+                "tax_conflict_date": tax_conf,
+                "mot_conflict_date": mot_conf,
+            })
+
+        logger.info(
+            "weekly conflict report: %s booking(s) with mid-trip expiry",
+            len(conflicts),
+        )
+        send_compliance_conflict_report(conflicts)
+    except Exception as e:
+        logger.exception("weekly conflict report failed: %s", e)
+    finally:
+        if own_session:
+            db.close()
+
+
 def process_all_pending_emails():
     """Main job that processes all pending emails using a single DB connection."""
     if not is_email_enabled():
@@ -523,6 +616,24 @@ def start_scheduler():
         id="cleanup_pool_snapshots",
         name="Cleanup old pool snapshots",
         replace_existing=True,
+    )
+
+    # Weekly DVLA compliance conflict report — Monday 09:00 Europe/London.
+    # Surfaces upcoming bookings whose tax/MOT will expire DURING the
+    # parking window (the daily 24h-before scheduler doesn't catch these).
+    # `misfire_grace_time=3600` keeps the report alive across short
+    # restarts: if the server is down at 09:00 and back up by 10:00,
+    # the job still fires.
+    scheduler.add_job(
+        process_weekly_conflict_report,
+        trigger=CronTrigger(
+            day_of_week="mon", hour=9, minute=0,
+            timezone=pytz.timezone("Europe/London"),
+        ),
+        id="weekly_conflict_report",
+        name="Weekly DVLA compliance conflict report",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
 
     scheduler.start()
