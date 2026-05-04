@@ -149,6 +149,11 @@ class Vehicle(Base):
     # resets to 0 on any successful DVLA reply. Stops re-checks at 3.
     tax_status = Column(String(50), nullable=True)
     mot_status = Column(String(50), nullable=True)
+    # DVLA expiry dates from `taxDueDate` / `motExpiryDate`. Surfaced on the
+    # admin booking detail under the status pills as DD/MM/YYYY. NULL is
+    # valid: motExpiryDate is missing on MOT-exempt cars under 3 years old.
+    tax_due_date = Column(Date, nullable=True)
+    mot_expiry_date = Column(Date, nullable=True)
     dvla_checked_at = Column(DateTime(timezone=True), nullable=True)
     dvla_retry_count = Column(Integer, nullable=False, default=0, server_default="0")
 

@@ -9,7 +9,7 @@ import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
 import Payroll from './components/Payroll'
 import PlannedRosterCalendar from './components/qa/PlannedRosterCalendar'
-import { taxStatusClass, motStatusClass, shouldShowAlert } from './dvlaCompliance'
+import { taxStatusClass, motStatusClass, shouldShowAlert, formatIsoDateUk } from './dvlaCompliance'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -3349,6 +3349,8 @@ function Admin() {
           colour: data.colour || '',
           tax_status: data.tax_status || null,
           mot_status: data.mot_status || null,
+          tax_due_date: data.tax_due_date || null,
+          mot_expiry_date: data.mot_expiry_date || null,
         }))
       } else {
         setCustomerMessage('Vehicle not found - please enter details manually')
@@ -3946,6 +3948,15 @@ function Admin() {
                     })()}
                   </span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Vehicle Information Section */}
+          <div className="booking-section">
+            <h4>Vehicle Information</h4>
+            <div className="booking-section-content">
+              <div className="booking-detail-row">
                 <div className="booking-detail">
                   <span className="detail-label">Vehicle</span>
                   <span className="detail-value">
@@ -3971,6 +3982,11 @@ function Admin() {
                   >
                     {booking.vehicle?.tax_status || '—'}
                   </span>
+                  {booking.vehicle?.tax_due_date && (
+                    <span className="dvla-expiry-date">
+                      Due {formatIsoDateUk(booking.vehicle.tax_due_date)}
+                    </span>
+                  )}
                 </div>
                 <div className="booking-detail">
                   <span className="detail-label">MOT</span>
@@ -3980,6 +3996,11 @@ function Admin() {
                   >
                     {booking.vehicle?.mot_status || '—'}
                   </span>
+                  {booking.vehicle?.mot_expiry_date && (
+                    <span className="dvla-expiry-date">
+                      Expires {formatIsoDateUk(booking.vehicle.mot_expiry_date)}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
