@@ -363,6 +363,101 @@ def process_pending_founder_followups(db: Session):
         db.rollback()
 
 
+def process_pending_dvla_rechecks(db: Session):
+    """24h-before DVLA refresh + compliance alert for tomorrow's bookings.
+
+    Scope (locked 2026-05-03): bookings with status in {CONFIRMED, REFUNDED}
+    and dropoff_date == tomorrow (Europe/London).
+
+    Per-vehicle dedup: skip the DVLA refresh if `vehicles.dvla_checked_at`
+    is already in today's UK day window (same vehicle on multiple bookings
+    only hits DVLA once per day). Per-booking dedup: skip the alert email
+    if `bookings.last_compliance_alert_sent_at` is in today's UK day window
+    (one alert per booking per day, even across multiple scheduler ticks).
+
+    The email itself self-guards on environment so staging never reaches
+    Kristian — see send_vehicle_compliance_alert.
+    """
+    from db_models import Vehicle
+    from dvla_compliance import refresh_vehicle_dvla, should_alert
+    from email_service import send_vehicle_compliance_alert
+    from config import get_settings
+
+    try:
+        settings = get_settings()
+        api_key = (
+            settings.dvla_api_key_prod
+            if settings.environment == "production"
+            else settings.dvla_api_key_test
+        )
+        if not api_key:
+            logger.warning("DVLA API key not configured — skipping recheck pass")
+            return
+
+        uk_tz = pytz.timezone("Europe/London")
+        now_uk = datetime.now(uk_tz)
+        tomorrow = (now_uk + timedelta(days=1)).date()
+        today_start_uk = uk_tz.localize(
+            datetime.combine(now_uk.date(), time.min)
+        )
+
+        bookings = db.query(Booking).filter(
+            Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.REFUNDED]),
+            Booking.dropoff_date == tomorrow,
+        ).all()
+
+        for booking in bookings:
+            vehicle = booking.vehicle
+            if vehicle is None:
+                continue
+
+            # Skip DVLA refresh if this vehicle was already checked today
+            already_checked_today = (
+                vehicle.dvla_checked_at is not None
+                and vehicle.dvla_checked_at >= today_start_uk
+            )
+            if already_checked_today:
+                is_alertable = should_alert(vehicle.tax_status, vehicle.mot_status)
+            else:
+                is_alertable = refresh_vehicle_dvla(
+                    db,
+                    vehicle,
+                    api_key=api_key,
+                    is_production=(settings.environment == "production"),
+                )
+
+            if not is_alertable:
+                continue
+
+            # Per-booking dedup: skip if already alerted today
+            if (
+                booking.last_compliance_alert_sent_at is not None
+                and booking.last_compliance_alert_sent_at >= today_start_uk
+            ):
+                continue
+
+            customer_name = f"{booking.customer_first_name or booking.customer.first_name} {booking.customer_last_name or booking.customer.last_name}".strip()
+            sent = send_vehicle_compliance_alert(
+                booking_reference=booking.reference,
+                customer_name=customer_name,
+                registration=vehicle.registration,
+                dropoff_date=booking.dropoff_date.strftime("%d/%m/%Y"),
+                dropoff_time=booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else "—",
+                tax_status=vehicle.tax_status,
+                mot_status=vehicle.mot_status,
+            )
+            if sent:
+                # Only mark dedup if SendGrid actually accepted the message —
+                # a staging-guard skip returns False so the prod tick can
+                # still alert.
+                booking.last_compliance_alert_sent_at = datetime.now(uk_tz)
+                db.commit()
+
+    except Exception as e:
+        logger.exception("Error processing DVLA rechecks: %s", e)
+        db.rollback()
+
+
 def process_all_pending_emails():
     """Main job that processes all pending emails using a single DB connection."""
     if not is_email_enabled():
@@ -377,6 +472,7 @@ def process_all_pending_emails():
         process_pending_2day_reminders(db)
         process_pending_thankyou_emails(db)
         process_pending_founder_followups(db)
+        process_pending_dvla_rechecks(db)
         # PAUSED: Promo code emails - uncomment when ready to send
         # process_pending_promo_emails(db)
     finally:

@@ -2616,6 +2616,15 @@ async def mark_booking_paid(
     except Exception as e:
         print(f"[auto_roster] Failed to schedule auto-create for booking {booking.id}: {e}")
 
+    # DVLA compliance check: alert Kristian if vehicle has tax/MOT issue.
+    # Background-task isolated — staging guard inside the helper means
+    # nothing actually sends from non-prod environments.
+    try:
+        from dvla_compliance import check_and_alert_for_booking_async
+        background_tasks.add_task(check_and_alert_for_booking_async, booking.id)
+    except Exception as e:
+        print(f"[compliance] Failed to schedule alert check for booking {booking.id}: {e}")
+
     # Send confirmation email
     email_sent = False
     try:
@@ -10837,6 +10846,12 @@ async def create_payment(
                     background_tasks.add_task(auto_create_or_extend_async, booking.id)
                 except Exception as e:
                     print(f"[auto_roster] Failed to schedule auto-create for free booking {booking.id}: {e}")
+                # DVLA compliance hook — same isolation as auto-roster.
+                try:
+                    from dvla_compliance import check_and_alert_for_booking_async
+                    background_tasks.add_task(check_and_alert_for_booking_async, booking.id)
+                except Exception as e:
+                    print(f"[compliance] Failed to schedule alert check for free booking {booking.id}: {e}")
 
             # Create payment record with £0 amount and mark as SUCCEEDED
             payment = db_service.create_payment(
@@ -11256,6 +11271,11 @@ async def stripe_webhook(
                     from auto_roster import auto_create_or_extend_async
                     background_tasks.add_task(
                         auto_create_or_extend_async, payment.booking_id
+                    )
+                    # DVLA compliance hook — fires once per booking-day.
+                    from dvla_compliance import check_and_alert_for_booking_async
+                    background_tasks.add_task(
+                        check_and_alert_for_booking_async, payment.booking_id
                     )
         except Exception as e:
             log_error(

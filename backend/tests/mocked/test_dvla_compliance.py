@@ -12,6 +12,7 @@ each test. Skip if DB not available.
 """
 import pytest
 import pytest_asyncio
+from datetime import datetime, timedelta
 from unittest.mock import patch, AsyncMock, MagicMock
 from httpx import AsyncClient, ASGITransport, Response
 
@@ -375,3 +376,475 @@ class TestVehicleCreationPersistsCompliance:
         assert vehicle.tax_status == "Untaxed"
         assert vehicle.mot_status == "Not valid"
         assert vehicle.dvla_checked_at is not None
+
+
+# =============================================================================
+# Layer 4 — Phase C: server-side DVLA fetch helper (sync, no DB)
+# =============================================================================
+
+def _mock_sync_response(status_code=200, payload=None):
+    """Build a fake httpx.Response for the sync httpx.Client."""
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.json = MagicMock(return_value=payload or {})
+    return resp
+
+
+def _patch_sync_httpx(mock_response=None, raise_exc=None):
+    """Context-manager mock for httpx.Client used in dvla_compliance."""
+    mock_client = MagicMock()
+    mock_client.__enter__ = MagicMock(return_value=mock_client)
+    mock_client.__exit__ = MagicMock(return_value=None)
+    if raise_exc is not None:
+        mock_client.post = MagicMock(side_effect=raise_exc)
+    else:
+        mock_client.post = MagicMock(return_value=mock_response)
+    return mock_client
+
+
+class TestFetchDvlaStatus:
+    """Sync DVLA HTTP wrapper used by scheduler + at-creation hooks."""
+
+    def test_happy_returns_both_statuses(self):
+        from dvla_compliance import fetch_dvla_status
+        resp = _mock_sync_response(200, {"taxStatus": "Taxed", "motStatus": "Valid"})
+        with patch("dvla_compliance.httpx.Client", return_value=_patch_sync_httpx(resp)):
+            result = fetch_dvla_status("HT14NAO", "fake_key", is_production=False)
+        assert result.success is True
+        assert result.tax_status == "Taxed"
+        assert result.mot_status == "Valid"
+        assert result.not_found is False
+
+    def test_unhappy_404_marks_not_found(self):
+        from dvla_compliance import fetch_dvla_status
+        resp = _mock_sync_response(404, {})
+        with patch("dvla_compliance.httpx.Client", return_value=_patch_sync_httpx(resp)):
+            result = fetch_dvla_status("ZZZ", "fake_key", is_production=False)
+        assert result.success is False
+        assert result.not_found is True
+        assert result.http_status == 404
+
+    def test_edge_500_is_not_found_false(self):
+        from dvla_compliance import fetch_dvla_status
+        resp = _mock_sync_response(500, {})
+        with patch("dvla_compliance.httpx.Client", return_value=_patch_sync_httpx(resp)):
+            result = fetch_dvla_status("ABC1234", "fake_key", is_production=False)
+        assert result.success is False
+        assert result.not_found is False
+        assert result.http_status == 500
+
+    def test_boundary_timeout_caught(self):
+        import httpx
+        from dvla_compliance import fetch_dvla_status
+        with patch(
+            "dvla_compliance.httpx.Client",
+            return_value=_patch_sync_httpx(raise_exc=httpx.TimeoutException("timeout")),
+        ):
+            result = fetch_dvla_status("ABC1234", "fake_key", is_production=False)
+        assert result.success is False
+        assert result.not_found is False
+        assert "timeout" in (result.error or "").lower()
+
+    def test_edge_200_with_missing_status_field(self):
+        from dvla_compliance import fetch_dvla_status
+        # DVLA omits motStatus on this record (data quirk)
+        resp = _mock_sync_response(200, {"taxStatus": "Taxed"})
+        with patch("dvla_compliance.httpx.Client", return_value=_patch_sync_httpx(resp)):
+            result = fetch_dvla_status("ABC1234", "fake_key", is_production=False)
+        assert result.success is True
+        assert result.tax_status == "Taxed"
+        assert result.mot_status is None
+
+
+# =============================================================================
+# Layer 5 — Phase C: refresh_vehicle_dvla persists + handles retry/freeze
+# =============================================================================
+
+class TestRefreshVehicleDvla:
+    """Persistence-side: DB row updated correctly per fetch outcome."""
+
+    def test_happy_success_resets_retry_count(self, db_test_customer, db_session):
+        from db_models import Vehicle
+        from dvla_compliance import refresh_vehicle_dvla
+        vehicle = Vehicle(
+            customer_id=db_test_customer.id, registration="HAPPY1",
+            make="X", colour="Y", dvla_retry_count=2,
+        )
+        db_session.add(vehicle)
+        db_session.commit()
+        db_session.refresh(vehicle)
+
+        resp = _mock_sync_response(200, {"taxStatus": "Taxed", "motStatus": "Valid"})
+        with patch("dvla_compliance.httpx.Client", return_value=_patch_sync_httpx(resp)):
+            alertable = refresh_vehicle_dvla(
+                db_session, vehicle, api_key="k", is_production=False,
+            )
+        db_session.refresh(vehicle)
+        assert alertable is False  # Taxed/Valid → no alert
+        assert vehicle.tax_status == "Taxed"
+        assert vehicle.mot_status == "Valid"
+        assert vehicle.dvla_checked_at is not None
+        assert vehicle.dvla_retry_count == 0
+
+    def test_unhappy_alertable_returns_true(self, db_test_customer, db_session):
+        from db_models import Vehicle
+        from dvla_compliance import refresh_vehicle_dvla
+        vehicle = Vehicle(
+            customer_id=db_test_customer.id, registration="ALERT1",
+            make="X", colour="Y",
+        )
+        db_session.add(vehicle)
+        db_session.commit()
+        db_session.refresh(vehicle)
+
+        resp = _mock_sync_response(200, {"taxStatus": "Untaxed", "motStatus": "Valid"})
+        with patch("dvla_compliance.httpx.Client", return_value=_patch_sync_httpx(resp)):
+            alertable = refresh_vehicle_dvla(
+                db_session, vehicle, api_key="k", is_production=False,
+            )
+        db_session.refresh(vehicle)
+        assert alertable is True
+        assert vehicle.tax_status == "Untaxed"
+
+    def test_edge_timeout_marks_could_not_verify_and_increments_retry(
+        self, db_test_customer, db_session
+    ):
+        import httpx
+        from db_models import Vehicle
+        from dvla_compliance import refresh_vehicle_dvla, COULD_NOT_VERIFY
+        vehicle = Vehicle(
+            customer_id=db_test_customer.id, registration="TIMEOUT1",
+            make="X", colour="Y", dvla_retry_count=0,
+        )
+        db_session.add(vehicle)
+        db_session.commit()
+        db_session.refresh(vehicle)
+
+        with patch(
+            "dvla_compliance.httpx.Client",
+            return_value=_patch_sync_httpx(raise_exc=httpx.TimeoutException("t")),
+        ):
+            alertable = refresh_vehicle_dvla(
+                db_session, vehicle, api_key="k", is_production=False,
+            )
+        db_session.refresh(vehicle)
+        assert alertable is False  # never alert on Could-not-verify
+        assert vehicle.tax_status == COULD_NOT_VERIFY
+        assert vehicle.mot_status == COULD_NOT_VERIFY
+        assert vehicle.dvla_retry_count == 1
+
+    def test_edge_404_clears_status_and_does_not_increment_retry(
+        self, db_test_customer, db_session
+    ):
+        from db_models import Vehicle
+        from dvla_compliance import refresh_vehicle_dvla
+        vehicle = Vehicle(
+            customer_id=db_test_customer.id, registration="NOTFOUND",
+            make="X", colour="Y",
+            tax_status="Taxed", mot_status="Valid",
+            dvla_retry_count=0,
+        )
+        db_session.add(vehicle)
+        db_session.commit()
+        db_session.refresh(vehicle)
+
+        resp = _mock_sync_response(404, {})
+        with patch("dvla_compliance.httpx.Client", return_value=_patch_sync_httpx(resp)):
+            alertable = refresh_vehicle_dvla(
+                db_session, vehicle, api_key="k", is_production=False,
+            )
+        db_session.refresh(vehicle)
+        assert alertable is False
+        assert vehicle.tax_status is None
+        assert vehicle.mot_status is None
+        assert vehicle.dvla_retry_count == 0  # NOT incremented (permanent fail)
+
+    def test_boundary_frozen_at_retry_3_skips_dvla(
+        self, db_test_customer, db_session
+    ):
+        from db_models import Vehicle
+        from dvla_compliance import refresh_vehicle_dvla, COULD_NOT_VERIFY
+        vehicle = Vehicle(
+            customer_id=db_test_customer.id, registration="FROZEN",
+            make="X", colour="Y",
+            tax_status=COULD_NOT_VERIFY, mot_status=COULD_NOT_VERIFY,
+            dvla_retry_count=3,
+        )
+        db_session.add(vehicle)
+        db_session.commit()
+        db_session.refresh(vehicle)
+
+        # If DVLA were called this would raise — proving the freeze short-circuits
+        with patch("dvla_compliance.httpx.Client", side_effect=AssertionError("DVLA called!")):
+            alertable = refresh_vehicle_dvla(
+                db_session, vehicle, api_key="k", is_production=False,
+            )
+        assert alertable is False
+        db_session.refresh(vehicle)
+        assert vehicle.dvla_retry_count == 3  # unchanged
+
+
+# =============================================================================
+# Layer 6 — Phase C: send_vehicle_compliance_alert env guard + dispatch
+# =============================================================================
+
+@pytest.fixture
+def fake_settings_factory():
+    def _make(env="production"):
+        s = MagicMock()
+        s.environment = env
+        return s
+    return _make
+
+
+class TestSendVehicleComplianceAlert:
+    """Email guard: staging never reaches Kristian."""
+
+    def test_happy_production_calls_sendgrid(self, fake_settings_factory):
+        from email_service import send_vehicle_compliance_alert
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email", return_value=True) as mock_send:
+                ok = send_vehicle_compliance_alert(
+                    booking_reference="BR-X",
+                    customer_name="Joe Bloggs",
+                    registration="HT14NAO",
+                    dropoff_date="03/05/2026",
+                    dropoff_time="14:00",
+                    tax_status="Untaxed",
+                    mot_status="Valid",
+                )
+        assert ok is True
+        mock_send.assert_called_once()
+        # Subject + recipient sanity
+        call_kwargs = mock_send.call_args
+        args = call_kwargs.args
+        assert args[0] == "kristian@tagparking.co.uk"  # FOUNDER_EMAIL
+        assert "BR-X" in args[1]  # subject
+
+    def test_unhappy_staging_blocks_send(self, fake_settings_factory):
+        from email_service import send_vehicle_compliance_alert
+        with patch("config.get_settings", return_value=fake_settings_factory("staging")):
+            with patch("email_service.send_email") as mock_send:
+                ok = send_vehicle_compliance_alert(
+                    booking_reference="BR-X", customer_name="J B",
+                    registration="HT14NAO", dropoff_date="03/05/2026",
+                    dropoff_time="14:00",
+                    tax_status="Untaxed", mot_status="Valid",
+                )
+        assert ok is False
+        mock_send.assert_not_called()
+
+    def test_edge_development_blocks_send(self, fake_settings_factory):
+        from email_service import send_vehicle_compliance_alert
+        with patch("config.get_settings", return_value=fake_settings_factory("development")):
+            with patch("email_service.send_email") as mock_send:
+                ok = send_vehicle_compliance_alert(
+                    booking_reference="BR-X", customer_name="J B",
+                    registration="X", dropoff_date="01/01/2026", dropoff_time="00:00",
+                    tax_status="SORN", mot_status="Not valid",
+                )
+        assert ok is False
+        mock_send.assert_not_called()
+
+    def test_boundary_only_string_production_unlocks(self, fake_settings_factory):
+        # "PRODUCTION" upper-case should NOT match — guard is exact equality.
+        from email_service import send_vehicle_compliance_alert
+        with patch("config.get_settings", return_value=fake_settings_factory("PRODUCTION")):
+            with patch("email_service.send_email") as mock_send:
+                send_vehicle_compliance_alert(
+                    booking_reference="BR-X", customer_name="J B",
+                    registration="X", dropoff_date="01/01/2026", dropoff_time="00:00",
+                    tax_status="Untaxed", mot_status="Valid",
+                )
+        mock_send.assert_not_called()
+
+
+# =============================================================================
+# Layer 7 — Phase C: check_and_alert_for_booking dedup + lookup
+# =============================================================================
+
+@pytest.fixture
+def db_test_booking(db_session, db_test_customer):
+    """Throwaway booking + vehicle for compliance hook tests."""
+    import pytz
+    from db_models import Vehicle, Booking, BookingStatus
+    from datetime import time, timedelta
+
+    # Use UK-tz tomorrow (matches the scheduler's "tomorrow" calc, so the
+    # date filter aligns even when the machine clock is ahead/behind UK).
+    uk_tz = pytz.timezone("Europe/London")
+    now_uk = datetime.now(uk_tz)
+    dropoff = (now_uk + timedelta(days=1)).date()
+    pickup = (now_uk + timedelta(days=8)).date()
+
+    vehicle = Vehicle(
+        customer_id=db_test_customer.id, registration="HOOK01",
+        make="Test", colour="Black",
+        tax_status="Untaxed", mot_status="Valid",  # alertable
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    booking = Booking(
+        reference=f"TAG-HOOK-{vehicle.id}",
+        customer_id=db_test_customer.id,
+        vehicle_id=vehicle.id,
+        customer_first_name="Test",
+        customer_last_name="Hook",
+        dropoff_date=dropoff,
+        dropoff_time=time(10, 0),
+        pickup_date=pickup,
+        pickup_time=time(14, 0),
+        status=BookingStatus.CONFIRMED,
+        booking_source="manual",
+    )
+    db_session.add(booking)
+    db_session.commit()
+    db_session.refresh(booking)
+    yield booking
+    db_session.delete(booking)
+    db_session.commit()
+
+
+class TestCheckAndAlertForBooking:
+    """At-creation hook: alert + dedup logic."""
+
+    def test_happy_alertable_sends_and_marks_dedup(
+        self, db_test_booking, db_session, fake_settings_factory
+    ):
+        from dvla_compliance import check_and_alert_for_booking
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email", return_value=True) as mock_send:
+                sent = check_and_alert_for_booking(db_session, db_test_booking)
+        assert sent is True
+        assert mock_send.called
+        db_session.refresh(db_test_booking)
+        assert db_test_booking.last_compliance_alert_sent_at is not None
+
+    def test_unhappy_not_alertable_no_email(
+        self, db_test_booking, db_session, fake_settings_factory
+    ):
+        from dvla_compliance import check_and_alert_for_booking
+        db_test_booking.vehicle.tax_status = "Taxed"
+        db_test_booking.vehicle.mot_status = "Valid"
+        db_session.commit()
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email") as mock_send:
+                sent = check_and_alert_for_booking(db_session, db_test_booking)
+        assert sent is False
+        mock_send.assert_not_called()
+
+    def test_edge_already_alerted_today_skips(
+        self, db_test_booking, db_session, fake_settings_factory
+    ):
+        import pytz
+        from dvla_compliance import check_and_alert_for_booking
+        # Mark as already alerted 30 minutes ago
+        uk_tz = pytz.timezone("Europe/London")
+        db_test_booking.last_compliance_alert_sent_at = datetime.now(uk_tz) - timedelta(minutes=30)
+        db_session.commit()
+
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email") as mock_send:
+                sent = check_and_alert_for_booking(db_session, db_test_booking)
+        assert sent is False  # dedup'd
+        mock_send.assert_not_called()
+
+    def test_boundary_yesterday_alert_does_not_dedup(
+        self, db_test_booking, db_session, fake_settings_factory
+    ):
+        import pytz
+        from dvla_compliance import check_and_alert_for_booking
+        uk_tz = pytz.timezone("Europe/London")
+        # Yesterday at 23:00 UK
+        yesterday = datetime.now(uk_tz) - timedelta(days=1)
+        db_test_booking.last_compliance_alert_sent_at = yesterday
+        db_session.commit()
+
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email", return_value=True) as mock_send:
+                sent = check_and_alert_for_booking(db_session, db_test_booking)
+        assert sent is True
+        assert mock_send.called
+
+
+# =============================================================================
+# Layer 8 — Phase C: process_pending_dvla_rechecks (the daily scheduler job)
+# =============================================================================
+
+class TestProcessPendingDvlaRechecks:
+    """24h-before scheduler scope + dedup."""
+
+    def test_happy_tomorrow_confirmed_alertable_emails(
+        self, db_test_booking, db_session, fake_settings_factory
+    ):
+        from email_scheduler import process_pending_dvla_rechecks
+        # Vehicle dvla_checked_at is None so it'll be refreshed via DVLA
+        resp = _mock_sync_response(200, {"taxStatus": "Untaxed", "motStatus": "Valid"})
+        with patch("dvla_compliance.httpx.Client", return_value=_patch_sync_httpx(resp)):
+            with patch("config.get_settings", return_value=fake_settings_factory("production")):
+                with patch("email_service.send_email", return_value=True) as mock_send:
+                    process_pending_dvla_rechecks(db_session)
+        assert mock_send.called
+        db_session.refresh(db_test_booking)
+        assert db_test_booking.last_compliance_alert_sent_at is not None
+
+    def test_unhappy_today_drop_off_not_in_scope(
+        self, db_test_booking, db_session, fake_settings_factory
+    ):
+        import pytz
+        from email_scheduler import process_pending_dvla_rechecks
+        # Move booking dropoff to today (UK-tz) instead of tomorrow
+        uk_tz = pytz.timezone("Europe/London")
+        db_test_booking.dropoff_date = datetime.now(uk_tz).date()
+        db_session.commit()
+
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email") as mock_send:
+                with patch("dvla_compliance.httpx.Client") as mock_http:
+                    process_pending_dvla_rechecks(db_session)
+        mock_send.assert_not_called()
+        mock_http.assert_not_called()  # never even reached DVLA
+
+    def test_edge_cancelled_status_skipped(
+        self, db_test_booking, db_session, fake_settings_factory
+    ):
+        from db_models import BookingStatus
+        from email_scheduler import process_pending_dvla_rechecks
+        db_test_booking.status = BookingStatus.CANCELLED
+        db_session.commit()
+
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email") as mock_send:
+                process_pending_dvla_rechecks(db_session)
+        mock_send.assert_not_called()
+
+    def test_edge_refunded_status_in_scope(
+        self, db_test_booking, db_session, fake_settings_factory
+    ):
+        from db_models import BookingStatus
+        from email_scheduler import process_pending_dvla_rechecks
+        db_test_booking.status = BookingStatus.REFUNDED
+        db_session.commit()
+
+        resp = _mock_sync_response(200, {"taxStatus": "Untaxed", "motStatus": "Valid"})
+        with patch("dvla_compliance.httpx.Client", return_value=_patch_sync_httpx(resp)):
+            with patch("config.get_settings", return_value=fake_settings_factory("production")):
+                with patch("email_service.send_email", return_value=True) as mock_send:
+                    process_pending_dvla_rechecks(db_session)
+        assert mock_send.called  # REFUNDED still gets the alert
+
+    def test_boundary_already_alerted_today_no_second_email(
+        self, db_test_booking, db_session, fake_settings_factory
+    ):
+        import pytz
+        from email_scheduler import process_pending_dvla_rechecks
+        uk_tz = pytz.timezone("Europe/London")
+        db_test_booking.last_compliance_alert_sent_at = datetime.now(uk_tz)
+        db_session.commit()
+
+        resp = _mock_sync_response(200, {"taxStatus": "Untaxed", "motStatus": "Valid"})
+        with patch("dvla_compliance.httpx.Client", return_value=_patch_sync_httpx(resp)):
+            with patch("config.get_settings", return_value=fake_settings_factory("production")):
+                with patch("email_service.send_email") as mock_send:
+                    process_pending_dvla_rechecks(db_session)
+        mock_send.assert_not_called()
