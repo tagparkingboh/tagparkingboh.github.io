@@ -1263,6 +1263,43 @@
   border: 1px solid #e2e8f0;
 }
 
+/* DVLA tax / MOT status pills (raw DVLA strings, colour-coded) */
+.dvla-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.85em;
+  border: 1px solid transparent;
+}
+
+.dvla-status-ok {
+  background: #f0fff4;
+  color: #22543d;
+  border-color: #c6f6d5;
+}
+
+.dvla-status-alert {
+  background: #fff5f5;
+  color: #822727;
+  border-color: #fed7d7;
+}
+
+.dvla-status-unknown {
+  background: #f7fafc;
+  color: #4a5568;
+  border-color: #e2e8f0;
+}
+
+/* Inline warning badge next to vehicle reg when tax or MOT alert-listed */
+.dvla-alert-badge {
+  display: inline-block;
+  margin-left: 8px;
+  color: #c53030;
+  font-size: 1em;
+  cursor: help;
+}
+
 /* Airline name styling */
 .airline-name {
   color: #666;
