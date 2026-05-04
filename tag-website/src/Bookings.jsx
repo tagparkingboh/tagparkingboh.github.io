@@ -669,6 +669,8 @@ function Bookings() {
           make: formData.make === 'Other' ? formData.customMake : formData.make,
           model: formData.model === 'Other' ? formData.customModel : formData.model,
           colour: formData.colour,
+          tax_status: formData.taxStatus || null,
+          mot_status: formData.motStatus || null,
           session_id: sessionIdRef.current,
         }),
       })
@@ -746,6 +748,8 @@ function Bookings() {
           colour: formattedColour,
           model: '', // Reset model so user can select
           customModel: '',
+          taxStatus: data.tax_status || null,
+          motStatus: data.mot_status || null,
         }))
         setDvlaVerified(true)
         setDvlaError('')

@@ -1437,6 +1437,8 @@ function Bookings() {
             registration: formData.registration.toUpperCase(),
             make: formData.make,
             colour: formData.colour,
+            tax_status: formData.taxStatus || null,
+            mot_status: formData.motStatus || null,
             session_id: sessionIdRef.current,
           }),
         })
@@ -1459,6 +1461,8 @@ function Bookings() {
           registration: formData.registration.toUpperCase(),
           make: formData.make,
           colour: formData.colour,
+          tax_status: formData.taxStatus || null,
+          mot_status: formData.motStatus || null,
           session_id: sessionIdRef.current,
         }),
       })
@@ -1531,6 +1535,8 @@ function Bookings() {
           ...prev,
           make: formattedMake,
           colour: formattedColour,
+          taxStatus: data.tax_status || null,
+          motStatus: data.mot_status || null,
         }))
         setDvlaVerified(true)
         setDvlaError('')

@@ -3,7 +3,7 @@ Database service layer for CRUD operations.
 """
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
-from datetime import date, time, datetime
+from datetime import date, time, datetime, timezone
 from typing import Optional, List
 import random
 import string
@@ -181,7 +181,9 @@ def create_vehicle(
     registration: str,
     make: str,
     colour: str,
-    model: str = None  # Deprecated - DVLA API doesn't provide model
+    model: str = None,  # Deprecated - DVLA API doesn't provide model
+    tax_status: Optional[str] = None,
+    mot_status: Optional[str] = None,
 ) -> tuple[Vehicle, bool]:
     """
     Create a new vehicle or return existing one.
@@ -190,6 +192,7 @@ def create_vehicle(
         tuple: (Vehicle object, is_new: bool) - is_new is True if newly created
     """
     registration = registration.upper()
+    has_dvla = tax_status is not None or mot_status is not None
 
     # Check if vehicle already exists for this customer
     existing = get_vehicle_by_registration(db, registration, customer_id)
@@ -198,6 +201,11 @@ def create_vehicle(
         existing.make = make
         existing.model = model
         existing.colour = colour
+        if has_dvla:
+            existing.tax_status = tax_status
+            existing.mot_status = mot_status
+            existing.dvla_checked_at = datetime.now(timezone.utc)
+            existing.dvla_retry_count = 0
         db.commit()
         db.refresh(existing)
         return existing, False  # Existing vehicle updated
@@ -208,7 +216,10 @@ def create_vehicle(
         registration=registration,
         make=make,
         model=model,
-        colour=colour
+        colour=colour,
+        tax_status=tax_status,
+        mot_status=mot_status,
+        dvla_checked_at=datetime.now(timezone.utc) if has_dvla else None,
     )
     db.add(vehicle)
     db.commit()

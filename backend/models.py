@@ -262,6 +262,8 @@ class ManualBookingRequest(BaseModel):
     make: str
     model: Optional[str] = None  # Deprecated - DVLA API doesn't provide model
     colour: str
+    tax_status: Optional[str] = None
+    mot_status: Optional[str] = None
 
     # Trip details
     dropoff_date: date_type
