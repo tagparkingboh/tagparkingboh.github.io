@@ -3974,34 +3974,45 @@ function Admin() {
                     )}
                   </span>
                 </div>
-                <div className="booking-detail">
-                  <span className="detail-label">Tax</span>
-                  <span
-                    className={`detail-value dvla-status dvla-status-${taxStatusClass(booking.vehicle?.tax_status)}`}
-                    data-testid="dvla-tax-status"
-                  >
-                    {booking.vehicle?.tax_status || '—'}
-                  </span>
-                  {booking.vehicle?.tax_due_date && (
-                    <span className="dvla-expiry-date">
-                      Due {formatIsoDateUk(booking.vehicle.tax_due_date)}
-                    </span>
-                  )}
-                </div>
-                <div className="booking-detail">
-                  <span className="detail-label">MOT</span>
-                  <span
-                    className={`detail-value dvla-status dvla-status-${motStatusClass(booking.vehicle?.mot_status)}`}
-                    data-testid="dvla-mot-status"
-                  >
-                    {booking.vehicle?.mot_status || '—'}
-                  </span>
-                  {booking.vehicle?.mot_expiry_date && (
-                    <span className="dvla-expiry-date">
-                      Expires {formatIsoDateUk(booking.vehicle.mot_expiry_date)}
-                    </span>
-                  )}
-                </div>
+                {(() => {
+                  // Expiry dates only render for confirmed/refunded bookings
+                  // (locked rule — these are the only statuses where we
+                  // care about live compliance).
+                  const status = booking.status?.toLowerCase()
+                  const showDates = status === 'confirmed' || status === 'refunded'
+                  return (
+                    <>
+                      <div className="booking-detail">
+                        <span className="detail-label">Tax</span>
+                        <span
+                          className={`detail-value dvla-status dvla-status-${taxStatusClass(booking.vehicle?.tax_status)}`}
+                          data-testid="dvla-tax-status"
+                        >
+                          {booking.vehicle?.tax_status || '—'}
+                        </span>
+                        {showDates && booking.vehicle?.tax_due_date && (
+                          <span className="dvla-expiry-date">
+                            Due {formatIsoDateUk(booking.vehicle.tax_due_date)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="booking-detail">
+                        <span className="detail-label">MOT</span>
+                        <span
+                          className={`detail-value dvla-status dvla-status-${motStatusClass(booking.vehicle?.mot_status)}`}
+                          data-testid="dvla-mot-status"
+                        >
+                          {booking.vehicle?.mot_status || '—'}
+                        </span>
+                        {showDates && booking.vehicle?.mot_expiry_date && (
+                          <span className="dvla-expiry-date">
+                            Expires {formatIsoDateUk(booking.vehicle.mot_expiry_date)}
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  )
+                })()}
               </div>
             </div>
           </div>
