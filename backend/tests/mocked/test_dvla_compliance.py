@@ -90,12 +90,17 @@ class TestEmailTriggerMapping:
         assert is_tax_alertable(value) is True
         assert should_alert(value, "Valid") is True
 
-    @pytest.mark.parametrize(
-        "value", ["Not valid", "No details held by DVLA", "No results returned"]
-    )
+    @pytest.mark.parametrize("value", ["Not valid", "No results returned"])
     def test_each_mot_alert_value_triggers(self, value):
         assert is_mot_alertable(value) is True
         assert should_alert("Taxed", value) is True
+
+    def test_no_details_held_is_NOT_alertable(self):
+        # Locked 2026-05-03 (revised): MOT-exempt cars under 3 years old
+        # come back as "No details held by DVLA" — alerting on every nearly-
+        # new car was too noisy (real prod fleet had 41/223 in this state).
+        assert is_mot_alertable("No details held by DVLA") is False
+        assert should_alert("Taxed", "No details held by DVLA") is False
 
     def test_both_bad_alerts(self):
         assert should_alert("Untaxed", "Not valid") is True
@@ -127,9 +132,10 @@ class TestEmailTriggerMapping:
             "Untaxed", "SORN", "Not Taxed for on Road Use",
         })
 
-    def test_mot_alert_set_is_exactly_three_values(self):
+    def test_mot_alert_set_is_exactly_two_values(self):
+        # "No details held by DVLA" deliberately excluded — see locked rules.
         assert MOT_ALERT_VALUES == frozenset({
-            "Not valid", "No details held by DVLA", "No results returned",
+            "Not valid", "No results returned",
         })
 
     def test_case_sensitive(self):
@@ -205,8 +211,8 @@ class TestDvlaLookupForwardsCompliance:
         "tax,mot",
         [
             ("Untaxed", "Not valid"),
-            ("SORN", "No details held by DVLA"),
-            ("Not Taxed for on Road Use", "No results returned"),
+            ("SORN", "No results returned"),
+            ("Not Taxed for on Road Use", "Not valid"),
         ],
     )
     async def test_boundary_each_alertable_combination_forwards(
