@@ -38,6 +38,11 @@ venv/
 # Data files
 *.csv
 
+# Browser network captures — large vendored JS bundles (Stripe.js etc.)
+# trigger false-positive secret scanner alerts (Stripe's own Google Maps
+# referrer-restricted key gets flagged). Keep these debug artefacts local.
+backend/network_capture_*.json
+
 # Development spec (local only)
 docs/SPEC.md
 backend/docs/TEST_STRATEGY.md
