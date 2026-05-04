@@ -15,7 +15,7 @@ Locked 2026-05-03 (revised same day):
 """
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 import httpx
@@ -84,13 +84,29 @@ class DvlaFetchResult:
     `not_found=True` is the special case where DVLA explicitly said the
     vehicle doesn't exist (404). Caller should NOT increment retry —
     further retries won't help, the reg is genuinely bad.
+
+    `tax_due_date` / `mot_expiry_date` come from DVLA's `taxDueDate` /
+    `motExpiryDate`. Either may be None even on success — DVLA omits
+    `motExpiryDate` for MOT-exempt vehicles under 3 years old.
     """
     success: bool
     not_found: bool = False
     tax_status: Optional[str] = None
     mot_status: Optional[str] = None
+    tax_due_date: Optional[date] = None
+    mot_expiry_date: Optional[date] = None
     http_status: Optional[int] = None
     error: Optional[str] = None
+
+
+def _parse_iso_date(raw: Optional[str]) -> Optional[date]:
+    """DVLA dates come as 'YYYY-MM-DD'. Coerce to date or None."""
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 def fetch_dvla_status(
@@ -128,6 +144,8 @@ def fetch_dvla_status(
                     success=True,
                     tax_status=data.get("taxStatus"),
                     mot_status=data.get("motStatus"),
+                    tax_due_date=_parse_iso_date(data.get("taxDueDate")),
+                    mot_expiry_date=_parse_iso_date(data.get("motExpiryDate")),
                     http_status=200,
                 )
             if response.status_code == 404:
@@ -181,6 +199,8 @@ def refresh_vehicle_dvla(db, vehicle, *, api_key: str, is_production: bool) -> b
     if result.success:
         vehicle.tax_status = result.tax_status
         vehicle.mot_status = result.mot_status
+        vehicle.tax_due_date = result.tax_due_date
+        vehicle.mot_expiry_date = result.mot_expiry_date
         vehicle.dvla_checked_at = now
         vehicle.dvla_retry_count = 0
         db.commit()
@@ -189,6 +209,8 @@ def refresh_vehicle_dvla(db, vehicle, *, api_key: str, is_production: bool) -> b
     if result.not_found:
         vehicle.tax_status = None
         vehicle.mot_status = None
+        vehicle.tax_due_date = None
+        vehicle.mot_expiry_date = None
         vehicle.dvla_checked_at = now
         # do NOT increment retry — 404 is permanent for this reg
         db.commit()

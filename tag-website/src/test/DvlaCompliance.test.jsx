@@ -10,6 +10,7 @@ import {
   taxStatusClass,
   motStatusClass,
   shouldShowAlert,
+  formatIsoDateUk,
 } from '../dvlaCompliance'
 
 describe('taxStatusClass', () => {
@@ -138,5 +139,51 @@ describe('shouldShowAlert', () => {
     ['Taxed', 'No results returned'],
   ])('triggers alert for tax="%s" mot="%s"', (tax, mot) => {
     expect(shouldShowAlert(tax, mot)).toBe(true)
+  })
+})
+
+describe('formatIsoDateUk', () => {
+  // Happy
+  it('formats DVLA "YYYY-MM-DD" as DD/MM/YYYY', () => {
+    expect(formatIsoDateUk('2026-09-01')).toBe('01/09/2026')
+  })
+
+  it('handles date-time strings by ignoring the time portion', () => {
+    expect(formatIsoDateUk('2026-09-01T12:34:56Z')).toBe('01/09/2026')
+  })
+
+  // Edge: null/undefined/empty
+  it('returns empty string for null', () => {
+    expect(formatIsoDateUk(null)).toBe('')
+  })
+
+  it('returns empty string for undefined', () => {
+    expect(formatIsoDateUk(undefined)).toBe('')
+  })
+
+  it('returns empty string for empty string', () => {
+    expect(formatIsoDateUk('')).toBe('')
+  })
+
+  // Edge: malformed input
+  it('returns empty string for non-ISO strings', () => {
+    expect(formatIsoDateUk('not a date')).toBe('')
+  })
+
+  it('returns empty string for partial dates', () => {
+    expect(formatIsoDateUk('2026-09')).toBe('')
+  })
+
+  // Boundary: timezone safety — manual parse, no Date constructor.
+  // A timezone-naive Date(string) on a UTC-behind machine could shift
+  // 2026-01-01 → 2025-12-31. Confirm the formatter doesn't do that.
+  it('does not shift the day across timezones', () => {
+    expect(formatIsoDateUk('2026-01-01')).toBe('01/01/2026')
+    expect(formatIsoDateUk('2026-12-31')).toBe('31/12/2026')
+  })
+
+  // Boundary: leading zero on single-digit day/month
+  it('zero-pads single-digit day/month', () => {
+    expect(formatIsoDateUk('2026-03-05')).toBe('05/03/2026')
   })
 })

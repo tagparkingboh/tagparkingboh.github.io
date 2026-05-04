@@ -671,6 +671,8 @@ function Bookings() {
           colour: formData.colour,
           tax_status: formData.taxStatus || null,
           mot_status: formData.motStatus || null,
+          tax_due_date: formData.taxDueDate || null,
+          mot_expiry_date: formData.motExpiryDate || null,
           session_id: sessionIdRef.current,
         }),
       })
@@ -750,6 +752,8 @@ function Bookings() {
           customModel: '',
           taxStatus: data.tax_status || null,
           motStatus: data.mot_status || null,
+          taxDueDate: data.tax_due_date || null,
+          motExpiryDate: data.mot_expiry_date || null,
         }))
         setDvlaVerified(true)
         setDvlaError('')

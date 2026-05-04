@@ -1417,6 +1417,8 @@ async def get_all_bookings(
                 "colour": b.vehicle.colour,
                 "tax_status": b.vehicle.tax_status,
                 "mot_status": b.vehicle.mot_status,
+                "tax_due_date": b.vehicle.tax_due_date.isoformat() if b.vehicle.tax_due_date else None,
+                "mot_expiry_date": b.vehicle.mot_expiry_date.isoformat() if b.vehicle.mot_expiry_date else None,
                 "dvla_checked_at": b.vehicle.dvla_checked_at.isoformat() if b.vehicle.dvla_checked_at else None,
             } if b.vehicle else None,
             "payment": {
@@ -2229,7 +2231,10 @@ async def create_manual_booking(
             customer.billing_country = request.billing_country
 
         # Create or find vehicle
-        has_dvla = request.tax_status is not None or request.mot_status is not None
+        has_dvla = (
+            request.tax_status is not None or request.mot_status is not None
+            or request.tax_due_date is not None or request.mot_expiry_date is not None
+        )
         vehicle = db.query(Vehicle).filter(
             Vehicle.registration == request.registration.upper()
         ).first()
@@ -2242,6 +2247,8 @@ async def create_manual_booking(
                 colour=request.colour,
                 tax_status=request.tax_status,
                 mot_status=request.mot_status,
+                tax_due_date=request.tax_due_date,
+                mot_expiry_date=request.mot_expiry_date,
                 dvla_checked_at=datetime.now(timezone.utc) if has_dvla else None,
             )
             db.add(vehicle)
@@ -2249,6 +2256,8 @@ async def create_manual_booking(
         elif has_dvla:
             vehicle.tax_status = request.tax_status
             vehicle.mot_status = request.mot_status
+            vehicle.tax_due_date = request.tax_due_date
+            vehicle.mot_expiry_date = request.mot_expiry_date
             vehicle.dvla_checked_at = datetime.now(timezone.utc)
             vehicle.dvla_retry_count = 0
 
@@ -3922,6 +3931,8 @@ class AddVehicleRequest(BaseModel):
     colour: str
     tax_status: Optional[str] = None
     mot_status: Optional[str] = None
+    tax_due_date: Optional[date] = None
+    mot_expiry_date: Optional[date] = None
 
 
 @app.post("/api/admin/customers/{customer_id}/vehicles")
@@ -3953,7 +3964,10 @@ async def add_customer_vehicle(
         )
 
     # Create vehicle
-    has_dvla = request.tax_status is not None or request.mot_status is not None
+    has_dvla = (
+        request.tax_status is not None or request.mot_status is not None
+        or request.tax_due_date is not None or request.mot_expiry_date is not None
+    )
     vehicle = Vehicle(
         customer_id=customer_id,
         registration=request.registration.upper().replace(" ", ""),
@@ -3962,6 +3976,8 @@ async def add_customer_vehicle(
         colour=request.colour,
         tax_status=request.tax_status,
         mot_status=request.mot_status,
+        tax_due_date=request.tax_due_date,
+        mot_expiry_date=request.mot_expiry_date,
         dvla_checked_at=datetime.now(timezone.utc) if has_dvla else None,
     )
     db.add(vehicle)
@@ -3978,6 +3994,8 @@ async def add_customer_vehicle(
             "colour": vehicle.colour,
             "tax_status": vehicle.tax_status,
             "mot_status": vehicle.mot_status,
+            "tax_due_date": vehicle.tax_due_date.isoformat() if vehicle.tax_due_date else None,
+            "mot_expiry_date": vehicle.mot_expiry_date.isoformat() if vehicle.mot_expiry_date else None,
             "dvla_checked_at": vehicle.dvla_checked_at.isoformat() if vehicle.dvla_checked_at else None,
             "created_at": vehicle.created_at.isoformat() if vehicle.created_at else None,
         }
@@ -8739,6 +8757,8 @@ class CreateVehicleRequest(BaseModel):
     colour: str
     tax_status: Optional[str] = None
     mot_status: Optional[str] = None
+    tax_due_date: Optional[date] = None
+    mot_expiry_date: Optional[date] = None
     session_id: Optional[str] = None
 
 
@@ -9074,6 +9094,8 @@ async def create_or_update_vehicle(
             colour=request.colour,
             tax_status=request.tax_status,
             mot_status=request.mot_status,
+            tax_due_date=request.tax_due_date,
+            mot_expiry_date=request.mot_expiry_date,
         )
 
         # Log audit event for vehicle entry
@@ -9123,9 +9145,15 @@ async def update_vehicle(
         vehicle.make = request.make
         vehicle.model = request.model
         vehicle.colour = request.colour
-        if request.tax_status is not None or request.mot_status is not None:
+        has_dvla = (
+            request.tax_status is not None or request.mot_status is not None
+            or request.tax_due_date is not None or request.mot_expiry_date is not None
+        )
+        if has_dvla:
             vehicle.tax_status = request.tax_status
             vehicle.mot_status = request.mot_status
+            vehicle.tax_due_date = request.tax_due_date
+            vehicle.mot_expiry_date = request.mot_expiry_date
             vehicle.dvla_checked_at = datetime.now(timezone.utc)
             vehicle.dvla_retry_count = 0
         db.commit()
@@ -9234,13 +9262,15 @@ class VehicleLookupRequest(BaseModel):
 
 
 class VehicleLookupResponse(BaseModel):
-    """Response with vehicle make/colour and tax/MOT status from DVLA."""
+    """Response with vehicle make/colour, tax/MOT status, and expiry dates."""
     success: bool
     registration: str
     make: Optional[str] = None
     colour: Optional[str] = None
     tax_status: Optional[str] = None
     mot_status: Optional[str] = None
+    tax_due_date: Optional[date] = None
+    mot_expiry_date: Optional[date] = None
     error: Optional[str] = None
 
 
@@ -9299,6 +9329,7 @@ async def lookup_vehicle(
 
             if response.status_code == 200:
                 data = response.json()
+                from dvla_compliance import _parse_iso_date
                 return VehicleLookupResponse(
                     success=True,
                     registration=clean_reg,
@@ -9306,6 +9337,8 @@ async def lookup_vehicle(
                     colour=data.get("colour"),
                     tax_status=data.get("taxStatus"),
                     mot_status=data.get("motStatus"),
+                    tax_due_date=_parse_iso_date(data.get("taxDueDate")),
+                    mot_expiry_date=_parse_iso_date(data.get("motExpiryDate")),
                 )
             elif response.status_code == 404:
                 return VehicleLookupResponse(
