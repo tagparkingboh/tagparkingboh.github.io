@@ -981,3 +981,214 @@ class TestProcessPendingDvlaRechecks:
                 with patch("email_service.send_email") as mock_send:
                     process_pending_dvla_rechecks(db_session)
         mock_send.assert_not_called()
+
+
+# =============================================================================
+# Layer 9 — weekly conflict-report (mid-trip expiry surface)
+# =============================================================================
+
+@pytest.fixture
+def db_test_conflict_booking(db_session, db_test_customer):
+    """Booking + vehicle whose tax/MOT expiry sits inside the parking window."""
+    import pytz
+    from db_models import Vehicle, Booking, BookingStatus
+    from datetime import time, timedelta, date as date_type
+
+    uk_tz = pytz.timezone("Europe/London")
+    today = datetime.now(uk_tz).date()
+    dropoff = today + timedelta(days=14)
+    pickup = today + timedelta(days=21)
+    # Tax expires in the middle of the parking window — the conflict case.
+    tax_due = dropoff + timedelta(days=3)
+
+    vehicle = Vehicle(
+        customer_id=db_test_customer.id, registration="MIDTRIP",
+        make="Test", colour="Red",
+        tax_status="Taxed", mot_status="Valid",
+        tax_due_date=tax_due,
+        mot_expiry_date=pickup + timedelta(days=60),  # well outside window
+    )
+    db_session.add(vehicle)
+    db_session.flush()
+    booking = Booking(
+        reference=f"TAG-MIDTRIP-{vehicle.id}",
+        customer_id=db_test_customer.id,
+        vehicle_id=vehicle.id,
+        customer_first_name="Mid",
+        customer_last_name="Trip",
+        dropoff_date=dropoff,
+        dropoff_time=time(10, 0),
+        pickup_date=pickup,
+        pickup_time=time(14, 0),
+        status=BookingStatus.CONFIRMED,
+        booking_source="manual",
+    )
+    db_session.add(booking)
+    db_session.commit()
+    db_session.refresh(booking)
+    yield booking
+    db_session.delete(booking)
+    db_session.commit()
+
+
+class TestWeeklyConflictReport:
+    """Mid-trip expiry digest: scope + dedup + content."""
+
+    def test_happy_mid_trip_tax_conflict_emails(
+        self, db_test_conflict_booking, db_session, fake_settings_factory
+    ):
+        from email_scheduler import process_weekly_conflict_report
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email", return_value=True) as mock_send:
+                process_weekly_conflict_report(db_session)
+        assert mock_send.called
+        # Subject contains booking count
+        args = mock_send.call_args.args
+        assert "compliance conflicts" in args[1].lower()
+
+    def test_unhappy_no_conflicts_no_email(
+        self, db_test_conflict_booking, db_session, fake_settings_factory
+    ):
+        # Move tax_due_date well outside the parking window — no conflict
+        from datetime import timedelta
+        db_test_conflict_booking.vehicle.tax_due_date = (
+            db_test_conflict_booking.pickup_date + timedelta(days=90)
+        )
+        db_session.commit()
+
+        from email_scheduler import process_weekly_conflict_report
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email") as mock_send:
+                process_weekly_conflict_report(db_session)
+        mock_send.assert_not_called()
+
+    def test_edge_staging_blocks_send_even_with_conflicts(
+        self, db_test_conflict_booking, db_session, fake_settings_factory
+    ):
+        from email_scheduler import process_weekly_conflict_report
+        with patch("config.get_settings", return_value=fake_settings_factory("staging")):
+            with patch("email_service.send_email") as mock_send:
+                process_weekly_conflict_report(db_session)
+        mock_send.assert_not_called()
+
+    def test_edge_already_failed_compliance_excluded(
+        self, db_test_conflict_booking, db_session, fake_settings_factory
+    ):
+        # Tax_due falls in window but tax_status is Untaxed — the daily
+        # 24h-before scheduler already alerts on this; it must NOT also
+        # show up in the weekly digest (would be duplicate noise).
+        db_test_conflict_booking.vehicle.tax_status = "Untaxed"
+        db_session.commit()
+
+        from email_scheduler import process_weekly_conflict_report
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email") as mock_send:
+                process_weekly_conflict_report(db_session)
+        mock_send.assert_not_called()
+
+    def test_boundary_tax_due_equals_dropoff_is_conflict(
+        self, db_test_conflict_booking, db_session, fake_settings_factory
+    ):
+        # Inclusive boundary: tax expires the day of drop-off.
+        db_test_conflict_booking.vehicle.tax_due_date = db_test_conflict_booking.dropoff_date
+        db_session.commit()
+
+        from email_scheduler import process_weekly_conflict_report
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email", return_value=True) as mock_send:
+                process_weekly_conflict_report(db_session)
+        assert mock_send.called
+
+    def test_boundary_tax_due_equals_pickup_is_conflict(
+        self, db_test_conflict_booking, db_session, fake_settings_factory
+    ):
+        # Inclusive boundary: tax expires the day of pick-up.
+        db_test_conflict_booking.vehicle.tax_due_date = db_test_conflict_booking.pickup_date
+        db_session.commit()
+
+        from email_scheduler import process_weekly_conflict_report
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email", return_value=True) as mock_send:
+                process_weekly_conflict_report(db_session)
+        assert mock_send.called
+
+    def test_boundary_tax_due_one_day_after_pickup_no_conflict(
+        self, db_test_conflict_booking, db_session, fake_settings_factory
+    ):
+        # Just outside the inclusive boundary — no conflict.
+        from datetime import timedelta
+        db_test_conflict_booking.vehicle.tax_due_date = (
+            db_test_conflict_booking.pickup_date + timedelta(days=1)
+        )
+        db_session.commit()
+
+        from email_scheduler import process_weekly_conflict_report
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email") as mock_send:
+                process_weekly_conflict_report(db_session)
+        mock_send.assert_not_called()
+
+
+class TestSendComplianceConflictReport:
+    """Email helper guards: env + empty list."""
+
+    def test_happy_production_calls_sendgrid(self, fake_settings_factory):
+        from datetime import date as date_type
+        from email_service import send_compliance_conflict_report
+        conflicts = [{
+            "reference": "TAG-X",
+            "dropoff_date": date_type(2026, 6, 15),
+            "pickup_date": date_type(2026, 6, 22),
+            "customer": "Jill Giles",
+            "registration": "LD64 VTW",
+            "vehicle_label": "LD64 VTW (Black Ford)",
+            "tax_conflict_date": None,
+            "mot_conflict_date": date_type(2026, 6, 22),
+        }]
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email", return_value=True) as mock_send:
+                ok = send_compliance_conflict_report(conflicts)
+        assert ok is True
+        mock_send.assert_called_once()
+
+    def test_unhappy_empty_conflicts_skips_send(self, fake_settings_factory):
+        from email_service import send_compliance_conflict_report
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email") as mock_send:
+                ok = send_compliance_conflict_report([])
+        assert ok is False
+        mock_send.assert_not_called()
+
+    def test_edge_staging_blocks_send(self, fake_settings_factory):
+        from datetime import date as date_type
+        from email_service import send_compliance_conflict_report
+        conflicts = [{
+            "reference": "TAG-X", "dropoff_date": date_type(2026, 6, 15),
+            "pickup_date": date_type(2026, 6, 22), "customer": "X",
+            "registration": "X", "vehicle_label": "X",
+            "tax_conflict_date": None, "mot_conflict_date": date_type(2026, 6, 22),
+        }]
+        with patch("config.get_settings", return_value=fake_settings_factory("staging")):
+            with patch("email_service.send_email") as mock_send:
+                ok = send_compliance_conflict_report(conflicts)
+        assert ok is False
+        mock_send.assert_not_called()
+
+    def test_boundary_subject_pluralisation(self, fake_settings_factory):
+        # 1 booking → singular, 2+ → plural
+        from datetime import date as date_type
+        from email_service import send_compliance_conflict_report
+        c = {
+            "reference": "TAG-X", "dropoff_date": date_type(2026, 6, 15),
+            "pickup_date": date_type(2026, 6, 22), "customer": "X",
+            "registration": "X", "vehicle_label": "X",
+            "tax_conflict_date": None, "mot_conflict_date": date_type(2026, 6, 22),
+        }
+        with patch("config.get_settings", return_value=fake_settings_factory("production")):
+            with patch("email_service.send_email", return_value=True) as mock_send:
+                send_compliance_conflict_report([c])
+                singular_subject = mock_send.call_args.args[1]
+                send_compliance_conflict_report([c, c])
+                plural_subject = mock_send.call_args.args[1]
+        assert "1 booking" in singular_subject
+        assert "2 bookings" in plural_subject
