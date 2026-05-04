@@ -143,6 +143,15 @@ class Vehicle(Base):
     model = Column(String(100), nullable=True)  # Deprecated - DVLA API doesn't provide model
     colour = Column(String(50), nullable=False)
 
+    # DVLA compliance — raw DVLA strings (e.g. "Taxed", "Untaxed", "Valid",
+    # "No details held by DVLA"). Frontend colour-codes per value.
+    # `dvla_retry_count` tracks consecutive "Could not verify" responses;
+    # resets to 0 on any successful DVLA reply. Stops re-checks at 3.
+    tax_status = Column(String(50), nullable=True)
+    mot_status = Column(String(50), nullable=True)
+    dvla_checked_at = Column(DateTime(timezone=True), nullable=True)
+    dvla_retry_count = Column(Integer, nullable=False, default=0, server_default="0")
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -253,6 +262,9 @@ class Booking(Base):
     reminder_2day_sent_at = Column(DateTime(timezone=True))
     thank_you_email_sent = Column(Boolean, default=False)
     thank_you_email_sent_at = Column(DateTime(timezone=True))
+    # Dedup for the DVLA compliance alert: scheduler skips bookings already
+    # alerted today (Europe/London) so a daily re-check doesn't email twice.
+    last_compliance_alert_sent_at = Column(DateTime(timezone=True))
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

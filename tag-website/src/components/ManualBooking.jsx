@@ -380,6 +380,8 @@ function ManualBooking({ token }) {
           ...prev,
           make: formattedMake,
           colour: formattedColour,
+          taxStatus: data.tax_status || null,
+          motStatus: data.mot_status || null,
         }))
         setDvlaVerified(true)
         setDvlaError('')
@@ -657,6 +659,8 @@ function ManualBooking({ token }) {
       registration: formData.registration.toUpperCase(),
       make: formData.make,
       colour: formData.colour,
+      tax_status: formData.taxStatus || null,
+      mot_status: formData.motStatus || null,
       dropoff_date: format(formData.dropoffDate, 'yyyy-MM-dd'),
       dropoff_time: getDropoffTime(),
       pickup_date: format(formData.pickupDate, 'yyyy-MM-dd'),

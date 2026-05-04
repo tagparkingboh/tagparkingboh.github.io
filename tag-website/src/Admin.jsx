@@ -9,6 +9,7 @@ import BookingLocationMap from './components/BookingLocationMap'
 import RosterCalendar from './components/RosterCalendar'
 import Payroll from './components/Payroll'
 import PlannedRosterCalendar from './components/qa/PlannedRosterCalendar'
+import { taxStatusClass, motStatusClass, shouldShowAlert } from './dvlaCompliance'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -3346,6 +3347,8 @@ function Admin() {
           registration: reg,
           make: data.make || '',
           colour: data.colour || '',
+          tax_status: data.tax_status || null,
+          mot_status: data.mot_status || null,
         }))
       } else {
         setCustomerMessage('Vehicle not found - please enter details manually')
@@ -3949,6 +3952,33 @@ function Admin() {
                     <span className="vehicle-reg">{booking.vehicle?.registration}</span>
                     {' '}
                     {booking.vehicle?.colour} {booking.vehicle?.make}
+                    {shouldShowAlert(booking.vehicle?.tax_status, booking.vehicle?.mot_status) && (
+                      <span
+                        className="dvla-alert-badge"
+                        title="Vehicle tax/MOT compliance alert"
+                        aria-label="Vehicle compliance alert"
+                      >
+                        ⚠
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="booking-detail">
+                  <span className="detail-label">Tax</span>
+                  <span
+                    className={`detail-value dvla-status dvla-status-${taxStatusClass(booking.vehicle?.tax_status)}`}
+                    data-testid="dvla-tax-status"
+                  >
+                    {booking.vehicle?.tax_status || '—'}
+                  </span>
+                </div>
+                <div className="booking-detail">
+                  <span className="detail-label">MOT</span>
+                  <span
+                    className={`detail-value dvla-status dvla-status-${motStatusClass(booking.vehicle?.mot_status)}`}
+                    data-testid="dvla-mot-status"
+                  >
+                    {booking.vehicle?.mot_status || '—'}
                   </span>
                 </div>
               </div>

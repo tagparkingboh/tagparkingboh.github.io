@@ -12,7 +12,7 @@ Provides REST API endpoints for the frontend to:
 """
 import uuid
 import secrets
-from datetime import date, time, datetime, timedelta
+from datetime import date, time, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, List
 from zoneinfo import ZoneInfo
@@ -1415,6 +1415,9 @@ async def get_all_bookings(
                 "make": b.vehicle.make,
                 "model": b.vehicle.model,
                 "colour": b.vehicle.colour,
+                "tax_status": b.vehicle.tax_status,
+                "mot_status": b.vehicle.mot_status,
+                "dvla_checked_at": b.vehicle.dvla_checked_at.isoformat() if b.vehicle.dvla_checked_at else None,
             } if b.vehicle else None,
             "payment": {
                 "id": b.payment.id,
@@ -2226,6 +2229,7 @@ async def create_manual_booking(
             customer.billing_country = request.billing_country
 
         # Create or find vehicle
+        has_dvla = request.tax_status is not None or request.mot_status is not None
         vehicle = db.query(Vehicle).filter(
             Vehicle.registration == request.registration.upper()
         ).first()
@@ -2236,9 +2240,17 @@ async def create_manual_booking(
                 make=request.make,
                 model=request.model,
                 colour=request.colour,
+                tax_status=request.tax_status,
+                mot_status=request.mot_status,
+                dvla_checked_at=datetime.now(timezone.utc) if has_dvla else None,
             )
             db.add(vehicle)
             db.flush()
+        elif has_dvla:
+            vehicle.tax_status = request.tax_status
+            vehicle.mot_status = request.mot_status
+            vehicle.dvla_checked_at = datetime.now(timezone.utc)
+            vehicle.dvla_retry_count = 0
 
         # If departure_id and dropoff_slot provided, validate slot availability
         from db_models import FlightDeparture
@@ -3899,6 +3911,8 @@ class AddVehicleRequest(BaseModel):
     make: str
     model: Optional[str] = None
     colour: str
+    tax_status: Optional[str] = None
+    mot_status: Optional[str] = None
 
 
 @app.post("/api/admin/customers/{customer_id}/vehicles")
@@ -3930,12 +3944,16 @@ async def add_customer_vehicle(
         )
 
     # Create vehicle
+    has_dvla = request.tax_status is not None or request.mot_status is not None
     vehicle = Vehicle(
         customer_id=customer_id,
         registration=request.registration.upper().replace(" ", ""),
         make=request.make,
         model=request.model,
         colour=request.colour,
+        tax_status=request.tax_status,
+        mot_status=request.mot_status,
+        dvla_checked_at=datetime.now(timezone.utc) if has_dvla else None,
     )
     db.add(vehicle)
     db.commit()
@@ -3949,6 +3967,9 @@ async def add_customer_vehicle(
             "make": vehicle.make,
             "model": vehicle.model,
             "colour": vehicle.colour,
+            "tax_status": vehicle.tax_status,
+            "mot_status": vehicle.mot_status,
+            "dvla_checked_at": vehicle.dvla_checked_at.isoformat() if vehicle.dvla_checked_at else None,
             "created_at": vehicle.created_at.isoformat() if vehicle.created_at else None,
         }
     }
@@ -8707,6 +8728,8 @@ class CreateVehicleRequest(BaseModel):
     make: str
     model: Optional[str] = None  # Deprecated - DVLA API doesn't provide model
     colour: str
+    tax_status: Optional[str] = None
+    mot_status: Optional[str] = None
     session_id: Optional[str] = None
 
 
@@ -9040,6 +9063,8 @@ async def create_or_update_vehicle(
             make=request.make,
             model=request.model,
             colour=request.colour,
+            tax_status=request.tax_status,
+            mot_status=request.mot_status,
         )
 
         # Log audit event for vehicle entry
@@ -9089,6 +9114,11 @@ async def update_vehicle(
         vehicle.make = request.make
         vehicle.model = request.model
         vehicle.colour = request.colour
+        if request.tax_status is not None or request.mot_status is not None:
+            vehicle.tax_status = request.tax_status
+            vehicle.mot_status = request.mot_status
+            vehicle.dvla_checked_at = datetime.now(timezone.utc)
+            vehicle.dvla_retry_count = 0
         db.commit()
         db.refresh(vehicle)
 
@@ -9195,11 +9225,13 @@ class VehicleLookupRequest(BaseModel):
 
 
 class VehicleLookupResponse(BaseModel):
-    """Response with vehicle make and colour from DVLA."""
+    """Response with vehicle make/colour and tax/MOT status from DVLA."""
     success: bool
     registration: str
     make: Optional[str] = None
     colour: Optional[str] = None
+    tax_status: Optional[str] = None
+    mot_status: Optional[str] = None
     error: Optional[str] = None
 
 
@@ -9263,6 +9295,8 @@ async def lookup_vehicle(
                     registration=clean_reg,
                     make=data.get("make"),
                     colour=data.get("colour"),
+                    tax_status=data.get("taxStatus"),
+                    mot_status=data.get("motStatus"),
                 )
             elif response.status_code == 404:
                 return VehicleLookupResponse(
