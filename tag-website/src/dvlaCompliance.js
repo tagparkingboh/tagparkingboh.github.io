@@ -43,3 +43,14 @@ export function shouldShowAlert(taxStatus, motStatus) {
     motStatusClass(motStatus) === 'alert'
   )
 }
+
+// Format DVLA's "YYYY-MM-DD" string as DD/MM/YYYY for UK display.
+// Manual parse to avoid timezone shift — DVLA dates are date-only,
+// not timestamps, so going through new Date() can flip the day around
+// midnight on certain timezones.
+export function formatIsoDateUk(iso) {
+  if (!iso) return ''
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return ''
+  return `${m[3]}/${m[2]}/${m[1]}`
+}

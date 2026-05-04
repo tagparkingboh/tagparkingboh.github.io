@@ -184,6 +184,8 @@ def create_vehicle(
     model: str = None,  # Deprecated - DVLA API doesn't provide model
     tax_status: Optional[str] = None,
     mot_status: Optional[str] = None,
+    tax_due_date: Optional[date] = None,
+    mot_expiry_date: Optional[date] = None,
 ) -> tuple[Vehicle, bool]:
     """
     Create a new vehicle or return existing one.
@@ -192,7 +194,10 @@ def create_vehicle(
         tuple: (Vehicle object, is_new: bool) - is_new is True if newly created
     """
     registration = registration.upper()
-    has_dvla = tax_status is not None or mot_status is not None
+    has_dvla = (
+        tax_status is not None or mot_status is not None
+        or tax_due_date is not None or mot_expiry_date is not None
+    )
 
     # Check if vehicle already exists for this customer
     existing = get_vehicle_by_registration(db, registration, customer_id)
@@ -204,6 +209,8 @@ def create_vehicle(
         if has_dvla:
             existing.tax_status = tax_status
             existing.mot_status = mot_status
+            existing.tax_due_date = tax_due_date
+            existing.mot_expiry_date = mot_expiry_date
             existing.dvla_checked_at = datetime.now(timezone.utc)
             existing.dvla_retry_count = 0
         db.commit()
@@ -219,6 +226,8 @@ def create_vehicle(
         colour=colour,
         tax_status=tax_status,
         mot_status=mot_status,
+        tax_due_date=tax_due_date,
+        mot_expiry_date=mot_expiry_date,
         dvla_checked_at=datetime.now(timezone.utc) if has_dvla else None,
     )
     db.add(vehicle)

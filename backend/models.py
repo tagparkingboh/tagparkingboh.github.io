@@ -264,6 +264,8 @@ class ManualBookingRequest(BaseModel):
     colour: str
     tax_status: Optional[str] = None
     mot_status: Optional[str] = None
+    tax_due_date: Optional[date_type] = None
+    mot_expiry_date: Optional[date_type] = None
 
     # Trip details
     dropoff_date: date_type

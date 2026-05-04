@@ -159,6 +159,8 @@ class TestDvlaLookupForwardsCompliance:
             "colour": "BLUE",
             "taxStatus": "Taxed",
             "motStatus": "Valid",
+            "taxDueDate": "2026-09-01",
+            "motExpiryDate": "2026-09-20",
         })
         with patch("main.get_settings", return_value=mock_settings):
             with patch("main.httpx.AsyncClient", return_value=_patch_httpx(mock_response)):
@@ -171,6 +173,30 @@ class TestDvlaLookupForwardsCompliance:
         assert body["success"] is True
         assert body["tax_status"] == "Taxed"
         assert body["mot_status"] == "Valid"
+        # Expiry dates round-trip as ISO strings
+        assert body["tax_due_date"] == "2026-09-01"
+        assert body["mot_expiry_date"] == "2026-09-20"
+
+    @pytest.mark.asyncio
+    async def test_edge_motexempt_omits_mot_expiry(self, client, mock_settings):
+        # MOT-exempt vehicles under 3 years old: DVLA omits motExpiryDate
+        mock_response = _mock_dvla_response(200, {
+            "make": "TESLA",
+            "colour": "WHITE",
+            "taxStatus": "Taxed",
+            "motStatus": "No details held by DVLA",
+            "taxDueDate": "2027-01-01",
+            # motExpiryDate intentionally absent
+        })
+        with patch("main.get_settings", return_value=mock_settings):
+            with patch("main.httpx.AsyncClient", return_value=_patch_httpx(mock_response)):
+                response = await client.post(
+                    "/api/vehicles/dvla-lookup",
+                    json={"registration": "HG24SVV"},
+                )
+        body = response.json()
+        assert body["tax_due_date"] == "2027-01-01"
+        assert body["mot_expiry_date"] is None
 
     @pytest.mark.asyncio
     async def test_unhappy_404_omits_statuses(self, client, mock_settings):
@@ -268,6 +294,7 @@ class TestVehicleCreationPersistsCompliance:
     async def test_happy_post_with_statuses_persists(
         self, client, db_test_customer, db_session
     ):
+        from datetime import date as date_type
         from db_models import Vehicle
         response = await client.post(
             "/api/vehicles",
@@ -278,6 +305,8 @@ class TestVehicleCreationPersistsCompliance:
                 "colour": "Blue",
                 "tax_status": "Taxed",
                 "mot_status": "Valid",
+                "tax_due_date": "2026-09-01",
+                "mot_expiry_date": "2026-09-20",
             },
         )
         assert response.status_code == 200
@@ -285,6 +314,8 @@ class TestVehicleCreationPersistsCompliance:
         vehicle = db_session.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
         assert vehicle.tax_status == "Taxed"
         assert vehicle.mot_status == "Valid"
+        assert vehicle.tax_due_date == date_type(2026, 9, 1)
+        assert vehicle.mot_expiry_date == date_type(2026, 9, 20)
         assert vehicle.dvla_checked_at is not None
         assert vehicle.dvla_retry_count == 0
 
@@ -307,7 +338,53 @@ class TestVehicleCreationPersistsCompliance:
         vehicle = db_session.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
         assert vehicle.tax_status is None
         assert vehicle.mot_status is None
+        assert vehicle.tax_due_date is None
+        assert vehicle.mot_expiry_date is None
         assert vehicle.dvla_checked_at is None
+
+    @pytest.mark.asyncio
+    async def test_unhappy_post_with_malformed_date_returns_422(
+        self, client, db_test_customer
+    ):
+        # Pydantic guards the date field — bad strings are rejected at
+        # the boundary, never hit the DB.
+        response = await client.post(
+            "/api/vehicles",
+            json={
+                "customer_id": db_test_customer.id,
+                "registration": "BADDT1",
+                "make": "Ford",
+                "colour": "Red",
+                "tax_due_date": "not-a-date",
+            },
+        )
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_boundary_post_only_tax_due_date_persists(
+        self, client, db_test_customer, db_session
+    ):
+        # Boundary: only one expiry field provided, no statuses. The
+        # has_dvla detector still triggers and the timestamp is set.
+        from datetime import date as date_type
+        from db_models import Vehicle
+        response = await client.post(
+            "/api/vehicles",
+            json={
+                "customer_id": db_test_customer.id,
+                "registration": "ONLYDT1",
+                "make": "Ford",
+                "colour": "Red",
+                "tax_due_date": "2026-09-01",
+            },
+        )
+        assert response.status_code == 200
+        vehicle_id = response.json()["vehicle_id"]
+        vehicle = db_session.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+        assert vehicle.tax_due_date == date_type(2026, 9, 1)
+        assert vehicle.mot_expiry_date is None
+        assert vehicle.tax_status is None
+        assert vehicle.dvla_checked_at is not None  # has_dvla detected
 
     @pytest.mark.asyncio
     async def test_edge_patch_updates_statuses_and_resets_retry(
@@ -408,6 +485,41 @@ def _patch_sync_httpx(mock_response=None, raise_exc=None):
     return mock_client
 
 
+class TestParseIsoDate:
+    """`_parse_iso_date` — coerces DVLA's date strings to date objects.
+
+    DVLA dates are always 'YYYY-MM-DD' on success, but the helper has to
+    tolerate None / missing / malformed input so a quirky DVLA response
+    doesn't poison the persistence path.
+    """
+
+    def test_happy_iso_date(self):
+        from datetime import date as date_type
+        from dvla_compliance import _parse_iso_date
+        assert _parse_iso_date("2026-09-01") == date_type(2026, 9, 1)
+
+    def test_unhappy_returns_none_for_garbage(self):
+        from dvla_compliance import _parse_iso_date
+        assert _parse_iso_date("not a date") is None
+
+    def test_edge_none_returns_none(self):
+        from dvla_compliance import _parse_iso_date
+        assert _parse_iso_date(None) is None
+
+    def test_edge_empty_string_returns_none(self):
+        from dvla_compliance import _parse_iso_date
+        assert _parse_iso_date("") is None
+
+    def test_boundary_leap_year_accepted(self):
+        from datetime import date as date_type
+        from dvla_compliance import _parse_iso_date
+        assert _parse_iso_date("2028-02-29") == date_type(2028, 2, 29)
+
+    def test_boundary_invalid_leap_day_rejected(self):
+        from dvla_compliance import _parse_iso_date
+        assert _parse_iso_date("2026-02-29") is None  # 2026 isn't a leap year
+
+
 class TestFetchDvlaStatus:
     """Sync DVLA HTTP wrapper used by scheduler + at-creation hooks."""
 
@@ -470,6 +582,7 @@ class TestRefreshVehicleDvla:
     """Persistence-side: DB row updated correctly per fetch outcome."""
 
     def test_happy_success_resets_retry_count(self, db_test_customer, db_session):
+        from datetime import date as date_type
         from db_models import Vehicle
         from dvla_compliance import refresh_vehicle_dvla
         vehicle = Vehicle(
@@ -480,7 +593,10 @@ class TestRefreshVehicleDvla:
         db_session.commit()
         db_session.refresh(vehicle)
 
-        resp = _mock_sync_response(200, {"taxStatus": "Taxed", "motStatus": "Valid"})
+        resp = _mock_sync_response(200, {
+            "taxStatus": "Taxed", "motStatus": "Valid",
+            "taxDueDate": "2026-09-01", "motExpiryDate": "2026-09-20",
+        })
         with patch("dvla_compliance.httpx.Client", return_value=_patch_sync_httpx(resp)):
             alertable = refresh_vehicle_dvla(
                 db_session, vehicle, api_key="k", is_production=False,
@@ -489,6 +605,9 @@ class TestRefreshVehicleDvla:
         assert alertable is False  # Taxed/Valid → no alert
         assert vehicle.tax_status == "Taxed"
         assert vehicle.mot_status == "Valid"
+        # Expiry dates persisted alongside the statuses
+        assert vehicle.tax_due_date == date_type(2026, 9, 1)
+        assert vehicle.mot_expiry_date == date_type(2026, 9, 20)
         assert vehicle.dvla_checked_at is not None
         assert vehicle.dvla_retry_count == 0
 
@@ -542,12 +661,18 @@ class TestRefreshVehicleDvla:
     def test_edge_404_clears_status_and_does_not_increment_retry(
         self, db_test_customer, db_session
     ):
+        from datetime import date as date_type
         from db_models import Vehicle
         from dvla_compliance import refresh_vehicle_dvla
+        # Seed prior compliance state INCLUDING expiry dates — verify all
+        # four DVLA fields get cleared together when DVLA returns 404
+        # (re-registration / wrong reg case; old data is now stale).
         vehicle = Vehicle(
             customer_id=db_test_customer.id, registration="NOTFOUND",
             make="X", colour="Y",
             tax_status="Taxed", mot_status="Valid",
+            tax_due_date=date_type(2026, 9, 1),
+            mot_expiry_date=date_type(2026, 9, 20),
             dvla_retry_count=0,
         )
         db_session.add(vehicle)
@@ -563,6 +688,8 @@ class TestRefreshVehicleDvla:
         assert alertable is False
         assert vehicle.tax_status is None
         assert vehicle.mot_status is None
+        assert vehicle.tax_due_date is None
+        assert vehicle.mot_expiry_date is None
         assert vehicle.dvla_retry_count == 0  # NOT incremented (permanent fail)
 
     def test_boundary_frozen_at_retry_3_skips_dvla(
