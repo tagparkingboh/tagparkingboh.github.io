@@ -6,6 +6,7 @@ import logging
 import secrets
 import string
 from pathlib import Path
+from typing import Optional
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Email, To, Content
 
@@ -924,3 +925,49 @@ def send_marketing_campaign_email(
         print(f"[EMAIL] Exception sending marketing campaign: {str(e)}")
         logger.error(f"Error sending marketing campaign to {email}: {str(e)}")
         return False
+
+
+def send_vehicle_compliance_alert(
+    booking_reference: str,
+    customer_name: str,
+    registration: str,
+    dropoff_date: str,
+    dropoff_time: str,
+    tax_status: Optional[str],
+    mot_status: Optional[str],
+) -> bool:
+    """Email Kristian when a booking's vehicle has a tax/MOT compliance issue.
+
+    Recipient is `FOUNDER_EMAIL` (kristian@tagparking.co.uk by default).
+    No admin link in body per spec — Kristian opens the booking himself.
+
+    Staging guard: emails only fire when the environment is production.
+    On non-prod environments the function logs what it would have sent
+    and returns False (so the dedup timestamp does not get marked, and
+    a real prod tick will still send the alert).
+    """
+    from config import get_settings  # local import — config not always loaded
+
+    settings = get_settings()
+    if settings.environment != "production":
+        logger.info(
+            "[staging] would send compliance alert to %s for booking %s "
+            "(reg=%s tax=%s mot=%s) — staging guard active",
+            FOUNDER_EMAIL, booking_reference, registration, tax_status, mot_status,
+        )
+        return False
+
+    subject = f"[TAG] Vehicle compliance — {booking_reference}"
+    html_content = f"""\
+<p>Heads up — vehicle compliance check failed for upcoming booking.</p>
+<table style="border-collapse: collapse;">
+  <tr><td style="padding: 4px 12px 4px 0;"><strong>Booking</strong></td><td>{booking_reference}</td></tr>
+  <tr><td style="padding: 4px 12px 4px 0;"><strong>Customer</strong></td><td>{customer_name}</td></tr>
+  <tr><td style="padding: 4px 12px 4px 0;"><strong>Vehicle</strong></td><td>{registration}</td></tr>
+  <tr><td style="padding: 4px 12px 4px 0;"><strong>Drop-off</strong></td><td>{dropoff_date} at {dropoff_time}</td></tr>
+  <tr><td style="padding: 4px 12px 4px 0;"><strong>Tax</strong></td><td>{tax_status or '—'}</td></tr>
+  <tr><td style="padding: 4px 12px 4px 0;"><strong>MOT</strong></td><td>{mot_status or '—'}</td></tr>
+</table>
+<p>One alert per booking per day; the daily 24h-before check will not re-send.</p>
+"""
+    return send_email(FOUNDER_EMAIL, subject, html_content)
