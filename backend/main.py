@@ -4697,6 +4697,7 @@ async def get_fun_facts(
 
     result = {
         "busiestDay": None,
+        "busiestWeek": None,
         "busiestStreak": None,
         "longestTrip": None,
         "highestTransaction": None,
@@ -4776,6 +4777,34 @@ async def get_fun_facts(
             "startDate": longest_streak_start.strftime("%d %b"),  # e.g., "24 Feb"
             "endDate": longest_streak_end.strftime("%d %b %Y"),   # e.g., "28 Feb 2026"
             "bookings": streak_bookings,
+        }
+
+    # === Busiest Week ===
+    # Group `day_counter` by ISO week (Mon-Sun). The week with the highest
+    # booking count wins; ties resolved by most recent week first.
+    if day_counter:
+        week_counter = Counter()
+        for day, count in day_counter.items():
+            iso_year, iso_week, _ = day.isocalendar()
+            week_counter[(iso_year, iso_week)] += count
+
+        max_week_count = max(week_counter.values())
+        busiest_weeks = [
+            (y, w) for (y, w), c in week_counter.items() if c == max_week_count
+        ]
+        busiest_weeks.sort(reverse=True)  # most recent first
+        winning_year, winning_week = busiest_weeks[0]
+
+        # Convert ISO year/week back to Mon and Sun dates for display.
+        from datetime import date as date_type
+        week_start = date_type.fromisocalendar(winning_year, winning_week, 1)
+        week_end = date_type.fromisocalendar(winning_year, winning_week, 7)
+        result["busiestWeek"] = {
+            "bookings": max_week_count,
+            "startDate": week_start.strftime("%d %b"),
+            "endDate": week_end.strftime("%d %b %Y"),
+            "weekNumber": winning_week,
+            "year": winning_year,
         }
 
     # === Longest Trip ===
