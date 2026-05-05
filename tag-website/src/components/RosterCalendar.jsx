@@ -1373,7 +1373,10 @@ function RosterCalendar({
     setDuplicateModal({
       shift,
       mode: 'date_copy',
-      target_date: '',  // DD/MM/YYYY input, converted to ISO at submit
+      // Prefill with the source's own date — most duplicates stay on the
+      // same day (admin adding another jockey to the same shift). Admin
+      // can edit if they actually want to copy to a different day.
+      target_date: shift.date ? formatDateUK(shift.date) : '',
       staff_ids: [],
       add_unassigned_jockey: false,
       add_unassigned_fleet: false,
@@ -1585,9 +1588,17 @@ function RosterCalendar({
   const openBulkDuplicateModal = () => {
     setActionError('')
     const shifts = selectedDateShifts.filter((s) => selectedShiftIds.includes(s.id))
+    // All selected shifts share the same calendar day (selection happens
+    // inside one day-detail modal), so prefill the target date with that
+    // day. Most duplicates stay on the same day (adding staff to existing
+    // shifts) — admin edits this only when actually moving copies to
+    // another date.
+    const sourceDateUK = (selectedDate
+      ? formatDateUK(selectedDate)
+      : (shifts[0]?.date ? formatDateUK(shifts[0].date) : ''))
     setBulkDuplicateModal({
       shifts,
-      target_date: '',
+      target_date: sourceDateUK,
       // Optional staff fanout for bulk-staff-add (Phase 4 unblocked
       // 2026-05-05). When all empty → pure date copy preserving each
       // shift's source staff. When any picked → each source shift × each
