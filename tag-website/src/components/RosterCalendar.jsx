@@ -896,14 +896,18 @@ function RosterCalendar({
     // v3: when the toggle is "All" the day cell mixes manual + auto. Sort by
     // source first (manual / planner above auto) so admins see committed work
     // grouped at the top and auto-roster output as a clearly separate block;
-    // sort within each group by start time. When the toggle is "Manual" or
-    // "Auto" only, this collapses to a pure time sort.
+    // then by start time, then by id ascending — so duplicated shifts (same
+    // start/end as source, created later → higher id) sit immediately under
+    // their source. When the toggle is "Manual" or "Auto" only, this
+    // collapses to time-then-id.
     const sourceOrder = (s) => (s.created_source === 'auto' ? 1 : 0)
     Object.keys(grouped).forEach((date) => {
       grouped[date].sort((a, b) => {
         const so = sourceOrder(a) - sourceOrder(b)
         if (so !== 0) return so
-        return (a.displayStartTime || a.start_time).localeCompare(b.displayStartTime || b.start_time)
+        const t = (a.displayStartTime || a.start_time).localeCompare(b.displayStartTime || b.start_time)
+        if (t !== 0) return t
+        return (a.id || 0) - (b.id || 0)
       })
     })
 
@@ -4347,17 +4351,27 @@ function RosterCalendar({
               Source: <strong>{formatTime(duplicateModal.shift.start_time)}–{formatTime(duplicateModal.shift.end_time)}</strong>
               {duplicateModal.shift.staff_initials ? ` · ${duplicateModal.shift.staff_initials}` : ' · Unassigned'}
             </p>
-            <div className="rc-action-mode-toggle">
+            <div className="rc-action-mode-toggle" role="tablist" aria-label="Duplicate mode">
               <button
                 type="button"
+                role="tab"
+                aria-selected={duplicateModal.mode === 'date_copy'}
                 className={duplicateModal.mode === 'date_copy' ? 'active' : ''}
                 onClick={() => setDuplicateModal({ ...duplicateModal, mode: 'date_copy' })}
-              >Copy to date</button>
+              >
+                <span className="rc-mode-icon" aria-hidden="true">📅</span>
+                Copy to date
+              </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={duplicateModal.mode === 'staff_fanout'}
                 className={duplicateModal.mode === 'staff_fanout' ? 'active' : ''}
                 onClick={() => setDuplicateModal({ ...duplicateModal, mode: 'staff_fanout' })}
-              >Add to staff</button>
+              >
+                <span className="rc-mode-icon" aria-hidden="true">👥</span>
+                Add to staff
+              </button>
             </div>
             {duplicateModal.mode === 'date_copy' ? (
               <div className="form-group">

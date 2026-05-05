@@ -2880,28 +2880,56 @@
   margin: 10px 0 0;
   font-size: 0.85rem;
 }
+/* Modern segmented control — pill background, sliding active indicator,
+   icon + label per option. Replaces the basic split-button look. */
 .rc-action-mode-toggle {
-  display: inline-flex;
-  border: 1px solid #444;
-  border-radius: 6px;
-  overflow: hidden;
-  margin-bottom: 14px;
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  padding: 4px;
+  background: #f1f3f6;
+  border: 1px solid #e3e6ec;
+  border-radius: 999px;
+  margin-bottom: 18px;
+  width: 100%;
+  max-width: 360px;
+  box-sizing: border-box;
 }
 .rc-action-mode-toggle button {
+  appearance: none;
   background: transparent;
   border: none;
-  color: #aaa;
-  padding: 6px 14px;
-  font-size: 0.85rem;
+  color: #6b7280;
+  padding: 9px 18px;
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: 0.005em;
   cursor: pointer;
+  border-radius: 999px;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 80ms ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
 }
-.rc-action-mode-toggle button + button {
-  border-left: 1px solid #444;
+.rc-action-mode-toggle button:hover:not(.active) {
+  color: #1a1a2e;
+  background: rgba(255, 255, 255, 0.6);
+}
+.rc-action-mode-toggle button:active:not(.active) {
+  transform: scale(0.98);
 }
 .rc-action-mode-toggle button.active {
-  background: #D9FF00;
-  color: #1a1a2e;
+  background: #1a1a2e;
+  color: #ffffff;
   font-weight: 600;
+  box-shadow: 0 2px 6px rgba(26, 26, 46, 0.18), 0 0 0 1px rgba(26, 26, 46, 0.04);
+}
+.rc-action-mode-toggle button .rc-mode-icon {
+  font-size: 1rem;
+  line-height: 1;
 }
 .rc-staff-checklist {
   max-height: 220px;
