@@ -1523,8 +1523,10 @@ async def duplicate_shift(
         if copy_end_dt <= copy_start_dt:
             copy_end_dt = copy_end_dt + timedelta(days=1)
         for b in (source.bookings or []):
-            for _et, edt in _events_for_booking(b):
-                if copy_start_dt <= edt <= copy_end_dt:
+            for _et, start_dt, end_dt in _events_for_booking(b):
+                # Booking belongs to the copy if either anchor (start = jockey
+                # readiness, end = customer handoff) lands inside the window.
+                if (copy_start_dt <= start_dt <= copy_end_dt) or (copy_start_dt <= end_dt <= copy_end_dt):
                     db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=b.id))
                     break
         created.append(new_shift)
@@ -1765,11 +1767,14 @@ async def split_shift(
         if not b:
             continue
         events = _events_for_booking(b)
-        # Prefer the *latest* event that falls inside the original window —
-        # if it's at-or-after split_dt, this booking belongs to the second half.
+        # Prefer the *latest* event-time that falls inside the original
+        # window — if it's at-or-after split_dt, this booking belongs to
+        # the second half. Use the START anchor (jockey readiness) since
+        # that's when the work begins; pickup handoffs trail by 30 min and
+        # don't change which side of the cut owns the booking.
         belongs_to_second = False
-        for _et, edt in events:
-            if start_dt <= edt <= end_dt and edt >= split_dt:
+        for _et, start_anchor, _end_anchor in events:
+            if start_dt <= start_anchor <= end_dt and start_anchor >= split_dt:
                 belongs_to_second = True
                 break
         if belongs_to_second:

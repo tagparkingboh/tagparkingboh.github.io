@@ -95,7 +95,13 @@ class Event:
     booking_id: int
     booking_reference: str
     event_type: str  # "drop_off" | "pick_up"
-    event_time: datetime  # tz-aware Europe/London
+    event_time: datetime  # tz-aware Europe/London — START anchor (jockey-readiness)
+    # END anchor — drives `shift_end = end_anchor_time + end_buffer`. For
+    # drop-offs this equals event_time (handoff happens at dropoff_time).
+    # For pickups this equals `pickup_time` so the jockey stays on the clock
+    # through the customer-handoff (locked 2026-05-04). When None the engine
+    # falls back to event_time, preserving the pre-asymmetry behaviour.
+    end_anchor_time: Optional[datetime] = None
     # Enriched fields so the QA modal can drill into a shift and see the
     # job the engine assigned, matching the admin calendar's render.
     # All optional — engine logic doesn't depend on them.
@@ -118,7 +124,9 @@ class EventCluster:
 
     @property
     def end(self) -> datetime:
-        return max(e.event_time for e in self.events)
+        # Use end_anchor_time when set so pickup-anchored cluster ends extend
+        # past flight_arrival to the customer-handoff moment.
+        return max((e.end_anchor_time or e.event_time) for e in self.events)
 
 
 # =====================================================================================
@@ -751,12 +759,21 @@ def propose_roster(
                 anchor_time = _combine_uk(flight_date, arrival_t)
             else:
                 anchor_time = _combine_uk(b.pickup_date, b.pickup_time) - timedelta(minutes=30)
+            # End anchor — customer handoff. shift_end = pickup_time + end_buffer
+            # so the jockey stays on the clock through the actual handover.
+            # When pickup_time is missing, fall back to start anchor + 30 min
+            # (the standard arrival→collection window).
+            if b.pickup_time:
+                end_anchor = _combine_uk(b.pickup_date, b.pickup_time)
+            else:
+                end_anchor = anchor_time + timedelta(minutes=30)
             events.append(
                 Event(
                     booking_id=b.id,
                     booking_reference=b.reference,
                     event_type="pick_up",
                     event_time=anchor_time,
+                    end_anchor_time=end_anchor,
                     customer_name=customer_name,
                     flight_number=getattr(b, "pickup_flight_number", None),
                     destination=getattr(b, "pickup_origin", None),

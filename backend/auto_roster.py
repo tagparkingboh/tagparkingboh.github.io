@@ -65,18 +65,28 @@ logger = logging.getLogger(__name__)
 # Event extraction (pure)
 # ---------------------------------------------------------------------------
 
-def _events_for_booking(booking: Booking) -> list[tuple[str, datetime]]:
-    """Return (event_type, event_dt) tuples for the booking's drop-off and
-    pick-up. Pick-up anchors to `flight_arrival_time` if available, else
-    `pickup_time` minus 30 minutes (matches the engine in roster_planner.py).
+def _events_for_booking(booking: Booking) -> list[tuple[str, datetime, datetime]]:
+    """Return (event_type, start_anchor, end_anchor) tuples.
+
+    - **Drop-off**: start_anchor == end_anchor == dropoff_time. The handoff
+      happens at the moment the customer arrives, so both ends of the shift
+      window pivot off the same time.
+    - **Pickup**: start_anchor = flight_arrival_time (jockey must be at the
+      airport before the plane lands so the car is ready); end_anchor =
+      pickup_time (the customer-handoff moment, when the jockey is actually
+      released). These differ by ~30 min (the standard
+      arrival→collection gap). When flight_arrival_time isn't recorded, the
+      engine derives start_anchor as `pickup_time - 30 min` (existing
+      behaviour). When pickup_time isn't recorded, end_anchor falls back to
+      `start_anchor + 30 min` (the same standard gap).
+
     Returned datetimes are naive (no tz) — the DB columns are naive too;
-    we attach UK_TZ when handing off to the clusterer."""
-    out: list[tuple[str, datetime]] = []
+    we attach UK_TZ when handing off to the clusterer.
+    """
+    out: list[tuple[str, datetime, datetime]] = []
     if booking.dropoff_date and booking.dropoff_time:
-        out.append((
-            "drop_off",
-            datetime.combine(booking.dropoff_date, booking.dropoff_time),
-        ))
+        dropoff_dt = datetime.combine(booking.dropoff_date, booking.dropoff_time)
+        out.append(("drop_off", dropoff_dt, dropoff_dt))
     if booking.pickup_date:
         if getattr(booking, "flight_arrival_time", None):
             # flight_arrival_time has no date column; it's normally on
@@ -86,13 +96,17 @@ def _events_for_booking(booking: Booking) -> list[tuple[str, datetime]]:
             flight_date = booking.pickup_date
             if booking.pickup_time and booking.flight_arrival_time > booking.pickup_time:
                 flight_date = booking.pickup_date - timedelta(days=1)
-            anchor = datetime.combine(flight_date, booking.flight_arrival_time)
+            start_anchor = datetime.combine(flight_date, booking.flight_arrival_time)
         elif booking.pickup_time:
-            anchor = datetime.combine(booking.pickup_date, booking.pickup_time) - timedelta(minutes=30)
+            start_anchor = datetime.combine(booking.pickup_date, booking.pickup_time) - timedelta(minutes=30)
         else:
-            anchor = None
-        if anchor is not None:
-            out.append(("pick_up", anchor))
+            start_anchor = None
+        if start_anchor is not None:
+            if booking.pickup_time:
+                end_anchor = datetime.combine(booking.pickup_date, booking.pickup_time)
+            else:
+                end_anchor = start_anchor + timedelta(minutes=30)
+            out.append(("pick_up", start_anchor, end_anchor))
     return out
 
 
@@ -193,16 +207,20 @@ def rebuild_auto_for_dates(
     summary["bookings_in_scope"] = len(bookings)
 
     # 3. Build engine Event objects (UK-tz-aware so group_events_by_gap
-    # behaves identically to the shadow-mode engine).
+    # behaves identically to the shadow-mode engine). Each event carries
+    # both a start anchor (clustering + shift_start) and an end anchor
+    # (shift_end). Drop-offs share the same anchor on both sides; pickups
+    # have asymmetric anchors so shift_end = pickup_time + end_buffer.
     all_events: list[Event] = []
     for b in bookings:
-        for et, edt in _events_for_booking(b):
+        for et, start_dt, end_dt in _events_for_booking(b):
             all_events.append(
                 Event(
                     booking_id=b.id,
                     booking_reference=b.reference or "",
                     event_type=et,
-                    event_time=edt.replace(tzinfo=UK_TZ),
+                    event_time=start_dt.replace(tzinfo=UK_TZ),
+                    end_anchor_time=end_dt.replace(tzinfo=UK_TZ),
                 )
             )
     summary["events"] = len(all_events)
@@ -223,7 +241,13 @@ def rebuild_auto_for_dates(
 
     for cluster in clusters:
         cluster_start = cluster.events[0].event_time
-        cluster_end = cluster.events[-1].event_time
+        # cluster_end pivots on the latest *end* anchor — for pickups that's
+        # pickup_time (handoff), for drop-offs that's dropoff_time. The
+        # events list is sorted by event_time (start anchor) which doesn't
+        # necessarily put the latest end anchor last; max() handles that.
+        cluster_end = max(
+            (e.end_anchor_time or e.event_time) for e in cluster.events
+        )
         if cluster_start.date() not in target_set:
             # Adjacent-day rebuilds will own this cluster — don't double-write.
             continue
@@ -260,11 +284,14 @@ def rebuild_auto_for_dates(
 
 
 def _affected_dates_for_booking(booking: Booking) -> set[date_type]:
-    """Days touched by a booking's events. Used so a single booking change
-    triggers a tightly-scoped rebuild rather than a global re-cluster."""
+    """Days touched by a booking's events — covers both the start anchor
+    (e.g. flight_arrival on D) and the end anchor (e.g. pickup_time on D+1
+    if the flight crosses midnight) so the rebuild scope catches both
+    sides of an asymmetric pickup window."""
     dates: set[date_type] = set()
-    for _et, edt in _events_for_booking(booking):
-        dates.add(edt.date())
+    for _et, start_dt, end_dt in _events_for_booking(booking):
+        dates.add(start_dt.date())
+        dates.add(end_dt.date())
     return dates
 
 

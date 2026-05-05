@@ -1596,6 +1596,100 @@ class TestPickupAnchorsToArrival:
         assert new_shifts[0]["date"].isoformat() == "2026-05-10"
 
 
+class TestPickupShiftEndAnchorsToHandoff:
+    """v3 asymmetric anchors (locked 2026-05-04): for pickups, shift_end
+    pivots on `pickup_time` (customer handoff), not `flight_arrival_time`.
+
+    With DEFAULT_SETTINGS (start_buffer 20m, end_buffer 30m) and pickup
+    convention pickup_time = flight_arrival + 30m, a single pickup at
+    arrival 15:40 / pickup 16:10 should yield:
+      shift_start = 15:40 - 20m = 15:20
+      shift_end   = 16:10 + 30m = 16:40   (NOT 15:40 + 30m = 16:10)
+    """
+
+    def test_happy_pickup_end_extends_past_customer_handoff(self):
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-HANDOFF",
+                drop_dt=uk_dt(2026, 4, 1, 9, 0),  # outside window
+                pick_dt=uk_dt(2026, 5, 10, 16, 10),
+                flight_arrival_time=time(15, 40),
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        assert s["start_time"].strftime("%H:%M") == "15:20"
+        assert s["end_time"].strftime("%H:%M") == "16:40"
+
+    def test_boundary_late_night_cluster_spans_midnight_handoff_buffer(self):
+        """The user's worked example: flights 23:30, 23:31, 00:00, 00:50
+        anchored on a single overnight cluster. Latest pickup_time = 01:20
+        on D+1 → shift_end = 01:50 on D+1 (handoff + 30m end_buffer)."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        # Helper: pickup_time = flight_arrival + 30 min; pickup_date is the
+        # *handoff* date (so 23:30 flight → pickup_date next day).
+        bookings = [
+            mk_booking(1, "TAG-A", drop_dt=uk_dt(2026, 4, 1, 9, 0),
+                       pick_dt=uk_dt(2026, 5, 11, 0, 0),
+                       flight_arrival_time=time(23, 30)),
+            mk_booking(2, "TAG-B", drop_dt=uk_dt(2026, 4, 1, 9, 0),
+                       pick_dt=uk_dt(2026, 5, 11, 0, 1),
+                       flight_arrival_time=time(23, 31)),
+            mk_booking(3, "TAG-C", drop_dt=uk_dt(2026, 4, 1, 9, 0),
+                       pick_dt=uk_dt(2026, 5, 11, 0, 30),
+                       flight_arrival_time=time(0, 0)),
+            mk_booking(4, "TAG-D", drop_dt=uk_dt(2026, 4, 1, 9, 0),
+                       pick_dt=uk_dt(2026, 5, 11, 1, 20),
+                       flight_arrival_time=time(0, 50)),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        # All 4 cluster (within gap_max). Earliest start anchor = 23:30 on D
+        # (flight_arrival back-dated since 23:30 > 00:00 pickup_time).
+        # Latest end anchor = 01:20 on D+1 (last pickup_time).
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        assert s["date"].isoformat() == "2026-05-10"
+        assert s["end_date"].isoformat() == "2026-05-11"
+        assert s["start_time"].strftime("%H:%M") == "23:10"  # 23:30 - 20m
+        assert s["end_time"].strftime("%H:%M") == "01:50"   # 01:20 + 30m
+
+    def test_edge_dropoff_only_cluster_unchanged(self):
+        """Drop-off shifts must NOT get the +30m extension. shift_end =
+        dropoff_time + end_buffer (regression guard)."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-DROP-ONLY",
+                drop_dt=uk_dt(2026, 5, 10, 13, 0),
+                pick_dt=uk_dt(2026, 6, 30, 10, 0),  # outside window
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        # 13:00 - 20m = 12:40, 13:00 + 30m = 13:30; min_shift_minutes = 60
+        # extends to 13:40. Not affected by the new pickup-end-anchor logic.
+        assert s["start_time"].strftime("%H:%M") == "12:40"
+        assert s["end_time"].strftime("%H:%M") == "13:40"
+
+
 class TestSpecGapFillers:
     def test_all_jockeys_excluded_produces_unmanned_warning(self):
         """When every assignable jockey is on holiday, the shift is
