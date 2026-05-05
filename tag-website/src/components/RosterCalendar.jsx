@@ -1581,26 +1581,43 @@ function RosterCalendar({
   const openBulkDuplicateModal = () => {
     setActionError('')
     const shifts = selectedDateShifts.filter((s) => selectedShiftIds.includes(s.id))
-    setBulkDuplicateModal({ shifts, target_date: '' })
+    setBulkDuplicateModal({
+      shifts,
+      target_date: '',
+      // Optional staff fanout for bulk-staff-add (Phase 4 unblocked
+      // 2026-05-05). When all empty → pure date copy preserving each
+      // shift's source staff. When any picked → each source shift × each
+      // picked staff = N×M copies on target_date.
+      staff_ids: [],
+      add_unassigned_jockey: false,
+      add_unassigned_fleet: false,
+    })
   }
 
   const submitBulkDuplicate = async () => {
     if (!bulkDuplicateModal) return
-    const { shifts, target_date } = bulkDuplicateModal
+    const { shifts, target_date, staff_ids, add_unassigned_jockey, add_unassigned_fleet } = bulkDuplicateModal
     if (!target_date || target_date.length !== 10) {
       setActionError('Pick a target date (DD/MM/YYYY).')
       return
     }
     const isoDate = ukToISO(target_date)
+    const hasStaffPick = staff_ids.length > 0 || add_unassigned_jockey || add_unassigned_fleet
     setActionSubmitting(true)
     let successCount = 0
     const errors = []
     for (const s of shifts) {
+      const body = { target_date: isoDate }
+      if (hasStaffPick) {
+        if (staff_ids.length > 0) body.staff_ids = staff_ids
+        if (add_unassigned_jockey) body.add_unassigned_jockey = true
+        if (add_unassigned_fleet) body.add_unassigned_fleet = true
+      }
       try {
         const r = await fetch(`${API_URL}/api/roster/${s.id}/duplicate`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ target_date: isoDate }),
+          body: JSON.stringify(body),
         })
         if (r.ok) {
           successCount++
@@ -4517,34 +4534,80 @@ function RosterCalendar({
 
       {/* v3 Phase 3 — bulk modals (locked 2026-05-04). Each loops the
           Phase 2 single-shift endpoint client-side. */}
-      {bulkDuplicateModal && isAdmin && (
-        <div className="modal-overlay" onClick={() => !actionSubmitting && setBulkDuplicateModal(null)}>
-          <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Duplicate {bulkDuplicateModal.shifts.length} Shifts</h3>
-            <p className="rc-action-source">
-              Each selected shift will be copied to the target date with the same staff and times.
-            </p>
-            <div className="form-group">
-              <label>Target date (DD/MM/YYYY)</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="DD/MM/YYYY"
-                value={bulkDuplicateModal.target_date}
-                onChange={(e) => setBulkDuplicateModal({ ...bulkDuplicateModal, target_date: e.target.value })}
-                maxLength={10}
-              />
-            </div>
-            {actionError && <div className="rc-action-error">{actionError}</div>}
-            <div className="modal-actions">
-              <button className="modal-btn modal-btn-secondary" onClick={() => setBulkDuplicateModal(null)} disabled={actionSubmitting}>Cancel</button>
-              <button className="modal-btn modal-btn-primary" onClick={submitBulkDuplicate} disabled={actionSubmitting}>
-                {actionSubmitting ? 'Duplicating…' : `Duplicate ${bulkDuplicateModal.shifts.length}`}
-              </button>
+      {bulkDuplicateModal && isAdmin && (() => {
+        const m = bulkDuplicateModal
+        const hasStaffPick = m.staff_ids.length > 0 || m.add_unassigned_jockey || m.add_unassigned_fleet
+        const totalCopies = m.shifts.length * Math.max(1,
+          m.staff_ids.length + (m.add_unassigned_jockey ? 1 : 0) + (m.add_unassigned_fleet ? 1 : 0)
+        )
+        return (
+          <div className="modal-overlay" onClick={() => !actionSubmitting && setBulkDuplicateModal(null)}>
+            <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Duplicate {m.shifts.length} Shifts</h3>
+              <p className="rc-action-source">
+                {hasStaffPick
+                  ? `Each shift × each picked staff = ${totalCopies} copies on the target date.`
+                  : 'Each selected shift will be copied to the target date with the same staff and times.'}
+              </p>
+              <div className="form-group">
+                <label>Target date (DD/MM/YYYY)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="DD/MM/YYYY"
+                  value={m.target_date}
+                  onChange={(e) => setBulkDuplicateModal({ ...m, target_date: e.target.value })}
+                  maxLength={10}
+                />
+              </div>
+              <div className="rc-fanout-block">
+                <div className="rc-fanout-label">Assign each copy to (optional — leave empty to preserve source staff)</div>
+                <div className="rc-staff-checklist">
+                  {employees.filter((u) => u.is_active && !u.is_admin).map((u) => (
+                    <label key={u.id} className="rc-staff-row">
+                      <input
+                        type="checkbox"
+                        checked={m.staff_ids.includes(u.id)}
+                        onChange={() => {
+                          const next = m.staff_ids.includes(u.id)
+                            ? m.staff_ids.filter((id) => id !== u.id)
+                            : [...m.staff_ids, u.id]
+                          setBulkDuplicateModal({ ...m, staff_ids: next })
+                        }}
+                      />
+                      <span className="rc-staff-row-name">{u.first_name} {u.last_name}</span>
+                    </label>
+                  ))}
+                  <div className="rc-staff-divider" aria-hidden="true" />
+                  <label className="rc-staff-row">
+                    <input
+                      type="checkbox"
+                      checked={m.add_unassigned_jockey}
+                      onChange={(e) => setBulkDuplicateModal({ ...m, add_unassigned_jockey: e.target.checked })}
+                    />
+                    <span className="rc-staff-row-name">🏇 Unassigned Jockey</span>
+                  </label>
+                  <label className="rc-staff-row">
+                    <input
+                      type="checkbox"
+                      checked={m.add_unassigned_fleet}
+                      onChange={(e) => setBulkDuplicateModal({ ...m, add_unassigned_fleet: e.target.checked })}
+                    />
+                    <span className="rc-staff-row-name">🚐 Unassigned Fleet</span>
+                  </label>
+                </div>
+              </div>
+              {actionError && <div className="rc-action-error">{actionError}</div>}
+              <div className="modal-actions">
+                <button className="modal-btn modal-btn-secondary" onClick={() => setBulkDuplicateModal(null)} disabled={actionSubmitting}>Cancel</button>
+                <button className="modal-btn modal-btn-primary" onClick={submitBulkDuplicate} disabled={actionSubmitting}>
+                  {actionSubmitting ? 'Duplicating…' : `Duplicate ${m.shifts.length}${hasStaffPick ? ` × ${totalCopies / m.shifts.length}` : ''}`}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {bulkUnassignModal && isAdmin && (
         <div className="modal-overlay" onClick={() => !actionSubmitting && setBulkUnassignModal(null)}>

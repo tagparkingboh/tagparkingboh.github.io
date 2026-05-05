@@ -1480,66 +1480,37 @@ async def duplicate_shift(
     has_date = body.target_date is not None
     has_staff = bool(body.staff_ids) or body.add_unassigned_jockey or body.add_unassigned_fleet
 
-    if has_date and has_staff:
-        raise HTTPException(
-            status_code=422,
-            detail="Bulk staff-add (target_date + staff_ids) is deferred. Pick one mode per request.",
-        )
     if not has_date and not has_staff:
         raise HTTPException(
             status_code=422,
             detail="Specify either target_date or staff_ids (or unassigned flags) to duplicate.",
         )
 
-    created: list[RosterShift] = []
+    # Resolve the target date — defaults to source.date when only staff is set
+    # (pure fanout). With target_date set, copies land on that date and any
+    # picked staff get assigned at the same time (Phase 4 bulk staff-add,
+    # unblocked 2026-05-05 — see SPEC v3 amendments).
+    target_date = body.target_date if has_date else source.date
+    delta_days = (target_date - source.date).days
+    source_end_date = source.end_date or source.date
+    new_end_date = source_end_date + timedelta(days=delta_days)
 
-    if has_date:
-        # ---- Mode: date copy ----
-        target = body.target_date
-        delta_days = (target - source.date).days
-        source_end_date = source.end_date or source.date
-        new_end_date = source_end_date + timedelta(days=delta_days)
-        new_shift = RosterShift(
-            staff_id=source.staff_id,
-            booking_id=None,
-            date=target,
-            end_date=new_end_date if new_end_date != target else None,
-            start_time=source.start_time,
-            end_time=source.end_time,
-            shift_type=source.shift_type,
-            status=ShiftStatus.SCHEDULED,
-            notes=source.notes,
-            intended_driver_type=source.intended_driver_type or "jockey",
-            created_source="manual",
-        )
-        db.add(new_shift)
-        db.flush()
-        # Re-link bookings whose event time falls inside the copy's window.
-        # _events_for_booking applies the back-date heuristic so flight 23:55
-        # on D-1 anchors correctly when pickup_date is D.
-        from auto_roster import _events_for_booking
-        copy_start_dt = datetime.combine(target, source.start_time)
-        copy_end_dt = datetime.combine(new_end_date, source.end_time)
-        if copy_end_dt <= copy_start_dt:
-            copy_end_dt = copy_end_dt + timedelta(days=1)
-        for b in (source.bookings or []):
-            for _et, start_dt, end_dt in _events_for_booking(b):
-                # Booking belongs to the copy if either anchor (start = jockey
-                # readiness, end = customer handoff) lands inside the window.
-                if (copy_start_dt <= start_dt <= copy_end_dt) or (copy_start_dt <= end_dt <= copy_end_dt):
-                    db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=b.id))
-                    break
-        created.append(new_shift)
-    else:
-        # ---- Mode: staff fanout ----
-        # Build the (staff_id, forced_intended_driver_type) write list.
-        writes: list[tuple[Optional[int], Optional[str]]] = []
+    # Build the write list: (staff_id, forced_intended_driver_type).
+    # has_staff false → single write preserving source's staff (date-copy only).
+    # has_staff true  → fan out to picked staff + optional unassigned slots.
+    writes: list[tuple[Optional[int], Optional[str]]] = []
+    if has_staff:
         seen_staff: set[int] = set()
         for sid in (body.staff_ids or []):
             if sid in seen_staff:
                 continue  # de-dupe accidental double-tick
-            if sid == source.staff_id:
-                continue  # skip source's own staff to avoid identical row
+            # Skip source's own staff only when copying to the SAME date — at
+            # the same date+time+staff the copy would be a literal duplicate
+            # row and offer no value. With a different target_date the source
+            # staff is a perfectly fine pick (just a date copy assigned to
+            # them), so we don't drop it.
+            if not has_date and sid == source.staff_id:
+                continue
             seen_staff.add(sid)
             validate_staff_assignment(db, sid)
             writes.append((sid, None))
@@ -1547,30 +1518,45 @@ async def duplicate_shift(
             writes.append((None, "jockey"))
         if body.add_unassigned_fleet:
             writes.append((None, "fleet"))
-
         if not writes:
             raise HTTPException(
                 status_code=422,
                 detail="No effective targets after de-duplication (all staff_ids match source, or none provided).",
             )
+    else:
+        # Pure date-copy: one row, preserve source's staff.
+        writes = [(source.staff_id, None)]
 
-        # Source's existing booking links — fanout copies inherit them as-is.
-        existing_links = (
-            db.query(ShiftBookingLink)
-            .filter(ShiftBookingLink.shift_id == shift_id)
-            .all()
-        )
-        existing_booking_ids = [link.booking_id for link in existing_links]
+    # Source's existing booking links — needed for the same-date pure-fanout
+    # path. The cross-date path re-links by event time inside the copy's
+    # window (handles overnight + back-date heuristic).
+    existing_links = (
+        db.query(ShiftBookingLink)
+        .filter(ShiftBookingLink.shift_id == shift_id)
+        .all()
+    )
+    existing_booking_ids = [link.booking_id for link in existing_links]
 
-        for write_sid, forced_intended in writes:
-            intended = forced_intended or (source.intended_driver_type or "jockey")
-            if write_sid is not None and forced_intended is None:
-                user = db.query(User).filter(User.id == write_sid).first()
-                if user and getattr(user, "driver_type", None) in ("jockey", "fleet"):
-                    intended = user.driver_type
-                # Overlap guard — fanout target must not collide with existing.
+    from auto_roster import _events_for_booking
+    copy_start_dt = datetime.combine(target_date, source.start_time)
+    copy_end_dt = datetime.combine(new_end_date, source.end_time)
+    if copy_end_dt <= copy_start_dt:
+        copy_end_dt = copy_end_dt + timedelta(days=1)
+
+    created: list[RosterShift] = []
+    for write_sid, forced_intended in writes:
+        intended = forced_intended or (source.intended_driver_type or "jockey")
+        if write_sid is not None and forced_intended is None:
+            user = db.query(User).filter(User.id == write_sid).first()
+            if user and getattr(user, "driver_type", None) in ("jockey", "fleet"):
+                intended = user.driver_type
+            # Overlap guard — only when the admin is assigning to picked staff
+            # (has_staff). Pure date-copy (preserving source's staff) skips
+            # the check per the SPEC v3 locked rule: "create both copies;
+            # admin sorts overlaps manually".
+            if has_staff:
                 conflict = check_shift_overlap(
-                    db, write_sid, source.date, source.start_time, source.end_time
+                    db, write_sid, target_date, source.start_time, source.end_time
                 )
                 if conflict:
                     raise HTTPException(
@@ -1578,27 +1564,40 @@ async def duplicate_shift(
                         detail=(
                             f"Staff {write_sid} already has a shift overlapping "
                             f"{format_time(source.start_time)}-{format_time(source.end_time)} "
-                            f"on {source.date.strftime('%d/%m/%Y')}."
+                            f"on {target_date.strftime('%d/%m/%Y')}."
                         ),
                     )
-            new_shift = RosterShift(
-                staff_id=write_sid,
-                booking_id=None,
-                date=source.date,
-                end_date=source.end_date,
-                start_time=source.start_time,
-                end_time=source.end_time,
-                shift_type=source.shift_type,
-                status=ShiftStatus.SCHEDULED,
-                notes=source.notes,
-                intended_driver_type=intended,
-                created_source="manual",
-            )
-            db.add(new_shift)
-            db.flush()
+
+        new_shift = RosterShift(
+            staff_id=write_sid,
+            booking_id=None,
+            date=target_date,
+            end_date=new_end_date if new_end_date != target_date else None,
+            start_time=source.start_time,
+            end_time=source.end_time,
+            shift_type=source.shift_type,
+            status=ShiftStatus.SCHEDULED,
+            notes=source.notes,
+            intended_driver_type=intended,
+            created_source="manual",
+        )
+        db.add(new_shift)
+        db.flush()
+
+        if has_date:
+            # Cross-date copy: re-link bookings whose event window overlaps
+            # the copy's window (uses back-date heuristic via _events_for_booking).
+            for b in (source.bookings or []):
+                for _et, start_dt, end_dt in _events_for_booking(b):
+                    if (copy_start_dt <= start_dt <= copy_end_dt) or (copy_start_dt <= end_dt <= copy_end_dt):
+                        db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=b.id))
+                        break
+        else:
+            # Same-date fanout: copies inherit source's links verbatim.
             for bid in existing_booking_ids:
                 db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=bid))
-            created.append(new_shift)
+
+        created.append(new_shift)
 
     db.commit()
     for s in created:

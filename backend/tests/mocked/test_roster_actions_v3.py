@@ -145,21 +145,31 @@ def rig():
             chain.first.side_effect = first_shift
 
             def all_shifts():
-                # When a filter is keyed off staff_id, narrow to that staff.
-                # Otherwise return everything (used by overlap-detection in tests
-                # that explicitly want to exercise the conflict path).
+                # Mirror the SQL filters the endpoint composes: when a filter
+                # keys off staff_id, narrow to that staff; when a filter keys
+                # off date (== exact match), narrow to that date too. Without
+                # the date narrowing, check_shift_overlap sees ALL of a
+                # staff's shifts at any date and false-409s tests that copy
+                # to a different target_date.
                 staff_id_targets = []
+                date_targets = []
                 for args in local_args:
                     for arg in args:
                         col = getattr(getattr(arg, "left", None), "key", None)
                         val = getattr(getattr(arg, "right", None), "value", None)
                         if col == "staff_id":
                             staff_id_targets.append(val)
+                        elif col == "date":
+                            date_targets.append(val)
+
+                rows = list(state["shifts_by_id"].values())
                 if staff_id_targets:
                     target = staff_id_targets[-1]
-                    return [s for s in state["shifts_by_id"].values()
-                            if getattr(s, "staff_id", None) == target]
-                return list(state["shifts_by_id"].values())
+                    rows = [s for s in rows if getattr(s, "staff_id", None) == target]
+                if date_targets:
+                    target = date_targets[-1]
+                    rows = [s for s in rows if getattr(s, "date", None) == target]
+                return rows
             chain.all.side_effect = all_shifts
         elif model is Booking:
             def first_booking():
@@ -408,23 +418,121 @@ class TestDuplicateUnhappy:
         r = client.post("/api/roster/9999/duplicate", json={"target_date": "2026-05-17"})
         assert r.status_code == 404
 
-    def test_both_modes_set_returns_422(self, rig):
-        client, db, state = rig
-        src = make_shift(id=100, staff_id=10)
-        state["shifts_by_id"][100] = src
-        state["users_by_id"][20] = make_user(id=20)
-        r = client.post(
-            "/api/roster/100/duplicate",
-            json={"target_date": "2026-05-17", "staff_ids": [20]},
-        )
-        assert r.status_code == 422
-
     def test_neither_mode_set_returns_422(self, rig):
         client, db, state = rig
         src = make_shift(id=101, staff_id=10)
         state["shifts_by_id"][101] = src
         r = client.post("/api/roster/101/duplicate", json={})
         assert r.status_code == 422
+
+
+class TestDuplicateBulkStaffAdd:
+    """v3 Phase 4 unblocked 2026-05-05: target_date + staff_ids combine into
+    'bulk staff-add' — copy to target date AND assign to picked staff in one
+    call. Multi-shift bulk Duplicate UI calls this per shift."""
+
+    def test_happy_target_date_plus_one_staff_creates_one_assigned_copy(self, rig):
+        client, db, state = rig
+        src = make_shift(id=500, staff_id=10, shift_date=date(2026, 5, 10))
+        state["shifts_by_id"][500] = src
+        state["users_by_id"][20] = make_user(
+            id=20, first_name="Marek", last_name="Smolarek", driver_type="jockey"
+        )
+
+        r = client.post(
+            "/api/roster/500/duplicate",
+            json={"target_date": "2026-05-17", "staff_ids": [20]},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert len(body) == 1
+        assert body[0]["date"] == "2026-05-17"
+        assert body[0]["staff_id"] == 20
+
+    def test_happy_target_date_plus_multi_staff_fans_out_at_target(self, rig):
+        """N×M expansion: 1 source × 2 staff + 1 unassigned flag = 3 copies,
+        all on target_date."""
+        client, db, state = rig
+        src = make_shift(id=501, staff_id=10, shift_date=date(2026, 5, 10))
+        state["shifts_by_id"][501] = src
+        state["users_by_id"][20] = make_user(id=20, driver_type="jockey")
+        state["users_by_id"][30] = make_user(id=30, driver_type="jockey")
+
+        r = client.post(
+            "/api/roster/501/duplicate",
+            json={
+                "target_date": "2026-05-17",
+                "staff_ids": [20, 30],
+                "add_unassigned_jockey": True,
+            },
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert len(body) == 3
+        assert all(b["date"] == "2026-05-17" for b in body)
+        # Two assigned + one unassigned (flag).
+        assigned = [b for b in body if b["staff_id"] is not None]
+        unassigned = [b for b in body if b["staff_id"] is None]
+        assert {b["staff_id"] for b in assigned} == {20, 30}
+        assert len(unassigned) == 1
+
+    def test_edge_source_staff_in_target_kept_when_target_date_differs(self, rig):
+        """When the target date differs from source, source.staff_id IS a valid
+        pick — it's a date-copy assigned to them, not a literal duplicate."""
+        client, db, state = rig
+        src = make_shift(id=502, staff_id=10, shift_date=date(2026, 5, 10))
+        state["shifts_by_id"][502] = src
+        state["users_by_id"][10] = make_user(id=10, driver_type="jockey")
+
+        r = client.post(
+            "/api/roster/502/duplicate",
+            json={"target_date": "2026-05-17", "staff_ids": [10]},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert len(body) == 1
+        assert body[0]["date"] == "2026-05-17"
+        assert body[0]["staff_id"] == 10  # NOT skipped — it's a date copy assigned to source's staff
+
+    def test_boundary_overlap_at_target_returns_409(self, rig):
+        """Overlap guard fires at the TARGET date (not source.date) for
+        bulk-staff-add. Confirms the fix where overlap-check uses the right date."""
+        client, db, state = rig
+        src = make_shift(id=503, staff_id=10, shift_date=date(2026, 5, 10))
+        state["shifts_by_id"][503] = src
+        state["users_by_id"][20] = make_user(id=20, driver_type="jockey")
+        # Pre-existing shift on the target date for staff 20 — should collide.
+        existing = make_shift(
+            id=504, staff_id=20, shift_date=date(2026, 5, 17),
+            start_time=time(9, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][504] = existing
+
+        r = client.post(
+            "/api/roster/503/duplicate",
+            json={"target_date": "2026-05-17", "staff_ids": [20]},
+        )
+        assert r.status_code == 409
+        assert "17/05/2026" in r.json()["detail"]
+
+    def test_boundary_pure_date_copy_skips_overlap_check(self, rig):
+        """Regression guard for the SPEC v3 'create both copies; admin sorts
+        manually' rule: pure date-copy (no staff_ids) does NOT 409 on overlap."""
+        client, db, state = rig
+        src = make_shift(id=505, staff_id=10, shift_date=date(2026, 5, 10))
+        state["shifts_by_id"][505] = src
+        # Pre-existing shift on the target date for source's staff (10).
+        existing = make_shift(
+            id=506, staff_id=10, shift_date=date(2026, 5, 17),
+            start_time=time(9, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][506] = existing
+
+        r = client.post(
+            "/api/roster/505/duplicate",
+            json={"target_date": "2026-05-17"},
+        )
+        assert r.status_code == 200, r.text  # admin sorts the overlap manually
 
 
 class TestDuplicateStaffFanoutEdge:
