@@ -2886,6 +2886,23 @@
   background: #2a2a2a;
 }
 
+/* v3 Phase 3 multi-select bulk-bar — same pill styling as single-select. */
+.rc-actionbar.rc-actionbar-multi {
+  flex-wrap: wrap;
+}
+
+.rc-bulk-shift-list {
+  max-height: 180px;
+  overflow-y: auto;
+  margin: 8px 0 0;
+  padding: 0 0 0 16px;
+  color: #aaa;
+  font-size: 0.85rem;
+}
+.rc-bulk-shift-list li {
+  padding: 2px 0;
+}
+
 /* Shift selection checkbox */
 .shift-card {
   position: relative;

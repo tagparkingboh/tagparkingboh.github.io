@@ -255,6 +255,12 @@ function RosterCalendar({
   const [v3DeleteModal, setV3DeleteModal] = useState(null)    // { shift } — separate from per-card delete confirmation
   const [actionSubmitting, setActionSubmitting] = useState(false)
   const [actionError, setActionError] = useState('')
+  // Phase 3 — bulk modals (multi-select). Each loops the Phase 2 single-shift
+  // endpoint on the frontend so audit stays one-row-per-action and partial
+  // failures are reported in a single banner without the server orchestrating.
+  const [bulkDuplicateModal, setBulkDuplicateModal] = useState(null)  // { shifts, target_date }
+  const [bulkUnassignModal, setBulkUnassignModal] = useState(null)    // { shifts }
+  const [bulkDeleteModal, setBulkDeleteModal] = useState(null)        // { shifts }
 
   // Monthly hours (for payroll)
   const [monthlyHours, setMonthlyHours] = useState(null)
@@ -1543,6 +1549,139 @@ function RosterCalendar({
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Phase 3 bulk handlers — loop Phase 2 endpoints. Per spec, multi-select
+  // exposes only Duplicate / Unassign / Delete (Merge needs adjacency, Split
+  // is single-shift). On partial failure, the toast summarises and the error
+  // banner lists per-shift reasons.
+  // ---------------------------------------------------------------------------
+
+  const summariseBulkResult = (label, successCount, total, errors) => {
+    if (errors.length === 0) {
+      setSuccessMessage(`${label} ${successCount} of ${total} shifts`)
+      setTimeout(() => setSuccessMessage(''), 3500)
+      setActionError('')
+    } else {
+      setSuccessMessage(`${label} ${successCount} of ${total} — ${errors.length} failed`)
+      setTimeout(() => setSuccessMessage(''), 5000)
+      setActionError(errors.join('; '))
+    }
+  }
+
+  const openBulkDuplicateModal = () => {
+    setActionError('')
+    const shifts = selectedDateShifts.filter((s) => selectedShiftIds.includes(s.id))
+    setBulkDuplicateModal({ shifts, target_date: '' })
+  }
+
+  const submitBulkDuplicate = async () => {
+    if (!bulkDuplicateModal) return
+    const { shifts, target_date } = bulkDuplicateModal
+    if (!target_date || target_date.length !== 10) {
+      setActionError('Pick a target date (DD/MM/YYYY).')
+      return
+    }
+    const isoDate = ukToISO(target_date)
+    setActionSubmitting(true)
+    let successCount = 0
+    const errors = []
+    for (const s of shifts) {
+      try {
+        const r = await fetch(`${API_URL}/api/roster/${s.id}/duplicate`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_date: isoDate }),
+        })
+        if (r.ok) {
+          successCount++
+        } else {
+          const err = await r.json().catch(() => ({}))
+          errors.push(`Shift ${s.id}: ${err.detail || `status ${r.status}`}`)
+        }
+      } catch (err) {
+        errors.push(`Shift ${s.id}: network error`)
+      }
+    }
+    setActionSubmitting(false)
+    summariseBulkResult('Duplicated', successCount, shifts.length, errors)
+    if (successCount > 0) {
+      setBulkDuplicateModal(null)
+      refreshAfterAction()
+    }
+  }
+
+  const openBulkUnassignModal = () => {
+    setActionError('')
+    const shifts = selectedDateShifts.filter((s) => selectedShiftIds.includes(s.id))
+    setBulkUnassignModal({ shifts })
+  }
+
+  const submitBulkUnassign = async () => {
+    if (!bulkUnassignModal) return
+    const { shifts } = bulkUnassignModal
+    setActionSubmitting(true)
+    let successCount = 0
+    const errors = []
+    for (const s of shifts) {
+      try {
+        const r = await fetch(`${API_URL}/api/roster/${s.id}/unassign`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (r.ok) {
+          successCount++
+        } else {
+          const err = await r.json().catch(() => ({}))
+          errors.push(`Shift ${s.id}: ${err.detail || `status ${r.status}`}`)
+        }
+      } catch (err) {
+        errors.push(`Shift ${s.id}: network error`)
+      }
+    }
+    setActionSubmitting(false)
+    summariseBulkResult('Unassigned', successCount, shifts.length, errors)
+    if (successCount > 0) {
+      setBulkUnassignModal(null)
+      refreshAfterAction()
+    }
+  }
+
+  const openBulkDeleteModal = () => {
+    setActionError('')
+    const shifts = selectedDateShifts.filter((s) => selectedShiftIds.includes(s.id))
+    setBulkDeleteModal({ shifts })
+  }
+
+  const submitBulkDelete = async () => {
+    if (!bulkDeleteModal) return
+    const { shifts } = bulkDeleteModal
+    setActionSubmitting(true)
+    let successCount = 0
+    const errors = []
+    for (const s of shifts) {
+      try {
+        const r = await fetch(`${API_URL}/api/roster/${s.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (r.ok) {
+          successCount++
+        } else {
+          const err = await r.json().catch(() => ({}))
+          errors.push(`Shift ${s.id}: ${err.detail || `status ${r.status}`}`)
+        }
+      } catch (err) {
+        errors.push(`Shift ${s.id}: network error`)
+      }
+    }
+    setActionSubmitting(false)
+    summariseBulkResult('Deleted', successCount, shifts.length, errors)
+    if (successCount > 0) {
+      setBulkDeleteModal(null)
+      refreshAfterAction()
+    }
+  }
+
   const deleteShift = async () => {
     if (!shiftToDelete) return
 
@@ -2765,10 +2904,13 @@ function RosterCalendar({
                     )
                   })()}
                   {isAdmin && selectedShiftIds.length >= 2 && (
-                    <div className="bulk-actions-bar">
+                    <div className="bulk-actions-bar rc-actionbar rc-actionbar-multi">
                       <span className="bulk-selection-count">{selectedShiftIds.length} selected</span>
-                      <button className="bulk-edit-btn" onClick={openBulkEditModal}>
-                        Bulk Edit
+                      <button className="rc-action-btn rc-action-duplicate" onClick={openBulkDuplicateModal}>Duplicate</button>
+                      <button className="rc-action-btn rc-action-unassign" onClick={openBulkUnassignModal}>Unassign</button>
+                      <button className="rc-action-btn rc-action-delete" onClick={openBulkDeleteModal}>Delete</button>
+                      <button className="bulk-edit-btn" onClick={openBulkEditModal} title="Edit times / add bookings (legacy bulk editor)">
+                        Edit…
                       </button>
                       <button className="bulk-clear-btn" onClick={clearShiftSelection}>
                         Clear
@@ -4349,6 +4491,87 @@ function RosterCalendar({
               <button className="modal-btn modal-btn-secondary" onClick={() => setV3DeleteModal(null)} disabled={actionSubmitting}>Cancel</button>
               <button className="modal-btn modal-btn-danger" onClick={submitV3Delete} disabled={actionSubmitting}>
                 {actionSubmitting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v3 Phase 3 — bulk modals (locked 2026-05-04). Each loops the
+          Phase 2 single-shift endpoint client-side. */}
+      {bulkDuplicateModal && isAdmin && (
+        <div className="modal-overlay" onClick={() => !actionSubmitting && setBulkDuplicateModal(null)}>
+          <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Duplicate {bulkDuplicateModal.shifts.length} Shifts</h3>
+            <p className="rc-action-source">
+              Each selected shift will be copied to the target date with the same staff and times.
+            </p>
+            <div className="form-group">
+              <label>Target date (DD/MM/YYYY)</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="DD/MM/YYYY"
+                value={bulkDuplicateModal.target_date}
+                onChange={(e) => setBulkDuplicateModal({ ...bulkDuplicateModal, target_date: e.target.value })}
+                maxLength={10}
+              />
+            </div>
+            {actionError && <div className="rc-action-error">{actionError}</div>}
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setBulkDuplicateModal(null)} disabled={actionSubmitting}>Cancel</button>
+              <button className="modal-btn modal-btn-primary" onClick={submitBulkDuplicate} disabled={actionSubmitting}>
+                {actionSubmitting ? 'Duplicating…' : `Duplicate ${bulkDuplicateModal.shifts.length}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkUnassignModal && isAdmin && (
+        <div className="modal-overlay" onClick={() => !actionSubmitting && setBulkUnassignModal(null)}>
+          <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Unassign {bulkUnassignModal.shifts.length} Shifts</h3>
+            <p>
+              Clear the staff assignment on these {bulkUnassignModal.shifts.length} shifts?
+            </p>
+            <ul className="rc-bulk-shift-list">
+              {bulkUnassignModal.shifts.map((s) => (
+                <li key={s.id}>
+                  {formatTime(s.start_time)}–{formatTime(s.end_time)} · {s.staff_initials || 'Unassigned'}
+                </li>
+              ))}
+            </ul>
+            {actionError && <div className="rc-action-error">{actionError}</div>}
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setBulkUnassignModal(null)} disabled={actionSubmitting}>Cancel</button>
+              <button className="modal-btn modal-btn-primary" onClick={submitBulkUnassign} disabled={actionSubmitting}>
+                {actionSubmitting ? 'Unassigning…' : `Unassign ${bulkUnassignModal.shifts.length}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkDeleteModal && isAdmin && (
+        <div className="modal-overlay" onClick={() => !actionSubmitting && setBulkDeleteModal(null)}>
+          <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete {bulkDeleteModal.shifts.length} Shifts</h3>
+            <p>
+              These {bulkDeleteModal.shifts.length} shifts will be permanently deleted. This cannot be undone.
+            </p>
+            <ul className="rc-bulk-shift-list">
+              {bulkDeleteModal.shifts.map((s) => (
+                <li key={s.id}>
+                  {formatTime(s.start_time)}–{formatTime(s.end_time)} · {s.staff_initials || 'Unassigned'}
+                </li>
+              ))}
+            </ul>
+            {actionError && <div className="rc-action-error">{actionError}</div>}
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setBulkDeleteModal(null)} disabled={actionSubmitting}>Cancel</button>
+              <button className="modal-btn modal-btn-danger" onClick={submitBulkDelete} disabled={actionSubmitting}>
+                {actionSubmitting ? 'Deleting…' : `Delete ${bulkDeleteModal.shifts.length}`}
               </button>
             </div>
           </div>
