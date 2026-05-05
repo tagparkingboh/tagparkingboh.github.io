@@ -2924,6 +2924,73 @@
   background: #2a2a2a;
 }
 
+/* v3 Phase 2 Duplicate-modal staff fanout — explicit overrides so the
+   inherited modal-content / form-group rules don't push the checkbox into
+   the middle of the row or right-align the name. The previous .rc-staff-
+   checkbox class shipped before any modal landed it under .modal-content
+   (light theme) — split out a row variant with its own selectors so each
+   property is set deliberately. */
+.rc-action-modal .rc-fanout-block {
+  margin: 4px 0 8px;
+}
+.rc-action-modal .rc-fanout-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #555;
+  margin-bottom: 8px;
+}
+.rc-action-modal .rc-staff-checklist {
+  display: block;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 4px;
+  margin: 0;
+  background: #fff;
+}
+.rc-action-modal .rc-staff-row {
+  display: flex !important;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  margin: 0;
+  color: #1a1a2e;
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+  width: 100%;
+  box-sizing: border-box;
+}
+.rc-action-modal .rc-staff-row:hover {
+  background: #f4f4f6;
+}
+.rc-action-modal .rc-staff-row input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+.rc-action-modal .rc-staff-row-name {
+  flex: 1 1 auto;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rc-action-modal .rc-staff-divider {
+  height: 1px;
+  background: #e3e3e6;
+  margin: 6px 8px;
+}
+
 /* v3 Phase 3 multi-select bulk-bar — same pill styling as single-select. */
 .rc-actionbar.rc-actionbar-multi {
   flex-wrap: wrap;

@@ -4355,11 +4355,11 @@ function RosterCalendar({
                 />
               </div>
             ) : (
-              <div className="form-group">
-                <label>Pick staff to fan out to</label>
+              <div className="rc-fanout-block">
+                <div className="rc-fanout-label">Pick staff to fan out to</div>
                 <div className="rc-staff-checklist">
                   {employees.filter((u) => u.is_active && !u.is_admin && u.id !== duplicateModal.shift.staff_id).map((u) => (
-                    <label key={u.id} className="rc-staff-checkbox">
+                    <label key={u.id} className="rc-staff-row">
                       <input
                         type="checkbox"
                         checked={duplicateModal.staff_ids.includes(u.id)}
@@ -4370,26 +4370,27 @@ function RosterCalendar({
                           setDuplicateModal({ ...duplicateModal, staff_ids: next })
                         }}
                       />
-                      <span>{u.first_name} {u.last_name}</span>
+                      <span className="rc-staff-row-name">{u.first_name} {u.last_name}</span>
                     </label>
                   ))}
+                  <div className="rc-staff-divider" aria-hidden="true" />
+                  <label className="rc-staff-row">
+                    <input
+                      type="checkbox"
+                      checked={duplicateModal.add_unassigned_jockey}
+                      onChange={(e) => setDuplicateModal({ ...duplicateModal, add_unassigned_jockey: e.target.checked })}
+                    />
+                    <span className="rc-staff-row-name">🏇 Unassigned Jockey</span>
+                  </label>
+                  <label className="rc-staff-row">
+                    <input
+                      type="checkbox"
+                      checked={duplicateModal.add_unassigned_fleet}
+                      onChange={(e) => setDuplicateModal({ ...duplicateModal, add_unassigned_fleet: e.target.checked })}
+                    />
+                    <span className="rc-staff-row-name">🚐 Unassigned Fleet</span>
+                  </label>
                 </div>
-                <label className="rc-staff-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={duplicateModal.add_unassigned_jockey}
-                    onChange={(e) => setDuplicateModal({ ...duplicateModal, add_unassigned_jockey: e.target.checked })}
-                  />
-                  <span>🏇 Unassigned Jockey</span>
-                </label>
-                <label className="rc-staff-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={duplicateModal.add_unassigned_fleet}
-                    onChange={(e) => setDuplicateModal({ ...duplicateModal, add_unassigned_fleet: e.target.checked })}
-                  />
-                  <span>🚐 Unassigned Fleet</span>
-                </label>
               </div>
             )}
             {actionError && <div className="rc-action-error">{actionError}</div>}
@@ -4413,19 +4414,21 @@ function RosterCalendar({
             {mergeModal.neighbours.length === 0 ? (
               <p className="rc-action-empty">No adjacent shift on this day. Merge requires the next shift to start exactly when this one ends (or vice versa).</p>
             ) : (
-              <div className="form-group">
-                <label>Merge with</label>
-                {mergeModal.neighbours.map((n) => (
-                  <label key={n.id} className="rc-staff-checkbox">
-                    <input
-                      type="radio"
-                      name="merge-neighbour"
-                      checked={mergeModal.selectedNeighbourId === n.id}
-                      onChange={() => setMergeModal({ ...mergeModal, selectedNeighbourId: n.id })}
-                    />
-                    <span>{formatTime(n.start_time)}–{formatTime(n.end_time)} · {n.staff_initials || 'Unassigned'}</span>
-                  </label>
-                ))}
+              <div className="rc-fanout-block">
+                <div className="rc-fanout-label">Merge with</div>
+                <div className="rc-staff-checklist">
+                  {mergeModal.neighbours.map((n) => (
+                    <label key={n.id} className="rc-staff-row">
+                      <input
+                        type="radio"
+                        name="merge-neighbour"
+                        checked={mergeModal.selectedNeighbourId === n.id}
+                        onChange={() => setMergeModal({ ...mergeModal, selectedNeighbourId: n.id })}
+                      />
+                      <span className="rc-staff-row-name">{formatTime(n.start_time)}–{formatTime(n.end_time)} · {n.staff_initials || 'Unassigned'}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
             )}
             {actionError && <div className="rc-action-error">{actionError}</div>}
