@@ -41,7 +41,10 @@ UK_TZ = zoneinfo.ZoneInfo("Europe/London")
 
 @dataclass(frozen=True)
 class PlannerSettings:
-    window_days: int
+    # window_days: Optional[int] — None or <= 0 means "no upper bound" so the
+    # engine considers every CONFIRMED booking dated today or later, no matter
+    # how far ahead. Locked 2026-05-05 (was 28-day cap).
+    window_days: Optional[int]
     gap_max_minutes: int
     mixed_gap_max_minutes: int
     start_buffer_minutes: int
@@ -57,17 +60,29 @@ class PlannerSettings:
         """Build a PlannerSettings from a {key: parsed_value} map.
 
         The DB stores JSON-encoded strings; callers decode before calling this.
-        Missing keys fall back to locked-2026-04-24 defaults so the engine never
-        crashes on a partial settings row set.
+        Missing keys fall back to locked defaults so the engine never crashes
+        on a partial settings row set.
 
         Buffer compat: the legacy single `buffer_minutes` key (symmetric)
         falls back to start_buffer_minutes / end_buffer_minutes when the
-        new keys aren't present. Lets old DB rows keep working until they
-        get rewritten by an admin PATCH or a data migration.
+        new keys aren't present.
+
+        window_days compat: an explicit row with value > 0 still bounds the
+        engine to that many days. Missing key, None, or 0 → unbounded
+        (locked 2026-05-05).
         """
         legacy_buffer = int(rows.get("buffer_minutes", 30))
+        raw_window = rows.get("window_days", None)
+        if raw_window in (None, 0, "0", ""):
+            window_days: Optional[int] = None
+        else:
+            try:
+                wd = int(raw_window)
+                window_days = wd if wd > 0 else None
+            except (TypeError, ValueError):
+                window_days = None
         return PlannerSettings(
-            window_days=int(rows.get("window_days", 28)),
+            window_days=window_days,
             gap_max_minutes=int(rows.get("gap_max_minutes", 150)),
             mixed_gap_max_minutes=int(rows.get("mixed_gap_max_minutes", 150)),
             start_buffer_minutes=int(rows.get("start_buffer_minutes", 20 if "buffer_minutes" not in rows else legacy_buffer)),
@@ -714,7 +729,24 @@ def propose_roster(
 
     run_id = _make_run_id(now, settings)
     window_start = now.date()
-    window_end = window_start + timedelta(days=settings.window_days)
+    # window_days = None / 0 → no upper bound (locked 2026-05-05). The lower
+    # bound stays at today since the engine plans forward, not backward. We
+    # surface the sentinel `date.max` (9999-12-31) downstream as the
+    # "unbounded" marker so the response model stays schema-stable and the
+    # PlannerRun.window_end DB column doesn't need to become nullable.
+    if settings.window_days and settings.window_days > 0:
+        window_end: date = window_start + timedelta(days=settings.window_days)
+    else:
+        window_end = date.max  # treated as "no upper bound"
+
+    def _in_window(d) -> bool:
+        if d is None:
+            return False
+        if d < window_start:
+            return False
+        if window_end < date.max and d >= window_end:
+            return False
+        return True
 
     # 1. Extract events from CONFIRMED bookings whose drop-off and/or pick-up fall in window.
     events: list[Event] = []
@@ -725,7 +757,7 @@ def propose_roster(
             f"{getattr(b, 'customer_first_name', '') or ''} "
             f"{getattr(b, 'customer_last_name', '') or ''}".strip() or None
         )
-        if window_start <= b.dropoff_date < window_end:
+        if _in_window(b.dropoff_date):
             events.append(
                 Event(
                     booking_id=b.id,
@@ -738,7 +770,7 @@ def propose_roster(
                     status="confirmed",
                 )
             )
-        if window_start <= b.pickup_date < window_end:
+        if _in_window(b.pickup_date):
             # Pick-up shift anchors to the *flight arrival time*, not the
             # customer-meet time (= arrival + 30). The jockey needs to be
             # at the airport before the plane lands so the car is ready

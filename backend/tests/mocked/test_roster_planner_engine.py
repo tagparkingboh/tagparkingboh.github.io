@@ -1690,6 +1690,152 @@ class TestPickupShiftEndAnchorsToHandoff:
         assert s["end_time"].strftime("%H:%M") == "13:40"
 
 
+class TestPlanningWindowUnbounded:
+    """v3 (locked 2026-05-05): window_days = None / 0 → no upper bound on
+    the planning window. Lower bound (today) still excludes past bookings.
+
+    Boundary matrix per the standing 'test boundaries' rule:
+      - bookings dated yesterday → excluded (lower bound holds)
+      - bookings dated today → included
+      - bookings dated 28 days ahead → included (was the v1 cap)
+      - bookings dated 29 days ahead with the legacy 28-day cap → excluded
+      - bookings dated 1 year ahead with unbounded → included
+      - window_end is the date.max sentinel when unbounded
+    """
+
+    def _settings_unbounded(self):
+        return PlannerSettings(
+            window_days=None,  # unbounded
+            gap_max_minutes=DEFAULT_SETTINGS.gap_max_minutes,
+            mixed_gap_max_minutes=DEFAULT_SETTINGS.mixed_gap_max_minutes,
+            start_buffer_minutes=DEFAULT_SETTINGS.start_buffer_minutes,
+            end_buffer_minutes=DEFAULT_SETTINGS.end_buffer_minutes,
+            staffing_thresholds=DEFAULT_SETTINGS.staffing_thresholds,
+            max_hours_per_week=DEFAULT_SETTINGS.max_hours_per_week,
+            min_rest_hours=DEFAULT_SETTINGS.min_rest_hours,
+            untouchable_hours=DEFAULT_SETTINGS.untouchable_hours,
+            min_shift_minutes=DEFAULT_SETTINGS.min_shift_minutes,
+        )
+
+    def test_happy_one_year_ahead_booking_included_when_unbounded(self):
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-FAR",
+                drop_dt=uk_dt(2027, 5, 1, 8, 0),       # 1 year ahead
+                pick_dt=uk_dt(2027, 5, 14, 14, 0),
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=self._settings_unbounded(), now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        # 2 events (drop-off + pick-up) — both far in the future, both should
+        # produce shifts since the engine no longer caps at 28 days.
+        assert len(new_shifts) == 2
+        # window_end carries the sentinel `date.max` so callers can detect.
+        assert result["window_end"] == date.max
+
+    def test_boundary_lower_bound_yesterday_still_excluded(self):
+        """Lower bound (today) holds even when window_days is unbounded —
+        the engine plans forward, not backward."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-PAST",
+                drop_dt=uk_dt(2026, 4, 30, 8, 0),  # yesterday
+                pick_dt=uk_dt(2026, 5, 7, 14, 0),
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=self._settings_unbounded(), now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        # Pick-up on 2026-05-07 is in window; drop-off yesterday is not.
+        # Exactly one shift expected (the pickup).
+        assert len(new_shifts) == 1
+        assert new_shifts[0]["date"].isoformat() == "2026-05-07"
+
+    def test_boundary_today_inclusive(self):
+        """Lower bound t=0: a booking with drop_off today is included."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-TODAY",
+                drop_dt=uk_dt(2026, 5, 1, 14, 0),
+                pick_dt=uk_dt(2026, 6, 1, 10, 0),
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=self._settings_unbounded(), now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 2
+
+    def test_boundary_window_days_zero_treated_as_unbounded(self):
+        """Belt-and-braces: window_days=0 is also "unbounded" so the from_kv
+        coercion + the engine filter agree on the meaning of 0."""
+        s = PlannerSettings(
+            window_days=0,
+            gap_max_minutes=DEFAULT_SETTINGS.gap_max_minutes,
+            mixed_gap_max_minutes=DEFAULT_SETTINGS.mixed_gap_max_minutes,
+            start_buffer_minutes=DEFAULT_SETTINGS.start_buffer_minutes,
+            end_buffer_minutes=DEFAULT_SETTINGS.end_buffer_minutes,
+            staffing_thresholds=DEFAULT_SETTINGS.staffing_thresholds,
+            max_hours_per_week=DEFAULT_SETTINGS.max_hours_per_week,
+            min_rest_hours=DEFAULT_SETTINGS.min_rest_hours,
+            untouchable_hours=DEFAULT_SETTINGS.untouchable_hours,
+            min_shift_minutes=DEFAULT_SETTINGS.min_shift_minutes,
+        )
+        now = uk_dt(2026, 5, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-FAR-ZERO",
+                drop_dt=uk_dt(2027, 1, 1, 8, 0),
+                pick_dt=uk_dt(2027, 1, 8, 14, 0),
+            ),
+        ]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=[mk_staff(10)], holidays=[],
+            settings=s, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 2
+
+    def test_boundary_legacy_28_day_cap_still_works(self):
+        """Back-compat: explicit window_days=28 still bounds the engine.
+        Booking 29 days ahead should be excluded under the legacy cap, even
+        though the same booking is included when window_days is None."""
+        now = uk_dt(2026, 5, 1, 0, 0)
+        # Drop-off on day 29 — outside a 28-day window (today + 28 = 2026-05-29).
+        bookings = [
+            mk_booking(
+                1, "TAG-DAY29",
+                drop_dt=uk_dt(2026, 5, 30, 8, 0),  # day 29
+                pick_dt=uk_dt(2026, 6, 30, 10, 0),  # day 60 too
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result_capped = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,  # window_days=28
+        )
+        result_unbounded = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=self._settings_unbounded(), now=now,
+        )
+        capped_new = [p for p in result_capped["proposed_shifts"] if p["kind"] == "new"]
+        unbounded_new = [p for p in result_unbounded["proposed_shifts"] if p["kind"] == "new"]
+        assert len(capped_new) == 0  # both events outside 28-day window
+        assert len(unbounded_new) == 2  # both events visible without cap
+
+
 class TestSpecGapFillers:
     def test_all_jockeys_excluded_produces_unmanned_warning(self):
         """When every assignable jockey is on holiday, the shift is

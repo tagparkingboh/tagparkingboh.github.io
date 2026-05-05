@@ -91,12 +91,16 @@ def fire_engine(
         engine_settings = PlannerSettings.from_kv(parsed)
         now = datetime.now(UK_TZ)
         window_start = now.date()
-        window_end = window_start + timedelta(days=engine_settings.window_days)
+        # window_days = None / 0 → no upper bound (locked 2026-05-05). DB
+        # prefetch drops the `< window_end` filter when unbounded so the
+        # engine sees every confirmed booking from today onwards, no matter
+        # how far ahead the trip date is.
+        bounded = engine_settings.window_days is not None and engine_settings.window_days > 0
+        window_end = window_start + timedelta(days=engine_settings.window_days) if bounded else None
 
-        bookings = (
-            db.query(Booking)
-            .filter(
-                Booking.status == BookingStatus.CONFIRMED,
+        booking_filters = [Booking.status == BookingStatus.CONFIRMED]
+        if bounded:
+            booking_filters.append(
                 or_(
                     and_(
                         Booking.dropoff_date >= window_start,
@@ -106,31 +110,32 @@ def fire_engine(
                         Booking.pickup_date >= window_start,
                         Booking.pickup_date < window_end,
                     ),
-                ),
+                )
             )
-            .all()
-        )
-        shifts = (
-            db.query(RosterShift)
-            .filter(
-                RosterShift.date >= window_start,
-                RosterShift.date < window_end,
+        else:
+            # Unbounded: only need the lower bound on either side.
+            booking_filters.append(
+                or_(
+                    Booking.dropoff_date >= window_start,
+                    Booking.pickup_date >= window_start,
+                )
             )
-            .all()
-        )
+        bookings = db.query(Booking).filter(*booking_filters).all()
+
+        shift_filters = [RosterShift.date >= window_start]
+        if bounded:
+            shift_filters.append(RosterShift.date < window_end)
+        shifts = db.query(RosterShift).filter(*shift_filters).all()
+
         staff = (
             db.query(User)
             .filter(User.is_active == True)
             .all()
         )
-        holidays = (
-            db.query(EmployeeHoliday)
-            .filter(
-                EmployeeHoliday.start_date < window_end,
-                EmployeeHoliday.end_date >= window_start,
-            )
-            .all()
-        )
+        holiday_filters = [EmployeeHoliday.end_date >= window_start]
+        if bounded:
+            holiday_filters.append(EmployeeHoliday.start_date < window_end)
+        holidays = db.query(EmployeeHoliday).filter(*holiday_filters).all()
 
         proposal = propose_roster(
             bookings=bookings,

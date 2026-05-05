@@ -689,7 +689,10 @@ class RosterPlannerStaffingThreshold(BaseModel):
 
 class RosterPlannerSettingsResponse(BaseModel):
     """Read-only snapshot of current planner settings."""
-    window_days: int
+    # Optional / 0 → no upper bound on the planning window (locked
+    # 2026-05-05). Engine considers every CONFIRMED booking from today
+    # onwards regardless of how far ahead the trip date is.
+    window_days: Optional[int] = None
     gap_max_minutes: int
     mixed_gap_max_minutes: int
     start_buffer_minutes: int
@@ -709,7 +712,10 @@ class RosterPlannerSettingsUpdate(BaseModel):
     at the endpoint — so a PATCH with only `{max_hours_per_week: 45}` leaves every
     other setting untouched (per SPEC.md 2026-04-06 null-vs-not-provided rule).
     """
-    window_days: Optional[int] = Field(default=None, ge=1, le=90)
+    # `window_days` upper bound was 90 days under the v1 cap. Now nullable
+    # (locked 2026-05-05): pass null or 0 to remove the planning window cap;
+    # any positive int still bounds the engine to that many days.
+    window_days: Optional[int] = Field(default=None, ge=0, le=3650)
     gap_max_minutes: Optional[int] = Field(default=None, ge=0, le=480)
     mixed_gap_max_minutes: Optional[int] = Field(default=None, ge=0, le=720)
     start_buffer_minutes: Optional[int] = Field(default=None, ge=0, le=120)
@@ -787,6 +793,9 @@ class RosterProposalResponse(BaseModel):
     run_id: str  # UUID for audit / replay / undo
     generated_at: datetime
     window_start: date_type
+    # window_end may carry the sentinel date(9999, 12, 31) when the engine
+    # is configured with no upper bound (window_days = None / 0). Frontends
+    # can detect that case and render "no upper bound".
     window_end: date_type
     settings_snapshot: RosterPlannerSettingsResponse
     proposed_shifts: List[ProposedShift]
@@ -810,6 +819,9 @@ class PlannerRunListItem(BaseModel):
     trigger_event: str
     trigger_ref: Optional[str] = None
     window_start: date_type
+    # window_end may carry the sentinel date(9999, 12, 31) when the engine
+    # is configured with no upper bound (window_days = None / 0). Frontends
+    # can detect that case and render "no upper bound".
     window_end: date_type
     duration_ms: Optional[int] = None
     has_error: bool = False
@@ -855,6 +867,9 @@ class PlannerRunDetail(BaseModel):
     trigger_event: str
     trigger_ref: Optional[str] = None
     window_start: date_type
+    # window_end may carry the sentinel date(9999, 12, 31) when the engine
+    # is configured with no upper bound (window_days = None / 0). Frontends
+    # can detect that case and render "no upper bound".
     window_end: date_type
     proposal: Optional[dict] = None
     diff_vs_current: Optional[dict] = None

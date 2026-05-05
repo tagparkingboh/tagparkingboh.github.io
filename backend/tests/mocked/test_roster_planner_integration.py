@@ -247,7 +247,10 @@ class TestGetSettings:
         r = client.get("/api/admin/qa/roster-planner/settings")
         assert r.status_code == 200
         body = r.json()
-        assert body["window_days"] == 28
+        # window_days default is now None (locked 2026-05-05) — engine has
+        # no upper bound on the planning window unless an admin explicitly
+        # PATCHes a positive int.
+        assert body["window_days"] is None
         assert body["min_rest_hours"] == 8
 
     def test_edge_custom_value_roundtrips(self, client, mock_db):
@@ -577,20 +580,39 @@ class TestPatchSettings:
         assert mock_db._committed is False
         mock_db.add.assert_not_called()
 
-    def test_boundary_window_days_out_of_range_rejected(self, client, mock_db):
+    def test_boundary_window_days_zero_treated_as_unbounded(self, client, mock_db):
+        """v3 (locked 2026-05-05): window_days = 0 is now valid — it means
+        'no upper bound on the planning window'. The engine reads it as None.
+        Schema bound was relaxed from ge=1 / le=90 to ge=0 / le=3650 (10 yrs)."""
         mock_db._tables[DbRosterPlannerSettings] = default_settings_rows()
 
         r = client.patch(
             "/api/admin/qa/roster-planner/settings",
-            json={"window_days": 0},  # schema says ge=1
+            json={"window_days": 0},
+        )
+        assert r.status_code == 200
+
+    def test_boundary_window_days_above_ten_year_cap_rejected(self, client, mock_db):
+        """Upper safety limit: 3650 days (~10 years). Stops accidental
+        billion-day values from breaking the prefetch."""
+        mock_db._tables[DbRosterPlannerSettings] = default_settings_rows()
+
+        r = client.patch(
+            "/api/admin/qa/roster-planner/settings",
+            json={"window_days": 3651},
         )
         assert r.status_code == 422
 
-        r2 = client.patch(
+    def test_boundary_window_days_legacy_28_still_accepted(self, client, mock_db):
+        """Back-compat: existing DBs with window_days=28 still validate and
+        bound the engine to 28 days when admin explicitly wants the legacy cap."""
+        mock_db._tables[DbRosterPlannerSettings] = default_settings_rows()
+
+        r = client.patch(
             "/api/admin/qa/roster-planner/settings",
-            json={"window_days": 91},  # schema says le=90
+            json={"window_days": 28},
         )
-        assert r2.status_code == 422
+        assert r.status_code == 200
 
     def test_settings_change_fires_engine_in_background(self, client, mock_db, monkeypatch):
         """A rule change must trigger the engine in shadow mode — the next

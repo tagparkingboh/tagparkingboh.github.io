@@ -3099,7 +3099,9 @@ async def delete_holiday(
 QA_USER_IDS = {1, 2}
 
 _PLANNER_DEFAULT_SETTINGS = {
-    "window_days": 28,
+    # Locked 2026-05-05: default to no upper bound on the planning window.
+    # Admin can still set a positive int via PATCH /settings to cap it.
+    "window_days": None,
     "gap_max_minutes": 150,
     "mixed_gap_max_minutes": 150,
     "start_buffer_minutes": 20,
@@ -3205,12 +3207,15 @@ async def propose_roster_endpoint(
     engine_settings = PlannerSettings.from_kv(parsed)
     now = datetime.now(UK_TZ)
     window_start = now.date()
-    window_end = window_start + timedelta(days=engine_settings.window_days)
+    # window_days = None / 0 → no upper bound (locked 2026-05-05). Drop the
+    # `< window_end` prefetch filters so the engine sees every confirmed
+    # booking from today onwards.
+    bounded = engine_settings.window_days is not None and engine_settings.window_days > 0
+    window_end = window_start + timedelta(days=engine_settings.window_days) if bounded else None
 
-    bookings = (
-        db.query(Booking)
-        .filter(
-            Booking.status == BookingStatus.CONFIRMED,
+    booking_filters = [Booking.status == BookingStatus.CONFIRMED]
+    if bounded:
+        booking_filters.append(
             or_(
                 and_(
                     Booking.dropoff_date >= window_start,
@@ -3220,31 +3225,31 @@ async def propose_roster_endpoint(
                     Booking.pickup_date >= window_start,
                     Booking.pickup_date < window_end,
                 ),
-            ),
+            )
         )
-        .all()
-    )
-    shifts = (
-        db.query(RosterShift)
-        .filter(
-            RosterShift.date >= window_start,
-            RosterShift.date < window_end,
+    else:
+        booking_filters.append(
+            or_(
+                Booking.dropoff_date >= window_start,
+                Booking.pickup_date >= window_start,
+            )
         )
-        .all()
-    )
+    bookings = db.query(Booking).filter(*booking_filters).all()
+
+    shift_filters = [RosterShift.date >= window_start]
+    if bounded:
+        shift_filters.append(RosterShift.date < window_end)
+    shifts = db.query(RosterShift).filter(*shift_filters).all()
+
     staff = (
         db.query(User)
         .filter(User.is_active == True)
         .all()
     )
-    holidays = (
-        db.query(EmployeeHoliday)
-        .filter(
-            EmployeeHoliday.start_date < window_end,
-            EmployeeHoliday.end_date >= window_start,
-        )
-        .all()
-    )
+    holiday_filters = [EmployeeHoliday.end_date >= window_start]
+    if bounded:
+        holiday_filters.append(EmployeeHoliday.start_date < window_end)
+    holidays = db.query(EmployeeHoliday).filter(*holiday_filters).all()
 
     result = propose_roster(
         bookings=bookings,
@@ -4102,7 +4107,13 @@ def _resolve_dates(req: RegenerateAutoRequest, settings: PlannerSettings) -> set
     """Map a regenerate request to the explicit date set the run will cover."""
     today = datetime.now(UK_TZ).date()
     if req.mode == "next_4_weeks":
-        return {today + timedelta(days=i) for i in range(settings.window_days)}
+        # The "Regenerate next 4 weeks" button is a UX convenience independent
+        # of the engine's planning window (which can now be unbounded). Use
+        # window_days when explicitly set and reasonable; otherwise fall back
+        # to the literal "4 weeks = 28 days" so the button still does what
+        # admins expect when the engine's window is None / 0.
+        days = settings.window_days if (settings.window_days and settings.window_days > 0) else 28
+        return {today + timedelta(days=i) for i in range(days)}
     if req.mode == "date_range":
         if not req.date_from or not req.date_to:
             raise HTTPException(status_code=422, detail="date_range mode requires date_from and date_to")
