@@ -1326,6 +1326,55 @@
   font-size: 0.9rem;
 }
 
+/* Date-range inputs in the Clear-auto-shifts modal (locked 2026-05-05). */
+.prp-clear-range {
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.prp-clear-range-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  margin-bottom: 0.5rem;
+}
+.prp-clear-range-inputs {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.prp-clear-range-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #334155;
+  flex: 1 1 140px;
+  min-width: 140px;
+}
+.prp-clear-range-inputs label > span {
+  font-weight: 500;
+}
+.prp-clear-range-inputs input {
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+  color: #0f172a;
+}
+.prp-clear-range-inputs input:focus {
+  outline: none;
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.18);
+}
+.prp-clear-range-inputs input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
 /* Secondary header button: Run shadow engine (the old behaviour). */
 .prp-shadow-run-btn {
   background: transparent;

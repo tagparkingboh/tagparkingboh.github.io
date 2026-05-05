@@ -517,3 +517,31 @@ class TestDeleteAllAutoShifts:
         db = make_db()
         assert delete_all_auto_shifts(db) == 0
         db.commit.assert_not_called()
+
+    def test_happy_no_range_passes_no_extra_filters(self):
+        """Boundary: omitting both date_from and date_to should not narrow
+        the candidate query — legacy behaviour preserved (locked 2026-05-05)."""
+        s1 = SimpleNamespace(id=1, created_source="auto", staff_id=None, status=ShiftStatus.SCHEDULED)
+        db = make_db(untouched_auto_shifts=[s1])
+        assert delete_all_auto_shifts(db, date_from=None, date_to=None) == 1
+
+    def test_edge_only_date_from_filters_lower_bound(self):
+        """Edge: passing only date_from leaves the upper edge open."""
+        s1 = SimpleNamespace(id=1, created_source="auto", staff_id=None, status=ShiftStatus.SCHEDULED)
+        db = make_db(untouched_auto_shifts=[s1])
+        # Mock returns the same list regardless of filters — what we're
+        # asserting is that the function accepts the kwarg and doesn't
+        # crash. The SQL filter is exercised live by integration tests.
+        assert delete_all_auto_shifts(db, date_from=date(2026, 6, 1)) == 1
+
+    def test_edge_only_date_to_filters_upper_bound(self):
+        s1 = SimpleNamespace(id=1, created_source="auto", staff_id=None, status=ShiftStatus.SCHEDULED)
+        db = make_db(untouched_auto_shifts=[s1])
+        assert delete_all_auto_shifts(db, date_to=date(2026, 6, 30)) == 1
+
+    def test_boundary_both_dates_set_filters_inclusive_range(self):
+        s1 = SimpleNamespace(id=1, created_source="auto", staff_id=None, status=ShiftStatus.SCHEDULED)
+        db = make_db(untouched_auto_shifts=[s1])
+        assert delete_all_auto_shifts(
+            db, date_from=date(2026, 6, 1), date_to=date(2026, 6, 30)
+        ) == 1

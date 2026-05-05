@@ -4184,15 +4184,25 @@ async def regenerate_auto_roster(
 
 @router.delete("/admin/qa/roster-planner/auto-shifts")
 async def delete_all_auto_shifts_endpoint(
+    date_from: Optional[date_type] = Query(
+        None, description="Inclusive lower bound (YYYY-MM-DD). Omit for open-ended."
+    ),
+    date_to: Optional[date_type] = Query(
+        None, description="Inclusive upper bound (YYYY-MM-DD). Omit for open-ended."
+    ),
     current_user: User = Depends(require_qa_admin),
     db: Session = Depends(get_db),
 ):
-    """Admin override: wipe every untouched auto-shift across all dates.
+    """Admin override: wipe untouched auto-shifts in the given date range.
 
     Touched / claimed auto-shifts are left intact. Useful for "I don't
     trust the current state of the auto-roster, let me start fresh" —
     and after this runs, the next booking confirmation (or a regenerate
     call) will repopulate cleanly.
+
+    Date scope (locked 2026-05-05): pass `date_from` and/or `date_to` to
+    constrain the wipe to a range. Both omitted = wipe across all dates
+    (legacy behaviour).
     """
     try:
         from auto_roster import delete_all_auto_shifts
@@ -4205,5 +4215,11 @@ async def delete_all_auto_shifts_endpoint(
             ),
         )
 
-    count = delete_all_auto_shifts(db)
-    return {"deleted": count}
+    if date_from and date_to and date_to < date_from:
+        raise HTTPException(
+            status_code=422,
+            detail="date_to must be on or after date_from",
+        )
+
+    count = delete_all_auto_shifts(db, date_from=date_from, date_to=date_to)
+    return {"deleted": count, "date_from": date_from, "date_to": date_to}

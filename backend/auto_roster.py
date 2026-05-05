@@ -352,18 +352,30 @@ def handle_booking_cancelled(db: Session, booking: Booking) -> dict:
     return summary
 
 
-def delete_all_auto_shifts(db: Session) -> int:
-    """Admin override: wipe every untouched auto-shift across all dates.
-    Touched / claimed shifts are preserved. Returns the number deleted."""
-    candidates = (
-        db.query(RosterShift)
-        .filter(
-            RosterShift.created_source == "auto",
-            RosterShift.staff_id.is_(None),
-            RosterShift.status == ShiftStatus.SCHEDULED,
-        )
-        .all()
+def delete_all_auto_shifts(
+    db: Session,
+    date_from: Optional[date_type] = None,
+    date_to: Optional[date_type] = None,
+) -> int:
+    """Admin override: wipe untouched auto-shifts. Touched / claimed shifts
+    are preserved. Returns the number deleted.
+
+    Date scoping (locked 2026-05-05): when `date_from` and/or `date_to` are
+    set, the wipe is constrained to that range (inclusive both ends). Both
+    None → wipe across all dates (legacy behaviour). Only date_from set →
+    open-ended right edge (`>= date_from`). Only date_to set → open-ended
+    left edge (`<= date_to`).
+    """
+    query = db.query(RosterShift).filter(
+        RosterShift.created_source == "auto",
+        RosterShift.staff_id.is_(None),
+        RosterShift.status == ShiftStatus.SCHEDULED,
     )
+    if date_from is not None:
+        query = query.filter(RosterShift.date >= date_from)
+    if date_to is not None:
+        query = query.filter(RosterShift.date <= date_to)
+    candidates = query.all()
     count = 0
     for s in candidates:
         db.delete(s)

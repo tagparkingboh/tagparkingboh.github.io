@@ -61,6 +61,9 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
   // Clear-all-auto-shifts confirm dialog state.
   const [clearAllOpen, setClearAllOpen] = useState(false)
   const [clearAllRunning, setClearAllRunning] = useState(false)
+  // Optional date range scope (DD/MM/YYYY). Empty pair = all-dates wipe.
+  const [clearAllDateFrom, setClearAllDateFrom] = useState('')
+  const [clearAllDateTo, setClearAllDateTo] = useState('')
 
   // Per-proposal-index override state. Populated when an admin clicks an
   // action button (Unassign / Delete / Duplicate) and confirms the dialog.
@@ -140,23 +143,56 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
     }
   }, [apiUrl, authHeader, selectedRunId])
 
+  // DD/MM/YYYY → YYYY-MM-DD. Returns null if input is empty / malformed
+  // (caller decides whether that's an error or "no bound").
+  function ukToIso(uk) {
+    if (!uk || uk.length !== 10) return null
+    const parts = uk.split('/')
+    if (parts.length !== 3) return null
+    const [dd, mm, yyyy] = parts
+    if (dd.length !== 2 || mm.length !== 2 || yyyy.length !== 4) return null
+    return `${yyyy}-${mm}-${dd}`
+  }
+
   async function performClearAll() {
     setClearAllRunning(true)
     setError(null)
     setRegenerateMessage(null)
     try {
+      // Validate the optional range. Either-or-both can be set; empty pair
+      // = legacy "wipe all dates" behaviour.
+      const isoFrom = ukToIso(clearAllDateFrom)
+      const isoTo = ukToIso(clearAllDateTo)
+      if (clearAllDateFrom && !isoFrom) {
+        throw new Error('From date must be DD/MM/YYYY (or leave blank).')
+      }
+      if (clearAllDateTo && !isoTo) {
+        throw new Error('To date must be DD/MM/YYYY (or leave blank).')
+      }
+      if (isoFrom && isoTo && isoTo < isoFrom) {
+        throw new Error('To date must be on or after From date.')
+      }
+      const params = new URLSearchParams()
+      if (isoFrom) params.set('date_from', isoFrom)
+      if (isoTo) params.set('date_to', isoTo)
+      const qs = params.toString() ? `?${params.toString()}` : ''
       const res = await fetch(
-        `${apiUrl}/api/admin/qa/roster-planner/auto-shifts`,
+        `${apiUrl}/api/admin/qa/roster-planner/auto-shifts${qs}`,
         { method: 'DELETE', headers: authHeader },
       )
       const body = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(body?.detail || `Clear failed (HTTP ${res.status})`)
       }
+      const scope = (isoFrom || isoTo)
+        ? ` in ${clearAllDateFrom || '…'}–${clearAllDateTo || '…'}`
+        : ''
       setRegenerateMessage(
-        `Cleared ${body.deleted} untouched auto-shift${body.deleted === 1 ? '' : 's'}. Confirm a new booking or run Regenerate to repopulate.`
+        `Cleared ${body.deleted} untouched auto-shift${body.deleted === 1 ? '' : 's'}${scope}. Confirm a new booking or run Regenerate to repopulate.`
       )
       setClearAllOpen(false)
+      setClearAllDateFrom('')
+      setClearAllDateTo('')
       setCalendarRefreshTick((t) => t + 1)
     } catch (err) {
       setError(err.message || 'Clear failed')
@@ -443,9 +479,9 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
             className="prp-clear-all-btn"
             onClick={() => setClearAllOpen(true)}
             disabled={clearAllRunning}
-            title="Wipe every untouched auto-shift across all dates. Claimed/confirmed auto-shifts are left intact."
+            title="Wipe untouched auto-shifts (optionally scoped to a date range). Claimed/confirmed auto-shifts are left intact."
           >
-            Clear all auto-shifts
+            Clear auto-shifts…
           </button>
         </div>
         {regenerateMessage && (
@@ -556,38 +592,71 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
         />
       )}
 
-      {clearAllOpen && (
-        <div className="modal-overlay" onClick={() => setClearAllOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Clear all auto-shifts</h3>
-            <p>
-              This wipes <strong>every untouched auto-shift</strong> across all
-              dates. Auto-shifts that have been claimed by a jockey, or whose
-              status is no longer SCHEDULED, are <strong>kept</strong>.
-            </p>
-            <div className="modal-warning">
-              You'll need to confirm a new booking or run <em>Regenerate
-              auto-roster</em> to repopulate. There's no undo.
-            </div>
-            <div className="modal-actions">
-              <button
-                className="modal-btn modal-btn-secondary"
-                onClick={() => setClearAllOpen(false)}
-                disabled={clearAllRunning}
-              >
-                Cancel
-              </button>
-              <button
-                className="modal-btn modal-btn-danger"
-                onClick={performClearAll}
-                disabled={clearAllRunning}
-              >
-                {clearAllRunning ? 'Clearing…' : 'Yes, clear them all'}
-              </button>
+      {clearAllOpen && (() => {
+        const hasRange = !!(clearAllDateFrom || clearAllDateTo)
+        return (
+          <div className="modal-overlay" onClick={() => setClearAllOpen(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h3>Clear auto-shifts</h3>
+              <p>
+                {hasRange
+                  ? <>This wipes <strong>untouched auto-shifts</strong> in the chosen date range. Auto-shifts that have been claimed by a jockey, or whose status is no longer SCHEDULED, are <strong>kept</strong>.</>
+                  : <>This wipes <strong>every untouched auto-shift</strong> across all dates. Auto-shifts that have been claimed by a jockey, or whose status is no longer SCHEDULED, are <strong>kept</strong>.</>
+                }
+              </p>
+              <div className="prp-clear-range" role="group" aria-label="Optional date range">
+                <div className="prp-clear-range-label">Limit to date range (optional — leave blank to wipe all dates)</div>
+                <div className="prp-clear-range-inputs">
+                  <label>
+                    <span>From</span>
+                    <input
+                      type="text"
+                      placeholder="DD/MM/YYYY"
+                      value={clearAllDateFrom}
+                      onChange={(e) => setClearAllDateFrom(e.target.value)}
+                      maxLength={10}
+                      disabled={clearAllRunning}
+                    />
+                  </label>
+                  <label>
+                    <span>To</span>
+                    <input
+                      type="text"
+                      placeholder="DD/MM/YYYY"
+                      value={clearAllDateTo}
+                      onChange={(e) => setClearAllDateTo(e.target.value)}
+                      maxLength={10}
+                      disabled={clearAllRunning}
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="modal-warning">
+                You'll need to confirm a new booking or run <em>Regenerate
+                auto-roster</em> to repopulate. There's no undo.
+              </div>
+              <div className="modal-actions">
+                <button
+                  className="modal-btn modal-btn-secondary"
+                  onClick={() => setClearAllOpen(false)}
+                  disabled={clearAllRunning}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="modal-btn modal-btn-danger"
+                  onClick={performClearAll}
+                  disabled={clearAllRunning}
+                >
+                  {clearAllRunning
+                    ? 'Clearing…'
+                    : hasRange ? 'Yes, clear in range' : 'Yes, clear them all'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {undoConfirmRunId && (
         <UndoConfirmModal
