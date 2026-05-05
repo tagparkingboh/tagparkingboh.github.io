@@ -625,6 +625,9 @@ class RosterShiftResponse(BaseModel):
     status: str
     notes: Optional[str] = None
     intended_driver_type: str = "jockey"  # 'jockey' | 'fleet'
+    # Surfaced so the v3 admin Calendar can colour / sort badges differently
+    # when toggle = 'All' (mixing auto + manual on the same day cell).
+    created_source: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

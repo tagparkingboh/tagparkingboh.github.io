@@ -333,6 +333,11 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
             if isinstance(getattr(shift, "intended_driver_type", None), str)
             else "jockey"
         ),
+        created_source=(
+            shift.created_source
+            if isinstance(getattr(shift, "created_source", None), str)
+            else None
+        ),
         created_at=shift.created_at,
         updated_at=shift.updated_at
     )

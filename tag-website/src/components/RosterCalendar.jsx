@@ -893,8 +893,18 @@ function RosterCalendar({
       })
     })
 
+    // v3: when the toggle is "All" the day cell mixes manual + auto. Sort by
+    // source first (manual / planner above auto) so admins see committed work
+    // grouped at the top and auto-roster output as a clearly separate block;
+    // sort within each group by start time. When the toggle is "Manual" or
+    // "Auto" only, this collapses to a pure time sort.
+    const sourceOrder = (s) => (s.created_source === 'auto' ? 1 : 0)
     Object.keys(grouped).forEach((date) => {
-      grouped[date].sort((a, b) => (a.displayStartTime || a.start_time).localeCompare(b.displayStartTime || b.start_time))
+      grouped[date].sort((a, b) => {
+        const so = sourceOrder(a) - sourceOrder(b)
+        if (so !== 0) return so
+        return (a.displayStartTime || a.start_time).localeCompare(b.displayStartTime || b.start_time)
+      })
     })
 
     return grouped
@@ -2428,8 +2438,8 @@ function RosterCalendar({
                           {hasShifts && dayShifts.map((shift, idx) => (
                             <div
                               key={`${shift.id}-${shift.shiftPart || 'full'}`}
-                              className={`day-shift-badge ${shift.isOvernight ? 'overnight' : ''} ${shift.shiftPart === 'end' ? 'overnight-end' : ''}`}
-                              title={shift.staff_first_name ? `${shift.staff_first_name} ${shift.staff_last_name}` : 'Unassigned'}
+                              className={`day-shift-badge ${shift.isOvernight ? 'overnight' : ''} ${shift.shiftPart === 'end' ? 'overnight-end' : ''} ${shift.created_source === 'auto' ? 'source-auto' : 'source-manual'}`}
+                              title={`${shift.staff_first_name ? `${shift.staff_first_name} ${shift.staff_last_name}` : 'Unassigned'} · ${shift.created_source === 'auto' ? 'Auto' : 'Manual'}`}
                             >
                               <span className="shift-time-mini">
                                 {formatTime(shift.displayStartTime)}-{formatTime(shift.displayEndTime)}
@@ -2923,7 +2933,7 @@ function RosterCalendar({
                     const statusConfig = SHIFT_STATUS_CONFIG[shift.status] || SHIFT_STATUS_CONFIG.scheduled
 
                     return (
-                      <div key={shift.id} className={`shift-card ${selectedShiftIds.includes(shift.id) ? 'selected' : ''}`}>
+                      <div key={shift.id} className={`shift-card ${selectedShiftIds.includes(shift.id) ? 'selected' : ''} ${shift.created_source === 'auto' ? 'source-auto' : 'source-manual'}`}>
                         {isAdmin && (
                           <div className="shift-select-checkbox">
                             <input
@@ -2958,6 +2968,11 @@ function RosterCalendar({
                           {shift.isOvernight && (
                             <div className="shift-overnight-badge" title="Overnight shift">
                               🌙 {new Date(shift.date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} → {new Date(shift.end_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                            </div>
+                          )}
+                          {shift.created_source === 'auto' && (
+                            <div className="shift-source-badge source-auto" title="Auto-rostered (engine output, not yet committed)">
+                              🤖 Auto
                             </div>
                           )}
                         </div>
