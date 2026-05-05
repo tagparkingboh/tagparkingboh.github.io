@@ -19,6 +19,7 @@ from db_models import User, Booking, RosterShift, ShiftType, ShiftStatus, Sessio
 from models import (
     EmployeeCreate, EmployeeUpdate, EmployeeResponse,
     RosterShiftCreate, RosterShiftUpdate, RosterShiftResponse,
+    RosterShiftDuplicateRequest, RosterShiftMergeRequest, RosterShiftSplitRequest,
     AutoAssignRequest, AutoAssignResponse, OperationalWarning,
     ShiftTypeEnum, ShiftStatusEnum, LinkedBookingInfo,
     RosterPlannerSettingsResponse, RosterPlannerSettingsUpdate,
@@ -1424,6 +1425,381 @@ async def delete_shift(
     db.commit()
 
     return {"success": True, "message": "Shift deleted"}
+
+
+# ============================================================================
+# Per-Shift Action Endpoints (Roster Planner v3 Phase 2 — locked 2026-05-04)
+#
+# These endpoints back the per-shift action bar in the day-detail modal.
+# All four are admin-only, all four operate on a single roster_shifts row,
+# and all four are intentionally narrow — bulk operations are loop-on-the-
+# frontend (see SPEC.md v3 Phase 3) so audit stays one-row-per-action.
+# ============================================================================
+
+
+def _shift_window_dt(shift: RosterShift) -> tuple[datetime, datetime]:
+    """Naive [start, end] datetime for a shift, expanding overnight via end_date."""
+    end_date = shift.end_date or shift.date
+    start_dt = datetime.combine(shift.date, shift.start_time)
+    end_dt = datetime.combine(end_date, shift.end_time)
+    # Defensive: if end_date wasn't set but end_time wraps past midnight, treat as next day.
+    if end_dt <= start_dt:
+        end_dt = end_dt + timedelta(days=1)
+    return start_dt, end_dt
+
+
+@router.post("/roster/{shift_id}/duplicate", response_model=List[RosterShiftResponse])
+async def duplicate_shift(
+    shift_id: int,
+    body: RosterShiftDuplicateRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Duplicate a roster shift.
+
+    Modes (mutually exclusive — both set returns 422 per the deferred Phase 4 rule):
+    - `target_date` only → 1 copy on that date, same staff/time. Linked
+      bookings re-attach if their event_time falls inside the copy's window
+      (uses the v3 flight-arrival back-date heuristic via _events_for_booking).
+    - `staff_ids` and/or `add_unassigned_jockey` / `add_unassigned_fleet` → N
+      copies on the source's date, one per target.
+
+    Date-copy result is always `created_source='manual'` regardless of the
+    source's source — admin took an explicit action so lifecycle ownership
+    transfers off the auto-roster (per SPEC.md v3).
+    """
+    source = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    has_date = body.target_date is not None
+    has_staff = bool(body.staff_ids) or body.add_unassigned_jockey or body.add_unassigned_fleet
+
+    if has_date and has_staff:
+        raise HTTPException(
+            status_code=422,
+            detail="Bulk staff-add (target_date + staff_ids) is deferred. Pick one mode per request.",
+        )
+    if not has_date and not has_staff:
+        raise HTTPException(
+            status_code=422,
+            detail="Specify either target_date or staff_ids (or unassigned flags) to duplicate.",
+        )
+
+    created: list[RosterShift] = []
+
+    if has_date:
+        # ---- Mode: date copy ----
+        target = body.target_date
+        delta_days = (target - source.date).days
+        source_end_date = source.end_date or source.date
+        new_end_date = source_end_date + timedelta(days=delta_days)
+        new_shift = RosterShift(
+            staff_id=source.staff_id,
+            booking_id=None,
+            date=target,
+            end_date=new_end_date if new_end_date != target else None,
+            start_time=source.start_time,
+            end_time=source.end_time,
+            shift_type=source.shift_type,
+            status=ShiftStatus.SCHEDULED,
+            notes=source.notes,
+            intended_driver_type=source.intended_driver_type or "jockey",
+            created_source="manual",
+        )
+        db.add(new_shift)
+        db.flush()
+        # Re-link bookings whose event time falls inside the copy's window.
+        # _events_for_booking applies the back-date heuristic so flight 23:55
+        # on D-1 anchors correctly when pickup_date is D.
+        from auto_roster import _events_for_booking
+        copy_start_dt = datetime.combine(target, source.start_time)
+        copy_end_dt = datetime.combine(new_end_date, source.end_time)
+        if copy_end_dt <= copy_start_dt:
+            copy_end_dt = copy_end_dt + timedelta(days=1)
+        for b in (source.bookings or []):
+            for _et, edt in _events_for_booking(b):
+                if copy_start_dt <= edt <= copy_end_dt:
+                    db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=b.id))
+                    break
+        created.append(new_shift)
+    else:
+        # ---- Mode: staff fanout ----
+        # Build the (staff_id, forced_intended_driver_type) write list.
+        writes: list[tuple[Optional[int], Optional[str]]] = []
+        seen_staff: set[int] = set()
+        for sid in (body.staff_ids or []):
+            if sid in seen_staff:
+                continue  # de-dupe accidental double-tick
+            if sid == source.staff_id:
+                continue  # skip source's own staff to avoid identical row
+            seen_staff.add(sid)
+            validate_staff_assignment(db, sid)
+            writes.append((sid, None))
+        if body.add_unassigned_jockey:
+            writes.append((None, "jockey"))
+        if body.add_unassigned_fleet:
+            writes.append((None, "fleet"))
+
+        if not writes:
+            raise HTTPException(
+                status_code=422,
+                detail="No effective targets after de-duplication (all staff_ids match source, or none provided).",
+            )
+
+        # Source's existing booking links — fanout copies inherit them as-is.
+        existing_links = (
+            db.query(ShiftBookingLink)
+            .filter(ShiftBookingLink.shift_id == shift_id)
+            .all()
+        )
+        existing_booking_ids = [link.booking_id for link in existing_links]
+
+        for write_sid, forced_intended in writes:
+            intended = forced_intended or (source.intended_driver_type or "jockey")
+            if write_sid is not None and forced_intended is None:
+                user = db.query(User).filter(User.id == write_sid).first()
+                if user and getattr(user, "driver_type", None) in ("jockey", "fleet"):
+                    intended = user.driver_type
+                # Overlap guard — fanout target must not collide with existing.
+                conflict = check_shift_overlap(
+                    db, write_sid, source.date, source.start_time, source.end_time
+                )
+                if conflict:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Staff {write_sid} already has a shift overlapping "
+                            f"{format_time(source.start_time)}-{format_time(source.end_time)} "
+                            f"on {source.date.strftime('%d/%m/%Y')}."
+                        ),
+                    )
+            new_shift = RosterShift(
+                staff_id=write_sid,
+                booking_id=None,
+                date=source.date,
+                end_date=source.end_date,
+                start_time=source.start_time,
+                end_time=source.end_time,
+                shift_type=source.shift_type,
+                status=ShiftStatus.SCHEDULED,
+                notes=source.notes,
+                intended_driver_type=intended,
+                created_source="manual",
+            )
+            db.add(new_shift)
+            db.flush()
+            for bid in existing_booking_ids:
+                db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=bid))
+            created.append(new_shift)
+
+    db.commit()
+    for s in created:
+        db.refresh(s)
+    return [shift_to_response(s, db) for s in created]
+
+
+@router.post("/roster/{shift_id}/merge", response_model=RosterShiftResponse)
+async def merge_shift(
+    shift_id: int,
+    body: RosterShiftMergeRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Merge a roster shift with an adjacent neighbour.
+
+    Adjacency rule: neighbour's start equals this shift's end OR vice versa
+    (touching exactly, gap = 0 minutes). Any other gap returns 422.
+
+    Staff rule: same staff_id on both, OR exactly one is unassigned. Mixed
+    different-staff shifts are not merged.
+
+    Survivor: the earlier-starting shift. Result spans `[earlier.start,
+    later.end]`. Booking links union onto the survivor; the loser row is
+    deleted.
+    """
+    a = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
+    b = db.query(RosterShift).filter(RosterShift.id == body.other_shift_id).first()
+    if not a or not b:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    if a.id == b.id:
+        raise HTTPException(status_code=422, detail="Cannot merge a shift with itself")
+
+    a_start, a_end = _shift_window_dt(a)
+    b_start, b_end = _shift_window_dt(b)
+    earlier, later = (a, b) if a_start <= b_start else (b, a)
+    e_start, e_end = _shift_window_dt(earlier)
+    l_start, l_end = _shift_window_dt(later)
+
+    # Adjacency: earlier.end == later.start exactly. Any gap > 0 → reject.
+    if e_end != l_start:
+        if e_end > l_start:
+            raise HTTPException(status_code=422, detail="Shifts overlap; merge requires exact adjacency (gap = 0).")
+        gap_minutes = int((l_start - e_end).total_seconds() / 60)
+        raise HTTPException(
+            status_code=422,
+            detail=f"Shifts not adjacent (gap = {gap_minutes} min). Merge requires touching exactly.",
+        )
+
+    # Staff: same, or one null.
+    if a.staff_id is not None and b.staff_id is not None and a.staff_id != b.staff_id:
+        raise HTTPException(status_code=422, detail="Cannot merge shifts assigned to different staff.")
+    survivor_staff = earlier.staff_id if earlier.staff_id is not None else later.staff_id
+
+    # Apply to earlier (survivor).
+    earlier.staff_id = survivor_staff
+    earlier.end_time = later.end_time
+    earlier.end_date = later.end_date or later.date
+    if earlier.end_date == earlier.date:
+        earlier.end_date = None
+    # intended_driver_type: prefer the assigned side's; else preserve earlier's.
+    if survivor_staff is not None:
+        user = db.query(User).filter(User.id == survivor_staff).first()
+        if user and getattr(user, "driver_type", None) in ("jockey", "fleet"):
+            earlier.intended_driver_type = user.driver_type
+
+    # Move loser's booking links onto survivor (skip duplicates).
+    existing = {
+        link.booking_id
+        for link in db.query(ShiftBookingLink).filter(ShiftBookingLink.shift_id == earlier.id).all()
+    }
+    loser_links = db.query(ShiftBookingLink).filter(ShiftBookingLink.shift_id == later.id).all()
+    for link in loser_links:
+        if link.booking_id in existing:
+            db.delete(link)
+            continue
+        link.shift_id = earlier.id
+        existing.add(link.booking_id)
+
+    db.delete(later)
+    db.commit()
+    db.refresh(earlier)
+    return shift_to_response(earlier, db)
+
+
+@router.post("/roster/{shift_id}/split", response_model=List[RosterShiftResponse])
+async def split_shift(
+    shift_id: int,
+    body: RosterShiftSplitRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Split a shift in two at `split_at_time`.
+
+    `split_at_time` ("HH:MM") must be strictly inside (start_time, end_time).
+    Times equal to start or end return 422 (degenerate halves).
+
+    For overnight shifts the split is interpreted in the shift's wall-clock
+    window — a 22:00→02:00 (D→D+1) shift split at 00:00 yields halves
+    [22:00, 00:00] (date=D, end_date=D+1) and [00:00, 02:00] (date=D+1).
+
+    Booking links are re-distributed by event_time using right-inclusive
+    semantics: an event at exactly `split_at_time` goes to the SECOND half.
+    Events outside both halves' windows (shouldn't happen, but defensive)
+    stay on the original/first half.
+    """
+    shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    split_t = parse_time_string(body.split_at_time)
+
+    # Locate the split moment on the shift's wall-clock window.
+    start_dt, end_dt = _shift_window_dt(shift)
+    is_overnight = end_dt.date() != start_dt.date()
+
+    # Pick the calendar date for the split moment: same day as start unless
+    # the split clock-time has already passed today's end (so it must be the
+    # next day) — handled by walking forward from start_dt.
+    candidate = datetime.combine(start_dt.date(), split_t)
+    if candidate <= start_dt:
+        candidate = candidate + timedelta(days=1)
+    split_dt = candidate
+
+    if split_dt <= start_dt or split_dt >= end_dt:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"split_at_time must be strictly inside the shift window "
+                f"({format_time(shift.start_time)}-{format_time(shift.end_time)})."
+            ),
+        )
+
+    # First half: [start, split). Second half: [split, end].
+    first_date = shift.date
+    first_end_date = split_dt.date() if split_dt.date() != first_date else None
+    second_date = split_dt.date()
+    second_end_date = end_dt.date() if end_dt.date() != second_date else None
+
+    # Build the second half as a new row first so we have an ID for re-linking.
+    second = RosterShift(
+        staff_id=shift.staff_id,
+        booking_id=None,
+        date=second_date,
+        end_date=second_end_date,
+        start_time=split_t,
+        end_time=shift.end_time,
+        shift_type=shift.shift_type,
+        status=shift.status,
+        notes=shift.notes,
+        intended_driver_type=shift.intended_driver_type or "jockey",
+        created_source=shift.created_source or "manual",
+    )
+    db.add(second)
+    db.flush()
+
+    # Apply the first half in place.
+    shift.end_time = split_t
+    shift.end_date = first_end_date
+
+    # Re-distribute booking links by event_time. Right-inclusive at the cut.
+    from auto_roster import _events_for_booking
+    links = db.query(ShiftBookingLink).filter(ShiftBookingLink.shift_id == shift.id).all()
+    for link in links:
+        b = db.query(Booking).filter(Booking.id == link.booking_id).first()
+        if not b:
+            continue
+        events = _events_for_booking(b)
+        # Prefer the *latest* event that falls inside the original window —
+        # if it's at-or-after split_dt, this booking belongs to the second half.
+        belongs_to_second = False
+        for _et, edt in events:
+            if start_dt <= edt <= end_dt and edt >= split_dt:
+                belongs_to_second = True
+                break
+        if belongs_to_second:
+            link.shift_id = second.id
+
+    db.commit()
+    db.refresh(shift)
+    db.refresh(second)
+    return [shift_to_response(shift, db), shift_to_response(second, db)]
+
+
+@router.patch("/roster/{shift_id}/unassign", response_model=RosterShiftResponse)
+async def unassign_shift(
+    shift_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Set staff_id = NULL on a shift. Idempotent — already-unassigned shifts
+    return 200 with the unchanged row. Status, times, links untouched.
+
+    Thin wrapper over the existing PUT /roster/{id} explicit-null flow (added
+    2026-04-06 with the staff_id_provided pattern); the v3 Calendar action bar
+    calls this dedicated endpoint so the admin's intent is unambiguous.
+    """
+    shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    if shift.staff_id is None:
+        return shift_to_response(shift, db)
+
+    shift.staff_id = None
+    db.commit()
+    db.refresh(shift)
+    return shift_to_response(shift, db)
 
 
 # ============================================================================

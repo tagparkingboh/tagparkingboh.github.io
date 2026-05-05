@@ -2787,6 +2787,105 @@
   color: #fff;
 }
 
+/* v3 single-select action bar — five colour-coded actions matching the
+   Roster Planner pill design from the 2026-05-04 spec discussion. */
+.rc-actionbar.rc-actionbar-single {
+  border-color: #444;
+  flex-wrap: wrap;
+}
+
+.rc-action-btn {
+  background: transparent;
+  border: 1px solid #555;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.rc-action-duplicate { border-color: #8a6dff; color: #b9a0ff; }
+.rc-action-duplicate:hover { background: #8a6dff; color: #1a1a2e; }
+.rc-action-merge { border-color: #4caf86; color: #6fd9aa; }
+.rc-action-merge:hover { background: #4caf86; color: #1a1a2e; }
+.rc-action-split { border-color: #4ea1ff; color: #80c0ff; }
+.rc-action-split:hover { background: #4ea1ff; color: #1a1a2e; }
+.rc-action-unassign { border-color: #f0c040; color: #ffd966; }
+.rc-action-unassign:hover { background: #f0c040; color: #1a1a2e; }
+.rc-action-delete { border-color: #ff6464; color: #ff8a8a; }
+.rc-action-delete:hover { background: #ff6464; color: #1a1a2e; }
+
+.rc-action-modal {
+  max-width: 480px;
+}
+.rc-action-modal h3 {
+  margin: 0 0 12px;
+  color: #fff;
+}
+.rc-action-source {
+  color: #aaa;
+  font-size: 0.9rem;
+  margin: 0 0 14px;
+}
+.rc-action-empty {
+  color: #aaa;
+  font-style: italic;
+  padding: 14px 0;
+}
+.rc-action-error {
+  background: #2a1414;
+  border: 1px solid #ff6464;
+  color: #ff8a8a;
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+}
+.rc-action-mode-toggle {
+  display: inline-flex;
+  border: 1px solid #444;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.rc-action-mode-toggle button {
+  background: transparent;
+  border: none;
+  color: #aaa;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.rc-action-mode-toggle button + button {
+  border-left: 1px solid #444;
+}
+.rc-action-mode-toggle button.active {
+  background: #D9FF00;
+  color: #1a1a2e;
+  font-weight: 600;
+}
+.rc-staff-checklist {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 6px;
+  margin-bottom: 8px;
+}
+.rc-staff-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  color: #ccc;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.rc-staff-checkbox:hover {
+  background: #2a2a2a;
+}
+
 /* Shift selection checkbox */
 .shift-card {
   position: relative;

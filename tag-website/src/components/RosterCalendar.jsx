@@ -245,6 +245,17 @@ function RosterCalendar({
   })
   const [savingBulkEdit, setSavingBulkEdit] = useState(false)
 
+  // v3 per-shift action modal state. Activated from the day-detail action
+  // bar when exactly one shift is selected (Phase 2). Multi-select bulk
+  // loops over these endpoints in Phase 3.
+  const [duplicateModal, setDuplicateModal] = useState(null)  // { shift, mode, target_date, staff_ids, add_unassigned_jockey, add_unassigned_fleet }
+  const [mergeModal, setMergeModal] = useState(null)          // { shift, neighbours, selectedNeighbourId }
+  const [splitModal, setSplitModal] = useState(null)          // { shift, split_at_time }
+  const [unassignModal, setUnassignModal] = useState(null)    // { shift }
+  const [v3DeleteModal, setV3DeleteModal] = useState(null)    // { shift } — separate from per-card delete confirmation
+  const [actionSubmitting, setActionSubmitting] = useState(false)
+  const [actionError, setActionError] = useState('')
+
   // Monthly hours (for payroll)
   const [monthlyHours, setMonthlyHours] = useState(null)
   const [loadingMonthlyHours, setLoadingMonthlyHours] = useState(false)
@@ -1322,6 +1333,213 @@ function RosterCalendar({
       setError('Network error during bulk operation')
     } finally {
       setSavingBulkEdit(false)
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // v3 per-shift action handlers (Phase 2 — locked 2026-05-04). Each modal
+  // hits the corresponding /api/roster/{id}/{action} endpoint, then closes
+  // the modal, refreshes shifts, and clears the selection on success.
+  // ---------------------------------------------------------------------------
+
+  const refreshAfterAction = () => {
+    fetchShifts()
+    fetchMonthlyHours()
+    clearShiftSelection()
+  }
+
+  const openDuplicateModal = (shift) => {
+    setActionError('')
+    setDuplicateModal({
+      shift,
+      mode: 'date_copy',
+      target_date: '',  // DD/MM/YYYY input, converted to ISO at submit
+      staff_ids: [],
+      add_unassigned_jockey: false,
+      add_unassigned_fleet: false,
+    })
+  }
+
+  const submitDuplicate = async () => {
+    if (!duplicateModal) return
+    const { shift, mode, target_date, staff_ids, add_unassigned_jockey, add_unassigned_fleet } = duplicateModal
+    setActionError('')
+    let body = {}
+    if (mode === 'date_copy') {
+      if (!target_date || target_date.length !== 10) {
+        setActionError('Pick a target date.')
+        return
+      }
+      body.target_date = ukToISO(target_date)
+    } else {
+      // staff_fanout
+      if (staff_ids.length === 0 && !add_unassigned_jockey && !add_unassigned_fleet) {
+        setActionError('Pick at least one target staff or an unassigned slot.')
+        return
+      }
+      if (staff_ids.length > 0) body.staff_ids = staff_ids
+      if (add_unassigned_jockey) body.add_unassigned_jockey = true
+      if (add_unassigned_fleet) body.add_unassigned_fleet = true
+    }
+    setActionSubmitting(true)
+    try {
+      const r = await fetch(`${API_URL}/api/roster/${shift.id}/duplicate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        setActionError(err.detail || `Failed (status ${r.status})`)
+        return
+      }
+      const created = await r.json()
+      setSuccessMessage(`Duplicated → ${created.length} new shift${created.length === 1 ? '' : 's'}`)
+      setTimeout(() => setSuccessMessage(''), 3000)
+      setDuplicateModal(null)
+      refreshAfterAction()
+    } catch (err) {
+      setActionError('Network error')
+    } finally {
+      setActionSubmitting(false)
+    }
+  }
+
+  // Find adjacent shifts on the same day for the Merge picker. Adjacency
+  // mirrors the backend rule: end_a == start_b exactly, OR start_a == end_b.
+  const findMergeNeighbours = (shift) => {
+    const dayShifts = (shiftsByDate[selectedDate] || []).filter((s) => s.id !== shift.id)
+    return dayShifts.filter((s) => {
+      const aEnd = formatTime(shift.end_time)
+      const aStart = formatTime(shift.start_time)
+      const bEnd = formatTime(s.end_time)
+      const bStart = formatTime(s.start_time)
+      return aEnd === bStart || aStart === bEnd
+    })
+  }
+
+  const openMergeModal = (shift) => {
+    setActionError('')
+    const neighbours = findMergeNeighbours(shift)
+    setMergeModal({ shift, neighbours, selectedNeighbourId: neighbours[0]?.id || null })
+  }
+
+  const submitMerge = async () => {
+    if (!mergeModal || !mergeModal.selectedNeighbourId) {
+      setActionError('Pick a neighbour to merge with.')
+      return
+    }
+    setActionSubmitting(true)
+    try {
+      const r = await fetch(`${API_URL}/api/roster/${mergeModal.shift.id}/merge`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ other_shift_id: mergeModal.selectedNeighbourId }),
+      })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        setActionError(err.detail || `Failed (status ${r.status})`)
+        return
+      }
+      setSuccessMessage('Shifts merged')
+      setTimeout(() => setSuccessMessage(''), 3000)
+      setMergeModal(null)
+      refreshAfterAction()
+    } catch (err) {
+      setActionError('Network error')
+    } finally {
+      setActionSubmitting(false)
+    }
+  }
+
+  const openSplitModal = (shift) => {
+    setActionError('')
+    setSplitModal({ shift, split_at_time: '' })
+  }
+
+  const submitSplit = async () => {
+    if (!splitModal || !splitModal.split_at_time || splitModal.split_at_time.length !== 5) {
+      setActionError('Enter a split time (HH:MM).')
+      return
+    }
+    setActionSubmitting(true)
+    try {
+      const r = await fetch(`${API_URL}/api/roster/${splitModal.shift.id}/split`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ split_at_time: splitModal.split_at_time }),
+      })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        setActionError(err.detail || `Failed (status ${r.status})`)
+        return
+      }
+      setSuccessMessage('Shift split')
+      setTimeout(() => setSuccessMessage(''), 3000)
+      setSplitModal(null)
+      refreshAfterAction()
+    } catch (err) {
+      setActionError('Network error')
+    } finally {
+      setActionSubmitting(false)
+    }
+  }
+
+  const openUnassignModal = (shift) => {
+    setActionError('')
+    setUnassignModal({ shift })
+  }
+
+  const submitUnassign = async () => {
+    if (!unassignModal) return
+    setActionSubmitting(true)
+    try {
+      const r = await fetch(`${API_URL}/api/roster/${unassignModal.shift.id}/unassign`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        setActionError(err.detail || `Failed (status ${r.status})`)
+        return
+      }
+      setSuccessMessage('Shift unassigned')
+      setTimeout(() => setSuccessMessage(''), 3000)
+      setUnassignModal(null)
+      refreshAfterAction()
+    } catch (err) {
+      setActionError('Network error')
+    } finally {
+      setActionSubmitting(false)
+    }
+  }
+
+  const openV3DeleteModal = (shift) => {
+    setActionError('')
+    setV3DeleteModal({ shift })
+  }
+
+  const submitV3Delete = async () => {
+    if (!v3DeleteModal) return
+    setActionSubmitting(true)
+    try {
+      const r = await fetch(`${API_URL}/api/roster/${v3DeleteModal.shift.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        setActionError(err.detail || `Failed (status ${r.status})`)
+        return
+      }
+      setSuccessMessage('Shift deleted')
+      setTimeout(() => setSuccessMessage(''), 3000)
+      setV3DeleteModal(null)
+      refreshAfterAction()
+    } catch (err) {
+      setActionError('Network error')
+    } finally {
+      setActionSubmitting(false)
     }
   }
 
@@ -2531,7 +2749,22 @@ function RosterCalendar({
                     <span className="collapse-icon">{collapsedSections.shifts ? '▶' : '▼'}</span>
                     📅 Shifts ({selectedDateShifts.length})
                   </h4>
-                  {isAdmin && selectedShiftIds.length > 0 && (
+                  {isAdmin && selectedShiftIds.length === 1 && (() => {
+                    // v3 single-select action bar — locked rules 2026-05-04.
+                    const sel = selectedDateShifts.find((s) => s.id === selectedShiftIds[0])
+                    if (!sel) return null
+                    return (
+                      <div className="bulk-actions-bar rc-actionbar rc-actionbar-single">
+                        <button className="rc-action-btn rc-action-duplicate" onClick={() => openDuplicateModal(sel)}>Duplicate</button>
+                        <button className="rc-action-btn rc-action-merge" onClick={() => openMergeModal(sel)}>Merge</button>
+                        <button className="rc-action-btn rc-action-split" onClick={() => openSplitModal(sel)}>Split</button>
+                        <button className="rc-action-btn rc-action-unassign" onClick={() => openUnassignModal(sel)}>Unassign</button>
+                        <button className="rc-action-btn rc-action-delete" onClick={() => openV3DeleteModal(sel)}>Delete</button>
+                        <button className="bulk-clear-btn" onClick={clearShiftSelection}>Clear</button>
+                      </div>
+                    )
+                  })()}
+                  {isAdmin && selectedShiftIds.length >= 2 && (
                     <div className="bulk-actions-bar">
                       <span className="bulk-selection-count">{selectedShiftIds.length} selected</span>
                       <button className="bulk-edit-btn" onClick={openBulkEditModal}>
@@ -3925,6 +4158,197 @@ function RosterCalendar({
             <div className="modal-actions">
               <button className="modal-btn modal-btn-secondary" onClick={() => setTeamShiftPopover(null)}>
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v3 Phase 2 — per-shift action modals (locked 2026-05-04) */}
+      {duplicateModal && isAdmin && (
+        <div className="modal-overlay" onClick={() => !actionSubmitting && setDuplicateModal(null)}>
+          <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Duplicate Shift</h3>
+            <p className="rc-action-source">
+              Source: <strong>{formatTime(duplicateModal.shift.start_time)}–{formatTime(duplicateModal.shift.end_time)}</strong>
+              {duplicateModal.shift.staff_initials ? ` · ${duplicateModal.shift.staff_initials}` : ' · Unassigned'}
+            </p>
+            <div className="rc-action-mode-toggle">
+              <button
+                type="button"
+                className={duplicateModal.mode === 'date_copy' ? 'active' : ''}
+                onClick={() => setDuplicateModal({ ...duplicateModal, mode: 'date_copy' })}
+              >Copy to date</button>
+              <button
+                type="button"
+                className={duplicateModal.mode === 'staff_fanout' ? 'active' : ''}
+                onClick={() => setDuplicateModal({ ...duplicateModal, mode: 'staff_fanout' })}
+              >Add to staff</button>
+            </div>
+            {duplicateModal.mode === 'date_copy' ? (
+              <div className="form-group">
+                <label>Target date (DD/MM/YYYY)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="DD/MM/YYYY"
+                  value={duplicateModal.target_date}
+                  onChange={(e) => setDuplicateModal({ ...duplicateModal, target_date: e.target.value })}
+                  maxLength={10}
+                />
+              </div>
+            ) : (
+              <div className="form-group">
+                <label>Pick staff to fan out to</label>
+                <div className="rc-staff-checklist">
+                  {employees.filter((u) => u.is_active && !u.is_admin && u.id !== duplicateModal.shift.staff_id).map((u) => (
+                    <label key={u.id} className="rc-staff-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={duplicateModal.staff_ids.includes(u.id)}
+                        onChange={() => {
+                          const next = duplicateModal.staff_ids.includes(u.id)
+                            ? duplicateModal.staff_ids.filter((id) => id !== u.id)
+                            : [...duplicateModal.staff_ids, u.id]
+                          setDuplicateModal({ ...duplicateModal, staff_ids: next })
+                        }}
+                      />
+                      <span>{u.first_name} {u.last_name}</span>
+                    </label>
+                  ))}
+                </div>
+                <label className="rc-staff-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={duplicateModal.add_unassigned_jockey}
+                    onChange={(e) => setDuplicateModal({ ...duplicateModal, add_unassigned_jockey: e.target.checked })}
+                  />
+                  <span>🏇 Unassigned Jockey</span>
+                </label>
+                <label className="rc-staff-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={duplicateModal.add_unassigned_fleet}
+                    onChange={(e) => setDuplicateModal({ ...duplicateModal, add_unassigned_fleet: e.target.checked })}
+                  />
+                  <span>🚐 Unassigned Fleet</span>
+                </label>
+              </div>
+            )}
+            {actionError && <div className="rc-action-error">{actionError}</div>}
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setDuplicateModal(null)} disabled={actionSubmitting}>Cancel</button>
+              <button className="modal-btn modal-btn-primary" onClick={submitDuplicate} disabled={actionSubmitting}>
+                {actionSubmitting ? 'Duplicating…' : 'Duplicate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mergeModal && isAdmin && (
+        <div className="modal-overlay" onClick={() => !actionSubmitting && setMergeModal(null)}>
+          <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Merge Shift</h3>
+            <p className="rc-action-source">
+              This: <strong>{formatTime(mergeModal.shift.start_time)}–{formatTime(mergeModal.shift.end_time)}</strong>
+            </p>
+            {mergeModal.neighbours.length === 0 ? (
+              <p className="rc-action-empty">No adjacent shift on this day. Merge requires the next shift to start exactly when this one ends (or vice versa).</p>
+            ) : (
+              <div className="form-group">
+                <label>Merge with</label>
+                {mergeModal.neighbours.map((n) => (
+                  <label key={n.id} className="rc-staff-checkbox">
+                    <input
+                      type="radio"
+                      name="merge-neighbour"
+                      checked={mergeModal.selectedNeighbourId === n.id}
+                      onChange={() => setMergeModal({ ...mergeModal, selectedNeighbourId: n.id })}
+                    />
+                    <span>{formatTime(n.start_time)}–{formatTime(n.end_time)} · {n.staff_initials || 'Unassigned'}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {actionError && <div className="rc-action-error">{actionError}</div>}
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setMergeModal(null)} disabled={actionSubmitting}>Cancel</button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={submitMerge}
+                disabled={actionSubmitting || mergeModal.neighbours.length === 0}
+              >
+                {actionSubmitting ? 'Merging…' : 'Merge'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {splitModal && isAdmin && (
+        <div className="modal-overlay" onClick={() => !actionSubmitting && setSplitModal(null)}>
+          <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Split Shift</h3>
+            <p className="rc-action-source">
+              Source: <strong>{formatTime(splitModal.shift.start_time)}–{formatTime(splitModal.shift.end_time)}</strong>
+            </p>
+            <div className="form-group">
+              <label>Split at (HH:MM, must be strictly between start and end)</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="HH:MM"
+                value={splitModal.split_at_time}
+                onChange={(e) => setSplitModal({ ...splitModal, split_at_time: formatTimeInput24h(e.target.value, splitModal.split_at_time) })}
+                maxLength={5}
+              />
+            </div>
+            {actionError && <div className="rc-action-error">{actionError}</div>}
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setSplitModal(null)} disabled={actionSubmitting}>Cancel</button>
+              <button className="modal-btn modal-btn-primary" onClick={submitSplit} disabled={actionSubmitting}>
+                {actionSubmitting ? 'Splitting…' : 'Split'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {unassignModal && isAdmin && (
+        <div className="modal-overlay" onClick={() => !actionSubmitting && setUnassignModal(null)}>
+          <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Unassign Shift</h3>
+            <p>
+              Clear the staff assignment on this shift?
+              {unassignModal.shift.staff_first_name && (
+                <> Currently assigned to <strong>{unassignModal.shift.staff_first_name} {unassignModal.shift.staff_last_name}</strong>.</>
+              )}
+            </p>
+            {actionError && <div className="rc-action-error">{actionError}</div>}
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setUnassignModal(null)} disabled={actionSubmitting}>Cancel</button>
+              <button className="modal-btn modal-btn-primary" onClick={submitUnassign} disabled={actionSubmitting}>
+                {actionSubmitting ? 'Unassigning…' : 'Unassign'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {v3DeleteModal && isAdmin && (
+        <div className="modal-overlay" onClick={() => !actionSubmitting && setV3DeleteModal(null)}>
+          <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Shift</h3>
+            <p>
+              Delete the shift <strong>{formatTime(v3DeleteModal.shift.start_time)}–{formatTime(v3DeleteModal.shift.end_time)}</strong>?
+              This cannot be undone.
+            </p>
+            {actionError && <div className="rc-action-error">{actionError}</div>}
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={() => setV3DeleteModal(null)} disabled={actionSubmitting}>Cancel</button>
+              <button className="modal-btn modal-btn-danger" onClick={submitV3Delete} disabled={actionSubmitting}>
+                {actionSubmitting ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>

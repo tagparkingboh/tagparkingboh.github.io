@@ -552,6 +552,43 @@ class RosterShiftUpdate(BaseModel):
         return data
 
 
+class RosterShiftDuplicateRequest(BaseModel):
+    """Body for POST /api/roster/{id}/duplicate (Roster Planner v3 Phase 2).
+
+    Modes:
+      - date copy: only `target_date` set → 1 copy on the target date,
+        same staff/time, `created_source='manual'`, bookings re-linked by
+        event-time membership.
+      - staff fanout: only `staff_ids` (+ optional unassigned flags) set →
+        N copies on the source's date, one per target staff.
+      - both set → bulk staff-add (deferred per spec; endpoint returns 422).
+    """
+    target_date: Optional[date_type] = None
+    staff_ids: Optional[List[int]] = None
+    add_unassigned_jockey: bool = False
+    add_unassigned_fleet: bool = False
+
+
+class RosterShiftMergeRequest(BaseModel):
+    """Body for POST /api/roster/{id}/merge.
+
+    Adjacent same-day (allowing overnight wrap), same staff or one
+    unassigned. Combines into a single row spanning the union of the two
+    windows; loser row is deleted; booking links union into the survivor.
+    """
+    other_shift_id: int
+
+
+class RosterShiftSplitRequest(BaseModel):
+    """Body for POST /api/roster/{id}/split.
+
+    `split_at_time` must be strictly inside (start_time, end_time). Bookings
+    are re-distributed by event_time using right-inclusive semantics — an
+    event at exactly `split_at_time` goes to the second half.
+    """
+    split_at_time: str  # "HH:MM"
+
+
 class LinkedBookingInfo(BaseModel):
     """Info about a booking linked to a shift."""
     id: int
