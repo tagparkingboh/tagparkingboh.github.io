@@ -638,8 +638,12 @@ async def list_shifts(
 
     # Sever auto-shifts from the regular admin Roster Calendar by default.
     # The new Calendar embedded on the Planner page passes source='auto' to
-    # opt in. Other named sources ('manual', 'planner') filter exactly.
-    if source == "auto":
+    # opt in. 'all' bypasses the default exclusion so the v3 admin toggle can
+    # show every shift regardless of source. Other named sources ('manual',
+    # 'planner') filter exactly.
+    if source == "all":
+        pass  # no filter
+    elif source == "auto":
         query = query.filter(RosterShift.created_source == "auto")
     elif source in ("manual", "planner"):
         query = query.filter(RosterShift.created_source == source)
@@ -777,7 +781,9 @@ async def get_weekly_hours(
         RosterShift.date <= week_end,
     )
 
-    if source == "auto":
+    if source == "all":
+        query = query.filter(RosterShift.staff_id.isnot(None))
+    elif source == "auto":
         query = query.filter(RosterShift.created_source == "auto")
     elif source in ("manual", "planner"):
         query = query.filter(
@@ -903,7 +909,10 @@ async def get_monthly_hours(
     # Source filter — keeps the regular admin payroll view exclusive of
     # auto-roster shifts, while opting in via `?source=auto` includes
     # unassigned auto-shifts (bucketed under a virtual 'Unassigned' row).
-    if source == "auto":
+    # `?source=all` shows everything (v3 admin toggle).
+    if source == "all":
+        query = query.filter(RosterShift.staff_id.isnot(None))
+    elif source == "auto":
         query = query.filter(RosterShift.created_source == "auto")
     elif source in ("manual", "planner"):
         query = query.filter(

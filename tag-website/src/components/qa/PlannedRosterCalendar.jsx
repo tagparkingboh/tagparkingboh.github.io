@@ -454,7 +454,8 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
         <RosterCalendar
           token={token}
           isAdmin={true}
-          sourceFilter="auto"
+          defaultSourceFilter="auto"
+          storageKey="rosterCalendar.source.planner"
           refreshTrigger={calendarRefreshTick}
         />
       </div>
@@ -479,40 +480,11 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
                 windowStart={detail.window_start}
                 windowEnd={detail.window_end}
               />
-              {!COMMIT_PIPELINE_DISABLED && (
-                <CommitBar
-                  selectedCount={selectedToCommit.size}
-                  newProposalCount={
-                    detail.proposal?.proposed_shifts?.filter((s) => s.kind === 'new').length ?? 0
-                  }
-                  onSelectAll={selectAllNew}
-                  onClear={clearSelection}
-                  onCommit={() => setCommitConfirmOpen(true)}
-                  committing={committing}
-                  message={commitMessage}
-                />
-              )}
-              <ProposalCalendar
-                shiftsByDate={shiftsByDate}
-                sortedDates={sortedDates}
-                selectedToCommit={selectedToCommit}
-                committedIndexes={new Set(detail.committed_indexes || [])}
-                committedShiftsByIndex={detail.committed_shifts_by_index || {}}
-                overridesByIndex={overridesByIndex}
-                onToggleCommitTick={toggleCommitTick}
-                onClearOverride={clearOverride}
-                onShiftClick={(shift, idx) => {
-                  setFeedbackShift(shift)
-                  setFeedbackShiftIndex(idx)
-                }}
-                onShiftAction={(shift, idx, action, posInDay, dayShifts) => {
-                  setActionShift(shift)
-                  setActionShiftIndex(idx)
-                  setActionType(action)
-                  setActionDayShifts(dayShifts)
-                  setActionPos(posInDay)
-                }}
-              />
+              {/* Roster Planner v3 (2026-05-04): proposal grid + commit pipeline removed.
+                  Engine still runs server-side and feeds RunSummary / JockeyPreferences /
+                  PredictedHoursBreakdown / WarningsList. Per-shift Duplicate / Merge /
+                  Split / Unassign / Delete will live on the embedded Calendar's day-detail
+                  modal in Phase 2. */}
               <WarningsList warnings={detail.warnings || []} />
             </>
           )}

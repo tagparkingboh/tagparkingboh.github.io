@@ -165,9 +165,36 @@ const formatTimeInput24h = (input, previousValue = '') => {
   }
 }
 
-function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrigger = 0, renderBookingActions = null, sourceFilter = null }) {
+// Map a v3 toggle value to the /api/roster ?source= query param.
+// 'manual' → omit (backend default already excludes auto, includes manual+planner).
+// 'auto' / 'all' → pass through.
+export const sourceParamFor = (filter) => (filter === 'auto' || filter === 'all') ? filter : null
+
+function RosterCalendar({
+  token,
+  isAdmin = false,
+  employeeId = null,
+  refreshTrigger = 0,
+  renderBookingActions = null,
+  defaultSourceFilter = 'manual',
+  storageKey = 'rosterCalendar.source',
+}) {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [shifts, setShifts] = useState([])
+  // v3 admin source-filter toggle. Employees never see the toggle and always
+  // get the default (Manual) — toggle UI is gated on isAdmin in the header.
+  const [sourceFilter, setSourceFilter] = useState(() => {
+    if (!isAdmin) return 'manual'
+    try {
+      const stored = typeof window !== 'undefined' ? window.localStorage.getItem(storageKey) : null
+      if (stored === 'auto' || stored === 'manual' || stored === 'all') return stored
+    } catch {}
+    return defaultSourceFilter
+  })
+  const updateSourceFilter = useCallback((next) => {
+    setSourceFilter(next)
+    try { window.localStorage.setItem(storageKey, next) } catch {}
+  }, [storageKey])
   // Teammates' shifts (view-only, employee mode only). Stripped shape from
   // /api/employee/team-shifts — no id, no staff_id, no shift_type.
   const [teamShifts, setTeamShifts] = useState([])
@@ -343,11 +370,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         date_from: formatDateISO(startDate),
         date_to: formatDateISO(endDate),
       })
-      // Auto-roster Planner Calendar embed passes sourceFilter='auto' to
-      // scope this calendar to auto-created shifts only. Default leaves
-      // it off, preserving the regular admin Calendar's behaviour.
-      if (sourceFilter && isAdmin) {
-        params.set('source', sourceFilter)
+      // v3 admin toggle drives the ?source= param. Employees stay on the
+      // default (manual+planner, excludes auto) regardless of the prop.
+      const sourceParam = isAdmin ? sourceParamFor(sourceFilter) : null
+      if (sourceParam) {
+        params.set('source', sourceParam)
       }
 
       const endpoint = isAdmin ? '/api/roster' : '/api/employee/shifts'
@@ -662,11 +689,11 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
       const month = currentDate.getMonth() + 1  // API expects 1-12, JS uses 0-11
 
       const endpoint = isAdmin ? '/api/roster/monthly-hours' : '/api/employee/monthly-hours'
-      // When the calendar is filtered to a specific source (e.g. the Planner
-      // page's auto-roster embed), the Hours panel should reflect that same
-      // scope. Default leaves the param off → existing payroll behaviour.
-      const sourceParam = sourceFilter && isAdmin ? `&source=${encodeURIComponent(sourceFilter)}` : ''
-      const response = await fetch(`${API_URL}${endpoint}?year=${year}&month=${month}${sourceParam}`, {
+      // Hours panel mirrors the calendar grid's source filter. v3 toggle drives
+      // both via the same state. Default 'manual' → no source param (existing payroll behaviour).
+      const sourceParam = isAdmin ? sourceParamFor(sourceFilter) : null
+      const sourceQs = sourceParam ? `&source=${encodeURIComponent(sourceParam)}` : ''
+      const response = await fetch(`${API_URL}${endpoint}?year=${year}&month=${month}${sourceQs}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -1912,6 +1939,21 @@ function RosterCalendar({ token, isAdmin = false, employeeId = null, refreshTrig
         </div>
 
         <div className="calendar-actions">
+          {isAdmin && (
+            <div className="rc-source-toggle" role="group" aria-label="Filter shifts by source">
+              {['all', 'auto', 'manual'].map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  className={`rc-source-toggle-btn ${sourceFilter === opt ? 'active' : ''}`}
+                  onClick={() => updateSourceFilter(opt)}
+                  aria-pressed={sourceFilter === opt}
+                >
+                  {opt[0].toUpperCase() + opt.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
           <button className="calendar-today-btn" onClick={goToToday}>
             Today
           </button>

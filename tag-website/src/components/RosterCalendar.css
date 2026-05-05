@@ -56,6 +56,36 @@
 .roster-calendar .calendar-actions {
   display: flex;
   gap: 10px;
+  align-items: center;
+}
+
+/* v3 source-filter toggle (admin-only). Sits next to Today/Refresh. */
+.roster-calendar .rc-source-toggle {
+  display: inline-flex;
+  border: 1px solid #444;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1a1a1a;
+}
+.roster-calendar .rc-source-toggle-btn {
+  background: transparent;
+  border: none;
+  color: #aaa;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.roster-calendar .rc-source-toggle-btn + .rc-source-toggle-btn {
+  border-left: 1px solid #444;
+}
+.roster-calendar .rc-source-toggle-btn:hover {
+  color: #fff;
+}
+.roster-calendar .rc-source-toggle-btn.active {
+  background: #D9FF00;
+  color: #1a1a2e;
+  font-weight: 600;
 }
 
 .roster-calendar .calendar-today-btn,

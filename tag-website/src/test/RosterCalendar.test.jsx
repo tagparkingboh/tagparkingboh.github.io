@@ -13,6 +13,7 @@ import {
   prevIsoDate,
   computeBookingsByDate,
   PICKUP_OVERNIGHT_CUTOFF,
+  sourceParamFor,
 } from '../components/RosterCalendar'
 
 describe('prevIsoDate', () => {
@@ -143,5 +144,33 @@ describe('computeBookingsByDate', () => {
   it('returns empty object for empty / missing bookings input', () => {
     expect(computeBookingsByDate([])).toEqual({})
     expect(computeBookingsByDate(undefined)).toEqual({})
+  })
+})
+
+// =============================================================================
+// v3 source-filter toggle helper
+// Maps the segmented control's UI value to the /api/roster ?source= query.
+// 'manual' must omit the param so the backend's default ≠ auto branch fires
+// — that's how the v3 Calendar default keeps today's behaviour exactly.
+// =============================================================================
+
+describe('sourceParamFor', () => {
+  it('passes through "auto"', () => {
+    expect(sourceParamFor('auto')).toBe('auto')
+  })
+
+  it('passes through "all"', () => {
+    expect(sourceParamFor('all')).toBe('all')
+  })
+
+  it('returns null for "manual" so the backend default fires (regression guard for Calendar default)', () => {
+    expect(sourceParamFor('manual')).toBeNull()
+  })
+
+  it('returns null for unknown values', () => {
+    expect(sourceParamFor(undefined)).toBeNull()
+    expect(sourceParamFor(null)).toBeNull()
+    expect(sourceParamFor('')).toBeNull()
+    expect(sourceParamFor('garbage')).toBeNull()
   })
 })
