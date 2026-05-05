@@ -100,6 +100,7 @@ function Employee() {
 
   // Expanded image viewer state
   const [expandedImage, setExpandedImage] = useState(null) // { src: 'base64...', label: 'Front' }
+  const imageViewerRef = useRef(null)
 
   // Draft restoration modal
   const [showDraftModal, setShowDraftModal] = useState(false)
@@ -174,6 +175,37 @@ function Employee() {
       }
     }
   }, [showInspectionModal, inspectionBooking, editingInspection, inspectionPhotos, inspectionNotes, signature, saveDraft])
+
+  // Request real browser fullscreen for the image viewer so the address bar
+  // hides on iPad / Samsung tablets in landscape. iPhone Safari doesn't support
+  // fullscreen on non-video elements; the dvh-sized overlay is the fallback.
+  useEffect(() => {
+    if (!expandedImage) return
+    const el = imageViewerRef.current
+    if (!el) return
+
+    const req = el.requestFullscreen || el.webkitRequestFullscreen
+    if (req) {
+      Promise.resolve(req.call(el)).catch(() => {})
+    }
+
+    const onFsChange = () => {
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement
+      if (!fsEl) setExpandedImage(null)
+    }
+    document.addEventListener('fullscreenchange', onFsChange)
+    document.addEventListener('webkitfullscreenchange', onFsChange)
+
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange)
+      document.removeEventListener('webkitfullscreenchange', onFsChange)
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement
+      if (fsEl) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen
+        if (exit) Promise.resolve(exit.call(document)).catch(() => {})
+      }
+    }
+  }, [expandedImage])
 
   // Check if there's unsaved inspection data
   const hasUnsavedData = showInspectionModal && (Object.keys(inspectionPhotos).length > 0 || inspectionNotes || signature)
@@ -1238,7 +1270,7 @@ function Employee() {
 
       {/* Fullscreen Image Viewer */}
       {expandedImage && (
-        <div className="image-viewer-overlay" onClick={() => setExpandedImage(null)}>
+        <div className="image-viewer-overlay" ref={imageViewerRef} onClick={() => setExpandedImage(null)}>
           <button className="image-viewer-close" onClick={() => setExpandedImage(null)}>
             &times;
           </button>
