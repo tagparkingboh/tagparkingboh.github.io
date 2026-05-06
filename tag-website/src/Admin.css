@@ -8806,10 +8806,34 @@
   padding: 2px 5px;
   vertical-align: middle;
   transition: background 0.2s;
+  white-space: nowrap;
 }
 
 .edit-btn-inline:hover {
   background: #d97706;
+}
+
+/* Promo cell layout — flex row so the Edit button stays visible even when
+   the promo code text truncates with ellipsis. Without this, the parent
+   .financial-table-compact td rule (white-space: nowrap; overflow: hidden)
+   clips the button along with the rest of the long promo code. */
+.financial-promo-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+.financial-promo-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.financial-promo-cell .edit-btn-inline {
+  flex: 0 0 auto;
+  margin-left: 0;
 }
 
 /* Row highlighting for needs override */

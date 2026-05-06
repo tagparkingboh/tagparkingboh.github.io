@@ -13116,20 +13116,24 @@ function Admin() {
                                           )}
                                         </td>
                                         <td>
-                                          {booking.promoCode || '-'}
-                                          {booking.needsOverride && editingFinancialBooking?.id !== booking.id && (
-                                            <button
-                                              className="edit-btn-inline"
-                                              onClick={() => setEditingFinancialBooking({
-                                                id: booking.id,
-                                                gross: '',
-                                                discount: ''
-                                              })}
-                                              title="Edit financial values"
-                                            >
-                                              ✎
-                                            </button>
-                                          )}
+                                          <span className="financial-promo-cell">
+                                            <span className="financial-promo-text">
+                                              {booking.promoCode || '-'}
+                                            </span>
+                                            {booking.needsOverride && editingFinancialBooking?.id !== booking.id && (
+                                              <button
+                                                className="edit-btn-inline"
+                                                onClick={() => setEditingFinancialBooking({
+                                                  id: booking.id,
+                                                  gross: '',
+                                                  discount: ''
+                                                })}
+                                                title="Edit financial values"
+                                              >
+                                                ✎ Edit
+                                              </button>
+                                            )}
+                                          </span>
                                         </td>
                                         {/* Discount column - editable if in edit mode */}
                                         <td style={{ color: booking.discountAmount ? '#f59e0b' : 'inherit' }}>

@@ -5371,8 +5371,23 @@ async def get_financial_report(
         # Final revenue after refunds
         final_revenue_pence = net_pence - refund_pence
 
-        # Flag for bookings that need manual override (has promo but no discount calculated)
-        needs_override = promo_info is not None and discount_pence == 0 and booking.override_gross_pence is None
+        # Flag for bookings that need manual override. Two paths qualify
+        # (locked 2026-05-06):
+        #   (a) Promo recorded but the calc left discount_pence == 0 — typical
+        #       100%-off / free-parking promos where the gross can't be
+        #       inferred from the £0 paid amount.
+        #   (b) Net was £0 and no override has been set yet — captures one-off
+        #       free bookings (manual / phone / friends-and-family) where the
+        #       promo wasn't tracked in any of the 6 promo source tables.
+        # Either way the admin needs a way to record the actual gross / discount
+        # for accurate revenue reporting.
+        needs_override = (
+            booking.override_gross_pence is None
+            and (
+                (promo_info is not None and discount_pence == 0)
+                or net_pence == 0
+            )
+        )
         has_override = booking.override_gross_pence is not None
 
         bookings_by_month[month_key].append({

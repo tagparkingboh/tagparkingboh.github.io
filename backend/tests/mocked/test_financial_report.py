@@ -1349,44 +1349,69 @@ class TestFinancialOverrideInReport:
         assert gross_pence == 10000  # Override value
         assert discount_pence == 5000  # Override value
 
+    # The needs_override rule moved from
+    #   `(promo_info is not None) AND (discount_pence == 0) AND (override is None)`
+    # to a broader form (locked 2026-05-06):
+    #   `(override is None) AND ((promo + discount=0) OR net_pence == 0)`
+    # Two paths qualify because some free / one-off bookings never get a
+    # promo recorded in any of the 6 promo source tables, but admins still
+    # need to record the original cost for accurate revenue reporting.
+    def _compute_needs_override(self, *, promo_info, discount_pence, net_pence, override_gross):
+        return (
+            override_gross is None
+            and (
+                (promo_info is not None and discount_pence == 0)
+                or net_pence == 0
+            )
+        )
+
     def test_needs_override_flag_when_promo_but_no_discount(self):
-        """needsOverride should be True when promo exists but discount is 0."""
-        booking = create_mock_booking(
-            id=1,
-            payment=create_mock_payment(amount_pence=0),  # Free booking
-            override_gross_pence=None,  # No override yet
+        """needsOverride True when promo exists but discount is 0 (path A)."""
+        needs_override = self._compute_needs_override(
+            promo_info={"code": "FREE-PARKING", "discount_percent": 100},
+            discount_pence=0,
+            net_pence=0,
+            override_gross=None,
         )
-
-        promo_info = {"code": "FREE-PARKING", "discount_percent": 100}
-        discount_pence = 0  # Can't calculate for 100% off
-
-        needs_override = (
-            promo_info is not None and
-            discount_pence == 0 and
-            booking.override_gross_pence is None
-        )
-
         assert needs_override is True
 
+    def test_needs_override_flag_when_zero_net_no_promo_recorded(self):
+        """needsOverride True when net is £0 even if no promo was recorded
+        (path B — covers one-off / friends-and-family / phone freebies that
+        bypass the 6 promo source tables). Locked 2026-05-06."""
+        needs_override = self._compute_needs_override(
+            promo_info=None,  # promo lookup missed / not tracked
+            discount_pence=0,
+            net_pence=0,
+            override_gross=None,
+        )
+        assert needs_override is True
+
+    def test_needs_override_flag_false_when_paid_and_no_promo(self):
+        """A normal paid booking with no promo and no override should NOT
+        trigger needs_override. Boundary guard for the new path B."""
+        needs_override = self._compute_needs_override(
+            promo_info=None,
+            discount_pence=0,
+            net_pence=8500,  # paid in full
+            override_gross=None,
+        )
+        assert needs_override is False
+
     def test_needs_override_flag_false_when_override_exists(self):
-        """needsOverride should be False when override values exist."""
-        booking = create_mock_booking(
-            id=1,
-            payment=create_mock_payment(amount_pence=0),
-            override_gross_pence=8500,  # Has override
-            override_discount_pence=8500,
+        """needsOverride False when override values are already set —
+        applies regardless of which path would otherwise qualify."""
+        # Path A: promo + 0 discount, but override is set → false.
+        a = self._compute_needs_override(
+            promo_info={"code": "FREE-PARKING", "discount_percent": 100},
+            discount_pence=0, net_pence=0, override_gross=8500,
         )
-
-        promo_info = {"code": "FREE-PARKING", "discount_percent": 100}
-        discount_pence = booking.override_discount_pence
-
-        needs_override = (
-            promo_info is not None and
-            discount_pence == 0 and
-            booking.override_gross_pence is None
+        # Path B: zero net, but override is set → false.
+        b = self._compute_needs_override(
+            promo_info=None, discount_pence=0, net_pence=0, override_gross=8500,
         )
-
-        assert needs_override is False  # Override exists
+        assert a is False
+        assert b is False
 
     def test_has_override_flag(self):
         """hasOverride should be True when override values exist."""
