@@ -54,6 +54,7 @@ from roster_planner import (
     Event,
     PlannerSettings,
     UK_TZ,
+    compute_shift_buffers,
     group_events_by_gap,
     round_to_shift_type,
 )
@@ -235,8 +236,6 @@ def rebuild_auto_for_dates(
     )
 
     # 4. Materialise shifts for clusters whose start lands on a target date.
-    start_buffer = timedelta(minutes=settings.start_buffer_minutes)
-    end_buffer = timedelta(minutes=settings.end_buffer_minutes)
     min_duration = timedelta(minutes=settings.min_shift_minutes)
 
     for cluster in clusters:
@@ -251,6 +250,16 @@ def rebuild_auto_for_dates(
         if cluster_start.date() not in target_set:
             # Adjacent-day rebuilds will own this cluster — don't double-write.
             continue
+
+        # Per-cluster buffers: extend by 30 min for each tight (<30 min) same-type
+        # pair — pickups push the start earlier, drop-offs push the end later.
+        start_buf_min, end_buf_min = compute_shift_buffers(
+            cluster,
+            base_start_minutes=settings.start_buffer_minutes,
+            base_end_minutes=settings.end_buffer_minutes,
+        )
+        start_buffer = timedelta(minutes=start_buf_min)
+        end_buffer = timedelta(minutes=end_buf_min)
 
         # Strip tz for naive DB storage.
         c_start = cluster_start.replace(tzinfo=None)

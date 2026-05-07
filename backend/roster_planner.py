@@ -240,6 +240,56 @@ def group_events_by_gap(
     return clusters
 
 
+def compute_shift_buffers(
+    cluster: EventCluster,
+    base_start_minutes: int,
+    base_end_minutes: int,
+    tight_gap_minutes: int = 30,
+    extension_minutes: int = 30,
+) -> tuple[int, int]:
+    """Per-cluster shift buffer extension based on tight same-type pairs.
+
+    Default buffers are `(base_start_minutes, base_end_minutes)`. Within the
+    cluster, count consecutive same-type pairs whose `event_time` gap is
+    strictly less than `tight_gap_minutes`:
+      - each pickup→pickup tight pair adds `extension_minutes` to start_buffer
+      - each drop_off→drop_off tight pair adds `extension_minutes` to end_buffer
+    Mixed pairs (drop_off↔pick_up) don't count toward either side; events of
+    the other type are transparent when scanning for same-type pairs (so a
+    pickup interleaved between two close drop-offs doesn't suppress that
+    drop-off pair).
+
+    Pairs are scanned across the whole cluster, independent of the
+    cluster-formation `gap_max_minutes` threshold.
+
+    Returns `(start_buffer_minutes, end_buffer_minutes)`.
+    """
+    if not cluster.events:
+        return (base_start_minutes, base_end_minutes)
+
+    pickups = sorted(
+        (e for e in cluster.events if e.event_type == "pick_up"),
+        key=lambda e: e.event_time,
+    )
+    dropoffs = sorted(
+        (e for e in cluster.events if e.event_type == "drop_off"),
+        key=lambda e: e.event_time,
+    )
+
+    def _missed_pairs(events: list[Event]) -> int:
+        n = 0
+        for prev, curr in zip(events, events[1:]):
+            gap_min = (curr.event_time - prev.event_time).total_seconds() / 60
+            if gap_min < tight_gap_minutes:
+                n += 1
+        return n
+
+    return (
+        base_start_minutes + extension_minutes * _missed_pairs(pickups),
+        base_end_minutes + extension_minutes * _missed_pairs(dropoffs),
+    )
+
+
 def peak_concurrent_count(events: Iterable[Event], window_minutes: int = 15) -> int:
     """Max number of events falling within any `window_minutes` rolling window.
 
