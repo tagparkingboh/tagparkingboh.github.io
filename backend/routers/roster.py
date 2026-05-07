@@ -1469,9 +1469,10 @@ async def duplicate_shift(
     - `staff_ids` and/or `add_unassigned_jockey` / `add_unassigned_fleet` → N
       copies on the source's date, one per target.
 
-    Date-copy result is always `created_source='manual'` regardless of the
-    source's source — admin took an explicit action so lifecycle ownership
-    transfers off the auto-roster (per SPEC.md v3).
+    The duplicate inherits the source's `created_source` (auto → auto,
+    manual → manual). Auto duplicates that remain unassigned are still
+    eligible for wipe by `rebuild_auto_for_dates` per the existing
+    untouched-auto rule; assigned auto duplicates stay (admin territory).
     """
     source = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
     if not source:
@@ -1579,7 +1580,7 @@ async def duplicate_shift(
             status=ShiftStatus.SCHEDULED,
             notes=source.notes,
             intended_driver_type=intended,
-            created_source="manual",
+            created_source=source.created_source or "manual",
         )
         db.add(new_shift)
         db.flush()

@@ -2771,6 +2771,12 @@
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 15px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #252525;
+  padding: 8px 0;
+  border-bottom: 1px solid #333;
 }
 
 .shifts-section-header .detail-section-title {
