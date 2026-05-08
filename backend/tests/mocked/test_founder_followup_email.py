@@ -122,7 +122,7 @@ class TestSendFounderFollowupEmailHappyPath:
         signature_elements = [
             "Andrews-Brown",
             "Founder | Tag Parking",
-            "07586 092361",
+            "01202 798710",
             "tagparking.co.uk",
         ]
         for element in signature_elements:

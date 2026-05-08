@@ -172,7 +172,7 @@ class TestSend2DayReminderEmail:
         )
 
         html_content = mock_send_email.call_args[0][2]
-        assert "07586 092361" in html_content
+        assert "01202 798710" in html_content
         assert "support@tagparking.co.uk" in html_content
 
     @patch('email_service.send_email')

@@ -2823,7 +2823,7 @@ function Bookings() {
                     <div className="form-group">
                       <div className="same-day-notice">
                         <strong>Same-day bookings require at least 4 hours notice.</strong>
-                        <p>Please call us on <a href="tel:+447586092361">+44 (0)7586 092361</a> to arrange a last-minute booking.</p>
+                        <p>Please call us on <a href="tel:01202 798710">01202 798710</a> to arrange a last-minute booking.</p>
                       </div>
                     </div>
                   )}

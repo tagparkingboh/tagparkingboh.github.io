@@ -461,7 +461,7 @@ function LandingPage() {
         </div>
         <div className="footer-contact">
           <a href="mailto:support@tagparking.co.uk">support@tagparking.co.uk</a>
-          <a href="tel:+447586092361">+44 (0)7586 092361</a>
+          <a href="tel:01202 798710">01202 798710</a>
         </div>
         <div className="social-links">
           <a href="https://www.facebook.com/people/Tag-Parking/61583879493475/" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
