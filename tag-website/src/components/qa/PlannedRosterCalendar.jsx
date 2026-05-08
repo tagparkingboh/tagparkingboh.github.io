@@ -449,8 +449,11 @@ export default function PlannedRosterCalendar({ apiUrl, token }) {
           <button
             type="button"
             className="prp-refresh-btn"
-            onClick={() => Promise.all([refreshRunsList(), refreshSelectedDetail()])}
-            title="Re-fetch runs + selected run detail (no page reload)"
+            onClick={() => {
+              setCalendarRefreshTick((t) => t + 1)
+              Promise.all([refreshRunsList(), refreshSelectedDetail()])
+            }}
+            title="Re-fetch live calendar + runs + selected run detail (no page reload)"
           >
             ⟳ Refresh
           </button>
