@@ -44,6 +44,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 router = APIRouter(prefix="/api", tags=["roster"])
 
 
+# Auto-shift go-live cutoff (2026-05-07 rollout decision): auto-created shifts
+# only appear in /api/employee/available-shifts on this date or later. Manual
+# shifts are unaffected and remain claimable on every date. Remove this
+# constant and the OR clause it gates once the rollout is complete.
+AUTO_SHIFTS_VISIBLE_FROM = date_type(2026, 6, 1)
+
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -2150,6 +2157,13 @@ async def get_available_shifts(
 
     Anyone without a driver_type (e.g. admins not configured as drivers)
     sees nothing — they shouldn't be claiming jockey/fleet work anyway.
+
+    Auto-shift rollout (2026-05-07): manual shifts remain claimable on every
+    date. Auto-created shifts are claimable only on/after AUTO_SHIFTS_VISIBLE_FROM
+    so the team continues to consume manual shifts through end of May while
+    auto rosters become live for June onwards. Drop the OR clause and the
+    constant once the rollout is complete and all auto shifts should be
+    visible regardless of date.
     """
     today = date_type.today()
 
@@ -2157,9 +2171,10 @@ async def get_available_shifts(
         RosterShift.staff_id.is_(None),
         RosterShift.date >= today,
         RosterShift.status != ShiftStatus.CANCELLED,
-        # Self-contained: auto-created shifts live only on the Planner Calendar
-        # for now and aren't claimable until the admin promotes them.
-        RosterShift.created_source != "auto",
+        or_(
+            RosterShift.created_source != "auto",
+            RosterShift.date >= AUTO_SHIFTS_VISIBLE_FROM,
+        ),
     )
 
     user_driver_type = getattr(current_user, "driver_type", None)
