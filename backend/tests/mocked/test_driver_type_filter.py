@@ -299,14 +299,16 @@ class TestAvailableShiftsVisibility:
 
 
 # =====================================================================================
-# /api/employee/team-shifts — driver-type visibility
+# /api/employee/team-shifts — visibility (open to all, 2026-05-08)
 # =====================================================================================
 
 
-class TestTeamShiftsDriverTypeFilter:
+class TestTeamShiftsVisibility:
+    """Every employee sees every teammate's shift on the day, regardless of
+    driver_type. Claim eligibility is still gated by driver_type — that lives
+    in /api/employee/available-shifts and is covered separately."""
 
     def test_happy_jockey_user_sees_all_teammates(self, mock_db):
-        """Jockey user sees both jockey and fleet teammates."""
         jockey_mate = mk_user(2, first="Marek", last="Smolarek", driver_type="jockey")
         fleet_mate = mk_user(3, first="Aaron", last="Shorey", driver_type="fleet")
         mock_db._tables[RosterShift] = [
@@ -320,7 +322,8 @@ class TestTeamShiftsDriverTypeFilter:
         initials = sorted(row["initials"] for row in r.json())
         assert initials == ["AS", "MS"]
 
-    def test_happy_fleet_user_sees_only_fleet_teammates(self, mock_db):
+    def test_happy_fleet_user_now_sees_jockey_teammates_too(self, mock_db):
+        """Locked rule lifted 2026-05-08: fleet drivers see jockey teammates."""
         jockey_mate = mk_user(2, first="Marek", last="Smolarek", driver_type="jockey")
         fleet_mate = mk_user(3, first="Aaron", last="Shorey", driver_type="fleet")
         mock_db._tables[RosterShift] = [
@@ -331,24 +334,27 @@ class TestTeamShiftsDriverTypeFilter:
 
         r = client.get("/api/employee/team-shifts")
         assert r.status_code == 200
-        rows = r.json()
-        assert len(rows) == 1
-        assert rows[0]["initials"] == "AS"
+        initials = sorted(row["initials"] for row in r.json())
+        assert initials == ["AS", "MS"]
 
-    def test_unhappy_admin_with_no_driver_type_sees_nothing(self, mock_db):
+    def test_happy_user_with_no_driver_type_still_sees_team(self, mock_db):
+        """Users without a driver_type (legacy / admin-as-driver) still get the
+        team feed — the feed is purely informational."""
         jockey_mate = mk_user(2, first="Marek", last="Smolarek", driver_type="jockey")
+        fleet_mate = mk_user(3, first="Aaron", last="Shorey", driver_type="fleet")
         mock_db._tables[RosterShift] = [
             mk_shift(shift_id=10, staff=jockey_mate, shift_date=date(2026, 5, 11)),
+            mk_shift(shift_id=11, staff=fleet_mate, shift_date=date(2026, 5, 12)),
         ]
         client = _make_client(mock_db, mk_user(1, driver_type=None))
 
         r = client.get("/api/employee/team-shifts")
         assert r.status_code == 200
-        assert r.json() == []
+        initials = sorted(row["initials"] for row in r.json())
+        assert initials == ["AS", "MS"]
 
-    def test_edge_teammate_with_unknown_driver_type_hidden_from_fleet_user(self, mock_db):
-        """Defensive: a teammate whose driver_type is None shouldn't appear
-        in a fleet user's team feed."""
+    def test_edge_teammate_with_no_driver_type_is_visible(self, mock_db):
+        """A teammate whose driver_type is None still appears in the team feed."""
         weird_mate = mk_user(2, first="Old", last="Account", driver_type=None)
         mock_db._tables[RosterShift] = [
             mk_shift(shift_id=10, staff=weird_mate, shift_date=date(2026, 5, 11)),
@@ -357,7 +363,9 @@ class TestTeamShiftsDriverTypeFilter:
 
         r = client.get("/api/employee/team-shifts")
         assert r.status_code == 200
-        assert r.json() == []
+        rows = r.json()
+        assert len(rows) == 1
+        assert rows[0]["initials"] == "OA"
 
 
 # =====================================================================================

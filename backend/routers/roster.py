@@ -2066,20 +2066,10 @@ async def get_team_shifts(
 
     shifts = query.order_by(RosterShift.date, RosterShift.start_time).all()
 
-    # Driver-type relevance filter (locked 2026-04-30):
-    #   jockey users see all teammates (mixed pool)
-    #   fleet  users see only fleet teammates
-    user_driver_type = getattr(current_user, "driver_type", None)
-
-    def _visible(s):
-        if s.staff is None:
-            return False
-        if user_driver_type == "jockey":
-            return True
-        if user_driver_type == "fleet":
-            return getattr(s.staff, "driver_type", None) == "fleet"
-        return False  # admin / undefined → no team feed
-
+    # Visibility (2026-05-08): every employee sees every teammate's shift on
+    # the day, regardless of driver_type. Claim eligibility is still gated
+    # by driver_type in /api/employee/available-shifts — this endpoint is
+    # view-only and exists so the team can see who else is on shift.
     return [
         TeamShiftResponse(
             initials=get_staff_initials(s.staff),
@@ -2092,7 +2082,7 @@ async def get_team_shifts(
             end_time=format_time(s.end_time),
         )
         for s in shifts
-        if _visible(s)
+        if s.staff is not None
     ]
 
 
