@@ -143,6 +143,26 @@ const formatTime = (timeStr) => {
   return timeStr.substring(0, 5)
 }
 
+// Sort bookings within a shift in true chronological order. For overnight
+// shifts (start > end across midnight) any booking time before the shift
+// start belongs to the next day, so add 24h before comparing — otherwise
+// a 00:00 pickup would sort ahead of a 22:55 pickup on the same shift.
+const sortBookingsForShift = (bookings, shift) => {
+  if (!bookings || bookings.length === 0) return []
+  const toMins = (t) => {
+    if (!t) return 0
+    const [h, m] = t.split(':').map(Number)
+    return (h || 0) * 60 + (m || 0)
+  }
+  const startMins = toMins(shift?.start_time)
+  const isOvernight = !!(shift?.end_date && shift.end_date !== shift.date)
+  const wrappedMins = (t) => {
+    const mins = toMins(t)
+    return isOvernight && mins < startMins ? mins + 24 * 60 : mins
+  }
+  return [...bookings].sort((a, b) => wrappedMins(a.time) - wrappedMins(b.time))
+}
+
 // Format time input to 24-hour format (HH:MM) with auto-colon insertion
 const formatTimeInput24h = (input, previousValue = '') => {
   // Remove non-digits except colon
@@ -3022,9 +3042,7 @@ function RosterCalendar({
                           {/* Show linked bookings */}
                           {shift.bookings && shift.bookings.length > 0 ? (
                             <div className="shift-bookings-list">
-                              {[...shift.bookings]
-                                .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
-                                .map((booking, idx) => (
+                              {sortBookingsForShift(shift.bookings, shift).map((booking, idx) => (
                                 <div key={booking.id} className="shift-booking-info">
                                   <div className="shift-booking-header">
                                     <span className={`shift-booking-type ${booking.type}`}>
@@ -3126,9 +3144,7 @@ function RosterCalendar({
                           <div className="shift-card-body">
                             {shift.bookings && shift.bookings.length > 0 ? (
                               <div className="shift-bookings-list">
-                                {[...shift.bookings]
-                                  .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
-                                  .map((booking) => (
+                                {sortBookingsForShift(shift.bookings, shift).map((booking) => (
                                   <div key={booking.id} className="shift-booking-info">
                                     <div className="shift-booking-header">
                                       <span className={`shift-booking-type ${booking.type}`}>

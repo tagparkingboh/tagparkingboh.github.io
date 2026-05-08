@@ -1933,7 +1933,7 @@ function AdminShiftBlock({ shift }) {
       </div>
       {bookings.length > 0 && (
         <ul className="prp-event-list">
-          {bookings.map((b) => (
+          {sortBookingsForShift(bookings, shift).map((b) => (
             <li
               key={`${b.id}-${b.type}`}
               className={`prp-event prp-event-${b.type === 'dropoff' ? 'dropoff' : 'pickup'}`}
@@ -2003,6 +2003,24 @@ function formatTime(t) {
   if (!t) return '–'
   // Backend returns "HH:MM:SS" or "HH:MM"; trim seconds for display.
   return String(t).slice(0, 5)
+}
+
+// Sort bookings chronologically within a shift, accounting for overnight
+// wrap (a 00:00 booking on a 21:55→00:30 shift belongs after a 22:55 one).
+function sortBookingsForShift(bookings, shift) {
+  if (!bookings || bookings.length === 0) return []
+  const toMins = (t) => {
+    if (!t) return 0
+    const [h, m] = String(t).split(':').map(Number)
+    return (h || 0) * 60 + (m || 0)
+  }
+  const startMins = toMins(shift?.start_time)
+  const isOvernight = !!(shift?.end_date && shift.end_date !== shift.date)
+  const wrappedMins = (t) => {
+    const mins = toMins(t)
+    return isOvernight && mins < startMins ? mins + 24 * 60 : mins
+  }
+  return [...bookings].sort((a, b) => wrappedMins(a.time) - wrappedMins(b.time))
 }
 
 function WarningsList({ warnings }) {
