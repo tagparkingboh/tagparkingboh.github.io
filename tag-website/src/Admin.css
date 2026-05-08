@@ -242,6 +242,34 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
+.bookings-scroll-top {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1000;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: #1a1a1a;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.bookings-scroll-top:hover {
+  background: #333;
+  transform: translateY(-2px);
+}
+
+.bookings-scroll-top:active {
+  transform: translateY(0);
+}
+
 .admin-section-header {
   display: flex;
   justify-content: space-between;

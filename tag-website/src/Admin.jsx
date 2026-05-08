@@ -555,6 +555,11 @@ function Admin() {
   const [deletingThreads, setDeletingThreads] = useState(false)
   const conversationEndRef = useRef(null)
 
+  // Bookings-tab scroll-to-top button: page can grow very long, so a
+  // floating chevron lets the admin jump back to the top.
+  const adminMainRef = useRef(null)
+  const [bookingsScrollTopVisible, setBookingsScrollTopVisible] = useState(false)
+
   // SMS textarea refs for variable insertion
   const sendSmsTextareaRef = useRef(null)
   const newTemplateTextareaRef = useRef(null)
@@ -909,6 +914,20 @@ function Admin() {
       fetchBookings()
     }
   }, [activeTab, token])
+
+  // Show / hide the Bookings tab's scroll-to-top button based on how far
+  // the admin-main scroll container has been scrolled.
+  useEffect(() => {
+    const el = adminMainRef.current
+    if (!el || activeTab !== 'bookings') {
+      setBookingsScrollTopVisible(false)
+      return
+    }
+    const onScroll = () => setBookingsScrollTopVisible(el.scrollTop > 400)
+    el.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [activeTab])
 
 
   // Fetch subscribers when marketing tab is active with subscribers or campaigns sub-tab
@@ -5936,7 +5955,7 @@ function Admin() {
         </aside>
 
         {/* Main Content */}
-        <main className="admin-main">
+        <main className="admin-main" ref={adminMainRef}>
         {error && <div className="admin-error">{error}</div>}
         {successMessage && <div className="admin-success">{successMessage}</div>}
 
@@ -14985,6 +15004,20 @@ function Admin() {
               </table>
             )}
           </div>
+        )}
+
+        {activeTab === 'bookings' && bookingsScrollTopVisible && (
+          <button
+            type="button"
+            className="bookings-scroll-top"
+            onClick={() => adminMainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+            aria-label="Scroll to top"
+            title="Back to top"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M17 14l-5-5-5 5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
+            </svg>
+          </button>
         )}
 
         </main>
