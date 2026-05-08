@@ -249,6 +249,8 @@
   z-index: 1000;
   width: 48px;
   height: 48px;
+  padding: 0;
+  line-height: 0;
   border-radius: 50%;
   border: none;
   background: #1a1a1a;
@@ -259,6 +261,10 @@
   justify-content: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.bookings-scroll-top svg {
+  display: block;
 }
 
 .bookings-scroll-top:hover {
