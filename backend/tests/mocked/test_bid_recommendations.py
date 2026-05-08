@@ -115,9 +115,13 @@ def calculate_bid_recommendations(
                 recommendation = "increase"
                 reason = f"Lower volume but excellent conversion ({conversion_rate}%) - untapped opportunity"
                 priority = "medium"
+            elif conversion_rate >= avg_conversion:
+                recommendation = "maintain"
+                reason = f"Low search volume ({search_share}% of weekly) but solid conversion ({conversion_rate}% vs {avg_conversion}% avg)"
+                priority = "low"
             else:
                 recommendation = "reduce"
-                reason = f"Low search volume ({search_share}% of weekly) with weak conversion ({conversion_rate}%)"
+                reason = f"Low search volume ({search_share}% of weekly) with below-average conversion ({conversion_rate}% vs {avg_conversion}% avg)"
                 priority = "low"
         else:
             if conversion_rate >= avg_conversion * 1.2:
@@ -322,7 +326,7 @@ class TestRecommendationLogic:
 
         assert wednesday_rec["recommendation"] == "reduce"
         assert wednesday_rec["priority"] == "low"
-        assert "weak conversion" in wednesday_rec["reason"]
+        assert "below-average conversion" in wednesday_rec["reason"]
 
     def test_average_volume_above_avg_conversion_increase(self):
         """Average volume + above-average conversion = INCREASE."""
