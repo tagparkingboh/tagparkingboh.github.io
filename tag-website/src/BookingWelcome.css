@@ -1,0 +1,168 @@
+.booking-welcome-container {
+  flex: 1;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 3rem 2rem;
+  width: 100%;
+  font-family: 'Gilroy', sans-serif;
+}
+
+.booking-welcome-container h1 {
+  font-size: 2.5rem;
+  color: #D9FF00;
+  font-weight: 700;
+  font-style: italic;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.booking-welcome-subtitle {
+  color: #ffffff;
+  text-align: center;
+  font-size: 1.1rem;
+  margin-bottom: 3rem;
+}
+
+.booking-welcome-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.booking-welcome-card {
+  background: #2a2a2a;
+  border: 2px solid #555555;
+  border-radius: 12px;
+  padding: 2.5rem 2rem;
+  text-decoration: none;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: center;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.booking-welcome-card:hover,
+.booking-welcome-card:focus-visible {
+  border-color: #D9FF00;
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.booking-welcome-card h2 {
+  color: #D9FF00;
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.booking-welcome-card p {
+  color: #ffffff;
+  font-size: 1rem;
+  line-height: 1.5;
+  margin: 0;
+  flex: 1;
+}
+
+.booking-welcome-cta {
+  color: #D9FF00;
+  font-weight: 600;
+  font-size: 1rem;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 600px) {
+  .booking-welcome-container {
+    padding: 2rem 1rem;
+  }
+
+  .booking-welcome-container h1 {
+    font-size: 2rem;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Park & Ride form (progressive disclosure, single column)           */
+/* ------------------------------------------------------------------ */
+
+.pr-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
+.pr-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: #ffffff;
+  border: 1px solid #555555;
+  border-radius: 8px;
+  color: #1a1a1a;
+  font-size: 1rem;
+  font-family: 'Gilroy', sans-serif;
+  box-sizing: border-box;
+}
+
+.pr-input:focus {
+  outline: none;
+  border-color: #D9FF00;
+  box-shadow: 0 0 0 2px rgba(217, 255, 0, 0.25);
+}
+
+.pr-input-narrow {
+  max-width: 120px;
+}
+
+.pr-error {
+  color: #ff6b6b;
+  margin: 0;
+  font-weight: 600;
+}
+
+.pr-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+@keyframes pr-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pr-fade-in {
+  animation: pr-fade-in 0.18s ease-out;
+}
+
+/* Step 2 — date/time/travellers summary rows under the price card */
+.pr-summary-row {
+  display: flex;
+  justify-content: space-between;
+  color: #ffffff;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #555555;
+}
+
+.pr-summary-row:last-of-type {
+  border-bottom: none;
+  margin-bottom: 1rem;
+}
+
+/* Step 4 — success state after Stripe returns */
+.pr-success {
+  background: #2a2a2a;
+  border: 2px solid #D9FF00;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  color: #ffffff;
+}
+
+.pr-success h3 {
+  color: #D9FF00;
+  margin-top: 0;
+}
+
