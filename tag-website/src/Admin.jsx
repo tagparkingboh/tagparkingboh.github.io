@@ -557,7 +557,6 @@ function Admin() {
 
   // Bookings-tab scroll-to-top button: page can grow very long, so a
   // floating chevron lets the admin jump back to the top.
-  const adminMainRef = useRef(null)
   const [bookingsScrollTopVisible, setBookingsScrollTopVisible] = useState(false)
 
   // SMS textarea refs for variable insertion
@@ -916,17 +915,18 @@ function Admin() {
   }, [activeTab, token])
 
   // Show / hide the Bookings tab's scroll-to-top button based on how far
-  // the admin-main scroll container has been scrolled.
+  // the page has been scrolled. The whole admin layout grows with content
+  // (min-height: 100vh on body/#root/.admin-layout), so the window is the
+  // real scroll container, not .admin-main.
   useEffect(() => {
-    const el = adminMainRef.current
-    if (!el || activeTab !== 'bookings') {
+    if (activeTab !== 'bookings') {
       setBookingsScrollTopVisible(false)
       return
     }
-    const onScroll = () => setBookingsScrollTopVisible(el.scrollTop > 400)
-    el.addEventListener('scroll', onScroll, { passive: true })
+    const onScroll = () => setBookingsScrollTopVisible(window.scrollY > 400)
+    window.addEventListener('scroll', onScroll, { passive: true })
     onScroll()
-    return () => el.removeEventListener('scroll', onScroll)
+    return () => window.removeEventListener('scroll', onScroll)
   }, [activeTab])
 
 
@@ -5955,7 +5955,7 @@ function Admin() {
         </aside>
 
         {/* Main Content */}
-        <main className="admin-main" ref={adminMainRef}>
+        <main className="admin-main">
         {error && <div className="admin-error">{error}</div>}
         {successMessage && <div className="admin-success">{successMessage}</div>}
 
@@ -15010,7 +15010,7 @@ function Admin() {
           <button
             type="button"
             className="bookings-scroll-top"
-            onClick={() => adminMainRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             aria-label="Scroll to top"
             title="Back to top"
           >
