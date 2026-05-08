@@ -298,6 +298,20 @@ class TestAvailableShiftsVisibility:
         assert r.json() == []
 
 
+class TestAvailableShiftsAutoRollout:
+    """Auto-shift go-live cutoff (2026-05-07 rollout decision).
+
+    Manual shifts: claimable on every date (unchanged).
+    Auto shifts: claimable only on/after AUTO_SHIFTS_VISIBLE_FROM = 2026-06-01.
+    """
+
+    def test_constant_locked_to_2026_06_01(self):
+        """Cutoff date is locked. Changing it requires editing this test —
+        which is intentional, the rollout date is a business decision."""
+        from routers.roster import AUTO_SHIFTS_VISIBLE_FROM
+        assert AUTO_SHIFTS_VISIBLE_FROM == date(2026, 6, 1)
+
+
 # =====================================================================================
 # /api/employee/team-shifts — visibility (open to all, 2026-05-08)
 # =====================================================================================
