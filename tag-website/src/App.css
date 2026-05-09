@@ -924,6 +924,7 @@
 }
 
 .pricing-center-hero {
+  position: relative;
   flex: 1.5;
   max-width: 320px;
   padding: 2rem 2.5rem;
@@ -939,7 +940,6 @@
 .pricing-center-hero:hover {
   transform: scale(1.08);
   box-shadow: 0 12px 40px rgba(217, 255, 0, 0.4);
-  position: relative;
 }
 
 .pricing-hero-badge {
