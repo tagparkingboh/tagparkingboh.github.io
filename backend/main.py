@@ -14,7 +14,7 @@ import uuid
 import secrets
 from datetime import date, time, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Literal
 from zoneinfo import ZoneInfo
 
 
@@ -11972,6 +11972,10 @@ class CreateUserRequest(BaseModel):
     last_name: str
     phone: Optional[str] = None
     is_admin: bool = False
+    # driver_type drives shift visibility / claim eligibility.
+    # Convention: non-admin defaults to "fleet", admin defaults to NULL.
+    # The create_user handler applies the default when this field is omitted.
+    driver_type: Optional[Literal["jockey", "fleet"]] = None
 
 
 class UpdateUserRequest(BaseModel):
@@ -11982,6 +11986,9 @@ class UpdateUserRequest(BaseModel):
     phone: Optional[str] = None
     is_admin: Optional[bool] = None
     is_active: Optional[bool] = None
+    # NULL is a meaningful value for driver_type, so update_user uses
+    # `model_fields_set` to tell "omitted" apart from "explicitly cleared".
+    driver_type: Optional[Literal["jockey", "fleet"]] = None
 
 
 @app.post("/api/admin/users")
@@ -11998,6 +12005,15 @@ async def create_user(
     if existing:
         raise HTTPException(status_code=400, detail="User with this email already exists")
 
+    # Resolve driver_type default: non-admin → "fleet", admin → NULL.
+    # Honour the request's value when explicitly provided (allows admin = "jockey",
+    # non-admin = "jockey", or explicit non-admin = None for the rare system-account
+    # case).
+    if "driver_type" in request.model_fields_set:
+        driver_type = request.driver_type
+    else:
+        driver_type = None if request.is_admin else "fleet"
+
     # Create user
     user = User(
         email=email,
@@ -12006,6 +12022,7 @@ async def create_user(
         phone=request.phone.strip() if request.phone else None,
         is_admin=request.is_admin,
         is_active=True,
+        driver_type=driver_type,
     )
     db.add(user)
     db.commit()
@@ -12021,6 +12038,7 @@ async def create_user(
             "phone": user.phone,
             "is_admin": user.is_admin,
             "is_active": user.is_active,
+            "driver_type": user.driver_type,
         }
     }
 
@@ -12043,6 +12061,7 @@ async def list_users(
                 "phone": u.phone,
                 "is_admin": u.is_admin,
                 "is_active": u.is_active,
+                "driver_type": u.driver_type,
                 "last_login": u.last_login.isoformat() if u.last_login else None,
             }
             for u in users
@@ -12086,6 +12105,10 @@ async def update_user(
         user.is_admin = request.is_admin
     if request.is_active is not None:
         user.is_active = request.is_active
+    # Use model_fields_set so the caller can explicitly clear driver_type to NULL
+    # (e.g. when reclassifying a fleet driver as an admin-only account).
+    if "driver_type" in request.model_fields_set:
+        user.driver_type = request.driver_type
 
     db.commit()
     db.refresh(user)
@@ -12100,6 +12123,7 @@ async def update_user(
             "phone": user.phone,
             "is_admin": user.is_admin,
             "is_active": user.is_active,
+            "driver_type": user.driver_type,
         }
     }
 

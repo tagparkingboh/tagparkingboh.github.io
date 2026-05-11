@@ -2401,7 +2401,8 @@
 }
 
 .user-form-field input[type="text"],
-.user-form-field input[type="email"] {
+.user-form-field input[type="email"],
+.user-form-field select {
   width: 100%;
   padding: 10px 12px;
   font-size: 14px;
@@ -2410,9 +2411,11 @@
   outline: none;
   transition: border-color 0.2s ease;
   box-sizing: border-box;
+  background: white;
 }
 
-.user-form-field input:focus {
+.user-form-field input:focus,
+.user-form-field select:focus {
   border-color: #f7b32b;
   box-shadow: 0 0 0 3px rgba(247, 179, 43, 0.15);
 }

@@ -458,7 +458,7 @@ function Admin() {
   const [userSearchTerm, setUserSearchTerm] = useState('')
   const [showUserModal, setShowUserModal] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
-  const [userForm, setUserForm] = useState({ first_name: '', last_name: '', email: '', phone: '', is_admin: false, is_active: true })
+  const [userForm, setUserForm] = useState({ first_name: '', last_name: '', email: '', phone: '', is_admin: false, is_active: true, driver_type: 'fleet' })
   const [savingUser, setSavingUser] = useState(false)
   const [showDeleteUserModal, setShowDeleteUserModal] = useState(false)
   const [userToDelete, setUserToDelete] = useState(null)
@@ -3081,7 +3081,9 @@ function Admin() {
 
   const openAddUserModal = () => {
     setEditingUser(null)
-    setUserForm({ first_name: '', last_name: '', email: '', phone: '', is_admin: false, is_active: true })
+    // New users default to fleet driver_type; admin checkbox flips the default
+    // to NULL — see effect in the form's Admin onChange below.
+    setUserForm({ first_name: '', last_name: '', email: '', phone: '', is_admin: false, is_active: true, driver_type: 'fleet' })
     setShowUserModal(true)
   }
 
@@ -3094,6 +3096,7 @@ function Admin() {
       phone: u.phone || '',
       is_admin: u.is_admin,
       is_active: u.is_active,
+      driver_type: u.driver_type ?? '',
     })
     setShowUserModal(true)
   }
@@ -3106,13 +3109,19 @@ function Admin() {
         ? `${API_URL}/api/admin/users/${editingUser.id}`
         : `${API_URL}/api/admin/users`
       const method = editingUser ? 'PUT' : 'POST'
+      // Empty string in the select means "no driver type" — send NULL so the
+      // backend's model_fields_set check fires and the column is cleared.
+      const payload = {
+        ...userForm,
+        driver_type: userForm.driver_type === '' ? null : userForm.driver_type,
+      }
       const response = await fetch(url, {
         method,
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(userForm),
+        body: JSON.stringify(payload),
       })
       if (response.ok) {
         setShowUserModal(false)
@@ -6309,9 +6318,38 @@ function Admin() {
                       <label>Phone</label>
                       <input type="text" value={userForm.phone} onChange={e => setUserForm({...userForm, phone: e.target.value})} />
                     </div>
+                    <div className="user-form-field">
+                      <label>Driver Type</label>
+                      <select
+                        value={userForm.driver_type ?? ''}
+                        onChange={e => setUserForm({...userForm, driver_type: e.target.value})}
+                      >
+                        <option value="">— (not a driver)</option>
+                        <option value="jockey">Jockey</option>
+                        <option value="fleet">Fleet</option>
+                      </select>
+                    </div>
                     <div className="user-form-toggles">
                       <label className="admin-checkbox-label">
-                        <input type="checkbox" checked={userForm.is_admin} onChange={e => setUserForm({...userForm, is_admin: e.target.checked})} />
+                        <input
+                          type="checkbox"
+                          checked={userForm.is_admin}
+                          onChange={e => {
+                            const isAdmin = e.target.checked
+                            // Add-User flow: flip the driver_type default along with the
+                            // admin toggle (admin = no driver_type, non-admin = fleet).
+                            // Don't overwrite a value the admin already chose, and never
+                            // mutate driver_type when editing an existing user.
+                            if (!editingUser) {
+                              const defaulted = userForm.driver_type === (isAdmin ? 'fleet' : '')
+                              if (defaulted) {
+                                setUserForm({ ...userForm, is_admin: isAdmin, driver_type: isAdmin ? '' : 'fleet' })
+                                return
+                              }
+                            }
+                            setUserForm({ ...userForm, is_admin: isAdmin })
+                          }}
+                        />
                         Admin
                       </label>
                       <label className="admin-checkbox-label">
