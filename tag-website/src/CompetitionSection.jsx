@@ -2,7 +2,9 @@ import './CompetitionSection.css'
 
 // Auto-hides at 5pm UK on 18 May 2026 (competition close).
 // Drop the file (and the import in HomePage.jsx) once the promo is over.
-const COMPETITION_CLOSES_AT = new Date('2026-05-18T17:00:00+01:00')
+// Exported so the nav-bar link in HomePage.jsx can hide itself on the same
+// schedule without duplicating the date string.
+export const COMPETITION_CLOSES_AT = new Date('2026-05-18T17:00:00+01:00')
 
 const INSTAGRAM_POST_URL = 'https://www.instagram.com/p/DYPiEs4NYsF/'
 const FACEBOOK_POST_URL = 'https://www.facebook.com/reel/1531598338340082/'

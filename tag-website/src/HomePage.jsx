@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import TestimonialsCarousel from './TestimonialsCarousel'
 import PromotionsSection from './PromotionsSection'
-import CompetitionSection from './CompetitionSection'
+import CompetitionSection, { COMPETITION_CLOSES_AT } from './CompetitionSection'
 import PromoModal from './PromoModal'
 import './App.css'
 
@@ -258,6 +258,7 @@ function HomePage() {
           <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
             <li><a href="#pricing" onClick={closeMenu}>Pricing</a></li>
             {hasActivePromo && <li><a href="#promotions" onClick={closeMenu}>Promotions</a></li>}
+            {new Date() < COMPETITION_CLOSES_AT && <li><a href="#competition" onClick={closeMenu}>Competition</a></li>}
             <li><a href="#how-it-works" onClick={closeMenu}>Meet & Greet</a></li>
             <li><a href="#secure-carpark" onClick={closeMenu}>Car Park</a></li>
             <li><a href="#testimonials" onClick={closeMenu}>Testimonials</a></li>
