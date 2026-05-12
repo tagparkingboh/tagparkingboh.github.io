@@ -112,6 +112,31 @@
   left: 0;
   right: 0;
   z-index: 100;
+  transition: background 0.25s ease, backdrop-filter 0.25s ease, padding 0.25s ease;
+}
+
+/* Desktop/tablet only: after the user scrolls past the hero, the header
+   detaches and floats at the top with a dark translucent background. The
+   `.header-scrolled` class is added by HomePage.jsx's scroll listener.
+   Mobile (<769px) overrides this back to absolute below — phones get the
+   stock overlay so the hamburger menu doesn't fight a fixed bar. */
+@media (min-width: 769px) {
+  .header-scrolled {
+    position: fixed;
+    background: rgba(26, 26, 26, 0.88);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  }
+
+  .header-scrolled .nav {
+    padding-top: 0.9rem;
+    padding-bottom: 0.9rem;
+  }
+
+  .header-scrolled .logo-svg {
+    height: 56px;
+  }
 }
 
 .nav {

@@ -36,6 +36,17 @@ function HomePage() {
   const [bannerFading, setBannerFading] = useState(false)
   const [prices, setPrices] = useState({ days4: 65, days4Max: 75, week1: 89, week1Max: 99, week2: 140, week2Max: 150, showRange: false })
   const [hasActivePromo, setHasActivePromo] = useState(false)
+  // Drives the desktop floating-nav effect — true once the user has scrolled
+  // past the top of the hero. The header CSS uses this to flip from absolute
+  // overlay to fixed pill with a dark blur. Mobile ignores the class.
+  const [isHeaderScrolled, setIsHeaderScrolled] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => setIsHeaderScrolled(window.scrollY > 80)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   // Alternate hero banner every 10 seconds
   useEffect(() => {
@@ -244,7 +255,7 @@ function HomePage() {
       <PromoModal />
 
       {/* Header/Nav */}
-      <header className="header">
+      <header className={`header ${isHeaderScrolled ? 'header-scrolled' : ''}`}>
         <nav className="nav">
           <div className="logo">
             <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" fetchpriority="high" />
