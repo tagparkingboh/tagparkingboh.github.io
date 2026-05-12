@@ -99,7 +99,10 @@ def _events_for_booking(booking: Booking) -> list[tuple[str, datetime, datetime]
                 flight_date = booking.pickup_date - timedelta(days=1)
             start_anchor = datetime.combine(flight_date, booking.flight_arrival_time)
         elif booking.pickup_time:
-            start_anchor = datetime.combine(booking.pickup_date, booking.pickup_time) - timedelta(minutes=30)
+            # Pickup fallback start-anchor: 15 min before pickup_time when no
+            # flight_arrival_time is available. Combined with start_buffer this
+            # puts shift_start at pickup_time - 45 (down from -60 pre-2026-05-12).
+            start_anchor = datetime.combine(booking.pickup_date, booking.pickup_time) - timedelta(minutes=15)
         else:
             start_anchor = None
         if start_anchor is not None:

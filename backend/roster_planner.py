@@ -840,7 +840,11 @@ def propose_roster(
                     flight_date = b.pickup_date - timedelta(days=1)
                 anchor_time = _combine_uk(flight_date, arrival_t)
             else:
-                anchor_time = _combine_uk(b.pickup_date, b.pickup_time) - timedelta(minutes=30)
+                # Pickup fallback start-anchor: 15 min before pickup_time when
+                # no flight_arrival_time is available. Combined with start_buffer
+                # this puts shift_start at pickup_time - 45 (down from -60
+                # pre-2026-05-12).
+                anchor_time = _combine_uk(b.pickup_date, b.pickup_time) - timedelta(minutes=15)
             # End anchor — customer handoff. shift_end = pickup_time + end_buffer
             # so the jockey stays on the clock through the actual handover.
             # When pickup_time is missing, fall back to start anchor + 30 min

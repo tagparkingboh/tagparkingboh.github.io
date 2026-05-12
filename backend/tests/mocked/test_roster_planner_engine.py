@@ -1417,13 +1417,13 @@ class TestPickupAnchorsToArrival:
         s = new_shifts[0]
         assert s["start_time"].strftime("%H:%M") == "13:40"
 
-    def test_fallback_no_arrival_uses_pickup_time_minus_30(self):
+    def test_fallback_no_arrival_uses_pickup_time_minus_15(self):
         """Booking with flight_arrival_time=None → engine derives arrival as
-        pickup_time - 30 → shift_start = (pickup_time - 30) - 20 = pickup_time - 50.
+        pickup_time - 15 → shift_start = (pickup_time - 15) - 20 = pickup_time - 35.
 
-        For a 14:30 pickup_time → 13:40 shift_start, identical to the
-        canonical case above. This is intentional: when arrival isn't
-        recorded, the engine assumes the standard +30 collection rule held."""
+        For a 14:30 pickup_time → 13:55 shift_start. Anchor offset reduced
+        from -30 to -15 on 2026-05-12 to bring single-pickup shifts back to
+        ~1 hour total (combined with end_buffer 30 → 15)."""
         now = uk_dt(2026, 5, 1, 0, 0)
         bookings = [
             mk_booking(
@@ -1441,7 +1441,7 @@ class TestPickupAnchorsToArrival:
         )
         new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
         assert len(new_shifts) == 1
-        assert new_shifts[0]["start_time"].strftime("%H:%M") == "13:40"
+        assert new_shifts[0]["start_time"].strftime("%H:%M") == "13:55"
 
     def test_edge_pickup_in_mixed_cluster_does_not_pull_cluster_start_when_drop_is_earlier(self):
         """When a drop-off is the cluster's earliest event, the pickup's
