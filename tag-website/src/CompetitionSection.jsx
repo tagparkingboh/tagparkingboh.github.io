@@ -5,7 +5,7 @@ import './CompetitionSection.css'
 const COMPETITION_CLOSES_AT = new Date('2026-05-18T17:00:00+01:00')
 
 const INSTAGRAM_POST_URL = 'https://www.instagram.com/p/DYPiEs4NYsF/'
-const FACEBOOK_PAGE_URL = 'https://www.facebook.com/reel/1531598338340082/'
+const FACEBOOK_POST_URL = 'https://www.facebook.com/reel/1531598338340082/'
 
 function CompetitionSection() {
   if (new Date() >= COMPETITION_CLOSES_AT) {
@@ -38,9 +38,10 @@ function CompetitionSection() {
 
         <div className="competition-body">
           <p className="competition-instructions">
-            To enter on Instagram: <strong>like, share, and comment</strong> on
-            the post (tag your plus 1) and give us a follow. Winners contacted
-            within the hour after entries close.
+            To enter on Instagram or Facebook:{' '}
+            <strong>like, share, and comment</strong> on the post (tag your
+            plus 1) and give us a follow. Winners contacted within the hour
+            after entries close.
           </p>
           <p className="competition-closes">
             Entries close <strong>5pm Monday 18th May 2026</strong>.
@@ -56,12 +57,12 @@ function CompetitionSection() {
               Enter on Instagram →
             </a>
             <a
-              href={FACEBOOK_PAGE_URL}
+              href={FACEBOOK_POST_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="competition-cta competition-cta-secondary"
             >
-              Follow on Facebook
+              Enter on Facebook →
             </a>
           </div>
         </div>
