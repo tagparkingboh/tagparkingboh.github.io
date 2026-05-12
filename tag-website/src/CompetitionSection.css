@@ -47,7 +47,14 @@
 
 .competition-image {
   width: 100%;
+  /* Force both tiles to the WIN image's native aspect (1016 × 1150) so they
+     render the same height in the grid. The VS image (996 × 1200) is taller,
+     so object-fit:cover with object-position:top trims its bottom — the empty
+     lime space below "City FC" — and keeps the text visible. */
+  aspect-ratio: 1016 / 1150;
   height: auto;
+  object-fit: cover;
+  object-position: top;
   border-radius: 12px;
   display: block;
 }
