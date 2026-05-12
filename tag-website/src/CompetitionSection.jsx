@@ -5,7 +5,7 @@ import './CompetitionSection.css'
 const COMPETITION_CLOSES_AT = new Date('2026-05-18T17:00:00+01:00')
 
 const INSTAGRAM_POST_URL = 'https://www.instagram.com/p/DYPiEs4NYsF/'
-const FACEBOOK_PAGE_URL = 'https://www.facebook.com/people/Tag-Parking/61583879493475/'
+const FACEBOOK_PAGE_URL = 'https://www.facebook.com/reel/1531598338340082/'
 
 function CompetitionSection() {
   if (new Date() >= COMPETITION_CLOSES_AT) {
