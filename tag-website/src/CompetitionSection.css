@@ -109,9 +109,13 @@
   color: #D9FF00;
 }
 
-@media (max-width: 768px) {
+/* ===== RESPONSIVE ===== matches PromotionsSection's 1024 / 768 / 375 tiers */
+
+/* Tablet (≤1024px) — landscape iPad and small laptops. 2-column image grid
+   stays here; just scale heading + padding. */
+@media (max-width: 1024px) {
   .competition-section {
-    padding: 4rem 1.25rem;
+    padding: 5rem 3rem;
   }
 
   .competition-section h2 {
@@ -119,11 +123,56 @@
   }
 
   .competition-card {
-    padding: 1.5rem;
+    padding: 2rem;
+    max-width: 720px;
   }
 
   .competition-images {
+    gap: 1rem;
+  }
+}
+
+/* Portrait tablet (≤900px) — switch to a single-column image stack before
+   the images get cramped. Sits above the mobile tier so phone-style fonts
+   only kick in below 768. */
+@media (max-width: 900px) {
+  .competition-images {
     grid-template-columns: 1fr;
+  }
+
+  .competition-card {
+    max-width: 560px;
+  }
+}
+
+/* Mobile (≤768px) */
+@media (max-width: 768px) {
+  .competition-section {
+    padding: 4rem 1.5rem;
+  }
+
+  .competition-section h2 {
+    font-size: 28px;
+    margin-bottom: 0.75rem;
+  }
+
+  .competition-subtitle {
+    font-size: 16px;
+    margin-bottom: 2rem;
+  }
+
+  .competition-card {
+    padding: 1.5rem;
+    border-radius: 12px;
+  }
+
+  .competition-instructions {
+    font-size: 15px;
+  }
+
+  .competition-closes {
+    font-size: 14px;
+    margin-bottom: 1.25rem;
   }
 
   .competition-actions {
@@ -132,5 +181,22 @@
 
   .competition-cta {
     width: 100%;
+    padding: 0.85rem 1.25rem;
+    font-size: 15px;
+  }
+}
+
+/* Small mobile (≤375px) */
+@media (max-width: 375px) {
+  .competition-section {
+    padding: 3rem 1rem;
+  }
+
+  .competition-card {
+    padding: 1.25rem 1rem;
+  }
+
+  .competition-section h2 {
+    font-size: 24px;
   }
 }
