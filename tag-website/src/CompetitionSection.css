@@ -1,0 +1,136 @@
+/* Competition Section — short-lived ticket giveaway promo.
+   Auto-hidden after COMPETITION_CLOSES_AT in CompetitionSection.jsx.
+   Visual cues mirror PromotionsSection (dark background, lime accent). */
+
+.competition-section {
+  background: var(--dark-gray);
+  padding: 6rem 4rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.competition-section h2 {
+  font-size: 48px;
+  color: #D9FF00;
+  margin-bottom: 1rem;
+  font-weight: 700;
+  position: relative;
+}
+
+.competition-subtitle {
+  font-size: 18px;
+  font-weight: 500;
+  color: #d9ff00;
+  margin: 0 auto 2.5rem;
+  line-height: 1.6;
+  opacity: 0.9;
+  max-width: 700px;
+}
+
+.competition-card {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 2.5rem;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.competition-images {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.competition-image {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  display: block;
+}
+
+.competition-body {
+  text-align: center;
+}
+
+.competition-instructions {
+  font-size: 17px;
+  line-height: 1.6;
+  color: #2a2a2a;
+  margin: 0 auto 1rem;
+  max-width: 640px;
+}
+
+.competition-closes {
+  font-size: 15px;
+  color: #555;
+  margin: 0 auto 1.75rem;
+}
+
+.competition-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.competition-cta {
+  display: inline-block;
+  padding: 0.9rem 1.75rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 16px;
+  text-decoration: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.competition-cta-primary {
+  background: #D9FF00;
+  color: #1a1a1a;
+  box-shadow: 0 6px 18px rgba(217, 255, 0, 0.35);
+}
+
+.competition-cta-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(217, 255, 0, 0.5);
+}
+
+.competition-cta-secondary {
+  background: transparent;
+  color: #1a1a1a;
+  border: 2px solid #1a1a1a;
+}
+
+.competition-cta-secondary:hover {
+  background: #1a1a1a;
+  color: #D9FF00;
+}
+
+@media (max-width: 768px) {
+  .competition-section {
+    padding: 4rem 1.25rem;
+  }
+
+  .competition-section h2 {
+    font-size: 36px;
+  }
+
+  .competition-card {
+    padding: 1.5rem;
+  }
+
+  .competition-images {
+    grid-template-columns: 1fr;
+  }
+
+  .competition-actions {
+    flex-direction: column;
+  }
+
+  .competition-cta {
+    width: 100%;
+  }
+}

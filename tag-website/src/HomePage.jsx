@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import TestimonialsCarousel from './TestimonialsCarousel'
 import PromotionsSection from './PromotionsSection'
+import CompetitionSection from './CompetitionSection'
 import PromoModal from './PromoModal'
 import './App.css'
 
@@ -408,6 +409,9 @@ function HomePage() {
 
       {/* Promotions Section - only shows if there's an active promo */}
       <PromotionsSection />
+
+      {/* Ticket Giveaway — auto-hides after the close date in CompetitionSection.jsx */}
+      <CompetitionSection />
 
       {/* How TAG Works */}
       <section className="how-it-works" id="how-it-works">
