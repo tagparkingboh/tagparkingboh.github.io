@@ -1393,8 +1393,11 @@ class TestPickupAnchorsToArrival:
     """
 
     def test_happy_pickup_with_arrival_anchors_shift_start_to_arrival(self):
-        """Pickup with flight_arrival_time=14:00 → shift starts 13:40
-        (arrival - 20), not 14:10 (the old pickup_time - 20)."""
+        """Pickup with flight_arrival_time=14:00 → cluster is pickup-led,
+        so start_buffer = PICKUP_LED_START_BUFFER_MINUTES (15), giving
+        shift_start = 14:00 - 15 = 13:45 (locked 2026-05-12). Settings'
+        start_buffer_minutes (20 in DEFAULT_SETTINGS) is bypassed for
+        pickup-led clusters."""
         now = uk_dt(2026, 5, 1, 0, 0)
         bookings = [
             mk_booking(
@@ -1412,18 +1415,19 @@ class TestPickupAnchorsToArrival:
         )
         new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
         # Only the pickup falls inside window (drop_dt is 1 month past).
-        # cluster.start = 14:00 (arrival-anchored), shift_start = 14:00 - 20 = 13:40
+        # cluster.start = 14:00 (arrival-anchored), pickup-led override → 15-min buffer.
         assert len(new_shifts) == 1
         s = new_shifts[0]
-        assert s["start_time"].strftime("%H:%M") == "13:40"
+        assert s["start_time"].strftime("%H:%M") == "13:45"
 
-    def test_fallback_no_arrival_uses_pickup_time_minus_15(self):
+    def test_fallback_no_arrival_uses_pickup_time_minus_45(self):
         """Booking with flight_arrival_time=None → engine derives arrival as
-        pickup_time - 15 → shift_start = (pickup_time - 15) - 20 = pickup_time - 35.
+        pickup_time - 30 → cluster is pickup-led, so start_buffer comes from
+        PICKUP_LED_START_BUFFER_MINUTES (15) regardless of DEFAULT_SETTINGS'
+        start_buffer_minutes. Result: shift_start = (pickup_time - 30) - 15
+        = pickup_time - 45.
 
-        For a 14:30 pickup_time → 13:55 shift_start. Anchor offset reduced
-        from -30 to -15 on 2026-05-12 to bring single-pickup shifts back to
-        ~1 hour total (combined with end_buffer 30 → 15)."""
+        For a 14:30 pickup_time → 13:45 shift_start. Locked 2026-05-12."""
         now = uk_dt(2026, 5, 1, 0, 0)
         bookings = [
             mk_booking(
@@ -1441,7 +1445,7 @@ class TestPickupAnchorsToArrival:
         )
         new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
         assert len(new_shifts) == 1
-        assert new_shifts[0]["start_time"].strftime("%H:%M") == "13:55"
+        assert new_shifts[0]["start_time"].strftime("%H:%M") == "13:45"
 
     def test_edge_pickup_in_mixed_cluster_does_not_pull_cluster_start_when_drop_is_earlier(self):
         """When a drop-off is the cluster's earliest event, the pickup's
@@ -1499,15 +1503,16 @@ class TestPickupAnchorsToArrival:
             settings=DEFAULT_SETTINGS, now=now,
         )
         new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
-        # cluster.start = 13:00 (arrival-anchored pickup wins),
-        # shift_start = 13:00 - 20 = 12:40
+        # cluster.start = 13:00 (arrival-anchored pickup wins).
+        # Pickup-led override (locked 2026-05-12): start_buffer = 15 → 12:45.
         assert len(new_shifts) == 1
-        assert new_shifts[0]["start_time"].strftime("%H:%M") == "12:40"
+        assert new_shifts[0]["start_time"].strftime("%H:%M") == "12:45"
 
     def test_boundary_arrival_at_midnight_anchors_correctly(self):
-        """Late-night arrivals at 00:50 (collection 01:20) → shift_start
-        = 00:30 same day. Confirms tz-aware combining works at the day
-        boundary without rolling into the previous day."""
+        """Late-night arrivals at 00:50 (collection 01:20) → pickup-led
+        15-min start_buffer puts shift_start at 00:35 same day. Confirms
+        tz-aware combining works at the day boundary without rolling into
+        the previous day."""
         now = uk_dt(2026, 5, 1, 0, 0)
         bookings = [
             mk_booking(
@@ -1525,7 +1530,7 @@ class TestPickupAnchorsToArrival:
         new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
         assert len(new_shifts) == 1
         s = new_shifts[0]
-        assert s["start_time"].strftime("%H:%M") == "00:30"
+        assert s["start_time"].strftime("%H:%M") == "00:35"
         assert s["date"].isoformat() == "2026-05-19"
 
     def test_edge_arrival_crosses_midnight_backwards_anchors_to_previous_day(self):
@@ -1548,11 +1553,13 @@ class TestPickupAnchorsToArrival:
             settings=DEFAULT_SETTINGS, now=now,
         )
         new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        # Pickup-led override (locked 2026-05-12): 23:55 arrival - 15-min
+        # start_buffer = 23:40 on D-1.
         assert len(new_shifts) == 1
         s = new_shifts[0]
         assert s["date"].isoformat() == "2026-05-09"
         assert s["end_date"].isoformat() == "2026-05-10"
-        assert s["start_time"].strftime("%H:%M") == "23:35"
+        assert s["start_time"].strftime("%H:%M") == "23:40"
 
     def test_boundary_arrival_one_minute_after_pickup_back_dates(self):
         """Arrival 1 min after pickup_time → back-date. Guards against
@@ -1625,7 +1632,8 @@ class TestPickupShiftEndAnchorsToHandoff:
         new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
         assert len(new_shifts) == 1
         s = new_shifts[0]
-        assert s["start_time"].strftime("%H:%M") == "15:20"
+        # Pickup-led 15-min start_buffer: 15:40 - 15 = 15:25 (was 15:20).
+        assert s["start_time"].strftime("%H:%M") == "15:25"
         assert s["end_time"].strftime("%H:%M") == "16:40"
 
     def test_boundary_late_night_cluster_spans_midnight_handoff_buffer(self):
@@ -1662,7 +1670,8 @@ class TestPickupShiftEndAnchorsToHandoff:
         s = new_shifts[0]
         assert s["date"].isoformat() == "2026-05-10"
         assert s["end_date"].isoformat() == "2026-05-11"
-        assert s["start_time"].strftime("%H:%M") == "23:10"  # 23:30 - 20m
+        # Pickup-led 15-min start_buffer (locked 2026-05-12): 23:30 - 15 = 23:15.
+        assert s["start_time"].strftime("%H:%M") == "23:15"
         assert s["end_time"].strftime("%H:%M") == "01:50"   # 01:20 + 30m
 
     def test_edge_dropoff_only_cluster_unchanged(self):

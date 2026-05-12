@@ -142,7 +142,7 @@ class TestEventsForBooking:
     def test_happy_dropoff_and_pickup_extracted(self):
         # 3-tuple shape: (event_type, start_anchor, end_anchor).
         # Drop-off: both anchors == dropoff_time (handoff at customer arrival).
-        # Pickup (no flight_arrival): start = pickup_time-15 (jockey readiness),
+        # Pickup (no flight_arrival): start = pickup_time-30 (jockey readiness),
         #   end = pickup_time (customer handoff).
         b = mk_booking(
             dropoff_dt=datetime(2026, 6, 10, 8, 30),
@@ -156,7 +156,7 @@ class TestEventsForBooking:
         )
         assert events[1] == (
             "pick_up",
-            datetime(2026, 6, 17, 13, 45),
+            datetime(2026, 6, 17, 13, 30),
             datetime(2026, 6, 17, 14, 0),
         )
 

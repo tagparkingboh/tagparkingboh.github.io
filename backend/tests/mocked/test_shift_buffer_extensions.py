@@ -399,8 +399,9 @@ class TestComputeShiftBuffersBothExtensionsStack:
 class TestRebuildAppliesPickupExtension:
     def test_happy_three_pickups_within_30min_extends_start_by_60(self):
         """User example: arrivals 23:20 / 23:30 / 23:40 on June 17.
-        Pickup_times wrap to June 18 (+30 min). Cluster has 2 missed pairs →
-        start_buffer = 30 + 60 = 90 → shift starts 21:50 on June 17."""
+        Pickup_times wrap to June 18 (+30 min). Cluster is pickup-led so the
+        base start_buffer is 15 (locked 2026-05-12) regardless of settings.
+        2 missed pairs → start_buffer = 15 + 60 = 75 → 23:20 - 75 = 22:05."""
         bookings = []
         for i, (arr_h, arr_m) in enumerate([(23, 20), (23, 30), (23, 40)]):
             pt_total = arr_h * 60 + arr_m + 30
@@ -425,8 +426,8 @@ class TestRebuildAppliesPickupExtension:
         new_shifts = [a for a in db._added if isinstance(a, RosterShift) and a.date == date(2026, 6, 17)]
         assert len(new_shifts) == 1
         s = new_shifts[0]
-        assert s.start_time == time(21, 50), (
-            f"Expected 21:50 (= 23:20 − 30 base − 60 for 2 missed pairs), got {s.start_time}"
+        assert s.start_time == time(22, 5), (
+            f"Expected 22:05 (= 23:20 − 15 pickup-led base − 60 for 2 missed pairs), got {s.start_time}"
         )
         # Last pickup arrival = 23:40, end_anchor = pickup_time = 00:10 next day.
         # End buffer = base 30 (no drop-off pairs) → 00:40 next day.
@@ -488,15 +489,16 @@ class TestRebuildSingleEventNoExtension:
 
 
 class TestRebuildPickupExtensionBoundaries:
-    """The pickup start-shift formula is `arrival − 30 − 30·N` — equivalent to
-    `pickup_time − 60 − 30·N`. The two formulations agree in clock terms; the
-    DATE assignment is what these tests pin down.
+    """The pickup start-shift formula is `arrival − 15 − 30·N` (locked 2026-05-12,
+    where 15 is the pickup-led base — see PICKUP_LED_START_BUFFER_MINUTES).
+    The two equivalent clock-time formulations agree; the DATE assignment is
+    what these tests pin down.
     """
 
     def test_boundary_midday_no_wrap_either_side(self):
         """Mid-day arrivals 14:00/14:10/14:20 — no midnight crossing on either edge.
-        2 missed pairs → start = 14:00 − 90 = 12:30; end = pickup_time(14:50) + 30 = 15:20.
-        Shift wholly within target date."""
+        2 missed pairs → start = 14:00 − 15 pickup-led base − 60 ext = 12:45;
+        end = pickup_time(14:50) + 30 = 15:20. Shift wholly within target date."""
         bookings = []
         for i, (arr_h, arr_m) in enumerate([(14, 0), (14, 10), (14, 20)]):
             pt_total = arr_h * 60 + arr_m + 30
@@ -518,15 +520,15 @@ class TestRebuildPickupExtensionBoundaries:
         new_shifts = [a for a in db._added if isinstance(a, RosterShift) and a.date == date(2026, 6, 17)]
         assert len(new_shifts) == 1
         s = new_shifts[0]
-        assert s.start_time == time(12, 30)
+        assert s.start_time == time(12, 45)
         assert s.end_time == time(15, 20)
         assert s.end_date is None  # same-day shift
 
     def test_boundary_morning_wrap_start_lands_previous_day(self):
         """Morning arrivals 00:30/00:40/00:50 on June 17.
-        2 missed pairs → start = 00:30 − 90 = 23:00 on June 16 (previous day).
-        End = pickup_time(01:20) + 30 = 01:50 on June 17.
-        Shift spans midnight: starts on the day BEFORE the target."""
+        2 missed pairs → start = 00:30 − 15 pickup-led base − 60 ext = 23:15
+        on June 16 (previous day). End = pickup_time(01:20) + 30 = 01:50 on
+        June 17. Shift spans midnight: starts on the day BEFORE the target."""
         bookings = []
         for i, (arr_h, arr_m) in enumerate([(0, 30), (0, 40), (0, 50)]):
             pt_total = arr_h * 60 + arr_m + 30  # no wrap, all stay on pickup_date
@@ -554,14 +556,15 @@ class TestRebuildPickupExtensionBoundaries:
         assert len(new_shifts) == 1
         s = new_shifts[0]
         assert s.date == date(2026, 6, 16)
-        assert s.start_time == time(23, 0)
+        assert s.start_time == time(23, 15)
         assert s.end_date == date(2026, 6, 17)
         assert s.end_time == time(1, 50)
 
     def test_boundary_evening_wrap_end_lands_next_day(self):
         """Evening arrivals 23:20/23:30/23:40 — start same day, end wraps to next.
-        Already covered by test_happy_three_pickups_within_30min_extends_start_by_60
-        but locking the date semantics explicitly."""
+        Pickup-led base 15 + 60 ext for 2 missed pairs → 23:20 − 75 = 22:05.
+        Locks the date semantics explicitly alongside the parallel test in
+        TestRebuildAppliesPickupExtension."""
         bookings = []
         for i, (arr_h, arr_m) in enumerate([(23, 20), (23, 30), (23, 40)]):
             pt_total = arr_h * 60 + arr_m + 30
@@ -585,7 +588,7 @@ class TestRebuildPickupExtensionBoundaries:
         assert len(new_shifts) == 1
         s = new_shifts[0]
         assert s.date == date(2026, 6, 17)
-        assert s.start_time == time(21, 50)
+        assert s.start_time == time(22, 5)
         assert s.end_date == date(2026, 6, 18)
         assert s.end_time == time(0, 40)
 

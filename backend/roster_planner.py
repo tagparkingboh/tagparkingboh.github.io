@@ -240,6 +240,31 @@ def group_events_by_gap(
     return clusters
 
 
+PICKUP_LED_START_BUFFER_MINUTES = 15
+
+
+def pickup_led_start_buffer(
+    cluster: EventCluster, default_start_minutes: int
+) -> int:
+    """Return the start_buffer minutes that should apply to this cluster.
+
+    Locked 2026-05-12: pickup-led clusters (earliest event is a pickup) use
+    PICKUP_LED_START_BUFFER_MINUTES (15) regardless of the configured
+    `start_buffer_minutes`. The pickup start_anchor already sits at
+    `flight_arrival_time` (or `pickup_time - 30` fallback), so a 15-min
+    buffer puts shift_start at pickup_time - 45 — the operator's locked
+    spec. Drop-off-led and mixed-with-dropoff-earliest clusters keep
+    `default_start_minutes` so the jockey still has full lead time before
+    a customer drives up.
+    """
+    if not cluster.events:
+        return default_start_minutes
+    earliest = min(cluster.events, key=lambda e: e.event_time)
+    if earliest.event_type == "pick_up":
+        return PICKUP_LED_START_BUFFER_MINUTES
+    return default_start_minutes
+
+
 def compute_shift_buffers(
     cluster: EventCluster,
     base_start_minutes: int,
@@ -840,11 +865,11 @@ def propose_roster(
                     flight_date = b.pickup_date - timedelta(days=1)
                 anchor_time = _combine_uk(flight_date, arrival_t)
             else:
-                # Pickup fallback start-anchor: 15 min before pickup_time when
-                # no flight_arrival_time is available. Combined with start_buffer
-                # this puts shift_start at pickup_time - 45 (down from -60
-                # pre-2026-05-12).
-                anchor_time = _combine_uk(b.pickup_date, b.pickup_time) - timedelta(minutes=15)
+                # Pickup fallback start-anchor: flight typically lands 30 min
+                # before pickup_time. The pickup-led-cluster start_buffer
+                # (15 min, applied in compute_shift_buffers) then takes
+                # shift_start to pickup_time - 45.
+                anchor_time = _combine_uk(b.pickup_date, b.pickup_time) - timedelta(minutes=30)
             # End anchor — customer handoff. shift_end = pickup_time + end_buffer
             # so the jockey stays on the clock through the actual handover.
             # When pickup_time is missing, fall back to start anchor + 30 min
@@ -883,10 +908,15 @@ def propose_roster(
     warnings: list[dict] = []
     proposed_hours_by_staff_week: dict[tuple[int, date], float] = {}
     proposed_last_end_by_staff: dict[int, datetime] = {}
-    start_buffer = timedelta(minutes=settings.start_buffer_minutes)
     end_buffer = timedelta(minutes=settings.end_buffer_minutes)
 
     for cluster in clusters:
+        # Pickup-led clusters use a tighter 15-min start_buffer (locked
+        # 2026-05-12) so shift_start lands at pickup_time - 45. Drop-off-led
+        # clusters keep settings.start_buffer_minutes.
+        start_buffer = timedelta(minutes=pickup_led_start_buffer(
+            cluster, settings.start_buffer_minutes,
+        ))
         shift_start_dt = cluster.start - start_buffer
         shift_end_dt = cluster.end + end_buffer
         # Min shift length — extend the END (not the start) when the

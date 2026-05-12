@@ -56,6 +56,7 @@ from roster_planner import (
     UK_TZ,
     compute_shift_buffers,
     group_events_by_gap,
+    pickup_led_start_buffer,
     round_to_shift_type,
 )
 
@@ -99,10 +100,11 @@ def _events_for_booking(booking: Booking) -> list[tuple[str, datetime, datetime]
                 flight_date = booking.pickup_date - timedelta(days=1)
             start_anchor = datetime.combine(flight_date, booking.flight_arrival_time)
         elif booking.pickup_time:
-            # Pickup fallback start-anchor: 15 min before pickup_time when no
-            # flight_arrival_time is available. Combined with start_buffer this
-            # puts shift_start at pickup_time - 45 (down from -60 pre-2026-05-12).
-            start_anchor = datetime.combine(booking.pickup_date, booking.pickup_time) - timedelta(minutes=15)
+            # Pickup fallback start-anchor: flight typically lands 30 min
+            # before pickup_time. The pickup-led-cluster start_buffer (15 min,
+            # applied in compute_shift_buffers) then takes shift_start to
+            # pickup_time - 45.
+            start_anchor = datetime.combine(booking.pickup_date, booking.pickup_time) - timedelta(minutes=30)
         else:
             start_anchor = None
         if start_anchor is not None:
@@ -256,9 +258,12 @@ def rebuild_auto_for_dates(
 
         # Per-cluster buffers: extend by 30 min for each tight (<30 min) same-type
         # pair — pickups push the start earlier, drop-offs push the end later.
+        # Pickup-led clusters override the start base to 15 min (locked 2026-05-12)
+        # so a single-pickup shift comes out at pickup_time - 45.
+        base_start = pickup_led_start_buffer(cluster, settings.start_buffer_minutes)
         start_buf_min, end_buf_min = compute_shift_buffers(
             cluster,
-            base_start_minutes=settings.start_buffer_minutes,
+            base_start_minutes=base_start,
             base_end_minutes=settings.end_buffer_minutes,
         )
         start_buffer = timedelta(minutes=start_buf_min)
