@@ -2653,10 +2653,16 @@ function Bookings() {
                           <p>
                             Sorry, drop-offs are unavailable between {blockedInfo.blocked_slot.start_time} and {blockedInfo.blocked_slot.end_time}
                             {blockedInfo.blocked_slot.reason && ` (${blockedInfo.blocked_slot.reason})`}
+                            . Call <a href="tel:01202 798710" className="contact-link">01202 798710</a> and we will try our best to help!
                           </p>
                         )
                       }
-                      return <p>Sorry, we have no availability for drop-offs on {format(formData.dropoffDate, 'EEEE d MMMM yyyy')}</p>
+                      return (
+                        <p>
+                          Sorry, we have no availability for drop-offs on {format(formData.dropoffDate, 'EEEE d MMMM yyyy')}.
+                          Call <a href="tel:01202 798710" className="contact-link">01202 798710</a> and we will try our best to help!
+                        </p>
+                      )
                     })()}
                   </div>
                 )}
@@ -2664,15 +2670,14 @@ function Bookings() {
 
               {/* Flight lookup removed - using direct entry flow */}
 
-              {/* Departure Flight Entry Form. Visible once the customer
-                  has picked a drop-off date that clears the lead-time rule.
-                  When the date IS blocked (same-day / past-20:00-for-tomorrow)
-                  the banner above asks them to call instead — the form
-                  shouldn't be reachable. The isDropoffDateBlocked admin
-                  time-slot block is intentionally NOT gated here: that
-                  flow allows editing the flight time to land on a valid
-                  slot, so the entry form stays open. */}
-              {showManualDeparture && formData.dropoffDate && isLeadTimeAllowed && (
+              {/* Departure Flight Entry Form. Visible once the customer has
+                  picked a drop-off date that's reachable: not lead-time
+                  blocked, and not an admin-blocked date where every valid
+                  drop-off slot is unavailable (isDropoffDateBlocked is
+                  defined as "ALL potential dropoff times are blocked OR
+                  full-day block"). Either way the banner above asks them
+                  to call; no point letting them fill in the rest. */}
+              {showManualDeparture && formData.dropoffDate && isLeadTimeAllowed && !isDropoffDateBlocked && (
                 <div className="form-group fade-in">
                   <div className="form-group">
                     <label htmlFor="manualAirline">Airline <span className="required">*</span></label>
