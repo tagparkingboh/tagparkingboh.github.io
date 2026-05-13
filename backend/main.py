@@ -836,6 +836,99 @@ async def get_daily_capacity(
     }
 
 
+@app.get("/api/capacity/check-slot")
+async def check_capacity_for_slot(
+    dropoff_date: date,
+    dropoff_time: str,
+    pickup_date: date,
+    pickup_time: str,
+    db: Session = Depends(get_db),
+):
+    """Customer-facing time-aware capacity gate.
+
+    Returns whether the lot has room across the customer's entire stay,
+    using the actual drop-off / pick-up TIMES (not just dates). The
+    /api/capacity/daily endpoint counts any booking touching a date as
+    +1; that overcounts on turnover days (e.g. a 16:00 pickup frees a
+    spot for a 16:30 drop-off but daily counting still says "full"). This
+    endpoint sweeps event boundaries within the customer's window and
+    returns the peak concurrent count — block only when peak + 1 > cap.
+
+    Query params:
+      dropoff_date  YYYY-MM-DD — customer's drop-off date
+      dropoff_time  HH:MM     — customer's drop-off time (24h)
+      pickup_date   YYYY-MM-DD — customer's pick-up date
+      pickup_time   HH:MM     — customer's pick-up time (24h)
+
+    Returns:
+      allowed       bool     — peak + 1 <= max_capacity
+      peak          int      — peak concurrent OTHER bookings during stay
+      max_capacity  int      — MAX_PARKING_SPOTS (60)
+
+    Counts CONFIRMED, COMPLETED, and PENDING bookings (PENDING included
+    so two customers in-payment-flow can't both race for the last spot).
+    """
+    # Parse HH:MM times. Reject malformed inputs early.
+    try:
+        dh, dm = (int(x) for x in dropoff_time.split(":"))
+        ph, pm = (int(x) for x in pickup_time.split(":"))
+        customer_drop_dt = datetime.combine(dropoff_date, time(dh, dm))
+        customer_pick_dt = datetime.combine(pickup_date, time(ph, pm))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="dropoff_time / pickup_time must be HH:MM")
+
+    if customer_pick_dt <= customer_drop_dt:
+        raise HTTPException(status_code=400, detail="pickup must be after dropoff")
+    if (pickup_date - dropoff_date).days > 90:
+        raise HTTPException(status_code=400, detail="Stay length too large (max 90 days)")
+
+    # Pull every booking whose date range can overlap the customer's window.
+    # Time-precision filtering happens in the sweep below.
+    bookings = (
+        db.query(DbBooking)
+        .filter(DbBooking.status.in_([
+            BookingStatus.CONFIRMED,
+            BookingStatus.COMPLETED,
+            BookingStatus.PENDING,
+        ]))
+        .filter(DbBooking.dropoff_date <= pickup_date)
+        .filter(DbBooking.pickup_date >= dropoff_date)
+        .all()
+    )
+
+    # Build a sweep of (+1 at arrival, -1 at departure) events truncated to
+    # the customer's [drop, pick] window. Bookings with missing times use
+    # start-of-day for drop-off and end-of-day for pickup (worst-case).
+    events: list[tuple[datetime, int]] = []
+    for b in bookings:
+        b_drop_dt = datetime.combine(b.dropoff_date, b.dropoff_time or time(0, 0))
+        b_pick_dt = datetime.combine(b.pickup_date, b.pickup_time or time(23, 59))
+        enter = max(b_drop_dt, customer_drop_dt)
+        leave = min(b_pick_dt, customer_pick_dt)
+        if enter < leave:
+            events.append((enter, +1))
+            events.append((leave, -1))
+
+    # Sort with +1 BEFORE -1 at the same instant so a back-to-back swap
+    # (one car arrives the moment another leaves) is counted as a transient
+    # collision rather than silently coexisting.
+    events.sort(key=lambda e: (e[0], -e[1]))
+
+    peak = 0
+    current = 0
+    for _, delta in events:
+        current += delta
+        if current > peak:
+            peak = current
+
+    cap = BookingService.MAX_PARKING_SPOTS
+    return {
+        "allowed": peak + 1 <= cap,
+        "peak": peak,
+        "max_capacity": cap,
+    }
+
+
 # ==================== PRICING ====================
 
 class PriceCalculationRequest(BaseModel):
@@ -2999,7 +3092,7 @@ async def update_booking(
     if request.pickup_time is not None:
         # Parse time string HH:MM
         parts = request.pickup_time.split(':')
-        new_pickup_time = dt_time(int(parts[0]), int(parts[1]))
+        new_pickup_time = time(int(parts[0]), int(parts[1]))
 
         # pickup_time is the collection time (arrival + 30)
         booking.pickup_time = new_pickup_time
@@ -3028,7 +3121,7 @@ async def update_booking(
 
     if request.dropoff_time is not None:
         parts = request.dropoff_time.split(':')
-        new_dropoff_time = dt_time(int(parts[0]), int(parts[1]))
+        new_dropoff_time = time(int(parts[0]), int(parts[1]))
         booking.dropoff_time = new_dropoff_time
         updates_made.append("dropoff_time")
 
@@ -3047,12 +3140,12 @@ async def update_booking(
     # Update actual flight times
     if request.flight_departure_time is not None:
         parts = request.flight_departure_time.split(':')
-        booking.flight_departure_time = dt_time(int(parts[0]), int(parts[1]))
+        booking.flight_departure_time = time(int(parts[0]), int(parts[1]))
         updates_made.append("flight_departure_time")
 
     if request.flight_arrival_time is not None:
         parts = request.flight_arrival_time.split(':')
-        arrival_time = dt_time(int(parts[0]), int(parts[1]))
+        arrival_time = time(int(parts[0]), int(parts[1]))
         booking.flight_arrival_time = arrival_time
 
         # Calculate pickup_time as arrival + 30 minutes

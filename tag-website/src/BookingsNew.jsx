@@ -301,13 +301,13 @@ function Bookings() {
   // Blocked dates state
   const [blockedDates, setBlockedDates] = useState([])
 
-  // Parking capacity management
+  // Parking capacity management — time-aware. The backend computes peak
+  // concurrent occupancy across the customer's [dropoff_dt, pickup_dt]
+  // window so a 16:30 drop-off is allowed if another car is being picked
+  // up at 16:00 the same day. Populated by the useEffect below once all
+  // four inputs (dates + times) are set; null while we're still waiting.
   const MAX_PARKING_SPOTS = 60
-
-  // Daily occupied counts keyed by yyyy-mm-dd. Populated by the useEffect
-  // below whenever the customer has a dropoff/pickup date pair, so the
-  // "at capacity" block fires at the date-pick step rather than at payment.
-  const [bookedSpots, setBookedSpots] = useState({})
+  const [capacityCheck, setCapacityCheck] = useState(null)  // { allowed, peak, max_capacity }
 
   // Dynamic pricing state
   const [pricingInfo, setPricingInfo] = useState(null)
@@ -383,29 +383,48 @@ function Bookings() {
     }
   }, [formData.dropoffDate, formData.pickupDate])
 
-  // Fetch real daily occupancy whenever the customer has a date pair, so the
-  // existing isCapacityAvailable check (and the "at capacity" banner in Step 1)
-  // light up at the date-pick step rather than letting them through to payment.
+  // Fire the time-aware capacity gate once all four inputs are settled.
+  // The backend sweeps event boundaries within the customer's stay and
+  // returns peak concurrent occupancy, so a 16:30 drop-off after a 16:00
+  // pickup correctly comes back as allowed.
   useEffect(() => {
-    if (!formData.dropoffDate || !formData.pickupDate) return
-    if (formData.pickupDate < formData.dropoffDate) return
-    const dateFrom = format(formData.dropoffDate, 'yyyy-MM-dd')
-    const dateTo = format(formData.pickupDate, 'yyyy-MM-dd')
+    if (!formData.dropoffDate || !formData.pickupDate) {
+      setCapacityCheck(null)
+      return
+    }
+    if (formData.pickupDate < formData.dropoffDate) {
+      setCapacityCheck(null)
+      return
+    }
+    if (!dropoffTime || !pickupTime) {
+      // Not enough info to run a time-aware check yet — clear stale answer.
+      setCapacityCheck(null)
+      return
+    }
+    const dropoffDateStr = format(formData.dropoffDate, 'yyyy-MM-dd')
+    const pickupDateStr = format(formData.pickupDate, 'yyyy-MM-dd')
+    const qs = new URLSearchParams({
+      dropoff_date: dropoffDateStr,
+      dropoff_time: dropoffTime,
+      pickup_date: pickupDateStr,
+      pickup_time: pickupTime,
+    }).toString()
     let cancelled = false
-    fetch(`${API_BASE_URL}/api/capacity/daily?date_from=${dateFrom}&date_to=${dateTo}`)
+    fetch(`${API_BASE_URL}/api/capacity/check-slot?${qs}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (cancelled || !data || !data.daily_occupancy) return
-        setBookedSpots(data.daily_occupancy)
+        if (cancelled || !data) return
+        setCapacityCheck(data)
       })
       .catch(() => {
-        // Network failure → fall through with stale data. Existing behaviour
-        // (everything available) keeps the user moving rather than blocking.
+        // Network failure → leave capacityCheck untouched. Falling through
+        // with the previous answer is preferable to flipping the gate
+        // mid-flow on a transient hiccup.
       })
     return () => {
       cancelled = true
     }
-  }, [formData.dropoffDate, formData.pickupDate, API_BASE_URL])
+  }, [formData.dropoffDate, formData.pickupDate, dropoffTime, pickupTime, API_BASE_URL])
 
   // Check heard-about-us status when customer ID is available and entering Step 4
   useEffect(() => {
@@ -465,27 +484,10 @@ function Bookings() {
     }
   }
 
-  // Check availability for a date range
-  const checkAvailability = (dropoffDate, pickupDate) => {
-    // In production, this would fetch from your database
-    // Returns true if spots are available for the entire date range
-    if (!dropoffDate || !pickupDate) return true
-
-    let currentDate = new Date(dropoffDate)
-    const endDate = new Date(pickupDate)
-
-    while (currentDate <= endDate) {
-      const dateStr = format(currentDate, 'yyyy-MM-dd')
-      const spotsBooked = bookedSpots[dateStr] || 0
-      if (spotsBooked >= MAX_PARKING_SPOTS) {
-        return false
-      }
-      currentDate.setDate(currentDate.getDate() + 1)
-    }
-    return true
-  }
-
-  const isCapacityAvailable = checkAvailability(formData.dropoffDate, formData.pickupDate)
+  // Time-aware availability. `null` (still loading or not enough info) and
+  // `true` both let the user proceed — we only block when the backend
+  // explicitly says peak + 1 > cap (capacityCheck.allowed === false).
+  const isCapacityAvailable = capacityCheck === null ? true : capacityCheck.allowed !== false
 
   // Helper: Check if a time falls within a time slot
   const isTimeInSlot = (timeStr, slot) => {
@@ -844,6 +846,26 @@ function Bookings() {
 
     return slots
   }, [selectedDropoffFlight, isCallUsOnly, departureTimeOverride, formData.dropoffDate])
+
+  // Customer's selected drop-off TIME (HH:MM) — derived from the dropoffSlot
+  // id by looking up the matching slot. Drives the time-aware capacity gate.
+  const dropoffTime = useMemo(() => {
+    if (!formData.dropoffSlot) return null
+    const slot = dropoffSlots.find((s) => s.id === formData.dropoffSlot)
+    return slot?.time || null
+  }, [formData.dropoffSlot, dropoffSlots])
+
+  // Customer's pick-up TIME (HH:MM) — equals arrival_time + 30 min (standard
+  // collection convention). Falls back to null if arrival time isn't set.
+  const pickupTime = useMemo(() => {
+    if (!formData.pickupFlightTime) return null
+    const scheduledTime = formData.pickupFlightTime.split('|')[0]
+    const arrivalTime = arrivalTimeOverride || scheduledTime
+    if (!arrivalTime) return null
+    const [hh, mm] = arrivalTime.split(':').map(Number)
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return null
+    return formatMinutesToTime(hh * 60 + mm + 30)
+  }, [formData.pickupFlightTime, arrivalTimeOverride])
 
   // Check if flight is fully booked (all slots taken) or Call Us only
   const isFlightFullyBooked = useMemo(() => {
@@ -3060,14 +3082,8 @@ function Bookings() {
 
               {formData.pickupDate && !isCapacityAvailable && (
                 <div className="form-group fade-in">
-                  <div className="fully-booked-banner">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
-                    </svg>
-                    <div className="fully-booked-content">
-                      <strong>We're fully booked for your dates</strong>
-                      <p>Our car park is at capacity during your trip. Email <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a> and we'll do our best to help.</p>
-                    </div>
+                  <div className="blocked-date-message">
+                    <p>Sorry, we're at capacity around your selected drop-off and pick-up times. Try a different time or date, or email <a href="mailto:sales@tagparking.co.uk" className="contact-link">sales@tagparking.co.uk</a> and we'll do our best to help.</p>
                   </div>
                 </div>
               )}
