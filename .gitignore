@@ -58,3 +58,9 @@ backend/scripts/backfill_stripe_refund.py
 backend/scripts/backfill_dvla_compliance.py
 backend/scripts/enrich_dvla_compliance_csv.py
 backend/scripts/apply_dvla_csv_to_db.py
+
+# PDX exploratory work (separate sub-project) — schema sketches and
+# scratch directory kept local while it's being shaped.
+CURBSIDE_SCHEMA_V2.md
+PDX_SCHEMA_RECOMMENDATIONS.md
+TagPDX/
