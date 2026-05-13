@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useAuth } from '../AuthContext'
 import './RosterCalendar.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -199,6 +200,11 @@ function RosterCalendar({
   defaultSourceFilter = 'manual',
   storageKey = 'rosterCalendar.source',
 }) {
+  // authFetch auto-attaches Bearer and clears auth state on 401 so a deleted
+  // / expired session bounces the user to /login on the next render. The
+  // existing `token` prop stays for callers that read it directly (e.g.
+  // SignaturePad uploads); authFetch reads its token from AuthContext.
+  const { authFetch } = useAuth()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [shifts, setShifts] = useState([])
   // v3 admin source-filter toggle. Employees never see the toggle and always
@@ -376,7 +382,7 @@ function RosterCalendar({
 
     try {
       const endpoint = isAdmin ? '/api/admin/bookings' : '/api/employee/bookings'
-      const response = await fetch(`${API_URL}${endpoint}?include_cancelled=false`, {
+      const response = await authFetch(`${API_URL}${endpoint}?include_cancelled=false`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -415,7 +421,7 @@ function RosterCalendar({
       }
 
       const endpoint = isAdmin ? '/api/roster' : '/api/employee/shifts'
-      const response = await fetch(`${API_URL}${endpoint}?${params}`, {
+      const response = await authFetch(`${API_URL}${endpoint}?${params}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -449,7 +455,7 @@ function RosterCalendar({
         date_to: formatDateISO(endDate),
       })
 
-      const response = await fetch(`${API_URL}/api/employee/team-shifts?${params}`, {
+      const response = await authFetch(`${API_URL}/api/employee/team-shifts?${params}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -484,7 +490,7 @@ function RosterCalendar({
         ? `${API_URL}/api/admin/blocked-dates?${params}`
         : `${API_URL}/api/blocked-dates/check?${params}`
 
-      const response = await fetch(endpoint, {
+      const response = await authFetch(endpoint, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -517,7 +523,7 @@ function RosterCalendar({
 
       // Admin uses /api/holidays (all employees), employee uses /api/employee/holidays (own only)
       const endpoint = isAdmin ? '/api/holidays' : '/api/employee/holidays'
-      const response = await fetch(`${API_URL}${endpoint}?${params}`, {
+      const response = await authFetch(`${API_URL}${endpoint}?${params}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -548,7 +554,7 @@ function RosterCalendar({
         date_to: formatDateISO(endDate),
       })
 
-      const response = await fetch(`${API_URL}/api/employee/unavailability?${params}`, {
+      const response = await authFetch(`${API_URL}/api/employee/unavailability?${params}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -570,7 +576,7 @@ function RosterCalendar({
 
     try {
       setLoadingAvailableShifts(true)
-      const response = await fetch(`${API_URL}/api/employee/available-shifts`, {
+      const response = await authFetch(`${API_URL}/api/employee/available-shifts`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -596,7 +602,7 @@ function RosterCalendar({
     setError('')
 
     try {
-      const response = await fetch(`${API_URL}/api/employee/claim-shift/${shiftToClaim.id}`, {
+      const response = await authFetch(`${API_URL}/api/employee/claim-shift/${shiftToClaim.id}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -632,7 +638,7 @@ function RosterCalendar({
     setError('')
 
     try {
-      const response = await fetch(`${API_URL}/api/employee/release-shift/${shiftToRelease.id}`, {
+      const response = await authFetch(`${API_URL}/api/employee/release-shift/${shiftToRelease.id}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -698,7 +704,7 @@ function RosterCalendar({
 
     try {
       // Use /api/staff to get ALL users (admins + employees)
-      const response = await fetch(`${API_URL}/api/staff?is_active=true`, {
+      const response = await authFetch(`${API_URL}/api/staff?is_active=true`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -730,7 +736,7 @@ function RosterCalendar({
       // both via the same state. Default 'manual' → no source param (existing payroll behaviour).
       const sourceParam = isAdmin ? sourceParamFor(sourceFilter) : null
       const sourceQs = sourceParam ? `&source=${encodeURIComponent(sourceParam)}` : ''
-      const response = await fetch(`${API_URL}${endpoint}?year=${year}&month=${month}${sourceQs}`, {
+      const response = await authFetch(`${API_URL}${endpoint}?year=${year}&month=${month}${sourceQs}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -789,7 +795,7 @@ function RosterCalendar({
       }
 
       // Fetch bookings for start date
-      const response = await fetch(`${API_URL}/api/roster/bookings-for-date?date=${isoDate}`, {
+      const response = await authFetch(`${API_URL}/api/roster/bookings-for-date?date=${isoDate}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Cache-Control': 'no-cache',
@@ -806,7 +812,7 @@ function RosterCalendar({
       if (additionalDateStr) {
         const isoAdditionalDate = ukToISO(additionalDateStr)
         if (isoAdditionalDate && isoAdditionalDate.length === 10 && isoAdditionalDate !== isoDate) {
-          const response2 = await fetch(`${API_URL}/api/roster/bookings-for-date?date=${isoAdditionalDate}`, {
+          const response2 = await authFetch(`${API_URL}/api/roster/bookings-for-date?date=${isoAdditionalDate}`, {
             headers: {
               Authorization: `Bearer ${token}`,
               'Cache-Control': 'no-cache',
@@ -1125,7 +1131,7 @@ function RosterCalendar({
           staff_id: shiftForm.staff_id ? parseInt(shiftForm.staff_id) : null,
         }
 
-        const response = await fetch(`${API_URL}/api/roster/${editingShift.id}`, {
+        const response = await authFetch(`${API_URL}/api/roster/${editingShift.id}`, {
           method: 'PUT',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -1176,7 +1182,7 @@ function RosterCalendar({
           }
 
           try {
-            const response = await fetch(`${API_URL}/api/roster`, {
+            const response = await authFetch(`${API_URL}/api/roster`, {
               method: 'POST',
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -1281,7 +1287,7 @@ function RosterCalendar({
 
         for (const shiftId of selectedShiftIds) {
           try {
-            const response = await fetch(`${API_URL}/api/roster/${shiftId}`, {
+            const response = await authFetch(`${API_URL}/api/roster/${shiftId}`, {
               method: 'DELETE',
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -1335,7 +1341,7 @@ function RosterCalendar({
           if (Object.keys(payload).length === 0) continue
 
           try {
-            const response = await fetch(`${API_URL}/api/roster/${shiftId}`, {
+            const response = await authFetch(`${API_URL}/api/roster/${shiftId}`, {
               method: 'PUT',
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -1426,7 +1432,7 @@ function RosterCalendar({
     }
     setActionSubmitting(true)
     try {
-      const r = await fetch(`${API_URL}/api/roster/${shift.id}/duplicate`, {
+      const r = await authFetch(`${API_URL}/api/roster/${shift.id}/duplicate`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -1474,7 +1480,7 @@ function RosterCalendar({
     }
     setActionSubmitting(true)
     try {
-      const r = await fetch(`${API_URL}/api/roster/${mergeModal.shift.id}/merge`, {
+      const r = await authFetch(`${API_URL}/api/roster/${mergeModal.shift.id}/merge`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ other_shift_id: mergeModal.selectedNeighbourId }),
@@ -1507,7 +1513,7 @@ function RosterCalendar({
     }
     setActionSubmitting(true)
     try {
-      const r = await fetch(`${API_URL}/api/roster/${splitModal.shift.id}/split`, {
+      const r = await authFetch(`${API_URL}/api/roster/${splitModal.shift.id}/split`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ split_at_time: splitModal.split_at_time }),
@@ -1537,7 +1543,7 @@ function RosterCalendar({
     if (!unassignModal) return
     setActionSubmitting(true)
     try {
-      const r = await fetch(`${API_URL}/api/roster/${unassignModal.shift.id}/unassign`, {
+      const r = await authFetch(`${API_URL}/api/roster/${unassignModal.shift.id}/unassign`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -1566,7 +1572,7 @@ function RosterCalendar({
     if (!v3DeleteModal) return
     setActionSubmitting(true)
     try {
-      const r = await fetch(`${API_URL}/api/roster/${v3DeleteModal.shift.id}`, {
+      const r = await authFetch(`${API_URL}/api/roster/${v3DeleteModal.shift.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -1649,7 +1655,7 @@ function RosterCalendar({
         if (add_unassigned_fleet) body.add_unassigned_fleet = true
       }
       try {
-        const r = await fetch(`${API_URL}/api/roster/${s.id}/duplicate`, {
+        const r = await authFetch(`${API_URL}/api/roster/${s.id}/duplicate`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -1686,7 +1692,7 @@ function RosterCalendar({
     const errors = []
     for (const s of shifts) {
       try {
-        const r = await fetch(`${API_URL}/api/roster/${s.id}/unassign`, {
+        const r = await authFetch(`${API_URL}/api/roster/${s.id}/unassign`, {
           method: 'PATCH',
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -1722,7 +1728,7 @@ function RosterCalendar({
     const errors = []
     for (const s of shifts) {
       try {
-        const r = await fetch(`${API_URL}/api/roster/${s.id}`, {
+        const r = await authFetch(`${API_URL}/api/roster/${s.id}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -1751,7 +1757,7 @@ function RosterCalendar({
     setError('')
 
     try {
-      const response = await fetch(`${API_URL}/api/roster/${shiftToDelete.id}`, {
+      const response = await authFetch(`${API_URL}/api/roster/${shiftToDelete.id}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1788,7 +1794,7 @@ function RosterCalendar({
 
     setLoadingTimeSlots(true)
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API_URL}/api/admin/blocked-dates/${blockedDateId}/time-slots`,
         {
           headers: {
@@ -1921,7 +1927,7 @@ function RosterCalendar({
         ? `${API_URL}/api/admin/blocked-time-slots/${editingTimeSlot.id}`
         : `${API_URL}/api/admin/blocked-dates/${editingBlockedDate.id}/time-slots`
 
-      const response = await fetch(url, {
+      const response = await authFetch(url, {
         method: editingTimeSlot ? 'PUT' : 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1953,7 +1959,7 @@ function RosterCalendar({
     setError('')
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/blocked-time-slots/${slotId}`, {
+      const response = await authFetch(`${API_URL}/api/admin/blocked-time-slots/${slotId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1993,7 +1999,7 @@ function RosterCalendar({
         ? `${API_URL}/api/admin/blocked-dates/${editingBlockedDate.id}`
         : `${API_URL}/api/admin/blocked-dates`
 
-      const response = await fetch(url, {
+      const response = await authFetch(url, {
         method: editingBlockedDate ? 'PUT' : 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -2025,7 +2031,7 @@ function RosterCalendar({
     setError('')
 
     try {
-      const response = await fetch(`${API_URL}/api/admin/blocked-dates/${blockedDateId}`, {
+      const response = await authFetch(`${API_URL}/api/admin/blocked-dates/${blockedDateId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -2138,7 +2144,7 @@ function RosterCalendar({
         ? `${API_URL}/api/holidays/${editingHoliday.id}?${params}`
         : `${API_URL}/api/holidays?${params}`
 
-      const response = await fetch(url, {
+      const response = await authFetch(url, {
         method: editingHoliday ? 'PUT' : 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -2168,7 +2174,7 @@ function RosterCalendar({
     setError('')
 
     try {
-      const response = await fetch(`${API_URL}/api/holidays/${holidayId}`, {
+      const response = await authFetch(`${API_URL}/api/holidays/${holidayId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -2265,7 +2271,7 @@ function RosterCalendar({
         params.append('notes', unavailForm.notes)
       }
 
-      const response = await fetch(`${API_URL}/api/employee/unavailability?${params}`, {
+      const response = await authFetch(`${API_URL}/api/employee/unavailability?${params}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -2296,7 +2302,7 @@ function RosterCalendar({
     setError('')
 
     try {
-      const response = await fetch(`${API_URL}/api/employee/unavailability/${unavailId}`, {
+      const response = await authFetch(`${API_URL}/api/employee/unavailability/${unavailId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,

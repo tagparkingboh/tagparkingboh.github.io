@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useCallback, useContext, useState, useEffect } from 'react'
 
 const AuthContext = createContext(null)
 
@@ -93,6 +93,33 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  // Drop-in replacement for `fetch` that:
+  //   1. Auto-attaches the current Bearer token (if any) when no Authorization
+  //      header is already set by the caller.
+  //   2. On 401 from any logged-in call, clears the local auth state. The
+  //      consumer's existing "redirect when !isAuthenticated" effect (see
+  //      Employee.jsx and Admin.jsx) then bounces the user to /login.
+  //
+  // Use this everywhere a session-protected endpoint is called. Public
+  // endpoints can keep using bare `fetch`.
+  const authFetch = useCallback(async (input, init = {}) => {
+    const headers = new Headers(init.headers || {})
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+    const response = await fetch(input, { ...init, headers })
+    if (response.status === 401 && token) {
+      // Server says this token is dead (user deleted, session expired,
+      // session revoked). Tear down local state synchronously — the
+      // consumer's isAuthenticated effect will handle the redirect on
+      // the next React render.
+      localStorage.removeItem('auth_token')
+      setToken(null)
+      setUser(null)
+    }
+    return response
+  }, [token])
+
   const value = {
     user,
     token,
@@ -102,6 +129,7 @@ export function AuthProvider({ children }) {
     requestCode,
     verifyCode,
     logout,
+    authFetch,
   }
 
   return (

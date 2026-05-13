@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useAuth } from '../AuthContext'
 import './EmployeePayroll.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -43,6 +44,9 @@ const canDownloadPayslip = (year, month) => {
 }
 
 function EmployeePayroll({ token }) {
+  // authFetch auto-attaches the Bearer token and clears auth state on a 401
+  // so a deleted/expired session bounces the user to /login on next render.
+  const { authFetch } = useAuth()
   const now = new Date()
   const [selectedYear, setSelectedYear] = useState(now.getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
@@ -75,11 +79,10 @@ function EmployeePayroll({ token }) {
     setError(null)
 
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `${API_URL}/api/employee/payroll/monthly?year=${selectedYear}&month=${selectedMonth}`,
         {
           headers: {
-            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         }
@@ -96,7 +99,7 @@ function EmployeePayroll({ token }) {
     } finally {
       setLoading(false)
     }
-  }, [token, selectedYear, selectedMonth])
+  }, [token, selectedYear, selectedMonth, authFetch])
 
   useEffect(() => {
     fetchPayroll()

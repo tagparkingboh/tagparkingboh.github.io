@@ -80,7 +80,7 @@ const rotateImage = (base64, degrees) => {
 }
 
 function Employee() {
-  const { user, token, loading, isAuthenticated, logout } = useAuth()
+  const { user, token, loading, isAuthenticated, logout, authFetch } = useAuth()
   const navigate = useNavigate()
 
   const [refreshTrigger, setRefreshTrigger] = useState(0)
@@ -294,10 +294,9 @@ function Employee() {
     if (!bookingIds || bookingIds.length === 0) return
 
     try {
-      const response = await fetch(`${API_URL}/api/employee/inspections/status`, {
+      const response = await authFetch(`${API_URL}/api/employee/inspections/status`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ booking_ids: bookingIds }),
@@ -343,9 +342,7 @@ function Employee() {
   // This includes photos and signatures - only called when needed
   const fetchFullInspection = useCallback(async (bookingId) => {
     try {
-      const response = await fetch(`${API_URL}/api/employee/inspections/${bookingId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
+      const response = await authFetch(`${API_URL}/api/employee/inspections/${bookingId}`)
       if (response.ok) {
         const data = await response.json()
         return data.inspections || []
@@ -354,15 +351,14 @@ function Employee() {
       console.warn('Failed to fetch full inspection:', err)
     }
     return []
-  }, [token])
+  }, [authFetch])
 
   // Update inspection status after saving (lightweight refresh)
   const refreshInspectionStatus = useCallback(async (bookingId) => {
     try {
-      const response = await fetch(`${API_URL}/api/employee/inspections/status`, {
+      const response = await authFetch(`${API_URL}/api/employee/inspections/status`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ booking_ids: [bookingId] }),
@@ -634,10 +630,9 @@ function Employee() {
         ? { notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, declined: inspectionDeclined, mileage: mileage ? parseInt(mileage, 10) : null }
         : { booking_id: inspectionBooking.id, inspection_type: inspectionType, notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, declined: inspectionDeclined, mileage: mileage ? parseInt(mileage, 10) : null }
 
-      const response = await fetch(url, {
+      const response = await authFetch(url, {
         method,
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
@@ -675,9 +670,8 @@ function Employee() {
     if (!completingBooking) return
     setCompleting(true)
     try {
-      const response = await fetch(`${API_URL}/api/employee/bookings/${completingBooking.id}/complete`, {
+      const response = await authFetch(`${API_URL}/api/employee/bookings/${completingBooking.id}/complete`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
       })
       if (response.ok) {
         setShowCompleteModal(false)
