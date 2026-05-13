@@ -405,48 +405,10 @@ function Bookings() {
     }
   }, [formData.dropoffDate, formData.pickupDate])
 
-  // Fire the time-aware capacity gate once all four inputs are settled.
-  // The backend sweeps event boundaries within the customer's stay and
-  // returns peak concurrent occupancy, so a 16:30 drop-off after a 16:00
-  // pickup correctly comes back as allowed.
-  useEffect(() => {
-    if (!formData.dropoffDate || !formData.pickupDate) {
-      setCapacityCheck(null)
-      return
-    }
-    if (formData.pickupDate < formData.dropoffDate) {
-      setCapacityCheck(null)
-      return
-    }
-    if (!dropoffTime || !pickupTime) {
-      // Not enough info to run a time-aware check yet — clear stale answer.
-      setCapacityCheck(null)
-      return
-    }
-    const dropoffDateStr = format(formData.dropoffDate, 'yyyy-MM-dd')
-    const pickupDateStr = format(formData.pickupDate, 'yyyy-MM-dd')
-    const qs = new URLSearchParams({
-      dropoff_date: dropoffDateStr,
-      dropoff_time: dropoffTime,
-      pickup_date: pickupDateStr,
-      pickup_time: pickupTime,
-    }).toString()
-    let cancelled = false
-    fetch(`${API_BASE_URL}/api/capacity/check-slot?${qs}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return
-        setCapacityCheck(data)
-      })
-      .catch(() => {
-        // Network failure → leave capacityCheck untouched. Falling through
-        // with the previous answer is preferable to flipping the gate
-        // mid-flow on a transient hiccup.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [formData.dropoffDate, formData.pickupDate, dropoffTime, pickupTime, API_BASE_URL])
+  // Capacity-check useEffect lives further down, after dropoffTime / pickupTime
+  // are declared (they're derived from dropoffSlots / pickupFlightTime which
+  // depend on flight data fetched after this point). Defining the effect here
+  // would hit a TDZ on the deps array. Search for "capacity/check-slot".
 
   // Check heard-about-us status when customer ID is available and entering Step 4
   useEffect(() => {
@@ -867,6 +829,50 @@ function Bookings() {
     if (Number.isNaN(hh) || Number.isNaN(mm)) return null
     return formatMinutesToTime(hh * 60 + mm + 30)
   }, [formData.pickupFlightTime, arrivalTimeOverride])
+
+  // Fire the time-aware capacity gate once all four inputs (dropoff/pickup
+  // dates + times) are settled. Sits AFTER dropoffTime / pickupTime so the
+  // dependency array doesn't TDZ them. The backend sweeps event boundaries
+  // within the customer's stay and returns peak concurrent occupancy, so a
+  // 16:30 drop-off after a 16:00 pickup correctly comes back as allowed.
+  useEffect(() => {
+    if (!formData.dropoffDate || !formData.pickupDate) {
+      setCapacityCheck(null)
+      return
+    }
+    if (formData.pickupDate < formData.dropoffDate) {
+      setCapacityCheck(null)
+      return
+    }
+    if (!dropoffTime || !pickupTime) {
+      // Not enough info to run a time-aware check yet — clear stale answer.
+      setCapacityCheck(null)
+      return
+    }
+    const dropoffDateStr = format(formData.dropoffDate, 'yyyy-MM-dd')
+    const pickupDateStr = format(formData.pickupDate, 'yyyy-MM-dd')
+    const qs = new URLSearchParams({
+      dropoff_date: dropoffDateStr,
+      dropoff_time: dropoffTime,
+      pickup_date: pickupDateStr,
+      pickup_time: pickupTime,
+    }).toString()
+    let cancelled = false
+    fetch(`${API_BASE_URL}/api/capacity/check-slot?${qs}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return
+        setCapacityCheck(data)
+      })
+      .catch(() => {
+        // Network failure → leave capacityCheck untouched. Falling through
+        // with the previous answer is preferable to flipping the gate
+        // mid-flow on a transient hiccup.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [formData.dropoffDate, formData.pickupDate, dropoffTime, pickupTime, API_BASE_URL])
 
   // Check if flight is fully booked (all slots taken) or Call Us only
   const isFlightFullyBooked = useMemo(() => {
