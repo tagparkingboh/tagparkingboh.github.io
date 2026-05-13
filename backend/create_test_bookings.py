@@ -706,7 +706,20 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         package_btn = page.locator("button:has-text('Continue to Package Selection')")
         if package_btn.is_visible(timeout=5000):
             package_btn.click()
-            time.sleep(3)
+            time.sleep(1)
+
+        # Added 2026-05-13: a "Please double-check your times" confirmation
+        # modal now intercepts the Step 1 → Step 2 transition. Click through
+        # "Yes, times are correct" to proceed. The modal may not appear in
+        # every state (e.g. legacy flows that bypass it), so this is best-effort.
+        try:
+            confirm_btn = page.locator("button:has-text('Yes, times are correct')")
+            if confirm_btn.is_visible(timeout=2000):
+                print("    Confirming times modal...")
+                confirm_btn.click()
+        except Exception:
+            pass
+        time.sleep(2)
 
         # Step 2 shows the pricing and package info
         # Wait for pricing to load
