@@ -6,6 +6,10 @@ import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import StripePayment from './components/StripePayment'
 import MobileTimePicker from './components/MobileTimePicker'
+import {
+  computeEarliestBookableDate,
+  inLeadTimeRecheckWindow,
+} from './utils/leadTime'
 import 'react-datepicker/dist/react-datepicker.css'
 import './BookingsNew.css'
 
@@ -67,12 +71,7 @@ const getCurrentUKTimeMinutes = () => {
   return hours * 60 + minutes
 }
 
-// Booking lead-time rule (locked 2026-05-12):
-//   - Same-day drop-offs are blocked outright.
-//   - Bookings placed after 20:00 UK can't have a drop-off the next day.
-// LATE_CUTOFF_UK_MINUTES below: at-or-before 20:00 (= 1200 min) → tomorrow is
-// the earliest bookable drop-off; past 20:00 → earliest is day-after-tomorrow.
-const LATE_CUTOFF_UK_MINUTES = 20 * 60
+// Booking lead-time rule lives in utils/leadTime.js (testable pure helpers).
 
 // Normalize airline names (merge Ryanair UK into Ryanair)
 const normalizeAirlineName = (name) => {
@@ -313,21 +312,30 @@ function Bookings() {
   const MAX_PARKING_SPOTS = 60
   const [capacityCheck, setCapacityCheck] = useState(null)  // { allowed, peak, max_capacity }
 
-  // Earliest bookable drop-off date under the lead-time rule. Computed at
-  // render time so a customer who lingers past 20:00 UK gets the gate
-  // tightened on their next state change without a hard reload.
-  const earliestBookableDate = useMemo(() => {
-    const today = getTodayUK()
-    const now = getCurrentUKTimeMinutes()
-    const addDays = now > LATE_CUTOFF_UK_MINUTES ? 2 : 1
-    const earliest = new Date(today)
-    earliest.setDate(earliest.getDate() + addDays)
-    return earliest
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.dropoffDate])  // re-evaluate when the user touches the date
+  // Lead-time gate. Pure logic lives in utils/leadTime.js so it's testable
+  // with vi.setSystemTime(). leadTimeTick is bumped once a minute inside the
+  // 19:50→20:10 UK window so the gate flips live mid-flow — a customer who
+  // starts a booking at 19:55 and submits at 20:03 sees the banner appear
+  // before they click pay rather than getting a 400 from the backend.
+  const [leadTimeTick, setLeadTimeTick] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (inLeadTimeRecheckWindow(new Date())) {
+        setLeadTimeTick((n) => n + 1)
+      }
+    }, 60_000)
+    return () => clearInterval(id)
+  }, [])
+
+  const earliestBookableDate = useMemo(
+    () => computeEarliestBookableDate(new Date()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [leadTimeTick, formData.dropoffDate],
+  )
 
   const isLeadTimeAllowed = useMemo(() => {
-    if (!formData.dropoffDate) return true  // nothing chosen yet — don't gate
+    if (!formData.dropoffDate) return true
     return formData.dropoffDate >= earliestBookableDate
   }, [formData.dropoffDate, earliestBookableDate])
 
@@ -3402,6 +3410,7 @@ function Bookings() {
                   promoCodeDiscount={promoCodeValid ? promoCodeDiscount : 0}
                   promoCodeType={promoCodeValid ? promoCodeType : 'percentage'}
                   pricingInfo={pricingInfo}
+                  isLeadTimeAllowed={isLeadTimeAllowed}
                   onPaymentSuccess={handlePaymentSuccess}
                   onPaymentError={handlePaymentError}
                   departureTimeOverride={null}

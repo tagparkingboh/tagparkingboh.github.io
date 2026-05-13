@@ -327,6 +327,11 @@ function StripePayment({
   // - 'free_100': "100% Off" - completely free regardless of trip length
   promoCodeType = 'percentage',
   pricingInfo,
+  // True while the customer's chosen dropoff date still clears the lead-time
+  // rule. Flips to false mid-flow if the 20:00 cutoff crosses while the user
+  // is on this screen — we gate createPaymentIntent on it so the backend's
+  // 400 never surfaces on the payment UI.
+  isLeadTimeAllowed = true,
   onPaymentSuccess,
   onPaymentError,
   // Manual entry and time override props
@@ -376,6 +381,20 @@ function StripePayment({
 
   // Create payment intent API call - extracted so it can be called on demand
   const createPaymentIntent = async () => {
+    // Lead-time gate — short-circuit before any network call. The booking
+    // page polls every minute inside the 19:50→20:10 UK window and flips
+    // isLeadTimeAllowed to false the moment 20:00 crosses, so a customer
+    // who entered the flow at 19:55 and is paying at 20:03 lands here with
+    // the gate closed. Without this guard the backend would 400 with the
+    // same copy, but the user would see it under the Stripe error UI
+    // instead of as a clean banner.
+    if (!isLeadTimeAllowed) {
+      const message = "Sorry, bookings placed after 20:00 can't be made for the next day. Call 01202 798710 and we will try our best to help!"
+      if (typeof onPaymentError === 'function') {
+        onPaymentError(message)
+      }
+      throw new Error(message)
+    }
     console.log('[PAYMENT] Creating payment intent with promo code:', promoCode)
     console.log('[PAYMENT] manualDepartureData received:', manualDepartureData)
     console.log('[PAYMENT] manualArrivalData received:', manualArrivalData)
