@@ -775,15 +775,65 @@ async def get_pickup_info(request: PickupSummaryRequest):
 @app.post("/api/capacity/check")
 async def check_capacity(request: CapacityCheckRequest):
     """
-    Check parking capacity for a date range.
-
-    Returns availability for each day in the range.
+    Legacy capacity check — uses BookingService's in-memory counter and
+    therefore does NOT reflect real prod occupancy. Kept for compatibility
+    with anything still calling it. Customer-facing booking flow should
+    call /api/capacity/daily instead.
     """
     service = get_service()
     return service.check_capacity_for_date_range(
         start_date=request.start_date,
         end_date=request.end_date,
     )
+
+
+@app.get("/api/capacity/daily")
+async def get_daily_capacity(
+    date_from: date,
+    date_to: date,
+    db: Session = Depends(get_db),
+):
+    """Customer-facing daily occupancy feed for the booking flow.
+
+    Returns the number of cars parked on each date in [date_from, date_to]
+    based on the live `bookings` table. Counts CONFIRMED, COMPLETED, and
+    PENDING (in-payment-flow) bookings — PENDING is included so two
+    customers can't both pass the date-pick gate and then race to pay for
+    the last spot.
+
+    Public endpoint (no auth) — only exposes aggregate counts per date,
+    no PII. Locked at MAX_PARKING_SPOTS = 60 (booking_service.py).
+    """
+    if date_to < date_from:
+        raise HTTPException(status_code=400, detail="date_to must be on or after date_from")
+    if (date_to - date_from).days > 90:
+        raise HTTPException(status_code=400, detail="Date range too large (max 90 days)")
+
+    bookings = (
+        db.query(DbBooking)
+        .filter(DbBooking.status.in_([
+            BookingStatus.CONFIRMED,
+            BookingStatus.COMPLETED,
+            BookingStatus.PENDING,
+        ]))
+        .filter(DbBooking.dropoff_date <= date_to)
+        .filter(DbBooking.pickup_date >= date_from)
+        .all()
+    )
+
+    occupancy: dict[str, int] = {}
+    current = date_from
+    while current <= date_to:
+        occupancy[current.isoformat()] = sum(
+            1 for b in bookings
+            if b.dropoff_date <= current <= b.pickup_date
+        )
+        current += timedelta(days=1)
+
+    return {
+        "daily_occupancy": occupancy,
+        "max_capacity": BookingService.MAX_PARKING_SPOTS,
+    }
 
 
 # ==================== PRICING ====================
@@ -4304,7 +4354,7 @@ async def get_occupancy_report(
     from collections import defaultdict
     import calendar
 
-    MAX_CAPACITY = 50
+    MAX_CAPACITY = BookingService.MAX_PARKING_SPOTS
 
     # Set default date ranges based on view type
     today = date.today()

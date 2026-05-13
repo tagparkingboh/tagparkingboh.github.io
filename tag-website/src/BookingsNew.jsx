@@ -304,8 +304,9 @@ function Bookings() {
   // Parking capacity management
   const MAX_PARKING_SPOTS = 60
 
-  // This would normally come from your database/API
-  // For now, simulating with a placeholder
+  // Daily occupied counts keyed by yyyy-mm-dd. Populated by the useEffect
+  // below whenever the customer has a dropoff/pickup date pair, so the
+  // "at capacity" block fires at the date-pick step rather than at payment.
   const [bookedSpots, setBookedSpots] = useState({})
 
   // Dynamic pricing state
@@ -381,6 +382,30 @@ function Bookings() {
       })
     }
   }, [formData.dropoffDate, formData.pickupDate])
+
+  // Fetch real daily occupancy whenever the customer has a date pair, so the
+  // existing isCapacityAvailable check (and the "at capacity" banner in Step 1)
+  // light up at the date-pick step rather than letting them through to payment.
+  useEffect(() => {
+    if (!formData.dropoffDate || !formData.pickupDate) return
+    if (formData.pickupDate < formData.dropoffDate) return
+    const dateFrom = format(formData.dropoffDate, 'yyyy-MM-dd')
+    const dateTo = format(formData.pickupDate, 'yyyy-MM-dd')
+    let cancelled = false
+    fetch(`${API_BASE_URL}/api/capacity/daily?date_from=${dateFrom}&date_to=${dateTo}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data || !data.daily_occupancy) return
+        setBookedSpots(data.daily_occupancy)
+      })
+      .catch(() => {
+        // Network failure → fall through with stale data. Existing behaviour
+        // (everything available) keeps the user moving rather than blocking.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [formData.dropoffDate, formData.pickupDate, API_BASE_URL])
 
   // Check heard-about-us status when customer ID is available and entering Step 4
   useEffect(() => {
