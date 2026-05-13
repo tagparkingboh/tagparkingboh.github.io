@@ -2601,7 +2601,11 @@ function Bookings() {
                   selected={formData.dropoffDate}
                   onChange={(date) => handleDateChange(date, 'dropoffDate')}
                   dateFormat="dd/MM/yyyy"
-                  minDate={earliestBookableDate}
+                  // minDate is today (not earliestBookableDate) on purpose:
+                  // today / tomorrow stay clickable so the warning banner
+                  // below can explain the lead-time rule and route the
+                  // customer to the phone. Past dates remain unselectable.
+                  minDate={getTodayUK()}
                   placeholderText="Select date"
                   className="date-picker-input"
                   id="dropoffDate"
