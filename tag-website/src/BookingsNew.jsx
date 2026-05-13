@@ -67,8 +67,12 @@ const getCurrentUKTimeMinutes = () => {
   return hours * 60 + minutes
 }
 
-// Minimum hours notice required for same-day bookings
-const MIN_HOURS_NOTICE = 4
+// Booking lead-time rule (locked 2026-05-12):
+//   - Same-day drop-offs are blocked outright.
+//   - Bookings placed after 20:00 UK can't have a drop-off the next day.
+// LATE_CUTOFF_UK_MINUTES below: at-or-before 20:00 (= 1200 min) → tomorrow is
+// the earliest bookable drop-off; past 20:00 → earliest is day-after-tomorrow.
+const LATE_CUTOFF_UK_MINUTES = 20 * 60
 
 // Normalize airline names (merge Ryanair UK into Ryanair)
 const normalizeAirlineName = (name) => {
@@ -308,6 +312,24 @@ function Bookings() {
   // four inputs (dates + times) are set; null while we're still waiting.
   const MAX_PARKING_SPOTS = 60
   const [capacityCheck, setCapacityCheck] = useState(null)  // { allowed, peak, max_capacity }
+
+  // Earliest bookable drop-off date under the lead-time rule. Computed at
+  // render time so a customer who lingers past 20:00 UK gets the gate
+  // tightened on their next state change without a hard reload.
+  const earliestBookableDate = useMemo(() => {
+    const today = getTodayUK()
+    const now = getCurrentUKTimeMinutes()
+    const addDays = now > LATE_CUTOFF_UK_MINUTES ? 2 : 1
+    const earliest = new Date(today)
+    earliest.setDate(earliest.getDate() + addDays)
+    return earliest
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.dropoffDate])  // re-evaluate when the user touches the date
+
+  const isLeadTimeAllowed = useMemo(() => {
+    if (!formData.dropoffDate) return true  // nothing chosen yet — don't gate
+    return formData.dropoffDate >= earliestBookableDate
+  }, [formData.dropoffDate, earliestBookableDate])
 
   // Dynamic pricing state
   const [pricingInfo, setPricingInfo] = useState(null)
@@ -797,54 +819,33 @@ function Bookings() {
     const [hours, minutes] = flightTime.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
-    // Check if this is a same-day booking and enforce 4-hour minimum notice
-    const isToday = formData.dropoffDate &&
-      format(formData.dropoffDate, 'yyyy-MM-dd') === format(getTodayUK(), 'yyyy-MM-dd')
-    const currentUKMinutes = isToday ? getCurrentUKTimeMinutes() : 0
-    const minNoticeMinutes = MIN_HOURS_NOTICE * 60 // 4 hours = 240 minutes
-
-    const slots = []
-
-    // Early slot: 2¾ hours before (165 minutes)
-    const earlySlotMinutes = departureMinutes - 165
-    const earlySlotAllowed = !isToday || (earlySlotMinutes >= currentUKMinutes + minNoticeMinutes)
-    if (earlySlotAllowed) {
-      slots.push({
+    // Same-day filtering was removed 2026-05-12 — the new lead-time rule
+    // (earliestBookableDate) gates the DATE picker itself, so by the time
+    // we get here the drop-off is at least tomorrow and every slot is
+    // valid by definition.
+    return [
+      {
         id: '165',
         label: '2¾ hours before',
-        time: formatMinutesToTime(earlySlotMinutes),
+        time: formatMinutesToTime(departureMinutes - 165),
         available: 1,
-        isLastSlot: false
-      })
-    }
-
-    // Standard slot: 2 hours before (120 minutes)
-    const standardSlotMinutes = departureMinutes - 120
-    const standardSlotAllowed = !isToday || (standardSlotMinutes >= currentUKMinutes + minNoticeMinutes)
-    if (standardSlotAllowed) {
-      slots.push({
+        isLastSlot: false,
+      },
+      {
         id: '120',
         label: '2 hours before',
-        time: formatMinutesToTime(standardSlotMinutes),
+        time: formatMinutesToTime(departureMinutes - 120),
         available: 1,
-        isLastSlot: false
-      })
-    }
-
-    // Late slot: 1½ hours before (90 minutes)
-    const lateSlotMinutes = departureMinutes - 90
-    const lateSlotAllowed = !isToday || (lateSlotMinutes >= currentUKMinutes + minNoticeMinutes)
-    if (lateSlotAllowed) {
-      slots.push({
+        isLastSlot: false,
+      },
+      {
         id: '90',
         label: '1½ hours before',
-        time: formatMinutesToTime(lateSlotMinutes),
+        time: formatMinutesToTime(departureMinutes - 90),
         available: 1,
-        isLastSlot: false
-      })
-    }
-
-    return slots
+        isLastSlot: false,
+      },
+    ]
   }, [selectedDropoffFlight, isCallUsOnly, departureTimeOverride, formData.dropoffDate])
 
   // Customer's selected drop-off TIME (HH:MM) — derived from the dropoffSlot
@@ -1124,15 +1125,12 @@ function Bookings() {
     const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
     const departureMinutes = hours * 60 + minutes
 
-    // Check if this is a same-day booking and enforce 4-hour minimum notice
-    const todayUK = getTodayUK()
-    const todayStr = `${todayUK.getFullYear()}-${String(todayUK.getMonth() + 1).padStart(2, '0')}-${String(todayUK.getDate()).padStart(2, '0')}`
+    // Same-day filtering was removed 2026-05-12 — earliestBookableDate gates
+    // the drop-off date itself, so we no longer prune slots by 4-hour notice.
+    // Blocked-date filtering (admin-defined time-slot blocks) still applies.
     const dropoffDateStr = formData.dropoffDate
       ? `${formData.dropoffDate.getFullYear()}-${String(formData.dropoffDate.getMonth() + 1).padStart(2, '0')}-${String(formData.dropoffDate.getDate()).padStart(2, '0')}`
       : ''
-    const isToday = formData.dropoffDate && dropoffDateStr === todayStr
-    const currentUKMinutes = isToday ? getCurrentUKTimeMinutes() : 0
-    const minNoticeMinutes = MIN_HOURS_NOTICE * 60 // 4 hours = 240 minutes
 
     // Find blocked date for this dropoff date
     let blockedDate = null
@@ -1166,7 +1164,7 @@ function Bookings() {
     const earlySlotMinutes = departureMinutes - 165
     const earlySlotTime = formatMinutesToTime(earlySlotMinutes)
     const earlySlotBlocked = formData.dropoffDate && isTimeBlocked(earlySlotTime)
-    if ((!isToday || (earlySlotMinutes >= currentUKMinutes + minNoticeMinutes)) && !earlySlotBlocked) {
+    if (!earlySlotBlocked) {
       slots.push({
         id: '165',
         label: '2¾ hours before',
@@ -1178,7 +1176,7 @@ function Bookings() {
     const standardSlotMinutes = departureMinutes - 120
     const standardSlotTime = formatMinutesToTime(standardSlotMinutes)
     const standardSlotBlocked = formData.dropoffDate && isTimeBlocked(standardSlotTime)
-    if ((!isToday || (standardSlotMinutes >= currentUKMinutes + minNoticeMinutes)) && !standardSlotBlocked) {
+    if (!standardSlotBlocked) {
       slots.push({
         id: '120',
         label: '2 hours before',
@@ -1190,7 +1188,7 @@ function Bookings() {
     const lateSlotMinutes = departureMinutes - 90
     const lateSlotTime = formatMinutesToTime(lateSlotMinutes)
     const lateSlotBlocked = formData.dropoffDate && isTimeBlocked(lateSlotTime)
-    if ((!isToday || (lateSlotMinutes >= currentUKMinutes + minNoticeMinutes)) && !lateSlotBlocked) {
+    if (!lateSlotBlocked) {
       slots.push({
         id: '90',
         label: '1½ hours before',
@@ -1200,35 +1198,6 @@ function Bookings() {
 
     return slots
   }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate, blockedDates])
-
-  // Check if same-day slots were filtered due to 4-hour notice requirement
-  const sameDaySlotsFiltered = useMemo(() => {
-    if (!showManualDeparture) return false
-    if (!isValidTimeFormat(manualDepartureData.flightTime)) return false
-
-    const isToday = formData.dropoffDate &&
-      format(formData.dropoffDate, 'yyyy-MM-dd') === format(getTodayUK(), 'yyyy-MM-dd')
-    if (!isToday) return false
-
-    const [hours, minutes] = manualDepartureData.flightTime.split(':').map(Number)
-    const departureMinutes = hours * 60 + minutes
-    const currentUKMinutes = getCurrentUKTimeMinutes()
-    const minNoticeMinutes = MIN_HOURS_NOTICE * 60
-
-    // Check if any slot would exist without the 4-hour filter
-    const earlySlotMinutes = departureMinutes - 165
-    const standardSlotMinutes = departureMinutes - 120
-    const lateSlotMinutes = departureMinutes - 90
-
-    const earlyWouldExist = earlySlotMinutes > 0
-    const standardWouldExist = standardSlotMinutes > 0
-    const lateWouldExist = lateSlotMinutes > 0
-    const earlyFiltered = earlyWouldExist && earlySlotMinutes < currentUKMinutes + minNoticeMinutes
-    const standardFiltered = standardWouldExist && standardSlotMinutes < currentUKMinutes + minNoticeMinutes
-    const lateFiltered = lateWouldExist && lateSlotMinutes < currentUKMinutes + minNoticeMinutes
-
-    return earlyFiltered || standardFiltered || lateFiltered
-  }, [showManualDeparture, manualDepartureData.flightTime, formData.dropoffDate])
 
   // Normalize time to HH:MM format
   const normalizeTime = (timeStr) => {
@@ -1808,7 +1777,7 @@ function Bookings() {
     isOriginComplete
 
   // Step 1: Trip Details
-  const isStep1Complete = formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete && isCapacityAvailable && !isDropoffDateBlocked && !isPickupDateBlocked
+  const isStep1Complete = formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete && isCapacityAvailable && !isDropoffDateBlocked && !isPickupDateBlocked && isLeadTimeAllowed
   // Step 2: Package Selection
   const isStep2Complete = formData.package
   // Step 4: Payment
@@ -2626,7 +2595,7 @@ function Bookings() {
                   selected={formData.dropoffDate}
                   onChange={(date) => handleDateChange(date, 'dropoffDate')}
                   dateFormat="dd/MM/yyyy"
-                  minDate={getTodayUK()}
+                  minDate={earliestBookableDate}
                   placeholderText="Select date"
                   className="date-picker-input"
                   id="dropoffDate"
@@ -2634,6 +2603,28 @@ function Bookings() {
                   calendarClassName="fixed-height-calendar"
                   onFocus={(e) => e.target.readOnly = true}
                 />
+                {!isLeadTimeAllowed && formData.dropoffDate && (() => {
+                  const todayUK = getTodayUK()
+                  const isSameDay = formData.dropoffDate.getTime() <= todayUK.getTime()
+                  return (
+                    <div className="blocked-date-message">
+                      {isSameDay ? (
+                        <p>
+                          Sorry, we can't accept same-day bookings. Call{' '}
+                          <a href="tel:01202 798710" className="contact-link">01202 798710</a>{' '}
+                          and we will try our best to help!
+                        </p>
+                      ) : (
+                        <p>
+                          Sorry, bookings placed after 20:00 can't be made for
+                          the next day. Call{' '}
+                          <a href="tel:01202 798710" className="contact-link">01202 798710</a>{' '}
+                          and we will try our best to help!
+                        </p>
+                      )}
+                    </div>
+                  )
+                })()}
                 {isDropoffDateBlocked && formData.dropoffDate && (
                   <div className="blocked-date-message">
                     {(() => {
@@ -2866,14 +2857,6 @@ function Bookings() {
                     </div>
                   )}
 
-                  {sameDaySlotsFiltered && isValidTimeFormat(manualDepartureData.flightTime) && (
-                    <div className="form-group">
-                      <div className="same-day-notice">
-                        <strong>Same-day bookings require at least 4 hours notice.</strong>
-                        <p>Please call us on <a href="tel:01202 798710">01202 798710</a> to arrange a last-minute booking.</p>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 

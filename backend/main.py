@@ -10292,36 +10292,32 @@ async def create_payment(
         if not request.billing_postcode or not request.billing_postcode.strip():
             raise HTTPException(status_code=400, detail="Billing postcode is required")
 
-        # Validate same-day bookings have at least 4 hours notice
-        from datetime import datetime
+        # Lead-time rule (locked 2026-05-12):
+        #   - Same-day drop-offs are blocked outright (replaces the old
+        #     4-hour notice path).
+        #   - Bookings placed past 20:00 UK can't have a drop-off the next
+        #     day. Past 20:00 is defined as now_uk_minutes > 20*60, so the
+        #     last accepted moment is 20:00:59.
+        # Admin manual booking (/api/admin/bookings) is exempt — this gate
+        # only fires in the customer payment flow.
+        from datetime import datetime, timedelta
         from zoneinfo import ZoneInfo
-        MIN_HOURS_NOTICE = 4
         uk_tz = ZoneInfo("Europe/London")
         now_uk = datetime.now(uk_tz)
         today_uk = now_uk.date()
-
-        # Parse drop_off_date from string to date for comparison
+        tomorrow_uk = today_uk + timedelta(days=1)
         request_dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
 
-        if request_dropoff_date == today_uk:
-            # Parse the flight time (or dropoff time)
-            flight_time_str = request.flight_departure_time
-            if flight_time_str:
-                flight_hours, flight_mins = map(int, flight_time_str.split(':'))
-                flight_minutes_from_midnight = flight_hours * 60 + flight_mins
-                # Calculate dropoff slot time (150, 120, or 90 mins before flight)
-                # drop_off_slot contains "150", "120", or "90" as string (or legacy "165")
-                slot_offset = int(request.drop_off_slot) if request.drop_off_slot else 150
-                dropoff_minutes = flight_minutes_from_midnight - slot_offset
-                # Current UK time in minutes from midnight
-                current_minutes = now_uk.hour * 60 + now_uk.minute
-                # Check if dropoff is at least 4 hours away
-                min_notice_minutes = MIN_HOURS_NOTICE * 60
-                if dropoff_minutes < current_minutes + min_notice_minutes:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Same-day bookings require at least {MIN_HOURS_NOTICE} hours notice. Please call us to arrange a last-minute booking."
-                    )
+        if request_dropoff_date <= today_uk:
+            raise HTTPException(
+                status_code=400,
+                detail="Sorry, we can't accept same-day bookings. Call 01202 798710 and we will try our best to help!"
+            )
+        if request_dropoff_date == tomorrow_uk and (now_uk.hour * 60 + now_uk.minute) > 20 * 60:
+            raise HTTPException(
+                status_code=400,
+                detail="Sorry, bookings placed after 20:00 can't be made for the next day. Call 01202 798710 and we will try our best to help!"
+            )
 
         # Check for blocked dates (UK timezone)
         # Parse pickup_date for blocked date check
