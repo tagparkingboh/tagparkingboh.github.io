@@ -2664,8 +2664,15 @@ function Bookings() {
 
               {/* Flight lookup removed - using direct entry flow */}
 
-              {/* Departure Flight Entry Form - always show when date selected, even if blocked (so user can edit time) */}
-              {showManualDeparture && formData.dropoffDate && (
+              {/* Departure Flight Entry Form. Visible once the customer
+                  has picked a drop-off date that clears the lead-time rule.
+                  When the date IS blocked (same-day / past-20:00-for-tomorrow)
+                  the banner above asks them to call instead — the form
+                  shouldn't be reachable. The isDropoffDateBlocked admin
+                  time-slot block is intentionally NOT gated here: that
+                  flow allows editing the flight time to land on a valid
+                  slot, so the entry form stays open. */}
+              {showManualDeparture && formData.dropoffDate && isLeadTimeAllowed && (
                 <div className="form-group fade-in">
                   <div className="form-group">
                     <label htmlFor="manualAirline">Airline <span className="required">*</span></label>
