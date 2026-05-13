@@ -27,6 +27,21 @@ const formatDateUK = (isoDate) => {
   return `${parts[2]}/${parts[1]}/${parts[0]}`
 }
 
+// Helper to format an ISO datetime as HH:MM (24h) in Europe/London. Used to
+// show when an inspection was first saved — drives the read-only Time field
+// next to the Date input. Returns '' if the timestamp is missing/malformed.
+const formatTimeUK = (isoDateTime) => {
+  if (!isoDateTime) return ''
+  const d = new Date(isoDateTime)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString('en-GB', {
+    timeZone: 'Europe/London',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
 // Helper to parse UK date (dd/mm/yyyy) to ISO (yyyy-mm-dd)
 const parseUKDate = (ukDate) => {
   if (!ukDate) return ''
@@ -1055,6 +1070,17 @@ function Employee() {
                           placeholder="dd/mm/yyyy"
                           maxLength={10}
                           className="acknowledgement-input"
+                        />
+                      </div>
+                      <div className="inspection-field">
+                        <label>Time (24h UK)</label>
+                        <input
+                          type="text"
+                          value={formatTimeUK(editingInspection?.created_at)}
+                          readOnly
+                          placeholder="—"
+                          className="acknowledgement-input"
+                          title="When this inspection was first saved (server-recorded, Europe/London)"
                         />
                       </div>
                     </div>
