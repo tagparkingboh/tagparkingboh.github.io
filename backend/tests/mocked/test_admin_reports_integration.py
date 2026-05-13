@@ -648,8 +648,8 @@ class TestReportBoundaryConditions:
 
     def test_handles_maximum_capacity_occupancy(self, mock_db):
         """Should handle 100% occupancy correctly."""
-        max_capacity = 50
-        occupied = 50
+        max_capacity = 60
+        occupied = 60
 
         occupancy_percent = (occupied / max_capacity) * 100
 
