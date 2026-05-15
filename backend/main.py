@@ -4855,6 +4855,7 @@ async def get_fun_facts(
     result = {
         "busiestDay": None,
         "busiestWeek": None,
+        "busiestMonth": None,
         "busiestStreak": None,
         "longestTrip": None,
         "highestTransaction": None,
@@ -4962,6 +4963,30 @@ async def get_fun_facts(
             "endDate": week_end.strftime("%d %b %Y"),
             "weekNumber": winning_week,
             "year": winning_year,
+        }
+
+    # === Busiest Month ===
+    # Group `day_counter` by (year, month) of payment date. The month with the
+    # highest booking count wins; ties resolved by most recent month first.
+    if day_counter:
+        month_counter = Counter()
+        for day, count in day_counter.items():
+            month_counter[(day.year, day.month)] += count
+
+        max_month_count = max(month_counter.values())
+        busiest_months = [
+            (y, m) for (y, m), c in month_counter.items() if c == max_month_count
+        ]
+        busiest_months.sort(reverse=True)  # most recent first
+        winning_month_year, winning_month = busiest_months[0]
+
+        from datetime import date as date_type
+        month_label_date = date_type(winning_month_year, winning_month, 1)
+        result["busiestMonth"] = {
+            "bookings": max_month_count,
+            "month": month_label_date.strftime("%b %Y"),  # e.g., "May 2026"
+            "monthNumber": winning_month,
+            "year": winning_month_year,
         }
 
     # === Longest Trip ===
