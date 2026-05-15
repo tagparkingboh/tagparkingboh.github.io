@@ -907,80 +907,81 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
             print(f"    Warning: Could not click terms checkbox: {e}")
         time.sleep(1)
 
-        # Wait for Stripe PaymentElement to load
-        print("    Waiting for Stripe payment form...")
+        # Free-booking short-circuit: 100% promo bookings render the green
+        # "Complete Free Booking" button instead of the Stripe card form, so
+        # the entire iframe-polling + card-fill block below is wasted work
+        # (~15s) for those tests. Detect first; if present, skip Stripe.
+        print("    Waiting for payment surface...")
         time.sleep(3)
-
-        # Stripe Link is disabled in StripePayment.jsx via wallets: {link: 'never'},
-        # so we deliberately do NOT dismiss anything here. The previous version
-        # used a [class*='close'] catch-all that matched our own booking-modal
-        # close button (and any other element with "close" in its class), which
-        # tore down the page before Stripe Elements could attach.
-        time.sleep(2)
-
-        time.sleep(1)
-
-        # The StripePaymentElement uses iframes for card input
-        # The inputs have specific IDs: payment-numberInput, payment-expiryInput, payment-cvcInput
-        print("    Filling card details...")
-
+        free_booking_btn = page.locator("button:has-text('Complete Free Booking')")
         try:
-            # Find the Stripe payment iframe. It can take 2-5s after the
-            # Continue-to-Payment click for Stripe Elements to attach the
-            # iframe, so poll up to ~15s. Detect by the standard autocomplete
-            # attribute the card number input always carries.
-            payment_frame = None
-            CARD_NUMBER_SEL = "input[autocomplete='cc-number']"
-            for _ in range(30):
-                stripe_frames = [
-                    f for f in page.frames if "stripe" in (f.url or "").lower()
-                ] or page.frames
-                for frame in stripe_frames:
-                    try:
-                        if frame.locator(CARD_NUMBER_SEL).count() > 0:
-                            payment_frame = frame
-                            break
-                    except Exception:
-                        continue
+            is_free = free_booking_btn.is_visible(timeout=2000)
+        except Exception:
+            is_free = False
+
+        if is_free:
+            print("    Free booking detected — skipping Stripe card flow")
+        else:
+            time.sleep(2)
+            # The StripePaymentElement uses iframes for card input.
+            print("    Filling card details...")
+            try:
+                # Find the Stripe payment iframe. It can take 2-5s after the
+                # Continue-to-Payment click for Stripe Elements to attach the
+                # iframe, so poll up to ~15s. Detect by the standard autocomplete
+                # attribute the card number input always carries.
+                payment_frame = None
+                CARD_NUMBER_SEL = "input[autocomplete='cc-number']"
+                for _ in range(30):
+                    stripe_frames = [
+                        f for f in page.frames if "stripe" in (f.url or "").lower()
+                    ] or page.frames
+                    for frame in stripe_frames:
+                        try:
+                            if frame.locator(CARD_NUMBER_SEL).count() > 0:
+                                payment_frame = frame
+                                break
+                        except Exception:
+                            continue
+                    if payment_frame:
+                        print(f"    Found Stripe payment frame: {payment_frame.url[:60]}...")
+                        break
+                    time.sleep(0.5)
+
                 if payment_frame:
-                    print(f"    Found Stripe payment frame: {payment_frame.url[:60]}...")
-                    break
-                time.sleep(0.5)
+                    # Use standard autocomplete attributes — survive Stripe internal
+                    # markup changes that the old `#payment-numberInput` IDs do not.
+                    card_sel = "input[autocomplete='cc-number']"
+                    exp_sel = "input[autocomplete='cc-exp']"
+                    cvc_sel = "input[autocomplete='cc-csc']"
 
-            if payment_frame:
-                # Use standard autocomplete attributes — survive Stripe internal
-                # markup changes that the old `#payment-numberInput` IDs do not.
-                card_sel = "input[autocomplete='cc-number']"
-                exp_sel = "input[autocomplete='cc-exp']"
-                cvc_sel = "input[autocomplete='cc-csc']"
+                    card_input = payment_frame.locator(card_sel)
+                    card_input.wait_for(state="visible", timeout=10000)
+                    card_input.click()
+                    time.sleep(0.2)
+                    card_input.press_sequentially(STRIPE_TEST_CARD["number"], delay=40)
+                    print("    Card number filled")
+                    time.sleep(0.3)
 
-                card_input = payment_frame.locator(card_sel)
-                card_input.wait_for(state="visible", timeout=10000)
-                card_input.click()
-                time.sleep(0.2)
-                card_input.press_sequentially(STRIPE_TEST_CARD["number"], delay=40)
-                print("    Card number filled")
-                time.sleep(0.3)
+                    expiry_input = payment_frame.locator(exp_sel)
+                    expiry_input.click()
+                    time.sleep(0.2)
+                    expiry_input.press_sequentially(STRIPE_TEST_CARD["expiry"], delay=40)
+                    print("    Expiry filled")
+                    time.sleep(0.3)
 
-                expiry_input = payment_frame.locator(exp_sel)
-                expiry_input.click()
-                time.sleep(0.2)
-                expiry_input.press_sequentially(STRIPE_TEST_CARD["expiry"], delay=40)
-                print("    Expiry filled")
-                time.sleep(0.3)
+                    cvc_input = payment_frame.locator(cvc_sel)
+                    cvc_input.click()
+                    time.sleep(0.2)
+                    cvc_input.press_sequentially(STRIPE_TEST_CARD["cvc"], delay=40)
+                    print("    CVC filled")
+                    time.sleep(0.5)
+                else:
+                    print("    Could not find Stripe payment frame after polling")
+                    page.screenshot(path=f"no_stripe_frame_{test_num}.png")
 
-                cvc_input = payment_frame.locator(cvc_sel)
-                cvc_input.click()
-                time.sleep(0.2)
-                cvc_input.press_sequentially(STRIPE_TEST_CARD["cvc"], delay=40)
-                print("    CVC filled")
-                time.sleep(0.5)
-            else:
-                print("    Could not find Stripe payment frame after polling")
-                page.screenshot(path=f"no_stripe_frame_{test_num}.png")
-
-        except Exception as stripe_err:
-            print(f"    Stripe fill failed: {stripe_err}")
+            except Exception as stripe_err:
+                print(f"    Stripe fill failed: {stripe_err}")
 
         # Wait for the pay button to become enabled (elementComplete=true) — up
         # to ~6s. fill() used to race this with a flat sleep(2); polling here
