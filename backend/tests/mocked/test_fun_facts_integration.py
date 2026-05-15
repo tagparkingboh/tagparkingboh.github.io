@@ -574,3 +574,142 @@ class TestFunFactsIntegrationDateFormatting:
             assert "2026" in data["busiestStreak"]["endDate"]
         finally:
             app.dependency_overrides.clear()
+
+
+# =============================================================================
+# Integration Tests - Busiest Month
+# =============================================================================
+
+
+def _override_admin_and_bookings(mock_admin_user, mock_bookings):
+    """Wire up the admin + DB overrides used by every Busiest Month test."""
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.all.return_value = mock_bookings
+
+    def mock_get_db():
+        yield mock_db
+
+    def mock_require_admin():
+        return mock_admin_user
+
+    app.dependency_overrides[get_db] = mock_get_db
+    app.dependency_overrides[require_admin] = mock_require_admin
+
+
+class TestBusiestMonthIntegration:
+    """Integration tests for the Busiest Month fun fact."""
+
+    def test_response_includes_busiest_month_field(self, mock_admin_user):
+        """Endpoint should include busiestMonth in the response payload."""
+        mock_bookings = [
+            create_mock_booking(id=1, paid_at=datetime(2026, 5, 14, 12, 0)),
+        ]
+        _override_admin_and_bookings(mock_admin_user, mock_bookings)
+        try:
+            response = TestClient(app).get("/api/admin/reports/fun-facts?refresh=true")
+            assert response.status_code == 200
+            data = response.json()
+            assert "busiestMonth" in data
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_busiest_month_shape(self, mock_admin_user):
+        """busiestMonth should have bookings, month label, monthNumber, year."""
+        mock_bookings = [
+            create_mock_booking(id=1, paid_at=datetime(2026, 5, 14, 12, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 5, 15, 12, 0)),
+        ]
+        _override_admin_and_bookings(mock_admin_user, mock_bookings)
+        try:
+            response = TestClient(app).get("/api/admin/reports/fun-facts?refresh=true")
+            assert response.status_code == 200
+            month = response.json()["busiestMonth"]
+
+            assert month["bookings"] == 2
+            assert month["monthNumber"] == 5
+            assert month["year"] == 2026
+            assert "May" in month["month"]
+            assert "2026" in month["month"]
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_busiest_month_picks_highest_count(self, mock_admin_user):
+        """The month with the most bookings (by payment date) should win."""
+        mock_bookings = [
+            # March: 2
+            create_mock_booking(id=1, paid_at=datetime(2026, 3, 5, 12, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 3, 20, 12, 0)),
+            # April: 4 (winner)
+            create_mock_booking(id=3, paid_at=datetime(2026, 4, 1, 12, 0)),
+            create_mock_booking(id=4, paid_at=datetime(2026, 4, 10, 12, 0)),
+            create_mock_booking(id=5, paid_at=datetime(2026, 4, 20, 12, 0)),
+            create_mock_booking(id=6, paid_at=datetime(2026, 4, 28, 12, 0)),
+            # May: 1
+            create_mock_booking(id=7, paid_at=datetime(2026, 5, 14, 12, 0)),
+        ]
+        _override_admin_and_bookings(mock_admin_user, mock_bookings)
+        try:
+            response = TestClient(app).get("/api/admin/reports/fun-facts?refresh=true")
+            assert response.status_code == 200
+            month = response.json()["busiestMonth"]
+
+            assert month["bookings"] == 4
+            assert month["monthNumber"] == 4
+            assert month["year"] == 2026
+            assert "Apr" in month["month"]
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_busiest_month_tie_break_most_recent(self, mock_admin_user):
+        """On a tie, the more recent month wins."""
+        mock_bookings = [
+            # Feb: 3
+            create_mock_booking(id=1, paid_at=datetime(2026, 2, 5, 12, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 2, 15, 12, 0)),
+            create_mock_booking(id=3, paid_at=datetime(2026, 2, 25, 12, 0)),
+            # July: 3 (tied, but later)
+            create_mock_booking(id=4, paid_at=datetime(2026, 7, 5, 12, 0)),
+            create_mock_booking(id=5, paid_at=datetime(2026, 7, 15, 12, 0)),
+            create_mock_booking(id=6, paid_at=datetime(2026, 7, 25, 12, 0)),
+        ]
+        _override_admin_and_bookings(mock_admin_user, mock_bookings)
+        try:
+            response = TestClient(app).get("/api/admin/reports/fun-facts?refresh=true")
+            assert response.status_code == 200
+            month = response.json()["busiestMonth"]
+
+            assert month["monthNumber"] == 7
+            assert month["year"] == 2026
+            assert month["bookings"] == 3
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_busiest_month_year_boundary(self, mock_admin_user):
+        """Dec 2025 and Jan 2026 tied → Jan 2026 (later year) wins."""
+        mock_bookings = [
+            create_mock_booking(id=1, paid_at=datetime(2025, 12, 30, 12, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2025, 12, 31, 23, 59)),
+            create_mock_booking(id=3, paid_at=datetime(2026, 1, 1, 0, 0)),
+            create_mock_booking(id=4, paid_at=datetime(2026, 1, 15, 12, 0)),
+        ]
+        _override_admin_and_bookings(mock_admin_user, mock_bookings)
+        try:
+            response = TestClient(app).get("/api/admin/reports/fun-facts?refresh=true")
+            assert response.status_code == 200
+            month = response.json()["busiestMonth"]
+
+            assert month["year"] == 2026
+            assert month["monthNumber"] == 1
+            assert month["bookings"] == 2
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_busiest_month_null_when_no_bookings(self, mock_admin_user):
+        """No bookings → busiestMonth is None (matches the other fun facts)."""
+        _override_admin_and_bookings(mock_admin_user, [])
+        try:
+            response = TestClient(app).get("/api/admin/reports/fun-facts?refresh=true")
+            assert response.status_code == 200
+            assert response.json()["busiestMonth"] is None
+        finally:
+            app.dependency_overrides.clear()

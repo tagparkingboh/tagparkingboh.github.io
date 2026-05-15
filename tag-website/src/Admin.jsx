@@ -11509,6 +11509,16 @@ function Admin() {
                               </div>
                             </div>
                           )}
+                          {funFacts.busiestMonth && (
+                            <div className="fun-fact-card">
+                              <span className="fun-fact-icon">🗓️</span>
+                              <div className="fun-fact-content">
+                                <span className="fun-fact-label">Busiest Month</span>
+                                <span className="fun-fact-value">{funFacts.busiestMonth.bookings} bookings</span>
+                                <span className="fun-fact-detail">{funFacts.busiestMonth.month}</span>
+                              </div>
+                            </div>
+                          )}
                           {funFacts.busiestStreak && (
                             <div className="fun-fact-card">
                               <span className="fun-fact-icon">🔥</span>

@@ -1029,3 +1029,144 @@ class TestStatusFiltering:
         included = [b for b in bookings if b.status in [BookingStatus.CONFIRMED, BookingStatus.COMPLETED]]
 
         assert len(included) == 3
+
+
+# =============================================================================
+# Unit Tests - Busiest Month Logic
+# =============================================================================
+
+def _count_bookings_per_month(bookings):
+    """Mirror of the busiest-month grouping logic in main.get_fun_facts."""
+    day_counter = Counter()
+    for booking in bookings:
+        if booking.payment and booking.payment.paid_at:
+            day_counter[booking.payment.paid_at.date()] += 1
+
+    month_counter = Counter()
+    for day, count in day_counter.items():
+        month_counter[(day.year, day.month)] += count
+    return month_counter
+
+
+def _winning_month(month_counter):
+    """Return the (year, month) winner using the most-recent tie-break rule."""
+    if not month_counter:
+        return None
+    max_count = max(month_counter.values())
+    busiest = [k for k, c in month_counter.items() if c == max_count]
+    busiest.sort(reverse=True)
+    return busiest[0], max_count
+
+
+class TestBusiestMonthLogic:
+    """Unit tests for busiest month calculation (by payment date)."""
+
+    def test_single_booking_single_month(self):
+        """A single booking should make its month the busiest with count=1."""
+        bookings = [create_mock_booking(paid_at=datetime(2026, 5, 14, 9, 0))]
+
+        month_counter = _count_bookings_per_month(bookings)
+        (year, month), count = _winning_month(month_counter)
+
+        assert (year, month) == (2026, 5)
+        assert count == 1
+
+    def test_multiple_bookings_same_month_accumulate(self):
+        """Bookings paid in the same calendar month should sum together."""
+        bookings = [
+            create_mock_booking(id=1, paid_at=datetime(2026, 5, 1, 9, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 5, 15, 9, 0)),
+            create_mock_booking(id=3, paid_at=datetime(2026, 5, 31, 23, 59)),
+        ]
+
+        month_counter = _count_bookings_per_month(bookings)
+        (year, month), count = _winning_month(month_counter)
+
+        assert (year, month) == (2026, 5)
+        assert count == 3
+
+    def test_busiest_month_picked_from_several(self):
+        """The month with the highest total should win, not the most recent."""
+        bookings = [
+            # March: 2 bookings
+            create_mock_booking(id=1, paid_at=datetime(2026, 3, 5, 9, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 3, 20, 9, 0)),
+            # April: 5 bookings (winner)
+            *[
+                create_mock_booking(id=10 + i, paid_at=datetime(2026, 4, i + 1, 9, 0))
+                for i in range(5)
+            ],
+            # May: 1 booking
+            create_mock_booking(id=99, paid_at=datetime(2026, 5, 14, 9, 0)),
+        ]
+
+        month_counter = _count_bookings_per_month(bookings)
+        (year, month), count = _winning_month(month_counter)
+
+        assert (year, month) == (2026, 4)
+        assert count == 5
+
+    def test_tie_prefers_most_recent_month(self):
+        """When two months are tied, the most recent month wins."""
+        bookings = [
+            # March: 3 bookings
+            create_mock_booking(id=1, paid_at=datetime(2026, 3, 5, 9, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 3, 15, 9, 0)),
+            create_mock_booking(id=3, paid_at=datetime(2026, 3, 25, 9, 0)),
+            # June: 3 bookings (tied, but newer → wins)
+            create_mock_booking(id=4, paid_at=datetime(2026, 6, 1, 9, 0)),
+            create_mock_booking(id=5, paid_at=datetime(2026, 6, 10, 9, 0)),
+            create_mock_booking(id=6, paid_at=datetime(2026, 6, 20, 9, 0)),
+        ]
+
+        month_counter = _count_bookings_per_month(bookings)
+        (year, month), count = _winning_month(month_counter)
+
+        assert (year, month) == (2026, 6)
+        assert count == 3
+
+    def test_year_boundary_dec_vs_jan_ties_to_jan(self):
+        """Dec 2025 and Jan 2026 tied → Jan 2026 (later) wins on the most-recent rule."""
+        bookings = [
+            create_mock_booking(id=1, paid_at=datetime(2025, 12, 30, 9, 0)),
+            create_mock_booking(id=2, paid_at=datetime(2025, 12, 31, 23, 59)),
+            create_mock_booking(id=3, paid_at=datetime(2026, 1, 1, 0, 0)),
+            create_mock_booking(id=4, paid_at=datetime(2026, 1, 15, 9, 0)),
+        ]
+
+        month_counter = _count_bookings_per_month(bookings)
+        (year, month), count = _winning_month(month_counter)
+
+        assert (year, month) == (2026, 1)
+        assert count == 2
+
+    def test_month_boundary_t_minus_epsilon_vs_t(self):
+        """A payment at 23:59:59 on the last day of one month and 00:00:00 of the
+        next should each be counted in their own month."""
+        bookings = [
+            create_mock_booking(id=1, paid_at=datetime(2026, 4, 30, 23, 59, 59)),
+            create_mock_booking(id=2, paid_at=datetime(2026, 5, 1, 0, 0, 0)),
+        ]
+
+        month_counter = _count_bookings_per_month(bookings)
+
+        assert month_counter[(2026, 4)] == 1
+        assert month_counter[(2026, 5)] == 1
+
+    def test_bookings_without_paid_at_are_skipped(self):
+        """Bookings with no payment.paid_at should not contribute to any month."""
+        bookings = [
+            create_mock_booking(id=1, paid_at=datetime(2026, 5, 14, 9, 0)),
+            create_mock_booking(id=2, paid_at=None),               # no payment row at all
+            create_mock_booking(id=3, amount_pence=1000, paid_at=None),  # payment without paid_at? still None paid_at
+        ]
+
+        month_counter = _count_bookings_per_month(bookings)
+
+        # Only the booking with paid_at should be counted.
+        assert sum(month_counter.values()) == 1
+        assert month_counter[(2026, 5)] == 1
+
+    def test_empty_bookings_returns_no_winner(self):
+        """No bookings should yield an empty counter and no winner."""
+        assert _winning_month(_count_bookings_per_month([])) is None
