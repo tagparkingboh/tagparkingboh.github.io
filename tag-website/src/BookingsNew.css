@@ -2587,6 +2587,7 @@
 .bookings-new-page--modal {
   min-height: 0;
   height: 100%;
+  width: 100%;
 }
 
 .bookings-new-page--modal .bookings-new-container {
