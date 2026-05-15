@@ -530,8 +530,25 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
     print(f"  Duration: {test_case['duration']} days")
 
     try:
-        # Navigate to booking page
-        page.goto(STAGING_URL, wait_until="networkidle")
+        # Navigate to booking page. Use "load" instead of "networkidle" —
+        # the app's network never idles within 30s on WebKit (Stripe Elements
+        # keeps pinging, fonts/analytics in flight), which was failing every
+        # WebKit/iOS test on page.goto. "load" fires once DOM + critical
+        # resources are in; the time.sleep(3) below covers what little remains.
+        # Retry on transient navigation errors (Netlify occasionally returns
+        # ERR_CONNECTION_RESET when 4 parallel workers hit the URL at once).
+        goto_err = None
+        for attempt in range(3):
+            try:
+                page.goto(STAGING_URL, wait_until="load", timeout=45000)
+                goto_err = None
+                break
+            except Exception as e:
+                goto_err = e
+                print(f"  page.goto attempt {attempt + 1}/3 failed: {e}")
+                time.sleep(2)
+        if goto_err:
+            raise goto_err
         time.sleep(3)
 
         # ============ WELCOME MODAL (shows first) ============
