@@ -2579,3 +2579,30 @@
   font-size: 0.875rem;
   line-height: 1.4;
 }
+
+/* ---------- Modal-mode overrides ---------- */
+/* When the booking flow is rendered inside BookingModal, the modal panel
+   provides the chrome, scroll, and viewport bounds — so the page itself
+   should fill its parent rather than the viewport. */
+.bookings-new-page--modal {
+  min-height: 0;
+  height: 100%;
+}
+
+.bookings-new-page--modal .bookings-new-container {
+  padding: 2rem 1.25rem 2.5rem;
+}
+
+@media (min-width: 768px) {
+  .bookings-new-page--modal .bookings-new-container {
+    padding: 2.5rem 2rem 3rem;
+  }
+}
+
+/* Inner sub-modals (welcome card, clarifying-times card) must float above
+   the BookingModal overlay (z-index 1500), so bump them. They remain
+   position:fixed and cover the whole viewport like before. */
+.bookings-new-page--modal .welcome-modal-overlay,
+.bookings-new-page--modal .time-confirm-modal-overlay {
+  z-index: 1600;
+}

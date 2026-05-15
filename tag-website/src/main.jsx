@@ -5,7 +5,7 @@ import './index.css'
 import LandingPage from './LandingPage.jsx'
 import HomePage from './HomePage.jsx'
 import Bookings from './Bookings.jsx'
-import BookingsNew from './BookingsNew.jsx'
+import TagItRoute from './TagItRoute.jsx'
 import PrivacyPolicy from './PrivacyPolicy.jsx'
 import TermsConditions from './TermsConditions.jsx'
 import RefundPolicy from './RefundPolicy.jsx'
@@ -26,7 +26,7 @@ createRoot(document.getElementById('root')).render(
       <AuthProvider>
         <Routes>
           <Route path="/" element={IS_LAUNCHED ? <HomePage /> : <LandingPage />} />
-          <Route path="/tag-it" element={<BookingsNew />} />
+          <Route path="/tag-it" element={<TagItRoute />} />
           <Route path="/book-original" element={<Bookings />} />  {/* Original 6-part flow for A/B testing */}
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/terms-conditions" element={<TermsConditions />} />

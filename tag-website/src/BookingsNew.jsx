@@ -109,8 +109,12 @@ function loadBookingState(key, fallback) {
   return fallback
 }
 
-function Bookings() {
+function Bookings({ isModal = false, onClose }) {
   const navigate = useNavigate()
+  const closeOrHome = () => {
+    if (isModal && onClose) onClose()
+    else navigate('/')
+  }
   const [currentStep, setCurrentStep] = useState(() => loadBookingState('step', 1))
   const [paymentComplete, setPaymentComplete] = useState(false)
   const [bookingConfirmation, setBookingConfirmation] = useState(null)
@@ -1999,7 +2003,7 @@ function Bookings() {
   }
 
   return (
-    <div className="bookings-new-page">
+    <div className={`bookings-new-page${isModal ? ' bookings-new-page--modal' : ''}`}>
       {/* Welcome Modal - shown first when user lands on booking page */}
       {showWelcomeModal && (
         <div className="welcome-modal-overlay">
@@ -2047,7 +2051,7 @@ function Bookings() {
               <button
                 type="button"
                 className="welcome-modal-back-btn"
-                onClick={() => navigate('/')}
+                onClick={closeOrHome}
               >
                 Back to home
               </button>
@@ -2147,11 +2151,13 @@ function Bookings() {
         </div>
       )}
 
-      <nav className="bookings-new-nav">
-        <Link to="/" className="logo">
-          <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
-        </Link>
-      </nav>
+      {!isModal && (
+        <nav className="bookings-new-nav">
+          <Link to="/" className="logo">
+            <img src="/assets/logo.svg" alt="TAG - Book it. Bag it. Tag it." className="logo-svg" />
+          </Link>
+        </nav>
+      )}
 
       <div className="bookings-new-container">
         <h1>Book your parking</h1>
@@ -3440,10 +3446,12 @@ function Bookings() {
         </form>
       </div>
 
-      <footer className="bookings-new-footer">
-        <img src="/assets/logo.svg" alt="TAG" className="footer-logo-small" />
-        <p>© 2025 TAG Parking. All rights reserved.</p>
-      </footer>
+      {!isModal && (
+        <footer className="bookings-new-footer">
+          <img src="/assets/logo.svg" alt="TAG" className="footer-logo-small" />
+          <p>© 2025 TAG Parking. All rights reserved.</p>
+        </footer>
+      )}
     </div>
   )
 }
