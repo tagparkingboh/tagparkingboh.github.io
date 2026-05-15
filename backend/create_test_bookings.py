@@ -37,6 +37,9 @@ HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
 SINGLE_TEST = os.environ.get("SINGLE_TEST", "false").lower() == "true"  # Run only first test
 PROMO_ONLY = os.environ.get("PROMO_ONLY", "false").lower() == "true"  # Run only promo code tests
 TEST_FILTER = os.environ.get("TEST_FILTER", "")  # Filter tests by name (case-insensitive partial match)
+TEST_INDEX = os.environ.get("TEST_INDEX", "")    # 1-based index of a single test to run (used by batch runner)
+BROWSER = os.environ.get("BROWSER", "chromium").lower()  # chromium | firefox | webkit
+DEVICE = os.environ.get("DEVICE", "")            # e.g. "iPhone 15 Pro", "iPad Pro 11"; empty for desktop
 
 # Staging URL
 STAGING_URL = "https://staging-tagparking.netlify.app/tag-it"
@@ -46,7 +49,7 @@ CUSTOMER = {
     "first_name": "Mark",
     "last_name": "Testing",
     "email": "qa.orca.contact@gmail.com",
-    "phone": "7977321321",
+    "phone": "7441343276",
     "address1": "176 Shelbourne Rd",
     "city": "Bournemouth",
     "county": "Dorset",
@@ -908,59 +911,12 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         print("    Waiting for Stripe payment form...")
         time.sleep(3)
 
-        # Dismiss Stripe Link popup if it appears (for emails registered with Link)
-        # The Link modal needs to be closed so we can use the card form
+        # Stripe Link is disabled in StripePayment.jsx via wallets: {link: 'never'},
+        # so we deliberately do NOT dismiss anything here. The previous version
+        # used a [class*='close'] catch-all that matched our own booking-modal
+        # close button (and any other element with "close" in its class), which
+        # tore down the page before Stripe Elements could attach.
         time.sleep(2)
-
-        try:
-            link_closed = False
-
-            # First try pressing Escape multiple times - this often dismisses Link
-            for _ in range(3):
-                page.keyboard.press("Escape")
-                time.sleep(0.3)
-
-            # Try clicking outside the modal area (top-left corner of page)
-            try:
-                page.mouse.click(10, 10)
-                time.sleep(0.5)
-            except:
-                pass
-
-            # Look for close/back buttons in all frames
-            for frame in page.frames:
-                try:
-                    # Various selectors for Link close/dismiss buttons
-                    close_selectors = [
-                        "[data-testid='link-close-button']",
-                        "button[aria-label='Close']",
-                        "button[aria-label='Back']",
-                        ".p-LinkAutofillPrompt [role='button']",
-                        "button:has(svg path[d*='M1.2'])",  # X icon paths
-                        "[class*='CloseButton']",
-                        "[class*='close']",
-                    ]
-                    for selector in close_selectors:
-                        close_btn = frame.locator(selector).first
-                        if close_btn.is_visible(timeout=300):
-                            print(f"    Found Link close button: {selector}")
-                            close_btn.click()
-                            link_closed = True
-                            time.sleep(0.5)
-                            break
-                    if link_closed:
-                        break
-                except:
-                    continue
-
-            if not link_closed:
-                print("    Link modal close button not found, trying Escape again...")
-                for _ in range(3):
-                    page.keyboard.press("Escape")
-                    time.sleep(0.3)
-
-        except Exception as e:
-            print(f"    Could not close Link modal: {e}")
 
         time.sleep(1)
 
@@ -969,66 +925,74 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         print("    Filling card details...")
 
         try:
-            # Find the Stripe iframe containing the payment form
-            # It's usually the first __privateStripeFrame or has specific naming
-            stripe_frames = page.frames
+            # Find the Stripe payment iframe. It can take 2-5s after the
+            # Continue-to-Payment click for Stripe Elements to attach the
+            # iframe, so poll up to ~15s. Detect by the standard autocomplete
+            # attribute the card number input always carries.
             payment_frame = None
-
-            for frame in stripe_frames:
-                # Check if this frame has the card number input
-                try:
-                    card_input = frame.locator("#payment-numberInput")
-                    if card_input.count() > 0:
-                        payment_frame = frame
-                        print("    Found Stripe payment frame")
-                        break
-                except:
-                    continue
+            CARD_NUMBER_SEL = "input[autocomplete='cc-number']"
+            for _ in range(30):
+                stripe_frames = [
+                    f for f in page.frames if "stripe" in (f.url or "").lower()
+                ] or page.frames
+                for frame in stripe_frames:
+                    try:
+                        if frame.locator(CARD_NUMBER_SEL).count() > 0:
+                            payment_frame = frame
+                            break
+                    except Exception:
+                        continue
+                if payment_frame:
+                    print(f"    Found Stripe payment frame: {payment_frame.url[:60]}...")
+                    break
+                time.sleep(0.5)
 
             if payment_frame:
-                # Fill card number
-                card_input = payment_frame.locator("#payment-numberInput")
+                # Use standard autocomplete attributes — survive Stripe internal
+                # markup changes that the old `#payment-numberInput` IDs do not.
+                card_sel = "input[autocomplete='cc-number']"
+                exp_sel = "input[autocomplete='cc-exp']"
+                cvc_sel = "input[autocomplete='cc-csc']"
+
+                card_input = payment_frame.locator(card_sel)
+                card_input.wait_for(state="visible", timeout=10000)
                 card_input.click()
                 time.sleep(0.2)
-                card_input.fill(STRIPE_TEST_CARD["number"])
+                card_input.press_sequentially(STRIPE_TEST_CARD["number"], delay=40)
                 print("    Card number filled")
                 time.sleep(0.3)
 
-                # Fill expiry
-                expiry_input = payment_frame.locator("#payment-expiryInput")
+                expiry_input = payment_frame.locator(exp_sel)
                 expiry_input.click()
                 time.sleep(0.2)
-                expiry_input.fill(STRIPE_TEST_CARD["expiry"])
+                expiry_input.press_sequentially(STRIPE_TEST_CARD["expiry"], delay=40)
                 print("    Expiry filled")
                 time.sleep(0.3)
 
-                # Fill CVC
-                cvc_input = payment_frame.locator("#payment-cvcInput")
+                cvc_input = payment_frame.locator(cvc_sel)
                 cvc_input.click()
                 time.sleep(0.2)
-                cvc_input.fill(STRIPE_TEST_CARD["cvc"])
+                cvc_input.press_sequentially(STRIPE_TEST_CARD["cvc"], delay=40)
                 print("    CVC filled")
                 time.sleep(0.5)
             else:
-                print("    Could not find Stripe payment frame, trying frame_locator...")
-                # Try using frame_locator approach
-                for iframe in page.locator("iframe").all():
-                    try:
-                        frame = page.frame_locator(f"iframe >> nth={page.locator('iframe').all().index(iframe)}")
-                        card_input = frame.locator("#payment-numberInput")
-                        if card_input.is_visible(timeout=500):
-                            card_input.fill(STRIPE_TEST_CARD["number"])
-                            frame.locator("#payment-expiryInput").fill(STRIPE_TEST_CARD["expiry"])
-                            frame.locator("#payment-cvcInput").fill(STRIPE_TEST_CARD["cvc"])
-                            print("    Card details filled via frame_locator")
-                            break
-                    except:
-                        continue
+                print("    Could not find Stripe payment frame after polling")
+                page.screenshot(path=f"no_stripe_frame_{test_num}.png")
 
         except Exception as stripe_err:
             print(f"    Stripe fill failed: {stripe_err}")
 
-        time.sleep(2)
+        # Wait for the pay button to become enabled (elementComplete=true) — up
+        # to ~6s. fill() used to race this with a flat sleep(2); polling here
+        # makes the wait deterministic.
+        pay_btn_wait = page.locator(".stripe-pay-btn")
+        for _ in range(30):
+            try:
+                if pay_btn_wait.is_visible(timeout=200) and not pay_btn_wait.is_disabled():
+                    break
+            except Exception:
+                pass
+            time.sleep(0.2)
 
         # Submit Payment - handle both paid and free bookings
         print("  Submitting payment...")
@@ -1055,28 +1019,24 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         print("  Waiting for booking confirmation...")
         time.sleep(10)
 
-        # Check for success - look for "Payment Successful!" or booking reference
+        # Check for REAL post-payment success only. The booking reference and
+        # generic "Thank you" copy render before the charge completes, so any
+        # fallback that accepts them produces false passes.
         success = False
         booking_ref = None
 
-        # Check for Payment Successful text
-        if page.locator("text=Payment Successful").is_visible(timeout=20000):
+        success_marker = page.locator("text=Payment Successful")
+        try:
+            success_marker.wait_for(state="visible", timeout=30000)
             success = True
-            # Try to extract the booking reference (format: TAG-XXXXXXX)
             try:
-                # Look for text containing TAG- pattern
                 ref_element = page.locator("text=/TAG-[A-Z0-9]+/")
                 if ref_element.is_visible(timeout=3000):
                     booking_ref = ref_element.text_content()
-            except:
+            except Exception:
                 pass
-        elif page.locator("text=Booking Confirmed").is_visible(timeout=5000):
-            success = True
-        elif page.locator(".booking-reference").is_visible(timeout=5000):
-            booking_ref = page.locator(".booking-reference").text_content()
-            success = True
-        elif page.locator("text=Thank you").is_visible(timeout=5000):
-            success = True
+        except Exception:
+            success = False
 
         if success:
             if booking_ref:
@@ -1114,14 +1074,28 @@ def main():
     with sync_playwright() as p:
         # Use headless mode for CI/automation, headed for local debugging
         slow_mo = 0 if HEADLESS else 100
-        browser = p.chromium.launch(headless=HEADLESS, slow_mo=slow_mo)
-        context = browser.new_context(viewport={"width": 1280, "height": 900})
+        if BROWSER not in ("chromium", "firefox", "webkit"):
+            raise ValueError(f"Unsupported BROWSER={BROWSER}")
+        browser = getattr(p, BROWSER).launch(headless=HEADLESS, slow_mo=slow_mo)
+        if DEVICE:
+            device_cfg = p.devices.get(DEVICE)
+            if device_cfg is None:
+                raise ValueError(f"Unknown DEVICE={DEVICE}")
+            context = browser.new_context(**device_cfg)
+            print(f"Browser: {BROWSER} / Device: {DEVICE}")
+        else:
+            context = browser.new_context(viewport={"width": 1280, "height": 900})
+            print(f"Browser: {BROWSER} (desktop)")
         page = context.new_page()
 
         results = {"success": [], "failed": []}
 
         # Filter test cases based on environment variables
-        if SINGLE_TEST:
+        if TEST_INDEX:
+            idx = int(TEST_INDEX) - 1
+            test_cases_to_run = [TEST_CASES[idx]]
+            print(f"Running single test by index {TEST_INDEX}: {TEST_CASES[idx]['name']}")
+        elif SINGLE_TEST:
             test_cases_to_run = TEST_CASES[:1]
         elif PROMO_ONLY:
             test_cases_to_run = [tc for tc in TEST_CASES if tc.get("promo_code")]
@@ -1159,6 +1133,9 @@ def main():
         print("\nFailed bookings:")
         for name in results["failed"]:
             print(f"  ✗ {name}")
+
+    # Non-zero exit so callers (run_staging_batches.py, CI) see real failures.
+    sys.exit(0 if not results["failed"] else 1)
 
 
 if __name__ == "__main__":
