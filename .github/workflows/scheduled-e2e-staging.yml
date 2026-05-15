@@ -1,0 +1,63 @@
+name: Scheduled E2E Staging Tests
+
+# Runs the 22-test booking-flow Playwright suite across 5 browser/device envs
+# (chromium / firefox / webkit / iOS Safari iPhone / iOS Safari iPad).
+# Per-env results POST to the production API so they show in Admin → Test Results.
+# Targets STAGING ONLY — there is intentionally no production option.
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'  # Monday at 4am UTC
+    - cron: '0 4 * * 3'  # Wednesday at 4am UTC
+    - cron: '0 4 * * 5'  # Friday at 4am UTC
+    - cron: '0 4 * * 6'  # Saturday at 4am UTC
+
+  workflow_dispatch:  # allow manual trigger from the Actions tab
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  e2e-matrix:
+    name: Staging E2E Cross-Browser Matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright python-dotenv psycopg2-binary
+
+      - name: Install Playwright browsers
+        working-directory: ./backend
+        run: |
+          python -m playwright install --with-deps chromium firefox webkit
+
+      - name: Run cross-browser matrix against staging
+        working-directory: ./backend
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          TEST_RESULTS_API_KEY: ${{ secrets.TEST_RESULTS_API_KEY }}
+          PROD_API_URL: ${{ secrets.PROD_API_URL }}
+          HEADLESS: 'true'
+        run: |
+          python3 run_staging_batches.py --matrix --size 4 --post-results
+
+      - name: Upload per-test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-staging-logs
+          path: backend/staging_logs/
+          retention-days: 14
