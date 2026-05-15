@@ -87,11 +87,15 @@ def run_one(test_idx_1based, name, env_label, browser, device, log_dir, headless
 
 DEFAULT_MATRIX = [
     # (label, browser, device, environment-tag-posted-to-api)
-    ("chromium-desktop", "chromium", None,           "stg-chromium"),
-    ("firefox-desktop",  "firefox",  None,           "stg-firefox"),
-    ("webkit-desktop",   "webkit",   None,           "stg-webkit"),
-    ("webkit-iphone",    "webkit",   "iPhone 15 Pro", "stg-iphone"),
-    ("webkit-ipad",      "webkit",   "iPad Pro 11",   "stg-ipad"),
+    ("chromium-desktop", "chromium", None, "stg-chromium"),
+    ("firefox-desktop",  "firefox",  None, "stg-firefox"),
+    ("webkit-desktop",   "webkit",   None, "stg-webkit"),
+    # Mobile envs intentionally excluded for now — the script targets desktop
+    # selectors (e.g. the time input is .fill()-able on desktop but readonly
+    # on MobileTimePicker), so iPhone/iPad would show 0/22 every run and
+    # poison the dashboard. Add back here once mobile selectors are wired up.
+    # ("webkit-iphone", "webkit", "iPhone 15 Pro", "stg-iphone"),
+    # ("webkit-ipad",   "webkit", "iPad Pro 11",   "stg-ipad"),
 ]
 
 
