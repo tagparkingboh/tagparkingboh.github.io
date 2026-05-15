@@ -1,9 +1,7 @@
 .booking-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 15, 15, 0.72);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: #1a1a1a;
   display: flex;
   align-items: stretch;
   justify-content: center;
