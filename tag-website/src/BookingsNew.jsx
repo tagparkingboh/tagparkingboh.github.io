@@ -3475,7 +3475,12 @@ function Bookings({ isModal = false, onClose }) {
                     {bookingConfirmation?.reference}
                   </div>
                   <p>A confirmation email has been sent to {formData.email}</p>
-                  <p className="spam-notice">Please check your spam/junk folder if you don't see it in your inbox.</p>
+                  <p className="spam-notice">
+                    Can't find it after a few minutes? Check your <strong>Promotions</strong>,{' '}
+                    <strong>Updates</strong>, and <strong>Spam/Junk</strong> folders, then add{' '}
+                    <strong>no-reply@tagparking.co.uk</strong> to your contacts so future emails
+                    arrive in your main inbox.
+                  </p>
                   <button
                     type="button"
                     className="submit-btn"

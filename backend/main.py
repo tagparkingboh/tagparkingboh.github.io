@@ -16974,6 +16974,113 @@ async def refresh_sms_statuses(
     return result
 
 
+# SendGrid Event Webhook
+# Receives delivery events (bounce / dropped / blocked / spamreport / etc.)
+# from SendGrid and alerts the founder when an outbound email truly failed
+# to reach a customer — i.e. the customer thinks "no email" but the cause
+# is bounce, blocked, or spam-rejected, not Gmail filing.
+#
+# Authentication: HTTP Basic (set in SendGrid UI → Mail Settings → Event
+# Webhook → HTTP Headers). Two env vars must be set on the backend:
+#   SENDGRID_WEBHOOK_USER
+#   SENDGRID_WEBHOOK_PASS
+# If either is missing the endpoint accepts ANY caller — that's deliberate
+# while initial setup is in flight; you'll see a print warning in logs.
+# Switch on once both env vars are populated.
+@app.post("/api/webhooks/sendgrid")
+async def webhook_sendgrid(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Receive a SendGrid Event Webhook batch (JSON array of events) and
+    fire a bounce-alert email to the founder for any hard-failure events.
+
+    SendGrid posts an array, e.g.:
+      [
+        {"email": "x@y.com", "event": "bounce", "reason": "550 No such user",
+         "timestamp": 1716036600, "sg_event_id": "..."},
+        ...
+      ]
+    We acknowledge with 200 OK regardless of internal processing outcome
+    so SendGrid doesn't retry indefinitely; failures are logged.
+    """
+    import base64
+    import json as _json
+
+    expected_user = os.environ.get("SENDGRID_WEBHOOK_USER")
+    expected_pass = os.environ.get("SENDGRID_WEBHOOK_PASS")
+    if expected_user and expected_pass:
+        auth = request.headers.get("authorization", "")
+        if not auth.lower().startswith("basic "):
+            raise HTTPException(status_code=401, detail="Missing Basic auth header")
+        try:
+            decoded = base64.b64decode(auth.split(" ", 1)[1]).decode("utf-8", errors="replace")
+            user, _, password = decoded.partition(":")
+        except Exception:
+            raise HTTPException(status_code=401, detail="Malformed Basic auth header")
+        if user != expected_user or password != expected_pass:
+            raise HTTPException(status_code=401, detail="Invalid SendGrid webhook credentials")
+    else:
+        print("[SENDGRID WEBHOOK] WARNING: SENDGRID_WEBHOOK_USER/PASS not set — accepting unauthenticated requests")
+
+    try:
+        events = await request.json()
+    except Exception as exc:
+        print(f"[SENDGRID WEBHOOK] Failed to parse JSON body: {exc}")
+        return {"received": 0, "alerted": 0}
+
+    if not isinstance(events, list):
+        # Defensive: SendGrid always posts an array, but log if not.
+        print(f"[SENDGRID WEBHOOK] Unexpected payload shape (not a list): {type(events).__name__}")
+        return {"received": 0, "alerted": 0}
+
+    HARD_FAILURES = {"bounce", "dropped", "blocked", "spamreport"}
+    from email_service import send_bounce_alert_email
+
+    alerted = 0
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        event_type = (event.get("event") or "").lower()
+        if event_type not in HARD_FAILURES:
+            continue
+
+        customer_email = event.get("email") or "(unknown)"
+        reason = event.get("reason") or event.get("response") or ""
+
+        # Look up most-recent booking for this email so the alert has context.
+        booking_ref = None
+        try:
+            from db_models import Customer as _Customer
+            from sqlalchemy import func as _func
+            booking = (
+                db.query(DbBooking)
+                .join(DbBooking.customer)
+                .filter(_func.lower(_Customer.email) == customer_email.lower())
+                .order_by(DbBooking.created_at.desc())
+                .first()
+            )
+            if booking:
+                booking_ref = booking.reference
+        except Exception as exc:
+            print(f"[SENDGRID WEBHOOK] Booking lookup failed for {customer_email}: {exc}")
+
+        try:
+            send_bounce_alert_email(
+                customer_email=customer_email,
+                event_type=event_type,
+                reason=reason,
+                booking_reference=booking_ref,
+                raw_event=_json.dumps(event, default=str)[:2000],
+            )
+            alerted += 1
+        except Exception as exc:
+            print(f"[SENDGRID WEBHOOK] Alert send failed for {customer_email}: {exc}")
+
+    print(f"[SENDGRID WEBHOOK] Received {len(events)} events, alerted on {alerted}")
+    return {"received": len(events), "alerted": alerted}
+
+
 # SMS Webhooks (no auth - public endpoints for SMS Works callbacks)
 # Note: SMS Works sends requests with trailing slash, so we handle both formats
 @app.post("/api/webhooks/sms/incoming")
