@@ -2302,6 +2302,7 @@ async def get_booking_stats(
 @app.post("/api/admin/bookings", response_model=BookingResponse)
 async def create_admin_booking(
     request: AdminBookingRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
     """
@@ -2311,12 +2312,35 @@ async def create_admin_booking(
     - Set custom drop-off times (not restricted to slots)
     - Override pricing if needed
     - Book for phone/walk-in customers
-    - Add bookings even when regular slots are full
+    - Push past the 60 customer soft-cap up to the 62 hard ceiling
 
     Use this when customers contact you because all slots are booked.
+    Admin can override the public 60-spot cap but never the 62 physical
+    ceiling — every day in the stay range is checked against the live DB.
     """
-    service = get_service()
+    # Hard ceiling (62) check across the stay range. Uses live DB counts —
+    # the legacy in-memory counter inside BookingService doesn't reflect
+    # production state and would silently let bookings past 62.
+    HARD_CAP = 62
+    overlapping = db.query(DbBooking).filter(
+        DbBooking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.PENDING]),
+        DbBooking.dropoff_date <= request.pickup_date,
+        DbBooking.pickup_date >= request.drop_off_date,
+    ).all()
+    cursor = request.drop_off_date
+    while cursor <= request.pickup_date:
+        count = sum(1 for b in overlapping if b.dropoff_date <= cursor <= b.pickup_date)
+        if count + 1 > HARD_CAP:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cannot create — {cursor.strftime('%a %d %b %Y')} is at the {HARD_CAP}-car physical ceiling "
+                    f"({count} bookings). Even an admin can't push past the lot's actual capacity."
+                ),
+            )
+        cursor = cursor + timedelta(days=1)
 
+    service = get_service()
     try:
         booking = service.create_admin_booking(request)
         return BookingResponse(
@@ -2417,6 +2441,27 @@ async def create_manual_booking(
             vehicle.mot_expiry_date = request.mot_expiry_date
             vehicle.dvla_checked_at = datetime.now(timezone.utc)
             vehicle.dvla_retry_count = 0
+
+        # Admin hard ceiling (62 cars per day). Manual bookings can push
+        # past the public 60 soft-cap but never the lot's physical capacity.
+        HARD_CAP_MANUAL = 62
+        overlapping = db.query(Booking).filter(
+            Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.PENDING]),
+            Booking.dropoff_date <= request.pickup_date,
+            Booking.pickup_date >= request.dropoff_date,
+        ).all()
+        cursor = request.dropoff_date
+        while cursor <= request.pickup_date:
+            count = sum(1 for b in overlapping if b.dropoff_date <= cursor <= b.pickup_date)
+            if count + 1 > HARD_CAP_MANUAL:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Cannot create — {cursor.strftime('%a %d %b %Y')} is at the {HARD_CAP_MANUAL}-car physical ceiling "
+                        f"({count} bookings). The lot can't physically hold another car."
+                    ),
+                )
+            cursor = cursor + timedelta(days=1)
 
         # If departure_id and dropoff_slot provided, validate slot availability
         from db_models import FlightDeparture
@@ -10431,6 +10476,48 @@ async def create_payment(
                     status_code=400,
                     detail=f"Sorry, pick-ups are not available on {request_pickup_date.strftime('%d %B %Y')}. Please select a different date or time."
                 )
+
+        # ------------------------------------------------------------------
+        # Soft capacity gate (60 spots). Walk every day in the stay range
+        # [dropoff_date, pickup_date] and reject if any day's current
+        # occupancy + this booking would push it over 60. This stops bookings
+        # whose endpoints sit on free days but whose stay straddles a full
+        # date (the leak that produced TAG-MSH89023 / TAG-UHB47647 on
+        # 2026-05-18). Hard physical ceiling is 62 and only available to
+        # admin overrides — public bookings stop at 60.
+        SOFT_CAP = 60
+        capacity_q = db.query(DbBooking).filter(
+            DbBooking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.PENDING]),
+            DbBooking.dropoff_date <= request_pickup_date,
+            DbBooking.pickup_date >= request_dropoff_date,
+        )
+        # If the customer is re-submitting (same session_id with a PENDING
+        # row), exclude their own row from the count — they're already in
+        # it, and double-counting would block legitimate retries.
+        existing_pending_id = None
+        if request.session_id:
+            _existing = db_service.get_pending_booking_by_session(db, request.session_id)
+            if _existing:
+                existing_pending_id = _existing.id
+                capacity_q = capacity_q.filter(DbBooking.id != existing_pending_id)
+        overlapping = capacity_q.all()
+        cursor = request_dropoff_date
+        offending = None
+        while cursor <= request_pickup_date:
+            count = sum(1 for b in overlapping if b.dropoff_date <= cursor <= b.pickup_date)
+            if count + 1 > SOFT_CAP:
+                offending = (cursor, count)
+                break
+            cursor = cursor + timedelta(days=1)
+        if offending:
+            day, current = offending
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Sorry, we're full and have no space on {day.strftime('%A %d %B %Y')}. "
+                    "Please call 01202 798710 and we'll do our best to help."
+                ),
+            )
 
         # Check for existing PENDING booking with same session_id (prevent duplicates from Terms toggle)
         existing_booking = None
