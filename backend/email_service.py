@@ -1042,3 +1042,56 @@ already-failed compliance, not upcoming expiries inside the trip.</p>
 </table>
 """
     return send_email(FOUNDER_EMAIL, subject, html_content)
+
+
+def send_bounce_alert_email(
+    customer_email: str,
+    event_type: str,
+    reason: str,
+    booking_reference: Optional[str] = None,
+    raw_event: Optional[str] = None,
+) -> bool:
+    """Notify the founder that a SendGrid event indicates one of our outbound
+    emails didn't reach a customer. Fired from the SendGrid event webhook for
+    hard-failure event types (bounce, dropped, blocked, spamreport).
+
+    The customer is silent — they think no email arrived. This alert turns
+    that into an actionable signal so the founder can follow up by phone /
+    SMS with the actual reason ("your email bounced — was it mistyped?").
+
+    Args:
+        customer_email: Address that failed.
+        event_type: SendGrid event ("bounce", "dropped", "blocked", "spamreport").
+        reason: Human-readable failure reason from SendGrid.
+        booking_reference: TAG-XXX reference if we can resolve one.
+        raw_event: Optional JSON dump of the raw SendGrid event for debugging.
+    """
+    subject = f"⚠️ Email bounce: {customer_email}"
+    ref_line = (
+        f"<p><strong>Booking reference:</strong> {booking_reference}</p>"
+        if booking_reference else
+        "<p><em>No matching booking found for this address.</em></p>"
+    )
+    raw_block = (
+        f"<details><summary>Raw event</summary><pre style='font-size:11px;background:#f5f5f5;padding:8px;overflow:auto;'>{raw_event}</pre></details>"
+        if raw_event else ""
+    )
+    html_content = f"""
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2 style="color: #c0392b;">Outbound email failure</h2>
+  <p>SendGrid reported a <strong>{event_type}</strong> for an email Tag tried to send.</p>
+  <table style="border-collapse: collapse; width: 100%;">
+    <tr><td style="padding:6px 10px;border:1px solid #ddd;"><strong>Recipient</strong></td><td style="padding:6px 10px;border:1px solid #ddd;">{customer_email}</td></tr>
+    <tr><td style="padding:6px 10px;border:1px solid #ddd;"><strong>Event type</strong></td><td style="padding:6px 10px;border:1px solid #ddd;">{event_type}</td></tr>
+    <tr><td style="padding:6px 10px;border:1px solid #ddd;"><strong>Reason</strong></td><td style="padding:6px 10px;border:1px solid #ddd;">{reason or '(none provided)'}</td></tr>
+  </table>
+  {ref_line}
+  <p style="margin-top: 16px;">
+    <strong>What to do:</strong> the customer may not realise their email
+    address doesn't work. Consider contacting them by phone or SMS to
+    confirm the correct email address, then resend the relevant message.
+  </p>
+  {raw_block}
+</div>
+"""
+    return send_email(FOUNDER_EMAIL, subject, html_content)
