@@ -817,3 +817,47 @@ def create_full_booking(
         "booking": booking,
         "payment": payment
     }
+
+
+# ============== CAPACITY GATE ==============
+
+def find_overcapacity_day_in_stay(
+    db: Session,
+    dropoff_date: date,
+    pickup_date: date,
+    cap: int,
+    exclude_booking_id: Optional[int] = None,
+) -> Optional[tuple]:
+    """Walk every day in [dropoff_date, pickup_date] and return (day, count)
+    for the first day where existing occupancy + this booking would push
+    over `cap`. None if all days fit.
+
+    Called from /api/payments/create-intent (cap=60 public soft cap) and
+    the admin manual-booking endpoints (cap=62 physical hard ceiling).
+
+    `exclude_booking_id` lets a re-submitting customer's own PENDING row
+    be ignored so legit retries aren't blocked by the customer's own
+    in-flight booking. Pass it the existing PENDING id when retrying.
+
+    Returns (offending_date, current_count) — count is the number of
+    bookings already on that day (excluding the optional excluded one),
+    so the calling endpoint can render an informative error.
+    """
+    from datetime import timedelta as _td  # local import to keep top-of-file tidy
+
+    q = db.query(Booking).filter(
+        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.PENDING]),
+        Booking.dropoff_date <= pickup_date,
+        Booking.pickup_date >= dropoff_date,
+    )
+    if exclude_booking_id is not None:
+        q = q.filter(Booking.id != exclude_booking_id)
+    overlapping = q.all()
+
+    cursor = dropoff_date
+    while cursor <= pickup_date:
+        count = sum(1 for b in overlapping if b.dropoff_date <= cursor <= b.pickup_date)
+        if count + 1 > cap:
+            return (cursor, count)
+        cursor = cursor + _td(days=1)
+    return None
