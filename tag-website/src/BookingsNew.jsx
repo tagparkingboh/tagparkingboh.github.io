@@ -2756,7 +2756,7 @@ function Bookings() {
                   defined as "ALL potential dropoff times are blocked OR
                   full-day block"). Either way the banner above asks them
                   to call; no point letting them fill in the rest. */}
-              {showManualDeparture && formData.dropoffDate && isLeadTimeAllowed && !isDropoffDateBlocked && (
+              {showManualDeparture && formData.dropoffDate && isLeadTimeAllowed && !isDropoffDateBlocked && !findBlockedDateInStay && (
                 <div className="form-group fade-in">
                   <div className="form-group">
                     <label htmlFor="manualAirline">Airline <span className="required">*</span></label>
@@ -3004,7 +3004,7 @@ function Bookings() {
                       {findBlockedDateInStay && !isDropoffDateBlocked && !isPickupDateBlocked && (
                         <div className="blocked-date-message">
                           <p>
-                            Sorry, we're full and have no space on {format(findBlockedDateInStay.date, 'EEEE d MMMM yyyy')}.{' '}
+                            Sorry, we're full and have no space between {format(formData.dropoffDate, 'EEEE d MMMM yyyy')} and {format(formData.pickupDate, 'EEEE d MMMM yyyy')}.{' '}
                             Please call <a href="tel:01202 798710" className="contact-link">01202 798710</a> and we'll do our best to help.
                           </p>
                         </div>
@@ -3040,7 +3040,7 @@ function Bookings() {
               {/* Flight-based arrival lookup removed - using direct entry */}
 
               {/* Return Flight Entry Form */}
-              {showManualArrival && formData.pickupDate && !isPickupDateBlocked && (
+              {showManualArrival && formData.pickupDate && !isPickupDateBlocked && !findBlockedDateInStay && (
                 <div className="form-group fade-in">
                   <div className="form-group">
                     <label htmlFor="manualArrivalAirline">Airline <span className="required">*</span></label>
