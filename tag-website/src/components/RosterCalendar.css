@@ -2130,6 +2130,23 @@
   white-space: nowrap;
 }
 
+/* At-capacity badge — auto-block driven by daily occupancy >= 60.
+   Amber so it reads distinctly from the red "Closed" manual block:
+   manual = deliberate decision, amber = system-driven "we're full". */
+.day-badge.badge-at-cap {
+  background: #d97706;
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.calendar-day.at-cap {
+  /* Faint amber wash on the day cell so the whole day reads as "full"
+     even when other content (drop-offs, pickups, shifts) is busy. */
+  background: rgba(217, 119, 6, 0.08);
+}
+
 /* Blocked time slots in detail panel */
 .blocked-time-slots-detail {
   margin-bottom: 12px;

@@ -307,6 +307,10 @@ function Bookings({ isModal = false, onClose }) {
 
   // Blocked dates state
   const [blockedDates, setBlockedDates] = useState([])
+  // Daily occupancy map { 'YYYY-MM-DD': count } for the next 90 days — drives
+  // the amber "at-cap" tint on the date pickers and the stay-span warning.
+  const [dailyOccupancy, setDailyOccupancy] = useState({})
+  const SOFT_CAP_FE = 60
 
   // Parking capacity management — time-aware. The backend computes peak
   // concurrent occupancy across the customer's [dropoff_dt, pickup_dt]
@@ -512,6 +516,46 @@ function Bookings({ isModal = false, onClose }) {
     return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59
   }
 
+  // -- Day-level capacity helpers --------------------------------------
+  // ISO date string for a Date in local time (avoids UTC shift).
+  const isoDate = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+  // True if `date` falls inside any manual BlockedDate row.
+  const isManuallyBlocked = (date) => {
+    if (!date) return false
+    const ds = isoDate(date)
+    return blockedDates.some(bd => ds >= bd.start_date && ds <= bd.end_date)
+  }
+
+  // True if `date` is at the public soft cap (60+ cars overlapping that day).
+  const isAtCapacity = (date) => {
+    if (!date) return false
+    return (dailyOccupancy[isoDate(date)] || 0) >= SOFT_CAP_FE
+  }
+
+  // Tint helper for react-datepicker `dayClassName` prop.
+  const datePickerDayClass = (date) => {
+    if (isManuallyBlocked(date)) return 'tag-day-blocked-manual'
+    if (isAtCapacity(date)) return 'tag-day-blocked-cap'
+    return ''
+  }
+
+  // Walk the stay range and return the first date that's blocked or at cap.
+  // Returns { date: Date, reason: 'manual'|'cap' } or null.
+  const findBlockedDateInStay = useMemo(() => {
+    if (!formData.dropoffDate || !formData.pickupDate) return null
+    const cursor = new Date(formData.dropoffDate)
+    const end = new Date(formData.pickupDate)
+    while (cursor <= end) {
+      if (isManuallyBlocked(cursor)) return { date: new Date(cursor), reason: 'manual' }
+      if (isAtCapacity(cursor)) return { date: new Date(cursor), reason: 'cap' }
+      cursor.setDate(cursor.getDate() + 1)
+    }
+    return null
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.dropoffDate, formData.pickupDate, blockedDates, dailyOccupancy])
+
   // Check if a date/time is blocked for drop-offs
   // Returns true if ALL potential dropoff times are blocked (or full-day block)
   const isDropoffDateBlocked = useMemo(() => {
@@ -699,6 +743,32 @@ function Bookings({ isModal = false, onClose }) {
       }
     }
     fetchBlockedDates()
+  }, [API_BASE_URL])
+
+  // Fetch daily occupancy for the next 90 days. Drives:
+  //   1. Amber tint on date pickers for days at SOFT_CAP_FE (60+).
+  //   2. The stay-span "we're full" warning when a customer picks a range
+  //      that crosses an over-cap day.
+  useEffect(() => {
+    const fetchDailyCapacity = async () => {
+      try {
+        const today = new Date()
+        const futureDate = new Date()
+        futureDate.setDate(futureDate.getDate() + 90)
+        const params = new URLSearchParams({
+          date_from: format(today, 'yyyy-MM-dd'),
+          date_to: format(futureDate, 'yyyy-MM-dd'),
+        })
+        const response = await fetch(`${API_BASE_URL}/api/capacity/daily?${params}`)
+        if (response.ok) {
+          const data = await response.json()
+          setDailyOccupancy(data.daily_occupancy || {})
+        }
+      } catch (error) {
+        console.error('Error fetching daily capacity:', error)
+      }
+    }
+    fetchDailyCapacity()
   }, [API_BASE_URL])
 
   // Fetch departures when drop-off date changes
@@ -1795,7 +1865,7 @@ function Bookings({ isModal = false, onClose }) {
     isOriginComplete
 
   // Step 1: Trip Details
-  const isStep1Complete = formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete && isCapacityAvailable && !isDropoffDateBlocked && !isPickupDateBlocked && isLeadTimeAllowed
+  const isStep1Complete = formData.dropoffDate && isDepartureComplete && formData.pickupDate && isArrivalComplete && isCapacityAvailable && !isDropoffDateBlocked && !isPickupDateBlocked && isLeadTimeAllowed && !findBlockedDateInStay
   // Step 2: Package Selection
   const isStep2Complete = formData.package
   // Step 4: Payment
@@ -2625,6 +2695,7 @@ function Bookings({ isModal = false, onClose }) {
                   id="dropoffDate"
                   popperPlacement="bottom-start"
                   calendarClassName="fixed-height-calendar"
+                  dayClassName={datePickerDayClass}
                   onFocus={(e) => e.target.readOnly = true}
                 />
                 {!isLeadTimeAllowed && formData.dropoffDate && (() => {
@@ -2931,6 +3002,17 @@ function Bookings({ isModal = false, onClose }) {
                           <span className="return-date-formatted">
                             {format(formData.pickupDate, 'EEEE, d MMMM yyyy')}
                           </span>
+                        </div>
+                      )}
+                      {/* Stay-span warning: dropoff + pickup are both fine, but a day
+                          in the middle of the stay is fully booked or manually blocked.
+                          Mirrors the server-side gate in /api/payments/create-intent. */}
+                      {findBlockedDateInStay && !isDropoffDateBlocked && !isPickupDateBlocked && (
+                        <div className="blocked-date-message">
+                          <p>
+                            Sorry, we're full and have no space on {format(findBlockedDateInStay.date, 'EEEE d MMMM yyyy')}.{' '}
+                            Please call <a href="tel:01202 798710" className="contact-link">01202 798710</a> and we'll do our best to help.
+                          </p>
                         </div>
                       )}
                       {isPickupDateBlocked && formData.pickupDate && (

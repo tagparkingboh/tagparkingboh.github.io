@@ -297,6 +297,10 @@ function RosterCalendar({
 
   // Blocked dates state
   const [blockedDates, setBlockedDates] = useState([])
+  // Daily occupancy map { 'YYYY-MM-DD': count } for the visible month.
+  // Drives the amber "Full" bar on at-cap days (soft cap 60 in BookingService).
+  const [dailyOccupancy, setDailyOccupancy] = useState({})
+  const SOFT_CAP = 60
   const [showBlockedDateModal, setShowBlockedDateModal] = useState(false)
   const [editingBlockedDate, setEditingBlockedDate] = useState(null)
   const [blockedDateForm, setBlockedDateForm] = useState({
@@ -506,6 +510,29 @@ function RosterCalendar({
     }
   }, [token, currentDate, isAdmin])
 
+  // Fetch daily occupancy for the visible month. Public endpoint, no auth.
+  const fetchDailyOccupancy = useCallback(async () => {
+    try {
+      const year = currentDate.getFullYear()
+      const month = currentDate.getMonth()
+      const startDate = new Date(year, month, 1)
+      const endDate = new Date(year, month + 1, 0)
+      const params = new URLSearchParams({
+        date_from: formatDateISO(startDate),
+        date_to: formatDateISO(endDate),
+      })
+      const response = await authFetch(`${API_URL}/api/capacity/daily?${params}`, {
+        headers: { 'Cache-Control': 'no-cache' },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setDailyOccupancy(data.daily_occupancy || {})
+      }
+    } catch (err) {
+      console.error('Failed to load daily occupancy:', err)
+    }
+  }, [currentDate])
+
   // Fetch employee holidays (admin sees all, employee sees their own)
   const fetchHolidays = useCallback(async () => {
     if (!token) return
@@ -690,13 +717,13 @@ function RosterCalendar({
     setLoading(true)
     setError('')
     try {
-      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates(), fetchHolidays(), fetchAvailableShifts(), fetchUnavailabilities(), fetchTeamShifts()])
+      await Promise.all([fetchBookings(), fetchShifts(), fetchBlockedDates(), fetchDailyOccupancy(), fetchHolidays(), fetchAvailableShifts(), fetchUnavailabilities(), fetchTeamShifts()])
     } catch (err) {
       setError('Failed to load data')
     } finally {
       setLoading(false)
     }
-  }, [fetchBookings, fetchShifts, fetchBlockedDates, fetchHolidays, fetchAvailableShifts, fetchUnavailabilities, fetchTeamShifts])
+  }, [fetchBookings, fetchShifts, fetchBlockedDates, fetchDailyOccupancy, fetchHolidays, fetchAvailableShifts, fetchUnavailabilities, fetchTeamShifts])
 
   // Fetch all staff (admin only) - includes both admins and employees
   const fetchStaff = useCallback(async () => {
@@ -988,6 +1015,13 @@ function RosterCalendar({
       return dateKey >= bd.start_date && dateKey <= bd.end_date
     })
     return blocked || null
+  }
+
+  // Occupancy for the day (cars parked, dropoff_date <= D <= pickup_date).
+  // Returns the count from /api/capacity/daily — 0 if missing.
+  const getOccupancyForDay = (day) => {
+    if (!day) return 0
+    return dailyOccupancy[getDateKey(day)] || 0
   }
 
   // Is today?
@@ -2426,33 +2460,42 @@ function RosterCalendar({
                 const dayTeamShifts = !isAdmin ? getTeamShiftsForDay(day) : []
                 const dateKey = getDateKey(day)
                 const blockedInfo = getBlockedInfoForDay(day)
+                const dayOccupancy = getOccupancyForDay(day)
+                const isAtCap = dayOccupancy >= SOFT_CAP
                 const dayHolidays = dateKey ? getHolidaysForDate(dateKey) : []
                 const hasDropoffs = dayBookings.dropoffs.length > 0
                 const hasPickups = dayBookings.pickups.length > 0
                 const hasShifts = dayShifts.length > 0
                 const hasTeamShifts = dayTeamShifts.length > 0
                 const hasHolidays = dayHolidays.length > 0
-                const hasContent = hasDropoffs || hasPickups || hasShifts || hasTeamShifts || blockedInfo || hasHolidays
+                const hasContent = hasDropoffs || hasPickups || hasShifts || hasTeamShifts || blockedInfo || hasHolidays || isAtCap
 
                 return (
                   <div
                     key={dayIndex}
                     className={`calendar-day ${day ? '' : 'empty'} ${isToday(day) ? 'today' : ''} ${
                       selectedDate === dateKey ? 'selected' : ''
-                    } ${hasContent ? 'has-content' : ''} ${blockedInfo ? 'blocked' : ''}`}
+                    } ${hasContent ? 'has-content' : ''} ${blockedInfo ? 'blocked' : ''} ${isAtCap && !blockedInfo ? 'at-cap' : ''}`}
                     onClick={() => handleDateClick(day)}
                   >
                     {day && (
                       <>
                         <span className="day-number">{day}</span>
                         <div className="day-content">
-                          {/* Blocked date indicator */}
+                          {/* Blocked date indicator (manual) */}
                           {blockedInfo && (
                             <div className="day-badge badge-blocked" title={blockedInfo.reason || 'Blocked'}>
                               🚫 {blockedInfo.time_slots && blockedInfo.time_slots.length > 0
                                 ? `${blockedInfo.time_slots.length} slot${blockedInfo.time_slots.length > 1 ? 's' : ''}`
                                 : (blockedInfo.block_dropoffs && blockedInfo.block_pickups ? 'Closed' :
                                     blockedInfo.block_dropoffs ? 'No Drop-offs' : 'No Pick-ups')}
+                            </div>
+                          )}
+                          {/* At-capacity indicator (auto — driven by daily occupancy >= 60). */}
+                          {/* Shown only when not already manually blocked, since manual block trumps cap visually. */}
+                          {!blockedInfo && isAtCap && (
+                            <div className="day-badge badge-at-cap" title={`Full: ${dayOccupancy}/${SOFT_CAP} cars parked`}>
+                              ⛔ Full ({dayOccupancy})
                             </div>
                           )}
                           {/* Holiday indicators */}
