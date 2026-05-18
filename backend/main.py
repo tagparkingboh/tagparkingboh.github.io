@@ -16980,13 +16980,36 @@ async def refresh_sms_statuses(
 # to reach a customer — i.e. the customer thinks "no email" but the cause
 # is bounce, blocked, or spam-rejected, not Gmail filing.
 #
-# Authentication: HTTP Basic (set in SendGrid UI → Mail Settings → Event
-# Webhook → HTTP Headers). Two env vars must be set on the backend:
-#   SENDGRID_WEBHOOK_USER
-#   SENDGRID_WEBHOOK_PASS
-# If either is missing the endpoint accepts ANY caller — that's deliberate
-# while initial setup is in flight; you'll see a print warning in logs.
-# Switch on once both env vars are populated.
+# Authentication (one of three modes, picked in priority order):
+#   1. SENDGRID_WEBHOOK_PUBLIC_KEY (ECDSA P-256 public key, base64 DER)
+#      from SendGrid UI → Mail Settings → Event Webhook → Signed Event Webhook
+#      → Verification key. Most secure; signature on (timestamp + raw body).
+#   2. SENDGRID_WEBHOOK_USER + SENDGRID_WEBHOOK_PASS for HTTP Basic auth
+#      (legacy — newer SendGrid UI doesn't expose Basic auth directly).
+#   3. Neither set → endpoint accepts ANY caller, logs a warning. Only OK
+#      during initial wiring; switch on a real mode ASAP.
+def _verify_sendgrid_signature(public_key_b64: str, signature_b64: str, timestamp: str, payload_bytes: bytes) -> bool:
+    """Verify a SendGrid Signed Event Webhook request.
+
+    SendGrid signs (timestamp + raw_body) with ECDSA P-256 + SHA-256. The
+    public key from the SendGrid UI is base64-encoded DER.
+    """
+    try:
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.exceptions import InvalidSignature
+        import base64 as _b64
+
+        public_key = serialization.load_der_public_key(_b64.b64decode(public_key_b64))
+        signature = _b64.b64decode(signature_b64)
+        signed_payload = timestamp.encode("utf-8") + payload_bytes
+        public_key.verify(signature, signed_payload, ec.ECDSA(hashes.SHA256()))
+        return True
+    except Exception as exc:
+        print(f"[SENDGRID WEBHOOK] Signature verification failed: {exc.__class__.__name__}")
+        return False
+
+
 @app.post("/api/webhooks/sendgrid")
 async def webhook_sendgrid(
     request: Request,
@@ -17007,9 +17030,21 @@ async def webhook_sendgrid(
     import base64
     import json as _json
 
+    # Read the raw body up-front — signature verification needs it byte-exact.
+    raw_body = await request.body()
+
+    public_key = os.environ.get("SENDGRID_WEBHOOK_PUBLIC_KEY")
     expected_user = os.environ.get("SENDGRID_WEBHOOK_USER")
     expected_pass = os.environ.get("SENDGRID_WEBHOOK_PASS")
-    if expected_user and expected_pass:
+
+    if public_key:
+        signature = request.headers.get("X-Twilio-Email-Event-Webhook-Signature")
+        timestamp = request.headers.get("X-Twilio-Email-Event-Webhook-Timestamp")
+        if not signature or not timestamp:
+            raise HTTPException(status_code=401, detail="Missing SendGrid signature headers")
+        if not _verify_sendgrid_signature(public_key, signature, timestamp, raw_body):
+            raise HTTPException(status_code=401, detail="Invalid SendGrid signature")
+    elif expected_user and expected_pass:
         auth = request.headers.get("authorization", "")
         if not auth.lower().startswith("basic "):
             raise HTTPException(status_code=401, detail="Missing Basic auth header")
@@ -17021,10 +17056,10 @@ async def webhook_sendgrid(
         if user != expected_user or password != expected_pass:
             raise HTTPException(status_code=401, detail="Invalid SendGrid webhook credentials")
     else:
-        print("[SENDGRID WEBHOOK] WARNING: SENDGRID_WEBHOOK_USER/PASS not set — accepting unauthenticated requests")
+        print("[SENDGRID WEBHOOK] WARNING: no auth configured (set SENDGRID_WEBHOOK_PUBLIC_KEY for signed events) — accepting unauthenticated requests")
 
     try:
-        events = await request.json()
+        events = _json.loads(raw_body.decode("utf-8")) if raw_body else None
     except Exception as exc:
         print(f"[SENDGRID WEBHOOK] Failed to parse JSON body: {exc}")
         return {"received": 0, "alerted": 0}

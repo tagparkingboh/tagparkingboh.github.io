@@ -14,3 +14,7 @@ psycopg2-binary>=2.9.9
 apscheduler>=3.10.0
 sendgrid>=6.10.0
 pytz>=2024.1
+# cryptography is a transitive dep of sendgrid/cryptography-related libs but
+# pinned here because the SendGrid Signed Event Webhook verification path
+# imports it directly (main.py:webhook_sendgrid).
+cryptography>=42.0.0
