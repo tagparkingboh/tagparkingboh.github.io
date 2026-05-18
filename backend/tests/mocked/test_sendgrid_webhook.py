@@ -205,6 +205,148 @@ class TestAuth:
 
 
 # ----------------------------------------------------------------------
+# Signed Event Webhook (ECDSA P-256) — the production auth mode
+# ----------------------------------------------------------------------
+
+def _gen_keypair_and_sign(payload_bytes: bytes, timestamp: str):
+    """Generate a throwaway ECDSA P-256 keypair, sign (timestamp+body),
+    return (public_key_b64, signature_b64) ready to feed the endpoint."""
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import hashes, serialization
+    import base64 as _b64
+
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    public_key_b64 = _b64.b64encode(
+        private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+    ).decode("ascii")
+    signature_b64 = _b64.b64encode(
+        private_key.sign(
+            timestamp.encode("utf-8") + payload_bytes,
+            ec.ECDSA(hashes.SHA256()),
+        )
+    ).decode("ascii")
+    return public_key_b64, signature_b64
+
+
+class TestSignedWebhook:
+    """Signed Event Webhook takes priority over Basic Auth. Public key set
+    via SENDGRID_WEBHOOK_PUBLIC_KEY env var. Signature on (timestamp + body)."""
+
+    def setup_method(self):
+        app.dependency_overrides[get_db] = lambda: iter([_empty_db()])
+
+    def teardown_method(self):
+        app.dependency_overrides.clear()
+
+    @patch("email_service.send_bounce_alert_email", return_value=True)
+    def test_valid_signature_accepted(self, mock_alert, monkeypatch):
+        import json as _json
+        payload = [{"email": "x@y.com", "event": "bounce", "reason": "x"}]
+        body = _json.dumps(payload).encode("utf-8")
+        timestamp = "1716036600"
+        public_key, signature = _gen_keypair_and_sign(body, timestamp)
+
+        monkeypatch.setenv("SENDGRID_WEBHOOK_PUBLIC_KEY", public_key)
+        # Clear Basic Auth so the public-key branch is the only one armed.
+        monkeypatch.delenv("SENDGRID_WEBHOOK_USER", raising=False)
+        monkeypatch.delenv("SENDGRID_WEBHOOK_PASS", raising=False)
+
+        resp = TestClient(app).post(
+            "/api/webhooks/sendgrid",
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Twilio-Email-Event-Webhook-Signature": signature,
+                "X-Twilio-Email-Event-Webhook-Timestamp": timestamp,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"received": 1, "alerted": 1}
+
+    @patch("email_service.send_bounce_alert_email", return_value=True)
+    def test_missing_signature_headers_rejected(self, mock_alert, monkeypatch):
+        public_key, _ = _gen_keypair_and_sign(b"x", "1")
+        monkeypatch.setenv("SENDGRID_WEBHOOK_PUBLIC_KEY", public_key)
+        payload = [{"email": "x@y.com", "event": "bounce", "reason": "x"}]
+        resp = TestClient(app).post("/api/webhooks/sendgrid", json=payload)
+        assert resp.status_code == 401
+
+    @patch("email_service.send_bounce_alert_email", return_value=True)
+    def test_tampered_body_rejected(self, mock_alert, monkeypatch):
+        """Signature signed against original body; if body is altered the
+        verification must fail."""
+        import json as _json
+        original = [{"email": "x@y.com", "event": "bounce", "reason": "x"}]
+        original_body = _json.dumps(original).encode("utf-8")
+        timestamp = "1716036600"
+        public_key, signature = _gen_keypair_and_sign(original_body, timestamp)
+        monkeypatch.setenv("SENDGRID_WEBHOOK_PUBLIC_KEY", public_key)
+
+        # Send a different body with the original signature.
+        tampered = _json.dumps([{"email": "attacker@evil.com", "event": "bounce"}]).encode("utf-8")
+        resp = TestClient(app).post(
+            "/api/webhooks/sendgrid",
+            content=tampered,
+            headers={
+                "Content-Type": "application/json",
+                "X-Twilio-Email-Event-Webhook-Signature": signature,
+                "X-Twilio-Email-Event-Webhook-Timestamp": timestamp,
+            },
+        )
+        assert resp.status_code == 401
+
+    @patch("email_service.send_bounce_alert_email", return_value=True)
+    def test_wrong_public_key_rejected(self, mock_alert, monkeypatch):
+        """Signature from one keypair shouldn't validate against a different
+        public key — even if everything else is well-formed."""
+        import json as _json
+        payload = [{"email": "x@y.com", "event": "bounce", "reason": "x"}]
+        body = _json.dumps(payload).encode("utf-8")
+        timestamp = "1716036600"
+        _, signature_a = _gen_keypair_and_sign(body, timestamp)
+        public_key_b, _ = _gen_keypair_and_sign(body, timestamp)
+        monkeypatch.setenv("SENDGRID_WEBHOOK_PUBLIC_KEY", public_key_b)
+
+        resp = TestClient(app).post(
+            "/api/webhooks/sendgrid",
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Twilio-Email-Event-Webhook-Signature": signature_a,
+                "X-Twilio-Email-Event-Webhook-Timestamp": timestamp,
+            },
+        )
+        assert resp.status_code == 401
+
+    @patch("email_service.send_bounce_alert_email", return_value=True)
+    def test_signed_path_takes_priority_over_basic_auth(self, mock_alert, monkeypatch):
+        """If PUBLIC_KEY is set, Basic Auth env vars are ignored — even if a
+        valid Basic Auth header is supplied, missing the signature → 401."""
+        import json as _json
+        payload = [{"email": "x@y.com", "event": "bounce", "reason": "x"}]
+        body = _json.dumps(payload).encode("utf-8")
+        public_key, _ = _gen_keypair_and_sign(body, "1")
+        monkeypatch.setenv("SENDGRID_WEBHOOK_PUBLIC_KEY", public_key)
+        monkeypatch.setenv("SENDGRID_WEBHOOK_USER", "sguser")
+        monkeypatch.setenv("SENDGRID_WEBHOOK_PASS", "sgpass")
+
+        # Provide valid Basic Auth but NO signature headers.
+        resp = TestClient(app).post(
+            "/api/webhooks/sendgrid",
+            content=body,
+            headers={
+                "Content-Type": "application/json",
+                **_basic_header("sguser", "sgpass"),
+            },
+        )
+        # Signed-event branch was chosen and demands signature headers → 401.
+        assert resp.status_code == 401
+
+
+# ----------------------------------------------------------------------
 # Defensive payloads
 # ----------------------------------------------------------------------
 
