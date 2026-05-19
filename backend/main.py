@@ -12406,7 +12406,8 @@ class CreateInspectionRequest(BaseModel):
     signature: Optional[str] = None  # Base64-encoded signature image
     vehicle_inspection_read: Optional[bool] = False  # Confirmed they read the T&C (drop-off only)
     acknowledgement_confirmed: Optional[bool] = False  # Confirmed acknowledgement (return only)
-    declined: Optional[bool] = False  # Customer declined inspection (pickup only)
+    declined: Optional[bool] = False  # Customer declined inspection (legacy — pickup only)
+    accepted: Optional[bool] = None   # Customer accepted return inspection (new — pickup only)
     mileage: Optional[int] = None  # Vehicle mileage at inspection
 
 
@@ -12418,7 +12419,8 @@ class UpdateInspectionRequest(BaseModel):
     signature: Optional[str] = None
     vehicle_inspection_read: Optional[bool] = None
     acknowledgement_confirmed: Optional[bool] = None
-    declined: Optional[bool] = None  # Customer declined inspection (pickup only)
+    declined: Optional[bool] = None  # Legacy — pickup only
+    accepted: Optional[bool] = None  # New — pickup only (positive framing)
     mileage: Optional[int] = None
 
 
@@ -12526,6 +12528,7 @@ async def create_inspection(
         vehicle_inspection_read=request.vehicle_inspection_read or False,
         acknowledgement_confirmed=request.acknowledgement_confirmed or False,
         declined=request.declined or False,
+        accepted=request.accepted,  # NULL when omitted (e.g. dropoff inspections); True/False for return inspections
         mileage=request.mileage,
         inspector_id=current_user.id,
     )
@@ -12560,6 +12563,8 @@ async def create_inspection(
             "signature": inspection.signature,
             "vehicle_inspection_read": inspection.vehicle_inspection_read,
             "acknowledgement_confirmed": inspection.acknowledgement_confirmed,
+            "declined": inspection.declined or False,
+            "accepted": inspection.accepted,
             "mileage": inspection.mileage,
             "inspector_id": inspection.inspector_id,
             "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
@@ -12593,6 +12598,7 @@ async def get_inspections(
                 "acknowledgement_confirmed": i.acknowledgement_confirmed,
                 "mileage": i.mileage,
                 "declined": i.declined or False,
+                "accepted": i.accepted,
                 "inspector_id": i.inspector_id,
                 "created_at": i.created_at.isoformat() if i.created_at else None,
                 "updated_at": i.updated_at.isoformat() if i.updated_at else None,
@@ -12684,6 +12690,8 @@ async def update_inspection(
         inspection.acknowledgement_confirmed = request.acknowledgement_confirmed
     if request.declined is not None:
         inspection.declined = request.declined
+    if request.accepted is not None:
+        inspection.accepted = request.accepted
     if request.mileage is not None:
         inspection.mileage = request.mileage
 
@@ -12703,6 +12711,8 @@ async def update_inspection(
             "signature": inspection.signature,
             "vehicle_inspection_read": inspection.vehicle_inspection_read,
             "acknowledgement_confirmed": inspection.acknowledgement_confirmed,
+            "declined": inspection.declined or False,
+            "accepted": inspection.accepted,
             "mileage": inspection.mileage,
             "inspector_id": inspection.inspector_id,
             "created_at": inspection.created_at.isoformat() if inspection.created_at else None,
