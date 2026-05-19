@@ -102,8 +102,12 @@ function Employee() {
   const [savingInspection, setSavingInspection] = useState(false)
   const [inspectionPage, setInspectionPage] = useState(1) // 1 = form, 2 = view document
   const [vehicleInspectionRead, setVehicleInspectionRead] = useState(false)
-  const [acknowledgementConfirmed, setAcknowledgementConfirmed] = useState(false) // For return inspections
-  const [inspectionDeclined, setInspectionDeclined] = useState(false) // Customer declined return inspection
+  const [acknowledgementConfirmed, setAcknowledgementConfirmed] = useState(false) // For return inspections (legacy — drop-off still uses)
+  const [inspectionDeclined, setInspectionDeclined] = useState(false) // Legacy — kept for backward compatibility with old records
+  // Positive-framing replacement for inspectionDeclined on the return form.
+  // Default true (happy path: customer accepted). Employee unticks only if
+  // the customer wasn't present or refused to accept the return inspection.
+  const [inspectionAccepted, setInspectionAccepted] = useState(true)
   const [signature, setSignature] = useState(null) // base64 signature image
   const [dropoffInspection, setDropoffInspection] = useState(null) // For showing original inspection during return
   const [mileage, setMileage] = useState('') // Mileage reading at inspection
@@ -626,9 +630,11 @@ function Employee() {
         ? `${API_URL}/api/employee/inspections/${editingInspection.id}`
         : `${API_URL}/api/employee/inspections`
       const method = editingInspection ? 'PUT' : 'POST'
+      // `accepted` only goes on return ('pickup') inspections; drop-off inspections leave it null.
+      const acceptedForApi = inspectionType === 'pickup' ? inspectionAccepted : null
       const body = editingInspection
-        ? { notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, declined: inspectionDeclined, mileage: mileage ? parseInt(mileage, 10) : null }
-        : { booking_id: inspectionBooking.id, inspection_type: inspectionType, notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, declined: inspectionDeclined, mileage: mileage ? parseInt(mileage, 10) : null }
+        ? { notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, declined: inspectionDeclined, accepted: acceptedForApi, mileage: mileage ? parseInt(mileage, 10) : null }
+        : { booking_id: inspectionBooking.id, inspection_type: inspectionType, notes: inspectionNotes, photos: inspectionPhotos, customer_name: customerName, signed_date: signedDate, signature: signature, vehicle_inspection_read: vehicleInspectionRead, acknowledgement_confirmed: acknowledgementConfirmed, declined: inspectionDeclined, accepted: acceptedForApi, mileage: mileage ? parseInt(mileage, 10) : null }
 
       const response = await authFetch(url, {
         method,
@@ -890,19 +896,23 @@ function Employee() {
                     />
                   </div>
 
-                  {/* Customer Declined Inspection - only for return/pickup inspections */}
+                  {/* Customer Accepted Return Inspection — positive framing, default ticked.
+                      Only shows on return ('pickup') inspections. When unticked,
+                      a small amber-styled prompt asks the employee to add a note
+                      explaining why. Replaces the legacy "Customer Declined Inspection"
+                      block and the signature/acknowledgement requirement below it. */}
                   {inspectionType === 'pickup' && (
-                    <div className="inspection-declined-checkbox">
-                      <label className="checkbox-label-inline declined-label">
+                    <div className={`inspection-accepted-checkbox ${!inspectionAccepted ? 'inspection-accepted-checkbox--unaccepted' : ''}`}>
+                      <label className="checkbox-label-inline">
                         <input
                           type="checkbox"
-                          checked={inspectionDeclined}
-                          onChange={e => setInspectionDeclined(e.target.checked)}
+                          checked={inspectionAccepted}
+                          onChange={e => setInspectionAccepted(e.target.checked)}
                         />
-                        <span>Customer Declined Inspection</span>
+                        <span>Customer accepted return inspection</span>
                       </label>
-                      {inspectionDeclined && (
-                        <p className="declined-note">Customer signature and acknowledgement are not required. You can still record mileage, take photos, and add notes.</p>
+                      {!inspectionAccepted && (
+                        <p className="accepted-warning-note">Please add a note below explaining why.</p>
                       )}
                     </div>
                   )}
@@ -912,7 +922,7 @@ function Employee() {
                     <textarea
                       value={inspectionNotes}
                       onChange={e => setInspectionNotes(e.target.value)}
-                      placeholder="Add inspection notes..."
+                      placeholder={inspectionType === 'pickup' ? 'Add any issues observed on return...' : 'Add inspection notes...'}
                       rows={4}
                     />
                   </div>
@@ -982,8 +992,12 @@ function Employee() {
                   </div>
                 </div>
 
-                {/* Customer Acknowledgement - hidden when inspection is declined */}
-                {!(inspectionType === 'pickup' && inspectionDeclined) && (
+                {/* Customer Acknowledgement.
+                    - Drop-off ('dropoff'): always shown (signature still required at drop-off).
+                    - Return ('pickup'): the whole block is removed — the new positive-framing
+                      "Customer accepted return inspection" checkbox is the record; no signature
+                      capture, no acknowledgement text. Matches the actual return conversation. */}
+                {inspectionType !== 'pickup' && (
                   <div className="inspection-acknowledgement">
                     <h4>Customer Acknowledgement</h4>
 
@@ -1101,7 +1115,7 @@ function Employee() {
                   <button
                     className="modal-btn modal-btn-primary"
                     onClick={handleSaveInspection}
-                    disabled={savingInspection || !mileage || (inspectionType === 'dropoff' && (!signature || !vehicleInspectionRead || !signedDate || !customerName)) || (inspectionType === 'pickup' && !inspectionDeclined && (!signature || !acknowledgementConfirmed || !signedDate || !customerName))}
+                    disabled={savingInspection || !mileage || (inspectionType === 'dropoff' && (!signature || !vehicleInspectionRead || !signedDate || !customerName))}
                   >
                     {savingInspection ? 'Saving...' : 'Save Inspection'}
                   </button>

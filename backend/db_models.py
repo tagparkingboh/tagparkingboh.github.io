@@ -881,8 +881,17 @@ class VehicleInspection(Base):
     # Vehicle mileage at inspection
     mileage = Column(Integer, nullable=True)
 
-    # Customer declined inspection (for pickup/return only - allows completing booking)
+    # Customer declined inspection (for pickup/return only - allows completing booking).
+    # Legacy field — preserved for historical records. New return-inspection flow
+    # uses `accepted` (positive framing) instead. See `accepted` below.
     declined = Column(Boolean, default=False)
+
+    # Customer accepted return inspection (positive-framing replacement for `declined`,
+    # added 2026-05-18). Nullable — NULL for historical rows where we can't
+    # retroactively know whether the customer actively accepted, since the old
+    # flow only recorded explicit *declines*. Populated going forward by the
+    # return inspection form when inspection_type='pickup'.
+    accepted = Column(Boolean, nullable=True)
 
     inspector_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
