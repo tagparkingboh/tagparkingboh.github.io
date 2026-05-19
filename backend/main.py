@@ -11911,6 +11911,10 @@ async def stripe_webhook(
         return {"status": "failed", "error": error_message}
 
     elif event_type == "charge.refunded":
+        # Payment isn't imported at module level — local import keeps the
+        # symbol available in this branch (was missing; would NameError on
+        # any real refund webhook).
+        from db_models import Payment
         charge_id = data["id"]
         # Stripe returns StripeObject - use bracket notation or getattr
         refund_amount = data["amount_refunded"] if "amount_refunded" in data else 0
