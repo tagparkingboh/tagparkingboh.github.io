@@ -2610,3 +2610,10 @@
   z-index: 1600;
   background: transparent;
 }
+
+/* While a sub-modal is open, hide the booking flow underneath so the user
+   sees the (dimmed) homepage behind the card — not the half-filled form. */
+.bookings-new-page--modal:has(.welcome-modal-overlay) .bookings-new-container,
+.bookings-new-page--modal:has(.time-confirm-modal-overlay) .bookings-new-container {
+  visibility: hidden;
+}
