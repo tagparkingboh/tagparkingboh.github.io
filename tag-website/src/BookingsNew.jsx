@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
-import { format } from 'date-fns'
+import { format, addDays } from 'date-fns'
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import StripePayment from './components/StripePayment'
@@ -2176,7 +2176,7 @@ function Bookings({ isModal = false, onClose }) {
               <div className="time-confirm-section">
                 <div className="time-confirm-section-title">Return</div>
                 <div className="time-confirm-row">
-                  <span className="time-confirm-label">Date:</span>
+                  <span className="time-confirm-label">Arrival date:</span>
                   <span className="time-confirm-value">
                     {formData.pickupDate ? format(formData.pickupDate, 'EEE, dd MMM yyyy') : '--'}
                   </span>
@@ -2185,6 +2185,17 @@ function Bookings({ isModal = false, onClose }) {
                   <span className="time-confirm-label">Arrival time:</span>
                   <span className="time-confirm-value">
                     {manualArrivalData.flightTime || '--:--'}
+                  </span>
+                </div>
+                <div className="time-confirm-row">
+                  <span className="time-confirm-label">Pick-up date:</span>
+                  <span className="time-confirm-value">
+                    {formData.pickupDate && manualArrivalData.flightTime ? (() => {
+                      const [h, m] = manualArrivalData.flightTime.split(':').map(Number);
+                      const rollsOver = h * 60 + m + 30 >= 1440;
+                      const pickupDay = rollsOver ? addDays(formData.pickupDate, 1) : formData.pickupDate;
+                      return format(pickupDay, 'EEE, dd MMM yyyy');
+                    })() : formData.pickupDate ? format(formData.pickupDate, 'EEE, dd MMM yyyy') : '--'}
                   </span>
                 </div>
                 <div className="time-confirm-row">
