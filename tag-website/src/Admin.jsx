@@ -4100,7 +4100,11 @@ function Admin() {
                   </span>
                 </div>
                 <div className="booking-detail">
-                  <span className="detail-label">Flight Arrives</span>
+                  <span className="detail-label">Arrival Date</span>
+                  <span className="detail-value">{formatDate(resolveArrivalDate(booking))}</span>
+                </div>
+                <div className="booking-detail">
+                  <span className="detail-label">Arrival Time</span>
                   <span className="detail-value">{booking.flight_arrival_time || '-'}</span>
                 </div>
                 <div className="booking-detail">
@@ -5773,6 +5777,26 @@ function Admin() {
     // Create date in local timezone for weekday calculation
     const date = new Date(Number(year), Number(month) - 1, Number(day))
     return `${days[date.getDay()]}, ${day} ${months[Number(month) - 1]} ${year}`
+  }
+
+  // Resolve the arrival date for display. New rows have flight_arrival_date set
+  // explicitly. Legacy rows (pre-column) fall back to pickup_date — minus one
+  // day when arrival_time + 30 minutes crossed midnight, since the overnight
+  // rollover pushed pickup_date past the actual landing day.
+  const resolveArrivalDate = (booking) => {
+    if (booking?.flight_arrival_date) return booking.flight_arrival_date
+    if (!booking?.pickup_date) return null
+    const t = booking.flight_arrival_time
+    if (typeof t === 'string' && /^\d{2}:\d{2}/.test(t)) {
+      const [h, m] = t.split(':').map(Number)
+      if (h * 60 + m + 30 >= 1440) {
+        const [yy, mm, dd] = booking.pickup_date.split('-').map(Number)
+        const d = new Date(yy, mm - 1, dd - 1)
+        const pad = (n) => String(n).padStart(2, '0')
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      }
+    }
+    return booking.pickup_date
   }
 
   const formatTime = (timeStr) => {

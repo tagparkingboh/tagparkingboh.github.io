@@ -679,6 +679,7 @@ class UpdateBookingRequest(BaseModel):
     # Pickup/collection details - for fixing overnight arrival issues
     pickup_date: Optional[date] = None
     pickup_time: Optional[str] = None  # HH:MM format (arrival/landing time)
+    flight_arrival_date: Optional[date] = None  # Canonical landing date (admin can correct independently of pickup_date)
     pickup_airline_name: Optional[str] = None
     pickup_flight_number: Optional[str] = None
     pickup_origin: Optional[str] = None
@@ -1530,6 +1531,7 @@ async def get_all_bookings(
             # pickup_time is now the collection time (arrival + 30)
             "pickup_collection_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
             "flight_arrival_time": b.flight_arrival_time.strftime("%H:%M") if b.flight_arrival_time else None,
+            "flight_arrival_date": b.flight_arrival_date.isoformat() if b.flight_arrival_date else None,
             "pickup_flight_number": b.pickup_flight_number,
             "pickup_airline_name": b.pickup_airline_name,
             "pickup_airline_code": b.pickup_airline_code,
@@ -2541,6 +2543,7 @@ async def create_manual_booking(
             dropoff_time=datetime.strptime(request.dropoff_time, "%H:%M").time(),
             pickup_date=request.pickup_date,
             pickup_time=datetime.strptime(request.pickup_time, "%H:%M").time(),
+            flight_arrival_date=request.flight_arrival_date,
             status=booking_status,
             booking_source="manual",
             admin_notes=request.notes,
@@ -3129,6 +3132,10 @@ async def update_booking(
         booking.pickup_date = request.pickup_date
         updates_made.append("pickup_date")
 
+    if request.flight_arrival_date is not None:
+        booking.flight_arrival_date = request.flight_arrival_date
+        updates_made.append("flight_arrival_date")
+
     if request.pickup_time is not None:
         # Parse time string HH:MM
         parts = request.pickup_time.split(':')
@@ -3224,6 +3231,7 @@ async def update_booking(
             "id": booking.id,
             "reference": booking.reference,
             "pickup_date": booking.pickup_date.isoformat() if booking.pickup_date else None,
+            "flight_arrival_date": booking.flight_arrival_date.isoformat() if booking.flight_arrival_date else None,
             "pickup_time": booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None,
             "pickup_airline_name": booking.pickup_airline_name,
             "pickup_flight_number": booking.pickup_flight_number,
@@ -10231,6 +10239,7 @@ class CreatePaymentRequest(BaseModel):
     flight_date: str
     drop_off_date: str
     pickup_date: str
+    flight_arrival_date: Optional[str] = None  # YYYY-MM-DD landing date (canonical; pickup_date may roll past midnight)
     drop_off_time: Optional[str] = None
     drop_off_slot: Optional[str] = None  # "150", "120", or "90" (minutes before flight)
     departure_id: Optional[int] = None  # ID of the flight departure to book slot on
@@ -10698,7 +10707,17 @@ async def create_payment(
         print(f"[DEBUG] Received drop_off_date string: {request.drop_off_date}")
         dropoff_date = datetime.strptime(request.drop_off_date, "%Y-%m-%d").date()
         pickup_date = datetime.strptime(request.pickup_date, "%Y-%m-%d").date()
-        print(f"[DEBUG] Parsed dropoff_date: {dropoff_date}, pickup_date: {pickup_date}")
+
+        # Canonical landing date — captured here BEFORE the rollover at the
+        # arrival_hhmm branch mutates pickup_date for overnight arrivals.
+        # Falls back to the un-rolled pickup_date if the frontend hasn't been
+        # updated yet (both legacy and updated payloads land on the right value
+        # here because frontend sends pickup_date == landing date pre-rollover).
+        if request.flight_arrival_date:
+            flight_arrival_date = datetime.strptime(request.flight_arrival_date, "%Y-%m-%d").date()
+        else:
+            flight_arrival_date = pickup_date
+        print(f"[DEBUG] Parsed dropoff_date: {dropoff_date}, pickup_date: {pickup_date}, flight_arrival_date: {flight_arrival_date}")
 
         # Apply 02:00 arrival cutoff: flights arriving before 02:00 bill as the previous day.
         billing_pickup_date = BookingService.billing_pickup_date(
@@ -10972,6 +10991,7 @@ async def create_payment(
                 dropoff_date=dropoff_date,
                 dropoff_time=dropoff_time,
                 pickup_date=pickup_date,
+                flight_arrival_date=flight_arrival_date,
                 dropoff_flight_number=request.flight_number,
                 dropoff_destination=dropoff_destination,
                 pickup_time=pickup_time,
@@ -11086,6 +11106,7 @@ async def create_payment(
                 dropoff_date=dropoff_date,
                 dropoff_time=dropoff_time,
                 pickup_date=pickup_date,
+                flight_arrival_date=flight_arrival_date,
                 dropoff_flight_number=request.flight_number,
                 dropoff_destination=dropoff_destination,
                 pickup_time=pickup_time,
@@ -11435,7 +11456,11 @@ async def create_payment(
             amount_pence=amount,
         )
 
-        # Log the payment initiation
+        # Log the payment initiation.
+        # Includes the full arrival/pickup time field set so future regressions
+        # like the 2026-05-19 rollover bug (which was undiagnosable from logs
+        # because only a curated subset was captured) can be reproduced from
+        # the audit row alone.
         log_audit_event(
             db=db,
             event=AuditLogEvent.PAYMENT_INITIATED,
@@ -11450,6 +11475,11 @@ async def create_payment(
                 "flight_number": request.flight_number,
                 "drop_off_date": request.drop_off_date,
                 "pickup_date": request.pickup_date,
+                "flight_arrival_date": request.flight_arrival_date,
+                "flight_arrival_time": request.flight_arrival_time,
+                "pickup_flight_time": request.pickup_flight_time,
+                "pickup_customer_time": request.pickup_customer_time,
+                "dropoff_customer_time": request.dropoff_customer_time,
             },
         )
 
@@ -12468,6 +12498,7 @@ async def get_employee_bookings(
             "pickup_date": b.pickup_date.isoformat() if b.pickup_date else None,
             "pickup_time": b.pickup_time.strftime("%H:%M") if b.pickup_time else None,
             "flight_arrival_time": b.flight_arrival_time.strftime("%H:%M") if b.flight_arrival_time else None,
+            "flight_arrival_date": b.flight_arrival_date.isoformat() if b.flight_arrival_date else None,
             "pickup_flight_number": b.pickup_flight_number,
             "pickup_airline_name": b.pickup_airline_name,
             "pickup_origin": b.pickup_origin,
