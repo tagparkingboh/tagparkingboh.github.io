@@ -2602,8 +2602,11 @@
 
 /* Inner sub-modals (welcome card, clarifying-times card) must float above
    the BookingModal overlay (z-index 1500), so bump them. They remain
-   position:fixed and cover the whole viewport like before. */
+   position:fixed and cover the whole viewport like before.
+   Background is transparent because the outer BookingModal overlay already
+   provides the dim — without this they'd double-dim and hide the homepage. */
 .bookings-new-page--modal .welcome-modal-overlay,
 .bookings-new-page--modal .time-confirm-modal-overlay {
   z-index: 1600;
+  background: transparent;
 }
