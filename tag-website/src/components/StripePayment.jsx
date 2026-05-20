@@ -446,6 +446,10 @@ function StripePayment({
           }
           return formatDateLocal(formData.pickupDate)
         })(),
+        // Canonical landing date — never rolled, regardless of overnight flag
+        // or backend +30min midnight rollover. Lets server-side disambiguate
+        // "arrival" vs "pickup" without re-deriving from arrival_time.
+        flight_arrival_date: formatDateLocal(formData.pickupDate),
         drop_off_slot: manualDepartureData?.dropoffSlot || formData.dropoffSlot || null,
         departure_id: manualDepartureData ? null : (selectedFlight?.id || null),
         // Return flight details

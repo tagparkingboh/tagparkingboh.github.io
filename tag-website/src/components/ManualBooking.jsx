@@ -669,6 +669,7 @@ function ManualBooking({ token }) {
       dropoff_time: getDropoffTime(),
       pickup_date: format(formData.pickupDate, 'yyyy-MM-dd'),
       pickup_time: calculatedPickupTime,
+      flight_arrival_date: format(formData.pickupDate, 'yyyy-MM-dd'),
       // Departure flight details
       dropoff_airline_name: getDropoffAirlineName(),
       dropoff_destination: getDropoffDestinationName(),
