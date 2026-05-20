@@ -58,7 +58,7 @@ function BookingModal({ open, onClose }) {
   if (!open) return null
 
   return createPortal(
-    <div className="booking-modal-overlay" role="presentation" onClick={onClose}>
+    <div className="booking-modal-overlay" role="presentation">
       <div
         ref={dialogRef}
         className="booking-modal-dialog"
@@ -66,7 +66,6 @@ function BookingModal({ open, onClose }) {
         aria-modal="true"
         aria-label="Book your parking"
         tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"

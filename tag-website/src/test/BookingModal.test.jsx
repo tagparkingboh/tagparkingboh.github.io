@@ -6,7 +6,7 @@
  *   2. When open: renders the welcome card (first thing BookingsNew shows).
  *   3. Close button calls onClose.
  *   4. Escape key calls onClose.
- *   5. Clicking the overlay calls onClose; clicking inside the dialog does NOT.
+ *   5. Clicking the overlay or dialog does NOT call onClose (close is keyboard/button only).
  *   6. Body scroll is locked while open and restored on close.
  *   7. "Back to home" inside the welcome card calls onClose (not navigate).
  */
@@ -70,7 +70,7 @@ describe('BookingModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('calls onClose when the overlay is clicked but not the dialog', () => {
+  it('does NOT call onClose when the overlay or dialog is clicked', () => {
     const onClose = vi.fn()
     const { container } = renderModal({ onClose })
 
@@ -81,7 +81,7 @@ describe('BookingModal', () => {
     expect(onClose).not.toHaveBeenCalled()
 
     fireEvent.click(overlay)
-    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('locks body scroll while open and restores it on unmount', () => {
