@@ -154,6 +154,79 @@ describe('computeBookingsByDate', () => {
 // — that's how the v3 Calendar default keeps today's behaviour exactly.
 // =============================================================================
 
+// =============================================================================
+// Arrival-time → operational-day bucketing matrix
+//
+// Tue 2026-05-19 / Wed 2026-05-20. For each arrival_time the booking's
+// stored (pickup_date, pickup_time) is derived using the +30-minute rule
+// with date rollover at 24:00 (mirrors backend/main.py:10880-10896). Then
+// computeBookingsByDate is asserted to bucket the booking on the expected
+// operational day (Tue or Wed).
+//
+// Boundaries under test:
+//  - 23:30 — pickup_time wraps to 00:00 next day (date rollover)
+//  - 02:30 — calendar cutoff; pickup_time < 02:30 re-buckets to D-1
+// =============================================================================
+
+describe('arrival-time → operational-day bucketing matrix', () => {
+  const TUE = '2026-05-19'
+  const WED = '2026-05-20'
+
+  // Mirror of backend rollover: arrival HH:MM on arrivalDate → expected
+  // (pickup_date, pickup_time) the booking row should hold post-creation.
+  const derivePickup = (arrivalDate, arrivalHHMM) => {
+    const [h, m] = arrivalHHMM.split(':').map(Number)
+    const total = h * 60 + m + 30
+    const minsOfDay = total % (24 * 60)
+    const pickup_time = `${String(Math.floor(minsOfDay / 60)).padStart(2, '0')}:${String(minsOfDay % 60).padStart(2, '0')}`
+    let pickup_date = arrivalDate
+    if (total >= 24 * 60) {
+      const d = new Date(`${arrivalDate}T00:00:00Z`)
+      d.setUTCDate(d.getUTCDate() + 1)
+      pickup_date = d.toISOString().slice(0, 10)
+    }
+    return { pickup_date, pickup_time }
+  }
+
+  const CASES = [
+    { arrival_date: TUE, arrival_time: '23:29', expected_day: TUE, label: '23:29 Tue → pickup 23:59 (no roll) → Tue' },
+    { arrival_date: TUE, arrival_time: '23:30', expected_day: TUE, label: '23:30 Tue → pickup 00:00 Wed (roll) → re-bucket Tue' },
+    { arrival_date: TUE, arrival_time: '23:31', expected_day: TUE, label: '23:31 Tue → pickup 00:01 Wed (roll) → re-bucket Tue' },
+    { arrival_date: TUE, arrival_time: '23:59', expected_day: TUE, label: '23:59 Tue → pickup 00:29 Wed (roll) → re-bucket Tue' },
+    { arrival_date: WED, arrival_time: '00:00', expected_day: TUE, label: '00:00 Wed → pickup 00:30 (no roll) → re-bucket Tue' },
+    { arrival_date: WED, arrival_time: '00:01', expected_day: TUE, label: '00:01 Wed → pickup 00:31 → re-bucket Tue' },
+    { arrival_date: WED, arrival_time: '01:58', expected_day: TUE, label: '01:58 Wed → pickup 02:28 → re-bucket Tue' },
+    { arrival_date: WED, arrival_time: '01:59', expected_day: TUE, label: '01:59 Wed → pickup 02:29 → re-bucket Tue' },
+    { arrival_date: WED, arrival_time: '02:00', expected_day: WED, label: '02:00 Wed → pickup 02:30 (cutoff, exclusive) → Wed' },
+    { arrival_date: WED, arrival_time: '02:01', expected_day: WED, label: '02:01 Wed → pickup 02:31 → Wed' },
+  ]
+
+  CASES.forEach((c, idx) => {
+    it(c.label, () => {
+      const { pickup_date, pickup_time } = derivePickup(c.arrival_date, c.arrival_time)
+      const booking = { id: idx + 1, status: 'confirmed', pickup_date, pickup_time }
+      const grouped = computeBookingsByDate([booking])
+
+      const otherDay = c.expected_day === TUE ? WED : TUE
+      expect(grouped[c.expected_day]?.pickups.map((b) => b.id)).toEqual([idx + 1])
+      expect(grouped[otherDay]?.pickups ?? []).toHaveLength(0)
+    })
+  })
+
+  it('all 10 cases together: 8 land on Tue, 2 land on Wed', () => {
+    const bookings = CASES.map((c, idx) => {
+      const { pickup_date, pickup_time } = derivePickup(c.arrival_date, c.arrival_time)
+      return { id: idx + 1, status: 'confirmed', pickup_date, pickup_time }
+    })
+    const grouped = computeBookingsByDate(bookings)
+
+    expect(grouped[TUE]?.pickups).toHaveLength(8)
+    expect(grouped[WED]?.pickups).toHaveLength(2)
+    expect(grouped[TUE].pickups.map((b) => b.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(grouped[WED].pickups.map((b) => b.id)).toEqual([9, 10])
+  })
+})
+
 describe('sourceParamFor', () => {
   it('passes through "auto"', () => {
     expect(sourceParamFor('auto')).toBe('auto')

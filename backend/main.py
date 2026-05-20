@@ -10874,11 +10874,15 @@ async def create_payment(
                     total_minutes += 24 * 60
                 dropoff_time = time(total_minutes // 60, total_minutes % 60)
 
-        # Parse pickup/landing time and calculate pickup time (30 min after landing)
+        # Parse pickup/landing time and calculate pickup time (30 min after landing).
+        # pickup_time is a pure calculation off arrival — there's no separate
+        # customer input. Anchor on flight_arrival_time (canonical); fall back
+        # to the legacy pickup_flight_time field if only that was sent.
         pickup_time = None
         flight_arrival_time = None
-        if request.pickup_flight_time:
-            time_parts = request.pickup_flight_time.split(":")
+        arrival_hhmm = request.flight_arrival_time or request.pickup_flight_time
+        if arrival_hhmm:
+            time_parts = arrival_hhmm.split(":")
             landing_hour = int(time_parts[0])
             landing_min = int(time_parts[1])
             flight_arrival_time = time(landing_hour, landing_min)  # Landing/arrival time
