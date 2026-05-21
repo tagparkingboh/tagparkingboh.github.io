@@ -5382,9 +5382,12 @@ function Admin() {
       dropoff_destination: booking.dropoff_destination || '',
       // Pickup/Return details - convert ISO date to UK format for display
       pickup_date: isoToUkDate(booking.pickup_date) || '',
-      // Arrival date is editable independently of pickup_date. Falls back to
-      // pickup_date for legacy rows (flight_arrival_date is nullable).
-      flight_arrival_date: isoToUkDate(booking.flight_arrival_date) || isoToUkDate(booking.pickup_date) || '',
+      // Arrival date is editable independently of pickup_date. For legacy rows
+      // where flight_arrival_date is NULL we derive a sensible default via
+      // resolveArrivalDate (which reverses the +30-min rollover for late-night
+      // arrivals — naive pickup_date as the default would silently set the
+      // wrong day for any 23:30+ flight, see TAG-MNF73277 incident 2026-05-21).
+      flight_arrival_date: isoToUkDate(resolveArrivalDate(booking)) || '',
       flight_arrival_time: booking.flight_arrival_time || '',
       pickup_airline_name: booking.pickup_airline_name || '',
       pickup_flight_number: booking.pickup_flight_number || '',

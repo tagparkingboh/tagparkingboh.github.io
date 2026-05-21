@@ -3233,14 +3233,24 @@ async def update_booking(
     # about changed — drop-off / pick-up dates and times move events
     # within the rolling window. Customer-detail edits (name, vehicle reg)
     # don't.
-    if any(
-        f in updates_made
-        for f in ("dropoff_date", "dropoff_time", "pickup_date", "pickup_time", "flight_arrival_time")
-    ):
+    roster_relevant_fields = (
+        "dropoff_date", "dropoff_time",
+        "pickup_date", "pickup_time",
+        "flight_arrival_time", "flight_arrival_date",
+    )
+    if any(f in updates_made for f in roster_relevant_fields):
         from roster_planner_runner import fire_engine_async, TRIGGER_BOOKING_RESCHEDULED
         background_tasks.add_task(
             fire_engine_async, TRIGGER_BOOKING_RESCHEDULED, booking.reference
         )
+
+        # Live auto-roster rebuild: re-cluster this booking's events into
+        # the right shifts on the affected dates. Without this, editing
+        # arrival/pickup date or time on Admin → Edit Booking would leave
+        # the shift cards stale until the next regenerate-auto run.
+        # Background task isolates failures from the admin response.
+        from auto_roster import auto_create_or_extend_async
+        background_tasks.add_task(auto_create_or_extend_async, booking.id)
 
     return {
         "success": True,
