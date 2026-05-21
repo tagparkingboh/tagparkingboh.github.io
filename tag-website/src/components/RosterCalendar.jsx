@@ -402,6 +402,19 @@ function RosterCalendar({
     }))
   }
 
+  // Per-shift expand state. Default collapsed (empty set) so the shifts list
+  // is a compact stack of headers until the user opens one.
+  const [expandedShiftIds, setExpandedShiftIds] = useState(() => new Set())
+
+  const toggleShiftExpanded = (shiftId) => {
+    setExpandedShiftIds(prev => {
+      const next = new Set(prev)
+      if (next.has(shiftId)) next.delete(shiftId)
+      else next.add(shiftId)
+      return next
+    })
+  }
+
   // Fetch bookings
   const fetchBookings = useCallback(async () => {
     if (!token) return
@@ -3056,9 +3069,10 @@ function RosterCalendar({
                 <div className={`shift-list collapsible-content ${collapsedSections.shifts ? 'hidden' : ''}`}>
                   {selectedDateShifts.map((shift) => {
                     const statusConfig = SHIFT_STATUS_CONFIG[shift.status] || SHIFT_STATUS_CONFIG.scheduled
+                    const isShiftExpanded = expandedShiftIds.has(shift.id)
 
                     return (
-                      <div key={shift.id} className={`shift-card ${selectedShiftIds.includes(shift.id) ? 'selected' : ''} ${shift.created_source === 'auto' ? 'source-auto' : 'source-manual'}`}>
+                      <div key={shift.id} className={`shift-card ${selectedShiftIds.includes(shift.id) ? 'selected' : ''} ${shift.created_source === 'auto' ? 'source-auto' : 'source-manual'} ${isShiftExpanded ? 'expanded' : 'collapsed'}`}>
                         {isAdmin && (
                           <div className="shift-select-checkbox">
                             <input
@@ -3069,7 +3083,11 @@ function RosterCalendar({
                             />
                           </div>
                         )}
-                        <div className="shift-card-header">
+                        <div
+                          className="shift-card-header clickable"
+                          onClick={() => toggleShiftExpanded(shift.id)}
+                        >
+                          <span className="collapse-icon">{isShiftExpanded ? '▼' : '▶'}</span>
                           <div className="shift-time-range">
                             <span className="shift-time">{formatTime(shift.start_time)}</span>
                             <span className="shift-time-separator">to</span>
@@ -3102,6 +3120,8 @@ function RosterCalendar({
                           )}
                         </div>
 
+                        {isShiftExpanded && (
+                        <>
                         <div className="shift-card-body">
                           {shift.staff_first_name ? (
                             <div className="shift-staff">
@@ -3173,6 +3193,8 @@ function RosterCalendar({
                               {getHoursUntilShift(shift) < 48 ? 'Cannot Release' : 'Release Shift'}
                             </button>
                           </div>
+                        )}
+                        </>
                         )}
                       </div>
                     )

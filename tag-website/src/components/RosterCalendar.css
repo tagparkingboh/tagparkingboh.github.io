@@ -694,6 +694,19 @@
   flex-wrap: wrap;
 }
 
+.shift-card-header.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.shift-card-header.clickable:hover {
+  opacity: 0.85;
+}
+
+.shift-card.collapsed .shift-card-header {
+  margin-bottom: 0;
+}
+
 .shift-time-range {
   display: flex;
   align-items: center;
