@@ -274,12 +274,21 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                 destination=booking.dropoff_destination
             ))
         elif booking.pickup_date in shift_dates:
+            # Pickup card shows the flight LANDING time (what the jockey
+            # needs to be at the airport for), falling back to pickup_time
+            # only when arrival isn't recorded (very old rows). The +30 min
+            # handoff is implicit operationally — no need to surface it.
+            pickup_card_time = (
+                booking.flight_arrival_time.strftime("%H:%M")
+                if booking.flight_arrival_time
+                else (booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None)
+            )
             linked_bookings.append(LinkedBookingInfo(
                 id=booking.id,
                 reference=booking.reference or "",
                 type="pickup",
                 customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
-                time=booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None,
+                time=pickup_card_time,
                 flight_number=booking.pickup_flight_number,
                 destination=booking.pickup_origin
             ))
@@ -299,12 +308,17 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                     destination=booking.dropoff_destination
                 ))
             elif booking.pickup_date in shift_dates:
+                pickup_card_time = (
+                    booking.flight_arrival_time.strftime("%H:%M")
+                    if booking.flight_arrival_time
+                    else (booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None)
+                )
                 linked_bookings.append(LinkedBookingInfo(
                     id=booking.id,
                     reference=booking.reference or "",
                     type="pickup",
                     customer_name=f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip(),
-                    time=booking.pickup_time.strftime("%H:%M") if booking.pickup_time else None,
+                    time=pickup_card_time,
                     flight_number=booking.pickup_flight_number,
                     destination=booking.pickup_origin
                 ))

@@ -2948,7 +2948,9 @@ function RosterCalendar({
                           <span className="booking-refunded-badge" title="This booking was refunded — customer may not arrive">REFUNDED</span>
                         )}
                         <div className="booking-header-row">
-                          <div className="booking-time">{formatTime(booking.pickup_time)}</div>
+                          {/* pickup_time leading cell removed 2026-05-20 —
+                              the row now leads with the airline. Arrival time
+                              still surfaces via "Arrives:" below. */}
                           <div className="booking-flight">
                             {booking.pickup_airline_name && (
                               <span className="airline-name">{booking.pickup_airline_name}</span>
@@ -3102,7 +3104,12 @@ function RosterCalendar({
                                   </div>
                                   <div className="shift-booking-details">
                                     {booking.time && (
-                                      <span className="shift-booking-time">@ {booking.time}</span>
+                                      <span className="shift-booking-time">
+                                        @ {booking.time}
+                                        {booking.type === 'pickup' && (
+                                          <span className="shift-booking-time-label"> arrival</span>
+                                        )}
+                                      </span>
                                     )}
                                     {booking.flight_number && (
                                       <span className="shift-booking-flight">{booking.flight_number}</span>
