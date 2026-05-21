@@ -81,7 +81,12 @@ def create_mock_shift(**kwargs):
 
 
 def create_mock_booking(**kwargs):
-    """Factory to create mock booking objects."""
+    """Factory to create mock booking objects.
+
+    `flight_arrival_date` defaults to None so the legacy heuristic
+    (pickup_date as landing day, unless rolled) takes effect — matches
+    every booking row written before 2026-05-20. Tests covering the new
+    canonical column pass it in explicitly via kwargs."""
     defaults = {
         "id": 101,
         "reference": "TAG-ABC123",
@@ -93,6 +98,7 @@ def create_mock_booking(**kwargs):
         "pickup_time": time(16, 0),
         "flight_departure_time": time(8, 30),
         "flight_arrival_time": time(15, 5),
+        "flight_arrival_date": None,
         "dropoff_airline_name": "Jet2",
         "dropoff_destination": "Tenerife",
         "status": "confirmed",
@@ -1589,6 +1595,125 @@ class TestBookingsForDateAPI:
         assert response.status_code == 200
         assert response.json() == []
 
+    # ------------------------------------------------------------------
+    # Pickup-event-date HUEB (post-2026-05-21 fix)
+    # ------------------------------------------------------------------
+    # Background: TAG-KNL95826 had flight_arrival_date=7/3, pickup_date=7/2
+    # (admin edited only arrival; pickup stayed un-rolled). Pre-fix the
+    # /roster/bookings-for-date pickup query keyed off pickup_date so the
+    # booking was missing from 7/3's calendar tile. Fix: query by the
+    # canonical pickup-event date — flight_arrival_date when set, else
+    # the legacy rollover-aware fallback on pickup_date.
+
+    def test_H_pickup_matched_via_flight_arrival_date(self, mock_app_dependencies, mock_db):
+        """Happy: booking with flight_arrival_date set, query target matches
+        the canonical column — booking appears as a pickup on that day."""
+        from main import app
+        b = create_mock_booking(
+            id=1286,
+            reference="TAG-KNL95826",
+            flight_arrival_date=date(2026, 7, 3),
+            flight_arrival_time=time(19, 0),
+            pickup_date=date(2026, 7, 2),
+            pickup_time=time(19, 30),
+        )
+        b.pickup_origin = "Palma de Mallorca Airport"
+        b.pickup_airline_name = "easyJet"
+        b.pickup_flight_number = "4041"
+
+        # Pickup query is the only query — dropoff filter doesn't match.
+        mock_db.query.return_value.filter.return_value.all.side_effect = [
+            [],     # dropoff_date == 7/3 → no match
+            [b],    # pickup candidate set (flight_arrival_date OR pickup_date in window)
+        ]
+
+        response = TestClient(app).get("/api/roster/bookings-for-date?date=2026-07-03")
+        assert response.status_code == 200
+        data = response.json()
+        assert any(row["reference"] == "TAG-KNL95826" and row["type"] == "pickup" for row in data), (
+            f"booking missing from 7/3 tile; got {data}"
+        )
+
+    def test_U_pickup_matched_on_pickup_date_but_arrival_date_differs(
+        self, mock_app_dependencies, mock_db,
+    ):
+        """Unhappy: same booking, but query asks for 7/2 (the un-rolled
+        pickup_date day). flight_arrival_date=7/3 means the canonical
+        pickup-event was on 7/3 — the booking must NOT appear on 7/2."""
+        from main import app
+        b = create_mock_booking(
+            id=1286,
+            reference="TAG-KNL95826",
+            flight_arrival_date=date(2026, 7, 3),
+            flight_arrival_time=time(19, 0),
+            pickup_date=date(2026, 7, 2),
+            pickup_time=time(19, 30),
+        )
+        mock_db.query.return_value.filter.return_value.all.side_effect = [
+            [],     # dropoff
+            [b],    # candidate set (pickup_date == 7/2 matches the SQL)
+        ]
+
+        response = TestClient(app).get("/api/roster/bookings-for-date?date=2026-07-02")
+        assert response.status_code == 200
+        # The Python filter must drop it: _pickup_event_date(b) == 7/3, not 7/2.
+        data = response.json()
+        assert all(row["reference"] != "TAG-KNL95826" for row in data), (
+            f"booking incorrectly appeared on its un-rolled pickup_date day; got {data}"
+        )
+
+    def test_E_legacy_row_no_arrival_date_matches_via_pickup_date(
+        self, mock_app_dependencies, mock_db,
+    ):
+        """Edge: legacy row pre-flight_arrival_date column. Daytime arrival
+        means pickup_date IS the landing day — falls back to the existing
+        pickup_date match."""
+        from main import app
+        b = create_mock_booking(
+            id=99,
+            reference="TAG-LEGACY01",
+            flight_arrival_date=None,   # legacy row
+            flight_arrival_time=time(14, 0),
+            pickup_date=date(2026, 7, 8),
+            pickup_time=time(14, 30),
+        )
+        mock_db.query.return_value.filter.return_value.all.side_effect = [
+            [],     # dropoff
+            [b],    # candidate set
+        ]
+
+        response = TestClient(app).get("/api/roster/bookings-for-date?date=2026-07-08")
+        assert response.status_code == 200
+        data = response.json()
+        assert any(row["reference"] == "TAG-LEGACY01" and row["type"] == "pickup" for row in data)
+
+    def test_B_legacy_row_overnight_rolls_back_to_arrival_day(
+        self, mock_app_dependencies, mock_db,
+    ):
+        """Boundary: legacy row with late-night arrival. pickup_date is
+        rolled forward (D+1); the canonical pickup-event was on D. Query
+        for D must include this booking even though pickup_date == D+1."""
+        from main import app
+        b = create_mock_booking(
+            id=99,
+            reference="TAG-NIGHT001",
+            flight_arrival_date=None,   # legacy
+            flight_arrival_time=time(23, 30),
+            pickup_date=date(2026, 7, 9),  # rolled forward
+            pickup_time=time(0, 0),
+        )
+        mock_db.query.return_value.filter.return_value.all.side_effect = [
+            [],     # dropoff
+            [b],    # candidate set (pickup_date == day_after of 7/8)
+        ]
+
+        response = TestClient(app).get("/api/roster/bookings-for-date?date=2026-07-08")
+        assert response.status_code == 200
+        data = response.json()
+        assert any(row["reference"] == "TAG-NIGHT001" for row in data), (
+            f"legacy late-night booking should appear on its actual landing day; got {data}"
+        )
+
 
 # =============================================================================
 # Integration Tests - Shift with Booking Link
@@ -2715,6 +2840,11 @@ class TestOvernightShiftBookingLinks:
         mock_booking.dropoff_time = None
         mock_booking.pickup_date = date(2026, 4, 4)  # Same as shift end date
         mock_booking.pickup_time = time(0, 30)
+        # Legacy row pre-flight_arrival_date column. Without setting this
+        # explicitly, MagicMock returns a truthy mock for the attribute and
+        # _pickup_event_date short-circuits incorrectly.
+        mock_booking.flight_arrival_date = None
+        mock_booking.flight_arrival_time = None
         mock_booking.pickup_flight_number = "BA456"
         mock_booking.pickup_origin = "Malaga"
 
@@ -2762,6 +2892,8 @@ class TestOvernightShiftBookingLinks:
         mock_booking1.dropoff_destination = "Tenerife"
         mock_booking1.pickup_date = date(2026, 4, 10)
         mock_booking1.pickup_time = None
+        mock_booking1.flight_arrival_date = None
+        mock_booking1.flight_arrival_time = None
 
         # Create booking on end date (pickup on 4th)
         mock_booking2 = MagicMock()
@@ -2773,6 +2905,11 @@ class TestOvernightShiftBookingLinks:
         mock_booking2.dropoff_time = None
         mock_booking2.pickup_date = date(2026, 4, 4)  # End date
         mock_booking2.pickup_time = time(0, 30)
+        # Legacy row — explicit None so the pickup-event-date helper falls
+        # through to the pickup_date match rather than picking up MagicMock's
+        # auto-generated truthy attribute.
+        mock_booking2.flight_arrival_date = None
+        mock_booking2.flight_arrival_time = None
         mock_booking2.pickup_flight_number = "BA456"
         mock_booking2.pickup_origin = "Malaga"
 

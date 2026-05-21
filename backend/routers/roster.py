@@ -785,11 +785,24 @@ async def get_bookings_for_date(
             "destination": b.dropoff_destination
         })
 
-    # Find bookings with pickup on this date (only confirmed - pending means unpaid)
-    pickup_bookings = db.query(Booking).filter(
-        Booking.pickup_date == date,
-        Booking.status == BookingStatus.CONFIRMED
+    # Find bookings with pickup on this date (only confirmed - pending means unpaid).
+    # Match by the CANONICAL pickup-event date — flight_arrival_date when set, else
+    # the legacy heuristic. Without this, an admin who edits arrival_date but
+    # leaves pickup_date alone loses the booking from the day-tile pickup list
+    # (caught on TAG-KNL95826 staging 2026-05-21: arrival_date=7/3, pickup_date=7/2
+    # → booking was missing from 7/3's calendar tile, even though the shift card
+    # inside the day-detail modal showed it correctly via the shift_to_response
+    # link-match fix). Pull a slightly-wider candidate set in SQL then refine in
+    # Python via the shared _pickup_event_date helper.
+    day_after = date + timedelta(days=1)
+    pickup_candidates = db.query(Booking).filter(
+        Booking.status == BookingStatus.CONFIRMED,
+        or_(
+            Booking.flight_arrival_date == date,
+            Booking.pickup_date.in_([date, day_after]),
+        ),
     ).all()
+    pickup_bookings = [b for b in pickup_candidates if _pickup_event_date(b) == date]
 
     for b in pickup_bookings:
         results.append({
