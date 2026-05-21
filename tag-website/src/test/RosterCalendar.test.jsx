@@ -253,6 +253,101 @@ describe('computeBookingsByDate', () => {
       expect(day.pickups).not.toContainEqual(expect.objectContaining({ id: 1 }))
     })
   })
+
+  // ----------------------------------------------------------------------
+  // Post-midnight arrival_time re-bucketing with flight_arrival_date set
+  // (post-2026-05-21 fix)
+  // ----------------------------------------------------------------------
+  // Caught on TAG-QTX08991 (Rana Gioutzesoi): flight lands 00:50 on Tue
+  // 2026-06-23 with `flight_arrival_date=2026-06-23`. Operationally it's
+  // Mon 2026-06-22's late-shift pickup (the shift spans 23:10 Mon to
+  // 01:35 Tue). The pre-fix logic returned flight_arrival_date directly,
+  // bypassing the 02:30 cutoff, so the day tile placed her on Tue. The
+  // fix preserves "flight_arrival_date is canonical" but re-applies the
+  // overnight cutoff on top.
+
+  it('H: post-midnight arrival (00:50) with flight_arrival_date re-buckets to D-1', () => {
+    // Real case: TAG-QTX08991 Rana Gioutzesoi, Antalya → BOH at 00:50 Tue 6/23.
+    const grouped = computeBookingsByDate([
+      mkPickupArrival(1, {
+        flight_arrival_date: '2026-06-23',
+        flight_arrival_time: '00:50',
+        pickup_date: '2026-06-23',
+        pickup_time: '01:20',
+      }),
+    ])
+    expect(grouped['2026-06-22']?.pickups.map((b) => b.id)).toEqual([1])
+    expect(grouped['2026-06-23']?.pickups ?? []).toHaveLength(0)
+  })
+
+  it('E: daytime arrival (14:00) with flight_arrival_date stays on the canonical day', () => {
+    // Cutoff only fires for post-midnight times. 14:00 is well past it, so
+    // arrival on 6/23 stays on 6/23 regardless of any pickup_date drift.
+    const grouped = computeBookingsByDate([
+      mkPickupArrival(1, {
+        flight_arrival_date: '2026-06-23',
+        flight_arrival_time: '14:00',
+        pickup_date: '2026-06-23',
+        pickup_time: '14:30',
+      }),
+    ])
+    expect(grouped['2026-06-23']?.pickups.map((b) => b.id)).toEqual([1])
+    expect(grouped['2026-06-22']?.pickups ?? []).toHaveLength(0)
+  })
+
+  it('B: arrival_time 02:29 re-buckets, 02:30 does NOT (cutoff exclusive) when flight_arrival_date is set', () => {
+    // Mirror of the legacy pickup_time boundary test (line ~85) but anchored
+    // on flight_arrival_date — both the canonical column and the cutoff must
+    // co-operate for the boundary to behave identically across both paths.
+    const grouped = computeBookingsByDate([
+      mkPickupArrival(1, {
+        flight_arrival_date: '2026-06-23',
+        flight_arrival_time: '02:29',
+        pickup_date: '2026-06-23',
+        pickup_time: '02:59',
+      }),
+      mkPickupArrival(2, {
+        flight_arrival_date: '2026-06-23',
+        flight_arrival_time: '02:30',
+        pickup_date: '2026-06-23',
+        pickup_time: '03:00',
+      }),
+    ])
+    expect(grouped['2026-06-22']?.pickups.map((b) => b.id)).toEqual([1])
+    expect(grouped['2026-06-23']?.pickups.map((b) => b.id)).toEqual([2])
+  })
+
+  it('U: flight_arrival_date set, flight_arrival_time null — cutoff falls back to pickup_time', () => {
+    // Defensive: in normal data flight_arrival_time accompanies the date,
+    // but if the time column is null the bucketing must not silently skip
+    // the cutoff and place a 00:55 pickup on the wrong operational day.
+    const grouped = computeBookingsByDate([
+      mkPickupArrival(1, {
+        flight_arrival_date: '2026-06-23',
+        flight_arrival_time: null,
+        pickup_date: '2026-06-23',
+        pickup_time: '00:55',
+      }),
+    ])
+    expect(grouped['2026-06-22']?.pickups.map((b) => b.id)).toEqual([1])
+  })
+
+  it('B: arrival 23:55 + pickup_time 00:25 (rolled) still buckets on the arrival day, not D-1', () => {
+    // Regression fence: the existing test at line ~197 pinned this, but
+    // re-asserting under the new code path is cheap and locks the boundary
+    // behaviour — 23:55 is > 02:30 so the cutoff does NOT fire, and the
+    // flight_arrival_date (the actual landing day) wins.
+    const grouped = computeBookingsByDate([
+      mkPickupArrival(1, {
+        flight_arrival_date: '2026-07-04',
+        flight_arrival_time: '23:55',
+        pickup_date: '2026-07-05',
+        pickup_time: '00:25',
+      }),
+    ])
+    expect(grouped['2026-07-04']?.pickups.map((b) => b.id)).toEqual([1])
+    expect(grouped['2026-07-05']?.pickups ?? []).toHaveLength(0)
+  })
 })
 
 // =============================================================================

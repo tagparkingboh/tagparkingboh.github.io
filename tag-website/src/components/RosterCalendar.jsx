@@ -104,13 +104,15 @@ export const computeBookingsByDate = (bookings) => {
   // every row from 2026-05-20+). Without this, an admin editing only the
   // arrival date leaves pickup_date stale, and the booking gets bucketed
   // onto the wrong day in the day tile + day-detail modal — caught on
-  // TAG-KNL95826 staging 2026-05-21. Legacy fallback uses pickup_date and
-  // the 02:30 cutoff to re-bucket post-midnight pickups onto the previous
-  // operational day.
+  // TAG-KNL95826 staging 2026-05-21. The 02:30 PICKUP_OVERNIGHT_CUTOFF
+  // still applies on top of the canonical date: post-midnight arrivals
+  // (e.g. TAG-QTX08991 Rana Gioutzesoi, flight lands 00:50 on Tue 6/23)
+  // are operationally part of the previous day's overnight shift and
+  // must re-bucket onto D-1 — caught 2026-05-21 when the shift card
+  // correctly grouped her under Mon but the day tile showed her on Tue.
   const claimPickupDate = (booking) => {
-    if (booking.flight_arrival_date) return booking.flight_arrival_date
-    const rawDate = booking.pickup_date
-    const rawTime = booking.pickup_time
+    const rawDate = booking.flight_arrival_date || booking.pickup_date
+    const rawTime = booking.flight_arrival_time || booking.pickup_time
     if (!rawDate) return null
     if (!rawTime) return rawDate
     const t = String(rawTime).slice(0, 5)
