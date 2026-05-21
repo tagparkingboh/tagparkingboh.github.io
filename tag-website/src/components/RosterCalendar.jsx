@@ -99,7 +99,18 @@ export const computeBookingsByDate = (bookings) => {
     if (!grouped[key]) grouped[key] = { dropoffs: [], pickups: [] }
     return grouped[key]
   }
-  const claimPickupDate = (rawDate, rawTime) => {
+  // Resolve the operational-day bucket for a booking's pickup event.
+  // Prefer `flight_arrival_date` (the canonical landing day, populated on
+  // every row from 2026-05-20+). Without this, an admin editing only the
+  // arrival date leaves pickup_date stale, and the booking gets bucketed
+  // onto the wrong day in the day tile + day-detail modal — caught on
+  // TAG-KNL95826 staging 2026-05-21. Legacy fallback uses pickup_date and
+  // the 02:30 cutoff to re-bucket post-midnight pickups onto the previous
+  // operational day.
+  const claimPickupDate = (booking) => {
+    if (booking.flight_arrival_date) return booking.flight_arrival_date
+    const rawDate = booking.pickup_date
+    const rawTime = booking.pickup_time
     if (!rawDate) return null
     if (!rawTime) return rawDate
     const t = String(rawTime).slice(0, 5)
@@ -115,12 +126,23 @@ export const computeBookingsByDate = (bookings) => {
       if (booking.dropoff_date) {
         ensureDay(booking.dropoff_date).dropoffs.push(booking)
       }
-      if (booking.pickup_date) {
-        const key = claimPickupDate(booking.pickup_date, booking.pickup_time)
+      if (booking.pickup_date || booking.flight_arrival_date) {
+        const key = claimPickupDate(booking)
         if (key) ensureDay(key).pickups.push(booking)
       }
     })
 
+  // Sort within each day by the time the jockey needs to be at the airport.
+  // For pickups that's the canonical arrival moment (flight_arrival_date +
+  // flight_arrival_time when set); legacy rows fall back to pickup_date +
+  // pickup_time. Without this, TAG-KNL95826 (pickup_date=7/3, arrival=7/4)
+  // sorted into the 7/4 day at a 7/3 sort key, ending up at the bottom of
+  // the wrong day's pickup list.
+  const pickupSortKey = (b) =>
+    sortKey(
+      b.flight_arrival_date || b.pickup_date,
+      b.flight_arrival_time || b.pickup_time,
+    )
   Object.values(grouped).forEach((day) => {
     day.dropoffs.sort((a, b) =>
       sortKey(a.dropoff_date, a.dropoff_time).localeCompare(
@@ -128,9 +150,7 @@ export const computeBookingsByDate = (bookings) => {
       )
     )
     day.pickups.sort((a, b) =>
-      sortKey(a.pickup_date, a.pickup_time).localeCompare(
-        sortKey(b.pickup_date, b.pickup_time)
-      )
+      pickupSortKey(a).localeCompare(pickupSortKey(b))
     )
   })
 

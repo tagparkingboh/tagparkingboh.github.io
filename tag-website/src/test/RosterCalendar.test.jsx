@@ -145,6 +145,114 @@ describe('computeBookingsByDate', () => {
     expect(computeBookingsByDate([])).toEqual({})
     expect(computeBookingsByDate(undefined)).toEqual({})
   })
+
+  // ----------------------------------------------------------------------
+  // Pickup-event-date bucketing (post-2026-05-21)
+  // ----------------------------------------------------------------------
+  // When flight_arrival_date is set on a booking, it's the canonical
+  // landing day and the bucketing must use it — pickup_date may be stale
+  // (e.g. admin edited arrival but left pickup alone, the TAG-KNL95826
+  // staging incident). Legacy rows (flight_arrival_date=null) keep the
+  // pre-existing pickup_date + 02:30-cutoff rule.
+
+  const mkPickupArrival = (id, opts) => ({
+    id,
+    status: opts.status || 'confirmed',
+    flight_arrival_date: opts.flight_arrival_date ?? null,
+    flight_arrival_time: opts.flight_arrival_time ?? null,
+    pickup_date: opts.pickup_date ?? null,
+    pickup_time: opts.pickup_time ?? null,
+  })
+
+  it('H: buckets via flight_arrival_date when set, even if pickup_date differs', () => {
+    const grouped = computeBookingsByDate([
+      mkPickupArrival(1286, {
+        flight_arrival_date: '2026-07-04',
+        flight_arrival_time: '17:00',
+        pickup_date: '2026-07-03',  // stale — admin edited arrival only
+        pickup_time: '17:30',
+      }),
+    ])
+    expect(grouped['2026-07-04']?.pickups.map((b) => b.id)).toEqual([1286])
+    expect(grouped['2026-07-03']?.pickups ?? []).toHaveLength(0)
+  })
+
+  it('E: legacy row (no flight_arrival_date) keeps the pickup_date + cutoff rule', () => {
+    const grouped = computeBookingsByDate([
+      mkPickupArrival(1, {
+        flight_arrival_date: null,
+        pickup_date: '2026-07-10',
+        pickup_time: '00:25',  // < 02:30 → re-bucket to 7/9
+      }),
+      mkPickupArrival(2, {
+        flight_arrival_date: null,
+        pickup_date: '2026-07-10',
+        pickup_time: '14:00',  // > 02:30 → stays on 7/10
+      }),
+    ])
+    expect(grouped['2026-07-09']?.pickups.map((b) => b.id)).toEqual([1])
+    expect(grouped['2026-07-10']?.pickups.map((b) => b.id)).toEqual([2])
+  })
+
+  it('B: flight_arrival_date wins over the legacy 02:30 cutoff when both apply', () => {
+    // arrival on 7/4 23:55, pickup rolled to 7/5 00:25 — flight_arrival_date
+    // is 7/4 (canonical landing day). The old rule would also bucket onto 7/4
+    // via prevIsoDate('2026-07-05'); the new rule bypasses the heuristic and
+    // uses the column directly. Both produce the same result for THIS case,
+    // but the test pins the source-of-truth (no longer dependent on
+    // pickup_date being correctly rolled).
+    const grouped = computeBookingsByDate([
+      mkPickupArrival(7, {
+        flight_arrival_date: '2026-07-04',
+        flight_arrival_time: '23:55',
+        pickup_date: '2026-07-05',
+        pickup_time: '00:25',
+      }),
+    ])
+    expect(grouped['2026-07-04']?.pickups.map((b) => b.id)).toEqual([7])
+  })
+
+  it('B: pickup-side sort uses arrival_time when set so the booking lands chronologically', () => {
+    // Without sorting on the arrival timestamp, TAG-KNL95826 (arrival 17:00
+    // on 7/4) would sort against its stale pickup_date (7/3) and end up
+    // out of place. Confirm it sorts alongside another 7/4 17:00 booking.
+    const grouped = computeBookingsByDate([
+      mkPickupArrival(20, {
+        flight_arrival_date: '2026-07-04',
+        flight_arrival_time: '17:00',
+        pickup_date: '2026-07-03',
+        pickup_time: '17:30',
+      }),
+      mkPickupArrival(10, {
+        flight_arrival_date: '2026-07-04',
+        flight_arrival_time: '08:00',
+        pickup_date: '2026-07-04',
+        pickup_time: '08:30',
+      }),
+      mkPickupArrival(30, {
+        flight_arrival_date: '2026-07-04',
+        flight_arrival_time: '22:00',
+        pickup_date: '2026-07-04',
+        pickup_time: '22:30',
+      }),
+    ])
+    // Chronological by arrival_time within 7/4.
+    expect(grouped['2026-07-04']?.pickups.map((b) => b.id)).toEqual([10, 20, 30])
+  })
+
+  it('U: booking with neither pickup_date nor flight_arrival_date is skipped on pickup side', () => {
+    const grouped = computeBookingsByDate([
+      mkPickupArrival(1, {
+        flight_arrival_date: null,
+        pickup_date: null,
+        pickup_time: null,
+      }),
+    ])
+    // No day key should have a pickup for this booking.
+    Object.values(grouped).forEach((day) => {
+      expect(day.pickups).not.toContainEqual(expect.objectContaining({ id: 1 }))
+    })
+  })
 })
 
 // =============================================================================
