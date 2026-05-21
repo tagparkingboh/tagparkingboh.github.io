@@ -3144,6 +3144,29 @@ async def update_booking(
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
+    # Snapshot pre-edit values for the audit log. Only the roster-relevant
+    # fields are captured — that's the audit signal we actually use to
+    # diagnose "did the auto-rebuild fire?" / "what did the admin change?".
+    def _fmt_date(d):
+        return d.isoformat() if d else None
+    def _fmt_time(t):
+        return t.strftime("%H:%M") if t else None
+    audit_before = {
+        "dropoff_date": _fmt_date(booking.dropoff_date),
+        "dropoff_time": _fmt_time(booking.dropoff_time),
+        "flight_departure_time": _fmt_time(booking.flight_departure_time),
+        "pickup_date": _fmt_date(booking.pickup_date),
+        "pickup_time": _fmt_time(booking.pickup_time),
+        "flight_arrival_date": _fmt_date(booking.flight_arrival_date),
+        "flight_arrival_time": _fmt_time(booking.flight_arrival_time),
+        "pickup_airline_name": booking.pickup_airline_name,
+        "pickup_flight_number": booking.pickup_flight_number,
+        "pickup_origin": booking.pickup_origin,
+        "dropoff_airline_name": booking.dropoff_airline_name,
+        "dropoff_flight_number": booking.dropoff_flight_number,
+        "dropoff_destination": booking.dropoff_destination,
+    }
+
     updates_made = []
 
     # Update pickup details
@@ -3228,6 +3251,43 @@ async def update_booking(
 
     db.commit()
     db.refresh(booking)
+
+    # Audit log: capture the before/after diff for the fields that changed.
+    # Lets us diagnose "did the rebuild fire? what did the admin actually
+    # change?" without having to bisect through React state. Only the
+    # fields listed in `updates_made` get included in the diff so the row
+    # stays compact. Schedule it post-commit so the booking row is the
+    # source of truth for `audit_after`.
+    audit_after = {
+        "dropoff_date": _fmt_date(booking.dropoff_date),
+        "dropoff_time": _fmt_time(booking.dropoff_time),
+        "flight_departure_time": _fmt_time(booking.flight_departure_time),
+        "pickup_date": _fmt_date(booking.pickup_date),
+        "pickup_time": _fmt_time(booking.pickup_time),
+        "flight_arrival_date": _fmt_date(booking.flight_arrival_date),
+        "flight_arrival_time": _fmt_time(booking.flight_arrival_time),
+        "pickup_airline_name": booking.pickup_airline_name,
+        "pickup_flight_number": booking.pickup_flight_number,
+        "pickup_origin": booking.pickup_origin,
+        "dropoff_airline_name": booking.dropoff_airline_name,
+        "dropoff_flight_number": booking.dropoff_flight_number,
+        "dropoff_destination": booking.dropoff_destination,
+    }
+    diff_before = {k: audit_before[k] for k in updates_made if k in audit_before}
+    diff_after = {k: audit_after[k] for k in updates_made if k in audit_after}
+    log_audit_event(
+        db=db,
+        event=AuditLogEvent.BOOKING_UPDATED,
+        booking_reference=booking.reference,
+        event_data={
+            "booking_id": booking.id,
+            "admin_user_id": getattr(current_user, "id", None),
+            "admin_email": getattr(current_user, "email", None),
+            "fields_updated": updates_made,
+            "before": diff_before,
+            "after": diff_after,
+        },
+    )
 
     # Roster planner shadow mode: only fire when fields the engine cares
     # about changed — drop-off / pick-up dates and times move events
