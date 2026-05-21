@@ -250,6 +250,34 @@ def check_staff_unavailability(
     return None
 
 
+def _pickup_event_date(booking):
+    """Canonical pickup-event date for a booking — the day the jockey needs
+    to be at the airport. Matches the same rule as
+    `auto_roster._events_for_booking`:
+
+      * Prefer `flight_arrival_date` when set (new rows from 2026-05-20+).
+      * Legacy fallback: if `flight_arrival_time > pickup_time`, the flight
+        landed the previous calendar day (overnight rollover pushed
+        pickup_date forward by one); subtract a day.
+      * Otherwise: pickup_date is the landing day.
+
+    Without this match, edits that change only `flight_arrival_date`
+    (leaving pickup_date alone) cause the booking to disappear from its
+    own shift card — observed on TAG-KNL95826 2026-05-21.
+    """
+    if booking.flight_arrival_date:
+        return booking.flight_arrival_date
+    if not booking.pickup_date:
+        return None
+    if (
+        booking.flight_arrival_time
+        and booking.pickup_time
+        and booking.flight_arrival_time > booking.pickup_time
+    ):
+        return booking.pickup_date - timedelta(days=1)
+    return booking.pickup_date
+
+
 def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
     """Convert RosterShift model to response."""
     # Build list of linked bookings
@@ -262,7 +290,11 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
 
     # Get bookings from many-to-many relationship
     for booking in shift.bookings:
-        # Determine if this is a dropoff or pickup based on shift dates
+        # Determine if this is a dropoff or pickup based on shift dates.
+        # Pickup-side match keys off the CANONICAL pickup-event date, not
+        # the (possibly rolled) pickup_date — so an admin who edits only
+        # arrival_date doesn't lose the booking from its own shift card.
+        pickup_event = _pickup_event_date(booking)
         if booking.dropoff_date in shift_dates:
             linked_bookings.append(LinkedBookingInfo(
                 id=booking.id,
@@ -273,7 +305,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                 flight_number=booking.dropoff_flight_number,
                 destination=booking.dropoff_destination
             ))
-        elif booking.pickup_date in shift_dates:
+        elif pickup_event in shift_dates:
             # Pickup card shows the flight LANDING time (what the jockey
             # needs to be at the airport for), falling back to pickup_time
             # only when arrival isn't recorded (very old rows). The +30 min
@@ -297,6 +329,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
     if shift.booking_id and not any(b.id == shift.booking_id for b in shift.bookings):
         booking = db.query(Booking).filter(Booking.id == shift.booking_id).first()
         if booking:
+            pickup_event = _pickup_event_date(booking)
             if booking.dropoff_date in shift_dates:
                 linked_bookings.append(LinkedBookingInfo(
                     id=booking.id,
@@ -307,7 +340,7 @@ def shift_to_response(shift: RosterShift, db: Session) -> RosterShiftResponse:
                     flight_number=booking.dropoff_flight_number,
                     destination=booking.dropoff_destination
                 ))
-            elif booking.pickup_date in shift_dates:
+            elif pickup_event in shift_dates:
                 pickup_card_time = (
                     booking.flight_arrival_time.strftime("%H:%M")
                     if booking.flight_arrival_time
