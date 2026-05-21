@@ -2187,29 +2187,6 @@ function Bookings({ isModal = false, onClose }) {
                     {manualArrivalData.flightTime || '--:--'}
                   </span>
                 </div>
-                <div className="time-confirm-row">
-                  <span className="time-confirm-label">Pick-up date:</span>
-                  <span className="time-confirm-value">
-                    {formData.pickupDate && manualArrivalData.flightTime ? (() => {
-                      const [h, m] = manualArrivalData.flightTime.split(':').map(Number);
-                      const rollsOver = h * 60 + m + 30 >= 1440;
-                      const pickupDay = rollsOver ? addDays(formData.pickupDate, 1) : formData.pickupDate;
-                      return format(pickupDay, 'EEE, dd MMM yyyy');
-                    })() : formData.pickupDate ? format(formData.pickupDate, 'EEE, dd MMM yyyy') : '--'}
-                  </span>
-                </div>
-                <div className="time-confirm-row">
-                  <span className="time-confirm-label">Pick-up time:</span>
-                  <span className="time-confirm-value">
-                    {manualArrivalData.flightTime ? (() => {
-                      const [h, m] = manualArrivalData.flightTime.split(':').map(Number);
-                      const pickupMins = h * 60 + m + 30;
-                      const ph = Math.floor(pickupMins / 60) % 24;
-                      const pm = pickupMins % 60;
-                      return `${ph.toString().padStart(2, '0')}:${pm.toString().padStart(2, '0')}`;
-                    })() : '--:--'}
-                  </span>
-                </div>
               </div>
             </div>
             <div className="time-confirm-actions">

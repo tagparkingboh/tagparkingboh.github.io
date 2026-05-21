@@ -236,7 +236,14 @@ class TestSendBookingConfirmationEmail:
 
     @patch('email_service.send_email')
     def test_email_contains_dates_and_times(self, mock_send_email):
-        """Test that the email HTML contains dates and times."""
+        """Test that the email HTML contains dates and times.
+
+        Post-2026-05-20: the customer-facing block leads with ARRIVAL_DATE +
+        FLIGHT_ARRIVAL_TIME (the landing moment), and the standalone
+        PICKUP_TIME render was removed — the customer infers handoff from
+        the static "we'll meet you at arrivals as you come out" copy. The
+        underlying pickup_date / pickup_time still pass through (used by
+        other surfaces) but don't appear in the rendered HTML."""
         mock_send_email.return_value = True
 
         send_booking_confirmation_email(
@@ -247,6 +254,7 @@ class TestSendBookingConfirmationEmail:
             dropoff_time="08:30",
             pickup_date="Monday, 22 January 2026",
             pickup_time="From 16:45 onwards",
+            arrival_date="Monday, 22 January 2026",
             flight_arrival_time="16:15",
             flight_departure_time="10:00",
             departure_flight="TOM1234 to Tenerife (TFS)",
@@ -260,10 +268,83 @@ class TestSendBookingConfirmationEmail:
         )
 
         html_content = mock_send_email.call_args[0][2]
+        # Drop-off side unchanged
         assert "Monday, 15 January 2026" in html_content
         assert "08:30" in html_content
+        # Return-side leads with arrival date + flight arrival time
         assert "Monday, 22 January 2026" in html_content
-        assert "From 16:45 onwards" in html_content
+        assert "16:15" in html_content
+        # The compact line wires both together: "Arrives: <date> at <time>"
+        assert "Arrives: Monday, 22 January 2026 at 16:15" in html_content
+        # The old standalone pickup-time line should NOT render anymore
+        assert "From 16:45 onwards" not in html_content
+
+    @patch('email_service.send_email')
+    def test_email_arrival_date_falls_back_to_pickup_date(self, mock_send_email):
+        """Legacy callers that don't pass `arrival_date` should still render
+        a sensible date — falling back to pickup_date matches pre-2026-05-20
+        behaviour for non-overnight arrivals (which is the common case)."""
+        mock_send_email.return_value = True
+
+        send_booking_confirmation_email(
+            email="test@example.com",
+            first_name="John",
+            booking_reference="TAG-12345678",
+            dropoff_date="Monday, 15 January 2026",
+            dropoff_time="08:30",
+            pickup_date="Monday, 22 January 2026",
+            pickup_time="From 16:45 onwards",
+            # arrival_date omitted — exercise the fallback
+            flight_arrival_time="16:15",
+            flight_departure_time="10:00",
+            departure_flight="TOM1234 to Tenerife (TFS)",
+            return_flight="TOM1235 from Tenerife (TFS)",
+            vehicle_make="Ford",
+            vehicle_model="Focus",
+            vehicle_colour="Blue",
+            vehicle_registration="AB12 CDE",
+            package_name="1 Week",
+            amount_paid="£99.00",
+        )
+
+        html_content = mock_send_email.call_args[0][2]
+        assert "Arrives: Monday, 22 January 2026 at 16:15" in html_content
+
+    @patch('email_service.send_email')
+    def test_email_arrival_date_distinct_from_pickup_date_for_overnight(self, mock_send_email):
+        """Boundary regression for the 2026-05-19 confusion source: when the
+        flight lands Mon 23:30 and pickup_date rolled forward to Tue 00:00,
+        the email must show the LANDING day (Mon), not the rolled handoff day
+        (Tue). This is the user-visible reason the column was added."""
+        mock_send_email.return_value = True
+
+        send_booking_confirmation_email(
+            email="test@example.com",
+            first_name="John",
+            booking_reference="TAG-OVERNIGHT01",
+            dropoff_date="Monday, 15 January 2026",
+            dropoff_time="08:30",
+            pickup_date="Tuesday, 23 January 2026",  # rolled forward
+            pickup_time="From 00:00 onwards",
+            arrival_date="Monday, 22 January 2026",  # canonical landing day
+            flight_arrival_time="23:30",
+            flight_departure_time="10:00",
+            departure_flight="TOM1234 to Tenerife (TFS)",
+            return_flight="TOM1235 from Tenerife (TFS)",
+            vehicle_make="Ford",
+            vehicle_model="Focus",
+            vehicle_colour="Blue",
+            vehicle_registration="AB12 CDE",
+            package_name="1 Week",
+            amount_paid="£99.00",
+        )
+
+        html_content = mock_send_email.call_args[0][2]
+        # The visible header is the landing day, NOT the rolled pickup day.
+        assert "Arrives: Monday, 22 January 2026 at 23:30" in html_content
+        # The rolled pickup day must not appear in the customer-facing
+        # rendered HTML (it would re-introduce the 2026-05-19 confusion).
+        assert "Tuesday, 23 January 2026" not in html_content
 
     @patch('email_service.send_email')
     def test_email_contains_payment_amount(self, mock_send_email):

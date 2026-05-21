@@ -2632,6 +2632,14 @@ async def create_manual_booking(
         # Format dates for email
         dropoff_date_formatted = request.dropoff_date.strftime("%A, %d %B %Y")
         pickup_date_formatted = request.pickup_date.strftime("%A, %d %B %Y")
+        # Canonical landing date for the return flight. Falls back to
+        # pickup_date_formatted when the admin's form didn't send it (legacy
+        # call shape) so the email still renders a sensible date.
+        arrival_date_formatted = (
+            request.flight_arrival_date.strftime("%A, %d %B %Y")
+            if request.flight_arrival_date
+            else pickup_date_formatted
+        )
         amount_formatted = f"£{request.amount_pence / 100:.2f}"
 
         if is_free:
@@ -2672,6 +2680,7 @@ async def create_manual_booking(
                 dropoff_time=request.dropoff_time,
                 pickup_date=pickup_date_formatted,
                 pickup_time=request.pickup_time,
+                arrival_date=arrival_date_formatted,
                 flight_arrival_time=request.flight_arrival_time or "",
                 flight_departure_time=request.flight_departure_time or "",
                 departure_flight=departure_flight_str,
@@ -2704,6 +2713,8 @@ async def create_manual_booking(
                 dropoff_time=request.dropoff_time,
                 pickup_date=pickup_date_formatted,
                 pickup_time=request.pickup_time,
+                arrival_date=arrival_date_formatted,
+                flight_arrival_time=request.flight_arrival_time or "",
                 vehicle_make=request.make,
                 vehicle_model=request.model,
                 vehicle_colour=request.colour,
@@ -2843,6 +2854,13 @@ async def mark_booking_paid(
         pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
         # pickup_time is now the collection time (arrival + 30)
         pickup_time_str = booking.pickup_time.strftime("%H:%M") if booking.pickup_time else "TBC"
+        # Canonical landing date for the email. Falls back to pickup_date for
+        # legacy rows where flight_arrival_date is null.
+        arrival_date_str = (
+            booking.flight_arrival_date.strftime("%A, %d %B %Y")
+            if booking.flight_arrival_date
+            else pickup_date_str
+        )
         # Flight arrival time for email
         flight_arrival_time_str = booking.flight_arrival_time.strftime("%H:%M") if booking.flight_arrival_time else ""
         flight_departure_time_str = booking.flight_departure_time.strftime("%H:%M") if booking.flight_departure_time else ""
@@ -2914,6 +2932,7 @@ async def mark_booking_paid(
             dropoff_time=dropoff_time_str,
             pickup_date=pickup_date_str,
             pickup_time=pickup_time_str,
+            arrival_date=arrival_date_str,
             flight_arrival_time=flight_arrival_time_str,
             flight_departure_time=flight_departure_time_str,
             departure_flight=departure_flight,
@@ -3460,6 +3479,11 @@ async def resend_booking_confirmation_email(
     # Format dates
     dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
     pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
+    arrival_date_str = (
+        booking.flight_arrival_date.strftime("%A, %d %B %Y")
+        if booking.flight_arrival_date
+        else pickup_date_str
+    )
     dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else ""
 
     # Format flight info: airline + flight number (if provided) + destination
@@ -3531,6 +3555,7 @@ async def resend_booking_confirmation_email(
         dropoff_time=dropoff_time_str,
         pickup_date=pickup_date_str,
         pickup_time=pickup_time_str,
+        arrival_date=arrival_date_str,
         flight_arrival_time=flight_arrival_time_str,
         flight_departure_time=flight_departure_time_str,
         departure_flight=departure_flight,
@@ -11305,6 +11330,14 @@ async def create_payment(
                 # Format dates nicely for email
                 dropoff_date_str = dropoff_date.strftime("%A, %d %B %Y")
                 pickup_date_str = pickup_date.strftime("%A, %d %B %Y")
+                # Canonical landing date — set at the top of create_payment
+                # from request.flight_arrival_date (with pickup_date fallback
+                # for legacy payloads). Format the same way as pickup_date.
+                arrival_date_str = (
+                    flight_arrival_date.strftime("%A, %d %B %Y")
+                    if flight_arrival_date
+                    else pickup_date_str
+                )
                 dropoff_time_str = dropoff_time.strftime("%H:%M") if dropoff_time else "TBC"
 
                 # Calculate pickup time (30 mins after scheduled arrival) - format as "From HH:MM onwards"
@@ -11385,6 +11418,7 @@ async def create_payment(
                     dropoff_time=dropoff_time_str,
                     pickup_date=pickup_date_str,
                     pickup_time=pickup_time_str,
+                    arrival_date=arrival_date_str,
                     flight_arrival_time=flight_arrival_time_str,
                     flight_departure_time=flight_departure_time_str,
                     departure_flight=departure_flight,
@@ -11805,6 +11839,11 @@ async def stripe_webhook(
                 # Format dates nicely
                 dropoff_date_str = booking.dropoff_date.strftime("%A, %d %B %Y")
                 pickup_date_str = booking.pickup_date.strftime("%A, %d %B %Y")
+                arrival_date_str = (
+                    booking.flight_arrival_date.strftime("%A, %d %B %Y")
+                    if booking.flight_arrival_date
+                    else pickup_date_str
+                )
                 dropoff_time_str = booking.dropoff_time.strftime("%H:%M") if booking.dropoff_time else ""
 
                 # Format flight info: airline + flight number (if provided) + destination
@@ -11863,6 +11902,7 @@ async def stripe_webhook(
                     dropoff_time=dropoff_time_str,
                     pickup_date=pickup_date_str,
                     pickup_time=pickup_time_str,
+                    arrival_date=arrival_date_str,
                     flight_arrival_time=flight_arrival_time_str,
                     flight_departure_time=flight_departure_time_str,
                     departure_flight=departure_flight,

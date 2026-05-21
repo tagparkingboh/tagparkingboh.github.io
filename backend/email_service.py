@@ -216,6 +216,7 @@ def send_booking_confirmation_email(
     vehicle_registration: str,
     package_name: str,
     amount_paid: str,
+    arrival_date: str = "",
     vehicle_model: str = None,  # Deprecated - DVLA API doesn't provide model
     promo_code: str = None,
     discount_amount: str = None,
@@ -241,6 +242,10 @@ def send_booking_confirmation_email(
         vehicle_registration: Registration plate
         package_name: Package name (e.g., "1 Week" or "2 Weeks")
         amount_paid: Amount paid (e.g., "£99.00")
+        arrival_date: Canonical landing date for the return flight, formatted
+            ("Monday, 8 July 2026"). Distinct from pickup_date — for overnight
+            arrivals the customer lands the day BEFORE pickup_date. Falls back
+            to pickup_date when empty so legacy callers keep working.
         promo_code: Optional promo code used
         discount_amount: Optional discount amount (e.g., "£9.90")
 
@@ -293,6 +298,11 @@ def send_booking_confirmation_email(
         html_content = html_content.replace("{{DROPOFF_TIME}}", dropoff_time)
         html_content = html_content.replace("{{PICKUP_DATE}}", pickup_date)
         html_content = html_content.replace("{{PICKUP_TIME}}", pickup_time)
+        # Canonical landing date for the return flight. Falls back to
+        # pickup_date when not provided so legacy callers continue to render
+        # something sensible (the date matches pre-2026-05-20 behaviour for
+        # non-overnight arrivals).
+        html_content = html_content.replace("{{ARRIVAL_DATE}}", arrival_date or pickup_date)
         html_content = html_content.replace("{{FLIGHT_ARRIVAL_TIME}}", flight_arrival_time)
         html_content = html_content.replace("{{FLIGHT_DEPARTURE_TIME}}", flight_departure_time)
         html_content = html_content.replace("{{DEPARTURE_FLIGHT}}", departure_flight)
@@ -494,6 +504,8 @@ def send_manual_booking_payment_email(
     vehicle_registration: str,
     amount: str,
     payment_link: str,
+    arrival_date: str = "",
+    flight_arrival_time: str = "",
     vehicle_model: str = None,  # Deprecated - DVLA API doesn't provide model
 ) -> bool:
     """
@@ -512,6 +524,12 @@ def send_manual_booking_payment_email(
         vehicle_registration: Registration plate
         amount: Amount to pay (e.g., "£99.00")
         payment_link: Stripe payment link URL
+        arrival_date: Formatted canonical landing date for the return flight
+            ("Monday, 8 July 2026"). Falls back to pickup_date when empty so
+            legacy callers continue rendering — date matches pre-2026-05-20
+            behaviour for non-overnight arrivals.
+        flight_arrival_time: Landing time HH:MM. Falls back to pickup_time
+            when empty (same legacy-caller safety net).
 
     Returns:
         True if sent successfully, False otherwise.
@@ -530,6 +548,8 @@ def send_manual_booking_payment_email(
         html_content = html_content.replace("{{DROPOFF_TIME}}", dropoff_time)
         html_content = html_content.replace("{{PICKUP_DATE}}", pickup_date)
         html_content = html_content.replace("{{PICKUP_TIME}}", pickup_time)
+        html_content = html_content.replace("{{ARRIVAL_DATE}}", arrival_date or pickup_date)
+        html_content = html_content.replace("{{FLIGHT_ARRIVAL_TIME}}", flight_arrival_time or pickup_time)
         html_content = html_content.replace("{{VEHICLE_MAKE}}", vehicle_make)
         html_content = html_content.replace("{{VEHICLE_MODEL}}", vehicle_model or "")
         html_content = html_content.replace("{{VEHICLE_COLOUR}}", vehicle_colour)
