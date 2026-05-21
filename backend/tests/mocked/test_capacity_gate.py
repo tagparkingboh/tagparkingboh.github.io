@@ -150,41 +150,57 @@ class TestSoftCapBoundaryAcrossStay:
 
 
 # =============================================================================
-# Session dedup — re-submitter's own PENDING excluded
+# Status filter — PENDING bookings are NOT counted (post-2026-05-21)
 # =============================================================================
 
-class TestSessionDedup:
-    """The endpoint passes the existing PENDING booking's id as
-    exclude_booking_id so the customer's own row isn't double-counted on
-    a retry. Without this, legitimate retries would be blocked at the cap."""
+class TestStatusFilterExcludesPending:
+    """The helper's SQLAlchemy filter passes [CONFIRMED, COMPLETED] only —
+    PENDING (mid-checkout carts) used to inflate the count and trigger
+    false 'Full (60)' blocks (27 May prod: 57 confirmed + 3 pending stale
+    carts → block fired). First-come-first-served race protection now lives
+    at /api/payments/create-intent where the CONFIRMED commit wins."""
 
-    def test_excluding_own_pending_unblocks_retry(self):
-        own_id = 999
-        all_overlapping = [_make_booking(D, D, id=i) for i in range(59)] + [
-            _make_booking(D, D, id=own_id)
-        ]
+    def test_status_filter_clause_excludes_pending(self):
+        """Snap the actual filter clause passed by the helper — independent
+        of the row-level mock, which can't observe filter expressions."""
+        captured = {"in_values": None}
 
-        # Helper does the exclusion: when exclude_booking_id=own_id the
-        # query .filter(Booking.id != own_id) returns the 59 others.
+        class _SpyChain:
+            def __init__(self):
+                self._chained = False
+
+            def filter(self, *args, **_kw):
+                # First .filter() is the status .in_() clause.
+                for arg in args:
+                    if captured["in_values"] is None and hasattr(arg, "right"):
+                        try:
+                            captured["in_values"] = arg.right.value
+                        except Exception:
+                            pass
+                return self
+
+            def all(self):
+                return []
+
         db = MagicMock()
-        db.query.return_value.filter.return_value.filter.return_value.all.return_value = (
-            [b for b in all_overlapping if b.id != own_id]
-        )
-        db.query.return_value.filter.return_value.all.return_value = all_overlapping
+        db.query.return_value = _SpyChain()
+        find_overcapacity_day_in_stay(db, D, D, cap=60)
 
-        assert (
-            find_overcapacity_day_in_stay(db, D, D, cap=60, exclude_booking_id=own_id)
-            is None
+        assert captured["in_values"] is not None
+        assert BookingStatus.CONFIRMED in captured["in_values"]
+        assert BookingStatus.COMPLETED in captured["in_values"]
+        assert BookingStatus.PENDING not in captured["in_values"], (
+            "PENDING must not count toward the public capacity gate — "
+            "race protection now fires at create-intent time, not at form-fill."
         )
 
-    def test_without_excluding_own_pending_would_block(self):
-        own_id = 999
-        all_overlapping = [_make_booking(D, D, id=i) for i in range(59)] + [
-            _make_booking(D, D, id=own_id)
-        ]
-        db = _mock_db(all_overlapping)
-        # No exclusion → all 60 counted → blocked.
-        assert find_overcapacity_day_in_stay(db, D, D, cap=60) == (D, 60)
+    def test_exclude_booking_id_still_supported_for_legacy_callers(self):
+        """`exclude_booking_id` is largely a no-op now that PENDING is
+        universally excluded — but the helper still supports the param
+        (some call sites pass it; removing now would be a wider refactor).
+        Confirms the kwarg doesn't blow up."""
+        db = _mock_db([_make_booking(D, D, id=i) for i in range(59)])
+        assert find_overcapacity_day_in_stay(db, D, D, cap=60, exclude_booking_id=999) is None
 
 
 # =============================================================================

@@ -796,11 +796,18 @@ async def get_daily_capacity(
 ):
     """Customer-facing daily occupancy feed for the booking flow.
 
-    Returns the number of cars parked on each date in [date_from, date_to]
-    based on the live `bookings` table. Counts CONFIRMED, COMPLETED, and
-    PENDING (in-payment-flow) bookings — PENDING is included so two
-    customers can't both pass the date-pick gate and then race to pay for
-    the last spot.
+    Returns the number of cars actually parked (or going to be parked) on
+    each date in [date_from, date_to] based on the live `bookings` table.
+    Counts CONFIRMED + COMPLETED only — PENDING bookings are mid-checkout
+    carts that may never convert, and including them inflates the count
+    against the public 60-cap (caught 2026-05-21 on 27 May: 57 confirmed
+    + 3 pending stuck for a while → ops calendar showed "Full (60)" but
+    there were actually 3 real slots free).
+
+    First-come-first-served race protection moved to /api/payments/create-intent:
+    if two customers race for the same last slot, only one's create-intent
+    succeeds (find_overcapacity_day_in_stay re-checks at confirm time);
+    the other gets the "Sorry, we're full" 400 with a phone routing link.
 
     Public endpoint (no auth) — only exposes aggregate counts per date,
     no PII. Locked at MAX_PARKING_SPOTS = 60 (booking_service.py).
@@ -815,7 +822,6 @@ async def get_daily_capacity(
         .filter(DbBooking.status.in_([
             BookingStatus.CONFIRMED,
             BookingStatus.COMPLETED,
-            BookingStatus.PENDING,
         ]))
         .filter(DbBooking.dropoff_date <= date_to)
         .filter(DbBooking.pickup_date >= date_from)

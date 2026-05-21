@@ -98,21 +98,68 @@ class TestCapacityDailyHappy:
             "2026-06-17": 1,
         }
 
-    def test_happy_pending_counted_alongside_confirmed(self, mock_db):
-        """PENDING bookings are in-payment-flow and must count so two
-        customers can't race for the same last spot."""
+    def test_happy_only_confirmed_and_completed_seed_returns_count(self, mock_db):
+        """PENDING is excluded by the handler's status filter (post-2026-05-21);
+        seed only the rows the real query would return after that filter and
+        assert the count loop produces the right occupancy."""
         d = date(2026, 6, 15)
         mock_db._tables[Booking] = [
             mk_booking(dropoff=d, pickup=d, status=BookingStatus.CONFIRMED),
-            mk_booking(dropoff=d, pickup=d, status=BookingStatus.PENDING),
             mk_booking(dropoff=d, pickup=d, status=BookingStatus.COMPLETED),
         ]
         r = _client(mock_db).get("/api/capacity/daily?date_from=2026-06-15&date_to=2026-06-15")
         assert r.status_code == 200
-        # FakeQuery doesn't actually filter — but the handler's count loop
-        # walks every row, so this confirms PENDING + COMPLETED are eligible
-        # alongside CONFIRMED in the response shape.
-        assert r.json()["daily_occupancy"]["2026-06-15"] == 3
+        assert r.json()["daily_occupancy"]["2026-06-15"] == 2
+
+    def test_happy_status_filter_excludes_pending(self):
+        """Regression for the 2026-05-21 incident (27 May prod: 57 confirmed
+        + 3 pending → ops calendar showed "Full (60)" but real occupancy was
+        57). Asserts the handler's SQLAlchemy filter passes a status list
+        that does NOT include PENDING. Stronger than FakeQuery-based tests
+        which can't observe the filter clause."""
+        captured = {"in_args": None}
+
+        class _SpyChain:
+            def __init__(self):
+                self.calls = 0
+
+            def filter(self, *args, **_kw):
+                self.calls += 1
+                # First .filter() is the status filter — capture its first
+                # argument's in_() values for inspection.
+                for arg in args:
+                    if captured["in_args"] is None and hasattr(arg, "right"):
+                        try:
+                            # SQLAlchemy In-expression: arg.right is a
+                            # BindParameter or a tuple of values.
+                            value = arg.right.value if hasattr(arg.right, "value") else None
+                            if value is not None:
+                                captured["in_args"] = value
+                        except Exception:
+                            pass
+                return self
+
+            def all(self):
+                return []
+
+        db = MagicMock()
+        db.query.return_value = _SpyChain()
+
+        def _override_get_db():
+            yield db
+
+        app.dependency_overrides[get_db] = _override_get_db
+        try:
+            r = TestClient(app).get("/api/capacity/daily?date_from=2026-06-15&date_to=2026-06-15")
+            assert r.status_code == 200
+            assert captured["in_args"] is not None, "status filter clause not observed"
+            assert BookingStatus.CONFIRMED in captured["in_args"]
+            assert BookingStatus.COMPLETED in captured["in_args"]
+            assert BookingStatus.PENDING not in captured["in_args"], (
+                "PENDING must not count toward customer-facing daily occupancy"
+            )
+        finally:
+            app.dependency_overrides.clear()
 
 
 class TestCapacityDailyUnhappy:
