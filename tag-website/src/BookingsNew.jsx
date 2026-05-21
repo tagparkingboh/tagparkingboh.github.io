@@ -10,6 +10,11 @@ import {
   computeEarliestBookableDate,
   inLeadTimeRecheckWindow,
 } from './utils/leadTime'
+import {
+  isAtCapacity as isAtCapacityUtil,
+  isManuallyBlocked as isManuallyBlockedUtil,
+  findBlockedDateInStay as findBlockedDateInStayUtil,
+} from './utils/capacity'
 import 'react-datepicker/dist/react-datepicker.css'
 import './BookingsNew.css'
 
@@ -517,22 +522,15 @@ function Bookings({ isModal = false, onClose }) {
   }
 
   // -- Day-level capacity helpers --------------------------------------
-  // ISO date string for a Date in local time (avoids UTC shift).
-  const isoDate = (d) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  // Pure logic lives in src/utils/capacity.js so it can be HUEB-tested. The
+  // wrappers below thread the component's state (dailyOccupancy, blockedDates,
+  // SOFT_CAP_FE) so the JSX call sites stay parameter-free.
 
-  // True if `date` falls inside any manual BlockedDate row.
-  const isManuallyBlocked = (date) => {
-    if (!date) return false
-    const ds = isoDate(date)
-    return blockedDates.some(bd => ds >= bd.start_date && ds <= bd.end_date)
-  }
+  const isManuallyBlocked = (date) =>
+    isManuallyBlockedUtil(date, blockedDates)
 
-  // True if `date` is at the public soft cap (60+ cars overlapping that day).
-  const isAtCapacity = (date) => {
-    if (!date) return false
-    return (dailyOccupancy[isoDate(date)] || 0) >= SOFT_CAP_FE
-  }
+  const isAtCapacity = (date) =>
+    isAtCapacityUtil(date, dailyOccupancy, SOFT_CAP_FE)
 
   // Tint helper for react-datepicker `dayClassName` prop.
   const datePickerDayClass = (date) => {
@@ -542,19 +540,14 @@ function Bookings({ isModal = false, onClose }) {
   }
 
   // Walk the stay range and return the first date that's blocked or at cap.
-  // Returns { date: Date, reason: 'manual'|'cap' } or null.
-  const findBlockedDateInStay = useMemo(() => {
-    if (!formData.dropoffDate || !formData.pickupDate) return null
-    const cursor = new Date(formData.dropoffDate)
-    const end = new Date(formData.pickupDate)
-    while (cursor <= end) {
-      if (isManuallyBlocked(cursor)) return { date: new Date(cursor), reason: 'manual' }
-      if (isAtCapacity(cursor)) return { date: new Date(cursor), reason: 'cap' }
-      cursor.setDate(cursor.getDate() + 1)
-    }
-    return null
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.dropoffDate, formData.pickupDate, blockedDates, dailyOccupancy])
+  // Catches the "straddle" case where dropoff + pickup themselves are fine
+  // but a day inside the stay is full.
+  const findBlockedDateInStay = useMemo(
+    () => findBlockedDateInStayUtil(
+      formData.dropoffDate, formData.pickupDate, dailyOccupancy, blockedDates, SOFT_CAP_FE,
+    ),
+    [formData.dropoffDate, formData.pickupDate, blockedDates, dailyOccupancy],
+  )
 
   // Check if a date/time is blocked for drop-offs
   // Returns true if ALL potential dropoff times are blocked (or full-day block)
@@ -2739,6 +2732,21 @@ function Bookings({ isModal = false, onClose }) {
                     })()}
                   </div>
                 )}
+                {/* At-capacity (soft-cap) banner — fires before pickup_date is
+                    selected. Until 2026-05-21 the soft cap only surfaced as
+                    an amber tint inside the date-picker popup; once the
+                    customer closed the picker there was no visible signal
+                    and the form let them fill in airline/destination. Once
+                    both dates exist, findBlockedDateInStay's stay-span
+                    banner takes over (avoids double-rendering). */}
+                {!isDropoffDateBlocked && formData.dropoffDate && isLeadTimeAllowed && !findBlockedDateInStay && isAtCapacity(formData.dropoffDate) && (
+                  <div className="blocked-date-message">
+                    <p>
+                      Sorry, we're full on {format(formData.dropoffDate, 'EEEE d MMMM yyyy')}.
+                      Call <a href="tel:01202 798710" className="contact-link">01202 798710</a> and we will try our best to help!
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Flight lookup removed - using direct entry flow */}
@@ -2750,7 +2758,7 @@ function Bookings({ isModal = false, onClose }) {
                   defined as "ALL potential dropoff times are blocked OR
                   full-day block"). Either way the banner above asks them
                   to call; no point letting them fill in the rest. */}
-              {showManualDeparture && formData.dropoffDate && isLeadTimeAllowed && !isDropoffDateBlocked && !findBlockedDateInStay && (
+              {showManualDeparture && formData.dropoffDate && isLeadTimeAllowed && !isDropoffDateBlocked && !findBlockedDateInStay && !isAtCapacity(formData.dropoffDate) && (
                 <div className="form-group fade-in">
                   <div className="form-group">
                     <label htmlFor="manualAirline">Airline <span className="required">*</span></label>
@@ -3003,6 +3011,19 @@ function Bookings({ isModal = false, onClose }) {
                           </p>
                         </div>
                       )}
+                      {/* Pickup at-capacity banner — mirrors the dropoff-side
+                          soft-cap message added 2026-05-21. Fires for the
+                          standalone "I selected a return date that's full"
+                          case which findBlockedDateInStay also catches but
+                          phrases as a stay-span warning. */}
+                      {formData.pickupDate && !isPickupDateBlocked && !findBlockedDateInStay && isAtCapacity(formData.pickupDate) && (
+                        <div className="blocked-date-message">
+                          <p>
+                            Sorry, we're full on {format(formData.pickupDate, 'EEEE d MMMM yyyy')}.
+                            Call <a href="tel:01202 798710" className="contact-link">01202 798710</a> and we will try our best to help!
+                          </p>
+                        </div>
+                      )}
                       {isPickupDateBlocked && formData.pickupDate && (
                         <div className="blocked-date-message">
                           {(() => {
@@ -3034,7 +3055,7 @@ function Bookings({ isModal = false, onClose }) {
               {/* Flight-based arrival lookup removed - using direct entry */}
 
               {/* Return Flight Entry Form */}
-              {showManualArrival && formData.pickupDate && !isPickupDateBlocked && !findBlockedDateInStay && (
+              {showManualArrival && formData.pickupDate && !isPickupDateBlocked && !findBlockedDateInStay && !isAtCapacity(formData.pickupDate) && (
                 <div className="form-group fade-in">
                   <div className="form-group">
                     <label htmlFor="manualArrivalAirline">Airline <span className="required">*</span></label>
