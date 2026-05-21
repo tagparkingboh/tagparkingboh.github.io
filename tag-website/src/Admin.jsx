@@ -10,6 +10,7 @@ import RosterCalendar from './components/RosterCalendar'
 import Payroll from './components/Payroll'
 import PlannedRosterCalendar from './components/qa/PlannedRosterCalendar'
 import { taxStatusClass, motStatusClass, shouldShowAlert, formatIsoDateUk } from './dvlaCompliance'
+import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -5786,25 +5787,9 @@ function Admin() {
     return `${days[date.getDay()]}, ${day} ${months[Number(month) - 1]} ${year}`
   }
 
-  // Resolve the arrival date for display. New rows have flight_arrival_date set
-  // explicitly. Legacy rows (pre-column) fall back to pickup_date — minus one
-  // day when arrival_time + 30 minutes crossed midnight, since the overnight
-  // rollover pushed pickup_date past the actual landing day.
-  const resolveArrivalDate = (booking) => {
-    if (booking?.flight_arrival_date) return booking.flight_arrival_date
-    if (!booking?.pickup_date) return null
-    const t = booking.flight_arrival_time
-    if (typeof t === 'string' && /^\d{2}:\d{2}/.test(t)) {
-      const [h, m] = t.split(':').map(Number)
-      if (h * 60 + m + 30 >= 1440) {
-        const [yy, mm, dd] = booking.pickup_date.split('-').map(Number)
-        const d = new Date(yy, mm - 1, dd - 1)
-        const pad = (n) => String(n).padStart(2, '0')
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-      }
-    }
-    return booking.pickup_date
-  }
+  // resolveArrivalDate now lives in src/utils/arrivalDate.js so it can be
+  // H/U/E/B tested in isolation. Used at line ~4104 (booking-detail card)
+  // and line ~5390 (Edit Booking form initialiser).
 
   const formatTime = (timeStr) => {
     if (!timeStr) return ''
