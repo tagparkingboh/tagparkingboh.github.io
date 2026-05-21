@@ -835,9 +835,18 @@ def find_overcapacity_day_in_stay(
     Called from /api/payments/create-intent (cap=60 public soft cap) and
     the admin manual-booking endpoints (cap=62 physical hard ceiling).
 
-    `exclude_booking_id` lets a re-submitting customer's own PENDING row
-    be ignored so legit retries aren't blocked by the customer's own
-    in-flight booking. Pass it the existing PENDING id when retrying.
+    Counts CONFIRMED + COMPLETED only — PENDING (in-checkout carts) are
+    excluded after the 2026-05-21 review: mid-flow carts inflated the
+    count against real customers trying to book real spots. Two customers
+    racing for the same last slot is handled first-come-first-served at
+    this gate: whoever calls /api/payments/create-intent and commits a
+    CONFIRMED row first wins; the second customer hits this check and
+    gets 400 "Sorry, we're full" with phone routing.
+
+    `exclude_booking_id` is retained for safety on the few legacy paths
+    that pass it (e.g. resubmitting an existing PENDING). Now that
+    PENDING is universally excluded the practical effect is no-op for
+    that case, but keeping the param avoids a wider call-site cleanup.
 
     Returns (offending_date, current_count) — count is the number of
     bookings already on that day (excluding the optional excluded one),
@@ -846,7 +855,7 @@ def find_overcapacity_day_in_stay(
     from datetime import timedelta as _td  # local import to keep top-of-file tidy
 
     q = db.query(Booking).filter(
-        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.PENDING]),
+        Booking.status.in_([BookingStatus.CONFIRMED, BookingStatus.COMPLETED]),
         Booking.dropoff_date <= pickup_date,
         Booking.pickup_date >= dropoff_date,
     )
