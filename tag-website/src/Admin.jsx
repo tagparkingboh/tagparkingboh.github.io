@@ -10,6 +10,7 @@ import RosterCalendar from './components/RosterCalendar'
 import Payroll from './components/Payroll'
 import PlannedRosterCalendar from './components/qa/PlannedRosterCalendar'
 import { taxStatusClass, motStatusClass, shouldShowAlert, formatIsoDateUk } from './dvlaCompliance'
+import { resolveArrivalDate } from './utils/arrivalDate'
 import './Admin.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -4100,7 +4101,11 @@ function Admin() {
                   </span>
                 </div>
                 <div className="booking-detail">
-                  <span className="detail-label">Flight Arrives</span>
+                  <span className="detail-label">Arrival Date</span>
+                  <span className="detail-value">{formatDate(resolveArrivalDate(booking))}</span>
+                </div>
+                <div className="booking-detail">
+                  <span className="detail-label">Arrival Time</span>
                   <span className="detail-value">{booking.flight_arrival_time || '-'}</span>
                 </div>
                 <div className="booking-detail">
@@ -5378,6 +5383,12 @@ function Admin() {
       dropoff_destination: booking.dropoff_destination || '',
       // Pickup/Return details - convert ISO date to UK format for display
       pickup_date: isoToUkDate(booking.pickup_date) || '',
+      // Arrival date is editable independently of pickup_date. For legacy rows
+      // where flight_arrival_date is NULL we derive a sensible default via
+      // resolveArrivalDate (which reverses the +30-min rollover for late-night
+      // arrivals — naive pickup_date as the default would silently set the
+      // wrong day for any 23:30+ flight, see TAG-MNF73277 incident 2026-05-21).
+      flight_arrival_date: isoToUkDate(resolveArrivalDate(booking)) || '',
       flight_arrival_time: booking.flight_arrival_time || '',
       pickup_airline_name: booking.pickup_airline_name || '',
       pickup_flight_number: booking.pickup_flight_number || '',
@@ -5409,6 +5420,7 @@ function Admin() {
           dropoff_destination: editForm.dropoff_destination || null,
           // Pickup/Return details - convert UK date back to ISO format for API
           pickup_date: ukToIsoDate(editForm.pickup_date) || null,
+          flight_arrival_date: ukToIsoDate(editForm.flight_arrival_date) || null,
           flight_arrival_time: editForm.flight_arrival_time || null,
           pickup_airline_name: editForm.pickup_airline_name || null,
           pickup_flight_number: editForm.pickup_flight_number || null,
@@ -5774,6 +5786,10 @@ function Admin() {
     const date = new Date(Number(year), Number(month) - 1, Number(day))
     return `${days[date.getDay()]}, ${day} ${months[Number(month) - 1]} ${year}`
   }
+
+  // resolveArrivalDate now lives in src/utils/arrivalDate.js so it can be
+  // H/U/E/B tested in isolation. Used at line ~4104 (booking-detail card)
+  // and line ~5390 (Edit Booking form initialiser).
 
   const formatTime = (timeStr) => {
     if (!timeStr) return ''
@@ -15770,6 +15786,26 @@ function Admin() {
 
               <h4 className="modal-section-title">Pick-up / Return</h4>
               <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Arrival Date</label>
+                  <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      placeholder="DD/MM/YYYY"
+                      pattern="\d{2}/\d{2}/\d{4}"
+                      value={editForm.flight_arrival_date}
+                      onChange={(e) => setEditForm({ ...editForm, flight_arrival_date: formatDateInput(e.target.value) })}
+                      maxLength={10}
+                      style={{ width: '125px' }}
+                    />
+                    <DatePicker
+                      selected={parseUkDate(editForm.flight_arrival_date)}
+                      onChange={(date) => setEditForm({ ...editForm, flight_arrival_date: dateToUkString(date) })}
+                      dateFormat="dd/MM/yyyy"
+                      customInput={<button type="button" className="date-picker-btn">📅</button>}
+                    />
+                  </div>
+                </div>
                 <div className="modal-form-group">
                   <label>Pickup Date</label>
                   <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>

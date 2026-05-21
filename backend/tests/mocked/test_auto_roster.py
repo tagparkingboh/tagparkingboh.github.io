@@ -186,25 +186,27 @@ class TestEventsForBooking:
         assert pickup[2] == datetime(2026, 6, 18, 0, 25)   # end = customer handoff next day
 
     def test_boundary_flight_arrival_equal_to_pickup_time_stays_same_day(self):
-        # Equal times — no overnight crossing. Start = arrival, end = pickup_time
-        # (which happen to be equal — atypical but valid).
+        # Equal times — no overnight crossing. start = arrival; end = arrival
+        # + 30 (the standard handoff offset, derived from arrival, not read
+        # from stored pickup_time).
         b = mk_booking(
             pickup_dt=datetime(2026, 6, 17, 14, 0),
             flight_arrival_time=time(14, 0),
         )
         pickup = next(e for e in _events_for_booking(b) if e[0] == "pick_up")
         assert pickup[1] == datetime(2026, 6, 17, 14, 0)
-        assert pickup[2] == datetime(2026, 6, 17, 14, 0)
+        assert pickup[2] == datetime(2026, 6, 17, 14, 30)
 
     def test_boundary_flight_arrival_one_minute_after_pickup_back_dates(self):
-        # 1-minute over the boundary triggers back-dating of the start anchor.
+        # 1-minute over the boundary triggers back-dating of the start anchor;
+        # end_anchor follows as start + 30, so it lands the same day as start.
         b = mk_booking(
             pickup_dt=datetime(2026, 6, 17, 0, 25),
             flight_arrival_time=time(0, 26),
         )
         pickup = next(e for e in _events_for_booking(b) if e[0] == "pick_up")
         assert pickup[1] == datetime(2026, 6, 16, 0, 26)
-        assert pickup[2] == datetime(2026, 6, 17, 0, 25)  # end stays on pickup_date
+        assert pickup[2] == datetime(2026, 6, 16, 0, 56)
 
     def test_boundary_flight_arrival_one_minute_before_pickup_stays_same_day(self):
         # Normal "land just before pickup" case must not back-date.
@@ -214,7 +216,7 @@ class TestEventsForBooking:
         )
         pickup = next(e for e in _events_for_booking(b) if e[0] == "pick_up")
         assert pickup[1] == datetime(2026, 6, 17, 13, 59)
-        assert pickup[2] == datetime(2026, 6, 17, 14, 0)
+        assert pickup[2] == datetime(2026, 6, 17, 14, 29)
 
     def test_edge_pickup_at_midnight_with_late_evening_flight(self):
         # Pickup exactly at 00:00 on day D, flight at 23:59 on D-1.
@@ -224,23 +226,38 @@ class TestEventsForBooking:
         )
         pickup = next(e for e in _events_for_booking(b) if e[0] == "pick_up")
         assert pickup[1] == datetime(2026, 6, 16, 23, 59)
-        assert pickup[2] == datetime(2026, 6, 17, 0, 0)
+        # end = start + 30 → crosses midnight onto pickup_date
+        assert pickup[2] == datetime(2026, 6, 17, 0, 29)
 
-    def test_pickup_end_anchor_is_pickup_time_not_flight_arrival(self):
-        """v3 asymmetry: the END anchor for a pickup is pickup_time so
-        shift_end = pickup_time + end_buffer, NOT flight_arrival + end_buffer.
-        This is the "shift was ending exactly when customer arrives" fix."""
+    def test_pickup_end_anchor_is_arrival_plus_handoff_offset(self):
+        """2026-05-20 amendment: the END anchor for a pickup is derived as
+        `start_anchor + 30 min` (the canonical handoff offset), NOT read from
+        `booking.pickup_time`. Goal: engine pivots on a single canonical event
+        (the flight landing), so the car is at the airport as close to
+        arrival time as possible. The 30-min offset plus the configured
+        end_buffer give the jockey time for the actual handover."""
+        # Arrival 15:40, stored pickup_time 16:10 (typical: arrival + 30).
+        # End anchor = 15:40 + 30 = 16:10 — happens to match stored pickup_time
+        # in the common case, but the derivation no longer depends on it.
         b = mk_booking(
             pickup_dt=datetime(2026, 6, 17, 16, 10),
             flight_arrival_time=time(15, 40),
         )
         pickup = next(e for e in _events_for_booking(b) if e[0] == "pick_up")
-        # Without the fix, both anchors would be 15:40 and shift_end would
-        # land at exactly 16:10 (the customer-handoff moment) — leaving no
-        # buffer for the actual handover. With the fix, end = 16:10 and
-        # shift_end = 16:10 + end_buffer.
         assert pickup[1] == datetime(2026, 6, 17, 15, 40)
         assert pickup[2] == datetime(2026, 6, 17, 16, 10)
+
+        # Stored pickup_time mismatch (e.g. admin manually changed it) does NOT
+        # influence end_anchor anymore — the engine ignores it. Regression
+        # against the pre-2026-05-20 behaviour where pickup_time drove shift_end.
+        b_mismatch = mk_booking(
+            pickup_dt=datetime(2026, 6, 17, 17, 30),  # admin set this 80 min late
+            flight_arrival_time=time(15, 40),
+        )
+        pickup_m = next(e for e in _events_for_booking(b_mismatch) if e[0] == "pick_up")
+        assert pickup_m[2] == datetime(2026, 6, 17, 16, 10), (
+            "end_anchor must derive from flight_arrival_time, not stored pickup_time"
+        )
 
     def test_unhappy_missing_dropoff_time_skipped(self):
         b = SimpleNamespace(
@@ -425,6 +442,86 @@ class TestRebuildAutoForDates:
         assert existing in db._deleted
         assert result["deleted"] == 1
         assert result["created"] == 0
+
+    def test_boundary_rebuild_expands_to_existing_cross_midnight_shift(self):
+        """Regression: a booking whose pickup lands D 02:00 (no rollover since
+        arrival_time 01:30 < pickup_time 02:00) should join the existing
+        cluster anchored on D-1 23:30 via the gap rule. Real failure
+        observed on staging 2026-05-20: target_set was {drop_off_day, D}
+        based on the new booking's own affected dates, but the existing
+        cross-midnight shift sits on D-1 → not deleted → cluster never
+        rebuilt → new booking has no pickup shift.
+
+        Fix: target_set is expanded to include the date of any untouched
+        auto-shift whose window touches a neighbour of target_set, so the
+        delete + rebuild covers the existing cross-midnight cluster."""
+        # Two earlier bookings already in the cluster (their pickup-event
+        # back-dates to D-1 23:30 because flight_arrival_time > pickup_time).
+        b1 = mk_booking(
+            booking_id=1, reference="TAG-NIGHT001",
+            dropoff_dt=datetime(2026, 7, 1, 11, 45),
+            pickup_dt=datetime(2026, 7, 9, 0, 0),
+            flight_arrival_time=time(23, 30),
+        )
+        b2 = mk_booking(
+            booking_id=2, reference="TAG-NIGHT002",
+            dropoff_dt=datetime(2026, 7, 1, 11, 45),
+            pickup_dt=datetime(2026, 7, 9, 0, 29),
+            flight_arrival_time=time(23, 59),
+        )
+        # New booking landing 01:30 on D with pickup 02:00 (no rollover).
+        b_new = mk_booking(
+            booking_id=3, reference="TAG-LATEAM01",
+            dropoff_dt=datetime(2026, 7, 1, 11, 45),
+            pickup_dt=datetime(2026, 7, 9, 2, 0),
+            flight_arrival_time=time(1, 30),
+        )
+        # Existing untouched auto-shift from b1+b2's earlier rebuild: spans
+        # 8 Jul 23:00 → 9 Jul 00:30. Its `date` is 8 Jul — NOT in target_set
+        # for the new booking's rebuild ({1 Jul, 9 Jul}).
+        existing = SimpleNamespace(
+            id=999,
+            created_source="auto",
+            staff_id=None,
+            status=ShiftStatus.SCHEDULED,
+            date=date(2026, 7, 8),
+            end_date=date(2026, 7, 9),
+            start_time=time(23, 0),
+            end_time=time(0, 30),
+        )
+        db = make_db(
+            bookings=[b1, b2, b_new],
+            untouched_auto_shifts=[existing],
+        )
+        # Trigger the rebuild for b_new's own affected dates only.
+        rebuild_auto_for_dates(
+            db,
+            {date(2026, 7, 1), date(2026, 7, 9)},
+            mk_settings(),
+        )
+
+        from db_models import RosterShift
+        # `existing` is a SimpleNamespace, not a RosterShift instance — filter
+        # by attribute presence rather than isinstance so it still matches.
+        deleted = [d for d in db._deleted if hasattr(d, "date")]
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+
+        # The cross-midnight shift (date=8 Jul) must have been picked up
+        # by the expanded delete scope, NOT left intact.
+        assert any(s.date == date(2026, 7, 8) for s in deleted), (
+            "expanded target_set must catch the existing 8 Jul shift; "
+            f"deleted dates: {[s.date for s in deleted]}"
+        )
+        # A replacement cross-midnight shift must have been created that
+        # extends past 02:00 (so it covers b_new's pickup).
+        cross = [s for s in new_shifts if s.date == date(2026, 7, 8) and s.end_date == date(2026, 7, 9)]
+        assert len(cross) == 1, (
+            f"exactly one cross-midnight shift expected, got {len(cross)}: "
+            f"{[(s.date, s.end_date, s.start_time, s.end_time) for s in new_shifts]}"
+        )
+        assert cross[0].end_time >= time(2, 0), (
+            f"rebuilt shift must extend to cover the 02:00 pickup; ends at {cross[0].end_time}"
+        )
 
     def test_boundary_overnight_cluster_attributed_to_first_event_date(self):
         """A booking with pickup 00:25 (anchor 23:55 prev day) and dropoff

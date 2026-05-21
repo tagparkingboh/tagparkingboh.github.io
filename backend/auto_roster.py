@@ -74,13 +74,20 @@ def _events_for_booking(booking: Booking) -> list[tuple[str, datetime, datetime]
       happens at the moment the customer arrives, so both ends of the shift
       window pivot off the same time.
     - **Pickup**: start_anchor = flight_arrival_time (jockey must be at the
-      airport before the plane lands so the car is ready); end_anchor =
-      pickup_time (the customer-handoff moment, when the jockey is actually
-      released). These differ by ~30 min (the standard
-      arrival→collection gap). When flight_arrival_time isn't recorded, the
-      engine derives start_anchor as `pickup_time - 30 min` (existing
-      behaviour). When pickup_time isn't recorded, end_anchor falls back to
-      `start_anchor + 30 min` (the same standard gap).
+      airport before the plane lands so the car is ready). end_anchor =
+      start_anchor + 30 min — the standard arrival→handoff offset, derived
+      rather than read from `pickup_time`. The engine pivots on a single
+      canonical event (the flight landing); the +30 buffer plus the
+      configured end_buffer give the jockey time to actually hand the car
+      over. Decision locked 2026-05-20: customer-facing time is the flight
+      landing, not a separately-stored handoff timestamp.
+
+    Calendar day for the flight:
+      * Prefer `flight_arrival_date` when set (canonical, populated on every
+        booking from 2026-05-20 onward).
+      * Legacy fallback for nullable rows: `flight_arrival_time > pickup_time`
+        means the flight landed the previous calendar day (overnight landing
+        with rolled-forward pickup_date).
 
     Returned datetimes are naive (no tz) — the DB columns are naive too;
     we attach UK_TZ when handing off to the clusterer.
@@ -90,28 +97,23 @@ def _events_for_booking(booking: Booking) -> list[tuple[str, datetime, datetime]
         dropoff_dt = datetime.combine(booking.dropoff_date, booking.dropoff_time)
         out.append(("drop_off", dropoff_dt, dropoff_dt))
     if booking.pickup_date:
-        if getattr(booking, "flight_arrival_time", None):
-            # flight_arrival_time has no date column; it's normally on
-            # pickup_date, but for early-AM pickups the flight lands the
-            # previous calendar day (e.g. flight 23:55, pickup 00:25 next
-            # day). Detect that by comparing against pickup_time.
-            flight_date = booking.pickup_date
-            if booking.pickup_time and booking.flight_arrival_time > booking.pickup_time:
-                flight_date = booking.pickup_date - timedelta(days=1)
-            start_anchor = datetime.combine(flight_date, booking.flight_arrival_time)
+        flight_arrival_time = getattr(booking, "flight_arrival_time", None)
+        start_anchor: Optional[datetime] = None
+        if flight_arrival_time:
+            flight_date = getattr(booking, "flight_arrival_date", None)
+            if flight_date is None:
+                # Legacy row (pre-flight_arrival_date column). Re-derive the
+                # calendar day from the overnight-rollover heuristic.
+                flight_date = booking.pickup_date
+                if booking.pickup_time and flight_arrival_time > booking.pickup_time:
+                    flight_date = booking.pickup_date - timedelta(days=1)
+            start_anchor = datetime.combine(flight_date, flight_arrival_time)
         elif booking.pickup_time:
-            # Pickup fallback start-anchor: flight typically lands 30 min
-            # before pickup_time. The pickup-led-cluster start_buffer (15 min,
-            # applied in compute_shift_buffers) then takes shift_start to
-            # pickup_time - 45.
+            # Very old rows with no flight_arrival_time at all — derive the
+            # landing time as pickup_time minus the standard 30-min handoff.
             start_anchor = datetime.combine(booking.pickup_date, booking.pickup_time) - timedelta(minutes=30)
-        else:
-            start_anchor = None
         if start_anchor is not None:
-            if booking.pickup_time:
-                end_anchor = datetime.combine(booking.pickup_date, booking.pickup_time)
-            else:
-                end_anchor = start_anchor + timedelta(minutes=30)
+            end_anchor = start_anchor + timedelta(minutes=30)
             out.append(("pick_up", start_anchor, end_anchor))
     return out
 
@@ -174,7 +176,38 @@ def rebuild_auto_for_dates(
     if not target_set:
         return summary
 
-    # 1. Delete untouched auto-shifts in scope.
+    # 1a. Expand target_set to include any neighbour day hosting an existing
+    # untouched auto-shift whose window touches our scope. Without this, a
+    # cross-midnight cluster anchored on D-1 stays intact when a new booking
+    # whose pickup lands on D (and within gap_max_minutes of D-1's events) is
+    # confirmed — the existing shift never gets rebuilt to include the new
+    # booking. Real example caught on staging 2026-05-20: TAG-HBD80857 with
+    # pickup 9 Jul 02:00 should have joined the existing 8→9 Jul shift via
+    # the 190-min gap rule, but didn't because 8 Jul wasn't in target_set.
+    neighbour_dates: set[date_type] = set()
+    for d in target_set:
+        neighbour_dates.add(d - timedelta(days=1))
+        neighbour_dates.add(d + timedelta(days=1))
+    if neighbour_dates:
+        adjacent = (
+            db.query(RosterShift)
+            .filter(
+                RosterShift.created_source == "auto",
+                RosterShift.staff_id.is_(None),
+                RosterShift.status == ShiftStatus.SCHEDULED,
+                or_(
+                    RosterShift.date.in_(neighbour_dates),
+                    RosterShift.end_date.in_(neighbour_dates),
+                ),
+            )
+            .all()
+        )
+        for s in adjacent:
+            target_set.add(s.date)
+            if s.end_date:
+                target_set.add(s.end_date)
+
+    # 1b. Delete untouched auto-shifts in scope.
     existing = (
         db.query(RosterShift)
         .filter(

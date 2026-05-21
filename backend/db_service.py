@@ -290,6 +290,7 @@ def create_booking(
     # Actual flight times
     flight_departure_time: time = None,
     flight_arrival_time: time = None,
+    flight_arrival_date: date = None,
     # Service variant (Park & Ride sets these; M&G omits and DB defaults apply)
     service_type: ServiceType = ServiceType.MEET_GREET,
     traveller_count: int = None,
@@ -338,6 +339,7 @@ def create_booking(
         # Actual flight times
         flight_departure_time=flight_departure_time,
         flight_arrival_time=flight_arrival_time,
+        flight_arrival_date=flight_arrival_date,
         # Service variant
         service_type=service_type,
         traveller_count=traveller_count,
@@ -737,6 +739,7 @@ def create_full_booking(
     # Actual flight times
     flight_departure_time: time = None,
     flight_arrival_time: time = None,
+    flight_arrival_date: date = None,
 ) -> dict:
     """
     Create a complete booking with customer, vehicle, booking, and payment records.
@@ -799,6 +802,7 @@ def create_full_booking(
         # Actual flight times
         flight_departure_time=flight_departure_time,
         flight_arrival_time=flight_arrival_time,
+        flight_arrival_date=flight_arrival_date,
     )
 
     # 4. Create payment record if stripe details provided

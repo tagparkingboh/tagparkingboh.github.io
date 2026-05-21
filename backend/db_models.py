@@ -226,6 +226,12 @@ class Booking(Base):
     flight_departure_time = Column(Time, nullable=True)  # Actual flight departure time
     flight_arrival_time = Column(Time, nullable=True)  # Actual flight arrival time
 
+    # Canonical landing date for the return flight (separate from pickup_date,
+    # which gets mutated to landing_date + 1 on overnight rollovers). Nullable
+    # because legacy rows pre-date the column; read-paths fall back to
+    # pickup_date minus the rollover (display-only) for those.
+    flight_arrival_date = Column(Date, nullable=True)
+
     # Pick-up details
     pickup_date = Column(Date, nullable=False)
     pickup_time = Column(Time)  # Collection time (flight_arrival_time + 30 min)

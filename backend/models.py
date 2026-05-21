@@ -213,6 +213,7 @@ class AdminBookingRequest(BaseModel):
 
     # Return trip
     pickup_date: date_type
+    flight_arrival_date: Optional[date_type] = None  # Canonical landing date (pickup_date may roll past midnight)
     return_flight_time: str
     return_flight_number: str
 
@@ -272,6 +273,7 @@ class ManualBookingRequest(BaseModel):
     dropoff_time: str  # "HH:MM"
     pickup_date: date_type
     pickup_time: str  # "HH:MM"
+    flight_arrival_date: Optional[date_type] = None  # Canonical landing date (pickup_date may roll past midnight)
 
     # Flight/slot details (optional - for slot availability tracking)
     departure_id: Optional[int] = None

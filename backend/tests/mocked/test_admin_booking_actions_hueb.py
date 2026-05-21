@@ -82,6 +82,11 @@ def _booking(**kw):
         dropoff_time=time(10, 0),
         pickup_time=time(11, 30),
         flight_arrival_time=time(15, 0),
+        # Added 2026-05-21 — resend_booking_confirmation_email now reads
+        # booking.flight_arrival_date to surface the canonical landing day
+        # in the email. Fixture default mirrors pickup_date for the common
+        # daytime-arrival case.
+        flight_arrival_date=date_type(2026, 6, 8),
         flight_departure_time=time(12, 0),
         dropoff_destination="Tenerife",
         dropoff_airline_name="TUI Airways",
