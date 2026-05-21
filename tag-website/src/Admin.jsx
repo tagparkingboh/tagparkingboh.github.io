@@ -5382,6 +5382,9 @@ function Admin() {
       dropoff_destination: booking.dropoff_destination || '',
       // Pickup/Return details - convert ISO date to UK format for display
       pickup_date: isoToUkDate(booking.pickup_date) || '',
+      // Arrival date is editable independently of pickup_date. Falls back to
+      // pickup_date for legacy rows (flight_arrival_date is nullable).
+      flight_arrival_date: isoToUkDate(booking.flight_arrival_date) || isoToUkDate(booking.pickup_date) || '',
       flight_arrival_time: booking.flight_arrival_time || '',
       pickup_airline_name: booking.pickup_airline_name || '',
       pickup_flight_number: booking.pickup_flight_number || '',
@@ -5413,6 +5416,7 @@ function Admin() {
           dropoff_destination: editForm.dropoff_destination || null,
           // Pickup/Return details - convert UK date back to ISO format for API
           pickup_date: ukToIsoDate(editForm.pickup_date) || null,
+          flight_arrival_date: ukToIsoDate(editForm.flight_arrival_date) || null,
           flight_arrival_time: editForm.flight_arrival_time || null,
           pickup_airline_name: editForm.pickup_airline_name || null,
           pickup_flight_number: editForm.pickup_flight_number || null,
@@ -15794,6 +15798,26 @@ function Admin() {
 
               <h4 className="modal-section-title">Pick-up / Return</h4>
               <div className="modal-form-row">
+                <div className="modal-form-group">
+                  <label>Arrival Date</label>
+                  <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      placeholder="DD/MM/YYYY"
+                      pattern="\d{2}/\d{2}/\d{4}"
+                      value={editForm.flight_arrival_date}
+                      onChange={(e) => setEditForm({ ...editForm, flight_arrival_date: formatDateInput(e.target.value) })}
+                      maxLength={10}
+                      style={{ width: '125px' }}
+                    />
+                    <DatePicker
+                      selected={parseUkDate(editForm.flight_arrival_date)}
+                      onChange={(date) => setEditForm({ ...editForm, flight_arrival_date: dateToUkString(date) })}
+                      dateFormat="dd/MM/yyyy"
+                      customInput={<button type="button" className="date-picker-btn">📅</button>}
+                    />
+                  </div>
+                </div>
                 <div className="modal-form-group">
                   <label>Pickup Date</label>
                   <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
