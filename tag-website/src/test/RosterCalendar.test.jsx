@@ -13,6 +13,7 @@ import {
   prevIsoDate,
   computeBookingsByDate,
   ARRIVAL_OVERNIGHT_CUTOFF,
+  shiftSortMinutes,
   sourceParamFor,
 } from '../components/RosterCalendar'
 
@@ -348,6 +349,75 @@ describe('computeBookingsByDate', () => {
     ])
     expect(grouped['2026-07-04']?.pickups.map((b) => b.id)).toEqual([1])
     expect(grouped['2026-07-05']?.pickups ?? []).toHaveLength(0)
+  })
+})
+
+// =============================================================================
+// shiftSortMinutes — operational-time sort key for shift cards
+// =============================================================================
+// Re-bucketed overnights (date=D, end_date=D+1, with the entire wall-clock
+// window after midnight) must land at the bottom of D's shift list — the
+// work happens chronologically AFTER same-day evening shifts. Without this,
+// a 00:20-01:20 tail of Friday-evening work sorts ahead of Friday's 13:10
+// afternoon shift just because '00:20' < '13:10' string-compares low.
+
+describe('shiftSortMinutes', () => {
+  it('returns minutes-from-midnight for a normal daytime shift', () => {
+    expect(shiftSortMinutes({ start_time: '13:10', end_time: '16:55' })).toBe(13 * 60 + 10)
+  })
+
+  it('returns minutes-from-midnight for an early-morning shift (date == end_date)', () => {
+    // No overnight flag — sort by its actual start_time.
+    expect(shiftSortMinutes({ start_time: '03:50', end_time: '07:00', date: '2026-06-26' })).toBe(3 * 60 + 50)
+  })
+
+  it('treats a standard overnight (18:15 → 00:05) as a same-day evening shift', () => {
+    // start_time > end_time → crosses midnight from same-day evening.
+    // Sort by start_time as-is; this lands it at the evening's chronological slot.
+    expect(shiftSortMinutes({
+      start_time: '18:15', end_time: '00:05',
+      date: '2026-06-25', end_date: '2026-06-26',
+      isOvernight: true,
+    })).toBe(18 * 60 + 15)
+  })
+
+  it('offsets re-bucketed entirely-after-midnight overnights by +24h', () => {
+    // start_time < end_time AND end_date > date → the entire shift is on
+    // the next calendar day; this is the "Friday-evening tail" pattern.
+    // 00:20 + 24h = 24:20 → 1460 minutes.
+    expect(shiftSortMinutes({
+      start_time: '00:20', end_time: '01:20',
+      date: '2026-06-26', end_date: '2026-06-27',
+      isOvernight: true,
+    })).toBe(24 * 60 + 20)
+  })
+
+  it('orders Friday afternoon BEFORE Friday-evening-tail (00:20 next day)', () => {
+    // The user-visible bug: under naïve string sort, '00:20' < '13:10'
+    // and the tail shift floats to the top of the day. Operational sort
+    // pushes it to the bottom.
+    const afternoon = { id: 1, start_time: '13:10', end_time: '16:55', date: '2026-06-26' }
+    const tail = {
+      id: 2, start_time: '00:20', end_time: '01:20',
+      date: '2026-06-26', end_date: '2026-06-27',
+      isOvernight: true,
+    }
+    expect(shiftSortMinutes(afternoon)).toBeLessThan(shiftSortMinutes(tail))
+  })
+
+  it('infers isOvernight from date/end_date when the flag is absent', () => {
+    // Backend payload may not always set the derived isOvernight flag; the
+    // helper must still detect re-bucketed tails from date + end_date alone.
+    expect(shiftSortMinutes({
+      start_time: '00:30', end_time: '01:30',
+      date: '2026-06-26', end_date: '2026-06-27',
+    })).toBe(24 * 60 + 30)
+  })
+
+  it('handles missing fields without throwing', () => {
+    expect(shiftSortMinutes(null)).toBe(0)
+    expect(shiftSortMinutes({})).toBe(0)
+    expect(shiftSortMinutes({ start_time: null })).toBe(0)
   })
 })
 

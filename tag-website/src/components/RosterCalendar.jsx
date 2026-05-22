@@ -182,6 +182,24 @@ const formatTime = (timeStr) => {
   return timeStr.substring(0, 5)
 }
 
+// Sort key (minutes-from-operational-day-start) for a shift entry in a
+// day's shift list. Normal daytime + standard overnight shifts (start_time
+// > end_time, crossing midnight) sort by start_time as-is. Re-bucketed
+// overnights — date=D / end_date=D+1 with start_time < end_time (the
+// entire wall-clock window sits after midnight on D+1) — get a +24h
+// offset so they land at the bottom of D's list, where the work actually
+// happens chronologically. Without this a 00:20-01:20 tail of Friday-
+// evening work sorts ahead of Friday's afternoon 13:10 shift.
+export const shiftSortMinutes = (shift) => {
+  if (!shift) return 0
+  const startStr = shift.displayStartTime || shift.start_time || '00:00'
+  const endStr = shift.displayEndTime || shift.end_time || '00:00'
+  const [h, m] = String(startStr).slice(0, 5).split(':').map(Number)
+  const isOvernight = !!(shift.end_date && shift.end_date !== shift.date) || !!shift.isOvernight
+  const isAfterMidnightTail = isOvernight && startStr < endStr
+  return (h || 0) * 60 + (m || 0) + (isAfterMidnightTail ? 24 * 60 : 0)
+}
+
 // Sort bookings within a shift in true chronological order. For overnight
 // shifts (start > end across midnight) any booking time before the shift
 // start belongs to the next day, so add 24h before comparing — otherwise
@@ -1000,16 +1018,23 @@ function RosterCalendar({
     // v3: when the toggle is "All" the day cell mixes manual + auto. Sort by
     // source first (manual / planner above auto) so admins see committed work
     // grouped at the top and auto-roster output as a clearly separate block;
-    // then by start time, then by id ascending — so duplicated shifts (same
-    // start/end as source, created later → higher id) sit immediately under
-    // their source. When the toggle is "Manual" or "Auto" only, this
-    // collapses to time-then-id.
+    // then by operational start time, then by id ascending — so duplicated
+    // shifts (same start/end as source, created later → higher id) sit
+    // immediately under their source. When the toggle is "Manual" or "Auto"
+    // only, this collapses to time-then-id.
+    //
+    // Sort by operational time: for re-bucketed overnight shifts (date=D,
+    // end_date=D+1, start_time < end_time — the entire shift sits after
+    // midnight on D+1) we offset the sort key by 24h so they land at the
+    // bottom of D's list, where the work actually happens chronologically.
+    // Without this, a 00:20-01:20 tail of Friday-evening work would sort
+    // ahead of Friday's afternoon 13:10 shift.
     const sourceOrder = (s) => (s.created_source === 'auto' ? 1 : 0)
     Object.keys(grouped).forEach((date) => {
       grouped[date].sort((a, b) => {
         const so = sourceOrder(a) - sourceOrder(b)
         if (so !== 0) return so
-        const t = (a.displayStartTime || a.start_time).localeCompare(b.displayStartTime || b.start_time)
+        const t = shiftSortMinutes(a) - shiftSortMinutes(b)
         if (t !== 0) return t
         return (a.id || 0) - (b.id || 0)
       })
@@ -1027,8 +1052,9 @@ function RosterCalendar({
       if (!grouped[startKey]) grouped[startKey] = []
       grouped[startKey].push({ ...shift, isOvernight })
     })
+    // Same operational sort as shiftsByDate above.
     Object.keys(grouped).forEach((d) => {
-      grouped[d].sort((a, b) => a.start_time.localeCompare(b.start_time))
+      grouped[d].sort((a, b) => shiftSortMinutes(a) - shiftSortMinutes(b))
     })
     return grouped
   }, [teamShifts])
