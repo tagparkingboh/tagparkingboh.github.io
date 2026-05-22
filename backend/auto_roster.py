@@ -51,6 +51,7 @@ from db_models import (
     ShiftStatus,
 )
 from roster_planner import (
+    ARRIVAL_OVERNIGHT_CUTOFF,
     Event,
     PlannerSettings,
     UK_TZ,
@@ -311,10 +312,31 @@ def rebuild_auto_for_dates(
             shift_end = shift_start + min_duration
 
         shift_type, _ = round_to_shift_type(shift_start, shift_end)
+
+        # Arrivals strictly before ARRIVAL_OVERNIGHT_CUTOFF (02:00 UK) belong
+        # to the prior day's evening shift — mirrors the rule in
+        # roster_planner.propose_roster and the Admin Calendar display
+        # (RosterCalendar.jsx claimPickupDate). cluster_start is the arrival
+        # anchor for pickup-led clusters.
+        earliest_event = min(cluster.events, key=lambda e: e.event_time)
+        if (
+            earliest_event.event_type == "pick_up"
+            and cluster_start.time() < ARRIVAL_OVERNIGHT_CUTOFF
+        ):
+            shift_end_date_val = shift_start.date()
+            if shift_end.date() > shift_end_date_val:
+                shift_end_date_val = shift_end.date()
+            shift_date_val = shift_start.date() - timedelta(days=1)
+        else:
+            shift_date_val = shift_start.date()
+            shift_end_date_val = (
+                shift_end.date() if shift_end.date() != shift_start.date() else None
+            )
+
         new_shift = RosterShift(
             staff_id=None,
-            date=shift_start.date(),
-            end_date=shift_end.date() if shift_end.date() != shift_start.date() else None,
+            date=shift_date_val,
+            end_date=shift_end_date_val,
             start_time=shift_start.time(),
             end_time=shift_end.time(),
             shift_type=shift_type,

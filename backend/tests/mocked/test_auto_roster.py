@@ -557,6 +557,63 @@ class TestRebuildAutoForDates:
         # The cross-midnight cluster should NOT also be recreated.
         assert all(s.date != date(2026, 6, 10) for s in new_shifts)
 
+    # ----------------------------------------------------------------------
+    # ARRIVAL_OVERNIGHT_CUTOFF (02:00 UK) re-bucket — auto-roster path
+    # ----------------------------------------------------------------------
+    # Mirrors the rule in roster_planner.propose_roster and the Admin
+    # Calendar display. A pickup-led cluster whose earliest arrival sits
+    # before 02:00 must materialise with date=D-1 and end_date=D, instead
+    # of a standalone early-AM shift on D. Caught on TAG-GTW73712 (Ria
+    # Dudding, Antalya → BOH 00:35 Sat 27 Jun 2026 — see [[project_ria_real_flight]]
+    # equivalent project memory): the planner side was fixed first, but
+    # auto_roster was creating the same standalone Sat shift via this
+    # second code path.
+
+    def test_arrival_before_0200_rebuckets_to_previous_day(self):
+        """TAG-GTW73712 regression: pickup 01:05 Sat 6/27, arrival 00:35
+        Sat 6/27 → shift covers Fri 6/26 → Sat 6/27 (not standalone Sat)."""
+        b = mk_booking(
+            booking_id=685, reference="TAG-GTW73712",
+            dropoff_dt=datetime(2026, 6, 19, 12, 15),
+            pickup_dt=datetime(2026, 6, 27, 1, 5),
+            flight_arrival_time=time(0, 35),
+        )
+        # flight_arrival_date populated on every booking from 2026-05-20+
+        b.flight_arrival_date = date(2026, 6, 27)
+        db = make_db(bookings=[b])
+        # 6/27 is in target_set — the rebuild on this day should produce
+        # the re-bucketed shift on 6/26.
+        rebuild_auto_for_dates(db, {date(2026, 6, 27)}, mk_settings())
+        from db_models import RosterShift
+        # Filter to the pickup-driven shift (drop-off on 6/19 is outside target).
+        pickup_shifts = [
+            a for a in db._added
+            if isinstance(a, RosterShift) and a.date == date(2026, 6, 26)
+        ]
+        assert len(pickup_shifts) == 1
+        s = pickup_shifts[0]
+        assert s.date == date(2026, 6, 26)
+        assert s.end_date == date(2026, 6, 27)
+        # Wall-clock start = 00:35 - 15m pickup-led buffer = 00:20.
+        assert s.start_time == time(0, 20)
+
+    def test_arrival_at_0200_stays_on_day(self):
+        """Cutoff is exclusive — arrival 02:00 stays on its own calendar day."""
+        b = mk_booking(
+            booking_id=900, reference="TAG-CUT0200",
+            dropoff_dt=datetime(2026, 4, 1, 9, 0),  # outside window
+            pickup_dt=datetime(2026, 6, 27, 2, 30),
+            flight_arrival_time=time(2, 0),
+        )
+        b.flight_arrival_date = date(2026, 6, 27)
+        db = make_db(bookings=[b])
+        rebuild_auto_for_dates(db, {date(2026, 6, 27)}, mk_settings())
+        from db_models import RosterShift
+        shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(shifts) == 1
+        assert shifts[0].date == date(2026, 6, 27)
+        assert shifts[0].end_date is None
+
 
 # ===========================================================================
 # auto_create_or_extend_for_booking — top-level entry point
