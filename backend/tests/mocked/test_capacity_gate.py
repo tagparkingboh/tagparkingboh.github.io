@@ -3,7 +3,7 @@ Tests for the daily-occupancy capacity gate.
 
 The gate is implemented as a single helper, db_service.find_overcapacity_day_in_stay,
 called from /api/payments/create-intent (cap=60 public soft cap) and the
-two admin manual-booking endpoints (cap=62 physical hard ceiling).
+two admin manual-booking endpoints (cap=70 physical hard ceiling).
 
 This file:
   - Unit tests the helper itself with MagicMock for the DB session — covers
@@ -204,26 +204,26 @@ class TestStatusFilterExcludesPending:
 
 
 # =============================================================================
-# Hard ceiling (62) — admin manual booking
+# Hard ceiling (70) — admin manual booking
 # =============================================================================
 
 class TestHardCeilingAdmin:
 
-    def test_admin_can_push_to_61(self):
-        db = _mock_db([_make_booking(D, D, id=i) for i in range(60)])
-        assert find_overcapacity_day_in_stay(db, D, D, cap=62) is None
+    def test_admin_can_push_to_69(self):
+        db = _mock_db([_make_booking(D, D, id=i) for i in range(68)])
+        assert find_overcapacity_day_in_stay(db, D, D, cap=70) is None
 
-    def test_admin_can_push_to_62(self):
-        db = _mock_db([_make_booking(D, D, id=i) for i in range(61)])
-        assert find_overcapacity_day_in_stay(db, D, D, cap=62) is None
+    def test_admin_can_push_to_70(self):
+        db = _mock_db([_make_booking(D, D, id=i) for i in range(69)])
+        assert find_overcapacity_day_in_stay(db, D, D, cap=70) is None
 
-    def test_admin_blocked_at_63rd(self):
-        db = _mock_db([_make_booking(D, D, id=i) for i in range(62)])
-        assert find_overcapacity_day_in_stay(db, D, D, cap=62) == (D, 62)
+    def test_admin_blocked_at_71st(self):
+        db = _mock_db([_make_booking(D, D, id=i) for i in range(70)])
+        assert find_overcapacity_day_in_stay(db, D, D, cap=70) == (D, 70)
 
     def test_admin_blocked_above_ceiling(self):
-        db = _mock_db([_make_booking(D, D, id=i) for i in range(63)])
-        assert find_overcapacity_day_in_stay(db, D, D, cap=62) == (D, 63)
+        db = _mock_db([_make_booking(D, D, id=i) for i in range(71)])
+        assert find_overcapacity_day_in_stay(db, D, D, cap=70) == (D, 71)
 
 
 # =============================================================================

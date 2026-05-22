@@ -837,7 +837,7 @@ def find_overcapacity_day_in_stay(
     over `cap`. None if all days fit.
 
     Called from /api/payments/create-intent (cap=60 public soft cap) and
-    the admin manual-booking endpoints (cap=62 physical hard ceiling).
+    the admin manual-booking endpoints (cap=70 physical hard ceiling).
 
     Counts CONFIRMED + COMPLETED only — PENDING (in-checkout carts) are
     excluded after the 2026-05-21 review: mid-flow carts inflated the

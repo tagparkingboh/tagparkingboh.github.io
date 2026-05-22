@@ -2320,28 +2320,28 @@ async def create_admin_booking(
     - Set custom drop-off times (not restricted to slots)
     - Override pricing if needed
     - Book for phone/walk-in customers
-    - Push past the 60 customer soft-cap up to the 62 hard ceiling
+    - Push past the 60 customer soft-cap up to the 70 hard ceiling
 
     Use this when customers contact you because all slots are booked.
-    Admin can override the public 60-spot cap but never the 62 physical
+    Admin can override the public 60-spot cap but never the 70 physical
     ceiling — every day in the stay range is checked against the live DB.
     """
-    # Hard ceiling (62) check across the stay range. Uses live DB counts
+    # Hard ceiling (70) check across the stay range. Uses live DB counts
     # via the shared helper — the legacy in-memory counter inside
     # BookingService doesn't reflect prod state and would silently let
-    # bookings past 62.
+    # bookings past 70.
     offending = db_service.find_overcapacity_day_in_stay(
         db,
         dropoff_date=request.drop_off_date,
         pickup_date=request.pickup_date,
-        cap=62,
+        cap=70,
     )
     if offending:
         day, current = offending
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Cannot create — {day.strftime('%a %d %b %Y')} is at the 62-car physical ceiling "
+                f"Cannot create — {day.strftime('%a %d %b %Y')} is at the 70-car physical ceiling "
                 f"({current} bookings). Even an admin can't push past the lot's actual capacity."
             ),
         )
@@ -2448,20 +2448,20 @@ async def create_manual_booking(
             vehicle.dvla_checked_at = datetime.now(timezone.utc)
             vehicle.dvla_retry_count = 0
 
-        # Admin hard ceiling (62 cars per day) — manual bookings can push
+        # Admin hard ceiling (70 cars per day) — manual bookings can push
         # past the public 60 soft-cap but never the lot's physical capacity.
         offending = db_service.find_overcapacity_day_in_stay(
             db,
             dropoff_date=request.dropoff_date,
             pickup_date=request.pickup_date,
-            cap=62,
+            cap=70,
         )
         if offending:
             day, current = offending
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Cannot create — {day.strftime('%a %d %b %Y')} is at the 62-car physical ceiling "
+                    f"Cannot create — {day.strftime('%a %d %b %Y')} is at the 70-car physical ceiling "
                     f"({current} bookings). The lot can't physically hold another car."
                 ),
             )
@@ -10587,7 +10587,7 @@ async def create_payment(
         # — including days strictly between dropoff and pickup. This stops
         # the leak shown by TAG-MSH89023 / TAG-UHB47647 on 2026-05-18
         # (endpoints clear but middle of stay full). Hard physical ceiling
-        # is 62 and only available to admin overrides; public stops at 60.
+        # is 70 and only available to admin overrides; public stops at 60.
         existing_pending_id = None
         if request.session_id:
             _existing = db_service.get_pending_booking_by_session(db, request.session_id)

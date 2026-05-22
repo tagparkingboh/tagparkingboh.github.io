@@ -5,7 +5,7 @@
 // bookings overlapping that operational day. The customer-form fetches this
 // via `/api/capacity/daily?from=...&to=...` and stores it in component state.
 //
-// `softCap` (default 60) is the public soft cap. The hard ceiling is 62 (admin
+// `softCap` (default 60) is the public soft cap. The hard ceiling is 70 (admin
 // override territory). At softCap the customer flow blocks new bookings; admin
 // can still push past it via manual booking.
 

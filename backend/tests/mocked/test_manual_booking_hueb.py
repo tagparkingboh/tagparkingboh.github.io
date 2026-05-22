@@ -95,13 +95,13 @@ class TestManualBookingValidation:
     def test_U_capacity_ceiling_hit(self, monkeypatch):
         monkeypatch.setattr(
             "db_service.find_overcapacity_day_in_stay",
-            lambda *a, **kw: (date_type(2026, 8, 18), 62),
+            lambda *a, **kw: (date_type(2026, 8, 18), 70),
         )
         _override(self._wire())
         resp = TestClient(app).post("/api/admin/manual-booking", json=_payload())
         assert resp.status_code == 400
         assert "ceiling" in resp.json()["detail"].lower()
-        assert "62" in resp.json()["detail"]
+        assert "70" in resp.json()["detail"]
 
     def test_U_invalid_departure_id(self, monkeypatch):
         monkeypatch.setattr(
