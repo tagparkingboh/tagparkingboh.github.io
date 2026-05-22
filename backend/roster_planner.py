@@ -242,6 +242,12 @@ def group_events_by_gap(
 
 PICKUP_LED_START_BUFFER_MINUTES = 15
 
+# Arrivals strictly before this UK clock-time belong to the prior calendar
+# day's evening shift. Mirrors RosterCalendar.jsx ARRIVAL_OVERNIGHT_CUTOFF;
+# both must stay in lockstep so the engine and the Admin Calendar display
+# bucket post-midnight pickups onto the same operational day.
+ARRIVAL_OVERNIGHT_CUTOFF = time(2, 0)
+
 
 def pickup_led_start_buffer(
     cluster: EventCluster, default_start_minutes: int
@@ -930,10 +936,28 @@ def propose_roster(
         peak = peak_concurrent_count(cluster.events, window_minutes=15)
         required = required_staff_count(peak, settings.staffing_thresholds)
 
-        shift_date = shift_start_dt.date()
-        shift_end_date = (
-            shift_end_dt.date() if shift_end_dt.date() > shift_date else None
+        # Arrivals strictly before ARRIVAL_OVERNIGHT_CUTOFF UK belong to
+        # the prior day's evening shift — same rule the Admin Calendar
+        # display applies (RosterCalendar.jsx ARRIVAL_OVERNIGHT_CUTOFF).
+        # cluster.start is the arrival anchor (for pickup-led clusters
+        # it's flight_arrival_time on its landing date); checking it
+        # rather than the buffered shift_start_dt keeps the cutoff aligned
+        # with the rule expressed in arrival terms.
+        earliest_event = min(cluster.events, key=lambda e: e.event_time)
+        rebucket_overnight = (
+            earliest_event.event_type == "pick_up"
+            and cluster.start.time() < ARRIVAL_OVERNIGHT_CUTOFF
         )
+        if rebucket_overnight:
+            shift_end_date = shift_start_dt.date()
+            shift_date = shift_end_date - timedelta(days=1)
+            if shift_end_dt.date() > shift_end_date:
+                shift_end_date = shift_end_dt.date()
+        else:
+            shift_date = shift_start_dt.date()
+            shift_end_date = (
+                shift_end_dt.date() if shift_end_dt.date() > shift_date else None
+            )
         cluster_events_dicts = [
             {
                 "booking_id": e.booking_id,

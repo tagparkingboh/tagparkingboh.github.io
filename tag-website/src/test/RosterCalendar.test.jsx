@@ -4,15 +4,15 @@
  * Covers the two regressions:
  * 1. prevIsoDate must use UTC math so DST and leap years don't drift.
  * 2. computeBookingsByDate must re-bucket post-midnight pickups (and
- *    only pickups — never drop-offs) when the time is strictly before
- *    PICKUP_OVERNIGHT_CUTOFF, and each day's list must sort by real
+ *    only pickups — never drop-offs) when the arrival is strictly before
+ *    ARRIVAL_OVERNIGHT_CUTOFF, and each day's list must sort by real
  *    datetime so re-bucketed events land last.
  */
 import { describe, it, expect } from 'vitest'
 import {
   prevIsoDate,
   computeBookingsByDate,
-  PICKUP_OVERNIGHT_CUTOFF,
+  ARRIVAL_OVERNIGHT_CUTOFF,
   sourceParamFor,
 } from '../components/RosterCalendar'
 
@@ -51,9 +51,9 @@ describe('prevIsoDate', () => {
   })
 })
 
-describe('PICKUP_OVERNIGHT_CUTOFF', () => {
-  it('is 02:30 UK time', () => {
-    expect(PICKUP_OVERNIGHT_CUTOFF).toBe('02:30')
+describe('ARRIVAL_OVERNIGHT_CUTOFF', () => {
+  it('is 02:00 UK time', () => {
+    expect(ARRIVAL_OVERNIGHT_CUTOFF).toBe('02:00')
   })
 })
 
@@ -152,8 +152,9 @@ describe('computeBookingsByDate', () => {
   // When flight_arrival_date is set on a booking, it's the canonical
   // landing day and the bucketing must use it — pickup_date may be stale
   // (e.g. admin edited arrival but left pickup alone, the TAG-KNL95826
-  // staging incident). Legacy rows (flight_arrival_date=null) keep the
-  // pre-existing pickup_date + 02:30-cutoff rule.
+  // staging incident). Legacy rows (flight_arrival_date=null) synthesise
+  // arrival from (pickup_date, pickup_time) by subtracting 30 minutes as
+  // a real datetime, then apply the same ARRIVAL_OVERNIGHT_CUTOFF (02:00).
 
   const mkPickupArrival = (id, opts) => ({
     id,
@@ -177,24 +178,24 @@ describe('computeBookingsByDate', () => {
     expect(grouped['2026-07-03']?.pickups ?? []).toHaveLength(0)
   })
 
-  it('E: legacy row (no flight_arrival_date) keeps the pickup_date + cutoff rule', () => {
+  it('E: legacy row (no flight_arrival_date) synthesises arrival from pickup - 30m and applies the cutoff', () => {
     const grouped = computeBookingsByDate([
       mkPickupArrival(1, {
         flight_arrival_date: null,
         pickup_date: '2026-07-10',
-        pickup_time: '00:25',  // < 02:30 → re-bucket to 7/9
+        pickup_time: '00:25',  // synth arrival = 7/9 23:55 → operational 7/9
       }),
       mkPickupArrival(2, {
         flight_arrival_date: null,
         pickup_date: '2026-07-10',
-        pickup_time: '14:00',  // > 02:30 → stays on 7/10
+        pickup_time: '14:00',  // synth arrival = 7/10 13:30 → operational 7/10
       }),
     ])
     expect(grouped['2026-07-09']?.pickups.map((b) => b.id)).toEqual([1])
     expect(grouped['2026-07-10']?.pickups.map((b) => b.id)).toEqual([2])
   })
 
-  it('B: flight_arrival_date wins over the legacy 02:30 cutoff when both apply', () => {
+  it('B: flight_arrival_date wins over the synthetic-pickup fallback when both apply', () => {
     // arrival on 7/4 23:55, pickup rolled to 7/5 00:25 — flight_arrival_date
     // is 7/4 (canonical landing day). The old rule would also bucket onto 7/4
     // via prevIsoDate('2026-07-05'); the new rule bypasses the heuristic and
@@ -262,9 +263,9 @@ describe('computeBookingsByDate', () => {
   // 2026-06-23 with `flight_arrival_date=2026-06-23`. Operationally it's
   // Mon 2026-06-22's late-shift pickup (the shift spans 23:10 Mon to
   // 01:35 Tue). The pre-fix logic returned flight_arrival_date directly,
-  // bypassing the 02:30 cutoff, so the day tile placed her on Tue. The
-  // fix preserves "flight_arrival_date is canonical" but re-applies the
-  // overnight cutoff on top.
+  // bypassing the cutoff, so the day tile placed her on Tue. The fix
+  // preserves "flight_arrival_date is canonical" but re-applies the
+  // ARRIVAL_OVERNIGHT_CUTOFF (02:00) on top.
 
   it('H: post-midnight arrival (00:50) with flight_arrival_date re-buckets to D-1', () => {
     // Real case: TAG-QTX08991 Rana Gioutzesoi, Antalya → BOH at 00:50 Tue 6/23.
@@ -295,22 +296,22 @@ describe('computeBookingsByDate', () => {
     expect(grouped['2026-06-22']?.pickups ?? []).toHaveLength(0)
   })
 
-  it('B: arrival_time 02:29 re-buckets, 02:30 does NOT (cutoff exclusive) when flight_arrival_date is set', () => {
-    // Mirror of the legacy pickup_time boundary test (line ~85) but anchored
-    // on flight_arrival_date — both the canonical column and the cutoff must
-    // co-operate for the boundary to behave identically across both paths.
+  it('B: arrival_time 01:59 re-buckets, 02:00 does NOT (cutoff exclusive) when flight_arrival_date is set', () => {
+    // Boundary on the arrival-canonical path. ARRIVAL_OVERNIGHT_CUTOFF is
+    // 02:00 (exclusive) — an arrival at 01:59 belongs to the prior day's
+    // evening shift; 02:00 stays on its own day.
     const grouped = computeBookingsByDate([
       mkPickupArrival(1, {
         flight_arrival_date: '2026-06-23',
-        flight_arrival_time: '02:29',
+        flight_arrival_time: '01:59',
         pickup_date: '2026-06-23',
-        pickup_time: '02:59',
+        pickup_time: '02:29',
       }),
       mkPickupArrival(2, {
         flight_arrival_date: '2026-06-23',
-        flight_arrival_time: '02:30',
+        flight_arrival_time: '02:00',
         pickup_date: '2026-06-23',
-        pickup_time: '03:00',
+        pickup_time: '02:30',
       }),
     ])
     expect(grouped['2026-06-22']?.pickups.map((b) => b.id)).toEqual([1])
@@ -335,7 +336,7 @@ describe('computeBookingsByDate', () => {
   it('B: arrival 23:55 + pickup_time 00:25 (rolled) still buckets on the arrival day, not D-1', () => {
     // Regression fence: the existing test at line ~197 pinned this, but
     // re-asserting under the new code path is cheap and locks the boundary
-    // behaviour — 23:55 is > 02:30 so the cutoff does NOT fire, and the
+    // behaviour — 23:55 is > 02:00 so the cutoff does NOT fire, and the
     // flight_arrival_date (the actual landing day) wins.
     const grouped = computeBookingsByDate([
       mkPickupArrival(1, {

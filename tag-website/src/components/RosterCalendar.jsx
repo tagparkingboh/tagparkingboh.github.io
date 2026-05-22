@@ -74,21 +74,22 @@ const ukToISO = (ukDate) => {
   return `${parts[2]}-${parts[1]}-${parts[0]}`
 }
 
-// Pickups before this UK clock-time on date D+1 are bucketed back to
-// date D's operational day (e.g. a 00:25 pickup on the 10th is shown
-// under the 9th, where the overnight shift covering it started).
+// Flights arriving strictly before this UK clock-time belong to the
+// previous day's evening shift (e.g. a 00:50 arrival on the 10th is
+// shown under the 9th, where the overnight shift covering it started).
+// The rule is keyed on arrival_time, not pickup_time — pickup_time is
+// being phased out as a primary field. For legacy rows without
+// flight_arrival_time we synthesise arrival = pickup_time - 30 min
+// as a real datetime so day-wrap is handled.
 // Drop-offs are NOT re-bucketed — early-AM drop-offs aren't an
-// operational reality in this business. Heuristic chosen over reading
-// shifts data so the Employee page (which only has access to its own
-// shifts) and the Admin page produce identical groupings.
-export const PICKUP_OVERNIGHT_CUTOFF = '02:30'
+// operational reality in this business.
+export const ARRIVAL_OVERNIGHT_CUTOFF = '02:00'
 
 // Group confirmed and refunded bookings by operational day. Drop-offs key on
-// `dropoff_date` directly. Pickups key on `pickup_date` unless the
-// pickup_time is strictly before PICKUP_OVERNIGHT_CUTOFF, in which
-// case they're attributed to the previous calendar day. Each day's
-// list is sorted by real datetime so re-bucketed events land at the
-// bottom (chronologically later than 23:55 of the same operational day).
+// `dropoff_date` directly. Pickups key on the operational arrival-day per
+// claimPickupDate below. Each day's list is sorted by real datetime so
+// re-bucketed events land at the bottom (chronologically later than 23:55
+// of the same operational day).
 //
 // Refunded bookings are surfaced too so operators have full visibility
 // into TAG-initiated refund situations on the day; the rendering layer
@@ -100,24 +101,39 @@ export const computeBookingsByDate = (bookings) => {
     return grouped[key]
   }
   // Resolve the operational-day bucket for a booking's pickup event.
-  // Prefer `flight_arrival_date` (the canonical landing day, populated on
-  // every row from 2026-05-20+). Without this, an admin editing only the
-  // arrival date leaves pickup_date stale, and the booking gets bucketed
-  // onto the wrong day in the day tile + day-detail modal — caught on
-  // TAG-KNL95826 staging 2026-05-21. The 02:30 PICKUP_OVERNIGHT_CUTOFF
-  // still applies on top of the canonical date: post-midnight arrivals
-  // (e.g. TAG-QTX08991 Rana Gioutzesoi, flight lands 00:50 on Tue 6/23)
-  // are operationally part of the previous day's overnight shift and
-  // must re-bucket onto D-1 — caught 2026-05-21 when the shift card
-  // correctly grouped her under Mon but the day tile showed her on Tue.
+  // Canonical input is (flight_arrival_date, flight_arrival_time) — these
+  // are populated on every row from 2026-05-20+ and `flight_arrival_date`
+  // is the landing day even when pickup_date drifts (TAG-KNL95826 staging
+  // 2026-05-21). When flight_arrival_time is null we synthesise arrival
+  // from (pickup_date, pickup_time) by subtracting 30 minutes as a real
+  // datetime so a 00:25 pickup wraps to 23:55 the previous day. The
+  // ARRIVAL_OVERNIGHT_CUTOFF (02:00) is then compared against the
+  // resulting arrival_time: strictly before → re-bucket to D-1.
   const claimPickupDate = (booking) => {
-    const rawDate = booking.flight_arrival_date || booking.pickup_date
-    const rawTime = booking.flight_arrival_time || booking.pickup_time
-    if (!rawDate) return null
-    if (!rawTime) return rawDate
-    const t = String(rawTime).slice(0, 5)
-    if (t < PICKUP_OVERNIGHT_CUTOFF) return prevIsoDate(rawDate)
-    return rawDate
+    if (!booking) return null
+    let arrivalDate, arrivalTime
+    if (booking.flight_arrival_time) {
+      arrivalDate = booking.flight_arrival_date || booking.pickup_date
+      arrivalTime = String(booking.flight_arrival_time).slice(0, 5)
+    } else if (booking.pickup_date && booking.pickup_time) {
+      const [y, m, d] = booking.pickup_date.split('-').map(Number)
+      const [hh, mm] = String(booking.pickup_time).slice(0, 5).split(':').map(Number)
+      if (!y || !m || !d || Number.isNaN(hh) || Number.isNaN(mm)) {
+        return booking.flight_arrival_date || booking.pickup_date || null
+      }
+      const dt = new Date(Date.UTC(y, m - 1, d, hh, mm))
+      dt.setUTCMinutes(dt.getUTCMinutes() - 30)
+      const yy = dt.getUTCFullYear()
+      const mo = String(dt.getUTCMonth() + 1).padStart(2, '0')
+      const dd = String(dt.getUTCDate()).padStart(2, '0')
+      arrivalDate = `${yy}-${mo}-${dd}`
+      arrivalTime = `${String(dt.getUTCHours()).padStart(2, '0')}:${String(dt.getUTCMinutes()).padStart(2, '0')}`
+    } else {
+      return booking.flight_arrival_date || booking.pickup_date || null
+    }
+    if (!arrivalDate) return null
+    if (arrivalTime < ARRIVAL_OVERNIGHT_CUTOFF) return prevIsoDate(arrivalDate)
+    return arrivalDate
   }
   const sortKey = (date, time) =>
     `${date}T${time ? String(time).slice(0, 5) : '00:00'}`

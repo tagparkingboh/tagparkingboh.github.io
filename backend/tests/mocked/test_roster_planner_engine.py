@@ -1510,9 +1510,10 @@ class TestPickupAnchorsToArrival:
 
     def test_boundary_arrival_at_midnight_anchors_correctly(self):
         """Late-night arrivals at 00:50 (collection 01:20) → pickup-led
-        15-min start_buffer puts shift_start at 00:35 same day. Confirms
-        tz-aware combining works at the day boundary without rolling into
-        the previous day."""
+        15-min start_buffer puts shift_start at wall-clock 00:35.
+        ARRIVAL_OVERNIGHT_CUTOFF (02:00) then re-buckets the shift onto
+        the prior calendar day: date=D-1, end_date=D. Confirms tz-aware
+        combining + overnight re-bucket cooperate at the day boundary."""
         now = uk_dt(2026, 5, 1, 0, 0)
         bookings = [
             mk_booking(
@@ -1531,7 +1532,8 @@ class TestPickupAnchorsToArrival:
         assert len(new_shifts) == 1
         s = new_shifts[0]
         assert s["start_time"].strftime("%H:%M") == "00:35"
-        assert s["date"].isoformat() == "2026-05-19"
+        assert s["date"].isoformat() == "2026-05-18"
+        assert s["end_date"].isoformat() == "2026-05-19"
 
     def test_edge_arrival_crosses_midnight_backwards_anchors_to_previous_day(self):
         """flight_arrival_time has no date column. When arrival > pickup_time
@@ -1562,8 +1564,11 @@ class TestPickupAnchorsToArrival:
         assert s["start_time"].strftime("%H:%M") == "23:40"
 
     def test_boundary_arrival_one_minute_after_pickup_back_dates(self):
-        """Arrival 1 min after pickup_time → back-date. Guards against
-        a regression that uses >= instead of >."""
+        """Arrival 1 min after pickup_time → flight is on the previous
+        calendar day (e.g. arrival 00:26 D-1, pickup 00:25 D). Guards
+        against a regression that uses >= instead of >. The 00:26 arrival
+        also trips ARRIVAL_OVERNIGHT_CUTOFF (02:00), so the shift further
+        re-buckets to D-2."""
         now = uk_dt(2026, 5, 1, 0, 0)
         bookings = [
             mk_booking(
@@ -1580,7 +1585,14 @@ class TestPickupAnchorsToArrival:
         )
         new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
         assert len(new_shifts) == 1
-        assert new_shifts[0]["date"].isoformat() == "2026-05-09"
+        # Flight back-dates to 5/9 (arrival > pickup_time), then the 00:26
+        # arrival re-buckets the shift to start on 5/8. shift_end_dt sits
+        # on 5/10 (customer handoff 00:25 on 5/10 + 30m end_buffer) so the
+        # end_date spans through 5/10. The 5/8→5/10 multi-day span is a
+        # consequence of the contrived "arrival 24h before pickup" inputs
+        # in this regression guard; real bookings don't produce it.
+        assert new_shifts[0]["date"].isoformat() == "2026-05-08"
+        assert new_shifts[0]["end_date"].isoformat() == "2026-05-10"
 
     def test_boundary_arrival_equal_to_pickup_stays_same_day(self):
         """Equal times → flight_arrival > pickup_time is False → no back-date."""
@@ -1601,6 +1613,110 @@ class TestPickupAnchorsToArrival:
         new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
         assert len(new_shifts) == 1
         assert new_shifts[0]["date"].isoformat() == "2026-05-10"
+
+
+class TestArrivalOvernightCutoff:
+    """ARRIVAL_OVERNIGHT_CUTOFF (02:00 UK) re-buckets pickup-led clusters
+    onto the prior calendar day. Mirrors the Admin Calendar display rule
+    so the planner doesn't spawn a tiny early-AM shift on day D when the
+    work is operationally the tail of day D-1's evening.
+
+    Three-arm boundary: t-ε (01:59) re-buckets, t (02:00) does NOT,
+    t+ε (02:01) does NOT.
+    """
+
+    def _propose_single(self, arrival_t, pickup_t):
+        """Helper: one booking with the given arrival/pickup times on
+        2026-06-27, return the single proposed new shift."""
+        now = uk_dt(2026, 6, 1, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-CUTOFF",
+                drop_dt=uk_dt(2026, 5, 1, 9, 0),  # outside window
+                pick_dt=uk_dt(2026, 6, 27, pickup_t.hour, pickup_t.minute),
+                flight_arrival_time=arrival_t,
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 1
+        return new_shifts[0]
+
+    def test_t_minus_epsilon_arrival_0159_rebuckets(self):
+        """Arrival 01:59 < 02:00 → shift re-buckets to D-1 with end_date=D."""
+        s = self._propose_single(time(1, 59), time(2, 29))
+        assert s["date"].isoformat() == "2026-06-26"
+        assert s["end_date"].isoformat() == "2026-06-27"
+
+    def test_t_arrival_0200_stays_on_day(self):
+        """Arrival 02:00 (cutoff is exclusive) → shift stays on D."""
+        s = self._propose_single(time(2, 0), time(2, 30))
+        assert s["date"].isoformat() == "2026-06-27"
+        assert s.get("end_date") is None
+
+    def test_t_plus_epsilon_arrival_0201_stays_on_day(self):
+        """Arrival 02:01 > 02:00 → shift stays on D."""
+        s = self._propose_single(time(2, 1), time(2, 31))
+        assert s["date"].isoformat() == "2026-06-27"
+        assert s.get("end_date") is None
+
+    def test_ria_real_case_antalya_arrival_0035_lands_on_friday(self):
+        """TAG-GTW73712 Ria Dudding (Antalya → BOH 00:35 Sat 27 Jun 2026).
+        Arrival 00:35 < 02:00 → shift covers Fri 26 → Sat 27. Locks the
+        operator-reported case that prompted this cutoff change. drop_dt
+        is placed well outside the planning window so we get one shift,
+        not a separate drop-off shift."""
+        now = uk_dt(2026, 6, 20, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-GTW73712",
+                drop_dt=uk_dt(2026, 4, 1, 12, 15),
+                pick_dt=uk_dt(2026, 6, 27, 1, 5),
+                flight_arrival_time=time(0, 35),
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        assert s["date"].isoformat() == "2026-06-26"
+        assert s["end_date"].isoformat() == "2026-06-27"
+        # Wall-clock times unchanged: 00:20 to 01:35 (pickup 01:05 + 30m).
+        assert s["start_time"].strftime("%H:%M") == "00:20"
+        assert s["end_time"].strftime("%H:%M") == "01:35"
+
+    def test_month_boundary_wrap(self):
+        """Arrival 00:30 on the 1st of a month → re-bucket to last day of
+        previous month. Guards against naive day-arithmetic that doesn't
+        cross month boundaries. drop_dt is well outside the planning
+        window so only the pickup event drives the proposed shift."""
+        now = uk_dt(2026, 5, 25, 0, 0)
+        bookings = [
+            mk_booking(
+                1, "TAG-MONTH",
+                drop_dt=uk_dt(2026, 4, 1, 9, 0),
+                pick_dt=uk_dt(2026, 6, 1, 1, 0),
+                flight_arrival_time=time(0, 30),
+            ),
+        ]
+        staff = [mk_staff(10)]
+        result = propose_roster(
+            bookings=bookings, shifts=[], staff=staff, holidays=[],
+            settings=DEFAULT_SETTINGS, now=now,
+        )
+        new_shifts = [p for p in result["proposed_shifts"] if p["kind"] == "new"]
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        assert s["date"].isoformat() == "2026-05-31"
+        assert s["end_date"].isoformat() == "2026-06-01"
 
 
 class TestPickupShiftEndAnchorsToHandoff:
