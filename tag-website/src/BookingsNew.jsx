@@ -318,10 +318,12 @@ function Bookings({ isModal = false, onClose }) {
   // the amber "at-cap" tint on the date pickers and the stay-span warning.
   const [dailyOccupancy, setDailyOccupancy] = useState({})
   const SOFT_CAP_FE = 64
-  // "We're getting full" early-warning modal. Fires once per date in the
+  // "We're getting full" early-warning modal. Fires for any date in the
   // 80-99% band — at-or-above 100% is already blocked by the existing
-  // "Sorry, we're full" banners. Tracks dismissed ISO dates so we don't
-  // re-pop the same date if the customer re-opens the picker.
+  // "Sorry, we're full" banners. Tracks dismissed ISO dates ONLY while
+  // they remain selected; once a customer changes the dropoff/pickup
+  // away from a date, that date drops out of the dismissed set so
+  // returning to it later re-fires the popup (cleanup useEffect below).
   const [busyWarning, setBusyWarning] = useState(null)
   const dismissedBusyDatesRef = useRef(new Set())
 
@@ -772,13 +774,26 @@ function Bookings({ isModal = false, onClose }) {
     fetchDailyCapacity()
   }, [API_BASE_URL])
 
+  // Drop dismissed entries for dates that aren't currently selected. Lets
+  // the customer leave a busy date and return to it later as a "fresh"
+  // selection that re-fires the warning, while still suppressing re-pops
+  // for a date that hasn't changed since they acknowledged it.
+  useEffect(() => {
+    const selected = new Set()
+    if (formData.dropoffDate) selected.add(isoDateUtil(formData.dropoffDate))
+    if (formData.pickupDate) selected.add(isoDateUtil(formData.pickupDate))
+    for (const iso of [...dismissedBusyDatesRef.current]) {
+      if (!selected.has(iso)) dismissedBusyDatesRef.current.delete(iso)
+    }
+  }, [formData.dropoffDate, formData.pickupDate])
+
   // "We're getting full" early-warning gate. When the customer has selected
   // a date (dropoff or pickup) that's not blocked and not at the cap but
-  // sits in the 80-99% band, surface a one-time modal so they have a chance
-  // to pivot to a quieter day or commit faster. The existing "Sorry, we're
-  // full" banner already handles >= 100%. Dismissed dates are tracked in a
-  // ref (per-tab, lives until reload) so re-opening the picker doesn't
-  // spam the modal.
+  // sits in the 80-99% band, surface a modal so they have a chance to
+  // pivot to a quieter day or commit faster. The existing "Sorry, we're
+  // full" banner already handles >= 100%. Dismissals are scoped to dates
+  // that remain selected (see cleanup effect above) — changing dates then
+  // returning re-fires.
   useEffect(() => {
     if (busyWarning) return
     if (!dailyOccupancy || Object.keys(dailyOccupancy).length === 0) return
@@ -2285,7 +2300,7 @@ function Bookings({ isModal = false, onClose }) {
               className="busy-warning-btn"
               onClick={dismissBusyWarning}
             >
-              Got it, continue
+              Continue
             </button>
           </div>
         </div>
