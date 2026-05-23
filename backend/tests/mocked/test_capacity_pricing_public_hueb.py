@@ -52,7 +52,7 @@ class TestCheckSlot:
         body = resp.json()
         assert body["allowed"] is True
         assert body["peak"] == 0
-        assert body["max_capacity"] == 60
+        assert body["max_capacity"] == 64
 
     def test_H_one_overlap_allows(self):
         from db_models import BookingStatus

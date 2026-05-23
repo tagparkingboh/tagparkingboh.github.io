@@ -213,7 +213,7 @@ class TestOccupancyReport:
         assert resp.status_code == 200
         body = resp.json()
         assert body["view"] == "daily"
-        assert body["max_capacity"] == 60
+        assert body["max_capacity"] == 64
 
     def test_H_daily_with_booking(self):
         b = self._booking(date_type(2026, 5, 19), date_type(2026, 5, 22))
@@ -254,7 +254,7 @@ class TestOccupancyReport:
 
     def test_E_cache_hit(self):
         main._occupancy_cache = {
-            "data": {"view": "daily", "data": [], "max_capacity": 60,
+            "data": {"view": "daily", "data": [], "max_capacity": 64,
                      "start_date": "2026-05-15", "end_date": "2026-05-25"},
             "cached_at": datetime.now(UK),
         }

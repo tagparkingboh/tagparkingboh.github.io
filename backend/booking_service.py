@@ -173,12 +173,12 @@ class BookingService:
     in-memory storage with optional file persistence.
     """
 
-    # Maximum concurrent bookings (parking spots). Increased 50 → 60 on
-    # 2026-05-12 to match the frontend cap. When any day in a customer's
+    # Maximum concurrent bookings (parking spots). Increased 60 → 64 on
+    # 2026-05-23 to match the frontend cap. When any day in a customer's
     # requested [drop-off, pick-up] range hits this number, new bookings
     # are rejected at booking_service.create_booking — pick-ups are never
     # blocked because they don't add occupancy.
-    MAX_PARKING_SPOTS = 60
+    MAX_PARKING_SPOTS = 64
 
     # Package durations (in days)
     PACKAGE_DURATIONS = {

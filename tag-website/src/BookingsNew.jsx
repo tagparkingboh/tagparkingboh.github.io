@@ -315,14 +315,14 @@ function Bookings({ isModal = false, onClose }) {
   // Daily occupancy map { 'YYYY-MM-DD': count } for the next 90 days — drives
   // the amber "at-cap" tint on the date pickers and the stay-span warning.
   const [dailyOccupancy, setDailyOccupancy] = useState({})
-  const SOFT_CAP_FE = 60
+  const SOFT_CAP_FE = 64
 
   // Parking capacity management — time-aware. The backend computes peak
   // concurrent occupancy across the customer's [dropoff_dt, pickup_dt]
   // window so a 16:30 drop-off is allowed if another car is being picked
   // up at 16:00 the same day. Populated by the useEffect below once all
   // four inputs (dates + times) are set; null while we're still waiting.
-  const MAX_PARKING_SPOTS = 60
+  const MAX_PARKING_SPOTS = 64
   const [capacityCheck, setCapacityCheck] = useState(null)  // { allowed, peak, max_capacity }
 
   // Lead-time gate. Pure logic lives in utils/leadTime.js so it's testable
@@ -739,7 +739,7 @@ function Bookings({ isModal = false, onClose }) {
   }, [API_BASE_URL])
 
   // Fetch daily occupancy for the next 90 days. Drives:
-  //   1. Amber tint on date pickers for days at SOFT_CAP_FE (60+).
+  //   1. Amber tint on date pickers for days at SOFT_CAP_FE (64+).
   //   2. The stay-span "we're full" warning when a customer picks a range
   //      that crosses an over-cap day.
   useEffect(() => {

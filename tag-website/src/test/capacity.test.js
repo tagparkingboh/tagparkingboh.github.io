@@ -3,7 +3,7 @@
  * and `findBlockedDateInStay`.
  *
  * Background (2026-05-21 UX bug): customer picked a drop-off date that was
- * at the 60-car soft cap. The form silently let them keep filling in
+ * at the soft cap. The form silently let them keep filling in
  * airline/destination — the only "we're full" signal was an amber tint on
  * the calendar popup, gone the moment they closed it. Helpers existed but
  * the JSX didn't surface them as a banner. Fix added a banner; this suite
@@ -12,7 +12,7 @@
  * Coverage:
  *   Happy    — single-date at cap returns true; un-capped date returns false
  *   Unhappy  — null inputs / empty maps don't crash
- *   Edge     — soft cap boundary at exactly 60, custom cap overrides
+ *   Edge     — soft cap boundary at exactly 64, custom cap overrides
  *   Boundary — straddle dates (dropoff and pickup themselves fine, day in
  *              the middle at cap) → findBlockedDateInStay catches it
  */
@@ -36,7 +36,7 @@ describe('isAtCapacity', () => {
   // --- HAPPY ---------------------------------------------------------------
 
   it('H: date at the soft cap returns true', () => {
-    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 60 })).toBe(true)
+    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 64 })).toBe(true)
   })
 
   it('H: date well above the soft cap returns true', () => {
@@ -50,7 +50,7 @@ describe('isAtCapacity', () => {
   // --- UNHAPPY -------------------------------------------------------------
 
   it('U: null date returns false (no crash)', () => {
-    expect(isAtCapacity(null, { '2026-05-26': 60 })).toBe(false)
+    expect(isAtCapacity(null, { '2026-05-26': 64 })).toBe(false)
   })
 
   it('U: missing dailyOccupancy returns false', () => {
@@ -62,7 +62,7 @@ describe('isAtCapacity', () => {
   })
 
   it('U: date with no entry in dailyOccupancy treated as 0 (not full)', () => {
-    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-27': 60 })).toBe(false)
+    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-27': 64 })).toBe(false)
   })
 
   // --- EDGE ----------------------------------------------------------------
@@ -72,22 +72,22 @@ describe('isAtCapacity', () => {
     expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 39 }, 40)).toBe(false)
   })
 
-  it('E: default SOFT_CAP is 60', () => {
-    expect(SOFT_CAP).toBe(60)
+  it('E: default SOFT_CAP is 64', () => {
+    expect(SOFT_CAP).toBe(64)
   })
 
   // --- BOUNDARY ------------------------------------------------------------
 
-  it('B: exactly 59 cars → not at cap (one slot left)', () => {
-    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 59 })).toBe(false)
+  it('B: exactly 63 cars → not at cap (one slot left)', () => {
+    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 63 })).toBe(false)
   })
 
-  it('B: exactly 60 cars → AT cap (no slot left, public soft cap)', () => {
-    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 60 })).toBe(true)
+  it('B: exactly 64 cars → AT cap (no slot left, public soft cap)', () => {
+    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 64 })).toBe(true)
   })
 
-  it('B: 61 cars → AT cap (admin override territory)', () => {
-    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 61 })).toBe(true)
+  it('B: 65 cars → AT cap (admin override territory)', () => {
+    expect(isAtCapacity(D(2026, 5, 26), { '2026-05-26': 65 })).toBe(true)
   })
 })
 
@@ -155,7 +155,7 @@ describe('isManuallyBlocked', () => {
 
 describe('findBlockedDateInStay', () => {
   const fullDate = '2026-05-26'
-  const dailyOccupancyFull = { [fullDate]: 60 }
+  const dailyOccupancyFull = { [fullDate]: 64 }
   const blockedRanges = [
     { start_date: '2026-12-24', end_date: '2026-12-26', reason: 'Christmas' },
   ]
@@ -216,7 +216,7 @@ describe('findBlockedDateInStay', () => {
     // 2026-12-25 is both manually blocked AND at cap → returns 'manual'.
     const got = findBlockedDateInStay(
       D(2026, 12, 25), D(2026, 12, 25),
-      { '2026-12-25': 60 }, blockedRanges,
+      { '2026-12-25': 64 }, blockedRanges,
     )
     expect(got.reason).toBe('manual')
   })
@@ -246,7 +246,7 @@ describe('findBlockedDateInStay', () => {
   it('B: straddle — two capped days inside the stay → returns the EARLIER one', () => {
     const got = findBlockedDateInStay(
       D(2026, 5, 24), D(2026, 5, 30),
-      { '2026-05-26': 60, '2026-05-28': 60 }, [],
+      { '2026-05-26': 64, '2026-05-28': 64 }, [],
     )
     expect(isoDate(got.date)).toBe('2026-05-26')
   })
@@ -264,7 +264,7 @@ describe('findBlockedDateInStay', () => {
   it('B: stay crosses month boundary; capped day is in the next month', () => {
     const got = findBlockedDateInStay(
       D(2026, 5, 30), D(2026, 6, 3),
-      { '2026-06-01': 60 }, [],
+      { '2026-06-01': 64 }, [],
     )
     expect(isoDate(got.date)).toBe('2026-06-01')
   })
@@ -272,7 +272,7 @@ describe('findBlockedDateInStay', () => {
   it('B: long stay (10 days) with capped day at the far end', () => {
     const got = findBlockedDateInStay(
       D(2026, 6, 1), D(2026, 6, 10),
-      { '2026-06-09': 60 }, [],
+      { '2026-06-09': 64 }, [],
     )
     expect(isoDate(got.date)).toBe('2026-06-09')
   })

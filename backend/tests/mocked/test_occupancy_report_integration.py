@@ -128,7 +128,7 @@ class TestOccupancyDailyResponse:
         # Simulate response
         response_data = {
             "view": "daily",
-            "max_capacity": 60,
+            "max_capacity": 64,
             "start_date": "2026-03-01",
             "end_date": "2026-04-30",
             "data": [],
@@ -168,12 +168,12 @@ class TestOccupancyDailyResponse:
 
     def test_daily_occupancy_calculations(self):
         """Test that occupancy values are calculated correctly."""
-        max_capacity = 60
-        occupied = 30
+        max_capacity = 64
+        occupied = 32
         available = max_capacity - occupied
         occupancy_percent = round((occupied / max_capacity) * 100, 1)
 
-        assert available == 30
+        assert available == 32
         assert occupancy_percent == 50.0
 
     def test_daily_is_today_flag(self):
@@ -206,7 +206,7 @@ class TestOccupancyWeeklyResponse:
 
         response_data = {
             "view": "weekly",
-            "max_capacity": 60,
+            "max_capacity": 64,
             "start_date": "2026-01-01",
             "end_date": "2026-06-30",
             "data": [],
@@ -269,7 +269,7 @@ class TestOccupancyMonthlyResponse:
 
         response_data = {
             "view": "monthly",
-            "max_capacity": 60,
+            "max_capacity": 64,
             "start_date": "2026-01-01",
             "end_date": "2026-12-31",
             "data": [],
@@ -490,39 +490,39 @@ class TestOccupancyDateRangeOverlap:
 class TestOccupancyCapacityCalculations:
     """Tests for capacity-related calculations."""
 
-    def test_max_capacity_is_60(self):
-        """Test that max capacity is set to 60 parking spaces."""
-        max_capacity = 60
+    def test_max_capacity_is_64(self):
+        """Test that max capacity is set to 64 parking spaces."""
+        max_capacity = 64
 
-        assert max_capacity == 60
+        assert max_capacity == 64
 
     def test_available_calculation(self):
         """Test available spaces calculation."""
-        max_capacity = 60
+        max_capacity = 64
         occupied = 50
         available = max_capacity - occupied
 
-        assert available == 10
+        assert available == 14
 
     def test_occupancy_percent_calculation(self):
         """Test occupancy percentage calculation."""
-        max_capacity = 60
+        max_capacity = 64
         occupied = 48
         occupancy_percent = round((occupied / max_capacity) * 100, 1)
 
-        assert occupancy_percent == 80.0
+        assert occupancy_percent == 75.0
 
     def test_full_capacity_percentage(self):
         """Test 100% occupancy."""
-        max_capacity = 60
-        occupied = 60
+        max_capacity = 64
+        occupied = 64
         occupancy_percent = round((occupied / max_capacity) * 100, 1)
 
         assert occupancy_percent == 100.0
 
     def test_empty_capacity_percentage(self):
         """Test 0% occupancy."""
-        max_capacity = 60
+        max_capacity = 64
         occupied = 0
         occupancy_percent = round((occupied / max_capacity) * 100, 1)
 
@@ -540,14 +540,14 @@ class TestOccupancyEmptyData:
         """Test that empty booking list returns valid structure."""
         response_data = {
             "view": "daily",
-            "max_capacity": 60,
+            "max_capacity": 64,
             "start_date": "2026-03-01",
             "end_date": "2026-03-31",
             "data": [],
         }
 
         assert response_data["view"] == "daily"
-        assert response_data["max_capacity"] == 60
+        assert response_data["max_capacity"] == 64
         assert isinstance(response_data["data"], list)
 
     def test_no_bookings_shows_zero_occupancy(self):

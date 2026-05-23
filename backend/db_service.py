@@ -836,7 +836,7 @@ def find_overcapacity_day_in_stay(
     for the first day where existing occupancy + this booking would push
     over `cap`. None if all days fit.
 
-    Called from /api/payments/create-intent (cap=60 public soft cap) and
+    Called from /api/payments/create-intent (cap=64 public soft cap) and
     the admin manual-booking endpoints (cap=70 physical hard ceiling).
 
     Counts CONFIRMED + COMPLETED only — PENDING (in-checkout carts) are

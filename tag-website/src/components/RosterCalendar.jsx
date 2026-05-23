@@ -354,9 +354,9 @@ function RosterCalendar({
   // Blocked dates state
   const [blockedDates, setBlockedDates] = useState([])
   // Daily occupancy map { 'YYYY-MM-DD': count } for the visible month.
-  // Drives the amber "Full" bar on at-cap days (soft cap 60 in BookingService).
+  // Drives the amber "Full" bar on at-cap days (soft cap 64 in BookingService).
   const [dailyOccupancy, setDailyOccupancy] = useState({})
-  const SOFT_CAP = 60
+  const SOFT_CAP = 64
   const [showBlockedDateModal, setShowBlockedDateModal] = useState(false)
   const [editingBlockedDate, setEditingBlockedDate] = useState(null)
   const [blockedDateForm, setBlockedDateForm] = useState({
@@ -2568,7 +2568,7 @@ function RosterCalendar({
                                     blockedInfo.block_dropoffs ? 'No Drop-offs' : 'No Pick-ups')}
                             </div>
                           )}
-                          {/* At-capacity indicator (auto — driven by daily occupancy >= 60). */}
+                          {/* At-capacity indicator (auto — driven by daily occupancy >= 64). */}
                           {/* Shown only when not already manually blocked, since manual block trumps cap visually. */}
                           {!blockedInfo && isAtCap && (
                             <div className="day-badge badge-at-cap" title={`Full: ${dayOccupancy}/${SOFT_CAP} cars parked`}>

@@ -87,14 +87,14 @@ class TestCheckSlotHappy:
         )
         assert r.status_code == 200
         body = r.json()
-        assert body == {"allowed": True, "peak": 0, "max_capacity": 60}
+        assert body == {"allowed": True, "peak": 0, "max_capacity": 64}
 
     def test_happy_pickup_at_1600_releases_spot_for_1630_dropoff(self, mock_db):
         """User-described scenario: existing car picked up at 16:00 → spot is
         free for a 16:30 drop-off. Peak during the customer's stay is the
         single existing booking, capped only at the truncated overlap (none —
         the existing car leaves before the customer arrives)."""
-        # 60 existing cars all leaving by 16:00 on June 15. Customer wants
+        # 64 existing cars all leaving by 16:00 on June 15. Customer wants
         # 16:30 on June 15 → 10:00 on June 16. Peak during customer's window
         # should be 0 because every existing car's leave time is before
         # customer's drop-off, so they don't appear inside the window at all.
@@ -104,7 +104,7 @@ class TestCheckSlotHappy:
                 dropoff_date=d, dropoff_time=time(10, 0),
                 pickup_date=d, pickup_time=time(16, 0),
             )
-            for _ in range(60)
+            for _ in range(64)
         ]
         r = _client(mock_db).get(
             "/api/capacity/check-slot?" + _qs(
@@ -116,15 +116,15 @@ class TestCheckSlotHappy:
         assert body["allowed"] is True
         assert body["peak"] == 0  # no other car is in the lot during stay
 
-    def test_happy_59_concurrent_during_stay_still_allows_60th(self, mock_db):
-        """Lot has 59 cars all parked overnight through the customer's window
-        → customer is allowed as the 60th (peak + 1 = 60 ≤ 60)."""
+    def test_happy_63_concurrent_during_stay_still_allows_64th(self, mock_db):
+        """Lot has 63 cars all parked overnight through the customer's window
+        → customer is allowed as the 64th (peak + 1 = 64 ≤ 64)."""
         mock_db._tables[Booking] = [
             mk_booking(
                 dropoff_date=date(2026, 6, 14), dropoff_time=time(9, 0),
                 pickup_date=date(2026, 6, 16), pickup_time=time(12, 0),
             )
-            for _ in range(59)
+            for _ in range(63)
         ]
         r = _client(mock_db).get(
             "/api/capacity/check-slot?" + _qs(
@@ -134,20 +134,20 @@ class TestCheckSlotHappy:
         assert r.status_code == 200
         body = r.json()
         assert body["allowed"] is True
-        assert body["peak"] == 59
+        assert body["peak"] == 63
 
 
 class TestCheckSlotUnhappy:
 
-    def test_unhappy_60_concurrent_blocks_61st(self, mock_db):
-        """When 60 existing cars overlap the customer's stay, peak = 60,
-        peak + 1 = 61 > cap → blocked."""
+    def test_unhappy_64_concurrent_blocks_65th(self, mock_db):
+        """When 64 existing cars overlap the customer's stay, peak = 64,
+        peak + 1 = 65 > cap → blocked."""
         mock_db._tables[Booking] = [
             mk_booking(
                 dropoff_date=date(2026, 6, 14), dropoff_time=time(9, 0),
                 pickup_date=date(2026, 6, 16), pickup_time=time(12, 0),
             )
-            for _ in range(60)
+            for _ in range(64)
         ]
         r = _client(mock_db).get(
             "/api/capacity/check-slot?" + _qs(
@@ -157,7 +157,7 @@ class TestCheckSlotUnhappy:
         assert r.status_code == 200
         body = r.json()
         assert body["allowed"] is False
-        assert body["peak"] == 60
+        assert body["peak"] == 64
 
     def test_unhappy_pickup_before_dropoff_rejected(self, mock_db):
         r = _client(mock_db).get(

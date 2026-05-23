@@ -136,7 +136,7 @@ function Bookings() {
   const [loadingDurationAvailability, setLoadingDurationAvailability] = useState(false)
 
   // Parking capacity management
-  const MAX_PARKING_SPOTS = 60
+  const MAX_PARKING_SPOTS = 64
 
   // This would normally come from your database/API
   // For now, simulating with a placeholder

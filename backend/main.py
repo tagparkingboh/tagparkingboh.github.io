@@ -800,8 +800,8 @@ async def get_daily_capacity(
     each date in [date_from, date_to] based on the live `bookings` table.
     Counts CONFIRMED + COMPLETED only — PENDING bookings are mid-checkout
     carts that may never convert, and including them inflates the count
-    against the public 60-cap (caught 2026-05-21 on 27 May: 57 confirmed
-    + 3 pending stuck for a while → ops calendar showed "Full (60)" but
+    against the public 64-cap (caught 2026-05-21 on 27 May: 57 confirmed
+    + 3 pending stuck for a while → ops calendar showed "Full" but
     there were actually 3 real slots free).
 
     First-come-first-served race protection moved to /api/payments/create-intent:
@@ -810,7 +810,7 @@ async def get_daily_capacity(
     the other gets the "Sorry, we're full" 400 with a phone routing link.
 
     Public endpoint (no auth) — only exposes aggregate counts per date,
-    no PII. Locked at MAX_PARKING_SPOTS = 60 (booking_service.py).
+    no PII. Locked at MAX_PARKING_SPOTS = 64 (booking_service.py).
     """
     if date_to < date_from:
         raise HTTPException(status_code=400, detail="date_to must be on or after date_from")
@@ -870,7 +870,7 @@ async def check_capacity_for_slot(
     Returns:
       allowed       bool     — peak + 1 <= max_capacity
       peak          int      — peak concurrent OTHER bookings during stay
-      max_capacity  int      — MAX_PARKING_SPOTS (60)
+      max_capacity  int      — MAX_PARKING_SPOTS (64)
 
     Counts CONFIRMED, COMPLETED, and PENDING bookings (PENDING included
     so two customers in-payment-flow can't both race for the last spot).
@@ -2320,10 +2320,10 @@ async def create_admin_booking(
     - Set custom drop-off times (not restricted to slots)
     - Override pricing if needed
     - Book for phone/walk-in customers
-    - Push past the 60 customer soft-cap up to the 70 hard ceiling
+    - Push past the 64 customer soft-cap up to the 70 hard ceiling
 
     Use this when customers contact you because all slots are booked.
-    Admin can override the public 60-spot cap but never the 70 physical
+    Admin can override the public 64-spot cap but never the 70 physical
     ceiling — every day in the stay range is checked against the live DB.
     """
     # Hard ceiling (70) check across the stay range. Uses live DB counts
@@ -2449,7 +2449,7 @@ async def create_manual_booking(
             vehicle.dvla_retry_count = 0
 
         # Admin hard ceiling (70 cars per day) — manual bookings can push
-        # past the public 60 soft-cap but never the lot's physical capacity.
+        # past the public 64 soft-cap but never the lot's physical capacity.
         offending = db_service.find_overcapacity_day_in_stay(
             db,
             dropoff_date=request.dropoff_date,
@@ -4567,7 +4567,7 @@ async def get_occupancy_report(
 
     For each time period, calculates:
     - occupied: Number of vehicles parked (active bookings for that date/period)
-    - available: Number of free spaces (60 - occupied)
+    - available: Number of free spaces (64 - occupied)
     - occupancy_percent: Percentage utilization
 
     A vehicle is counted as "occupied" on any date between dropoff_date and pickup_date (inclusive).
@@ -10582,12 +10582,12 @@ async def create_payment(
                     detail=f"Sorry, pick-ups are not available on {request_pickup_date.strftime('%d %B %Y')}. Please select a different date or time."
                 )
 
-        # Soft capacity gate (60 spots). The helper walks every day in the
+        # Soft capacity gate (64 spots). The helper walks every day in the
         # stay window and returns the first day that would exceed the cap
         # — including days strictly between dropoff and pickup. This stops
         # the leak shown by TAG-MSH89023 / TAG-UHB47647 on 2026-05-18
         # (endpoints clear but middle of stay full). Hard physical ceiling
-        # is 70 and only available to admin overrides; public stops at 60.
+        # is 70 and only available to admin overrides; public stops at 64.
         existing_pending_id = None
         if request.session_id:
             _existing = db_service.get_pending_booking_by_session(db, request.session_id)
@@ -10597,7 +10597,7 @@ async def create_payment(
             db,
             dropoff_date=request_dropoff_date,
             pickup_date=request_pickup_date,
-            cap=60,
+            cap=BookingService.MAX_PARKING_SPOTS,
             exclude_booking_id=existing_pending_id,
         )
         if offending:

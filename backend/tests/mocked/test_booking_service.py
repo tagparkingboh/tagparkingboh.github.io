@@ -91,7 +91,7 @@ class TestBookingServiceInit:
 
     def test_max_parking_spots_configured(self, service):
         """Max parking spots should be set."""
-        assert service.MAX_PARKING_SPOTS == 60
+        assert service.MAX_PARKING_SPOTS == 64
 
     def test_duration_prices_available(self, service):
         """Duration prices should be retrievable from database."""
@@ -378,7 +378,7 @@ class TestCapacityManagement:
         )
 
         assert result["all_available"] is True
-        assert result["max_capacity"] == 60
+        assert result["max_capacity"] == 64
 
     def test_booking_updates_daily_occupancy(self, service, sample_booking_request):
         """Creating a booking should update occupancy counts."""

@@ -5,11 +5,11 @@
 // bookings overlapping that operational day. The customer-form fetches this
 // via `/api/capacity/daily?from=...&to=...` and stores it in component state.
 //
-// `softCap` (default 60) is the public soft cap. The hard ceiling is 70 (admin
+// `softCap` (default 64) is the public soft cap. The hard ceiling is 70 (admin
 // override territory). At softCap the customer flow blocks new bookings; admin
 // can still push past it via manual booking.
 
-export const SOFT_CAP = 60
+export const SOFT_CAP = 64
 
 // Format a Date as 'YYYY-MM-DD' using LOCAL fields. Using toISOString() would
 // shift across midnight in any non-UTC timezone; UK is BST in summer so this

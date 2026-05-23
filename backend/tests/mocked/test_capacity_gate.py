@@ -2,7 +2,7 @@
 Tests for the daily-occupancy capacity gate.
 
 The gate is implemented as a single helper, db_service.find_overcapacity_day_in_stay,
-called from /api/payments/create-intent (cap=60 public soft cap) and the
+called from /api/payments/create-intent (cap=64 public soft cap) and the
 two admin manual-booking endpoints (cap=70 physical hard ceiling).
 
 This file:
@@ -59,7 +59,7 @@ D = date(2026, 6, 1)
 
 
 # =============================================================================
-# Soft cap (60) — public create-intent
+# Soft cap (64) — public create-intent
 # =============================================================================
 
 class TestSoftCapSingleDay:
@@ -67,28 +67,28 @@ class TestSoftCapSingleDay:
 
     def test_zero_bookings_allowed(self):
         db = _mock_db([])
-        assert find_overcapacity_day_in_stay(db, D, D, cap=60) is None
+        assert find_overcapacity_day_in_stay(db, D, D, cap=64) is None
 
-    def test_59_existing_t_minus_epsilon_allowed(self):
-        """59 cars → adding one brings total to 60 → must allow."""
-        db = _mock_db([_make_booking(D, D, id=i) for i in range(59)])
-        assert find_overcapacity_day_in_stay(db, D, D, cap=60) is None
+    def test_63_existing_t_minus_epsilon_allowed(self):
+        """63 cars → adding one brings total to 64 → must allow."""
+        db = _mock_db([_make_booking(D, D, id=i) for i in range(63)])
+        assert find_overcapacity_day_in_stay(db, D, D, cap=64) is None
 
-    def test_60_existing_t_blocked(self):
-        """60 cars → adding one would make 61 → must reject."""
-        db = _mock_db([_make_booking(D, D, id=i) for i in range(60)])
-        offending = find_overcapacity_day_in_stay(db, D, D, cap=60)
-        assert offending == (D, 60)
+    def test_64_existing_t_blocked(self):
+        """64 cars → adding one would make 65 → must reject."""
+        db = _mock_db([_make_booking(D, D, id=i) for i in range(64)])
+        offending = find_overcapacity_day_in_stay(db, D, D, cap=64)
+        assert offending == (D, 64)
 
-    def test_61_existing_t_plus_epsilon_blocked(self):
-        db = _mock_db([_make_booking(D, D, id=i) for i in range(61)])
-        offending = find_overcapacity_day_in_stay(db, D, D, cap=60)
-        assert offending == (D, 61)
+    def test_65_existing_t_plus_epsilon_blocked(self):
+        db = _mock_db([_make_booking(D, D, id=i) for i in range(65)])
+        offending = find_overcapacity_day_in_stay(db, D, D, cap=64)
+        assert offending == (D, 65)
 
-    def test_62_existing_blocked_under_soft_cap(self):
-        db = _mock_db([_make_booking(D, D, id=i) for i in range(62)])
-        offending = find_overcapacity_day_in_stay(db, D, D, cap=60)
-        assert offending == (D, 62)
+    def test_66_existing_blocked_under_hard_ceiling(self):
+        db = _mock_db([_make_booking(D, D, id=i) for i in range(66)])
+        offending = find_overcapacity_day_in_stay(db, D, D, cap=64)
+        assert offending == (D, 66)
 
 
 class TestSoftCapMultiDayStay:
@@ -98,15 +98,15 @@ class TestSoftCapMultiDayStay:
         """The 2026-05-18 leak: dropoff and pickup days are fine, but day 2
         of the 3-day stay is full → must reject pointing at day 2."""
         d_start, d_mid, d_end = D, D + timedelta(days=1), D + timedelta(days=2)
-        db = _mock_db([_make_booking(d_mid, d_mid, id=i) for i in range(60)])
-        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=60)
-        assert offending == (d_mid, 60)
+        db = _mock_db([_make_booking(d_mid, d_mid, id=i) for i in range(64)])
+        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=64)
+        assert offending == (d_mid, 64)
 
     def test_only_endpoint_blocked(self):
         """If only the dropoff day is full, the gate returns it first."""
         d_start, d_end = D, D + timedelta(days=2)
-        db = _mock_db([_make_booking(d_start, d_start, id=i) for i in range(60)])
-        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=60)
+        db = _mock_db([_make_booking(d_start, d_start, id=i) for i in range(64)])
+        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=64)
         assert offending[0] == d_start
 
     def test_long_stay_returns_earliest_full_day(self):
@@ -115,37 +115,37 @@ class TestSoftCapMultiDayStay:
         d_second_full = D + timedelta(days=5)
         d_end = D + timedelta(days=7)
         bookings = (
-            [_make_booking(d_first_full, d_first_full, id=i) for i in range(60)]
-            + [_make_booking(d_second_full, d_second_full, id=i + 1000) for i in range(60)]
+            [_make_booking(d_first_full, d_first_full, id=i) for i in range(64)]
+            + [_make_booking(d_second_full, d_second_full, id=i + 1000) for i in range(64)]
         )
         db = _mock_db(bookings)
-        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=60)
+        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=64)
         assert offending[0] == d_first_full
 
     def test_long_overlapping_booking_counted_every_day_it_spans(self):
         """A single multi-day booking contributes +1 to every day it spans."""
         seven_day = [
             _make_booking(D - timedelta(days=3), D + timedelta(days=3), id=i)
-            for i in range(60)
+            for i in range(64)
         ]
         db = _mock_db(seven_day)
-        offending = find_overcapacity_day_in_stay(db, D, D, cap=60)
-        assert offending == (D, 60)
+        offending = find_overcapacity_day_in_stay(db, D, D, cap=64)
+        assert offending == (D, 64)
 
 
 class TestSoftCapBoundaryAcrossStay:
     """Per-day boundary still holds when the stay is multi-day."""
 
     @pytest.mark.parametrize("existing,should_block", [
-        (59, False),
-        (60, True),
-        (61, True),
+        (63, False),
+        (64, True),
+        (65, True),
     ])
-    def test_each_day_independently_caps_at_60(self, existing, should_block):
+    def test_each_day_independently_caps_at_64(self, existing, should_block):
         d_start = D
         d_end = D + timedelta(days=2)
         db = _mock_db([_make_booking(d_start, d_end, id=i) for i in range(existing)])
-        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=60)
+        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=64)
         assert (offending is not None) == should_block
 
 
@@ -156,7 +156,7 @@ class TestSoftCapBoundaryAcrossStay:
 class TestStatusFilterExcludesPending:
     """The helper's SQLAlchemy filter passes [CONFIRMED, COMPLETED] only —
     PENDING (mid-checkout carts) used to inflate the count and trigger
-    false 'Full (60)' blocks (27 May prod: 57 confirmed + 3 pending stale
+    false 'Full' blocks (27 May prod: 57 confirmed + 3 pending stale
     carts → block fired). First-come-first-served race protection now lives
     at /api/payments/create-intent where the CONFIRMED commit wins."""
 
@@ -184,7 +184,7 @@ class TestStatusFilterExcludesPending:
 
         db = MagicMock()
         db.query.return_value = _SpyChain()
-        find_overcapacity_day_in_stay(db, D, D, cap=60)
+        find_overcapacity_day_in_stay(db, D, D, cap=64)
 
         assert captured["in_values"] is not None
         assert BookingStatus.CONFIRMED in captured["in_values"]
@@ -199,8 +199,8 @@ class TestStatusFilterExcludesPending:
         universally excluded — but the helper still supports the param
         (some call sites pass it; removing now would be a wider refactor).
         Confirms the kwarg doesn't blow up."""
-        db = _mock_db([_make_booking(D, D, id=i) for i in range(59)])
-        assert find_overcapacity_day_in_stay(db, D, D, cap=60, exclude_booking_id=999) is None
+        db = _mock_db([_make_booking(D, D, id=i) for i in range(63)])
+        assert find_overcapacity_day_in_stay(db, D, D, cap=64, exclude_booking_id=999) is None
 
 
 # =============================================================================
@@ -235,20 +235,20 @@ class TestDateBoundaries:
     def test_cursor_advances_across_month_end(self):
         d_start = date(2026, 1, 30)
         d_end = date(2026, 2, 2)
-        db = _mock_db([_make_booking(date(2026, 2, 1), date(2026, 2, 1), id=i) for i in range(60)])
-        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=60)
+        db = _mock_db([_make_booking(date(2026, 2, 1), date(2026, 2, 1), id=i) for i in range(64)])
+        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=64)
         assert offending[0] == date(2026, 2, 1)
 
     def test_cursor_advances_across_year_end(self):
         d_start = date(2026, 12, 30)
         d_end = date(2027, 1, 2)
-        db = _mock_db([_make_booking(date(2027, 1, 1), date(2027, 1, 1), id=i) for i in range(60)])
-        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=60)
+        db = _mock_db([_make_booking(date(2027, 1, 1), date(2027, 1, 1), id=i) for i in range(64)])
+        offending = find_overcapacity_day_in_stay(db, d_start, d_end, cap=64)
         assert offending[0] == date(2027, 1, 1)
 
     def test_same_day_dropoff_and_pickup_treated_as_one_day(self):
-        db = _mock_db([_make_booking(D, D, id=i) for i in range(60)])
-        assert find_overcapacity_day_in_stay(db, D, D, cap=60) == (D, 60)
+        db = _mock_db([_make_booking(D, D, id=i) for i in range(64)])
+        assert find_overcapacity_day_in_stay(db, D, D, cap=64) == (D, 64)
 
 
 # =============================================================================
@@ -309,10 +309,10 @@ class TestIntegrationCreateIntent:
     def test_full_day_returns_400_with_we_re_full_message(self):
         from datetime import date as _d
 
-        # 60 bookings overlapping our requested stay → gate must trip
+        # 64 bookings overlapping our requested stay → gate must trip
         future = _d.today() + timedelta(days=30)
         bookings = []
-        for i in range(60):
+        for i in range(64):
             b = MagicMock()
             b.id = i
             b.status = BookingStatus.CONFIRMED

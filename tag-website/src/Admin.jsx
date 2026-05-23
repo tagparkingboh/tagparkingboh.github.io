@@ -12150,7 +12150,7 @@ function Admin() {
               <div className="occupancy-report-section">
                 <h3>Parking Occupancy</h3>
                 <p className="reports-description">
-                  View parking space utilization across your 60 spaces. Shows historical and future occupancy based on confirmed and completed bookings.
+                  View parking space utilization across your 64 spaces. Shows historical and future occupancy based on confirmed and completed bookings.
                 </p>
 
                 {/* View Type Selector */}

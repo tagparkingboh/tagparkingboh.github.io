@@ -82,8 +82,8 @@ class TestCapacityDailyHappy:
         assert r.status_code == 200
         body = r.json()
         assert body["daily_occupancy"] == {"2026-06-15": 3}
-        # Cap is sourced from BookingService.MAX_PARKING_SPOTS — locked at 60.
-        assert body["max_capacity"] == 60
+        # Cap is sourced from BookingService.MAX_PARKING_SPOTS — locked at 64.
+        assert body["max_capacity"] == 64
 
     def test_happy_booking_spans_multiple_days(self, mock_db):
         """A single car parked over 3 days adds +1 to each day in the range."""
