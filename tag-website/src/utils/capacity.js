@@ -24,6 +24,16 @@ export const isAtCapacity = (date, dailyOccupancy, softCap = SOFT_CAP) => {
   return (dailyOccupancy[isoDate(date)] || 0) >= softCap
 }
 
+// Occupancy % for a single date, rounded to the nearest integer. Drives the
+// "we're getting full" early-warning modal in the booking flow — fires in
+// the 80-99% band where the lot still has room but is filling up. Returns
+// 0 for null/missing inputs so the JSX gate can do a simple `>= 80` check.
+export const getDayOccupancyPercent = (date, dailyOccupancy, softCap = SOFT_CAP) => {
+  if (!date || !dailyOccupancy || !softCap) return 0
+  const count = dailyOccupancy[isoDate(date)] || 0
+  return Math.round((count / softCap) * 100)
+}
+
 // True if `date` falls inside any manual BlockedDate row. blockedDates is a
 // list of `{ start_date, end_date, ... }` ISO-string ranges; the test is
 // inclusive on both ends.

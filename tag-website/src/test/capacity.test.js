@@ -22,6 +22,7 @@ import {
   isAtCapacity,
   isManuallyBlocked,
   findBlockedDateInStay,
+  getDayOccupancyPercent,
   SOFT_CAP,
 } from '../utils/capacity'
 
@@ -104,6 +105,78 @@ describe('isoDate (local-time formatter)', () => {
     // Using LOCAL fields means BST-summer / GMT-winter don't shift the date.
     // (toISOString() would shift D(2026, 5, 26, 0, 0) → 2026-05-25 in BST.)
     expect(isoDate(D(2026, 5, 26))).toBe('2026-05-26')
+  })
+})
+
+// =============================================================================
+// getDayOccupancyPercent — drives the "we're getting full" early-warning
+// modal. 80-89% = amber, 90-99% = red, >= 100% is already hard-blocked by
+// isAtCapacity so the modal never fires there.
+// =============================================================================
+
+describe('getDayOccupancyPercent', () => {
+  // --- HAPPY ---------------------------------------------------------------
+
+  it('H: returns rounded integer percent for a populated date', () => {
+    // 48 / 64 = 75% exact
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 48 })).toBe(75)
+  })
+
+  it('H: 52 / 64 rounds to 81% (amber band lower edge)', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 52 })).toBe(81)
+  })
+
+  it('H: 58 / 64 rounds to 91% (red band lower edge)', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 58 })).toBe(91)
+  })
+
+  // --- UNHAPPY -------------------------------------------------------------
+
+  it('U: null date returns 0', () => {
+    expect(getDayOccupancyPercent(null, { '2026-05-26': 48 })).toBe(0)
+  })
+
+  it('U: missing dailyOccupancy returns 0', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), null)).toBe(0)
+  })
+
+  it('U: date with no entry treated as 0% (empty day)', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-27': 50 })).toBe(0)
+  })
+
+  it('U: softCap of 0 returns 0 (no divide-by-zero crash)', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 30 }, 0)).toBe(0)
+  })
+
+  // --- BOUNDARY ------------------------------------------------------------
+
+  it('B: empty lot → 0%', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 0 })).toBe(0)
+  })
+
+  it('B: at cap (64) → 100%', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 64 })).toBe(100)
+  })
+
+  it('B: 51 / 64 rounds to 80% (top of "no warning" band)', () => {
+    // 51/64 = 79.6875 → rounds to 80%
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 51 })).toBe(80)
+  })
+
+  it('B: 57 / 64 rounds to 89% (top of amber band)', () => {
+    // 57/64 = 89.0625 → rounds to 89%
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 57 })).toBe(89)
+  })
+
+  it('B: 63 / 64 rounds to 98% (top of red band, one slot left)', () => {
+    // 63/64 = 98.4375 → rounds to 98%
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 63 })).toBe(98)
+  })
+
+  // --- EDGE ----------------------------------------------------------------
+
+  it('E: custom softCap of 40, 32 cars → 80%', () => {
+    expect(getDayOccupancyPercent(D(2026, 5, 26), { '2026-05-26': 32 }, 40)).toBe(80)
   })
 })
 

@@ -14,6 +14,8 @@ import {
   isAtCapacity as isAtCapacityUtil,
   isManuallyBlocked as isManuallyBlockedUtil,
   findBlockedDateInStay as findBlockedDateInStayUtil,
+  getDayOccupancyPercent as getDayOccupancyPercentUtil,
+  isoDate as isoDateUtil,
 } from './utils/capacity'
 import 'react-datepicker/dist/react-datepicker.css'
 import './BookingsNew.css'
@@ -316,6 +318,12 @@ function Bookings({ isModal = false, onClose }) {
   // the amber "at-cap" tint on the date pickers and the stay-span warning.
   const [dailyOccupancy, setDailyOccupancy] = useState({})
   const SOFT_CAP_FE = 64
+  // "We're getting full" early-warning modal. Fires once per date in the
+  // 80-99% band — at-or-above 100% is already blocked by the existing
+  // "Sorry, we're full" banners. Tracks dismissed ISO dates so we don't
+  // re-pop the same date if the customer re-opens the picker.
+  const [busyWarning, setBusyWarning] = useState(null)
+  const dismissedBusyDatesRef = useRef(new Set())
 
   // Parking capacity management — time-aware. The backend computes peak
   // concurrent occupancy across the customer's [dropoff_dt, pickup_dt]
@@ -763,6 +771,52 @@ function Bookings({ isModal = false, onClose }) {
     }
     fetchDailyCapacity()
   }, [API_BASE_URL])
+
+  // "We're getting full" early-warning gate. When the customer has selected
+  // a date (dropoff or pickup) that's not blocked and not at the cap but
+  // sits in the 80-99% band, surface a one-time modal so they have a chance
+  // to pivot to a quieter day or commit faster. The existing "Sorry, we're
+  // full" banner already handles >= 100%. Dismissed dates are tracked in a
+  // ref (per-tab, lives until reload) so re-opening the picker doesn't
+  // spam the modal.
+  useEffect(() => {
+    if (busyWarning) return
+    if (!dailyOccupancy || Object.keys(dailyOccupancy).length === 0) return
+
+    const candidates = []
+    if (formData.dropoffDate) candidates.push(formData.dropoffDate)
+    if (
+      formData.pickupDate
+      && (!formData.dropoffDate
+          || isoDateUtil(formData.pickupDate) !== isoDateUtil(formData.dropoffDate))
+    ) {
+      candidates.push(formData.pickupDate)
+    }
+
+    for (const candidate of candidates) {
+      const iso = isoDateUtil(candidate)
+      if (dismissedBusyDatesRef.current.has(iso)) continue
+      if (isManuallyBlockedUtil(candidate, blockedDates)) continue
+      if (isAtCapacityUtil(candidate, dailyOccupancy, SOFT_CAP_FE)) continue
+      const pct = getDayOccupancyPercentUtil(candidate, dailyOccupancy, SOFT_CAP_FE)
+      if (pct >= 80) {
+        setBusyWarning({
+          percent: pct,
+          level: pct >= 90 ? 'red' : 'amber',
+          dateISO: iso,
+          formatted: format(candidate, 'EEEE d MMMM yyyy'),
+        })
+        return
+      }
+    }
+  }, [formData.dropoffDate, formData.pickupDate, dailyOccupancy, blockedDates, busyWarning])
+
+  const dismissBusyWarning = () => {
+    if (busyWarning?.dateISO) {
+      dismissedBusyDatesRef.current.add(busyWarning.dateISO)
+    }
+    setBusyWarning(null)
+  }
 
   // Fetch departures when drop-off date changes
   useEffect(() => {
@@ -2198,6 +2252,41 @@ function Bookings({ isModal = false, onClose }) {
                 Let me check again
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Availability warning modal — fires in the 80-99% occupancy band so
+          customers know spaces are tight without being hard-blocked. Amber
+          for 80-89% (informational), red for 90-99% (more urgent). */}
+      {busyWarning && (
+        <div className="busy-warning-modal-overlay" onClick={dismissBusyWarning}>
+          <div
+            className={`busy-warning-modal busy-warning-modal--${busyWarning.level}`}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="busy-warning-title"
+          >
+            <div className="busy-warning-icon" aria-hidden="true">
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L1 21h22L12 2zm0 5.5L19.5 19h-15L12 7.5zM11 10v5h2v-5h-2zm0 6v2h2v-2h-2z" />
+              </svg>
+            </div>
+            <h2 id="busy-warning-title">We're getting full</h2>
+            <p className="busy-warning-percent">
+              {busyWarning.formatted} is at <strong>{busyWarning.percent}%</strong> capacity.
+            </p>
+            <p className="busy-warning-body">
+              We suggest booking soon to avoid disappointment.
+            </p>
+            <button
+              type="button"
+              className="busy-warning-btn"
+              onClick={dismissBusyWarning}
+            >
+              Got it, continue
+            </button>
           </div>
         </div>
       )}

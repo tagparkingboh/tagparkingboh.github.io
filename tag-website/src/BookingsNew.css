@@ -2606,14 +2606,176 @@
    Background is transparent because the outer BookingModal overlay already
    provides the dim — without this they'd double-dim and hide the homepage. */
 .bookings-new-page--modal .welcome-modal-overlay,
-.bookings-new-page--modal .time-confirm-modal-overlay {
+.bookings-new-page--modal .time-confirm-modal-overlay,
+.bookings-new-page--modal .busy-warning-modal-overlay {
   z-index: 1600;
   background: transparent;
 }
 
 /* While a sub-modal is open, hide the booking flow underneath so the user
-   sees the (dimmed) homepage behind the card — not the half-filled form. */
+   sees the (dimmed) homepage behind the card — not the half-filled form.
+   The busy-warning popup is informational only (the form stays valid
+   underneath), so we DON'T hide the container for it — customer dismisses
+   the popup and lands back on their date picker. */
 .bookings-new-page--modal:has(.welcome-modal-overlay) .bookings-new-container,
 .bookings-new-page--modal:has(.time-confirm-modal-overlay) .bookings-new-container {
   visibility: hidden;
+}
+
+/* =========================================================================
+   "We're getting full" early-warning modal
+   ========================================================================= */
+.busy-warning-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+.busy-warning-modal {
+  background: #2a2a2a;
+  border-radius: 16px;
+  padding: 2rem 1.75rem;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+/* 80–89% — amber: informational, "spaces are tight". */
+.busy-warning-modal--amber {
+  border: 2px solid #ffae00;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(255, 174, 0, 0.18);
+}
+
+.busy-warning-modal--amber .busy-warning-icon {
+  color: #ffae00;
+}
+
+.busy-warning-modal--amber .busy-warning-percent strong {
+  color: #ffae00;
+}
+
+/* 90–99% — red: urgent, "almost gone". */
+.busy-warning-modal--red {
+  border: 2px solid #ef4444;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(239, 68, 68, 0.22);
+}
+
+.busy-warning-modal--red .busy-warning-icon {
+  color: #ef4444;
+}
+
+.busy-warning-modal--red .busy-warning-percent strong {
+  color: #ff6b6b;
+}
+
+.busy-warning-icon {
+  margin-bottom: 0.75rem;
+  display: flex;
+  justify-content: center;
+}
+
+.busy-warning-modal h2 {
+  font-size: 1.4rem;
+  color: #ffffff;
+  margin: 0 0 0.75rem 0;
+  font-weight: 700;
+}
+
+.busy-warning-percent {
+  font-size: 1rem;
+  color: #e0e0e0;
+  margin: 0 0 0.5rem 0;
+  line-height: 1.5;
+}
+
+.busy-warning-percent strong {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.busy-warning-body {
+  font-size: 0.95rem;
+  color: #b0b0b0;
+  margin: 0 0 1.5rem 0;
+  line-height: 1.5;
+}
+
+.busy-warning-btn {
+  background: #D9FF00;
+  color: #1a1a1a;
+  border: none;
+  padding: 0.85rem 1.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+  font-family: 'Gilroy', sans-serif;
+  width: 100%;
+  max-width: 280px;
+}
+
+.busy-warning-btn:hover {
+  background: #e8ff4d;
+  transform: translateY(-1px);
+}
+
+.busy-warning-btn:active {
+  transform: translateY(0);
+}
+
+/* Tablet (481–768px) — slightly larger card, comfortable touch targets. */
+@media (min-width: 481px) and (max-width: 768px) {
+  .busy-warning-modal {
+    max-width: 460px;
+    padding: 2rem;
+  }
+
+  .busy-warning-modal h2 {
+    font-size: 1.5rem;
+  }
+}
+
+/* Mobile (≤480px) — tighter padding, larger tap target, full-width button. */
+@media (max-width: 480px) {
+  .busy-warning-modal-overlay {
+    padding: 0.75rem;
+    align-items: flex-end; /* sheet-style anchored bottom for thumb reach */
+  }
+
+  .busy-warning-modal {
+    max-width: 100%;
+    padding: 1.5rem 1.25rem 1.75rem;
+    border-radius: 16px 16px 12px 12px;
+  }
+
+  .busy-warning-modal h2 {
+    font-size: 1.2rem;
+  }
+
+  .busy-warning-percent {
+    font-size: 0.95rem;
+  }
+
+  .busy-warning-body {
+    font-size: 0.9rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .busy-warning-btn {
+    max-width: 100%;
+    padding: 1rem 1.5rem;
+    font-size: 1.05rem;
+  }
 }
