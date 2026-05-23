@@ -3247,8 +3247,14 @@ function RosterCalendar({
 
             {/* Available Shifts Section (Employee only) */}
             {!isAdmin && (() => {
-              // Filter available shifts for selected date
-              const availableForDate = availableShifts.filter(shift => shift.date === selectedDate)
+              // Filter + operational-time sort: re-bucketed early-AM tails
+              // (date=D, end_date=D+1, start_time < end_time) land at the
+              // bottom so Friday-afternoon claimable shifts surface above
+              // the Friday-evening 00:20 tail.
+              const availableForDate = availableShifts
+                .filter(shift => shift.date === selectedDate)
+                .slice()
+                .sort((a, b) => shiftSortMinutes(a) - shiftSortMinutes(b))
               if (availableForDate.length === 0) return null
 
               return (
