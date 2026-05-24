@@ -6432,15 +6432,21 @@
 }
 
 .occupancy-y-axis {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  position: relative;
   height: 400px;
   padding-right: 8px;
   border-right: 1px solid #e2e8f0;
+  width: 48px;
+  flex-shrink: 0;
 }
 
+/* Absolute-positioned now (was flex space-between) so the labels line up
+   with the unevenly-spaced gridlines in the 0-110% scale. Each label is
+   placed via an inline `bottom: X%` derived from the gridline math. */
 .y-axis-label {
+  position: absolute;
+  right: 8px;
+  transform: translateY(50%);
   font-size: 11px;
   color: #94a3b8;
   font-weight: 500;
@@ -6474,6 +6480,13 @@
   right: 0;
   height: 1px;
   background: #f1f5f9;
+}
+
+/* Soft-cap reference at 100% — heavier stroke so it still reads as the
+   capacity line now that the chart tops out at 110%. */
+.gridline-cap {
+  height: 2px;
+  background: #cbd5e1;
 }
 
 .occupancy-chart {

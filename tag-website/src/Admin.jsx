@@ -12248,21 +12248,32 @@ function Admin() {
                         </div>
                       </div>
                       <div className="occupancy-chart-wrapper">
-                        {/* Y-axis labels */}
+                        {/* Y-axis labels — absolute-positioned so they line up
+                            with the unevenly-spaced gridlines below. Scale tops
+                            out at 110% so admin manual-booking overflow (up to
+                            the 70-car hard ceiling = ~109%) stays inside the
+                            chart instead of clipping past the top gridline.
+                            Bottom % math: gridline pct * 350px / 400px + 12.5%
+                            offset (chart area = top 350px of the 400px wrapper,
+                            bottom 50px reserved for day-name labels). */}
                         <div className="occupancy-y-axis">
-                          <span className="y-axis-label">100%</span>
-                          <span className="y-axis-label">75%</span>
-                          <span className="y-axis-label">50%</span>
-                          <span className="y-axis-label">25%</span>
-                          <span className="y-axis-label">0%</span>
+                          <span className="y-axis-label" style={{ bottom: '100%' }}>110%</span>
+                          <span className="y-axis-label" style={{ bottom: '92.05%' }}>100%</span>
+                          <span className="y-axis-label" style={{ bottom: '72.16%' }}>75%</span>
+                          <span className="y-axis-label" style={{ bottom: '52.27%' }}>50%</span>
+                          <span className="y-axis-label" style={{ bottom: '32.39%' }}>25%</span>
+                          <span className="y-axis-label" style={{ bottom: '12.5%' }}>0%</span>
                         </div>
                         <div className="occupancy-chart-area">
-                          {/* Horizontal gridlines */}
+                          {/* Horizontal gridlines — top is now 110%; the 100%
+                              line gets a heavier .gridline-cap stroke to keep
+                              it readable as the soft-cap reference. */}
                           <div className="occupancy-gridlines">
                             <div className="gridline" style={{ bottom: '100%' }}></div>
-                            <div className="gridline" style={{ bottom: '75%' }}></div>
-                            <div className="gridline" style={{ bottom: '50%' }}></div>
-                            <div className="gridline" style={{ bottom: '25%' }}></div>
+                            <div className="gridline gridline-cap" style={{ bottom: `${100 / 1.1}%` }}></div>
+                            <div className="gridline" style={{ bottom: `${75 / 1.1}%` }}></div>
+                            <div className="gridline" style={{ bottom: `${50 / 1.1}%` }}></div>
+                            <div className="gridline" style={{ bottom: `${25 / 1.1}%` }}></div>
                             <div className="gridline" style={{ bottom: '0%' }}></div>
                           </div>
                           <div className="occupancy-chart">
@@ -12333,7 +12344,7 @@ function Admin() {
                                       <span className="tooltip-percent">{Math.round(percent)}% full</span>
                                     </div>
                                   </div>
-                                  <div className={barClass} style={{ height: `${Math.max(percent, 3)}%` }}>
+                                  <div className={barClass} style={{ height: `${Math.max(percent / 1.1, 3)}%` }}>
                                     <div className="occupancy-bar-content">
                                       <span className="occupancy-bar-percent">{Math.round(percent)}%</span>
                                       <span className="occupancy-bar-cars">{occupied}</span>
