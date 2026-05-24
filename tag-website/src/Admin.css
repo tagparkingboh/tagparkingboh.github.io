@@ -6127,7 +6127,7 @@
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  height: 200px;
+  height: 230px;
   padding-bottom: 40px;
   overflow-x: auto;
 }
@@ -6140,6 +6140,11 @@
   flex: 1;
 }
 
+/* flex-shrink: 0 stops the bar-stack from being collapsed by the flex
+   layout when bar-column's natural content (stack + labels) exceeds the
+   parent. Previously this clipped the tallest bars to ~125px so the
+   visible range between min and max bars looked compressed (a £2480
+   week and a £5253 week appeared closer in height than they should). */
 .bar-stack {
   display: flex;
   flex-direction: column-reverse;
@@ -6147,6 +6152,7 @@
   max-width: 40px;
   border-radius: 4px 4px 0 0;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .bar-segment {
