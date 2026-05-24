@@ -2580,9 +2580,17 @@ async def create_manual_booking(
         )
         db.add(payment)
 
-        # Mark promo code as used ONLY for free bookings (100% discount)
-        # For paid bookings, the Stripe webhook will mark the code as used after payment succeeds
-        if request.promo_code and is_free:
+        # Link the promo code to this booking. Previously gated on `is_free`
+        # with the rationale "the Stripe webhook will mark the code as used
+        # after payment succeeds" — but for manual bookings paid via a Stripe
+        # Payment Link the link's metadata (set externally by admin in Stripe)
+        # doesn't carry promo_code, so the webhook had nothing to act on and
+        # the promo silently fell off the books (TAG-UJ972BCF / TAG-3JM5QZ8P,
+        # 2026-05 backfills). Admin has already pre-agreed the discounted
+        # price with the customer at this point, so we link now to match
+        # reality. The existing cancel/refund flow unlinks promos if the
+        # customer never pays (search "promo_code_used_booking_id = None").
+        if request.promo_code:
             promo_code_str = request.promo_code.strip().upper()
             from db_models import PromoCode as DbPromoCode, Promotion as DbPromotion
 
@@ -2595,7 +2603,19 @@ async def create_manual_booking(
                 # Get discount percent from promotion
                 promotion = db.query(DbPromotion).filter(DbPromotion.id == promo_code_record.promotion_id).first()
                 discount_pct = promotion.discount_percent if promotion else 100
-                mark_promo_code_used(db, promo_code_record, booking.id, discount_pct, request.amount_pence)
+                # Back-calculate the actual discount in pence so the
+                # PromoCodeUsage row carries the real value (not just the
+                # amount paid). Free bookings legacy behaviour: pass
+                # amount_pence (= 0 today). Paid bookings: net = gross *
+                # (1 - pct/100), so discount = net * pct / (100 - pct).
+                # £76.50 @ 15% off → 7650 * 15 / 85 = 1350 (£13.50).
+                if is_free or discount_pct >= 100:
+                    discount_amount_pence = request.amount_pence
+                else:
+                    discount_amount_pence = round(
+                        request.amount_pence * discount_pct / (100 - discount_pct)
+                    )
+                mark_promo_code_used(db, promo_code_record, booking.id, discount_pct, discount_amount_pence)
             else:
                 # Fallback: Legacy MarketingSubscriber promo fields
                 subscriber = db.query(MarketingSubscriber).filter(
