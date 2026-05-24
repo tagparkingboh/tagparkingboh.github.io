@@ -13009,6 +13009,7 @@ function Admin() {
                                 const endIdx = Math.min(data.length, startIdx + weeksPerPage)
                                 const displayData = data.slice(startIdx, endIdx)
                                 const maxRevenue = Math.max(...displayData.map(d => d.revenuePounds), 1)
+                                const BAR_STACK_PX = 150 // matches inline height below; px-based to avoid the single-child flex-column % quirk that was clipping bars to ~full height
 
                                 return (
                                   <>
@@ -13036,10 +13037,10 @@ function Admin() {
                                     <div className="stacked-bar-chart">
                                       {displayData.map((item, idx) => (
                                         <div key={idx} className="bar-column">
-                                          <div className="bar-stack" style={{ height: '150px' }}>
+                                          <div className="bar-stack" style={{ height: `${BAR_STACK_PX}px` }}>
                                             <div
                                               className="bar-segment bar-confirmed"
-                                              style={{ height: `${(item.revenuePounds / maxRevenue) * 100}%` }}
+                                              style={{ height: `${(item.revenuePounds / maxRevenue) * BAR_STACK_PX}px` }}
                                               title={`£${item.revenuePounds.toFixed(2)}`}
                                             />
                                           </div>
@@ -13074,6 +13075,7 @@ function Admin() {
                                   const isExpanded = expandedRevenueDailyMonths[monthKey] !== false
                                   const monthTotal = monthItems.reduce((sum, d) => sum + d.revenuePounds, 0)
                                   const maxRevenue = Math.max(...monthItems.map(d => d.revenuePounds), 1)
+                                  const BAR_STACK_PX = 150
 
                                   return (
                                     <div key={monthKey} className="daily-month-group">
@@ -13094,10 +13096,10 @@ function Admin() {
                                             const dayLabel = item.date?.slice(8, 10).replace(/^0/, '') || ''
                                             return (
                                               <div key={idx} className="bar-column">
-                                                <div className="bar-stack" style={{ height: '150px' }}>
+                                                <div className="bar-stack" style={{ height: `${BAR_STACK_PX}px` }}>
                                                   <div
                                                     className="bar-segment bar-confirmed"
-                                                    style={{ height: `${(item.revenuePounds / maxRevenue) * 100}%` }}
+                                                    style={{ height: `${(item.revenuePounds / maxRevenue) * BAR_STACK_PX}px` }}
                                                     title={`£${item.revenuePounds.toFixed(2)}`}
                                                   />
                                                 </div>
@@ -13118,12 +13120,13 @@ function Admin() {
                               {(() => {
                                 const data = financialData.chartData.monthly || []
                                 const maxRevenue = Math.max(...data.map(d => d.revenuePounds), 1)
+                                const BAR_STACK_PX = 150
                                 return data.map((item, idx) => (
                                   <div key={idx} className="bar-column">
-                                    <div className="bar-stack" style={{ height: '150px' }}>
+                                    <div className="bar-stack" style={{ height: `${BAR_STACK_PX}px` }}>
                                       <div
                                         className="bar-segment bar-confirmed"
-                                        style={{ height: `${(item.revenuePounds / maxRevenue) * 100}%` }}
+                                        style={{ height: `${(item.revenuePounds / maxRevenue) * BAR_STACK_PX}px` }}
                                         title={`£${item.revenuePounds.toFixed(2)}`}
                                       />
                                     </div>
