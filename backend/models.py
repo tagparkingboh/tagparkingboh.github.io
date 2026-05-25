@@ -574,11 +574,23 @@ class RosterShiftDuplicateRequest(BaseModel):
 class RosterShiftMergeRequest(BaseModel):
     """Body for POST /api/roster/{id}/merge.
 
-    Adjacent same-day (allowing overnight wrap), same staff or one
-    unassigned. Combines into a single row spanning the union of the two
-    windows; loser row is deleted; booking links union into the survivor.
+    Same-day pairs (allowing overnight wrap). No adjacency or overlap
+    restriction — the merged window is always the UNION of both shifts'
+    time ranges, so admins can collapse gapped or overlapping pairs.
+
+    `other_shift_id` is the SURVIVOR (the shift the URL-id shift gets
+    absorbed into). When both shifts have different `staff_id` (and
+    neither is null), pass `survivor_staff_id` to pick who keeps the
+    merged shift; `staff_choice_made=True` makes the choice explicit
+    (so passing `survivor_staff_id=None` distinguishably means
+    "unassigned" rather than "I didn't say"). Without a choice on a
+    staff conflict the endpoint returns 422.
+
+    Booking links union into the survivor; the absorbed row is deleted.
     """
     other_shift_id: int
+    survivor_staff_id: Optional[int] = None
+    staff_choice_made: bool = False
 
 
 class RosterShiftSplitRequest(BaseModel):

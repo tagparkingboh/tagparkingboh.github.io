@@ -1680,75 +1680,116 @@ async def merge_shift(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Merge a roster shift with an adjacent neighbour.
+    """Merge a roster shift INTO another shift on the same day.
 
-    Adjacency rule: neighbour's start equals this shift's end OR vice versa
-    (touching exactly, gap = 0 minutes). Any other gap returns 422.
+    Survivor is `body.other_shift_id` (the admin's explicit pick); the
+    shift at `shift_id` is absorbed and deleted. The merged window spans
+    the UNION of both shifts' time ranges, so gaps between them get
+    swallowed and overlaps get collapsed — no adjacency requirement.
 
-    Staff rule: same staff_id on both, OR exactly one is unassigned. Mixed
-    different-staff shifts are not merged.
+    Staff:
+      - Both same staff (or both null): trivially preserved.
+      - One null + one assigned: survivor inherits the assigned one.
+      - Both assigned to different staff: admin must pass
+        `survivor_staff_id` (the chosen winner, or None for unassigned)
+        AND `staff_choice_made=True`. Without the explicit choice the
+        endpoint returns 422 so we never silently throw away a driver.
 
-    Survivor: the earlier-starting shift. Result spans `[earlier.start,
-    later.end]`. Booking links union onto the survivor; the loser row is
-    deleted.
+    Booking links union onto the survivor (duplicates dropped).
+    `intended_driver_type` re-derives from the chosen staff's driver_type.
     """
-    a = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
-    b = db.query(RosterShift).filter(RosterShift.id == body.other_shift_id).first()
-    if not a or not b:
+    absorbed = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
+    survivor = db.query(RosterShift).filter(RosterShift.id == body.other_shift_id).first()
+    if not absorbed or not survivor:
         raise HTTPException(status_code=404, detail="Shift not found")
-    if a.id == b.id:
+    if absorbed.id == survivor.id:
         raise HTTPException(status_code=422, detail="Cannot merge a shift with itself")
 
-    a_start, a_end = _shift_window_dt(a)
-    b_start, b_end = _shift_window_dt(b)
-    earlier, later = (a, b) if a_start <= b_start else (b, a)
-    e_start, e_end = _shift_window_dt(earlier)
-    l_start, l_end = _shift_window_dt(later)
-
-    # Adjacency: earlier.end == later.start exactly. Any gap > 0 → reject.
-    if e_end != l_start:
-        if e_end > l_start:
-            raise HTTPException(status_code=422, detail="Shifts overlap; merge requires exact adjacency (gap = 0).")
-        gap_minutes = int((l_start - e_end).total_seconds() / 60)
+    # Same-day rule: both shifts' anchor `date` must match. Overnight
+    # shifts (date=D, end_date=D+1) stay anchored to their START date,
+    # so a 22:00→02:00 shift dated 2/3 cannot merge with a 03:00 shift
+    # dated 2/4 even though they're operationally close in real time.
+    # The UI already filters by date bucket; this is the API-side guard
+    # against direct callers / future integrations creating cross-day
+    # mega-shifts.
+    if absorbed.date != survivor.date:
         raise HTTPException(
             status_code=422,
-            detail=f"Shifts not adjacent (gap = {gap_minutes} min). Merge requires touching exactly.",
+            detail=(
+                "Shifts must be on the same calendar day to merge "
+                f"(this shift is on {absorbed.date.isoformat()}, "
+                f"target is on {survivor.date.isoformat()}). Overnight "
+                "shifts are anchored to their start date — the next "
+                "morning's shifts belong to a separate day."
+            ),
         )
 
-    # Staff: same, or one null.
-    if a.staff_id is not None and b.staff_id is not None and a.staff_id != b.staff_id:
-        raise HTTPException(status_code=422, detail="Cannot merge shifts assigned to different staff.")
-    survivor_staff = earlier.staff_id if earlier.staff_id is not None else later.staff_id
+    # Union the wall-clock windows. Handles overnight-wrap because
+    # _shift_window_dt returns the real datetime span (end_date when set).
+    abs_start, abs_end = _shift_window_dt(absorbed)
+    sur_start, sur_end = _shift_window_dt(survivor)
+    union_start = min(abs_start, sur_start)
+    union_end = max(abs_end, sur_end)
 
-    # Apply to earlier (survivor).
-    earlier.staff_id = survivor_staff
-    earlier.end_time = later.end_time
-    earlier.end_date = later.end_date or later.date
-    if earlier.end_date == earlier.date:
-        earlier.end_date = None
-    # intended_driver_type: prefer the assigned side's; else preserve earlier's.
-    if survivor_staff is not None:
-        user = db.query(User).filter(User.id == survivor_staff).first()
+    # Staff resolution.
+    a_staff, s_staff = absorbed.staff_id, survivor.staff_id
+    conflict = a_staff is not None and s_staff is not None and a_staff != s_staff
+    if conflict:
+        if not body.staff_choice_made:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Shifts have different assigned staff. Pass "
+                    "`survivor_staff_id` (one of the two staff_ids or null "
+                    "for unassigned) and `staff_choice_made=true`."
+                ),
+            )
+        if body.survivor_staff_id not in (None, a_staff, s_staff):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"`survivor_staff_id` must be one of {{{a_staff}, {s_staff}, null}}; "
+                    f"got {body.survivor_staff_id}."
+                ),
+            )
+        chosen_staff = body.survivor_staff_id
+    else:
+        # No conflict: pick the non-null one (or stay null if both null).
+        chosen_staff = a_staff if a_staff is not None else s_staff
+
+    # Apply the union to the survivor row.
+    survivor.staff_id = chosen_staff
+    survivor.date = union_start.date()
+    survivor.start_time = union_start.time()
+    survivor.end_time = union_end.time()
+    if union_end.date() != union_start.date():
+        survivor.end_date = union_end.date()
+    else:
+        survivor.end_date = None
+
+    # Re-derive intended_driver_type from the chosen staff.
+    if chosen_staff is not None:
+        user = db.query(User).filter(User.id == chosen_staff).first()
         if user and getattr(user, "driver_type", None) in ("jockey", "fleet"):
-            earlier.intended_driver_type = user.driver_type
+            survivor.intended_driver_type = user.driver_type
 
-    # Move loser's booking links onto survivor (skip duplicates).
+    # Move booking links onto the survivor (skip duplicates).
     existing = {
         link.booking_id
-        for link in db.query(ShiftBookingLink).filter(ShiftBookingLink.shift_id == earlier.id).all()
+        for link in db.query(ShiftBookingLink).filter(ShiftBookingLink.shift_id == survivor.id).all()
     }
-    loser_links = db.query(ShiftBookingLink).filter(ShiftBookingLink.shift_id == later.id).all()
-    for link in loser_links:
+    absorbed_links = db.query(ShiftBookingLink).filter(ShiftBookingLink.shift_id == absorbed.id).all()
+    for link in absorbed_links:
         if link.booking_id in existing:
             db.delete(link)
             continue
-        link.shift_id = earlier.id
+        link.shift_id = survivor.id
         existing.add(link.booking_id)
 
-    db.delete(later)
+    db.delete(absorbed)
     db.commit()
-    db.refresh(earlier)
-    return shift_to_response(earlier, db)
+    db.refresh(survivor)
+    return shift_to_response(survivor, db)
 
 
 @router.post("/roster/{shift_id}/split", response_model=List[RosterShiftResponse])

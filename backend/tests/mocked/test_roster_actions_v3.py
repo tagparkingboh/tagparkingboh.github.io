@@ -585,26 +585,28 @@ class TestMergeHappy:
         assert body["start_time"] == "09:00"
         assert body["end_time"] == "14:00"
 
-    def test_overnight_pair_merges_across_midnight(self, rig):
-        """A 22:00–00:00 (9th→10th) + B 00:00–02:00 (10th) → 22:00–02:00 (9th→10th)."""
+    def test_overnight_shift_merges_with_same_day_evening_shift(self, rig):
+        """Both shifts are anchored to 5/9 (the overnight one's date=5/9,
+        the evening one's date=5/9 too) → merges into a single 18:00–02:00
+        shift that wraps into 5/10."""
         client, db, state = rig
-        a = make_shift(
-            id=210, staff_id=10,
+        evening = make_shift(
+            id=210, staff_id=10, shift_date=date(2026, 5, 9),
+            start_time=time(18, 0), end_time=time(22, 0),
+        )
+        overnight = make_shift(
+            id=211, staff_id=10,
             shift_date=date(2026, 5, 9), end_date=date(2026, 5, 10),
-            start_time=time(22, 0), end_time=time(0, 0),
+            start_time=time(22, 0), end_time=time(2, 0),
         )
-        b = make_shift(
-            id=211, staff_id=10, shift_date=date(2026, 5, 10),
-            start_time=time(0, 0), end_time=time(2, 0),
-        )
-        state["shifts_by_id"][210] = a
-        state["shifts_by_id"][211] = b
+        state["shifts_by_id"][210] = evening
+        state["shifts_by_id"][211] = overnight
         state["users_by_id"][10] = make_user(id=10)
 
         r = client.post("/api/roster/210/merge", json={"other_shift_id": 211})
         assert r.status_code == 200, r.text
         body = r.json()
-        assert body["start_time"] == "22:00"
+        assert body["start_time"] == "18:00"
         assert body["end_time"] == "02:00"
         assert body["end_date"] == "2026-05-10"
 
@@ -625,7 +627,10 @@ class TestMergeUnhappy:
         r = client.post("/api/roster/221/merge", json={"other_shift_id": 221})
         assert r.status_code == 422
 
-    def test_different_staff_returns_422(self, rig):
+    def test_different_staff_without_explicit_choice_returns_422(self, rig):
+        """Post-2026-05 the staff-conflict rule changed: instead of a hard
+        422 we ask the admin to pick. Without staff_choice_made we still
+        422 — never silently throw away a driver assignment."""
         client, db, state = rig
         a = make_shift(
             id=222, staff_id=10, shift_date=date(2026, 5, 10),
@@ -639,10 +644,13 @@ class TestMergeUnhappy:
         state["shifts_by_id"][223] = b
         r = client.post("/api/roster/222/merge", json={"other_shift_id": 223})
         assert r.status_code == 422
+        assert "different assigned staff" in r.json()["detail"].lower()
 
 
-class TestMergeAdjacencyBoundary:
-    """t-ε / t / t+ε at the 0-minute gap rule."""
+class TestMergeUnionWindows:
+    """Post-2026-05: no adjacency requirement. Merged window = union of
+    both shifts' time ranges. Gap and overlap both succeed; same-time
+    pairs collapse to a single window."""
 
     def test_gap_zero_minutes_merges(self, rig):
         client, db, state = rig
@@ -659,8 +667,12 @@ class TestMergeAdjacencyBoundary:
         state["users_by_id"][10] = make_user(id=10)
         r = client.post("/api/roster/230/merge", json={"other_shift_id": 231})
         assert r.status_code == 200, r.text
+        assert r.json()["start_time"] == "09:00"
+        assert r.json()["end_time"] == "14:00"
 
-    def test_gap_one_minute_returns_422(self, rig):
+    def test_gap_one_minute_now_merges(self, rig):
+        """Pre-2026-05 this returned 422 (adjacency required). Now the
+        merged window swallows the 1-minute gap."""
         client, db, state = rig
         a = make_shift(
             id=232, staff_id=10, shift_date=date(2026, 5, 10),
@@ -672,10 +684,36 @@ class TestMergeAdjacencyBoundary:
         )
         state["shifts_by_id"][232] = a
         state["shifts_by_id"][233] = b
+        state["users_by_id"][10] = make_user(id=10)
         r = client.post("/api/roster/232/merge", json={"other_shift_id": 233})
-        assert r.status_code == 422
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["start_time"] == "09:00"
+        assert body["end_time"] == "14:00"
 
-    def test_overlap_returns_422(self, rig):
+    def test_two_hour_gap_now_merges(self, rig):
+        """Bigger gap — admin merging two shifts on the same driver to
+        collapse a quiet midday break into a single shift."""
+        client, db, state = rig
+        a = make_shift(
+            id=240, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(12, 0),
+        )
+        b = make_shift(
+            id=241, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(14, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][240] = a
+        state["shifts_by_id"][241] = b
+        state["users_by_id"][10] = make_user(id=10)
+        r = client.post("/api/roster/240/merge", json={"other_shift_id": 241})
+        assert r.status_code == 200, r.text
+        assert r.json()["start_time"] == "09:00"
+        assert r.json()["end_time"] == "17:00"
+
+    def test_overlap_now_merges(self, rig):
+        """Pre-2026-05 this returned 422. Now overlap is allowed —
+        union swallows the overlapping region."""
         client, db, state = rig
         a = make_shift(
             id=234, staff_id=10, shift_date=date(2026, 5, 10),
@@ -687,8 +725,312 @@ class TestMergeAdjacencyBoundary:
         )
         state["shifts_by_id"][234] = a
         state["shifts_by_id"][235] = b
+        state["users_by_id"][10] = make_user(id=10)
         r = client.post("/api/roster/234/merge", json={"other_shift_id": 235})
+        assert r.status_code == 200, r.text
+        assert r.json()["start_time"] == "09:00"
+        assert r.json()["end_time"] == "14:00"
+
+    def test_absorbed_fully_inside_survivor(self, rig):
+        """Boundary: shift 10–11 entirely inside shift 9–13. Union = 9–13
+        (the survivor's window already covers the absorbed)."""
+        client, db, state = rig
+        a = make_shift(
+            id=242, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(10, 0), end_time=time(11, 0),
+        )
+        b = make_shift(
+            id=243, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(13, 0),
+        )
+        state["shifts_by_id"][242] = a
+        state["shifts_by_id"][243] = b
+        state["users_by_id"][10] = make_user(id=10)
+        r = client.post("/api/roster/242/merge", json={"other_shift_id": 243})
+        assert r.status_code == 200, r.text
+        assert r.json()["start_time"] == "09:00"
+        assert r.json()["end_time"] == "13:00"
+
+
+class TestMergeSurvivorIsExplicit:
+    """Post-2026-05 the SURVIVOR is the one in body.other_shift_id (the
+    one the admin clicks in the modal), not the earlier-starting shift."""
+
+    def test_survivor_is_later_shift_when_picked(self, rig):
+        """URL shift (200, 9–12) is absorbed INTO body.other_shift_id
+        (201, 14–17). Survivor row = 201, with end_time stretched from
+        17:00 down to start at 09:00."""
+        client, db, state = rig
+        a = make_shift(
+            id=250, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(12, 0),
+        )
+        b = make_shift(
+            id=251, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(14, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][250] = a
+        state["shifts_by_id"][251] = b
+        state["users_by_id"][10] = make_user(id=10)
+        r = client.post("/api/roster/250/merge", json={"other_shift_id": 251})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        # Survivor is the picked one (id=251), not the earlier (id=250).
+        assert body["id"] == 251
+        assert body["start_time"] == "09:00"
+        assert body["end_time"] == "17:00"
+
+    def test_survivor_is_earlier_shift_when_picked(self, rig):
+        """Mirror: URL shift (252, 14–17) absorbed INTO body.other_shift_id
+        (253, 9–12). Survivor row = 253, end stretched to 17:00."""
+        client, db, state = rig
+        a = make_shift(
+            id=252, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(14, 0), end_time=time(17, 0),
+        )
+        b = make_shift(
+            id=253, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(12, 0),
+        )
+        state["shifts_by_id"][252] = a
+        state["shifts_by_id"][253] = b
+        state["users_by_id"][10] = make_user(id=10)
+        r = client.post("/api/roster/252/merge", json={"other_shift_id": 253})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["id"] == 253
+        assert body["start_time"] == "09:00"
+        assert body["end_time"] == "17:00"
+
+
+class TestMergeStaffChoice:
+    """Post-2026-05: when both shifts have different assigned staff, the
+    admin MUST pick the survivor's staff via survivor_staff_id +
+    staff_choice_made=True. Without the choice → 422."""
+
+    def test_explicit_choice_keeps_absorbed_staff(self, rig):
+        client, db, state = rig
+        a = make_shift(
+            id=260, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(12, 0),
+        )
+        b = make_shift(
+            id=261, staff_id=99, shift_date=date(2026, 5, 10),
+            start_time=time(14, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][260] = a
+        state["shifts_by_id"][261] = b
+        state["users_by_id"][10] = make_user(id=10, driver_type="jockey")
+        state["users_by_id"][99] = make_user(id=99, driver_type="fleet")
+        r = client.post(
+            "/api/roster/260/merge",
+            json={"other_shift_id": 261, "survivor_staff_id": 10, "staff_choice_made": True},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["id"] == 261  # survivor row
+        assert body["staff_id"] == 10  # but with absorbed's staff
+        assert body["intended_driver_type"] == "jockey"
+
+    def test_explicit_choice_keeps_survivor_staff(self, rig):
+        client, db, state = rig
+        a = make_shift(
+            id=262, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(12, 0),
+        )
+        b = make_shift(
+            id=263, staff_id=99, shift_date=date(2026, 5, 10),
+            start_time=time(14, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][262] = a
+        state["shifts_by_id"][263] = b
+        state["users_by_id"][10] = make_user(id=10, driver_type="jockey")
+        state["users_by_id"][99] = make_user(id=99, driver_type="fleet")
+        r = client.post(
+            "/api/roster/262/merge",
+            json={"other_shift_id": 263, "survivor_staff_id": 99, "staff_choice_made": True},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["staff_id"] == 99
+        assert r.json()["intended_driver_type"] == "fleet"
+
+    def test_explicit_choice_unassign(self, rig):
+        """survivor_staff_id=null + staff_choice_made=True → merged
+        shift becomes unassigned."""
+        client, db, state = rig
+        a = make_shift(
+            id=264, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(12, 0),
+        )
+        b = make_shift(
+            id=265, staff_id=99, shift_date=date(2026, 5, 10),
+            start_time=time(14, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][264] = a
+        state["shifts_by_id"][265] = b
+        r = client.post(
+            "/api/roster/264/merge",
+            json={"other_shift_id": 265, "survivor_staff_id": None, "staff_choice_made": True},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["staff_id"] is None
+
+    def test_invalid_survivor_staff_id_returns_422(self, rig):
+        """survivor_staff_id must be one of the two existing staff_ids
+        or null. Anything else (e.g. a third driver's id) → 422."""
+        client, db, state = rig
+        a = make_shift(
+            id=266, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(12, 0),
+        )
+        b = make_shift(
+            id=267, staff_id=99, shift_date=date(2026, 5, 10),
+            start_time=time(14, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][266] = a
+        state["shifts_by_id"][267] = b
+        r = client.post(
+            "/api/roster/266/merge",
+            json={"other_shift_id": 267, "survivor_staff_id": 42, "staff_choice_made": True},
+        )
         assert r.status_code == 422
+        assert "survivor_staff_id" in r.json()["detail"]
+
+    def test_one_null_staff_no_choice_needed(self, rig):
+        """When exactly one shift is unassigned (the existing case), no
+        explicit choice required — survivor inherits the assigned one."""
+        client, db, state = rig
+        a = make_shift(
+            id=268, staff_id=None, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(12, 0),
+        )
+        b = make_shift(
+            id=269, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(14, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][268] = a
+        state["shifts_by_id"][269] = b
+        state["users_by_id"][10] = make_user(id=10, driver_type="jockey")
+        r = client.post("/api/roster/268/merge", json={"other_shift_id": 269})
+        assert r.status_code == 200, r.text
+        assert r.json()["staff_id"] == 10
+
+
+class TestMergeSameDayRule:
+    """Both shifts must share an anchor `date`. Overnight shifts stay
+    anchored to their START date — the next morning is a separate day.
+    Belt-and-braces against direct API callers; the UI already filters
+    by date bucket."""
+
+    def test_H_same_date_merges(self, rig):
+        """Sanity: two same-date shifts merge fine. Already covered
+        elsewhere; this is the explicit Happy case for the new rule."""
+        client, db, state = rig
+        a = make_shift(
+            id=280, staff_id=10, shift_date=date(2026, 2, 3),
+            start_time=time(9, 0), end_time=time(12, 0),
+        )
+        b = make_shift(
+            id=281, staff_id=10, shift_date=date(2026, 2, 3),
+            start_time=time(13, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][280] = a
+        state["shifts_by_id"][281] = b
+        state["users_by_id"][10] = make_user(id=10)
+        r = client.post("/api/roster/280/merge", json={"other_shift_id": 281})
+        assert r.status_code == 200, r.text
+
+    def test_U_overnight_ending_on_next_day_cannot_merge_with_next_day_shift(self, rig):
+        """User-described scenario: an overnight shift dated 2/3 that
+        finishes 2/4 at 02:00 cannot be merged with a shift dated 2/4
+        that starts at 03:00. Different anchor dates → 422 even though
+        the real-time gap is only 1 hour."""
+        client, db, state = rig
+        overnight = make_shift(
+            id=282, staff_id=10,
+            shift_date=date(2026, 2, 3), end_date=date(2026, 2, 4),
+            start_time=time(22, 0), end_time=time(2, 0),
+        )
+        morning = make_shift(
+            id=283, staff_id=10, shift_date=date(2026, 2, 4),
+            start_time=time(3, 0), end_time=time(7, 0),
+        )
+        state["shifts_by_id"][282] = overnight
+        state["shifts_by_id"][283] = morning
+        state["users_by_id"][10] = make_user(id=10)
+        r = client.post("/api/roster/282/merge", json={"other_shift_id": 283})
+        assert r.status_code == 422
+        detail = r.json()["detail"].lower()
+        assert "same calendar day" in detail
+        assert "2026-02-03" in r.json()["detail"]
+        assert "2026-02-04" in r.json()["detail"]
+
+    def test_U_different_dates_rejected_regardless_of_real_time_gap(self, rig):
+        """Same idea but with a multi-day gap (Mon shift + Fri shift).
+        Without this guard the union would produce a 5-day mega-shift."""
+        client, db, state = rig
+        monday = make_shift(
+            id=284, staff_id=10, shift_date=date(2026, 5, 4),
+            start_time=time(9, 0), end_time=time(12, 0),
+        )
+        friday = make_shift(
+            id=285, staff_id=10, shift_date=date(2026, 5, 8),
+            start_time=time(14, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][284] = monday
+        state["shifts_by_id"][285] = friday
+        state["users_by_id"][10] = make_user(id=10)
+        r = client.post("/api/roster/284/merge", json={"other_shift_id": 285})
+        assert r.status_code == 422
+        assert "same calendar day" in r.json()["detail"].lower()
+
+    def test_B_overnight_can_merge_with_same_start_date_shift(self, rig):
+        """t / t-ε / t+ε boundary on the date check: an overnight shift
+        dated 2/3 (end_date=2/4) CAN still merge with another 2/3-dated
+        shift, because the rule keys off `date` not `end_date`. This is
+        the Boundary case proving the rule is start-date-based."""
+        client, db, state = rig
+        overnight = make_shift(
+            id=286, staff_id=10,
+            shift_date=date(2026, 2, 3), end_date=date(2026, 2, 4),
+            start_time=time(22, 0), end_time=time(2, 0),
+        )
+        evening = make_shift(
+            id=287, staff_id=10, shift_date=date(2026, 2, 3),
+            start_time=time(18, 0), end_time=time(21, 0),
+        )
+        state["shifts_by_id"][286] = overnight
+        state["shifts_by_id"][287] = evening
+        state["users_by_id"][10] = make_user(id=10)
+        r = client.post("/api/roster/286/merge", json={"other_shift_id": 287})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        # Survivor is body.other_shift_id (=287, the evening shift),
+        # window = union = 18:00 → 02:00 next day.
+        assert body["id"] == 287
+        assert body["start_time"] == "18:00"
+        assert body["end_time"] == "02:00"
+        assert body["end_date"] == "2026-02-04"
+
+    def test_E_one_day_apart_off_by_one(self, rig):
+        """Edge: shifts exactly 1 day apart (2/3 and 2/4, no overnight).
+        Real-time gap might be huge or tiny depending on times but
+        the date rule rejects regardless."""
+        client, db, state = rig
+        a = make_shift(
+            id=288, staff_id=10, shift_date=date(2026, 2, 3),
+            start_time=time(23, 30), end_time=time(23, 45),
+        )
+        b = make_shift(
+            id=289, staff_id=10, shift_date=date(2026, 2, 4),
+            start_time=time(0, 0), end_time=time(0, 15),
+        )
+        state["shifts_by_id"][288] = a
+        state["shifts_by_id"][289] = b
+        state["users_by_id"][10] = make_user(id=10)
+        r = client.post("/api/roster/288/merge", json={"other_shift_id": 289})
+        assert r.status_code == 422
+        assert "same calendar day" in r.json()["detail"].lower()
 
 
 # =============================================================================

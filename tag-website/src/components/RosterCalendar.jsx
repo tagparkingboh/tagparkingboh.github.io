@@ -1565,23 +1565,39 @@ function RosterCalendar({
     }
   }
 
-  // Find adjacent shifts on the same day for the Merge picker. Adjacency
-  // mirrors the backend rule: end_a == start_b exactly, OR start_a == end_b.
+  // Find the immediate-previous and immediate-next shifts on the same
+  // day for the Merge picker. Sorted by start_time; "previous" is the
+  // largest start_time strictly before this shift's, "next" is the
+  // smallest strictly after. No gap or overlap restriction (the backend
+  // unions the windows). Skips siblings with the same start_time.
   const findMergeNeighbours = (shift) => {
     const dayShifts = (shiftsByDate[selectedDate] || []).filter((s) => s.id !== shift.id)
-    return dayShifts.filter((s) => {
-      const aEnd = formatTime(shift.end_time)
-      const aStart = formatTime(shift.start_time)
-      const bEnd = formatTime(s.end_time)
-      const bStart = formatTime(s.start_time)
-      return aEnd === bStart || aStart === bEnd
-    })
+    const shiftStart = formatTime(shift.start_time)
+    const before = dayShifts
+      .filter((s) => formatTime(s.start_time) < shiftStart)
+      .sort((a, b) => formatTime(b.start_time).localeCompare(formatTime(a.start_time)))
+    const after = dayShifts
+      .filter((s) => formatTime(s.start_time) > shiftStart)
+      .sort((a, b) => formatTime(a.start_time).localeCompare(formatTime(b.start_time)))
+    const neighbours = []
+    if (before.length > 0) neighbours.push({ ...before[0], _direction: 'previous' })
+    if (after.length > 0) neighbours.push({ ...after[0], _direction: 'next' })
+    return neighbours
   }
 
   const openMergeModal = (shift) => {
     setActionError('')
     const neighbours = findMergeNeighbours(shift)
-    setMergeModal({ shift, neighbours, selectedNeighbourId: neighbours[0]?.id || null })
+    setMergeModal({
+      shift,
+      neighbours,
+      selectedNeighbourId: neighbours[0]?.id || null,
+      // Staff conflict resolution. Initialised to the source shift's
+      // staff_id so an admin who doesn't touch the picker still gets a
+      // sane default. Only used when both shifts are assigned to
+      // different drivers (UI gates the visibility on that).
+      survivorStaffId: shift.staff_id != null ? String(shift.staff_id) : '',
+    })
   }
 
   const submitMerge = async () => {
@@ -1589,12 +1605,26 @@ function RosterCalendar({
       setActionError('Pick a neighbour to merge with.')
       return
     }
+    const picked = mergeModal.neighbours.find((n) => n.id === mergeModal.selectedNeighbourId)
+    const sourceStaff = mergeModal.shift.staff_id
+    const pickedStaff = picked?.staff_id
+    const conflict = sourceStaff != null && pickedStaff != null && sourceStaff !== pickedStaff
+    // Only attach staff fields when there's an actual conflict — keeps
+    // the request body identical to the old shape in the no-conflict
+    // case so we don't churn any other callers.
+    const body = { other_shift_id: mergeModal.selectedNeighbourId }
+    if (conflict) {
+      body.staff_choice_made = true
+      body.survivor_staff_id = mergeModal.survivorStaffId === ''
+        ? null
+        : Number(mergeModal.survivorStaffId)
+    }
     setActionSubmitting(true)
     try {
       const r = await authFetch(`${API_URL}/api/roster/${mergeModal.shift.id}/merge`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ other_shift_id: mergeModal.selectedNeighbourId }),
+        body: JSON.stringify(body),
       })
       if (!r.ok) {
         const err = await r.json().catch(() => ({}))
@@ -4610,32 +4640,76 @@ function RosterCalendar({
         </div>
       )}
 
-      {mergeModal && isAdmin && (
+      {mergeModal && isAdmin && (() => {
+        const picked = mergeModal.neighbours.find((n) => n.id === mergeModal.selectedNeighbourId)
+        const sourceStaff = mergeModal.shift.staff_id
+        const pickedStaff = picked?.staff_id
+        const staffConflict = picked && sourceStaff != null && pickedStaff != null && sourceStaff !== pickedStaff
+        return (
         <div className="modal-overlay" onClick={() => !actionSubmitting && setMergeModal(null)}>
           <div className="modal-content rc-action-modal" onClick={(e) => e.stopPropagation()}>
             <h3>Merge Shift</h3>
             <p className="rc-action-source">
               This: <strong>{formatTime(mergeModal.shift.start_time)}–{formatTime(mergeModal.shift.end_time)}</strong>
+              {mergeModal.shift.staff_initials && <> · {mergeModal.shift.staff_initials}</>}
             </p>
             {mergeModal.neighbours.length === 0 ? (
-              <p className="rc-action-empty">No adjacent shift on this day. Merge requires the next shift to start exactly when this one ends (or vice versa).</p>
+              <p className="rc-action-empty">No other shift on this day to merge with.</p>
             ) : (
-              <div className="rc-fanout-block">
-                <div className="rc-fanout-label">Merge with</div>
-                <div className="rc-staff-checklist">
-                  {mergeModal.neighbours.map((n) => (
-                    <label key={n.id} className="rc-staff-row">
-                      <input
-                        type="radio"
-                        name="merge-neighbour"
-                        checked={mergeModal.selectedNeighbourId === n.id}
-                        onChange={() => setMergeModal({ ...mergeModal, selectedNeighbourId: n.id })}
-                      />
-                      <span className="rc-staff-row-name">{formatTime(n.start_time)}–{formatTime(n.end_time)} · {n.staff_initials || 'Unassigned'}</span>
-                    </label>
-                  ))}
+              <>
+                <div className="rc-fanout-block">
+                  <div className="rc-fanout-label">Merge into</div>
+                  <div className="rc-staff-checklist">
+                    {mergeModal.neighbours.map((n) => (
+                      <label key={n.id} className="rc-staff-row">
+                        <input
+                          type="radio"
+                          name="merge-neighbour"
+                          checked={mergeModal.selectedNeighbourId === n.id}
+                          onChange={() => setMergeModal({ ...mergeModal, selectedNeighbourId: n.id })}
+                        />
+                        <span className="rc-staff-row-name">
+                          {n._direction === 'previous' ? 'Earlier' : 'Later'} shift · {formatTime(n.start_time)}–{formatTime(n.end_time)} · {n.staff_initials || 'Unassigned'}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+                {staffConflict && (
+                  <div className="rc-fanout-block">
+                    <div className="rc-fanout-label">Staff for merged shift</div>
+                    <div className="rc-staff-checklist">
+                      <label className="rc-staff-row">
+                        <input
+                          type="radio"
+                          name="merge-staff"
+                          checked={mergeModal.survivorStaffId === String(sourceStaff)}
+                          onChange={() => setMergeModal({ ...mergeModal, survivorStaffId: String(sourceStaff) })}
+                        />
+                        <span className="rc-staff-row-name">{mergeModal.shift.staff_initials || `Staff #${sourceStaff}`}</span>
+                      </label>
+                      <label className="rc-staff-row">
+                        <input
+                          type="radio"
+                          name="merge-staff"
+                          checked={mergeModal.survivorStaffId === String(pickedStaff)}
+                          onChange={() => setMergeModal({ ...mergeModal, survivorStaffId: String(pickedStaff) })}
+                        />
+                        <span className="rc-staff-row-name">{picked.staff_initials || `Staff #${pickedStaff}`}</span>
+                      </label>
+                      <label className="rc-staff-row">
+                        <input
+                          type="radio"
+                          name="merge-staff"
+                          checked={mergeModal.survivorStaffId === ''}
+                          onChange={() => setMergeModal({ ...mergeModal, survivorStaffId: '' })}
+                        />
+                        <span className="rc-staff-row-name">Unassigned</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             {actionError && <div className="rc-action-error">{actionError}</div>}
             <div className="modal-actions">
@@ -4650,7 +4724,8 @@ function RosterCalendar({
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {splitModal && isAdmin && (
         <div className="modal-overlay" onClick={() => !actionSubmitting && setSplitModal(null)}>
