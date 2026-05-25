@@ -1786,6 +1786,15 @@ async def merge_shift(
         link.shift_id = survivor.id
         existing.add(link.booking_id)
 
+    # Flush the link re-pointing to the DB, then drop the cached `bookings`
+    # collection on `absorbed`. Without this, `db.delete(absorbed)` triggers
+    # SQLAlchemy's auto-cleanup on the `secondary="shift_booking_links"`
+    # M2M, which races ahead of our pending UPDATEs and wipes the rows we
+    # just re-pointed → StaleDataError (was the prod 500 on /merge when the
+    # absorbed shift had any linked bookings).
+    db.flush()
+    db.expire(absorbed, ["bookings"])
+
     db.delete(absorbed)
     db.commit()
     db.refresh(survivor)

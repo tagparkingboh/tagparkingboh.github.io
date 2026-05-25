@@ -1034,6 +1034,165 @@ class TestMergeSameDayRule:
 
 
 # =============================================================================
+# Merge — absorbed-link cascade (M2M secondary cleanup race)
+# =============================================================================
+
+
+def _make_link(shift_id, booking_id):
+    """Mocked ShiftBookingLink with mutable shift_id (endpoint mutates it)."""
+    link = MagicMock(spec=ShiftBookingLink)
+    link.shift_id = shift_id
+    link.booking_id = booking_id
+    return link
+
+
+def _find_call_index(db_mock, name, predicate):
+    """Index of the first db.method_calls entry matching name+predicate.
+    Returns -1 if not found."""
+    for i, call in enumerate(db_mock.method_calls):
+        cname, cargs, ckwargs = call
+        if cname == name and predicate(cargs, ckwargs):
+            return i
+    return -1
+
+
+class TestMergeAbsorbedLinkCascade:
+    """Regression: before the fix, `db.delete(absorbed)` triggered
+    SQLAlchemy's M2M auto-cleanup on the `bookings` secondary, which raced
+    ahead of the pending link UPDATEs and raised StaleDataError — surfaced
+    as a 500 (text/plain 'Internal Server Error', 21 bytes) on /merge
+    whenever the absorbed shift had any linked bookings. The fix flushes
+    the link re-pointing and expires the cached collection BEFORE deleting
+    absorbed. These tests assert both the behaviour and the call-order
+    contract so the fix can't silently regress."""
+
+    def test_H_absorbed_with_distinct_bookings_merges_and_repoints_links(self, rig):
+        """Happy: absorbed has 3 linked bookings, survivor 2 (all distinct).
+        Merge succeeds, all 3 absorbed links get repointed to survivor,
+        nothing is deleted on the link path (no duplicates)."""
+        client, db, state = rig
+        absorbed = make_shift(
+            id=400, staff_id=None, shift_date=date(2026, 6, 11),
+            start_time=time(10, 0), end_time=time(16, 10),
+        )
+        survivor = make_shift(
+            id=401, staff_id=None, shift_date=date(2026, 6, 11),
+            start_time=time(6, 40), end_time=time(9, 30),
+        )
+        state["shifts_by_id"][400] = absorbed
+        state["shifts_by_id"][401] = survivor
+        absorbed_links = [_make_link(400, b) for b in (15, 16, 124)]
+        survivor_links = [_make_link(401, b) for b in (460, 576)]
+        state["shift_links_by_shift"][400] = absorbed_links
+        state["shift_links_by_shift"][401] = survivor_links
+
+        r = client.post("/api/roster/400/merge", json={"other_shift_id": 401})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["id"] == 401
+        assert body["start_time"] == "06:40"
+        assert body["end_time"] == "16:10"
+        assert all(l.shift_id == 401 for l in absorbed_links)
+        # No link rows were deleted (none were duplicates).
+        assert not any(l in state["deleted"] for l in absorbed_links + survivor_links)
+
+    def test_U_fix_contract_flush_and_expire_run_before_delete(self, rig):
+        """Unhappy-path guard: in real SQLAlchemy, `db.delete(absorbed)`
+        before `db.expire(absorbed, ['bookings'])` re-raises the bug as a
+        StaleDataError 500. The MagicMock rig can't reproduce that race,
+        but it CAN catch the fix being silently removed — assert flush()
+        and expire(absorbed, ['bookings']) both run before delete(absorbed)."""
+        client, db, state = rig
+        absorbed = make_shift(
+            id=410, staff_id=None, shift_date=date(2026, 6, 11),
+            start_time=time(10, 0), end_time=time(16, 10),
+        )
+        survivor = make_shift(
+            id=411, staff_id=None, shift_date=date(2026, 6, 11),
+            start_time=time(6, 40), end_time=time(9, 30),
+        )
+        state["shifts_by_id"][410] = absorbed
+        state["shifts_by_id"][411] = survivor
+        # Absorbed must have ≥1 link; without one the M2M cleanup would
+        # never have triggered in real SQLAlchemy either.
+        state["shift_links_by_shift"][410] = [_make_link(410, 15)]
+        state["shift_links_by_shift"][411] = []
+
+        r = client.post("/api/roster/410/merge", json={"other_shift_id": 411})
+        assert r.status_code == 200, r.text
+
+        flush_idx = _find_call_index(db, "flush", lambda a, k: True)
+        expire_idx = _find_call_index(
+            db, "expire",
+            lambda a, k: len(a) >= 2 and a[0] is absorbed and a[1] == ["bookings"],
+        )
+        delete_absorbed_idx = _find_call_index(
+            db, "delete", lambda a, k: a and a[0] is absorbed,
+        )
+        assert flush_idx != -1, "endpoint must flush link UPDATEs before deleting absorbed"
+        assert expire_idx != -1, "endpoint must expire absorbed.bookings before deleting absorbed"
+        assert delete_absorbed_idx != -1
+        assert flush_idx < delete_absorbed_idx
+        assert expire_idx < delete_absorbed_idx
+
+    def test_E_shared_booking_dedupes_link_and_repoints_others(self, rig):
+        """Edge: absorbed and survivor both link to the SAME booking_id
+        (e.g. a customer whose drop-off shift and pickup shift happen to
+        land on the same day pair). The shared link gets db.delete'd
+        rather than repointed — UniqueConstraint(shift_id, booking_id)
+        would otherwise reject the UPDATE."""
+        client, db, state = rig
+        absorbed = make_shift(
+            id=420, staff_id=None, shift_date=date(2026, 6, 11),
+            start_time=time(10, 0), end_time=time(16, 10),
+        )
+        survivor = make_shift(
+            id=421, staff_id=None, shift_date=date(2026, 6, 11),
+            start_time=time(6, 40), end_time=time(9, 30),
+        )
+        state["shifts_by_id"][420] = absorbed
+        state["shifts_by_id"][421] = survivor
+        shared_link = _make_link(420, 999)
+        distinct_link = _make_link(420, 124)
+        state["shift_links_by_shift"][420] = [shared_link, distinct_link]
+        state["shift_links_by_shift"][421] = [_make_link(421, 999)]
+
+        r = client.post("/api/roster/420/merge", json={"other_shift_id": 421})
+        assert r.status_code == 200, r.text
+        assert distinct_link.shift_id == 421
+        assert shared_link in state["deleted"]
+        # Deleted link's shift_id wasn't moved — it's being dropped, not migrated.
+        assert shared_link.shift_id == 420
+
+    def test_B_absorbed_with_zero_bookings_still_runs_fix(self, rig):
+        """Boundary: absorbed has no linked bookings (the case that did
+        work pre-fix). The fix's flush+expire calls still run — they're
+        cheap and unconditional — and the endpoint must not crash on
+        the empty link list."""
+        client, db, state = rig
+        absorbed = make_shift(
+            id=430, staff_id=None, shift_date=date(2026, 6, 11),
+            start_time=time(10, 0), end_time=time(16, 10),
+        )
+        survivor = make_shift(
+            id=431, staff_id=None, shift_date=date(2026, 6, 11),
+            start_time=time(6, 40), end_time=time(9, 30),
+        )
+        state["shifts_by_id"][430] = absorbed
+        state["shifts_by_id"][431] = survivor
+        state["shift_links_by_shift"][430] = []
+        state["shift_links_by_shift"][431] = []
+
+        r = client.post("/api/roster/430/merge", json={"other_shift_id": 431})
+        assert r.status_code == 200, r.text
+        expire_idx = _find_call_index(
+            db, "expire",
+            lambda a, k: len(a) >= 2 and a[0] is absorbed and a[1] == ["bookings"],
+        )
+        assert expire_idx != -1
+
+
+# =============================================================================
 # Split — Happy + Boundaries
 # =============================================================================
 
