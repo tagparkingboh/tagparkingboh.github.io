@@ -64,6 +64,14 @@ from roster_planner import (
 logger = logging.getLogger(__name__)
 
 
+# "Flexible workers" — when a cluster forms within this many minutes of an
+# existing ASSIGNED shift on the same date, extend that shift's window
+# rather than spawn a duplicate unassigned auto-shift. Stops the loop where
+# Kris assigns a driver, a new booking lands on the same date, and the
+# rebuild creates a duplicate auto-shift covering the same hours.
+EXTEND_REACH_MINUTES = 60
+
+
 # ---------------------------------------------------------------------------
 # Event extraction (pure)
 # ---------------------------------------------------------------------------
@@ -172,7 +180,7 @@ def rebuild_auto_for_dates(
 
     Returns a counts dict so callers can log / surface a banner.
     """
-    summary = {"deleted": 0, "created": 0, "bookings_in_scope": 0, "events": 0}
+    summary = {"deleted": 0, "created": 0, "extended": 0, "bookings_in_scope": 0, "events": 0}
     target_set = set(target_dates)
     if not target_set:
         return summary
@@ -274,6 +282,33 @@ def rebuild_auto_for_dates(
         mixed_gap_max_minutes=settings.mixed_gap_max_minutes,
     )
 
+    # 3b. Pull existing ASSIGNED shifts in scope so the cluster loop can
+    # extend them in place rather than spawn duplicate unassigned auto-shifts.
+    # Scope expanded by ±1 day so cross-midnight assigned shifts also match.
+    assigned_scope_dates = set(target_set)
+    for d in target_set:
+        assigned_scope_dates.add(d - timedelta(days=1))
+        assigned_scope_dates.add(d + timedelta(days=1))
+    assigned_shifts = (
+        db.query(RosterShift)
+        .filter(
+            RosterShift.staff_id.isnot(None),
+            RosterShift.status.in_([
+                ShiftStatus.SCHEDULED,
+                ShiftStatus.CONFIRMED,
+                ShiftStatus.IN_PROGRESS,
+            ]),
+            or_(
+                RosterShift.date.in_(assigned_scope_dates),
+                RosterShift.end_date.in_(assigned_scope_dates),
+            ),
+        )
+        .all()
+    )
+    # Per-shift link cache so we don't re-query (and so multiple clusters
+    # extending the same assigned shift don't write duplicate link rows).
+    assigned_link_cache: dict[int, set[int]] = {}
+
     # 4. Materialise shifts for clusters whose start lands on a target date.
     min_duration = timedelta(minutes=settings.min_shift_minutes)
 
@@ -333,6 +368,52 @@ def rebuild_auto_for_dates(
                 shift_end.date() if shift_end.date() != shift_start.date() else None
             )
 
+        booking_ids = sorted({e.booking_id for e in cluster.events})
+
+        # Extend-rather-than-spawn: if an assigned shift's window is within
+        # EXTEND_REACH_MINUTES of this cluster's window, grow that shift to
+        # cover the cluster and link the bookings to it. Skip creating a
+        # duplicate unassigned auto-shift. (Stops Kris's "shifts keep
+        # coming back after I delete them" loop.)
+        extended = False
+        for a in assigned_shifts:
+            a_start = datetime.combine(a.date, a.start_time)
+            a_end = datetime.combine(a.end_date or a.date, a.end_time)
+            # Gap minutes between windows (negative => overlap). max() of the
+            # two one-sided gaps gives the actual separation in either order.
+            gap_minutes = max(
+                (shift_start - a_end).total_seconds() / 60,
+                (a_start - shift_end).total_seconds() / 60,
+            )
+            if gap_minutes > EXTEND_REACH_MINUTES:
+                continue
+            new_start = min(a_start, shift_start)
+            new_end = max(a_end, shift_end)
+            a.start_time = new_start.time()
+            a.end_time = new_end.time()
+            a.date = new_start.date()
+            a.end_date = (
+                new_end.date() if new_end.date() != new_start.date() else None
+            )
+            if a.id not in assigned_link_cache:
+                assigned_link_cache[a.id] = {
+                    l.booking_id
+                    for l in db.query(ShiftBookingLink)
+                    .filter(ShiftBookingLink.shift_id == a.id)
+                    .all()
+                }
+            for bid in booking_ids:
+                if bid in assigned_link_cache[a.id]:
+                    continue
+                db.add(ShiftBookingLink(shift_id=a.id, booking_id=bid))
+                assigned_link_cache[a.id].add(bid)
+            summary["extended"] += 1
+            extended = True
+            break
+
+        if extended:
+            continue
+
         new_shift = RosterShift(
             staff_id=None,
             date=shift_date_val,
@@ -346,7 +427,6 @@ def rebuild_auto_for_dates(
         db.add(new_shift)
         db.flush()  # need shift.id for link rows
 
-        booking_ids = sorted({e.booking_id for e in cluster.events})
         for bid in booking_ids:
             db.add(ShiftBookingLink(shift_id=new_shift.id, booking_id=bid))
         summary["created"] += 1

@@ -89,36 +89,75 @@ def mk_settings(
     )
 
 
-def make_db(*, untouched_auto_shifts=None, bookings=None):
+def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, bookings=None,
+            existing_links_by_shift=None):
     """A MagicMock db that:
       - returns `untouched_auto_shifts` for the rebuild's delete-candidate query
+        (filtered by `staff_id IS NULL`)
+      - returns `assigned_shifts` for the new extend-candidate query
+        (filtered by `staff_id IS NOT NULL`)
       - returns `bookings` for the rebuild's source query
+      - returns `existing_links_by_shift.get(sid, [])` for ShiftBookingLink
+        queries filtered by `shift_id == sid`
       - records db.add / db.delete / db.commit for assertions
     """
     db = MagicMock()
     untouched_auto_shifts = list(untouched_auto_shifts or [])
+    assigned_shifts = list(assigned_shifts or [])
     bookings = list(bookings or [])
+    existing_links_by_shift = dict(existing_links_by_shift or {})
     added = []
     deleted = []
 
     from db_models import Booking, RosterShift, ShiftBookingLink
 
-    # Track which queries we've answered so the test can introspect
     state = {"shift_query_calls": 0, "booking_query_calls": 0}
+
+    def _filter_str(args):
+        # SQLAlchemy expressions stringify to roughly the SQL fragment; we
+        # peek at this to decide whether the caller is asking for assigned
+        # shifts (the new code path) or the legacy unassigned-auto bucket.
+        return " ".join(str(a) for a in args)
 
     def query_side_effect(model):
         chain = MagicMock()
-        chain.filter.return_value = chain
+        captured_filters = []
+
+        def capture_filter(*args, **kwargs):
+            captured_filters.append(args)
+            return chain
+        chain.filter.side_effect = capture_filter
+
+        def shift_all():
+            blob = " ".join(_filter_str(a) for a in captured_filters)
+            if "IS NOT NULL" in blob:
+                return list(assigned_shifts)
+            return list(untouched_auto_shifts)
+
+        def link_all():
+            sid = None
+            for args in captured_filters:
+                for a in args:
+                    right = getattr(a, "right", None)
+                    val = getattr(right, "value", None)
+                    if isinstance(val, int):
+                        sid = val
+            if sid is None:
+                return []
+            return list(existing_links_by_shift.get(sid, []))
+
         if model is RosterShift:
             state["shift_query_calls"] += 1
-            chain.all.return_value = list(untouched_auto_shifts)
-            chain.first.return_value = untouched_auto_shifts[0] if untouched_auto_shifts else None
+            chain.all.side_effect = shift_all
+            chain.first.return_value = (
+                untouched_auto_shifts[0] if untouched_auto_shifts else None
+            )
         elif model is Booking:
             state["booking_query_calls"] += 1
             chain.all.return_value = list(bookings)
             chain.first.return_value = bookings[0] if bookings else None
         elif model is ShiftBookingLink:
-            chain.all.return_value = []
+            chain.all.side_effect = link_all
             chain.first.return_value = None
         else:
             chain.all.return_value = []
@@ -613,6 +652,177 @@ class TestRebuildAutoForDates:
         assert len(shifts) == 1
         assert shifts[0].date == date(2026, 6, 27)
         assert shifts[0].end_date is None
+
+
+# ===========================================================================
+# Extend-assigned-shift rule (2026-05-25 — replaces the spawn-duplicate loop
+# Kris hit: he'd assign a driver to an auto-shift, a new booking would
+# confirm on the same date, and rebuild_auto_for_dates would spawn a fresh
+# unassigned auto-shift covering the same hours because the assigned shift
+# was protected from the wipe. The fix: when a cluster's window sits within
+# EXTEND_REACH_MINUTES (60) of an existing assigned shift's window, grow
+# that shift and link the booking to it instead of creating a duplicate.)
+# ===========================================================================
+
+
+def mk_assigned_shift(
+    *,
+    id=99,
+    shift_date=None,
+    end_date=None,
+    start_time=time(12, 0),
+    end_time=time(15, 0),
+    staff_id=10,
+):
+    """An ALREADY-ASSIGNED shift on the calendar — `staff_id != None`. The
+    fixture only needs the attributes the rebuild touches: id, staff_id,
+    date, end_date, start_time, end_time."""
+    return SimpleNamespace(
+        id=id,
+        staff_id=staff_id,
+        date=shift_date or date(2026, 6, 10),
+        end_date=end_date,
+        start_time=start_time,
+        end_time=end_time,
+        shift_type=ShiftType.MORNING,
+        status=ShiftStatus.SCHEDULED,
+        created_source="auto",
+    )
+
+
+def mk_existing_link(shift_id, booking_id):
+    return SimpleNamespace(shift_id=shift_id, booking_id=booking_id)
+
+
+class TestRebuildExtendsAssignedShifts:
+    """When an existing assigned shift sits within EXTEND_REACH_MINUTES (60)
+    of a new cluster's window, the rebuild should EXTEND the assigned shift
+    (and link the cluster's bookings to it) rather than spawn a duplicate
+    unassigned auto-shift on the same date."""
+
+    def test_H_event_inside_assigned_window_extends_no_new_shift(self):
+        """Happy: assigned 12:00–15:00 on 6/10. New dropoff at 13:00 lands
+        inside that window. The assigned shift gets the booking linked to
+        it; no new RosterShift is added; summary['extended']=1, ['created']=0."""
+        assigned = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        b = mk_booking(
+            booking_id=500, reference="TAG-EXTEND01",
+            dropoff_dt=datetime(2026, 6, 10, 13, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),  # outside target
+        )
+        db = make_db(bookings=[b], assigned_shifts=[assigned])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift, ShiftBookingLink
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert new_shifts == [], f"no new auto-shift expected, got {len(new_shifts)}"
+        new_links = [a for a in db._added if isinstance(a, ShiftBookingLink)]
+        assert any(l.shift_id == 99 and l.booking_id == 500 for l in new_links)
+        assert result["extended"] == 1
+        assert result["created"] == 0
+
+    def test_U_event_too_far_from_assigned_creates_new_shift(self):
+        """Unhappy (for the assigned shift, anyway): assigned 12:00–15:00,
+        new dropoff at 18:00. Cluster window ~17:40–18:40, gap from 15:00 =
+        2h40 > 60min reach → no extension, fresh auto-shift created."""
+        assigned = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        original_end = assigned.end_time
+        b = mk_booking(
+            booking_id=501, reference="TAG-FARAWAY1",
+            dropoff_dt=datetime(2026, 6, 10, 18, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b], assigned_shifts=[assigned])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 1
+        assert new_shifts[0].staff_id is None
+        # Assigned shift's window is untouched.
+        assert assigned.end_time == original_end
+        assert result["extended"] == 0
+        assert result["created"] == 1
+
+    def test_E_existing_link_not_duplicated_on_extend(self):
+        """Edge: assigned shift already linked to booking 500; the cluster
+        includes 500 + 502. Only 502 gets a new ShiftBookingLink row — the
+        UniqueConstraint(shift_id, booking_id) would reject a duplicate."""
+        assigned = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        b_already = mk_booking(
+            booking_id=500, reference="TAG-ALREADY1",
+            dropoff_dt=datetime(2026, 6, 10, 13, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        b_new = mk_booking(
+            booking_id=502, reference="TAG-NEWONE01",
+            dropoff_dt=datetime(2026, 6, 10, 13, 15),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        existing_links = {99: [mk_existing_link(99, 500)]}
+        db = make_db(
+            bookings=[b_already, b_new],
+            assigned_shifts=[assigned],
+            existing_links_by_shift=existing_links,
+        )
+        rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import ShiftBookingLink
+        new_links = [a for a in db._added if isinstance(a, ShiftBookingLink)]
+        booking_ids_added = {l.booking_id for l in new_links if l.shift_id == 99}
+        assert booking_ids_added == {502}, (
+            f"only the not-yet-linked booking 502 should be added; "
+            f"got {booking_ids_added}"
+        )
+
+    def test_B_gap_exactly_60min_extends_61min_does_not(self):
+        """Boundary on the 60-min threshold. With default 20m start_buffer,
+        a single dropoff at 16:20 produces shift_start=16:00 → gap from
+        assigned end 15:00 = exactly 60min → extends. Same shape with the
+        dropoff at 16:21 → shift_start=16:01 → gap=61min → does NOT extend."""
+        # ---- t = 60 min (extends) ----
+        assigned_60 = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        b_60 = mk_booking(
+            booking_id=600, reference="TAG-EQUAL60",
+            dropoff_dt=datetime(2026, 6, 10, 16, 20),  # → shift_start 16:00
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db_60 = make_db(bookings=[b_60], assigned_shifts=[assigned_60])
+        result_60 = rebuild_auto_for_dates(db_60, {date(2026, 6, 10)}, mk_settings())
+        assert result_60["extended"] == 1, "exactly 60-min gap is within reach"
+        assert result_60["created"] == 0
+
+        # ---- t = 61 min (does NOT extend) ----
+        assigned_61 = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        b_61 = mk_booking(
+            booking_id=601, reference="TAG-OVER60_",
+            dropoff_dt=datetime(2026, 6, 10, 16, 21),  # → shift_start 16:01
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db_61 = make_db(bookings=[b_61], assigned_shifts=[assigned_61])
+        result_61 = rebuild_auto_for_dates(db_61, {date(2026, 6, 10)}, mk_settings())
+        assert result_61["extended"] == 0, "61-min gap is outside reach"
+        assert result_61["created"] == 1
 
 
 # ===========================================================================

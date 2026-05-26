@@ -2845,22 +2845,23 @@ async def mark_booking_paid(
     background_tasks.add_task(
         fire_engine_async, TRIGGER_BOOKING_CONFIRMED, booking.reference
     )
-    # Also try to auto-link this booking to any live planner-sourced jockey
-    # shift whose window already covers the drop-off / pickup time. Keeps
-    # the existing roster up to date without forcing the admin to recommit
-    # a fresh proposal for every new booking.
-    background_tasks.add_task(auto_link_booking_async, booking.id)
-    # 2026-05-02: live-write auto-roster takeover. If the booking isn't
-    # already covered by an existing shift, create or extend a `created_
-    # source='auto'` shift to cover its drop-off and pick-up. See
-    # backend/auto_roster.py. Swallow any import / scheduling error —
-    # the booking confirmation must not 500 because of a planner
-    # side-effect (matches the Stripe webhook isolation pattern).
+    # ORDER MATTERS: auto_create_or_extend runs FIRST so the day's auto-
+    # shifts (and any extensions of existing assigned shifts) settle before
+    # auto_link tries to attach this booking. Reversed previously, auto_link
+    # would optimistically write a link to a shift that the subsequent
+    # rebuild then wiped (the cascade dropped the link rows), and clusters
+    # that didn't include the new booking left it permanently uncovered —
+    # the leak that turned up as 7 uncovered events in the 6/1+ dry-run.
     try:
         from auto_roster import auto_create_or_extend_async
         background_tasks.add_task(auto_create_or_extend_async, booking.id)
     except Exception as e:
         print(f"[auto_roster] Failed to schedule auto-create for booking {booking.id}: {e}")
+    # auto_link is the safety net — it links this booking into any shift
+    # (planner-sourced, admin-created, or just-extended assigned) whose
+    # window covers an event time. Runs second so it sees the post-rebuild
+    # shift inventory.
+    background_tasks.add_task(auto_link_booking_async, booking.id)
 
     # DVLA compliance check: alert Kristian if vehicle has tax/MOT issue.
     # Background-task isolated — staging guard inside the helper means
