@@ -131,7 +131,16 @@ def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, bookings=None,
         def shift_all():
             blob = " ".join(_filter_str(a) for a in captured_filters)
             if "IS NOT NULL" in blob:
-                return list(assigned_shifts)
+                pool = list(assigned_shifts)
+                # The production extend-candidate query filters
+                # `created_source = 'auto'`. Mirror that here so a manual
+                # shift placed in the candidate pool by a test isn't
+                # silently returned to the rebuild — otherwise tests would
+                # contradict the production guard.
+                if "created_source" in blob:
+                    pool = [s for s in pool
+                            if getattr(s, "created_source", None) == "auto"]
+                return pool
             return list(untouched_auto_shifts)
 
         def link_all():
@@ -823,6 +832,146 @@ class TestRebuildExtendsAssignedShifts:
         result_61 = rebuild_auto_for_dates(db_61, {date(2026, 6, 10)}, mk_settings())
         assert result_61["extended"] == 0, "61-min gap is outside reach"
         assert result_61["created"] == 1
+
+
+class TestRebuildLeavesManualShiftsAlone:
+    """Auto / manual roster separation rule (user-locked 2026-05-27):
+    the auto-roster MUST NEVER mutate `created_source = 'manual'` shifts.
+    Manual shifts encode admin intent (window, driver, sometimes hand-off
+    pre-positioning) and the auto code path has to treat them as
+    read-only / invisible.
+
+    Regression for commit 65affe7: the extend-assigned candidate query
+    initially had no `created_source` filter, so a manual shift sitting
+    near a cluster would have its `start_time`/`end_time`/`end_date`
+    stretched by the rebuild. The fix adds `created_source = 'auto'` to
+    the candidate query."""
+
+    def test_H_manual_shift_in_extend_window_is_not_mutated(self):
+        """Happy: a `created_source='manual'` assigned shift covering
+        12:00–15:00 on 6/10 is placed in the candidate pool. A new
+        booking dropoff at 13:00 forms a cluster that WOULD be within
+        60-min reach of that shift. Manual shifts must NOT be extended
+        — instead the rebuild falls back to creating a fresh unassigned
+        auto-shift around the cluster."""
+        manual = mk_assigned_shift(
+            id=777, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        manual.created_source = "manual"
+        # Snapshot the values that must NOT change.
+        original = (manual.date, manual.end_date, manual.start_time, manual.end_time)
+
+        b = mk_booking(
+            booking_id=700, reference="TAG-MANUAL01",
+            dropoff_dt=datetime(2026, 6, 10, 13, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b], assigned_shifts=[manual])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift, ShiftBookingLink
+        # Manual shift's window is untouched.
+        assert (manual.date, manual.end_date, manual.start_time, manual.end_time) == original, (
+            f"manual shift was mutated; before={original} after="
+            f"{(manual.date, manual.end_date, manual.start_time, manual.end_time)}"
+        )
+        # No link rows pointing at the manual shift.
+        new_links = [a for a in db._added if isinstance(a, ShiftBookingLink)]
+        assert not any(l.shift_id == 777 for l in new_links), (
+            "auto rebuild must not write ShiftBookingLink rows to a manual shift"
+        )
+        # Behaviour falls back to creating a new unassigned auto-shift.
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 1 and new_shifts[0].staff_id is None
+        assert result["extended"] == 0
+        assert result["created"] == 1
+
+    def test_U_manual_shift_does_not_block_auto_alongside_it(self):
+        """Unhappy hypothetical: even with a manual shift nearby, the
+        rebuild must still produce coverage for the booking. Verify the
+        new auto-shift covers the cluster (it's not silently swallowed
+        by the manual-shift presence)."""
+        manual = mk_assigned_shift(
+            id=778, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        manual.created_source = "manual"
+        b = mk_booking(
+            booking_id=701, reference="TAG-MANUAL02",
+            dropoff_dt=datetime(2026, 6, 10, 13, 30),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b], assigned_shifts=[manual])
+        rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 1
+        s = new_shifts[0]
+        # 13:30 - 20m start_buffer = 13:10, + min_duration 60 → 14:10
+        assert s.start_time == time(13, 10)
+        assert s.end_time == time(14, 10)
+
+    def test_E_one_auto_one_manual_only_auto_extended(self):
+        """Edge: candidate pool has BOTH an auto-assigned shift AND a
+        manual shift on the same date, both within reach of the cluster.
+        Only the auto one gets extended; manual is untouched even though
+        it would also have matched the 60-min rule."""
+        auto = mk_assigned_shift(
+            id=300, shift_date=date(2026, 6, 10),
+            start_time=time(11, 0), end_time=time(14, 0),
+            staff_id=10,
+        )
+        # auto's created_source defaults to "auto" via the fixture.
+        manual = mk_assigned_shift(
+            id=301, shift_date=date(2026, 6, 10),
+            start_time=time(14, 30), end_time=time(17, 0),
+            staff_id=11,
+        )
+        manual.created_source = "manual"
+        manual_before = (manual.date, manual.end_date, manual.start_time, manual.end_time)
+
+        b = mk_booking(
+            booking_id=702, reference="TAG-MIX00001",
+            dropoff_dt=datetime(2026, 6, 10, 13, 30),  # inside auto's window
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b], assigned_shifts=[auto, manual])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        # auto extended; manual untouched.
+        assert result["extended"] == 1
+        assert (manual.date, manual.end_date, manual.start_time, manual.end_time) == manual_before
+
+        from db_models import ShiftBookingLink
+        link_shifts = {l.shift_id for l in db._added if isinstance(l, ShiftBookingLink)}
+        assert 300 in link_shifts, "booking should be linked to the auto shift"
+        assert 301 not in link_shifts, "booking must NOT be linked to the manual shift"
+
+    def test_B_manual_shift_at_zero_gap_still_protected(self):
+        """Boundary: even when the manual shift's window is touching the
+        cluster (gap = 0), still no mutation. Threshold doesn't matter
+        for manual shifts — they're outright off-limits."""
+        manual = mk_assigned_shift(
+            id=779, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        manual.created_source = "manual"
+        original = (manual.start_time, manual.end_time)
+
+        # Dropoff at 15:20 → shift_start 15:00 → gap=0 from manual end.
+        b = mk_booking(
+            booking_id=703, reference="TAG-MANUAL03",
+            dropoff_dt=datetime(2026, 6, 10, 15, 20),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b], assigned_shifts=[manual])
+        rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+        assert (manual.start_time, manual.end_time) == original
 
 
 # ===========================================================================

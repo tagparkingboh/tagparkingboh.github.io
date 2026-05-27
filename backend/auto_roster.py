@@ -282,9 +282,16 @@ def rebuild_auto_for_dates(
         mixed_gap_max_minutes=settings.mixed_gap_max_minutes,
     )
 
-    # 3b. Pull existing ASSIGNED shifts in scope so the cluster loop can
+    # 3b. Pull existing ASSIGNED AUTO shifts in scope so the cluster loop can
     # extend them in place rather than spawn duplicate unassigned auto-shifts.
     # Scope expanded by ±1 day so cross-midnight assigned shifts also match.
+    #
+    # `created_source = 'auto'` filter is load-bearing: manual shifts encode
+    # admin intent (specific window for a specific driver) and must NEVER be
+    # mutated by the auto-roster. The wider auto/manual separation rule is
+    # documented in the project memory; the only auto-side code that may
+    # touch a manual shift is `auto_link_booking_to_shifts`, and only to
+    # write `ShiftBookingLink` rows — never to change the shift row itself.
     assigned_scope_dates = set(target_set)
     for d in target_set:
         assigned_scope_dates.add(d - timedelta(days=1))
@@ -292,6 +299,7 @@ def rebuild_auto_for_dates(
     assigned_shifts = (
         db.query(RosterShift)
         .filter(
+            RosterShift.created_source == "auto",
             RosterShift.staff_id.isnot(None),
             RosterShift.status.in_([
                 ShiftStatus.SCHEDULED,
