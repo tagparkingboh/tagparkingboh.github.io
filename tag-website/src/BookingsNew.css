@@ -2707,8 +2707,19 @@
 .busy-warning-body {
   font-size: 0.95rem;
   color: #b0b0b0;
+  margin: 0 0 0.5rem 0;
+  line-height: 1.5;
+}
+
+.busy-warning-spaces {
+  font-size: 0.95rem;
+  color: #e0e0e0;
   margin: 0 0 1.5rem 0;
   line-height: 1.5;
+}
+
+.busy-warning-spaces strong {
+  font-weight: 800;
 }
 
 .busy-warning-btn {

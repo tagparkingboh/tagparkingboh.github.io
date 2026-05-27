@@ -815,11 +815,14 @@ function Bookings({ isModal = false, onClose }) {
       if (isAtCapacityUtil(candidate, dailyOccupancy, SOFT_CAP_FE)) continue
       const pct = getDayOccupancyPercentUtil(candidate, dailyOccupancy, SOFT_CAP_FE)
       if (pct >= 80) {
+        const count = dailyOccupancy[iso] || 0
+        const spacesLeft = Math.max(0, SOFT_CAP_FE - count)
         setBusyWarning({
           percent: pct,
           level: pct >= 90 ? 'red' : 'amber',
           dateISO: iso,
           formatted: format(candidate, 'EEEE d MMMM yyyy'),
+          spacesLeft,
         })
         return
       }
@@ -2294,6 +2297,10 @@ function Bookings({ isModal = false, onClose }) {
             </p>
             <p className="busy-warning-body">
               We suggest booking soon to avoid disappointment.
+            </p>
+            <p className="busy-warning-spaces">
+              We have <strong>{busyWarning.spacesLeft}</strong>{' '}
+              {busyWarning.spacesLeft === 1 ? 'space' : 'spaces'} left.
             </p>
             <button
               type="button"
