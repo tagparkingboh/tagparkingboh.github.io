@@ -12048,7 +12048,19 @@ async def stripe_webhook(
         metadata = getattr(data, "metadata", {}) or {}
         booking_reference = metadata.get("booking_reference") if isinstance(metadata, dict) else getattr(metadata, "booking_reference", None)
         last_payment_error = getattr(data, "last_payment_error", None)
+        # Capture Stripe's structured error fields too, not just `message`.
+        # `code` is the top-level error code (e.g. "card_declined"); the
+        # `decline_code` is the network-specific reason (e.g. "do_not_honor",
+        # "insufficient_funds", "try_again_later"). Without these we can't
+        # tell a generic bank refusal apart from a "card expired" or
+        # "insufficient funds" without opening the Stripe dashboard — caught
+        # this gap when triaging TAG-TSZ61426 2026-05-27.
         error_message = getattr(last_payment_error, "message", "Unknown error") if last_payment_error else "Unknown error"
+        error_code = getattr(last_payment_error, "code", None) if last_payment_error else None
+        decline_code = getattr(last_payment_error, "decline_code", None) if last_payment_error else None
+        log_message_suffix = ""
+        if error_code or decline_code:
+            log_message_suffix = f" [code={error_code or '-'}, decline_code={decline_code or '-'}]"
 
         # Update payment status to failed
         db_service.update_payment_status(
@@ -12066,6 +12078,8 @@ async def stripe_webhook(
             event_data={
                 "payment_intent_id": payment_intent_id,
                 "error_message": error_message,
+                "error_code": error_code,
+                "decline_code": decline_code,
             },
         )
 
@@ -12073,7 +12087,7 @@ async def stripe_webhook(
         log_error(
             db=db,
             error_type="stripe_payment",
-            message=f"Payment failed: {error_message}",
+            message=f"Payment failed: {error_message}{log_message_suffix}",
             request=request,
             severity=ErrorSeverity.WARNING,
             booking_reference=booking_reference,

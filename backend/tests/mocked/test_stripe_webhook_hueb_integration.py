@@ -259,6 +259,185 @@ class TestPaymentIntentFailed:
 
 
 # ============================================================================
+# payment_intent.payment_failed — decline_code capture (2026-05-27)
+#
+# Before: only `last_payment_error.message` was logged. "Your card was
+# declined" by itself doesn't distinguish a fraud-flag from insufficient
+# funds from "try_again_later" — admins had to open the Stripe dashboard.
+# After: also capture `last_payment_error.code` (e.g. "card_declined")
+# and `last_payment_error.decline_code` (e.g. "do_not_honor",
+# "insufficient_funds", "try_again_later"), include them in the error_log
+# message suffix `[code=..., decline_code=...]` AND in the audit event's
+# `event_data` dict. Triggered by triage of TAG-TSZ61426 — Santander
+# returned `do_not_honor`, invisible in our logs.
+# ============================================================================
+
+
+class TestPaymentFailedDeclineCodeCapture:
+    def teardown_method(self):
+        app.dependency_overrides.clear()
+
+    @patch("main.log_error")
+    @patch("main.log_audit_event")
+    @patch("main.is_stripe_configured", return_value=True)
+    @patch("main.verify_webhook_signature")
+    @patch("db_service.update_payment_status")
+    def test_H_code_and_decline_code_both_captured(
+        self, mock_update, mock_verify, mock_cfg, mock_audit, mock_log,
+    ):
+        """Happy: Stripe returns full error shape — message + code +
+        decline_code. All three appear in the audit `event_data` AND the
+        error_log message suffix. (TAG-TSZ61426's actual data shape:
+        card_declined / do_not_honor from Santander.)"""
+        last_err = MagicMock()
+        last_err.message = "Your card was declined."
+        last_err.code = "card_declined"
+        last_err.decline_code = "do_not_honor"
+        mock_verify.return_value = _event(
+            "payment_intent.payment_failed",
+            _stripe_obj(
+                id="pi_decline_001",
+                metadata={"booking_reference": "TAG-DECLINE01"},
+                last_payment_error=last_err,
+            ),
+        )
+        mock_update.return_value = (None, False)
+        _override_db(MagicMock())
+
+        resp = _post({})
+        assert resp.status_code == 200
+
+        # Audit event carries both structured fields.
+        audit_kwargs = mock_audit.call_args.kwargs
+        ed = audit_kwargs["event_data"]
+        assert ed["error_code"] == "card_declined"
+        assert ed["decline_code"] == "do_not_honor"
+        assert ed["error_message"] == "Your card was declined."
+
+        # Error log message includes the suffix so it's grep-able.
+        log_kwargs = mock_log.call_args.kwargs
+        assert "code=card_declined" in log_kwargs["message"]
+        assert "decline_code=do_not_honor" in log_kwargs["message"]
+        assert "Your card was declined." in log_kwargs["message"]
+
+    @patch("main.log_error")
+    @patch("main.log_audit_event")
+    @patch("main.is_stripe_configured", return_value=True)
+    @patch("main.verify_webhook_signature")
+    @patch("db_service.update_payment_status")
+    def test_U_no_last_payment_error_object_no_suffix_no_code_fields(
+        self, mock_update, mock_verify, mock_cfg, mock_audit, mock_log,
+    ):
+        """Unhappy: webhook arrives with `last_payment_error=None` (rare —
+        Stripe usually always populates it on payment_failed events, but
+        the handler must be defensive). Generic "Unknown error" message,
+        no `[code=...]` suffix, audit dict's structured fields are None."""
+        mock_verify.return_value = _event(
+            "payment_intent.payment_failed",
+            _stripe_obj(
+                id="pi_decline_002",
+                metadata={"booking_reference": "TAG-DECLINE02"},
+                last_payment_error=None,
+            ),
+        )
+        mock_update.return_value = (None, False)
+        _override_db(MagicMock())
+
+        resp = _post({})
+        assert resp.status_code == 200
+
+        audit_kwargs = mock_audit.call_args.kwargs
+        ed = audit_kwargs["event_data"]
+        assert ed["error_code"] is None
+        assert ed["decline_code"] is None
+        assert ed["error_message"] == "Unknown error"
+
+        log_kwargs = mock_log.call_args.kwargs
+        # No structured suffix when both fields are absent.
+        assert "[code=" not in log_kwargs["message"]
+        assert log_kwargs["message"] == "Payment failed: Unknown error"
+
+    @patch("main.log_error")
+    @patch("main.log_audit_event")
+    @patch("main.is_stripe_configured", return_value=True)
+    @patch("main.verify_webhook_signature")
+    @patch("db_service.update_payment_status")
+    def test_E_code_present_decline_code_missing_renders_dash(
+        self, mock_update, mock_verify, mock_cfg, mock_audit, mock_log,
+    ):
+        """Edge: some Stripe error shapes (non-card errors like
+        `authentication_required`, `payment_method_provider_decline`)
+        carry `code` but not `decline_code`. The suffix must still render
+        — `decline_code=-` is more useful than a missing field, because
+        it tells the admin "we asked Stripe, decline_code wasn't set."
+        Audit dict carries `None` faithfully (not the dash) so a future
+        consumer can distinguish absent from literal "-"."""
+        last_err = MagicMock()
+        last_err.message = "Authentication required for this card."
+        last_err.code = "authentication_required"
+        last_err.decline_code = None  # Stripe didn't return one
+        mock_verify.return_value = _event(
+            "payment_intent.payment_failed",
+            _stripe_obj(
+                id="pi_decline_003",
+                metadata={"booking_reference": "TAG-DECLINE03"},
+                last_payment_error=last_err,
+            ),
+        )
+        mock_update.return_value = (None, False)
+        _override_db(MagicMock())
+
+        resp = _post({})
+        assert resp.status_code == 200
+
+        audit_kwargs = mock_audit.call_args.kwargs
+        ed = audit_kwargs["event_data"]
+        assert ed["error_code"] == "authentication_required"
+        assert ed["decline_code"] is None  # raw None preserved
+
+        log_kwargs = mock_log.call_args.kwargs
+        assert "code=authentication_required" in log_kwargs["message"]
+        # Dash placeholder so the suffix structure is consistent.
+        assert "decline_code=-" in log_kwargs["message"]
+
+    @patch("main.log_error")
+    @patch("main.log_audit_event")
+    @patch("main.is_stripe_configured", return_value=True)
+    @patch("main.verify_webhook_signature")
+    @patch("db_service.update_payment_status")
+    def test_B_try_again_later_decline_code_surfaced_in_log(
+        self, mock_update, mock_verify, mock_cfg, mock_audit, mock_log,
+    ):
+        """Boundary: the user's literal question was 'what does try_again_
+        later mean.' Specifically verify that decline_code, when its value
+        is the string 'try_again_later', flows through to the log message
+        verbatim so admins can grep for it (rather than every decline
+        flattening to the same generic 'Your card was declined.')."""
+        last_err = MagicMock()
+        last_err.message = "Your card was declined."
+        last_err.code = "card_declined"
+        last_err.decline_code = "try_again_later"
+        mock_verify.return_value = _event(
+            "payment_intent.payment_failed",
+            _stripe_obj(
+                id="pi_decline_004",
+                metadata={"booking_reference": "TAG-DECLINE04"},
+                last_payment_error=last_err,
+            ),
+        )
+        mock_update.return_value = (None, False)
+        _override_db(MagicMock())
+
+        resp = _post({})
+        assert resp.status_code == 200
+
+        log_kwargs = mock_log.call_args.kwargs
+        assert "decline_code=try_again_later" in log_kwargs["message"]
+        audit_kwargs = mock_audit.call_args.kwargs
+        assert audit_kwargs["event_data"]["decline_code"] == "try_again_later"
+
+
+# ============================================================================
 # charge.refunded — Edge (full / partial / no payment found)
 # ============================================================================
 
