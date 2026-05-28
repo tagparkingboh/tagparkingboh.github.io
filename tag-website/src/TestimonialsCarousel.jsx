@@ -7,8 +7,9 @@ function TestimonialsCarousel() {
   const [cyclingIndex, setCyclingIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [showPressModal, setShowPressModal] = useState(false)
-  const [currentPage, setCurrentPage] = useState(0) // Pagination: 12 per page
+  const [currentPage, setCurrentPage] = useState(0) // Pagination only used when showAll
   const [expandedReview, setExpandedReview] = useState(null) // Expanded review modal
+  const [showAll, setShowAll] = useState(false) // false = top 10 only; true = full archive
 
   // Fetch testimonials from API
   useEffect(() => {
@@ -18,9 +19,17 @@ function TestimonialsCarousel() {
         const response = await fetch(`${API_URL}/api/testimonials`)
         const data = await response.json()
         if (data.testimonials && data.testimonials.length > 0) {
-          // Shuffle and deduplicate the weighted pool
-          const shuffled = shuffleArray([...data.testimonials])
-          const unique = deduplicateTestimonials(shuffled)
+          // API returns a weighted pool (5★ × 5, 4★ × 3, etc.). Dedupe first
+          // so weighting doesn't multiply the same review across the grid,
+          // then sort by date_added desc so the default 10 are the freshest.
+          // Falls back to id desc when date_added is missing (legacy rows).
+          const unique = deduplicateTestimonials([...data.testimonials])
+          unique.sort((a, b) => {
+            const da = a.date_added ? new Date(a.date_added).getTime() : 0
+            const db = b.date_added ? new Date(b.date_added).getTime() : 0
+            if (db !== da) return db - da
+            return (b.id || 0) - (a.id || 0)
+          })
           setTestimonials(unique)
         }
         // Store stats if available
@@ -35,15 +44,6 @@ function TestimonialsCarousel() {
     }
     fetchTestimonials()
   }, [])
-
-  // Shuffle array (Fisher-Yates)
-  const shuffleArray = (array) => {
-    for (let i = array.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[array[i], array[j]] = [array[j], array[i]]
-    }
-    return array
-  }
 
   // Deduplicate testimonials by ID (keep first occurrence)
   const deduplicateTestimonials = (array) => {
@@ -136,7 +136,9 @@ function TestimonialsCarousel() {
     )
   }
 
-  // Pagination
+  // Home-page default: surface only the most recent 10. "View all" toggle
+  // reveals the full archive with the existing 12-per-page pagination.
+  const DEFAULT_VISIBLE_COUNT = 10
   const pageSize = 12
   const totalPages = Math.ceil(testimonials.length / pageSize)
 
@@ -156,10 +158,19 @@ function TestimonialsCarousel() {
     return null
   }
 
-  const startIndex = currentPage * pageSize
-  const visibleTestimonials = testimonials.slice(startIndex, startIndex + pageSize)
-  const hasNext = currentPage < totalPages - 1
-  const hasPrev = currentPage > 0
+  let visibleTestimonials
+  let hasNext = false
+  let hasPrev = false
+  if (showAll) {
+    const startIndex = currentPage * pageSize
+    visibleTestimonials = testimonials.slice(startIndex, startIndex + pageSize)
+    hasNext = currentPage < totalPages - 1
+    hasPrev = currentPage > 0
+  } else {
+    visibleTestimonials = testimonials.slice(0, DEFAULT_VISIBLE_COUNT)
+  }
+
+  const hiddenCount = testimonials.length - DEFAULT_VISIBLE_COUNT
 
   return (
     <section id="testimonials" className="testimonials-section">
@@ -252,8 +263,20 @@ function TestimonialsCarousel() {
         </div>
       )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
+      {/* "View all" toggle (collapsed default) */}
+      {!showAll && hiddenCount > 0 && (
+        <div className="testimonials-view-all">
+          <button
+            className="testimonials-view-all-btn"
+            onClick={() => { setShowAll(true); setCurrentPage(0) }}
+          >
+            View all {testimonials.length} reviews ↓
+          </button>
+        </div>
+      )}
+
+      {/* Pagination (only when expanded to full archive) */}
+      {showAll && totalPages > 1 && (
         <div className="testimonials-pagination">
           <button
             className="testimonials-page-btn"
@@ -271,6 +294,18 @@ function TestimonialsCarousel() {
             disabled={!hasNext}
           >
             Next →
+          </button>
+        </div>
+      )}
+
+      {/* Show-fewer toggle (visible only when expanded) */}
+      {showAll && (
+        <div className="testimonials-view-all">
+          <button
+            className="testimonials-view-all-btn testimonials-view-all-btn--collapse"
+            onClick={() => { setShowAll(false); setCurrentPage(0) }}
+          >
+            Show fewer ↑
           </button>
         </div>
       )}

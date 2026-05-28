@@ -237,6 +237,81 @@ describe('TestimonialsCarousel Weighted Pool Logic', () => {
       expect(deduplicated[0].id).toBe(3) // Unrated should be first
     })
   })
+
+  // Recency sort + default-10 slice (2026-05-28 home-page slim-down).
+  // The carousel used to shuffle the weighted pool and paginate 12-per-page,
+  // 14 pages of cards. New behaviour: dedupe → sort by date_added desc →
+  // show top 10 by default with a "View all" toggle revealing the rest.
+  describe('Recency sort + default-10 slice (HUEB)', () => {
+    const sortByDateAddedDesc = (items) =>
+      [...items].sort((a, b) => {
+        const da = a.date_added ? new Date(a.date_added).getTime() : 0
+        const db = b.date_added ? new Date(b.date_added).getTime() : 0
+        if (db !== da) return db - da
+        return (b.id || 0) - (a.id || 0)
+      })
+    const DEFAULT_VISIBLE_COUNT = 10
+
+    it('H: 15 reviews → top-10 slice contains the 10 most-recent date_added entries', () => {
+      // Build 15 reviews dated May 1 → May 15. Newest = id 15 on May 15.
+      const items = Array.from({ length: 15 }, (_, i) => ({
+        id: i + 1,
+        customer_name: `Cust ${i + 1}`,
+        review_text: 'r',
+        star_rating: 5,
+        date_added: `2026-05-${String(i + 1).padStart(2, '0')}T10:00:00Z`,
+      }))
+      const sorted = sortByDateAddedDesc(items)
+      const visible = sorted.slice(0, DEFAULT_VISIBLE_COUNT)
+      expect(visible).toHaveLength(10)
+      // Most recent first.
+      expect(visible[0].id).toBe(15)
+      // Oldest of the 10 shown = May 6 = id 6.
+      expect(visible[9].id).toBe(6)
+      // Older reviews (ids 1–5) are dropped from the default view.
+      const visibleIds = visible.map((v) => v.id)
+      expect(visibleIds).not.toContain(1)
+      expect(visibleIds).not.toContain(5)
+    })
+
+    it('U: fewer than 10 reviews → default slice returns them all (no padding, no crash)', () => {
+      const items = [
+        { id: 1, date_added: '2026-05-01T10:00:00Z' },
+        { id: 2, date_added: '2026-05-02T10:00:00Z' },
+        { id: 3, date_added: '2026-05-03T10:00:00Z' },
+      ]
+      const visible = sortByDateAddedDesc(items).slice(0, DEFAULT_VISIBLE_COUNT)
+      expect(visible).toHaveLength(3)
+      expect(visible[0].id).toBe(3) // most recent first
+    })
+
+    it('E: two reviews with the SAME date_added tie-break by id desc (newer-added wins)', () => {
+      // Same timestamp → without a tie-break the order would be non-deterministic
+      // across browsers. Tie-break on id desc keeps the most recently-inserted
+      // row on top, which matches the "freshest" framing.
+      const items = [
+        { id: 5, date_added: '2026-05-10T10:00:00Z' },
+        { id: 8, date_added: '2026-05-10T10:00:00Z' }, // same timestamp, higher id
+        { id: 3, date_added: '2026-05-10T10:00:00Z' },
+      ]
+      const sorted = sortByDateAddedDesc(items)
+      expect(sorted.map((s) => s.id)).toEqual([8, 5, 3])
+    })
+
+    it('B: a review with null date_added falls back to id-based ordering, never throws', () => {
+      // Legacy rows from before date_added was populated. They sort below
+      // anything with a real timestamp (epoch 0), and tie-break among
+      // themselves by id desc.
+      const items = [
+        { id: 1, date_added: null },
+        { id: 2, date_added: null },
+        { id: 3, date_added: '2026-05-15T10:00:00Z' },
+      ]
+      const sorted = sortByDateAddedDesc(items)
+      expect(sorted[0].id).toBe(3) // dated row at the top
+      expect(sorted.slice(1).map((s) => s.id)).toEqual([2, 1]) // legacy rows ordered by id desc
+    })
+  })
 })
 
 describe('TestimonialsCarousel Navigation Logic', () => {
