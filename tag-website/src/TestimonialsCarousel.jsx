@@ -270,7 +270,7 @@ function TestimonialsCarousel() {
             className="testimonials-view-all-btn"
             onClick={() => { setShowAll(true); setCurrentPage(0) }}
           >
-            View all {testimonials.length} reviews ↓
+            View all {testimonials.length} reviews
           </button>
         </div>
       )}
