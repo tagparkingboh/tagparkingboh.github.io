@@ -305,7 +305,7 @@ function TestimonialsCarousel() {
             className="testimonials-view-all-btn testimonials-view-all-btn--collapse"
             onClick={() => { setShowAll(false); setCurrentPage(0) }}
           >
-            Show fewer ↑
+            Show fewer
           </button>
         </div>
       )}
