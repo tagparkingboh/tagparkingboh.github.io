@@ -5252,7 +5252,16 @@ async def get_fun_facts(
     # === Milestones ===
     # Sort bookings by created_at to get order
     sorted_bookings = sorted(bookings_with_created, key=lambda b: b.created_at)
-    milestone_numbers = [1, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350, 400, 450, 500]
+    # Ladder of "Xth booking" milestones surfaced on Admin → Insights.
+    # 1–500 in fine-grained steps (early growth, every 25–50); 500+ in
+    # round hundreds (later growth, less interesting to mark every 50).
+    # Each milestone is only rendered once total bookings >= the number
+    # (gate is the `if len(sorted_bookings) >= num:` check below) so
+    # future tiers stay invisible until earned.
+    milestone_numbers = [
+        1, 25, 50, 75, 100, 125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
+        600, 700, 800, 900, 1000,
+    ]
     milestones = []
 
     for num in milestone_numbers:
