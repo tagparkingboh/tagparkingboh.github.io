@@ -538,6 +538,7 @@ class RosterShiftUpdate(BaseModel):
     booking_ids: Optional[List[int]] = None  # Multiple bookings per shift
     date: Optional[date_type] = None  # Start date
     end_date: Optional[date_type] = None  # End date (for overnight shifts)
+    end_date_provided: bool = False  # Set to True when end_date is explicitly in the request
     start_time: Optional[str] = None  # "HH:MM"
     end_time: Optional[str] = None  # "HH:MM"
     shift_type: Optional[ShiftTypeEnum] = None
@@ -547,10 +548,21 @@ class RosterShiftUpdate(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def check_staff_id_provided(cls, data):
-        """Track if staff_id was explicitly provided in the request."""
-        if isinstance(data, dict) and 'staff_id' in data:
-            data['staff_id_provided'] = True
+    def check_provided_markers(cls, data):
+        """Track which nullable fields were explicitly provided in the request.
+        Needed to distinguish "not in request" from "explicitly set to null"
+        for `staff_id` (unassign) and `end_date` (clear overnight cross-day).
+
+        Hardening (2026-05-28 code review): FORCE the markers from actual
+        field presence, overwriting any client-supplied marker value.
+        Otherwise a request like {"end_date_provided": true} (without
+        end_date) would clear an overnight + stamp admin_shaped_at — the
+        marker is internal book-keeping, never input. Stripping the marker
+        from `data` would also work, but the explicit overwrite makes the
+        contract obvious to the next reader."""
+        if isinstance(data, dict):
+            data['staff_id_provided'] = 'staff_id' in data
+            data['end_date_provided'] = 'end_date' in data
         return data
 
 

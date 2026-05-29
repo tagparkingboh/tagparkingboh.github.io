@@ -192,6 +192,10 @@ def _shift_covers_event(shift: RosterShift, event_dt: datetime) -> bool:
     span starting at shift.date+start_time and ending at shift.end_date+
     end_time. We compare naive timestamps because both shift columns and
     booking dropoff_/pickup_time are stored without tz info.
+
+    Kept for callers that pass a single timestamp; new code should prefer
+    `_shift_covers_event_window` so the rule matches `_events_for_booking`'s
+    (start_anchor, end_anchor) shape.
     """
     if event_dt is None:
         return False
@@ -206,6 +210,26 @@ def _shift_covers_event(shift: RosterShift, event_dt: datetime) -> bool:
     span_start = datetime.combine(shift.date, shift.start_time)
     span_end = datetime.combine(end_date, shift.end_time)
     return span_start <= event_dt <= span_end
+
+
+def _shift_covers_event_window(
+    shift: RosterShift, start_dt: datetime, end_dt: datetime,
+) -> bool:
+    """Does `shift` cover the entire [start_dt, end_dt] event window?
+
+    Both endpoints must fall inside the shift's wall-clock span. This
+    is the rule the rebuild's skip-if-covered uses, exposed here so
+    auto-link can apply the same definition of "covered" — otherwise
+    a frozen shift can be considered covering by the rebuild but
+    non-covering by auto-link, leaving the booking orphaned (no new
+    shift, no link). Code-review finding 2026-05-28.
+    """
+    if start_dt is None or end_dt is None:
+        return False
+    end_date = getattr(shift, "end_date", None) or shift.date
+    span_start = datetime.combine(shift.date, shift.start_time)
+    span_end = datetime.combine(end_date, shift.end_time)
+    return span_start <= start_dt and end_dt <= span_end
 
 
 def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
@@ -237,21 +261,23 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
     if getattr(booking, "service_type", None) == ServiceType.PARK_RIDE:
         return []
     try:
-        # Build the up-to-2 event timestamps we need to match against.
-        events: list[datetime] = []
-        if booking.dropoff_date and booking.dropoff_time:
-            events.append(datetime.combine(booking.dropoff_date, booking.dropoff_time))
-        if booking.pickup_date and booking.pickup_time:
-            events.append(datetime.combine(booking.pickup_date, booking.pickup_time))
+        # Use the same event extraction as the rebuild — one helper, one
+        # definition of where a booking's work happens. For a pickup
+        # that's [flight_arrival, flight_arrival + 30] (canonical handoff);
+        # for a drop-off both anchors are the dropoff time. Aligning here
+        # eliminates the skip-vs-link disagreement that left bookings
+        # orphaned when the literal pickup_time differed from the derived
+        # handoff. Code-review fix 2026-05-28.
+        from auto_roster import _events_for_booking
+        events = _events_for_booking(booking)
         if not events:
             return []
 
-        # Pull candidate shifts: planner-sourced, jockey-eligible, scheduled
-        # or confirmed, in a date window that could plausibly cover any of
-        # the booking's events. Date filter trims the candidate set in the
-        # DB so coverage check stays cheap in Python.
-        min_d = min(ev.date() for ev in events) - timedelta(days=1)  # -1 catches overnight
-        max_d = max(ev.date() for ev in events)
+        # Pull candidate shifts in a date window that could plausibly
+        # cover any event endpoint. -1/+1 catches overnight wraps.
+        all_dts = [dt for _et, s, e in events for dt in (s, e)]
+        min_d = min(dt.date() for dt in all_dts) - timedelta(days=1)
+        max_d = max(dt.date() for dt in all_dts) + timedelta(days=1)
         candidates = (
             db.query(RosterShift)
             .filter(
@@ -267,7 +293,10 @@ def auto_link_booking_to_shifts(db: Session, booking: Booking) -> list[int]:
             intended = getattr(shift, "intended_driver_type", None)
             if intended not in (None, "jockey"):
                 continue  # fleet (or other) — not jockey workload
-            if not any(_shift_covers_event(shift, ev) for ev in events):
+            if not any(
+                _shift_covers_event_window(shift, s, e)
+                for _et, s, e in events
+            ):
                 continue
             # Idempotency: don't write a duplicate link.
             existing = (

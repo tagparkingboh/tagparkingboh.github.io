@@ -1452,6 +1452,17 @@ class RosterShift(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+    # Driver-trust lifecycle (locked 2026-05-28):
+    #   admin_shaped_at = the moment an admin deliberately reshaped this
+    #   shift via split, merge, duplicate, or direct time edit. Stamped
+    #   at the point of action; NEVER cleared automatically. Auto-roster
+    #   uses it as a "do not mutate this window" signal alongside
+    #   staff_id IS NOT NULL.
+    # Assignment / claim / notes / status / driver-type edits do NOT
+    # stamp this — owning a shift already freezes its shape via the
+    # staff_id check; this column is reserved for explicit shape actions.
+    admin_shaped_at = Column(DateTime(timezone=True), nullable=True)
+
     # Relationships
     staff = relationship("User", foreign_keys=[staff_id])
     booking = relationship("Booking", foreign_keys=[booking_id])  # DEPRECATED - use bookings

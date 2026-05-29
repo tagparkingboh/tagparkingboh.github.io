@@ -64,14 +64,6 @@ from roster_planner import (
 logger = logging.getLogger(__name__)
 
 
-# "Flexible workers" — when a cluster forms within this many minutes of an
-# existing ASSIGNED shift on the same date, extend that shift's window
-# rather than spawn a duplicate unassigned auto-shift. Stops the loop where
-# Kris assigns a driver, a new booking lands on the same date, and the
-# rebuild creates a duplicate auto-shift covering the same hours.
-EXTEND_REACH_MINUTES = 60
-
-
 # ---------------------------------------------------------------------------
 # Event extraction (pure)
 # ---------------------------------------------------------------------------
@@ -137,11 +129,15 @@ def _shift_window(shift: RosterShift) -> tuple[datetime, datetime]:
 
 
 def _is_auto_shift_eligible_for_rebuild(shift: RosterShift) -> bool:
-    """Untouched auto-shift = created_source='auto', staff_id NULL, SCHEDULED.
-    Anything else is admin territory — preserve it."""
+    """Untouched auto-shift = created_source='auto', staff_id NULL,
+    admin_shaped_at NULL, SCHEDULED. Anything else is admin territory —
+    preserve it. (Driver-trust pivot 2026-05-28 added the
+    `admin_shaped_at IS NULL` clause: split/merge/duplicate/direct time
+    edits stamp this column, freezing the row.)"""
     return (
         getattr(shift, "created_source", None) == "auto"
         and shift.staff_id is None
+        and getattr(shift, "admin_shaped_at", None) is None
         and shift.status == ShiftStatus.SCHEDULED
     )
 
@@ -180,7 +176,10 @@ def rebuild_auto_for_dates(
 
     Returns a counts dict so callers can log / surface a banner.
     """
-    summary = {"deleted": 0, "created": 0, "extended": 0, "bookings_in_scope": 0, "events": 0}
+    summary = {
+        "deleted": 0, "created": 0, "skipped_covered": 0,
+        "bookings_in_scope": 0, "events": 0,
+    }
     target_set = set(target_dates)
     if not target_set:
         return summary
@@ -203,6 +202,7 @@ def rebuild_auto_for_dates(
             .filter(
                 RosterShift.created_source == "auto",
                 RosterShift.staff_id.is_(None),
+                RosterShift.admin_shaped_at.is_(None),
                 RosterShift.status == ShiftStatus.SCHEDULED,
                 or_(
                     RosterShift.date.in_(neighbour_dates),
@@ -217,11 +217,18 @@ def rebuild_auto_for_dates(
                 target_set.add(s.end_date)
 
     # 1b. Delete untouched auto-shifts in scope.
+    # Driver-trust rule (2026-05-28): a row is "owned" (and therefore
+    # immune to wipe) when ANY of these are true:
+    #   - staff_id IS NOT NULL              (assigned / claimed)
+    #   - admin_shaped_at IS NOT NULL       (split / merged / duplicated / time-edited)
+    #   - created_source != 'auto'          (manual / planner)
+    # The filter below is the only-eligible-for-wipe predicate.
     existing = (
         db.query(RosterShift)
         .filter(
             RosterShift.created_source == "auto",
             RosterShift.staff_id.is_(None),
+            RosterShift.admin_shaped_at.is_(None),
             RosterShift.status == ShiftStatus.SCHEDULED,
             RosterShift.date.in_(target_set),
         )
@@ -282,40 +289,81 @@ def rebuild_auto_for_dates(
         mixed_gap_max_minutes=settings.mixed_gap_max_minutes,
     )
 
-    # 3b. Pull existing ASSIGNED AUTO shifts in scope so the cluster loop can
-    # extend them in place rather than spawn duplicate unassigned auto-shifts.
-    # Scope expanded by ±1 day so cross-midnight assigned shifts also match.
-    #
-    # `created_source = 'auto'` filter is load-bearing: manual shifts encode
-    # admin intent (specific window for a specific driver) and must NEVER be
-    # mutated by the auto-roster. The wider auto/manual separation rule is
-    # documented in the project memory; the only auto-side code that may
-    # touch a manual shift is `auto_link_booking_to_shifts`, and only to
-    # write `ShiftBookingLink` rows — never to change the shift row itself.
-    assigned_scope_dates = set(target_set)
+    # 3b. Pull existing FROZEN shifts in scope so the cluster loop can skip
+    # materialising a duplicate auto-shift over a window that's already
+    # covered by something owned. "Frozen" here = any shift the auto path
+    # is not allowed to reshape:
+    #   - any manual shift (created_source != 'auto')
+    #   - any auto shift that's owned (staff_id IS NOT NULL)
+    #   - any auto shift that's been admin-shaped (admin_shaped_at IS NOT NULL)
+    # Auto-link writes its own ShiftBookingLink rows for bookings that fall
+    # inside these windows in a separate background task; the rebuild just
+    # needs to know they're there so it doesn't spawn ghost duplicates over
+    # the same coverage. (Driver-trust pivot 2026-05-28.)
+    frozen_scope_dates = set(target_set)
     for d in target_set:
-        assigned_scope_dates.add(d - timedelta(days=1))
-        assigned_scope_dates.add(d + timedelta(days=1))
-    assigned_shifts = (
+        frozen_scope_dates.add(d - timedelta(days=1))
+        frozen_scope_dates.add(d + timedelta(days=1))
+    # Match auto_link's status filter (SCHEDULED + CONFIRMED only) so the
+    # rebuild's freeze pool and the link pool agree. If we included
+    # IN_PROGRESS here, an in-progress frozen shift could cause the
+    # rebuild to skip materialising a cluster, but auto_link would refuse
+    # to link to it (status filter mismatch) — leaving the booking with
+    # no shift coverage at all. Code-review finding 2026-05-28.
+    frozen_shifts = (
         db.query(RosterShift)
         .filter(
-            RosterShift.created_source == "auto",
-            RosterShift.staff_id.isnot(None),
             RosterShift.status.in_([
                 ShiftStatus.SCHEDULED,
                 ShiftStatus.CONFIRMED,
-                ShiftStatus.IN_PROGRESS,
             ]),
             or_(
-                RosterShift.date.in_(assigned_scope_dates),
-                RosterShift.end_date.in_(assigned_scope_dates),
+                RosterShift.created_source != "auto",
+                RosterShift.staff_id.isnot(None),
+                RosterShift.admin_shaped_at.isnot(None),
+            ),
+            or_(
+                RosterShift.date.in_(frozen_scope_dates),
+                RosterShift.end_date.in_(frozen_scope_dates),
             ),
         )
         .all()
     )
-    # Per-shift link cache so we don't re-query (and so multiple clusters
-    # extending the same assigned shift don't write duplicate link rows).
-    assigned_link_cache: dict[int, set[int]] = {}
+
+    def _cluster_fully_covered(cluster_events) -> bool:
+        """All-or-nothing skip rule (partial-overlap pivot 2026-05-28):
+        return True only when EVERY event in the cluster has BOTH its
+        start anchor (flight_arrival_time for pickups, dropoff_time for
+        drop-offs) AND its end anchor (pickup handoff = arrival + 30 min
+        for pickups; same as start for drop-offs) inside the wall-clock
+        window of at least one frozen shift. Partial overlap still
+        materialises the whole cluster.
+
+        Both endpoints matter: `auto_link_booking_to_shifts` keys off
+        `pickup_time` (the handoff, == end anchor for pickups) to decide
+        whether to write a link row. If skip-if-covered used only the
+        start anchor, a flight arriving at 14:45 with handoff at 15:15
+        sitting against a frozen 12:00-15:00 shift would be skipped by
+        rebuild (14:45 is inside) but rejected by auto_link (15:15 is
+        outside) — booking ends up with no shift, no link. Forcing both
+        endpoints to fit closes that gap. Code-review finding 2026-05-28."""
+        if not frozen_shifts:
+            return False
+        for ev in cluster_events:
+            start_dt = ev.event_time.replace(tzinfo=None)
+            # end_anchor_time is the handoff for pickups (arrival + 30 min),
+            # or the same as event_time for drop-offs.
+            end_dt = (ev.end_anchor_time or ev.event_time).replace(tzinfo=None)
+            inside_any = False
+            for fs in frozen_shifts:
+                fs_start = datetime.combine(fs.date, fs.start_time)
+                fs_end = datetime.combine(fs.end_date or fs.date, fs.end_time)
+                if fs_start <= start_dt and end_dt <= fs_end:
+                    inside_any = True
+                    break
+            if not inside_any:
+                return False
+        return True
 
     # 4. Materialise shifts for clusters whose start lands on a target date.
     min_duration = timedelta(minutes=settings.min_shift_minutes)
@@ -378,48 +426,14 @@ def rebuild_auto_for_dates(
 
         booking_ids = sorted({e.booking_id for e in cluster.events})
 
-        # Extend-rather-than-spawn: if an assigned shift's window is within
-        # EXTEND_REACH_MINUTES of this cluster's window, grow that shift to
-        # cover the cluster and link the bookings to it. Skip creating a
-        # duplicate unassigned auto-shift. (Stops Kris's "shifts keep
-        # coming back after I delete them" loop.)
-        extended = False
-        for a in assigned_shifts:
-            a_start = datetime.combine(a.date, a.start_time)
-            a_end = datetime.combine(a.end_date or a.date, a.end_time)
-            # Gap minutes between windows (negative => overlap). max() of the
-            # two one-sided gaps gives the actual separation in either order.
-            gap_minutes = max(
-                (shift_start - a_end).total_seconds() / 60,
-                (a_start - shift_end).total_seconds() / 60,
-            )
-            if gap_minutes > EXTEND_REACH_MINUTES:
-                continue
-            new_start = min(a_start, shift_start)
-            new_end = max(a_end, shift_end)
-            a.start_time = new_start.time()
-            a.end_time = new_end.time()
-            a.date = new_start.date()
-            a.end_date = (
-                new_end.date() if new_end.date() != new_start.date() else None
-            )
-            if a.id not in assigned_link_cache:
-                assigned_link_cache[a.id] = {
-                    l.booking_id
-                    for l in db.query(ShiftBookingLink)
-                    .filter(ShiftBookingLink.shift_id == a.id)
-                    .all()
-                }
-            for bid in booking_ids:
-                if bid in assigned_link_cache[a.id]:
-                    continue
-                db.add(ShiftBookingLink(shift_id=a.id, booking_id=bid))
-                assigned_link_cache[a.id].add(bid)
-            summary["extended"] += 1
-            extended = True
-            break
-
-        if extended:
+        # Skip-if-covered: when every event in this cluster falls inside
+        # an existing frozen shift's window, do NOT materialise a new
+        # auto-shift over the same hours. `auto_link_booking_to_shifts`
+        # is the bridge that writes the ShiftBookingLink rows — it runs
+        # on confirmation and only links bookings whose event time the
+        # shift window actually covers. (Driver-trust pivot 2026-05-28.)
+        if _cluster_fully_covered(cluster.events):
+            summary["skipped_covered"] += 1
             continue
 
         new_shift = RosterShift(
@@ -526,9 +540,14 @@ def delete_all_auto_shifts(
     open-ended right edge (`>= date_from`). Only date_to set → open-ended
     left edge (`<= date_to`).
     """
+    # Driver-trust rule (2026-05-28): admin_shaped_at IS NULL keeps
+    # split/merged/duplicated/time-edited rows out of the wipe set, even
+    # if they're unassigned. They're admin-shaped, the admin owns the
+    # window — preserve them.
     query = db.query(RosterShift).filter(
         RosterShift.created_source == "auto",
         RosterShift.staff_id.is_(None),
+        RosterShift.admin_shaped_at.is_(None),
         RosterShift.status == ShiftStatus.SCHEDULED,
     )
     if date_from is not None:

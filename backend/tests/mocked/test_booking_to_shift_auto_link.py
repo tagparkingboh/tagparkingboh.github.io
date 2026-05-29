@@ -356,3 +356,173 @@ class TestShiftCoversEvent:
         assert _shift_covers_event(s, datetime(2026, 5, 12, 0, 30)) is True
         assert _shift_covers_event(s, datetime(2026, 5, 12, 2, 0)) is True
         assert _shift_covers_event(s, datetime(2026, 5, 12, 2, 1)) is False
+
+
+# =====================================================================================
+# Auto-link uses _events_for_booking (code-review pivot 2026-05-28).
+#
+# Auto-link now shares the rebuild's event extraction: pickups derive from
+# flight_arrival_date + flight_arrival_time (canonical) with handoff at
+# arrival + 30; drop-offs anchor on dropoff_date + dropoff_time. The literal
+# pickup_date + pickup_time fields are NOT consulted by auto-link any more
+# — they're customer-facing display only.
+# =====================================================================================
+
+
+def _mk_booking_with_flight(
+    booking_id=1,
+    reference="TAG-FA-001",
+    dropoff_date=date(2026, 5, 11),
+    dropoff_time=time(9, 0),
+    flight_arrival_date=date(2026, 5, 14),
+    flight_arrival_time=time(15, 40),
+    pickup_date=date(2026, 5, 14),
+    pickup_time=time(17, 30),
+):
+    """Booking with explicit flight_arrival_date / _time. Useful for verifying
+    that auto-link keys off the flight anchor, not the literal pickup_time."""
+    b = SimpleNamespace(
+        id=booking_id,
+        reference=reference,
+        dropoff_date=dropoff_date,
+        dropoff_time=dropoff_time,
+        pickup_date=pickup_date,
+        pickup_time=pickup_time,
+        flight_arrival_date=flight_arrival_date,
+        flight_arrival_time=flight_arrival_time,
+    )
+    return b
+
+
+class TestAutoLinkSharesEventExtraction:
+
+    def test_H_flight_arrival_drives_linking_not_pickup_time(self, db):
+        """Happy / the EXACT reviewer mismatch case:
+            shift           15:30 – 16:15
+            flight_arrival  15:40
+            derived handoff 16:10   (arrival + 30)
+            stored pickup   17:30
+        Both arrival (15:40) AND derived handoff (16:10) sit inside
+        15:30–16:15. The customer-facing pickup_time (17:30) is way
+        outside but auto-link must NOT consult it any more — keying on
+        the canonical arrival anchor closes the orphan gap that the
+        old (literal pickup_time) code would have hit here. Old code:
+        17:30 outside 15:30–16:15 → no link → orphan. New code: handoff
+        anchor inside → link."""
+        booking = _mk_booking_with_flight(
+            booking_id=10,
+            flight_arrival_date=date(2026, 5, 14),
+            flight_arrival_time=time(15, 40),
+            pickup_date=date(2026, 5, 14),
+            pickup_time=time(17, 30),
+        )
+        s_drop = _mk_shift(
+            shift_id=100, shift_date=date(2026, 5, 11),
+            start_time=time(8, 0), end_time=time(16, 0),
+        )
+        s_pick = _mk_shift(
+            shift_id=200, shift_date=date(2026, 5, 14),
+            start_time=time(15, 30), end_time=time(16, 15),
+        )
+        db._candidate_shifts = [s_drop, s_pick]
+
+        result = auto_link_booking_to_shifts(db, booking)
+        assert 200 in result, (
+            "shift 15:30–16:15 covers arrival 15:40 and derived handoff "
+            "16:10 — link must be created; literal pickup_time 17:30 is "
+            "irrelevant"
+        )
+        # drop-off side also links.
+        assert 100 in result
+
+    def test_E_pickup_time_later_than_handoff_still_links(self, db):
+        """Edge: arrival 14:00, derived handoff 14:30, literal pickup_time
+        17:30. Shift 14:00–15:00 covers the canonical event but ends
+        before the literal pickup. Auto-link must still link — the link
+        is keyed on the canonical event window, not the customer-facing
+        pickup_time. (Closes the orphan-gap reviewer flagged: rebuild
+        would skip-as-covered here too, so they must agree.)"""
+        booking = _mk_booking_with_flight(
+            booking_id=11, reference="TAG-FA-002",
+            flight_arrival_date=date(2026, 5, 14),
+            flight_arrival_time=time(14, 0),
+            pickup_date=date(2026, 5, 14),
+            pickup_time=time(17, 30),  # much later than arrival + 30
+        )
+        s_drop = _mk_shift(
+            shift_id=100, shift_date=date(2026, 5, 11),
+            start_time=time(8, 0), end_time=time(16, 0),
+        )
+        s_pick = _mk_shift(
+            shift_id=300, shift_date=date(2026, 5, 14),
+            start_time=time(14, 0), end_time=time(15, 0),  # covers canonical
+        )
+        db._candidate_shifts = [s_drop, s_pick]
+
+        result = auto_link_booking_to_shifts(db, booking)
+        assert 300 in result, (
+            "shift covering [arrival, arrival+30] must link even when "
+            "literal pickup_time falls outside the shift"
+        )
+
+    def test_U_derived_handoff_outside_window_does_not_link(self, db):
+        """Unhappy: arrival 15:40, handoff 16:10. Shift 12:00–16:00 covers
+        the arrival but NOT the handoff. Auto-link must require BOTH
+        endpoints to fit — refuse to link, otherwise the driver is off
+        shift when the handoff actually happens."""
+        booking = _mk_booking_with_flight(
+            booking_id=12, reference="TAG-FA-003",
+            flight_arrival_date=date(2026, 5, 14),
+            flight_arrival_time=time(15, 40),
+            pickup_date=date(2026, 5, 14),
+            pickup_time=time(16, 10),
+        )
+        s_drop = _mk_shift(
+            shift_id=100, shift_date=date(2026, 5, 11),
+            start_time=time(8, 0), end_time=time(16, 0),
+        )
+        s_pick_too_short = _mk_shift(
+            shift_id=400, shift_date=date(2026, 5, 14),
+            start_time=time(12, 0), end_time=time(16, 0),  # ends BEFORE handoff
+        )
+        db._candidate_shifts = [s_drop, s_pick_too_short]
+
+        result = auto_link_booking_to_shifts(db, booking)
+        assert 400 not in result, (
+            "shift ending at 16:00 does not cover handoff at 16:10 → no link"
+        )
+        # Drop-off still links (separate event).
+        assert 100 in result
+
+    def test_B_overnight_arrival_links_to_prior_day_evening_shift(self, db):
+        """Boundary: flight arrives 23:55 on 5/13, derived handoff 00:25
+        on 5/14. A shift dated 5/13 with end_date 5/14 covering 22:00–
+        01:00 spans the overnight cleanly and must catch both endpoints
+        of the pickup event. Mirrors the rebuild's overnight rebucket."""
+        booking = _mk_booking_with_flight(
+            booking_id=13, reference="TAG-FA-004",
+            dropoff_date=date(2026, 5, 1),
+            dropoff_time=time(9, 0),
+            flight_arrival_date=date(2026, 5, 13),
+            flight_arrival_time=time(23, 55),
+            pickup_date=date(2026, 5, 14),
+            pickup_time=time(0, 25),
+        )
+        s_overnight = _mk_shift(
+            shift_id=500, shift_date=date(2026, 5, 13),
+            end_date=date(2026, 5, 14),
+            start_time=time(22, 0), end_time=time(1, 0),
+        )
+        # Add a dropoff-only shift too for completeness; we only care
+        # about whether the overnight shift catches the pickup event.
+        s_drop = _mk_shift(
+            shift_id=100, shift_date=date(2026, 5, 1),
+            start_time=time(8, 0), end_time=time(16, 0),
+        )
+        db._candidate_shifts = [s_drop, s_overnight]
+
+        result = auto_link_booking_to_shifts(db, booking)
+        assert 500 in result, (
+            "overnight shift must catch the pickup event whose endpoints "
+            "straddle midnight"
+        )

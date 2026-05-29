@@ -8,7 +8,7 @@ This module provides endpoints for:
 - Employee-facing read-only shift view
 """
 
-from datetime import date as date_type, time, datetime, timedelta
+from datetime import date as date_type, time, datetime, timedelta, timezone
 from typing import Optional, List
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
@@ -1421,13 +1421,33 @@ async def update_shift(
                     detail=f"Staff is unavailable on {new_date.strftime('%d/%m/%Y')}"
                 )
 
+    # Driver-trust pivot 2026-05-28: stamp admin_shaped_at when ANY of
+    # the four window fields (start_time, end_time, date, end_date) is
+    # actually changed by this PATCH — but NOT when only non-window
+    # fields move (staff_id, notes, status, intended_driver_type, etc).
+    # Assignment alone is already freeze-equivalent via the
+    # staff_id IS NOT NULL filter in auto_roster; stamping on assignment
+    # would muddy the audit meaning of admin_shaped_at, which is
+    # reserved for explicit shape actions.
+    #
+    # `end_date_provided` (mirrors the staff_id_provided pattern) so an
+    # admin clearing an overnight cross-day (end_date → null) still
+    # counts as a window change. Without the marker, the `is not None`
+    # guard would silently drop end_date=null requests.
+    window_changed = (
+        (updates.start_time is not None and new_start != shift.start_time)
+        or (updates.end_time is not None and new_end != shift.end_time)
+        or (updates.date is not None and updates.date != shift.date)
+        or (updates.end_date_provided and updates.end_date != shift.end_date)
+    )
+
     # Apply updates
     if updates.staff_id_provided:
         shift.staff_id = updates.staff_id  # Can be None to unassign
     if updates.date is not None:
         shift.date = updates.date
-    if updates.end_date is not None:
-        shift.end_date = updates.end_date
+    if updates.end_date_provided:
+        shift.end_date = updates.end_date  # Can be None to clear overnight
     if updates.start_time is not None:
         shift.start_time = new_start
     if updates.end_time is not None:
@@ -1438,6 +1458,8 @@ async def update_shift(
         shift.status = ShiftStatus(updates.status.value)
     if updates.notes is not None:
         shift.notes = updates.notes
+    if window_changed:
+        shift.admin_shaped_at = datetime.now(timezone.utc)
     # If staff is now assigned, intended_driver_type follows the assigned
     # user's driver_type (source of truth). Otherwise honour the request.
     if updates.staff_id_provided and updates.staff_id:
@@ -1648,6 +1670,10 @@ async def duplicate_shift(
             notes=source.notes,
             intended_driver_type=intended,
             created_source=source.created_source or "manual",
+            # Driver-trust pivot 2026-05-28: duplication is a deliberate
+            # admin planning gesture — stamp the copy so the auto-roster
+            # never reshapes its window even when staff_id is NULL.
+            admin_shaped_at=datetime.now(timezone.utc),
         )
         db.add(new_shift)
         db.flush()
@@ -1766,6 +1792,9 @@ async def merge_shift(
         survivor.end_date = union_end.date()
     else:
         survivor.end_date = None
+    # Driver-trust pivot 2026-05-28: merge produces a deliberately-shaped
+    # union window — stamp the survivor so auto-roster never reshapes it.
+    survivor.admin_shaped_at = datetime.now(timezone.utc)
 
     # Re-derive intended_driver_type from the chosen staff.
     if chosen_staff is not None:
@@ -1855,6 +1884,11 @@ async def split_shift(
     second_date = split_dt.date()
     second_end_date = end_dt.date() if end_dt.date() != second_date else None
 
+    # Driver-trust pivot 2026-05-28: split is a deliberate admin shape
+    # action. Stamp BOTH halves — the second-half new row at construction
+    # time, the first-half in-place modified row alongside the time edit.
+    now_utc = datetime.now(timezone.utc)
+
     # Build the second half as a new row first so we have an ID for re-linking.
     second = RosterShift(
         staff_id=shift.staff_id,
@@ -1868,6 +1902,7 @@ async def split_shift(
         notes=shift.notes,
         intended_driver_type=shift.intended_driver_type or "jockey",
         created_source=shift.created_source or "manual",
+        admin_shaped_at=now_utc,
     )
     db.add(second)
     db.flush()
@@ -1875,6 +1910,7 @@ async def split_shift(
     # Apply the first half in place.
     shift.end_time = split_t
     shift.end_date = first_end_date
+    shift.admin_shaped_at = now_utc
 
     # Re-distribute booking links by event_time. Right-inclusive at the cut.
     from auto_roster import _events_for_booking

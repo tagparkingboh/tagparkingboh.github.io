@@ -128,20 +128,84 @@ def make_db(*, untouched_auto_shifts=None, assigned_shifts=None, bookings=None,
             return chain
         chain.filter.side_effect = capture_filter
 
+        def _status_allowed(shift_status, captured) -> bool:
+            """Inspect captured filter args for a `status.in_([...])`
+            clause and check whether `shift_status` is in the allowed
+            list. Returns True (allowed) when no status filter is present
+            OR when the inspector can't decode the args (defensive — the
+            test should still see its rows). Mirrors the production
+            query's status filter so a test that stuffs an IN_PROGRESS
+            shift into the pool gets the same exclusion the real DB
+            would apply."""
+            try:
+                from sqlalchemy.sql import operators as sqla_ops
+            except Exception:
+                return True
+            for args in captured:
+                for arg in args:
+                    op = getattr(arg, "operator", None)
+                    if op is not getattr(sqla_ops, "in_op", None):
+                        continue
+                    left = getattr(arg, "left", None)
+                    if getattr(left, "key", None) != "status":
+                        continue
+                    # SQLAlchemy wraps the whole list into a single
+                    # BindParameter whose .value is the python list.
+                    right = getattr(arg, "right", None)
+                    allowed = getattr(right, "value", None)
+                    if isinstance(allowed, (list, tuple)):
+                        return shift_status in allowed
+                    # Unknown shape — defensive default.
+                    return True
+            return True
+
+        def _is_null_required(col_name: str, captured) -> bool:
+            """Returns True if any captured filter contains
+            `Column.is_(None)` on this column. SQLAlchemy renders the
+            right side as a `Null` instance (no `.value` attribute) for
+            this case — so the operator + column-key match is sufficient
+            to identify it."""
+            try:
+                from sqlalchemy.sql import operators as sqla_ops
+                from sqlalchemy.sql.elements import Null
+            except Exception:
+                return False
+            for args in captured:
+                for arg in args:
+                    op = getattr(arg, "operator", None)
+                    if op is not getattr(sqla_ops, "is_", None):
+                        continue
+                    left = getattr(arg, "left", None)
+                    if getattr(left, "key", None) != col_name:
+                        continue
+                    right = getattr(arg, "right", None)
+                    if isinstance(right, Null):
+                        return True
+            return False
+
         def shift_all():
             blob = " ".join(_filter_str(a) for a in captured_filters)
             if "IS NOT NULL" in blob:
-                pool = list(assigned_shifts)
-                # The production extend-candidate query filters
-                # `created_source = 'auto'`. Mirror that here so a manual
-                # shift placed in the candidate pool by a test isn't
-                # silently returned to the rebuild — otherwise tests would
-                # contradict the production guard.
-                if "created_source" in blob:
-                    pool = [s for s in pool
-                            if getattr(s, "created_source", None) == "auto"]
-                return pool
-            return list(untouched_auto_shifts)
+                # Driver-trust pivot 2026-05-28: the rebuild's "frozen
+                # shifts" query (skip-if-covered) intentionally includes
+                # manual shifts AND admin-shaped auto shifts AND assigned
+                # auto shifts. Honour the production status filter so
+                # IN_PROGRESS rows are excluded from the frozen pool just
+                # like the real DB would do them.
+                return [
+                    s for s in assigned_shifts
+                    if _status_allowed(getattr(s, "status", None), captured_filters)
+                ]
+            pool = list(untouched_auto_shifts)
+            # Honour `admin_shaped_at IS NULL` on the wipe / delete-all
+            # paths so a test that drops an admin-shaped row in here
+            # still gets the production-equivalent preservation.
+            if _is_null_required("admin_shaped_at", captured_filters):
+                pool = [
+                    s for s in pool
+                    if getattr(s, "admin_shaped_at", None) is None
+                ]
+            return pool
 
         def link_all():
             sid = None
@@ -664,13 +728,28 @@ class TestRebuildAutoForDates:
 
 
 # ===========================================================================
-# Extend-assigned-shift rule (2026-05-25 — replaces the spawn-duplicate loop
-# Kris hit: he'd assign a driver to an auto-shift, a new booking would
-# confirm on the same date, and rebuild_auto_for_dates would spawn a fresh
-# unassigned auto-shift covering the same hours because the assigned shift
-# was protected from the wipe. The fix: when a cluster's window sits within
-# EXTEND_REACH_MINUTES (60) of an existing assigned shift's window, grow
-# that shift and link the booking to it instead of creating a duplicate.)
+# Driver-trust contract (locked 2026-05-28, supersedes the 60-min extend
+# rule from 2026-05-25). The auto-roster's only window-mutating action is
+# wipe-and-recreate of UNOWNED auto shifts. The moment a shift becomes
+# owned — assigned, claimed, split, merged, duplicated, or directly
+# time-edited — its window is FROZEN. Auto-link still writes booking
+# links to such shifts when the booking's event falls inside the existing
+# window (separate background task), but the auto-roster itself never
+# stretches or shrinks them.
+#
+# The rebuild's per-cluster guard (`_cluster_fully_covered`): when EVERY
+# event in a cluster sits inside the wall-clock window of some existing
+# frozen shift, skip materialising a new auto-shift. That's what stops
+# Kris's "duplicate ghost shift" loop without the auto-side ever mutating
+# an owned row. Partial overlap (some events in-window, some not) still
+# materialises the whole cluster — accepted as the simpler tradeoff vs
+# splitting clusters.
+#
+# An auto shift is "frozen" iff ANY of:
+#   - created_source != 'auto'           (manual, planner)
+#   - staff_id IS NOT NULL                (assigned / claimed)
+#   - admin_shaped_at IS NOT NULL         (split / merged / duplicated /
+#                                          PATCH'd window field)
 # ===========================================================================
 
 
@@ -682,10 +761,13 @@ def mk_assigned_shift(
     start_time=time(12, 0),
     end_time=time(15, 0),
     staff_id=10,
+    created_source="auto",
+    admin_shaped_at=None,
 ):
-    """An ALREADY-ASSIGNED shift on the calendar — `staff_id != None`. The
-    fixture only needs the attributes the rebuild touches: id, staff_id,
-    date, end_date, start_time, end_time."""
+    """A frozen shift fixture. Defaults to assigned auto (`staff_id` set,
+    `created_source='auto'`, `admin_shaped_at=None`) — the most common
+    shape Kris hits. Override `created_source='manual'` for manual shifts,
+    or pass `admin_shaped_at=datetime.now()` for admin-shaped auto rows."""
     return SimpleNamespace(
         id=id,
         staff_id=staff_id,
@@ -695,7 +777,8 @@ def mk_assigned_shift(
         end_time=end_time,
         shift_type=ShiftType.MORNING,
         status=ShiftStatus.SCHEDULED,
-        created_source="auto",
+        created_source=created_source,
+        admin_shaped_at=admin_shaped_at,
     )
 
 
@@ -703,275 +786,507 @@ def mk_existing_link(shift_id, booking_id):
     return SimpleNamespace(shift_id=shift_id, booking_id=booking_id)
 
 
-class TestRebuildExtendsAssignedShifts:
-    """When an existing assigned shift sits within EXTEND_REACH_MINUTES (60)
-    of a new cluster's window, the rebuild should EXTEND the assigned shift
-    (and link the cluster's bookings to it) rather than spawn a duplicate
-    unassigned auto-shift on the same date."""
+class TestRebuildSkipsCoveredClusters:
+    """Driver-trust contract (2026-05-28). The rebuild MUST NOT spawn a
+    duplicate auto-shift over hours that an existing frozen shift already
+    covers — that loop is what Kris was hitting before the contract
+    pivot. Equally important, the rebuild MUST still spawn a fresh
+    auto-shift for genuinely uncovered hours, and for partial-overlap
+    clusters it materialises the WHOLE cluster (per the all-or-nothing
+    rule) — auto-link will sort the inside-events out via its in-window
+    coverage check.
 
-    def test_H_event_inside_assigned_window_extends_no_new_shift(self):
-        """Happy: assigned 12:00–15:00 on 6/10. New dropoff at 13:00 lands
-        inside that window. The assigned shift gets the booking linked to
-        it; no new RosterShift is added; summary['extended']=1, ['created']=0."""
-        assigned = mk_assigned_shift(
+    These tests sit on top of the rule, not the implementation: they
+    don't probe whether the manual shift was "skipped" or "ignored" or
+    "passed through" — they verify that the manual / assigned / admin-
+    shaped row's *window stays as the admin left it*, AND no duplicate
+    auto-shift is materialised over its hours. That keeps a future
+    reader from "simplifying" the predicate into something narrower than
+    the contract."""
+
+    def test_H_cluster_fully_inside_frozen_window_skips_materialise(self):
+        """Happy: cluster of 3 events at 13:00/13:30/14:00 on 6/10
+        sits entirely inside Kristian's frozen 12:00-15:00 shift.
+        Rebuild must skip — no new RosterShift, no window mutation on
+        the frozen row, summary['skipped_covered']=1, ['created']=0."""
+        frozen = mk_assigned_shift(
             id=99, shift_date=date(2026, 6, 10),
             start_time=time(12, 0), end_time=time(15, 0),
-            staff_id=10,
+            staff_id=10,  # assigned auto = frozen
         )
-        b = mk_booking(
-            booking_id=500, reference="TAG-EXTEND01",
+        original = (frozen.date, frozen.end_date, frozen.start_time, frozen.end_time)
+        b1 = mk_booking(
+            booking_id=500, reference="TAG-SKIP00001",
             dropoff_dt=datetime(2026, 6, 10, 13, 0),
-            pickup_dt=datetime(2026, 7, 10, 14, 0),  # outside target
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
         )
-        db = make_db(bookings=[b], assigned_shifts=[assigned])
+        b2 = mk_booking(
+            booking_id=501, reference="TAG-SKIP00002",
+            dropoff_dt=datetime(2026, 6, 10, 13, 30),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        b3 = mk_booking(
+            booking_id=502, reference="TAG-SKIP00003",
+            dropoff_dt=datetime(2026, 6, 10, 14, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b1, b2, b3], assigned_shifts=[frozen])
         result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
 
         from db_models import RosterShift, ShiftBookingLink
         new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
-        assert new_shifts == [], f"no new auto-shift expected, got {len(new_shifts)}"
+        assert new_shifts == [], (
+            f"no new auto-shift expected — cluster covered by frozen 12-15:00; "
+            f"got {len(new_shifts)}"
+        )
+        # Frozen row's window untouched.
+        assert (frozen.date, frozen.end_date, frozen.start_time, frozen.end_time) == original
+        # Rebuild does NOT write link rows itself in this branch — that's
+        # auto_link_booking_to_shifts' job (separate background task).
         new_links = [a for a in db._added if isinstance(a, ShiftBookingLink)]
-        assert any(l.shift_id == 99 and l.booking_id == 500 for l in new_links)
-        assert result["extended"] == 1
+        assert new_links == [], (
+            "rebuild must not double-write links — auto_link owns that"
+        )
+        assert result["skipped_covered"] == 1
         assert result["created"] == 0
 
-    def test_U_event_too_far_from_assigned_creates_new_shift(self):
-        """Unhappy (for the assigned shift, anyway): assigned 12:00–15:00,
-        new dropoff at 18:00. Cluster window ~17:40–18:40, gap from 15:00 =
-        2h40 > 60min reach → no extension, fresh auto-shift created."""
-        assigned = mk_assigned_shift(
-            id=99, shift_date=date(2026, 6, 10),
-            start_time=time(12, 0), end_time=time(15, 0),
-            staff_id=10,
-        )
-        original_end = assigned.end_time
+    def test_U_no_frozen_shift_still_materialises_normally(self):
+        """Unhappy (for the contract): no frozen shift on the date at
+        all. Rebuild creates a fresh unassigned auto-shift for the
+        cluster, summary['created']=1, ['skipped_covered']=0. Regression
+        guard — confirms the new guard isn't accidentally suppressing
+        all materialisation."""
         b = mk_booking(
-            booking_id=501, reference="TAG-FARAWAY1",
-            dropoff_dt=datetime(2026, 6, 10, 18, 0),
+            booking_id=510, reference="TAG-SKIP00010",
+            dropoff_dt=datetime(2026, 6, 10, 13, 0),
             pickup_dt=datetime(2026, 7, 10, 14, 0),
         )
-        db = make_db(bookings=[b], assigned_shifts=[assigned])
+        # No assigned_shifts → no frozen rows → skip can't fire.
+        db = make_db(bookings=[b])
         result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
 
         from db_models import RosterShift
         new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
         assert len(new_shifts) == 1
         assert new_shifts[0].staff_id is None
-        # Assigned shift's window is untouched.
-        assert assigned.end_time == original_end
-        assert result["extended"] == 0
         assert result["created"] == 1
+        assert result["skipped_covered"] == 0
 
-    def test_E_existing_link_not_duplicated_on_extend(self):
-        """Edge: assigned shift already linked to booking 500; the cluster
-        includes 500 + 502. Only 502 gets a new ShiftBookingLink row — the
-        UniqueConstraint(shift_id, booking_id) would reject a duplicate."""
-        assigned = mk_assigned_shift(
+    def test_E_partial_overlap_materialises_whole_cluster(self):
+        """Edge: cluster of 3 events at 13:00/14:00/16:30 on 6/10 with
+        Kristian's frozen 12:00-15:00. Two events inside (13:00, 14:00),
+        one outside (16:30). Per the all-or-nothing rule, rebuild must
+        materialise the WHOLE cluster as a new auto-shift — accepts
+        some duplicate linking for the inside events in exchange for
+        coverage of the outside one. (Splitting the cluster would be
+        cleaner, but not yet implemented.)"""
+        frozen = mk_assigned_shift(
             id=99, shift_date=date(2026, 6, 10),
             start_time=time(12, 0), end_time=time(15, 0),
             staff_id=10,
         )
-        b_already = mk_booking(
-            booking_id=500, reference="TAG-ALREADY1",
+        original_end = frozen.end_time
+        b1 = mk_booking(
+            booking_id=520, reference="TAG-PARTIAL01",
             dropoff_dt=datetime(2026, 6, 10, 13, 0),
             pickup_dt=datetime(2026, 7, 10, 14, 0),
         )
-        b_new = mk_booking(
-            booking_id=502, reference="TAG-NEWONE01",
-            dropoff_dt=datetime(2026, 6, 10, 13, 15),
+        b2 = mk_booking(
+            booking_id=521, reference="TAG-PARTIAL02",
+            dropoff_dt=datetime(2026, 6, 10, 14, 0),
             pickup_dt=datetime(2026, 7, 10, 14, 0),
         )
-        existing_links = {99: [mk_existing_link(99, 500)]}
-        db = make_db(
-            bookings=[b_already, b_new],
-            assigned_shifts=[assigned],
-            existing_links_by_shift=existing_links,
-        )
-        rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
-
-        from db_models import ShiftBookingLink
-        new_links = [a for a in db._added if isinstance(a, ShiftBookingLink)]
-        booking_ids_added = {l.booking_id for l in new_links if l.shift_id == 99}
-        assert booking_ids_added == {502}, (
-            f"only the not-yet-linked booking 502 should be added; "
-            f"got {booking_ids_added}"
-        )
-
-    def test_B_gap_exactly_60min_extends_61min_does_not(self):
-        """Boundary on the 60-min threshold. With default 20m start_buffer,
-        a single dropoff at 16:20 produces shift_start=16:00 → gap from
-        assigned end 15:00 = exactly 60min → extends. Same shape with the
-        dropoff at 16:21 → shift_start=16:01 → gap=61min → does NOT extend."""
-        # ---- t = 60 min (extends) ----
-        assigned_60 = mk_assigned_shift(
-            id=99, shift_date=date(2026, 6, 10),
-            start_time=time(12, 0), end_time=time(15, 0),
-            staff_id=10,
-        )
-        b_60 = mk_booking(
-            booking_id=600, reference="TAG-EQUAL60",
-            dropoff_dt=datetime(2026, 6, 10, 16, 20),  # → shift_start 16:00
+        b3 = mk_booking(
+            booking_id=522, reference="TAG-PARTIAL03",
+            dropoff_dt=datetime(2026, 6, 10, 16, 30),  # outside frozen window
             pickup_dt=datetime(2026, 7, 10, 14, 0),
         )
-        db_60 = make_db(bookings=[b_60], assigned_shifts=[assigned_60])
-        result_60 = rebuild_auto_for_dates(db_60, {date(2026, 6, 10)}, mk_settings())
-        assert result_60["extended"] == 1, "exactly 60-min gap is within reach"
-        assert result_60["created"] == 0
-
-        # ---- t = 61 min (does NOT extend) ----
-        assigned_61 = mk_assigned_shift(
-            id=99, shift_date=date(2026, 6, 10),
-            start_time=time(12, 0), end_time=time(15, 0),
-            staff_id=10,
-        )
-        b_61 = mk_booking(
-            booking_id=601, reference="TAG-OVER60_",
-            dropoff_dt=datetime(2026, 6, 10, 16, 21),  # → shift_start 16:01
-            pickup_dt=datetime(2026, 7, 10, 14, 0),
-        )
-        db_61 = make_db(bookings=[b_61], assigned_shifts=[assigned_61])
-        result_61 = rebuild_auto_for_dates(db_61, {date(2026, 6, 10)}, mk_settings())
-        assert result_61["extended"] == 0, "61-min gap is outside reach"
-        assert result_61["created"] == 1
-
-
-class TestRebuildLeavesManualShiftsAlone:
-    """Auto / manual roster separation rule (user-locked 2026-05-27):
-    the auto-roster MUST NEVER mutate `created_source = 'manual'` shifts.
-    Manual shifts encode admin intent (window, driver, sometimes hand-off
-    pre-positioning) and the auto code path has to treat them as
-    read-only / invisible.
-
-    Regression for commit 65affe7: the extend-assigned candidate query
-    initially had no `created_source` filter, so a manual shift sitting
-    near a cluster would have its `start_time`/`end_time`/`end_date`
-    stretched by the rebuild. The fix adds `created_source = 'auto'` to
-    the candidate query."""
-
-    def test_H_manual_shift_in_extend_window_is_not_mutated(self):
-        """Happy: a `created_source='manual'` assigned shift covering
-        12:00–15:00 on 6/10 is placed in the candidate pool. A new
-        booking dropoff at 13:00 forms a cluster that WOULD be within
-        60-min reach of that shift. Manual shifts must NOT be extended
-        — instead the rebuild falls back to creating a fresh unassigned
-        auto-shift around the cluster."""
-        manual = mk_assigned_shift(
-            id=777, shift_date=date(2026, 6, 10),
-            start_time=time(12, 0), end_time=time(15, 0),
-            staff_id=10,
-        )
-        manual.created_source = "manual"
-        # Snapshot the values that must NOT change.
-        original = (manual.date, manual.end_date, manual.start_time, manual.end_time)
-
-        b = mk_booking(
-            booking_id=700, reference="TAG-MANUAL01",
-            dropoff_dt=datetime(2026, 6, 10, 13, 0),
-            pickup_dt=datetime(2026, 7, 10, 14, 0),
-        )
-        db = make_db(bookings=[b], assigned_shifts=[manual])
+        db = make_db(bookings=[b1, b2, b3], assigned_shifts=[frozen])
         result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
-
-        from db_models import RosterShift, ShiftBookingLink
-        # Manual shift's window is untouched.
-        assert (manual.date, manual.end_date, manual.start_time, manual.end_time) == original, (
-            f"manual shift was mutated; before={original} after="
-            f"{(manual.date, manual.end_date, manual.start_time, manual.end_time)}"
-        )
-        # No link rows pointing at the manual shift.
-        new_links = [a for a in db._added if isinstance(a, ShiftBookingLink)]
-        assert not any(l.shift_id == 777 for l in new_links), (
-            "auto rebuild must not write ShiftBookingLink rows to a manual shift"
-        )
-        # Behaviour falls back to creating a new unassigned auto-shift.
-        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
-        assert len(new_shifts) == 1 and new_shifts[0].staff_id is None
-        assert result["extended"] == 0
-        assert result["created"] == 1
-
-    def test_U_manual_shift_does_not_block_auto_alongside_it(self):
-        """Unhappy hypothetical: even with a manual shift nearby, the
-        rebuild must still produce coverage for the booking. Verify the
-        new auto-shift covers the cluster (it's not silently swallowed
-        by the manual-shift presence)."""
-        manual = mk_assigned_shift(
-            id=778, shift_date=date(2026, 6, 10),
-            start_time=time(12, 0), end_time=time(15, 0),
-            staff_id=10,
-        )
-        manual.created_source = "manual"
-        b = mk_booking(
-            booking_id=701, reference="TAG-MANUAL02",
-            dropoff_dt=datetime(2026, 6, 10, 13, 30),
-            pickup_dt=datetime(2026, 7, 10, 14, 0),
-        )
-        db = make_db(bookings=[b], assigned_shifts=[manual])
-        rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
 
         from db_models import RosterShift
         new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
-        assert len(new_shifts) == 1
-        s = new_shifts[0]
-        # 13:30 - 20m start_buffer = 13:10, + min_duration 60 → 14:10
-        assert s.start_time == time(13, 10)
-        assert s.end_time == time(14, 10)
+        # At least one new shift to cover the 16:30 event.
+        assert len(new_shifts) >= 1
+        # Frozen window NEVER changes regardless of cluster overlap.
+        assert frozen.end_time == original_end
+        assert result["created"] >= 1
+        assert result["skipped_covered"] == 0
 
-    def test_E_one_auto_one_manual_only_auto_extended(self):
-        """Edge: candidate pool has BOTH an auto-assigned shift AND a
-        manual shift on the same date, both within reach of the cluster.
-        Only the auto one gets extended; manual is untouched even though
-        it would also have matched the 60-min rule."""
-        auto = mk_assigned_shift(
-            id=300, shift_date=date(2026, 6, 10),
-            start_time=time(11, 0), end_time=time(14, 0),
-            staff_id=10,
-        )
-        # auto's created_source defaults to "auto" via the fixture.
-        manual = mk_assigned_shift(
-            id=301, shift_date=date(2026, 6, 10),
-            start_time=time(14, 30), end_time=time(17, 0),
-            staff_id=11,
-        )
-        manual.created_source = "manual"
-        manual_before = (manual.date, manual.end_date, manual.start_time, manual.end_time)
-
-        b = mk_booking(
-            booking_id=702, reference="TAG-MIX00001",
-            dropoff_dt=datetime(2026, 6, 10, 13, 30),  # inside auto's window
-            pickup_dt=datetime(2026, 7, 10, 14, 0),
-        )
-        db = make_db(bookings=[b], assigned_shifts=[auto, manual])
-        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
-
-        # auto extended; manual untouched.
-        assert result["extended"] == 1
-        assert (manual.date, manual.end_date, manual.start_time, manual.end_time) == manual_before
-
-        from db_models import ShiftBookingLink
-        link_shifts = {l.shift_id for l in db._added if isinstance(l, ShiftBookingLink)}
-        assert 300 in link_shifts, "booking should be linked to the auto shift"
-        assert 301 not in link_shifts, "booking must NOT be linked to the manual shift"
-
-    def test_B_manual_shift_at_zero_gap_still_protected(self):
-        """Boundary: even when the manual shift's window is touching the
-        cluster (gap = 0), still no mutation. Threshold doesn't matter
-        for manual shifts — they're outright off-limits."""
-        manual = mk_assigned_shift(
-            id=779, shift_date=date(2026, 6, 10),
+    def test_B_event_at_window_boundary_counts_as_covered(self):
+        """Boundary: cluster of one event at exactly 15:00, same as the
+        frozen shift's end_time. `<=` on both ends of the coverage check
+        means 15:00 IS inside the [12:00, 15:00] window. Cluster
+        skipped. (The reverse boundary, 12:00 == start_time, is the
+        symmetric case.)"""
+        frozen = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
             start_time=time(12, 0), end_time=time(15, 0),
             staff_id=10,
         )
-        manual.created_source = "manual"
-        original = (manual.start_time, manual.end_time)
-
-        # Dropoff at 15:20 → shift_start 15:00 → gap=0 from manual end.
+        original_end = frozen.end_time
         b = mk_booking(
-            booking_id=703, reference="TAG-MANUAL03",
-            dropoff_dt=datetime(2026, 6, 10, 15, 20),
+            booking_id=530, reference="TAG-BOUNDARY1",
+            dropoff_dt=datetime(2026, 6, 10, 15, 0),  # event AT boundary
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b], assigned_shifts=[frozen])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert new_shifts == []
+        assert frozen.end_time == original_end
+        assert result["skipped_covered"] == 1
+        assert result["created"] == 0
+
+    def test_E_mixed_frozen_coverage_event_A_shift_1_event_B_shift_2(self):
+        """Edge: the all-or-nothing skip rule is PER-EVENT covered, not
+        ONE-SHIFT-covers-WHOLE-cluster. Two events in the same cluster
+        each fall inside DIFFERENT frozen shifts — skip still fires
+        because every event is individually covered, even though no
+        single shift covers both.
+
+        This is the contract: skip when each event has some covering
+        frozen shift, not when one shift covers them all. Future readers
+        might be tempted to 'simplify' the loop into a single
+        any-shift-contains-cluster check — this test guards against
+        that drift."""
+        frozen1 = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(9, 0), end_time=time(12, 0),  # covers 10:00 dropoff
+            staff_id=10,
+        )
+        frozen2 = mk_assigned_shift(
+            id=100, shift_date=date(2026, 6, 10),
+            start_time=time(11, 0), end_time=time(14, 0),  # covers 13:00 dropoff
+            staff_id=11,  # different staff
+        )
+        b1 = mk_booking(
+            booking_id=600, reference="TAG-MIXED0001",
+            dropoff_dt=datetime(2026, 6, 10, 10, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        b2 = mk_booking(
+            booking_id=601, reference="TAG-MIXED0002",
+            dropoff_dt=datetime(2026, 6, 10, 13, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b1, b2], assigned_shifts=[frozen1, frozen2])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert new_shifts == [], (
+            "skip-if-covered is per-event; each event has some frozen "
+            "shift covering it, so the cluster as a whole is covered"
+        )
+        assert result["skipped_covered"] == 1
+        assert result["created"] == 0
+
+    def test_B_overnight_frozen_shift_covers_event_across_midnight(self):
+        """Boundary: a frozen overnight shift (22:00 6/10 → 02:00 6/11)
+        covers a pickup whose canonical event span straddles midnight.
+        Flight lands 23:30 6/10 (start anchor), handoff 00:00 6/11 (end
+        anchor). BOTH endpoints sit inside the overnight window —
+        skip-if-covered must fire. Equally important — neither endpoint
+        falling on the wrong side of midnight should confuse the check."""
+        frozen = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            end_date=date(2026, 6, 11),
+            start_time=time(22, 0), end_time=time(2, 0),
+            staff_id=10,
+        )
+        # Flight arrival 23:30 6/10 → derived handoff 00:00 6/11
+        b = mk_booking(
+            booking_id=610, reference="TAG-OVERNIGHT1",
+            dropoff_dt=datetime(2026, 5, 1, 9, 0),  # outside target
+            pickup_dt=datetime(2026, 6, 11, 0, 0),
+            flight_arrival_time=time(23, 30),
+        )
+        b.flight_arrival_date = date(2026, 6, 10)
+        db = make_db(bookings=[b], assigned_shifts=[frozen])
+        result = rebuild_auto_for_dates(
+            db, {date(2026, 6, 10), date(2026, 6, 11)}, mk_settings(),
+        )
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert new_shifts == [], (
+            "overnight frozen shift covers the cross-midnight pickup event "
+            "→ no new auto-shift"
+        )
+        assert result["skipped_covered"] == 1
+        # Window untouched.
+        assert frozen.start_time == time(22, 0)
+        assert frozen.end_time == time(2, 0)
+
+
+class TestRebuildIgnoresAdminShapedAutoShifts:
+    """Companion to the wipe filter — confirms that an auto shift with
+    admin_shaped_at set is treated identically to an assigned auto shift
+    (no window mutation; covers cluster events the same way for the skip
+    rule). Tests the contract that "admin-shaped means no window
+    mutation," NOT "admin-shaped means invisible to automation." If a
+    future refactor narrows the predicate it should fail here."""
+
+    def test_H_admin_shaped_unassigned_still_blocks_duplicate(self):
+        """Admin split an empty auto shift earlier; both halves have
+        admin_shaped_at != None and staff_id = None. A new booking
+        whose pickup lands inside one half must NOT cause a duplicate
+        auto-shift over the same hours."""
+        shaped = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=None,  # unassigned
+            admin_shaped_at=datetime(2026, 5, 28, 10, 0),  # but admin-shaped
+        )
+        original = (shaped.start_time, shaped.end_time)
+        b = mk_booking(
+            booking_id=600, reference="TAG-SHAPED001",
+            dropoff_dt=datetime(2026, 6, 10, 13, 30),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b], assigned_shifts=[shaped])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert new_shifts == [], (
+            "admin-shaped unassigned auto shift must still block "
+            "duplicate materialisation"
+        )
+        assert (shaped.start_time, shaped.end_time) == original
+        assert result["skipped_covered"] == 1
+
+
+class TestSkipIfCoveredUsesBothEventAnchors:
+    """Code-review regression 2026-05-28: skip-if-covered must use BOTH
+    the start anchor (flight_arrival_time for pickups) AND the end
+    anchor (pickup-handoff time = arrival + 30 min for pickups) when
+    deciding whether a cluster fits inside a frozen shift. Otherwise the
+    rebuild and auto_link can disagree on coverage and leave a booking
+    with no shift at all."""
+
+    def test_E_pickup_handoff_outside_frozen_window_does_NOT_skip(self):
+        """Edge: frozen 12:00-15:00 shift. Flight arrival 14:45 IS inside,
+        but pickup handoff 15:15 (arrival + 30 min) is OUTSIDE. Skip-if-
+        covered must return False — auto_link would otherwise refuse to
+        link (handoff at 15:15 > end_time 15:00). Forcing both endpoints
+        to fit means rebuild creates a new auto-shift spanning ~14:30 to
+        ~15:45 so the booking has somewhere to land."""
+        frozen = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        # Pickup booking: arrival 14:45, handoff 15:15. Per
+        # _events_for_booking, start_anchor = flight_arrival 14:45,
+        # end_anchor = start + 30 min = 15:15.
+        b = mk_booking(
+            booking_id=800, reference="TAG-HANDOFF01",
+            dropoff_dt=datetime(2026, 5, 1, 9, 0),  # outside target
+            pickup_dt=datetime(2026, 6, 10, 15, 15),  # handoff time
+            flight_arrival_time=time(14, 45),
+        )
+        b.flight_arrival_date = date(2026, 6, 10)
+        db = make_db(bookings=[b], assigned_shifts=[frozen])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 1, (
+            "must materialise a new shift — handoff 15:15 is outside the "
+            "frozen 12:00-15:00 window, even though arrival 14:45 sits inside"
+        )
+        # Original frozen window unchanged.
+        assert frozen.end_time == time(15, 0)
+        assert result["created"] == 1
+        assert result["skipped_covered"] == 0
+
+    def test_H_handoff_inside_window_skips(self):
+        """Mirror: same flight arrival 14:00 / handoff 14:30, but frozen
+        shift now 12:00-15:00 — BOTH endpoints fit, skip fires."""
+        frozen = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        b = mk_booking(
+            booking_id=801, reference="TAG-HANDOFF02",
+            dropoff_dt=datetime(2026, 5, 1, 9, 0),
+            pickup_dt=datetime(2026, 6, 10, 14, 30),
+            flight_arrival_time=time(14, 0),
+        )
+        b.flight_arrival_date = date(2026, 6, 10)
+        db = make_db(bookings=[b], assigned_shifts=[frozen])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert new_shifts == []
+        assert result["skipped_covered"] == 1
+
+
+class TestFrozenPoolMatchesAutoLinkStatus:
+    """Code-review regression 2026-05-28: the frozen-shift query must
+    only include statuses that auto_link will also link to (SCHEDULED +
+    CONFIRMED). Otherwise an IN_PROGRESS shift inside the frozen pool
+    can cause skip-if-covered to fire when auto_link won't compensate."""
+
+    def test_U_in_progress_shift_is_NOT_in_the_frozen_pool(self):
+        """Unhappy: an IN_PROGRESS frozen shift exists on the date. A
+        cluster's events fall inside its window. The rebuild must STILL
+        materialise a new auto-shift (because auto_link can't reach the
+        in-progress one). Result: created=1, skipped_covered=0."""
+        in_progress = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+        )
+        in_progress.status = ShiftStatus.IN_PROGRESS
+        b = mk_booking(
+            booking_id=810, reference="TAG-INPROG001",
+            dropoff_dt=datetime(2026, 6, 10, 13, 0),
+            pickup_dt=datetime(2026, 7, 10, 14, 0),
+        )
+        db = make_db(bookings=[b], assigned_shifts=[in_progress])
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 1, (
+            "IN_PROGRESS shift must not block materialisation — auto_link "
+            "only links to SCHEDULED/CONFIRMED, so blocking here would "
+            "orphan the booking"
+        )
+        assert result["skipped_covered"] == 0
+        assert result["created"] == 1
+
+
+class TestRebuildSkipsManualShifts:
+    """Manual shifts (created_source='manual') are the original frozen
+    case — the auto-roster has always preserved them. With the driver-
+    trust pivot they participate in the skip-if-covered guard too: a
+    cluster fully inside a manual shift's window doesn't spawn a
+    duplicate."""
+
+    def test_H_cluster_inside_manual_window_skips(self):
+        manual = mk_assigned_shift(
+            id=99, shift_date=date(2026, 6, 10),
+            start_time=time(12, 0), end_time=time(15, 0),
+            staff_id=10,
+            created_source="manual",  # manually created
+        )
+        original = (manual.start_time, manual.end_time)
+        b = mk_booking(
+            booking_id=700, reference="TAG-MANUAL001",
+            dropoff_dt=datetime(2026, 6, 10, 13, 0),
             pickup_dt=datetime(2026, 7, 10, 14, 0),
         )
         db = make_db(bookings=[b], assigned_shifts=[manual])
-        rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+        result = rebuild_auto_for_dates(db, {date(2026, 6, 10)}, mk_settings())
+
+        from db_models import RosterShift
+        new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
+        assert new_shifts == []
         assert (manual.start_time, manual.end_time) == original
+        assert result["skipped_covered"] == 1
+
+
+class TestSkipAndLinkAgreeForFlightArrivalBooking:
+    """Cross-path contract: for the SAME flight-arrival booking against
+    the SAME frozen shift, auto_link_booking_to_shifts must create a
+    link AND rebuild_auto_for_dates must skip the materialise. Proves
+    both paths use the same canonical event semantics
+    (`_events_for_booking` + window coverage). If a future change drifts
+    one path's anchor back to literal pickup_time, or shrinks the
+    coverage definition, this test catches the disagreement immediately.
+
+    The two passes use different mock shapes (auto_link queries don't
+    have IS NOT NULL / staff_id filters; rebuild does), so the test
+    constructs each mock inline. The point isn't shared in-memory state
+    — it's identical *inputs* + identical *contract conclusions*."""
+
+    def test_H_link_writes_and_rebuild_skips_for_same_inputs(self):
+        # Reviewer's mismatch example, shaped for both paths:
+        #   shift           15:30 – 16:15 on 6/14, assigned, staff_id=10
+        #   flight_arrival  15:40 on 6/14
+        #   derived handoff 16:10 on 6/14
+        #   stored pickup   17:30 on 6/14
+        # Both endpoints (15:40, 16:10) inside the shift; literal pickup
+        # (17:30) outside — must be irrelevant to both paths.
+        frozen = mk_assigned_shift(
+            id=999, shift_date=date(2026, 6, 14),
+            start_time=time(15, 30), end_time=time(16, 15),
+            staff_id=10,
+        )
+        original_window = (
+            frozen.date, frozen.end_date, frozen.start_time, frozen.end_time,
+        )
+        b = mk_booking(
+            booking_id=1000, reference="TAG-CROSS001",
+            dropoff_dt=datetime(2026, 6, 1, 9, 0),  # outside target_set
+            pickup_dt=datetime(2026, 6, 14, 17, 30),
+            flight_arrival_time=time(15, 40),
+        )
+        b.flight_arrival_date = date(2026, 6, 14)
+
+        # ----- Pass 1: auto_link must write a link to the frozen shift.
+        # Minimal mock: just enough to satisfy the candidate query, the
+        # idempotency lookup, and the db.add/commit hooks.
+        from unittest.mock import MagicMock as _MM
+        link_added: list = []
+        link_db = _MM()
+        link_db._committed = False
+
+        def _link_query(model):
+            from db_models import RosterShift as _RS, ShiftBookingLink as _SBL
+            chain = _MM()
+            chain.filter.return_value = chain
+            if model is _RS:
+                chain.all.return_value = [frozen]
+            elif model is _SBL:
+                chain.first.return_value = None  # no existing link
+            return chain
+        link_db.query.side_effect = _link_query
+        link_db.add.side_effect = lambda obj: link_added.append(obj)
+
+        def _link_commit():
+            link_db._committed = True
+        link_db.commit.side_effect = _link_commit
+        link_db.rollback = _MM()
+
+        from roster_planner_runner import auto_link_booking_to_shifts
+        from db_models import ShiftBookingLink
+        linked_ids = auto_link_booking_to_shifts(link_db, b)
+        assert linked_ids == [999], (
+            "auto_link must attach the booking to the frozen 15:30-16:15 "
+            "shift — both anchors fit; literal pickup at 17:30 must NOT "
+            "block the link"
+        )
+        link_rows = [a for a in link_added if isinstance(a, ShiftBookingLink)]
+        assert len(link_rows) == 1
+        assert link_rows[0].shift_id == 999 and link_rows[0].booking_id == 1000
+
+        # ----- Pass 2: rebuild must skip materialising for same inputs.
+        rebuild_db = make_db(bookings=[b], assigned_shifts=[frozen])
+        result = rebuild_auto_for_dates(
+            rebuild_db, {date(2026, 6, 14)}, mk_settings(),
+        )
+        from db_models import RosterShift
+        new_shifts = [a for a in rebuild_db._added if isinstance(a, RosterShift)]
+        assert new_shifts == [], (
+            "rebuild must skip — cluster fully covered by the frozen shift"
+        )
+        assert result["skipped_covered"] == 1
+        assert result["created"] == 0
+
+        # ----- Final assertion: frozen window is byte-identical to the start.
+        # No path should ever mutate a frozen shift.
+        assert (
+            frozen.date, frozen.end_date, frozen.start_time, frozen.end_time,
+        ) == original_window
 
 
 # ===========================================================================
@@ -1058,3 +1373,32 @@ class TestDeleteAllAutoShifts:
         assert delete_all_auto_shifts(
             db, date_from=date(2026, 6, 1), date_to=date(2026, 6, 30)
         ) == 1
+
+    def test_edge_admin_shaped_unassigned_auto_is_preserved(self):
+        """Driver-trust pivot 2026-05-28: an unassigned auto-shift that
+        an admin has shaped (split/merge/duplicate/PATCH stamped
+        `admin_shaped_at`) is OFF-LIMITS to the bulk delete, same as it
+        is to the rebuild wipe. The contract is consistent across both
+        wipe paths. Without the filter, a single misclick on the admin
+        "Clear all auto-shifts" button would wipe deliberate split halves.
+
+        Sets two rows: one untouched (deleted), one admin-shaped
+        (preserved). Asserts only the untouched one moves."""
+        untouched = SimpleNamespace(
+            id=1, created_source="auto", staff_id=None,
+            admin_shaped_at=None,
+            status=ShiftStatus.SCHEDULED,
+        )
+        shaped = SimpleNamespace(
+            id=2, created_source="auto", staff_id=None,
+            admin_shaped_at=datetime(2026, 5, 28, 10, 0),
+            status=ShiftStatus.SCHEDULED,
+        )
+        db = make_db(untouched_auto_shifts=[untouched, shaped])
+        n = delete_all_auto_shifts(db)
+        assert n == 1, (
+            "only the untouched row should be deleted; admin-shaped row "
+            "is off-limits"
+        )
+        assert untouched in db._deleted
+        assert shaped not in db._deleted

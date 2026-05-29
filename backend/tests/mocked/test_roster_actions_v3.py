@@ -78,6 +78,10 @@ def make_shift(
     s.bookings = bookings or []
     s.created_at = datetime(2026, 5, 1)
     s.updated_at = None
+    # Driver-trust pivot 2026-05-28: explicit NULL so admin_shaped_at
+    # behaves like a fresh DB row (not a MagicMock auto-attribute) when
+    # endpoints read it for stamp-or-not decisions.
+    s.admin_shaped_at = None
     return s
 
 
@@ -1310,3 +1314,236 @@ class TestUnassign:
         client, db, state = rig
         r = client.patch("/api/roster/9999/unassign")
         assert r.status_code == 404
+
+
+# =============================================================================
+# Driver-trust pivot 2026-05-28: admin_shaped_at stamp-or-not contract.
+#
+# Stamped by: split, merge, duplicate, PUT /roster/{id} when ANY of
+# (start_time, end_time, date, end_date) actually changes.
+# NOT stamped by: assignment / unassignment, notes, status,
+# intended_driver_type. The point of the column is to record a
+# deliberate window-shaping action so the auto-roster knows it must
+# never reshape this row again — even after the admin unassigns it back
+# to staff_id=NULL. Owning a shift (staff_id IS NOT NULL) already
+# freezes its window via the auto_roster filter, so we deliberately
+# DON'T pile assignment on top of admin_shaped_at; that keeps the
+# column's audit meaning sharp.
+# =============================================================================
+
+
+class TestDuplicateStampsAdminShapedAt:
+
+    def test_H_duplicate_to_other_date_stamps_new_copy(self, rig):
+        """Duplicating a shift to another date stamps admin_shaped_at on
+        the new copy so a subsequent auto-rebuild on that date treats it
+        as frozen — admin made a deliberate planning call by duplicating."""
+        client, db, state = rig
+        source = make_shift(
+            id=600, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(13, 0),
+            created_source="auto",
+        )
+        state["shifts_by_id"][600] = source
+        state["users_by_id"][10] = make_user(id=10)
+        r = client.post(
+            "/api/roster/600/duplicate",
+            json={"target_date": "2026-05-12"},
+        )
+        assert r.status_code == 200, r.text
+
+        from db_models import RosterShift
+        new_shifts = [a for a in state["added"] if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 1
+        assert new_shifts[0].admin_shaped_at is not None
+
+
+class TestMergeStampsAdminShapedAt:
+
+    def test_H_merge_stamps_survivor(self, rig):
+        """The union'd survivor row encodes a deliberate admin decision
+        about which hours one driver should cover — stamp it so the
+        auto-roster never stretches/shrinks the merged window."""
+        client, db, state = rig
+        a = make_shift(
+            id=620, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(12, 0),
+        )
+        b = make_shift(
+            id=621, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(13, 0), end_time=time(16, 0),
+        )
+        state["shifts_by_id"][620] = a
+        state["shifts_by_id"][621] = b
+        state["users_by_id"][10] = make_user(id=10)
+        assert b.admin_shaped_at is None
+        r = client.post("/api/roster/620/merge", json={"other_shift_id": 621})
+        assert r.status_code == 200, r.text
+        # Survivor is body.other_shift_id = 621.
+        assert b.admin_shaped_at is not None
+
+
+class TestSplitStampsAdminShapedAt:
+
+    def test_H_split_stamps_both_halves(self, rig):
+        """Both halves of a split are admin-shaped: the in-place first
+        half (modified end_time) AND the freshly-created second half."""
+        client, db, state = rig
+        s = make_shift(
+            id=640, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(17, 0),
+        )
+        state["shifts_by_id"][640] = s
+        assert s.admin_shaped_at is None
+        r = client.post("/api/roster/640/split", json={"split_at_time": "13:00"})
+        assert r.status_code == 200, r.text
+        # First half stamped in place.
+        assert s.admin_shaped_at is not None
+        # Second half stamped on construction.
+        from db_models import RosterShift
+        new_shifts = [a for a in state["added"] if isinstance(a, RosterShift)]
+        assert len(new_shifts) == 1
+        assert new_shifts[0].admin_shaped_at is not None
+
+
+class TestPatchStampingHUEB:
+    """The PATCH stamp is the most-tested: it has to fire on ANY of
+    {start_time, end_time, date, end_date} actually changing, AND it
+    must NOT fire on assignment-only / notes-only / status-only edits."""
+
+    def test_H_changing_end_time_stamps(self, rig):
+        client, db, state = rig
+        # Unassigned to skip the overlap-check branch — the rig mock
+        # doesn't honor `exclude_shift_id`. Staff_id is irrelevant to
+        # the stamp logic; we're testing the window-edit path.
+        s = make_shift(
+            id=660, staff_id=None, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(17, 0),
+            created_source="auto",
+        )
+        state["shifts_by_id"][660] = s
+        assert s.admin_shaped_at is None
+        r = client.put(
+            "/api/roster/660",
+            json={"end_time": "18:00"},
+        )
+        assert r.status_code == 200, r.text
+        assert s.admin_shaped_at is not None
+
+    def test_U_reassignment_only_does_NOT_stamp(self, rig):
+        """REGRESSION GUARD for the Kris-loop fix philosophy:
+        re-assigning a shift (changing staff_id) is NOT a shape action.
+        Owning the shift is already frozen-equivalent via the staff_id
+        filter in the auto-roster — stamping admin_shaped_at here would
+        muddy the audit meaning of the column."""
+        client, db, state = rig
+        s = make_shift(
+            id=661, staff_id=10, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(17, 0),
+            created_source="auto",
+        )
+        state["shifts_by_id"][661] = s
+        state["users_by_id"][20] = make_user(id=20)
+        r = client.put(
+            "/api/roster/661",
+            json={"staff_id": 20},
+        )
+        assert r.status_code == 200, r.text
+        assert s.admin_shaped_at is None, (
+            "assignment-only PATCH must NOT stamp admin_shaped_at; "
+            "ownership already freezes the window"
+        )
+
+    def test_E_notes_status_intended_driver_type_do_NOT_stamp(self, rig):
+        """Edge: non-window field edits — notes, status,
+        intended_driver_type — are fill-in info, not shape changes.
+        Confirms the stamp predicate is narrowly window-only."""
+        client, db, state = rig
+        s = make_shift(
+            id=662, staff_id=None, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(17, 0),
+            created_source="auto",
+        )
+        state["shifts_by_id"][662] = s
+        r = client.put(
+            "/api/roster/662",
+            json={"notes": "ring driver at 09:30",
+                  "intended_driver_type": "fleet"},
+        )
+        assert r.status_code == 200, r.text
+        assert s.admin_shaped_at is None
+
+    def test_B_noop_edit_setting_same_value_does_NOT_stamp(self, rig):
+        """Boundary: PATCH sends `end_time: 17:00` when the shift's
+        end_time is ALREADY 17:00. No actual window change — stamp
+        must not fire. Cleanest protection against UI-form-saves that
+        round-trip every field including unchanged ones."""
+        client, db, state = rig
+        s = make_shift(
+            id=663, staff_id=None, shift_date=date(2026, 5, 10),
+            start_time=time(9, 0), end_time=time(17, 0),
+            created_source="auto",
+        )
+        state["shifts_by_id"][663] = s
+        r = client.put(
+            "/api/roster/663",
+            json={"start_time": "09:00", "end_time": "17:00"},
+        )
+        assert r.status_code == 200, r.text
+        assert s.admin_shaped_at is None
+
+    def test_U_client_supplied_end_date_provided_marker_is_ignored(self, rig):
+        """Unhappy (security): a request that sends
+        `{"end_date_provided": true}` WITHOUT `end_date` must NOT clear
+        end_date and must NOT stamp admin_shaped_at. The provided-markers
+        are internal book-keeping derived in the validator from actual
+        field presence; client-supplied values must be overwritten.
+        Reviewer flagged this 2026-05-28 — same risk pattern would let a
+        client forge staff_id_provided too."""
+        client, db, state = rig
+        s = make_shift(
+            id=665, staff_id=None, shift_date=date(2026, 5, 10),
+            end_date=date(2026, 5, 11),
+            start_time=time(22, 0), end_time=time(2, 0),
+            created_source="auto",
+        )
+        state["shifts_by_id"][665] = s
+        original_end = s.end_date
+        r = client.put(
+            "/api/roster/665",
+            json={"end_date_provided": True},  # marker alone, no end_date
+        )
+        assert r.status_code == 200, r.text
+        assert s.end_date == original_end, (
+            "end_date must NOT be cleared when only the marker is sent"
+        )
+        assert s.admin_shaped_at is None, (
+            "no real window change → no stamp"
+        )
+
+    def test_E_clearing_overnight_end_date_applies_and_stamps(self, rig):
+        """Code-review regression 2026-05-28: PATCH with
+        `end_date: null` (clearing an overnight cross-day) must:
+          (a) actually clear the field (was silently dropped before the
+              `end_date_provided` marker was added — `is not None` guard
+              treated null as "field not provided");
+          (b) stamp admin_shaped_at because the window shape changed.
+        Without (a) the PATCH was a silent no-op; without (b) auto could
+        later reshape it back."""
+        client, db, state = rig
+        s = make_shift(
+            id=664, staff_id=None, shift_date=date(2026, 5, 10),
+            end_date=date(2026, 5, 11),  # overnight to start
+            start_time=time(22, 0), end_time=time(2, 0),
+            created_source="auto",
+        )
+        state["shifts_by_id"][664] = s
+        r = client.put(
+            "/api/roster/664",
+            json={"end_date": None},
+        )
+        assert r.status_code == 200, r.text
+        assert s.end_date is None, "end_date null must actually be applied"
+        assert s.admin_shaped_at is not None, (
+            "clearing overnight cross-day is a window-shape change — must stamp"
+        )
