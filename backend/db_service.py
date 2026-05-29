@@ -440,6 +440,17 @@ def update_payment_status(
     """
     payment = get_payment_by_intent_id(db, stripe_payment_intent_id)
     if payment:
+        # Refresh against the DB before reading status. SQLAlchemy's session
+        # cache returns the same object reference on a second .first() lookup
+        # within the same transaction — so if a CONCURRENT duplicate webhook
+        # already flipped this payment to SUCCEEDED (and committed under the
+        # caller's advisory lock), our cached payment.status is still PENDING
+        # until this refresh. Without it, was_already_processed is False and
+        # we'd redo the payment + booking writes plus all downstream
+        # idempotency-gated tasks (planner fire, dvla check, promo mark,
+        # slot booking) a second time.
+        db.refresh(payment)
+
         # Check if already processed (idempotency for duplicate webhooks)
         was_already_processed = payment.status == PaymentStatus.SUCCEEDED
 
@@ -447,15 +458,23 @@ def update_payment_status(
             payment.status = status
             if paid_at:
                 payment.paid_at = paid_at
-            db.commit()
-            db.refresh(payment)
 
-            # Also update booking status if payment succeeded
+            # Also update booking status if payment succeeded. Both writes
+            # commit together in ONE trailing commit so:
+            #   1. The caller's transaction-scoped advisory lock (held for
+            #      the capacity-race recheck in the webhook handler) stays
+            #      held across BOTH writes — pre-2026-05-29 this used two
+            #      commits and released the lock between payment-flip and
+            #      booking-flip, re-opening the oversell window.
+            #   2. A crash between the writes can no longer leave a
+            #      SUCCEEDED payment paired with a PENDING booking.
             if status == PaymentStatus.SUCCEEDED:
                 booking = get_booking_by_id(db, payment.booking_id)
                 if booking:
                     booking.status = BookingStatus.CONFIRMED
-                    db.commit()
+
+            db.commit()
+            db.refresh(payment)
 
         return payment, was_already_processed
 
@@ -874,3 +893,79 @@ def find_overcapacity_day_in_stay(
             return (cursor, count)
         cursor = cursor + _td(days=1)
     return None
+
+
+def find_overcapacity_day_in_stay_locked(
+    db: Session,
+    dropoff_date: date,
+    pickup_date: date,
+    cap: int,
+    exclude_booking_id: Optional[int] = None,
+) -> Optional[tuple]:
+    """find_overcapacity_day_in_stay() preceded by per-date advisory locks.
+
+    Acquires SELECT pg_advisory_xact_lock(hashtext('booking_capacity:DATE'))
+    for each date in [dropoff_date, pickup_date], then runs the bare
+    capacity check under those locks. Returns the same (offending_date,
+    current_count) tuple or None, so call sites swap one-for-one and keep
+    their existing error-message formatting.
+
+    Closes the check-then-write race: a second request racing for the
+    same date BLOCKS at lock acquisition until the first request's
+    transaction commits or rolls back (xact-scoped locks release at tx
+    end), so the second request's recount sees the first's CONFIRMED row.
+
+    Lock iteration walks the CLOSED range [dropoff_date, pickup_date]
+    (inclusive on both ends) in ascending date order — so two
+    concurrent requests with overlapping date sets always queue FIFO
+    on the same lock keys (June 1 always before June 2) rather than
+    cross-deadlocking on e.g. {Jun 1, Jun 2} vs {Jun 2, Jun 1}.
+
+    Precondition: dropoff_date <= pickup_date (caller-validated
+    upstream). If reversed, the iteration is a silent no-op and the
+    bare find_overcapacity_day_in_stay() returns None — matches the
+    bare function's own behaviour on reversed input. This helper
+    intentionally does NOT defensively swap, to keep its contract
+    identical to the bare function and avoid masking upstream
+    validation bugs.
+
+    Sole caller (as of 2026-05-29 PR 3): the Stripe webhook handler
+    at /api/webhooks/stripe (payment_intent.succeeded branch), where
+    it re-checks capacity inside the same transaction as the booking
+    flip to CONFIRMED. That is the only path that ACTUALLY writes a
+    CONFIRMED row to the DB and therefore the only path where the
+    advisory lock guards a real oversell window.
+
+    Earlier drafts called this from /api/payments/create-intent and
+    /api/admin/bookings too, but those paths don't write a CONFIRMED
+    DB row (create-intent writes PENDING, which isn't counted;
+    admin/bookings writes through BookingService in-memory state),
+    so the lock there was decorative. Reverted in review.
+
+    NOT used at /api/admin/manual-booking — that endpoint's existing
+    cap=70 check stays unchanged in this PR (out of scope per
+    2026-05-29 scoping decision; revisit alongside force=true override).
+
+    Must be called inside an active SQLAlchemy transaction (the default
+    for the FastAPI get_db dependency). No other code path in this
+    codebase uses pg_advisory_xact_lock, so the hashtext key space has
+    no collision risk.
+    """
+    from datetime import timedelta as _td
+    from sqlalchemy import text as _sql_text
+
+    cursor = dropoff_date
+    while cursor <= pickup_date:
+        db.execute(
+            _sql_text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+            {"k": f"booking_capacity:{cursor.isoformat()}"},
+        )
+        cursor = cursor + _td(days=1)
+
+    return find_overcapacity_day_in_stay(
+        db,
+        dropoff_date=dropoff_date,
+        pickup_date=pickup_date,
+        cap=cap,
+        exclude_booking_id=exclude_booking_id,
+    )

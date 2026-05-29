@@ -2330,6 +2330,16 @@ async def create_admin_booking(
     # via the shared helper — the legacy in-memory counter inside
     # BookingService doesn't reflect prod state and would silently let
     # bookings past 70.
+    #
+    # NOTE: this endpoint's downstream write goes through
+    # BookingService.create_admin_booking, which writes to in-memory
+    # state (self._bookings), NOT a DB bookings row. The DB-level
+    # capacity helper here therefore counts CONFIRMED+COMPLETED rows
+    # from real customer flow but the resulting "booking" is invisible
+    # to future DB-side counts. Wrapping this call in an advisory lock
+    # would be cosmetic — there is no DB write to gate. If/when this
+    # endpoint is migrated to a real DB write path, swap to
+    # find_overcapacity_day_in_stay_locked.
     offending = db_service.find_overcapacity_day_in_stay(
         db,
         dropoff_date=request.drop_off_date,
@@ -10623,6 +10633,16 @@ async def create_payment(
             _existing = db_service.get_pending_booking_by_session(db, request.session_id)
             if _existing:
                 existing_pending_id = _existing.id
+        # NOTE: this is the soft-cap check, not a reservation. It cannot
+        # be a reservation because (a) PENDING bookings are excluded from
+        # find_overcapacity_day_in_stay()'s count (per 2026-05-21 review),
+        # and (b) db_service.create_booking() commits internally further
+        # down, which would release any advisory lock anyway. The real
+        # oversell gate is the webhook re-check (locked + held through
+        # update_payment_status's single commit). This call is the
+        # customer-facing "show 'we're full' early so checkout doesn't
+        # waste time" guard; two simultaneous customers can both pass
+        # at 63 confirmed, but only one webhook will succeed.
         offending = db_service.find_overcapacity_day_in_stay(
             db,
             dropoff_date=request_dropoff_date,
@@ -11737,6 +11757,85 @@ async def stripe_webhook(
         promo_code = metadata.get("promo_code") if isinstance(metadata, dict) else getattr(metadata, "promo_code", None)
         meta_original_amount = metadata.get("original_amount") if isinstance(metadata, dict) else getattr(metadata, "original_amount", None)  # pence, as string
         meta_discount_amount = metadata.get("discount_amount") if isinstance(metadata, dict) else getattr(metadata, "discount_amount", None)  # pence, as string
+
+        # Capacity race re-check (closes the "checkout passed at 63 confirmed,
+        # second customer's webhook flipped them to 64, this customer's
+        # webhook would now push to 65" oversell window).
+        #
+        # Look up the PAYMENT first by stripe_payment_intent_id — the same
+        # key update_payment_status() below uses — and follow payment.booking_id
+        # to the booking we're about to confirm. This guarantees the recheck
+        # gates the EXACT booking that's about to be flipped to CONFIRMED,
+        # even if Stripe metadata booking_reference is missing/stale/wrong
+        # (in which case update_payment_status would still confirm via PI ID).
+        # Metadata is kept for logging only.
+        #
+        # Only re-checks when the booking is still PENDING — skips for
+        # idempotent webhook replays (booking already CONFIRMED → original
+        # webhook ran successfully, no work to do) and for manual-booking
+        # flows where the PaymentIntent doesn't correspond to a payments row.
+        #
+        # On over-cap: log + return 200 to Stripe (funds are captured,
+        # don't trigger a Stripe-side retry loop), leave the booking
+        # PENDING for ops to refund manually out-of-band. CAPACITY_RACE
+        # audit event skipped — would need ALTER TYPE migration, same
+        # pattern as PR 2's LOGIN_FAILED.
+        race_payment = db_service.get_payment_by_intent_id(db, payment_intent_id)
+        if race_payment and race_payment.booking_id:
+            race_booking = db_service.get_booking_by_id(db, race_payment.booking_id)
+            if race_booking and race_booking.status == BookingStatus.PENDING:
+                race_offending = db_service.find_overcapacity_day_in_stay_locked(
+                    db,
+                    dropoff_date=race_booking.dropoff_date,
+                    pickup_date=race_booking.pickup_date,
+                    cap=BookingService.MAX_PARKING_SPOTS,
+                    exclude_booking_id=race_booking.id,
+                )
+                # Lock is now held. Refresh the booking + payment objects:
+                # a concurrent duplicate webhook may have committed between
+                # our initial load and the lock acquisition. Without this,
+                # we'd act on a stale PENDING snapshot — see the equivalent
+                # db.refresh inside update_payment_status for the parallel
+                # protection on `was_already_processed`.
+                db.refresh(race_booking)
+                db.refresh(race_payment)
+                # If a concurrent webhook already confirmed this booking,
+                # don't return capacity_race_detected (it didn't race; it's
+                # already done). Fall through to update_payment_status,
+                # which will correctly report was_already_processed=True
+                # via its own refresh and skip downstream tasks.
+                if race_booking.status != BookingStatus.PENDING:
+                    race_offending = None
+                if race_offending:
+                    race_day, race_count = race_offending
+                    # Prefer the DB-canonical reference over Stripe metadata
+                    # so the log/response reflects the booking we actually
+                    # gated, not whatever metadata happened to carry.
+                    race_ref = race_booking.reference or booking_reference
+                    print(
+                        f"[CAPACITY-RACE] Webhook over-cap on {payment_intent_id} "
+                        f"(booking {race_ref}, {race_day.isoformat()} "
+                        f"at {race_count}/{BookingService.MAX_PARKING_SPOTS}). "
+                        f"Booking left PENDING for ops refund."
+                    )
+                    log_error(
+                        db=db,
+                        error_type="capacity_race",
+                        message=(
+                            f"Webhook over-cap on {race_day.isoformat()}: "
+                            f"{race_count} confirmed bookings already exist "
+                            f"(cap {BookingService.MAX_PARKING_SPOTS}). "
+                            f"Funds captured but booking left PENDING — "
+                            f"ops must refund manually."
+                        ),
+                        request=request,
+                        severity=ErrorSeverity.CRITICAL,
+                        booking_reference=race_ref,
+                    )
+                    return {
+                        "status": "capacity_race_detected",
+                        "booking_reference": race_ref,
+                    }
 
         # Update payment status in database (this also updates booking to CONFIRMED)
         # Returns (payment, was_already_processed) for idempotency
