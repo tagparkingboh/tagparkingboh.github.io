@@ -11317,6 +11317,14 @@ async def create_payment(
                     background_tasks.add_task(auto_create_or_extend_async, booking.id)
                 except Exception as e:
                     print(f"[auto_roster] Failed to schedule auto-create for free booking {booking.id}: {e}")
+                # Safety net: link to any existing frozen shift whose
+                # window already covers this booking. Rebuild won't write
+                # that link when skip-if-covered fires.
+                try:
+                    from roster_planner_runner import auto_link_booking_async
+                    background_tasks.add_task(auto_link_booking_async, booking.id)
+                except Exception as e:
+                    print(f"[auto_link] Failed to schedule auto-link for free booking {booking.id}: {e}")
                 # DVLA compliance hook — same isolation as auto-roster.
                 try:
                     from dvla_compliance import check_and_alert_for_booking_async
@@ -11840,6 +11848,18 @@ async def stripe_webhook(
                     background_tasks.add_task(
                         auto_create_or_extend_async, payment.booking_id
                     )
+                    # auto_link is the safety net: when rebuild's
+                    # skip-if-covered fires (booking lands inside a frozen
+                    # shift's window), nothing else writes the
+                    # ShiftBookingLink row. Without this the booking is
+                    # orphaned from the claimed shift it belongs to.
+                    try:
+                        from roster_planner_runner import auto_link_booking_async
+                        background_tasks.add_task(
+                            auto_link_booking_async, payment.booking_id
+                        )
+                    except Exception as e:
+                        print(f"[auto_link] Failed to schedule auto-link for booking {payment.booking_id}: {e}")
                     # DVLA compliance hook — fires once per booking-day.
                     from dvla_compliance import check_and_alert_for_booking_async
                     background_tasks.add_task(

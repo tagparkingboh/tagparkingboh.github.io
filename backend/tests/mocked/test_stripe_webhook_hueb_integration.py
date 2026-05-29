@@ -157,6 +157,96 @@ class TestPaymentIntentSucceeded:
 
 
 # ============================================================================
+# payment_intent.succeeded — auto-roster + auto-link wiring
+#
+# Driver-trust pivot (2026-05-28) split shift coverage into two background
+# tasks: `auto_create_or_extend_async` rebuilds unowned auto-shifts, and
+# `auto_link_booking_async` writes the ShiftBookingLink to any existing
+# (incl. frozen) shift whose window covers the booking. When rebuild's
+# skip-if-covered fires (booking lands inside a claimed/frozen shift),
+# auto_link is the ONLY path that writes the link row.
+#
+# Real incident (TAG-EAW63114, 2026-05-29): online booking confirmed via
+# Stripe webhook fell inside Marek's already-claimed 03:50-09:10 shift on
+# 13 Jun. Rebuild correctly skipped (booking covered by frozen window),
+# but the webhook was never scheduling auto_link — booking ended up
+# orphaned from the driver's card. Admin mark-paid path scheduled both;
+# webhook + free-booking paths only scheduled the rebuild.
+#
+# Tests below pin both background tasks to the webhook entry so a future
+# refactor can't silently drop one again.
+# ============================================================================
+
+
+class TestPaymentSucceededSchedulesAutoLink:
+    def teardown_method(self):
+        app.dependency_overrides.clear()
+
+    @patch("main.is_stripe_configured", return_value=True)
+    @patch("main.verify_webhook_signature")
+    @patch("db_service.update_payment_status")
+    def test_H_schedules_both_auto_create_and_auto_link(
+        self, mock_update, mock_verify, mock_cfg
+    ):
+        """Real new confirmation → BOTH auto_create_or_extend_async AND
+        auto_link_booking_async must be scheduled with the booking id.
+
+        Regression fence for TAG-EAW63114: rebuild alone is not enough
+        when the booking lands inside a frozen shift's window — only
+        auto_link writes the ShiftBookingLink in that case."""
+        payment = _mock_payment(intent_id="pi_wire_001", booking_id=746)
+        payment.status = PaymentStatus.SUCCEEDED
+        mock_update.return_value = (payment, False)
+
+        mock_verify.return_value = _event(
+            "payment_intent.succeeded",
+            _stripe_obj(
+                id="pi_wire_001",
+                metadata={"booking_reference": "TAG-EAW63114"},
+            ),
+        )
+        _override_db(_wire_payment_lookup(payment))
+
+        with patch("auto_roster.auto_create_or_extend_async") as mock_rebuild, \
+             patch("roster_planner_runner.auto_link_booking_async") as mock_link, \
+             patch("roster_planner_runner.fire_engine_async"), \
+             patch("dvla_compliance.check_and_alert_for_booking_async"):
+            resp = _post({})
+            assert resp.status_code == 200
+            mock_rebuild.assert_called_once_with(746)
+            mock_link.assert_called_once_with(746)
+
+    @patch("main.is_stripe_configured", return_value=True)
+    @patch("main.verify_webhook_signature")
+    @patch("db_service.update_payment_status")
+    def test_U_duplicate_webhook_skips_auto_link_too(
+        self, mock_update, mock_verify, mock_cfg
+    ):
+        """Duplicate webhook (was_already_processed=True) must not
+        schedule EITHER background task — pairs with the existing
+        rebuild-skip assertion so a future change can't drift one path's
+        duplicate-handling without the other."""
+        payment = _mock_payment(intent_id="pi_dup_002", booking_id=748)
+        mock_update.return_value = (payment, True)
+
+        mock_verify.return_value = _event(
+            "payment_intent.succeeded",
+            _stripe_obj(
+                id="pi_dup_002",
+                metadata={"booking_reference": "TAG-EAW63116"},
+            ),
+        )
+        _override_db(_wire_payment_lookup(payment))
+
+        with patch("auto_roster.auto_create_or_extend_async") as mock_rebuild, \
+             patch("roster_planner_runner.auto_link_booking_async") as mock_link:
+            resp = _post({})
+            assert resp.status_code == 200
+            mock_rebuild.assert_not_called()
+            mock_link.assert_not_called()
+
+
+# ============================================================================
 # Signature + config — Unhappy
 # ============================================================================
 

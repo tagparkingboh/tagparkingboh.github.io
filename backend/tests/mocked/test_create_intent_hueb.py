@@ -11,16 +11,21 @@ interaction:
   - Blocked drop-off / pickup dates
   - Soft capacity gate (60 ceiling)
 
-Deeper paths (Stripe PaymentIntent creation, free-booking flow, promo
-code application, dedup-of-existing-intent) are not exercised here
-— they require a full Stripe + db_service mock harness that doesn't
-provide useful HUEB signal beyond what's already tested via
-test_capacity_gate.py, test_stripe_service_hueb.py, and
-test_admin_bookings_hueb_integration.py.
+Free-booking path coverage (TestFreeBookingPath, added 2026-05-29):
+  The 100%-off promo branch (~main.py:11301) was for a long time only
+  exercised via pure-simulation tests (no `from main import app`). After
+  4 free bookings landed in May 2026 the path can no longer be treated
+  as rare-edge — and it now schedules both `auto_create_or_extend_async`
+  and `auto_link_booking_async` for the roster. The new class drives the
+  branch end-to-end through TestClient and pins the wiring.
+
+Deeper paths still uncovered here: Stripe PaymentIntent creation and
+dedup-of-existing-intent (heavier Stripe mock surface, low ROI given
+the existing test_stripe_service_hueb.py coverage).
 """
 from datetime import date as date_type, datetime, time, timedelta
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import sys
@@ -282,3 +287,189 @@ class TestCapacityGate:
         assert resp.status_code == 400
         assert "full" in resp.json()["detail"].lower()
         assert "18 august" in resp.json()["detail"].lower()
+
+
+# ============================================================================
+# Free-booking path — TestClient drive of the 100%-off branch
+#
+# Background (incident TAG-EAW63114, 2026-05-29): the Stripe webhook
+# confirmation path was scheduling auto_create_or_extend_async but not
+# auto_link_booking_async — so bookings landing inside a frozen shift
+# (rebuild's skip-if-covered branch) never got their ShiftBookingLink
+# row written, orphaning them from the assigned driver's card. The same
+# wiring gap existed in the free-booking branch of /api/payments/create-
+# intent (the 100%-off promo path), which has now seen real volume
+# (~4 in May 2026). Both paths now schedule both background tasks.
+#
+# These tests drive the endpoint end-to-end via TestClient so a future
+# refactor cannot silently drop one of the two scheduling calls.
+# ============================================================================
+
+
+def _free_booking_payload(*, promo_code="TAG-FREE100"):
+    """Payload that takes the customer_id+vehicle_id branch (lighter
+    booking creation than the from-scratch full-booking path) and
+    carries a promo code that the DB mock will resolve to free_100."""
+    p = _valid_payload()
+    p.update({
+        "customer_id": 42,
+        "vehicle_id": 7,
+        "promo_code": promo_code,
+        # session_id None → bypass the dedup-of-existing-intent branch.
+    })
+    return p
+
+
+def _mk_promo_code_record(*, promotion_id=1):
+    """PromoCode row that passes the validity gate at main.py:~10888."""
+    rec = MagicMock()
+    rec.id = 1001
+    rec.code = "TAG-FREE100"
+    rec.promotion_id = promotion_id
+    rec.is_used = False
+    rec.expires_at = None
+    rec.can_be_used = True  # read at main.py:~11351 (mark-used branch)
+    rec.is_multi_use = False
+    rec.recipient_email = "winner@x.test"
+    return rec
+
+
+def _mk_free_100_promotion():
+    """Promotion row with discount_type='free_100' → is_free_booking=True
+    regardless of trip length (main.py:~10910)."""
+    p = MagicMock()
+    p.id = 1
+    p.name = "100% off (test)"
+    p.discount_percent = 100
+    p.discount_type = "free_100"
+    return p
+
+
+def _mk_customer():
+    c = MagicMock()
+    c.id = 42
+    c.first_name = "Free"
+    c.last_name = "Winner"
+    c.email = "winner@x.test"
+    return c
+
+
+def _mk_booking_row(*, reference="TAG-FREE001", booking_id=999):
+    b = MagicMock()
+    b.id = booking_id
+    b.reference = reference
+    b.status = None  # set by the endpoint
+    return b
+
+
+def _free_booking_db(*, promo_code_record, promotion, booking_row):
+    """db.query(Model) dispatches by model name. Each call returns a
+    fresh chain so the same DB mock can satisfy interleaved queries
+    against different models from the same endpoint invocation."""
+    from db_models import (
+        PromoCode as DbPromoCode, Promotion as DbPromotion, Booking as DbBooking,
+    )
+    db = MagicMock()
+
+    def _query(model):
+        chain = MagicMock()
+        chain.options.return_value = chain
+        chain.filter.return_value = chain
+        chain.order_by.return_value = chain
+        chain.count.return_value = 0
+        chain.first.return_value = None
+        chain.all.return_value = []
+        if model is DbPromoCode:
+            chain.first.return_value = promo_code_record
+        elif model is DbPromotion:
+            chain.first.return_value = promotion
+        elif model is DbBooking:
+            chain.first.return_value = booking_row
+        return chain
+
+    db.query.side_effect = _query
+    db.commit = MagicMock()
+    db.refresh = MagicMock()
+    return db
+
+
+class TestFreeBookingPath:
+    """Drive /api/payments/create-intent into the free-booking branch
+    (is_free_booking=True via free_100 promo) and pin the two roster
+    background tasks."""
+
+    def setup_method(self):
+        self._real_is_configured = main.is_stripe_configured
+        main.is_stripe_configured = lambda: True
+
+    def teardown_method(self):
+        main.is_stripe_configured = self._real_is_configured
+        _clear()
+
+    def _common_patches(self, monkeypatch):
+        """Patch out side-effecting deps that aren't load-bearing for
+        the wiring assertions: capacity gate, pricing has no DB needs,
+        promo bookkeeping, audit logging, email send."""
+        monkeypatch.setattr(
+            "db_service.find_overcapacity_day_in_stay",
+            lambda *a, **kw: None,
+        )
+        monkeypatch.setattr(
+            "db_service.get_pending_booking_by_session",
+            lambda db, sid: None,
+        )
+        monkeypatch.setattr("db_service.get_customer_by_id", lambda db, cid: _mk_customer())
+        # Promo bookkeeping + audit + email are not the assertions we care
+        # about; stub them so the branch runs cleanly to the response.
+        monkeypatch.setattr("main.mark_promo_code_used", lambda *a, **kw: None)
+        monkeypatch.setattr("main.check_promo_modal_code_used", lambda *a, **kw: None)
+        monkeypatch.setattr("main.log_audit_event", lambda *a, **kw: None)
+        monkeypatch.setattr(
+            "email_service.send_booking_confirmation_email",
+            lambda *a, **kw: True,
+        )
+
+    def test_H_free_booking_schedules_both_auto_create_and_auto_link(
+        self, monkeypatch
+    ):
+        """Free booking (free_100 promo) must schedule BOTH
+        auto_create_or_extend_async AND auto_link_booking_async with
+        booking.id. Regression fence for the wiring gap that caused
+        TAG-EAW63114 in the webhook path — same shape, different
+        confirmation entry point."""
+        self._common_patches(monkeypatch)
+
+        promo = _mk_promo_code_record()
+        promotion = _mk_free_100_promotion()
+        booking = _mk_booking_row(reference="TAG-FREE001", booking_id=999)
+        payment = MagicMock(status=None, paid_at=None)
+
+        # db_service.create_booking returns the booking row used through
+        # the rest of the free-booking branch; payment row is created at
+        # main.py:~11336 and immediately stamped SUCCEEDED.
+        monkeypatch.setattr(
+            "db_service.create_booking", lambda **kw: booking,
+        )
+        monkeypatch.setattr(
+            "db_service.create_payment", lambda **kw: payment,
+        )
+
+        _override_db(_free_booking_db(
+            promo_code_record=promo, promotion=promotion, booking_row=booking,
+        ))
+
+        with patch("auto_roster.auto_create_or_extend_async") as mock_rebuild, \
+             patch("roster_planner_runner.auto_link_booking_async") as mock_link:
+            resp = TestClient(app).post(
+                "/api/payments/create-intent", json=_free_booking_payload(),
+            )
+
+        assert resp.status_code == 200, resp.json()
+        body = resp.json()
+        assert body["is_free_booking"] is True
+        assert body["booking_reference"] == "TAG-FREE001"
+        assert body["client_secret"] is None  # no Stripe for free bookings
+
+        mock_rebuild.assert_called_once_with(999)
+        mock_link.assert_called_once_with(999)
+
