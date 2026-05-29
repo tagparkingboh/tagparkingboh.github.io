@@ -1291,30 +1291,6 @@ async def validate_promo_code(
     )
 
 
-@app.post("/api/bookings", response_model=BookingResponse)
-async def create_booking(request: BookingRequest):
-    """
-    Create a new booking.
-
-    This will:
-    1. Reserve the selected time slot (hiding it from other users)
-    2. Update parking capacity for the date range
-    3. Return the confirmed booking details
-    """
-    service = get_service()
-
-    try:
-        booking = service.create_booking(request)
-        return BookingResponse(
-            success=True,
-            booking_id=booking.booking_id,
-            message="Booking confirmed successfully",
-            booking=booking,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
 # =============================================================================
 # Admin Authentication Dependencies
 # =============================================================================

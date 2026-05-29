@@ -202,140 +202,18 @@ async def test_check_capacity(client):
     assert data["max_capacity"] == 64
 
 
-@pytest.mark.asyncio
-async def test_create_booking(client):
-    """Should create a booking successfully."""
-    # Mock pricing to avoid dependency on database pricing config
-    with patch.object(BookingService, 'calculate_price', return_value=89.0):
-        response = await client.post(
-            "/api/bookings",
-            json={
-                "first_name": "John",
-                "last_name": "Doe",
-                "email": "john@example.com",
-                "phone": "07700900000",
-                "drop_off_date": "2026-02-10",
-                "drop_off_slot_type": "165",
-                "flight_date": "2026-02-10",
-                "flight_time": "10:00",
-                "flight_number": "5523",
-                "airline_code": "FR",
-                "airline_name": "Ryanair",
-                "destination_code": "KRK",
-                "destination_name": "Krakow, PL",
-                "pickup_date": "2026-02-17",
-                "return_flight_time": "14:30",
-                "return_flight_number": "5524",
-                "registration": "AB12 CDE",
-                "make": "Ford",
-                "model": "Focus",
-                "colour": "Blue",
-                "package": "quick",
-                "billing_address1": "123 Test St",
-                "billing_city": "London",
-                "billing_postcode": "SW1A 1AA",
-                "billing_country": "United Kingdom"
-            }
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is True
-        assert data["booking_id"] is not None
-        assert data["booking"]["price"] == 89.0
-
-
-@pytest.mark.asyncio
-async def test_slot_hidden_after_booking(client):
-    """Booked slot should not appear in available slots."""
-    # Create booking
-    await client.post(
-        "/api/bookings",
-        json={
-            "first_name": "John",
-            "last_name": "Doe",
-            "email": "john@example.com",
-            "phone": "07700900000",
-            "drop_off_date": "2026-02-10",
-            "drop_off_slot_type": "165",
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR",
-            "airline_name": "Ryanair",
-            "destination_code": "KRK",
-            "destination_name": "Krakow, PL",
-            "pickup_date": "2026-02-17",
-            "return_flight_time": "14:30",
-            "return_flight_number": "5524",
-            "registration": "AB12 CDE",
-            "make": "Ford",
-            "model": "Focus",
-            "colour": "Blue",
-            "package": "quick",
-            "billing_address1": "123 Test St",
-            "billing_city": "London",
-            "billing_postcode": "SW1A 1AA",
-            "billing_country": "United Kingdom"
-        }
-    )
-
-    # Check available slots
-    response = await client.post(
-        "/api/slots/available",
-        json={
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR"
-        }
-    )
-    data = response.json()
-    assert len(data["slots"]) == 2  # STANDARD and LATE slots available
-    slot_types = [s["slot_type"] for s in data["slots"]]
-    assert "120" in slot_types  # STANDARD
-    assert "90" in slot_types   # LATE
-
-
-@pytest.mark.asyncio
-async def test_duplicate_booking_fails(client):
-    """Booking same slot twice should fail."""
-    booking_data = {
-        "first_name": "John",
-        "last_name": "Doe",
-        "email": "john@example.com",
-        "phone": "07700900000",
-        "drop_off_date": "2026-02-10",
-        "drop_off_slot_type": "165",
-        "flight_date": "2026-02-10",
-        "flight_time": "10:00",
-        "flight_number": "5523",
-        "airline_code": "FR",
-        "airline_name": "Ryanair",
-        "destination_code": "KRK",
-        "destination_name": "Krakow, PL",
-        "pickup_date": "2026-02-17",
-        "return_flight_time": "14:30",
-        "return_flight_number": "5524",
-        "registration": "AB12 CDE",
-        "make": "Ford",
-        "model": "Focus",
-        "colour": "Blue",
-        "package": "quick",
-        "billing_address1": "123 Test St",
-        "billing_city": "London",
-        "billing_postcode": "SW1A 1AA",
-        "billing_country": "United Kingdom"
-    }
-
-    # First booking should succeed
-    response1 = await client.post("/api/bookings", json=booking_data)
-    assert response1.status_code == 200
-
-    # Second booking with same slot should fail
-    booking_data["email"] = "other@example.com"
-    response2 = await client.post("/api/bookings", json=booking_data)
-    assert response2.status_code == 400
-    assert "already booked" in response2.json()["detail"]
+# test_create_booking + test_slot_hidden_after_booking +
+# test_duplicate_booking_fails removed 2026-05-29: all three exercised
+# the legacy POST /api/bookings endpoint that PR 5 closed (unauth
+# direct-confirm bypass — wrote CONFIRMED rows without payment + without
+# capacity locks + without the PR 4b draft-token gate). Regression
+# coverage that the route stays gone lives in
+# test_pr5_legacy_post_bookings_closed.py.
+#
+# Slot-hidden + duplicate-detection invariants on the MODERN customer
+# flow (create-intent → Stripe → webhook → confirm) are covered by:
+#   - test_capacity_lock_hueb.py (PR 3 — capacity oversell race + lock)
+#   - test_stripe_webhook_hueb_integration.py (webhook confirm path)
 
 
 # test_get_booking + test_get_nonexistent_booking removed 2026-05-29:
@@ -345,65 +223,12 @@ async def test_duplicate_booking_fails(client):
 # in test_pr4a_idor_closures_hueb.py::TestDeletedRoutesAreInaccessible.
 
 
-@pytest.mark.asyncio
-async def test_cancel_booking(client, admin_client):
-    """Should cancel a booking and release the slot.
-
-    2026-05-29 PR 4a: DELETE /api/bookings/{id} is now admin-only
-    (Depends(require_admin)). The cancel step uses admin_client; the
-    create + slot-availability checks use the regular client since
-    POST /api/bookings is still public during the customer booking flow.
-    """
-    # Create booking
-    create_response = await client.post(
-        "/api/bookings",
-        json={
-            "first_name": "John",
-            "last_name": "Doe",
-            "email": "john@example.com",
-            "phone": "07700900000",
-            "drop_off_date": "2026-02-10",
-            "drop_off_slot_type": "165",
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR",
-            "airline_name": "Ryanair",
-            "destination_code": "KRK",
-            "destination_name": "Krakow, PL",
-            "pickup_date": "2026-02-17",
-            "return_flight_time": "14:30",
-            "return_flight_number": "5524",
-            "registration": "AB12 CDE",
-            "make": "Ford",
-            "model": "Focus",
-            "colour": "Blue",
-            "package": "quick",
-            "billing_address1": "123 Test St",
-            "billing_city": "London",
-            "billing_postcode": "SW1A 1AA",
-            "billing_country": "United Kingdom"
-        }
-    )
-    booking_id = create_response.json()["booking_id"]
-
-    # Cancel booking (admin-only since 2026-05-29 PR 4a)
-    cancel_response = await admin_client.delete(f"/api/bookings/{booking_id}")
-    assert cancel_response.status_code == 200
-
-    # Check slot is available again
-    slots_response = await client.post(
-        "/api/slots/available",
-        json={
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR"
-        }
-    )
-    assert len(slots_response.json()["slots"]) == 3  # All slots available again
-
-
+# test_cancel_booking removed 2026-05-29: PR 5 deleted POST /api/bookings,
+# which this test used as setup to then admin-cancel + verify slot
+# release. The admin-DELETE gate is still covered by
+# test_pr4a_idor_closures_hueb.py::TestCancelBookingRequiresAdmin and
+# the slot-release invariant on the modern flow is covered by
+# test_capacity_lock_hueb.py (PR 3).
 # test_bookings_by_email removed 2026-05-29: GET /api/bookings/email/{email}
 # was a public IDOR that returned every booking for any submitted email
 # (no auth, no ownership proof). Closed in PR 4a of the security review.
@@ -412,45 +237,24 @@ async def test_cancel_booking(client, admin_client):
 
 
 @pytest.mark.asyncio
-async def test_admin_all_bookings(client, admin_client):
-    """Admin endpoint should return all bookings."""
-    # Create booking using regular client
-    await client.post(
-        "/api/bookings",
-        json={
-            "first_name": "John",
-            "last_name": "Doe",
-            "email": "john@example.com",
-            "phone": "07700900000",
-            "drop_off_date": "2026-02-10",
-            "drop_off_slot_type": "165",
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR",
-            "airline_name": "Ryanair",
-            "destination_code": "KRK",
-            "destination_name": "Krakow, PL",
-            "pickup_date": "2026-02-17",
-            "return_flight_time": "14:30",
-            "return_flight_number": "5524",
-            "registration": "AB12 CDE",
-            "make": "Ford",
-            "model": "Focus",
-            "colour": "Blue",
-            "package": "quick",
-            "billing_address1": "123 Test St",
-            "billing_city": "London",
-            "billing_postcode": "SW1A 1AA",
-            "billing_country": "United Kingdom"
-        }
-    )
+async def test_admin_all_bookings(admin_client):
+    """Admin GET /api/admin/bookings should respond with a valid
+    count-shaped body.
 
-    # Use admin_client for admin endpoint
+    Pre-2026-05-29 this test seeded a booking via POST /api/bookings
+    (deleted by PR 5) and asserted count >= 1. With the seed leg gone,
+    asserting >= 1 makes the test data-dependent on staging — it would
+    flake on a clean local DB, a fresh CI DB, or a reset staging DB
+    (PR 5 review fix 2026-05-29). What's still meaningful here is the
+    response SHAPE: the admin endpoint responds 200, the body has a
+    'count' field, and the count is a non-negative integer.
+    """
     response = await admin_client.get("/api/admin/bookings")
     assert response.status_code == 200
-    # Check that at least one booking exists (test uses real DB which may have existing bookings)
-    assert response.json()["count"] >= 1
+    data = response.json()
+    assert "count" in data
+    assert isinstance(data["count"], int)
+    assert data["count"] >= 0
 
 
 @pytest.mark.asyncio
@@ -463,66 +267,11 @@ async def test_admin_occupancy(admin_client):
     assert data["available"] == 64
 
 
-@pytest.mark.asyncio
-async def test_all_slots_booked_shows_contact_message(client):
-    """When all slots are booked, should return contact message."""
-    booking_data = {
-        "first_name": "John",
-        "last_name": "Doe",
-        "email": "john@example.com",
-        "phone": "07700900000",
-        "drop_off_date": "2026-02-10",
-        "drop_off_slot_type": "165",
-        "flight_date": "2026-02-10",
-        "flight_time": "10:00",
-        "flight_number": "5523",
-        "airline_code": "FR",
-        "airline_name": "Ryanair",
-        "destination_code": "KRK",
-        "destination_name": "Krakow, PL",
-        "pickup_date": "2026-02-17",
-        "return_flight_time": "14:30",
-        "return_flight_number": "5524",
-        "registration": "AB12 CDE",
-        "make": "Ford",
-        "model": "Focus",
-        "colour": "Blue",
-        "package": "quick",
-        "billing_address1": "123 Test St",
-        "billing_city": "London",
-        "billing_postcode": "SW1A 1AA",
-        "billing_country": "United Kingdom"
-    }
-
-    # Book EARLY slot (165)
-    await client.post("/api/bookings", json=booking_data)
-
-    # Book STANDARD slot (120)
-    booking_data["email"] = "jane@example.com"
-    booking_data["drop_off_slot_type"] = "120"
-    await client.post("/api/bookings", json=booking_data)
-
-    # Book LATE slot (90)
-    booking_data["email"] = "bob@example.com"
-    booking_data["drop_off_slot_type"] = "90"
-    await client.post("/api/bookings", json=booking_data)
-
-    # Check available slots - should show contact message
-    response = await client.post(
-        "/api/slots/available",
-        json={
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR"
-        }
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["all_slots_booked"] is True
-    assert data["contact_message"] is not None
-    assert "contact us" in data["contact_message"].lower()
-    assert len(data["slots"]) == 0
+# test_all_slots_booked_shows_contact_message removed 2026-05-29: the
+# test seeded all three slots via POST /api/bookings (deleted by PR 5)
+# then asserted /api/slots/available returned the all-full UI message.
+# Slot-fullness logic against the MODERN flow (Stripe-confirmed CONFIRMED
+# rows) is exercised end-to-end by test_capacity_lock_hueb.py (PR 3).
 
 
 @pytest.mark.asyncio
@@ -940,85 +689,10 @@ async def test_update_vehicle_with_customer_id_success(client):
     assert data["success"] is True
 
 
-@pytest.mark.asyncio
-async def test_admin_booking_bypasses_slot_restrictions(client, admin_client):
-    """Admin can book even when regular slots are full."""
-    booking_data = {
-        "first_name": "John",
-        "last_name": "Doe",
-        "email": "john@example.com",
-        "phone": "07700900000",
-        "drop_off_date": "2026-02-10",
-        "drop_off_slot_type": "165",
-        "flight_date": "2026-02-10",
-        "flight_time": "10:00",
-        "flight_number": "5523",
-        "airline_code": "FR",
-        "airline_name": "Ryanair",
-        "destination_code": "KRK",
-        "destination_name": "Krakow, PL",
-        "pickup_date": "2026-02-17",
-        "return_flight_time": "14:30",
-        "return_flight_number": "5524",
-        "registration": "AB12 CDE",
-        "make": "Ford",
-        "model": "Focus",
-        "colour": "Blue",
-        "package": "quick",
-        "billing_address1": "123 Test St",
-        "billing_city": "London",
-        "billing_postcode": "SW1A 1AA",
-        "billing_country": "United Kingdom"
-    }
-
-    # Book all three regular slots
-    await client.post("/api/bookings", json=booking_data)
-    booking_data["email"] = "jane@example.com"
-    booking_data["drop_off_slot_type"] = "120"
-    await client.post("/api/bookings", json=booking_data)
-    booking_data["email"] = "bob@example.com"
-    booking_data["drop_off_slot_type"] = "90"
-    await client.post("/api/bookings", json=booking_data)
-
-    # Verify slots are full
-    slots_response = await client.post(
-        "/api/slots/available",
-        json={
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR"
-        }
-    )
-    assert slots_response.json()["all_slots_booked"] is True
-
-    # Admin can still create a booking
-    admin_response = await admin_client.post(
-        "/api/admin/bookings",
-        json={
-            "first_name": "Walk-in",
-            "last_name": "Customer",
-            "email": "walkin@example.com",
-            "phone": "07700900000",
-            "drop_off_date": "2026-02-10",
-            "drop_off_time": "09:00",
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR",
-            "airline_name": "Ryanair",
-            "destination_code": "KRK",
-            "destination_name": "Krakow, PL",
-            "pickup_date": "2026-02-17",
-            "return_flight_time": "14:30",
-            "return_flight_number": "5524",
-            "registration": "XY99 ZZZ",
-            "make": "BMW",
-            "model": "3 Series",
-            "colour": "Silver",
-            "package": "quick",
-            "booking_source": "walk-in"
-        }
-    )
-    assert admin_response.status_code == 200
-    assert admin_response.json()["success"] is True
+# test_admin_booking_bypasses_slot_restrictions removed 2026-05-29:
+# the test seeded slot fullness via three POST /api/bookings calls
+# (deleted by PR 5) before asserting that admin POST /api/admin/bookings
+# could still create one. The admin endpoint is still exercised by
+# test_admin_create_booking and test_admin_booking_with_custom_price.
+# The "admin bypasses cap" invariant on the modern flow is covered by
+# test_capacity_lock_hueb.py (PR 3 — admin cap=70 vs public cap=64).
