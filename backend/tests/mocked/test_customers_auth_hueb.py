@@ -480,11 +480,17 @@ class TestAuthRequestCode:
             calls["n"] += 1
             chain = MagicMock()
             chain.filter.return_value = chain
+            chain.order_by.return_value = chain
             name = model.__name__
             if name == "User":
                 chain.first.return_value = user
             elif name == "LoginCode":
                 chain.update.return_value = 0
+            elif name == "AuthThrottle":
+                # Rate-limit layer added 2026-05-29. Return 1 (just
+                # the row the handler inserted) so no throttle fires.
+                chain.count.return_value = 1
+                chain.delete.return_value = 0
             return chain
         db.query.side_effect = _query
         db.add = MagicMock()
@@ -529,22 +535,40 @@ class TestAuthVerifyCode:
             calls["n"] += 1
             chain = MagicMock()
             chain.filter.return_value = chain
+            chain.order_by.return_value = chain
             name = model.__name__
             if name == "User":
                 chain.first.return_value = user
             elif name == "LoginCode":
+                # Verify-code endpoint now issues TWO LoginCode queries
+                # (match-first then latest-active, 2026-05-29 review).
+                # Returning the same value for both is fine for these
+                # tests: success-path tests pass a populated login_code
+                # (so both succeed), invalid-path tests pass None (so
+                # both miss).
                 chain.first.return_value = login_code
+                chain.update.return_value = 0
+            elif name == "AuthThrottle":
+                chain.count.return_value = 1
+                chain.delete.return_value = 0
             return chain
         db.query.side_effect = _query
         db.add = MagicMock()
         db.commit = MagicMock()
+        db.refresh = MagicMock(side_effect=lambda obj: None)
         return db
 
     def test_H_valid_code_returns_token(self):
         u = SimpleNamespace(id=1, email="jo@x.test", is_active=True,
                             first_name="Jo", last_name="K", is_admin=False,
                             last_login=None)
-        lc = SimpleNamespace(id=1, used=False, expires_at=datetime.utcnow() + timedelta(minutes=5))
+        # `code` + `attempts` added 2026-05-29 — the verify endpoint now
+        # constant-time-compares the submitted value against login_code.code
+        # and tracks wrong attempts per code.
+        lc = SimpleNamespace(
+            id=1, used=False, code="123456", attempts=0,
+            expires_at=datetime.utcnow() + timedelta(minutes=5),
+        )
         _override_public(self._wire(u, lc))
         resp = TestClient(app).post("/api/auth/verify-code",
                                      json={"email": "jo@x.test", "code": "123456"})

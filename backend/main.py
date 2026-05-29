@@ -13158,6 +13158,67 @@ async def update_pricing(
     }
 
 
+# ============================================================================
+# Auth-code rate limiting (security review 2026-05-29)
+#
+# Sliding-window counters backed by the auth_throttle table. Each request
+# inserts a row regardless of outcome — that way rate-limit-rejected
+# attempts also extend the window for the attacker. Per-IP limits return
+# 429 + Retry-After. Per-email limits + resend cooldown return the
+# generic "If your email is registered…" success message so we don't
+# leak whether the address is registered.
+# ============================================================================
+
+AUTH_THROTTLE_WINDOW_SECS = 15 * 60                  # 15 minutes
+AUTH_REQUEST_RESEND_COOLDOWN_SECS = 60               # 1 min between resends
+MAX_REQUEST_CODES_PER_IP_PER_WINDOW = 10
+MAX_REQUEST_CODES_PER_EMAIL_PER_WINDOW = 5
+MAX_VERIFY_ATTEMPTS_PER_IP_PER_WINDOW = 20
+MAX_VERIFY_ATTEMPTS_PER_CODE = 5
+
+
+def _client_ip(request: Request) -> str:
+    """Resolve client IP. **Safe by default**: returns the immediate TCP
+    connection IP and IGNORES X-Forwarded-For / X-Real-IP, both of which
+    are client-controlled and can be rotated to bypass per-IP limits
+    (security review 2026-05-29).
+
+    To enable XFF-based resolution, set the env var TRUSTED_PROXY_HOPS=N
+    where N is the number of trusted proxy hops between the public
+    internet and this app. The helper then takes the Nth-from-rightmost
+    XFF entry — the IP that the LAST trusted proxy saw on the wire,
+    which is the real client IP iff every hop correctly appends. For
+    Railway-only deployment: TRUSTED_PROXY_HOPS=1. For Cloudflare→
+    Railway: TRUSTED_PROXY_HOPS=2.
+
+    Falls back to TCP connection IP if XFF is missing or shorter than N
+    entries. Caps return at 45 chars (IPv6 textual width)."""
+    direct = (request.client.host if request.client else "unknown")
+    try:
+        trusted_hops = int(os.environ.get("TRUSTED_PROXY_HOPS", "0") or "0")
+    except (TypeError, ValueError):
+        trusted_hops = 0
+    if trusted_hops > 0:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            parts = [p.strip() for p in xff.split(",") if p.strip()]
+            if len(parts) >= trusted_hops:
+                # Index from the right: parts[-trusted_hops] is the IP
+                # the *last* trusted proxy saw arriving on its socket.
+                candidate = parts[-trusted_hops]
+                return (candidate or direct or "unknown")[:45]
+    return (direct or "unknown")[:45]
+
+
+def _prune_old_throttle(db: Session) -> None:
+    """Opportunistic cleanup. Volume is low (a few dozen rows/day) so
+    pruning every request is cheap and keeps the index lean."""
+    from db_models import AuthThrottle as _AT
+    db.query(_AT).filter(
+        _AT.created_at < datetime.utcnow() - timedelta(days=1)
+    ).delete(synchronize_session=False)
+
+
 class AuthRequestCodeRequest(BaseModel):
     """Request to send a login code."""
     email: str
@@ -13194,7 +13255,8 @@ class AuthMeResponse(BaseModel):
 
 @app.post("/api/auth/request-code", response_model=AuthRequestCodeResponse)
 async def auth_request_code(
-    request: AuthRequestCodeRequest,
+    payload: AuthRequestCodeRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """
@@ -13202,10 +13264,65 @@ async def auth_request_code(
 
     The code expires after 10 minutes.
     Only active users can request codes.
+
+    Rate limits (security review 2026-05-29):
+      - Per-IP: 10 requests / 15 min → 429 + Retry-After.
+      - Per-email: 5 requests / 15 min → silent generic success (no
+        email sent, no enumeration leak).
+      - Resend cooldown: 1 request / 60 s per email → silent generic
+        success.
     """
     from datetime import timedelta
+    from db_models import AuthThrottle
 
-    email = request.email.strip().lower()
+    email = payload.email.strip().lower()
+    ip = _client_ip(request)
+    now = datetime.utcnow()
+
+    # Always insert the throttle row — even rejected attempts count
+    # toward the window so attackers can't burst-retry endlessly.
+    db.add(AuthThrottle(email=email, ip_address=ip, action="request"))
+    _prune_old_throttle(db)
+    db.commit()
+
+    window_start = now - timedelta(seconds=AUTH_THROTTLE_WINDOW_SECS)
+    cooldown_start = now - timedelta(seconds=AUTH_REQUEST_RESEND_COOLDOWN_SECS)
+
+    # Per-IP hard limit → 429. No email lookup yet, so no PII leak.
+    ip_count = db.query(AuthThrottle).filter(
+        AuthThrottle.ip_address == ip,
+        AuthThrottle.action == "request",
+        AuthThrottle.created_at >= window_start,
+    ).count()
+    if ip_count > MAX_REQUEST_CODES_PER_IP_PER_WINDOW:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests from this IP. Try again later.",
+            headers={"Retry-After": str(AUTH_THROTTLE_WINDOW_SECS)},
+        )
+
+    generic = AuthRequestCodeResponse(
+        success=True,
+        message="If your email is registered, you will receive a login code shortly.",
+    )
+
+    # Per-email limit / resend cooldown → silent generic success (no
+    # email sent). Reveals nothing about whether the address exists.
+    email_count = db.query(AuthThrottle).filter(
+        AuthThrottle.email == email,
+        AuthThrottle.action == "request",
+        AuthThrottle.created_at >= window_start,
+    ).count()
+    if email_count > MAX_REQUEST_CODES_PER_EMAIL_PER_WINDOW:
+        return generic
+
+    cooldown_count = db.query(AuthThrottle).filter(
+        AuthThrottle.email == email,
+        AuthThrottle.action == "request",
+        AuthThrottle.created_at >= cooldown_start,
+    ).count()
+    if cooldown_count > 1:  # the row we just inserted + at least one other
+        return generic
 
     # Find the user
     user = db.query(User).filter(
@@ -13215,16 +13332,13 @@ async def auth_request_code(
 
     if not user:
         # Don't reveal whether email exists
-        return AuthRequestCodeResponse(
-            success=True,
-            message="If your email is registered, you will receive a login code shortly."
-        )
+        return generic
 
     # Generate cryptographically secure 6-digit code
     code = str(secrets.randbelow(900000) + 100000)
 
     # Code expires in 10 minutes
-    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    expires_at = now + timedelta(minutes=10)
 
     # Invalidate any existing unused codes for this user
     db.query(LoginCode).filter(
@@ -13251,26 +13365,59 @@ async def auth_request_code(
     if not email_sent:
         print(f"WARNING: Failed to send login code email to {user.email}")
 
-    return AuthRequestCodeResponse(
-        success=True,
-        message="If your email is registered, you will receive a login code shortly."
-    )
+    return generic
 
 
 @app.post("/api/auth/verify-code", response_model=AuthVerifyCodeResponse)
 async def auth_verify_code(
-    request: AuthVerifyCodeRequest,
+    payload: AuthVerifyCodeRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """
     Verify a 6-digit login code and create a session.
 
-    Sessions expire after 8 hours.
+    Sessions expire after 24 hours.
+
+    Rate limits + lockout (security review 2026-05-29):
+      - Per-IP: 20 attempts / 15 min → 429 + Retry-After.
+      - Per-code wrong attempts: 5 wrong submissions → the code row is
+        marked used=True. Further submissions get the generic "Invalid
+        or expired" message so the attacker can't tell when the
+        lockout triggered. User must request a fresh code.
     """
     from datetime import timedelta
+    from db_models import AuthThrottle
 
-    email = request.email.strip().lower()
-    code = request.code.strip()
+    email = payload.email.strip().lower()
+    code = payload.code.strip()
+    ip = _client_ip(request)
+    now = datetime.utcnow()
+
+    # Throttle row first, prune ageing rows, then check per-IP limit.
+    # (Verify floods can grow auth_throttle unbounded if we don't prune
+    # here too — review fix 2026-05-29.)
+    db.add(AuthThrottle(email=email, ip_address=ip, action="verify"))
+    _prune_old_throttle(db)
+    db.commit()
+
+    window_start = now - timedelta(seconds=AUTH_THROTTLE_WINDOW_SECS)
+    ip_count = db.query(AuthThrottle).filter(
+        AuthThrottle.ip_address == ip,
+        AuthThrottle.action == "verify",
+        AuthThrottle.created_at >= window_start,
+    ).count()
+    if ip_count > MAX_VERIFY_ATTEMPTS_PER_IP_PER_WINDOW:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many verify attempts from this IP. Try again later.",
+            headers={"Retry-After": str(AUTH_THROTTLE_WINDOW_SECS)},
+        )
+
+    invalid = AuthVerifyCodeResponse(
+        success=False,
+        message="Invalid or expired code.",
+    )
 
     # Find the user
     user = db.query(User).filter(
@@ -13279,33 +13426,58 @@ async def auth_verify_code(
     ).first()
 
     if not user:
-        return AuthVerifyCodeResponse(
-            success=False,
-            message="Invalid email or code."
-        )
+        return invalid
 
-    # Find valid login code
-    login_code = db.query(LoginCode).filter(
+    # Match-first lookup (review fix 2026-05-29): look up the active
+    # code whose value matches the submitted one. If found, this is
+    # the success path — accept regardless of how many other active
+    # codes the user might have (concurrent request-code races could
+    # have left a stale row briefly).
+    matching = db.query(LoginCode).filter(
         LoginCode.user_id == user.id,
-        LoginCode.code == code,
         LoginCode.used == False,
-        LoginCode.expires_at > datetime.utcnow()
-    ).first()
+        LoginCode.code == code,
+        LoginCode.expires_at > now,
+    ).order_by(LoginCode.created_at.desc()).first()
 
-    if not login_code:
-        return AuthVerifyCodeResponse(
-            success=False,
-            message="Invalid or expired code."
-        )
+    if matching is None:
+        # No matching active code → wrong code. Find the LATEST active
+        # code (ordered desc) and atomically bump its attempts so the
+        # lockout fires on the right row even under concurrent verify.
+        latest_active = db.query(LoginCode).filter(
+            LoginCode.user_id == user.id,
+            LoginCode.used == False,
+            LoginCode.expires_at > now,
+        ).order_by(LoginCode.created_at.desc()).first()
+        if latest_active is not None:
+            # Atomic increment via SQL `SET attempts = attempts + 1`
+            # so concurrent wrong submissions both move the counter.
+            db.query(LoginCode).filter(LoginCode.id == latest_active.id).update(
+                {LoginCode.attempts: LoginCode.attempts + 1},
+                synchronize_session=False,
+            )
+            db.commit()
+            db.refresh(latest_active)
+            if latest_active.attempts >= MAX_VERIFY_ATTEMPTS_PER_CODE:
+                # Lock this code so further wrong submissions can't
+                # keep brute-forcing. User can request a fresh code.
+                # (Audit trail lives in `auth_throttle` rows + the
+                # 'verify' records — extending the AuditLogEvent enum
+                # would need a Postgres ALTER TYPE migration that's
+                # out of scope for this PR.)
+                latest_active.used = True
+                db.commit()
+        return invalid
 
-    # Mark code as used
+    # Correct! Mark code used, create session.
+    login_code = matching
     login_code.used = True
 
     # Generate session token (64-char hex string)
     token = secrets.token_hex(32)
 
     # Session expires in 24 hours
-    expires_at = datetime.utcnow() + timedelta(hours=24)
+    expires_at = now + timedelta(hours=24)
 
     # Create session
     session = DbSession(
@@ -13316,7 +13488,7 @@ async def auth_verify_code(
     db.add(session)
 
     # Update user's last login
-    user.last_login = datetime.utcnow()
+    user.last_login = now
 
     db.commit()
 

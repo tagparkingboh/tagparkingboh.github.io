@@ -3,7 +3,7 @@ SQLAlchemy database models for TAG booking system.
 """
 from sqlalchemy import (
     Column, Integer, String, DateTime, Date, Time,
-    ForeignKey, Enum, Boolean, Text, Numeric, UniqueConstraint
+    ForeignKey, Enum, Boolean, Text, Numeric, UniqueConstraint, Index
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import relationship
@@ -834,11 +834,46 @@ class LoginCode(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Wrong-attempt counter for /api/auth/verify-code (security review
+    # 2026-05-29). Incremented on each wrong-code submission; when it
+    # reaches MAX_VERIFY_ATTEMPTS_PER_CODE the row is marked used=True
+    # so further submissions can't keep brute-forcing this code. User
+    # can request a fresh code to continue.
+    attempts = Column(Integer, nullable=False, default=0, server_default="0")
 
     user = relationship("User")
 
     def __repr__(self):
         return f"<LoginCode {self.code} for user {self.user_id}>"
+
+
+class AuthThrottle(Base):
+    """Sliding-window throttle ledger for auth-code endpoints (security
+    review 2026-05-29). One row per request / verify attempt, regardless
+    of outcome. Two composite indexes — (ip_address, action, created_at)
+    and (email, action, created_at) — drive the rate-limit count() queries
+    cheaply.
+
+    Storage rule: email is always the lowercased submitted value even
+    when the user doesn't exist, so per-email throttling catches
+    enumeration spam against a target address without revealing whether
+    the address is registered.
+    """
+    __tablename__ = "auth_throttle"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), nullable=True)
+    ip_address = Column(String(45), nullable=False)  # IPv6-compatible width
+    action = Column(String(20), nullable=False)       # 'request' | 'verify'
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    # Modelled so fresh init_db() / create_all() in dev or CI gets the
+    # same indexes the inline Phase-1 DDL created on staging + prod.
+    # Names match the inline DDL exactly.
+    __table_args__ = (
+        Index("idx_auth_throttle_ip", "ip_address", "action", "created_at"),
+        Index("idx_auth_throttle_email", "email", "action", "created_at"),
+    )
 
 
 class Session(Base):
