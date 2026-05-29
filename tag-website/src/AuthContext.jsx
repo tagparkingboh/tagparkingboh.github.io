@@ -5,9 +5,25 @@ const AuthContext = createContext(null)
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(() => {
+    const cached = localStorage.getItem('auth_user')
+    if (!cached) return null
+    try {
+      return JSON.parse(cached)
+    } catch {
+      localStorage.removeItem('auth_user')
+      return null
+    }
+  })
   const [token, setToken] = useState(() => localStorage.getItem('auth_token'))
   const [loading, setLoading] = useState(true)
+
+  const clearAuth = useCallback(() => {
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('auth_user')
+    setToken(null)
+    setUser(null)
+  }, [])
 
   // Check session on mount
   useEffect(() => {
@@ -27,18 +43,18 @@ export function AuthProvider({ children }) {
       })
       if (response.ok) {
         const userData = await response.json()
+        localStorage.setItem('auth_user', JSON.stringify(userData))
         setUser(userData)
+      } else if (response.status === 401 || response.status === 403) {
+        clearAuth()
       } else {
-        // Invalid session - clear token
-        localStorage.removeItem('auth_token')
-        setToken(null)
-        setUser(null)
+        // Transient backend/deploy errors must not destroy a valid 24-hour session.
+        console.warn('Session check returned non-auth error:', response.status)
       }
     } catch (error) {
       console.error('Session check error:', error)
-      localStorage.removeItem('auth_token')
-      setToken(null)
-      setUser(null)
+      // Network errors are not proof that the token expired. Keep cached auth so
+      // a short deploy/restart blip does not kick admins out.
     } finally {
       setLoading(false)
     }
@@ -67,6 +83,7 @@ export function AuthProvider({ children }) {
 
     if (data.success && data.token) {
       localStorage.setItem('auth_token', data.token)
+      localStorage.setItem('auth_user', JSON.stringify(data.user))
       setToken(data.token)
       setUser(data.user)
     }
@@ -88,9 +105,7 @@ export function AuthProvider({ children }) {
       }
     }
 
-    localStorage.removeItem('auth_token')
-    setToken(null)
-    setUser(null)
+    clearAuth()
   }
 
   // Drop-in replacement for `fetch` that:
@@ -113,12 +128,10 @@ export function AuthProvider({ children }) {
       // session revoked). Tear down local state synchronously — the
       // consumer's isAuthenticated effect will handle the redirect on
       // the next React render.
-      localStorage.removeItem('auth_token')
-      setToken(null)
-      setUser(null)
+      clearAuth()
     }
     return response
-  }, [token])
+  }, [token, clearAuth])
 
   const value = {
     user,

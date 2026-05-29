@@ -229,6 +229,44 @@ describe('authFetch — direct behaviour', () => {
 
 
 // ---------------------------------------------------------------------------
+// Startup session check — transient backend errors should not log users out
+// ---------------------------------------------------------------------------
+
+describe('AuthProvider startup session check', () => {
+  it('edge: /api/auth/me 500 preserves cached auth instead of logging out', async () => {
+    const cachedUser = { id: 1, email: 'admin@test.com', is_admin: true }
+    localStorage.setItem('auth_token', 'TKN-CACHED')
+    localStorage.setItem('auth_user', JSON.stringify(cachedUser))
+    global.fetch.mockResolvedValueOnce(new Response('{}', { status: 500 }))
+
+    const getAuth = renderAuth()
+    await waitFor(() => expect(getAuth().loading).toBe(false))
+
+    expect(getAuth().isAuthenticated).toBe(true)
+    expect(getAuth().token).toBe('TKN-CACHED')
+    expect(localStorage.getItem('auth_token')).toBe('TKN-CACHED')
+    expect(JSON.parse(localStorage.getItem('auth_user'))).toEqual(cachedUser)
+  })
+
+  it('unhappy: /api/auth/me 401 clears cached auth', async () => {
+    localStorage.setItem('auth_token', 'TKN-EXPIRED')
+    localStorage.setItem('auth_user', JSON.stringify({ id: 1, email: 'admin@test.com', is_admin: true }))
+    global.fetch.mockResolvedValueOnce(new Response('{"detail":"Invalid or expired session"}', {
+      status: 401,
+    }))
+
+    const getAuth = renderAuth()
+    await waitFor(() => expect(getAuth().loading).toBe(false))
+
+    expect(getAuth().isAuthenticated).toBe(false)
+    expect(getAuth().token).toBe(null)
+    expect(localStorage.getItem('auth_token')).toBe(null)
+    expect(localStorage.getItem('auth_user')).toBe(null)
+  })
+})
+
+
+// ---------------------------------------------------------------------------
 // No-token edge case — pre-login state shouldn't crash
 // ---------------------------------------------------------------------------
 
