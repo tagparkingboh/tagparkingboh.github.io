@@ -574,33 +574,50 @@ class TestConcurrentEdgeCases:
     @pytest.mark.asyncio
     async def test_concurrent_booking_and_cancel(self, client):
         """
-        If user 1 books and user 2 cancels almost simultaneously,
-        the system should handle it correctly.
+        If an admin cancels booking 1 while a customer books a different slot
+        almost simultaneously, the system should handle it correctly.
+
+        Pre-2026-05-29 this test simulated "user 2 cancels user 1's booking" —
+        but that was the IDOR PR 4a closed (DELETE /api/bookings/{id} is now
+        admin-only). The concurrency invariant being tested (slot released
+        cleanly under concurrent traffic) is still meaningful, so the cancel
+        call now goes through an admin-overridden client.
         """
-        # First create a booking
-        booking_data = get_booking_data(1)
-        create_response = await client.post("/api/bookings", json=booking_data)
-        booking_id = create_response.json()["booking_id"]
+        from types import SimpleNamespace
+        from main import require_admin
 
-        # Now try to cancel while someone else books the same slot
-        booking_data_2 = get_booking_data(2)
+        _mock_admin = SimpleNamespace(
+            id=1, email="admin@tag.test", is_admin=True, is_active=True,
+            first_name="Admin", last_name="Test",
+        )
+        app.dependency_overrides[require_admin] = lambda: _mock_admin
+        try:
+            # First create a booking
+            booking_data = get_booking_data(1)
+            create_response = await client.post("/api/bookings", json=booking_data)
+            booking_id = create_response.json()["booking_id"]
 
-        async def cancel():
-            return await client.delete(f"/api/bookings/{booking_id}")
+            # Now try to cancel while someone else books a different slot
+            booking_data_2 = get_booking_data(2)
 
-        async def book():
-            return await client.post("/api/bookings", json=booking_data_2)
+            async def cancel():
+                return await client.delete(f"/api/bookings/{booking_id}")
 
-        cancel_response, book_response = await asyncio.gather(cancel(), book())
+            async def book():
+                return await client.post("/api/bookings", json=booking_data_2)
 
-        # Cancel should succeed
-        assert cancel_response.status_code == 200
+            cancel_response, book_response = await asyncio.gather(cancel(), book())
 
-        # The second booking might succeed or fail depending on timing
-        # If it succeeds, slot is properly released and re-booked
-        # If it fails, the slot wasn't released in time
-        # Both are acceptable outcomes
-        assert book_response.status_code in [200, 400]
+            # Cancel should succeed
+            assert cancel_response.status_code == 200
+
+            # The second booking might succeed or fail depending on timing
+            # If it succeeds, slot is properly released and re-booked
+            # If it fails, the slot wasn't released in time
+            # Both are acceptable outcomes
+            assert book_response.status_code in [200, 400]
+        finally:
+            app.dependency_overrides.pop(require_admin, None)
 
     @pytest.mark.asyncio
     async def test_concurrent_multiple_different_dates(self, client):

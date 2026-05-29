@@ -1315,59 +1315,6 @@ async def create_booking(request: BookingRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.get("/api/bookings/{booking_id}", response_model=BookingResponse)
-async def get_booking(booking_id: str):
-    """
-    Retrieve a booking by ID.
-    """
-    service = get_service()
-    booking = service.get_booking(booking_id)
-
-    if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found")
-
-    return BookingResponse(
-        success=True,
-        booking_id=booking.booking_id,
-        message="Booking found",
-        booking=booking,
-    )
-
-
-@app.delete("/api/bookings/{booking_id}", response_model=BookingResponse)
-async def cancel_booking(booking_id: str):
-    """
-    Cancel a booking.
-
-    This releases the time slot, making it available for other users.
-    """
-    service = get_service()
-
-    if service.cancel_booking(booking_id):
-        return BookingResponse(
-            success=True,
-            booking_id=booking_id,
-            message="Booking cancelled successfully",
-        )
-    else:
-        raise HTTPException(status_code=404, detail="Booking not found")
-
-
-@app.get("/api/bookings/email/{email}")
-async def get_bookings_by_email(email: str):
-    """
-    Get all bookings for an email address.
-    """
-    service = get_service()
-    bookings = service.get_bookings_by_email(email)
-
-    return {
-        "email": email,
-        "count": len(bookings),
-        "bookings": bookings,
-    }
-
-
 # =============================================================================
 # Admin Authentication Dependencies
 # =============================================================================
@@ -1429,6 +1376,32 @@ async def require_admin(
 # =============================================================================
 # Admin Endpoints
 # =============================================================================
+
+
+@app.delete("/api/bookings/{booking_id}", response_model=BookingResponse)
+async def cancel_booking(
+    booking_id: str,
+    current_user: User = Depends(require_admin),
+):
+    """
+    Cancel a booking (admin only — called by Admin.jsx confirmDeleteBooking).
+
+    Pre-2026-05-29 this was a public endpoint. Anyone who could guess a
+    booking_id could destroy a customer's reservation. See PR 4a of the
+    security review for the closure of this IDOR + the two sibling
+    public read endpoints that were dead code.
+    """
+    service = get_service()
+
+    if service.cancel_booking(booking_id):
+        return BookingResponse(
+            success=True,
+            booking_id=booking_id,
+            message="Booking cancelled successfully",
+        )
+    else:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
 
 @app.get("/api/admin/bookings")
 async def get_all_bookings(

@@ -338,9 +338,22 @@ async def test_duplicate_booking_fails(client):
     assert "already booked" in response2.json()["detail"]
 
 
+# test_get_booking + test_get_nonexistent_booking removed 2026-05-29:
+# GET /api/bookings/{booking_id} was a public IDOR (sequential id
+# enumeration returned every booking's PII). Closed in PR 4a of the
+# security review. Regression coverage that the route stays gone lives
+# in test_pr4a_idor_closures_hueb.py::TestDeletedRoutesAreInaccessible.
+
+
 @pytest.mark.asyncio
-async def test_get_booking(client):
-    """Should retrieve a booking by ID."""
+async def test_cancel_booking(client, admin_client):
+    """Should cancel a booking and release the slot.
+
+    2026-05-29 PR 4a: DELETE /api/bookings/{id} is now admin-only
+    (Depends(require_admin)). The cancel step uses admin_client; the
+    create + slot-availability checks use the regular client since
+    POST /api/bookings is still public during the customer booking flow.
+    """
     # Create booking
     create_response = await client.post(
         "/api/bookings",
@@ -374,58 +387,8 @@ async def test_get_booking(client):
     )
     booking_id = create_response.json()["booking_id"]
 
-    # Get booking
-    response = await client.get(f"/api/bookings/{booking_id}")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["booking"]["first_name"] == "John"
-
-
-@pytest.mark.asyncio
-async def test_get_nonexistent_booking(client):
-    """Should return 404 for non-existent booking."""
-    response = await client.get("/api/bookings/nonexistent-id")
-    assert response.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_cancel_booking(client):
-    """Should cancel a booking and release the slot."""
-    # Create booking
-    create_response = await client.post(
-        "/api/bookings",
-        json={
-            "first_name": "John",
-            "last_name": "Doe",
-            "email": "john@example.com",
-            "phone": "07700900000",
-            "drop_off_date": "2026-02-10",
-            "drop_off_slot_type": "165",
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR",
-            "airline_name": "Ryanair",
-            "destination_code": "KRK",
-            "destination_name": "Krakow, PL",
-            "pickup_date": "2026-02-17",
-            "return_flight_time": "14:30",
-            "return_flight_number": "5524",
-            "registration": "AB12 CDE",
-            "make": "Ford",
-            "model": "Focus",
-            "colour": "Blue",
-            "package": "quick",
-            "billing_address1": "123 Test St",
-            "billing_city": "London",
-            "billing_postcode": "SW1A 1AA",
-            "billing_country": "United Kingdom"
-        }
-    )
-    booking_id = create_response.json()["booking_id"]
-
-    # Cancel booking
-    cancel_response = await client.delete(f"/api/bookings/{booking_id}")
+    # Cancel booking (admin-only since 2026-05-29 PR 4a)
+    cancel_response = await admin_client.delete(f"/api/bookings/{booking_id}")
     assert cancel_response.status_code == 200
 
     # Check slot is available again
@@ -441,46 +404,11 @@ async def test_cancel_booking(client):
     assert len(slots_response.json()["slots"]) == 3  # All slots available again
 
 
-@pytest.mark.asyncio
-async def test_bookings_by_email(client):
-    """Should find bookings by email."""
-    # Create booking
-    await client.post(
-        "/api/bookings",
-        json={
-            "first_name": "John",
-            "last_name": "Doe",
-            "email": "john@example.com",
-            "phone": "07700900000",
-            "drop_off_date": "2026-02-10",
-            "drop_off_slot_type": "165",
-            "flight_date": "2026-02-10",
-            "flight_time": "10:00",
-            "flight_number": "5523",
-            "airline_code": "FR",
-            "airline_name": "Ryanair",
-            "destination_code": "KRK",
-            "destination_name": "Krakow, PL",
-            "pickup_date": "2026-02-17",
-            "return_flight_time": "14:30",
-            "return_flight_number": "5524",
-            "registration": "AB12 CDE",
-            "make": "Ford",
-            "model": "Focus",
-            "colour": "Blue",
-            "package": "quick",
-            "billing_address1": "123 Test St",
-            "billing_city": "London",
-            "billing_postcode": "SW1A 1AA",
-            "billing_country": "United Kingdom"
-        }
-    )
-
-    response = await client.get("/api/bookings/email/john@example.com")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["count"] == 1
-    assert data["bookings"][0]["email"] == "john@example.com"
+# test_bookings_by_email removed 2026-05-29: GET /api/bookings/email/{email}
+# was a public IDOR that returned every booking for any submitted email
+# (no auth, no ownership proof). Closed in PR 4a of the security review.
+# Regression coverage that the route stays gone lives in
+# test_pr4a_idor_closures_hueb.py::TestDeletedRoutesAreInaccessible.
 
 
 @pytest.mark.asyncio
