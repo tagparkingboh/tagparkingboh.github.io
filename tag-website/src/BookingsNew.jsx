@@ -155,6 +155,56 @@ function Bookings({ isModal = false, onClose }) {
       return newId
     })()
   )
+
+  // PR 4b: server-issued booking-draft token. Gates 6 customer-flow
+  // endpoints (PATCH customer, PATCH vehicle, POST vehicle, GET +
+  // POST heard-about-us, POST dvla-lookup) against IDOR enumeration.
+  // Stored in sessionStorage so it survives hard refresh inside the
+  // same browser tab; 24h server-side TTL. Backend is in SOFT MODE
+  // 2026-05-29 → 2026-06-12 — missing token is allowed but logged.
+  const draftTokenRef = useRef(sessionStorage.getItem('booking_draftToken'))
+  // In-flight POST /api/booking-drafts promise. Memoised so concurrent
+  // ensureDraftToken() callers share the same fetch.
+  const draftTokenPromiseRef = useRef(null)
+
+  // Fetches a token if we don't have one. Memoises the in-flight
+  // promise so a fast user can trigger PATCH /api/customers/{id}
+  // before the bootstrap fetch lands without firing a second
+  // POST /api/booking-drafts. Returns the token (or null on failure
+  // — soft mode tolerates null; enforce mode will 401, which is the
+  // user-visible signal that the rollout has flipped).
+  const ensureDraftToken = () => {
+    if (draftTokenRef.current) return Promise.resolve(draftTokenRef.current)
+    if (draftTokenPromiseRef.current) return draftTokenPromiseRef.current
+    draftTokenPromiseRef.current = fetch(
+      `${API_BASE_URL}/api/booking-drafts`,
+      { method: 'POST' },
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.token) {
+          draftTokenRef.current = data.token
+          sessionStorage.setItem('booking_draftToken', data.token)
+        }
+        return draftTokenRef.current
+      })
+      .catch(() => null)
+    return draftTokenPromiseRef.current
+  }
+
+  // Bootstrap on mount so most user actions find a ready token. The
+  // ensureDraftToken() awaits in the 6 gated fetch paths cover the
+  // race where the user submits faster than this fetch lands.
+  useEffect(() => {
+    ensureDraftToken()
+  }, [])
+
+  // Spread into fetch() options to attach the draft token header
+  // when one exists. Sync helper — callers do
+  //   await ensureDraftToken()
+  // first if they need to guarantee presence (the 6 gated paths do).
+  const draftHeaders = () =>
+    draftTokenRef.current ? { 'X-Draft-Token': draftTokenRef.current } : {}
   // DVLA lookup state
   const [dvlaLoading, setDvlaLoading] = useState(false)
   const [dvlaError, setDvlaError] = useState('')
@@ -448,7 +498,11 @@ function Bookings({ isModal = false, onClose }) {
 
       setHeardAboutUsLoading(true)
       try {
-        const response = await fetch(`${API_BASE_URL}/api/customers/heard-about-us-status?email=${encodeURIComponent(formData.email)}`)
+        await ensureDraftToken()
+        const response = await fetch(
+          `${API_BASE_URL}/api/customers/heard-about-us-status?email=${encodeURIComponent(formData.email)}`,
+          { headers: { ...draftHeaders() } },
+        )
         if (response.ok) {
           const data = await response.json()
           if (data.has_answered_heard_about_us) {
@@ -477,9 +531,10 @@ function Bookings({ isModal = false, onClose }) {
 
     setHeardAboutUsSubmitting(true)
     try {
+      await ensureDraftToken()
       const response = await fetch(`${API_BASE_URL}/api/customers/heard-about-us`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...draftHeaders() },
         body: JSON.stringify({
           email: formData.email,
           source: heardAboutUsSource,
@@ -1537,9 +1592,10 @@ function Bookings({ isModal = false, onClose }) {
     // If customer already exists and email hasn't changed, update instead of create
     if (customerId && !emailChanged) {
       try {
+        await ensureDraftToken()
         const response = await fetch(`${API_BASE_URL}/api/customers/${customerId}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...draftHeaders() },
           body: JSON.stringify({
             first_name: formData.firstName,
             last_name: formData.lastName,
@@ -1598,9 +1654,10 @@ function Bookings({ isModal = false, onClose }) {
     // If vehicle already exists and not forcing create, update instead of create
     if (vehicleId && !forceCreate) {
       try {
+        await ensureDraftToken()
         const response = await fetch(`${API_BASE_URL}/api/vehicles/${vehicleId}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...draftHeaders() },
           body: JSON.stringify({
             customer_id: customerIdToUse,
             registration: formData.registration.toUpperCase(),
@@ -1624,9 +1681,10 @@ function Bookings({ isModal = false, onClose }) {
 
     // Create new vehicle
     try {
+      await ensureDraftToken()
       const response = await fetch(`${API_BASE_URL}/api/vehicles`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...draftHeaders() },
         body: JSON.stringify({
           customer_id: customerIdToUse,
           registration: formData.registration.toUpperCase(),
@@ -1689,9 +1747,10 @@ function Bookings({ isModal = false, onClose }) {
     setDvlaVerified(false)
 
     try {
+      await ensureDraftToken()
       const response = await fetch(`${API_BASE_URL}/api/vehicles/dvla-lookup`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...draftHeaders() },
         body: JSON.stringify({ registration: formData.registration }),
       })
 

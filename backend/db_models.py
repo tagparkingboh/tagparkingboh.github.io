@@ -876,6 +876,47 @@ class AuthThrottle(Base):
     )
 
 
+class BookingDraft(Base):
+    """Per-checkout ownership token (security review 2026-05-29 PR 4b).
+
+    Server-issued cryptorandom token bound to a single in-flight booking
+    draft. Gates the 6 customer-flow endpoints that PR 4a left open
+    (PATCH /api/customers/{id}, PATCH /api/vehicles/{id}, POST
+    /api/vehicles, GET /api/customers/heard-about-us-status,
+    POST /api/customers/heard-about-us, POST
+    /api/vehicles/dvla-lookup) so an attacker can't enumerate IDs.
+
+    Binding semantics: each (email | customer_id | vehicle_id) starts
+    NULL. First mutation binds the draft to that value; subsequent
+    mutations must match. Mismatch → 403.
+
+    NOT a long-lived customer identity. TTL is 24 hours, matched to a
+    realistic checkout window. Customer email-code login is a separate
+    larger project (see project_pr_4b_design memory).
+
+    Token storage: 64-char hex (secrets.token_hex(32) — 256 bits of
+    entropy). No FKs to customers/vehicles to keep the row durable if
+    those records change; consistency is enforced by the binding
+    logic at write time.
+    """
+    __tablename__ = "booking_drafts"
+
+    token = Column(String(64), primary_key=True)
+    ip_address = Column(String(45), nullable=False)
+    email = Column(String(255), nullable=True)
+    customer_id = Column(Integer, nullable=True)
+    vehicle_id = Column(Integer, nullable=True)
+    dvla_calls_count = Column(Integer, nullable=False, default=0, server_default="0")
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    # Index on expires_at so fresh init_db() / create_all() picks it up.
+    # Name matches the inline DDL exactly.
+    __table_args__ = (
+        Index("idx_booking_drafts_expires", "expires_at"),
+    )
+
+
 class Session(Base):
     """User sessions - expire after 8 hours."""
     __tablename__ = "sessions"

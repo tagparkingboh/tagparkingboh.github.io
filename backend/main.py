@@ -75,7 +75,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends, Bod
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import text, or_, case
+from sqlalchemy import text, or_, case, func
 
 from models import (
     BookingRequest,
@@ -105,7 +105,7 @@ from stripe_service import (
 
 # Database imports
 from database import get_db, init_db
-from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession, VehicleInspection, InspectionType, BlockedDate
+from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession, VehicleInspection, InspectionType, BlockedDate, BookingDraft
 import db_service
 import json
 import traceback
@@ -1371,6 +1371,169 @@ async def require_admin(
             detail="Admin privileges required"
         )
     return current_user
+
+
+# ============================================================================
+# Client-IP resolution + Booking Draft Token (PR 4b — customer-flow
+# ownership token, 2026-05-29). These helpers must live above ALL the
+# customer-flow endpoints (line ~9197 onward — PATCH customer, PATCH
+# vehicle, POST vehicle, GET heard-about-us, POST dvla-lookup) so the
+# Depends(get_draft_token) defaults in those handlers resolve at module
+# load. Also used by the auth-throttle block much further down (PR 2).
+# ============================================================================
+
+
+def _client_ip(request: Request) -> str:
+    """Resolve client IP. **Safe by default**: returns the immediate TCP
+    connection IP and IGNORES X-Forwarded-For / X-Real-IP, both of which
+    are client-controlled and can be rotated to bypass per-IP limits
+    (security review 2026-05-29).
+
+    To enable XFF-based resolution, set the env var TRUSTED_PROXY_HOPS=N
+    where N is the number of trusted proxy hops between the public
+    internet and this app. The helper then takes the Nth-from-rightmost
+    XFF entry — the IP that the LAST trusted proxy saw on the wire,
+    which is the real client IP iff every hop correctly appends. For
+    Railway-only deployment: TRUSTED_PROXY_HOPS=1. For Cloudflare→
+    Railway: TRUSTED_PROXY_HOPS=2.
+
+    Falls back to TCP connection IP if XFF is missing or shorter than N
+    entries. Caps return at 45 chars (IPv6 textual width)."""
+    direct = (request.client.host if request.client else "unknown")
+    try:
+        trusted_hops = int(os.environ.get("TRUSTED_PROXY_HOPS", "0") or "0")
+    except (TypeError, ValueError):
+        trusted_hops = 0
+    if trusted_hops > 0:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            parts = [p.strip() for p in xff.split(",") if p.strip()]
+            if len(parts) >= trusted_hops:
+                # Index from the right: parts[-trusted_hops] is the IP
+                # the *last* trusted proxy saw arriving on its socket.
+                candidate = parts[-trusted_hops]
+                return (candidate or direct or "unknown")[:45]
+    return (direct or "unknown")[:45]
+
+
+# ----- Booking Draft Token (PR 4b) ------------------------------------------
+#
+# Server-issued cryptorandom token bound to a single in-flight checkout
+# draft. Gates the 6 customer-flow endpoints PR 4a left open against
+# IDOR enumeration (PATCH customer, PATCH vehicle, POST vehicle,
+# GET + POST heard-about-us, POST dvla-lookup).
+#
+# Rollout shape: ONE PR (backend + frontend together) with a 14-day
+# SOFT-MODE period. Backend accepts missing X-Draft-Token in soft mode
+# and logs structured warnings so we can flip enforcement once logs
+# show no missing-token traffic. Tokens, when present, are ALWAYS
+# fully validated (no partial trust).
+#
+# Token lifetime: 24h (long enough for "come back to the same tab
+# tomorrow"; short enough that a leaked token expires before it can be
+# abused for long). Per-token DVLA-lookup quota = 10.
+#
+# Binding semantics: each (email | customer_id | vehicle_id) starts
+# NULL. First mutation binds; subsequent mutations must match. Mismatch
+# returns 403. No reuse, no transfer.
+
+DRAFT_TOKEN_TTL_SECS = 24 * 60 * 60      # 24h checkout window
+DRAFT_TOKEN_ENFORCE = False               # 2026-05-29 launch: soft mode for 14d.
+                                          # Flip to True once logs show zero
+                                          # [DRAFT-TOKEN-SOFT] entries.
+MAX_DVLA_LOOKUPS_PER_DRAFT = 10           # Per-token quota on dvla-lookup
+
+
+def _gen_draft_token() -> str:
+    """64-char hex (32 bytes / 256 bits of entropy from os.urandom)."""
+    return secrets.token_hex(32)
+
+
+def _prune_expired_drafts(db: Session) -> None:
+    """Delete draft rows expired more than a day ago. Cheap; runs on
+    every booking-draft creation. Indexed on expires_at, so DELETE WHERE
+    expires_at < ... is an index scan."""
+    try:
+        db.execute(
+            text("DELETE FROM booking_drafts WHERE expires_at < now() - INTERVAL '1 day'")
+        )
+    except Exception:
+        # Best-effort cleanup; don't fail the creation request.
+        pass
+
+
+def get_draft_token(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_draft_token: Optional[str] = Header(None, alias="X-Draft-Token"),
+) -> Optional[BookingDraft]:
+    """Resolve the draft token for this request.
+
+    - Header absent + DRAFT_TOKEN_ENFORCE=False (soft mode 2026-05-29):
+      returns None, logs a structured warning so we can verify zero
+      missing-token traffic before flipping enforcement.
+    - Header absent + DRAFT_TOKEN_ENFORCE=True: 401.
+    - Header present but invalid or expired: ALWAYS 401 (token is
+      either valid or we refuse — no partial trust).
+    - Header present + valid: returns the BookingDraft row for binding
+      checks in the endpoint handler.
+    """
+    if not x_draft_token:
+        if DRAFT_TOKEN_ENFORCE:
+            raise HTTPException(status_code=401, detail="Missing X-Draft-Token")
+        # Soft mode. One structured warning per request so logs are
+        # greppable: triage is "is this traffic shape converging to zero?"
+        # before enforcement flips.
+        print(
+            f"[DRAFT-TOKEN-SOFT] missing token "
+            f"endpoint={request.method} {request.url.path} "
+            f"ip={_client_ip(request)}"
+        )
+        return None
+    draft = db.query(BookingDraft).filter(
+        BookingDraft.token == x_draft_token,
+        BookingDraft.expires_at > func.now(),
+    ).first()
+    if not draft:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired X-Draft-Token",
+        )
+    return draft
+
+
+def _bind_or_check(
+    draft: Optional[BookingDraft],
+    field: str,
+    value,
+    db: Session,
+    request: Request,
+) -> None:
+    """First-touch bind, subsequent enforce.
+
+    No-op in soft mode (draft is None) — same response as today's
+    behaviour so soft-mode requests don't suddenly fail. When the
+    flip-to-enforce day comes, draft will always be non-None for
+    gated endpoints, and these checks engage.
+    """
+    if draft is None:
+        return
+    current = getattr(draft, field, None)
+    if current is None:
+        setattr(draft, field, value)
+        db.commit()
+    elif current != value:
+        # Structured log so the suspicious request shape is greppable
+        # in production logs without leaking the full token.
+        print(
+            f"[DRAFT-TOKEN-BIND-MISMATCH] field={field} "
+            f"draft.value={current} req.value={value} "
+            f"token={draft.token[:8]}... ip={_client_ip(request)}"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"X-Draft-Token does not own this {field.split('_')[0]}",
+        )
 
 
 # =============================================================================
@@ -9200,11 +9363,19 @@ async def update_customer(
     request: CreateCustomerRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    draft: Optional[BookingDraft] = Depends(get_draft_token),
 ):
     """
     Update existing customer contact information.
     Used when user goes back and edits their details.
+
+    Gated by PR 4b draft token: caller must hold a valid X-Draft-Token
+    whose bound customer_id matches (or is unset, in which case this
+    call binds it). Soft mode 2026-05-29 → 2026-06-12: missing token
+    is allowed + logged via get_draft_token's [DRAFT-TOKEN-SOFT] line.
     """
+    _bind_or_check(draft, "customer_id", customer_id, db, http_request)
+
     customer = db_service.get_customer_by_id(db, customer_id)
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -9249,13 +9420,24 @@ VALID_MARKETING_SOURCES = ['newspaper', 'google', 'facebook', 'instagram', 'link
 
 @app.get("/api/customers/heard-about-us-status")
 async def get_heard_about_us_status(
+    http_request: Request,
     email: str = Query(..., description="Customer email address"),
     db: Session = Depends(get_db),
+    draft: Optional[BookingDraft] = Depends(get_draft_token),
 ):
     """
     Check if a customer has already answered the "Where did you hear about us?" question.
     Called when Page 4 (Payment) loads to determine if the question should be shown.
+
+    Gated by PR 4b draft token: the lowercased email binds the draft on
+    first call; subsequent calls with a different email → 403. Closes
+    the email-enumeration leak (the original endpoint returned customer_id
+    alongside the yes/no, which let an attacker tell whether a target
+    address was registered without consent). Soft mode 2026-05-29 →
+    2026-06-12: missing token allowed + logged.
     """
+    _bind_or_check(draft, "email", (email or "").lower(), db, http_request)
+
     from db_models import Customer
     from sqlalchemy import func
 
@@ -9289,14 +9471,23 @@ class HeardAboutUsRequest(BaseModel):
 @app.post("/api/customers/heard-about-us")
 async def save_heard_about_us(
     request: HeardAboutUsRequest,
+    http_request: Request,
     db: Session = Depends(get_db),
+    draft: Optional[BookingDraft] = Depends(get_draft_token),
 ):
     """
     Save the customer's marketing attribution response.
     Called immediately when the customer selects an option (before payment).
+
+    Gated by PR 4b draft token: same email binding semantics as
+    GET /api/customers/heard-about-us-status (caught in 2026-05-29
+    review — the GET was gated but this sibling POST was missed even
+    though it mutates the same per-email attribution row). Soft mode
+    2026-05-29 → 2026-06-12: missing token allowed + logged.
     """
+    _bind_or_check(draft, "email", (request.email or "").lower(), db, http_request)
+
     from db_models import Customer, MarketingSource, MarketingSourceMonthlyTotal
-    from sqlalchemy import func
 
     # Validate source value
     if request.source not in VALID_MARKETING_SOURCES:
@@ -9460,13 +9651,23 @@ async def create_or_update_vehicle(
     request: CreateVehicleRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    draft: Optional[BookingDraft] = Depends(get_draft_token),
 ):
     """
     Create or update a vehicle (Step 3: Vehicle Details).
 
     If a vehicle with this registration exists for the customer, updates it.
     Returns the vehicle ID for use in the booking.
+
+    Gated by PR 4b draft token: caller must hold a valid X-Draft-Token
+    whose bound customer_id matches the request's customer_id (or is
+    unset, in which case this call binds it). The created/updated
+    vehicle's id ALSO binds draft.vehicle_id so a subsequent PATCH
+    /api/vehicles/{id} can be matched against this draft. Soft mode
+    2026-05-29 → 2026-06-12: missing token allowed + logged.
     """
+    _bind_or_check(draft, "customer_id", request.customer_id, db, http_request)
+
     # Validate customer exists
     customer = db_service.get_customer_by_id(db, request.customer_id)
     if not customer:
@@ -9485,6 +9686,10 @@ async def create_or_update_vehicle(
             tax_due_date=request.tax_due_date,
             mot_expiry_date=request.mot_expiry_date,
         )
+
+        # Bind the (just-created or refreshed) vehicle to the draft so
+        # future PATCH /api/vehicles/{id} from this checkout matches.
+        _bind_or_check(draft, "vehicle_id", vehicle.id, db, http_request)
 
         # Log audit event for vehicle entry
         log_audit_event(
@@ -9517,11 +9722,19 @@ async def update_vehicle(
     request: CreateVehicleRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    draft: Optional[BookingDraft] = Depends(get_draft_token),
 ):
     """
     Update existing vehicle information.
     Used when user goes back and edits their vehicle details.
+
+    Gated by PR 4b draft token: caller must hold a valid X-Draft-Token
+    whose bound vehicle_id matches (or is unset, in which case this
+    call binds it). Soft mode 2026-05-29 → 2026-06-12: missing token
+    allowed + logged.
     """
+    _bind_or_check(draft, "vehicle_id", vehicle_id, db, http_request)
+
     from db_models import Vehicle
 
     vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
@@ -9667,13 +9880,45 @@ async def lookup_vehicle(
     request: VehicleLookupRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    draft: Optional[BookingDraft] = Depends(get_draft_token),
 ):
     """
     Lookup vehicle make and colour from DVLA Vehicle Enquiry Service.
 
     Takes a UK registration number and returns the make and colour.
     Spaces and special characters are automatically stripped from the registration.
+
+    Gated by PR 4b draft token: caller must hold a valid X-Draft-Token.
+    DVLA lookups consume a paid quota AND a registration is semi-PII,
+    so the per-token quota caps abuse to MAX_DVLA_LOOKUPS_PER_DRAFT.
+    Soft mode 2026-05-29 → 2026-06-12: missing token allowed + logged,
+    quota only enforced when token is present.
     """
+    if draft is not None:
+        # Single conditional UPDATE so two concurrent lookups can't both
+        # pass at quota - 1. Pre-2026-05-29-review this was a Python
+        # check + a separate UPDATE; two concurrent requests at count=9
+        # both observed 9 and both incremented, ending at 11.
+        # rowcount == 0 means the WHERE clause didn't match → quota
+        # already exceeded (or token disappeared between get and update).
+        result = db.execute(
+            text(
+                "UPDATE booking_drafts SET dvla_calls_count = "
+                "dvla_calls_count + 1 "
+                "WHERE token = :t AND dvla_calls_count < :max"
+            ),
+            {"t": draft.token, "max": MAX_DVLA_LOOKUPS_PER_DRAFT},
+        )
+        db.commit()
+        if result.rowcount == 0:
+            raise HTTPException(
+                status_code=429,
+                detail=f"DVLA lookup quota exceeded for this checkout "
+                       f"(max {MAX_DVLA_LOOKUPS_PER_DRAFT}). Reload the "
+                       f"booking page to start a new draft.",
+            )
+        db.refresh(draft)
+
     # Clean the registration number - remove spaces and non-alphanumeric chars
     clean_reg = re.sub(r'[^A-Za-z0-9]', '', request.registration.upper())
 
@@ -13269,39 +13514,6 @@ MAX_VERIFY_ATTEMPTS_PER_IP_PER_WINDOW = 20
 MAX_VERIFY_ATTEMPTS_PER_CODE = 5
 
 
-def _client_ip(request: Request) -> str:
-    """Resolve client IP. **Safe by default**: returns the immediate TCP
-    connection IP and IGNORES X-Forwarded-For / X-Real-IP, both of which
-    are client-controlled and can be rotated to bypass per-IP limits
-    (security review 2026-05-29).
-
-    To enable XFF-based resolution, set the env var TRUSTED_PROXY_HOPS=N
-    where N is the number of trusted proxy hops between the public
-    internet and this app. The helper then takes the Nth-from-rightmost
-    XFF entry — the IP that the LAST trusted proxy saw on the wire,
-    which is the real client IP iff every hop correctly appends. For
-    Railway-only deployment: TRUSTED_PROXY_HOPS=1. For Cloudflare→
-    Railway: TRUSTED_PROXY_HOPS=2.
-
-    Falls back to TCP connection IP if XFF is missing or shorter than N
-    entries. Caps return at 45 chars (IPv6 textual width)."""
-    direct = (request.client.host if request.client else "unknown")
-    try:
-        trusted_hops = int(os.environ.get("TRUSTED_PROXY_HOPS", "0") or "0")
-    except (TypeError, ValueError):
-        trusted_hops = 0
-    if trusted_hops > 0:
-        xff = request.headers.get("x-forwarded-for")
-        if xff:
-            parts = [p.strip() for p in xff.split(",") if p.strip()]
-            if len(parts) >= trusted_hops:
-                # Index from the right: parts[-trusted_hops] is the IP
-                # the *last* trusted proxy saw arriving on its socket.
-                candidate = parts[-trusted_hops]
-                return (candidate or direct or "unknown")[:45]
-    return (direct or "unknown")[:45]
-
-
 def _prune_old_throttle(db: Session) -> None:
     """Opportunistic cleanup. Volume is low (a few dozen rows/day) so
     pruning every request is cheap and keeps the index lean."""
@@ -13633,6 +13845,48 @@ async def auth_me(
         last_name=current_user.last_name,
         is_admin=current_user.is_admin,
     )
+
+
+class DraftTokenResponse(BaseModel):
+    """Returned by POST /api/booking-drafts. Frontend stores the token
+    in sessionStorage and sends it via X-Draft-Token on subsequent
+    customer-flow requests."""
+    token: str
+    expires_at: datetime
+
+
+@app.post("/api/booking-drafts", response_model=DraftTokenResponse)
+async def create_booking_draft(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Issue a per-checkout ownership token.
+
+    Frontend calls this on mount of the booking flow (BookingsNew.jsx).
+    Public, no auth — issuance is the bootstrapping step. The token
+    itself is what guards the customer-flow endpoints from PR 4b's
+    surface map (PATCH customer / PATCH vehicle / POST vehicle /
+    GET + POST heard-about-us / POST dvla-lookup — 6 in total).
+
+    Anti-abuse: prunes expired rows on every call so the table stays
+    lean even under spray; the token PK lookup is O(1) so creation
+    cost is dominated by the cleanup query (indexed). If issuance
+    abuse becomes a real concern, the throttle ledger PR 2 built
+    (auth_throttle) is the natural shape — defer until logs show it.
+    """
+    _prune_expired_drafts(db)
+    token = _gen_draft_token()
+    expires_at = datetime.utcnow().replace(tzinfo=timezone.utc) + timedelta(
+        seconds=DRAFT_TOKEN_TTL_SECS,
+    )
+    draft = BookingDraft(
+        token=token,
+        ip_address=_client_ip(request)[:45],
+        expires_at=expires_at,
+    )
+    db.add(draft)
+    db.commit()
+    return DraftTokenResponse(token=token, expires_at=expires_at)
 
 
 # =============================================================================
