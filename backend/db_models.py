@@ -880,11 +880,13 @@ class BookingDraft(Base):
     """Per-checkout ownership token (security review 2026-05-29 PR 4b).
 
     Server-issued cryptorandom token bound to a single in-flight booking
-    draft. Gates the 6 customer-flow endpoints that PR 4a left open
+    draft. Gates the 8 customer-flow endpoints that PR 4a left open
     (PATCH /api/customers/{id}, PATCH /api/vehicles/{id}, POST
-    /api/vehicles, GET /api/customers/heard-about-us-status,
-    POST /api/customers/heard-about-us, POST
-    /api/vehicles/dvla-lookup) so an attacker can't enumerate IDs.
+    /api/customers, POST /api/vehicles, PATCH /api/customers/{id}/billing,
+    GET /api/customers/heard-about-us-status, POST
+    /api/customers/heard-about-us, POST /api/vehicles/dvla-lookup) so an
+    attacker can't enumerate IDs. PR 4c filled in POST /api/customers
+    and PATCH .../billing after they were missed in the PR 4b first pass.
 
     Binding semantics: each (email | customer_id | vehicle_id) starts
     NULL. First mutation binds the draft to that value; subsequent

@@ -156,9 +156,10 @@ function Bookings({ isModal = false, onClose }) {
     })()
   )
 
-  // PR 4b: server-issued booking-draft token. Gates 6 customer-flow
-  // endpoints (PATCH customer, PATCH vehicle, POST vehicle, GET +
-  // POST heard-about-us, POST dvla-lookup) against IDOR enumeration.
+  // PR 4b + 4c: server-issued booking-draft token. Gates 8 customer-flow
+  // endpoints (POST + PATCH customer, PATCH customer billing, POST +
+  // PATCH vehicle, GET + POST heard-about-us, POST dvla-lookup) against
+  // IDOR enumeration.
   // Stored in sessionStorage so it survives hard refresh inside the
   // same browser tab; 24h server-side TTL. Backend is in SOFT MODE
   // 2026-05-29 → 2026-06-12 — missing token is allowed but logged.
@@ -193,7 +194,7 @@ function Bookings({ isModal = false, onClose }) {
   }
 
   // Bootstrap on mount so most user actions find a ready token. The
-  // ensureDraftToken() awaits in the 6 gated fetch paths cover the
+  // ensureDraftToken() awaits in the 8 gated fetch paths cover the
   // race where the user submits faster than this fetch lands.
   useEffect(() => {
     ensureDraftToken()
@@ -202,9 +203,22 @@ function Bookings({ isModal = false, onClose }) {
   // Spread into fetch() options to attach the draft token header
   // when one exists. Sync helper — callers do
   //   await ensureDraftToken()
-  // first if they need to guarantee presence (the 6 gated paths do).
+  // first if they need to guarantee presence (the 8 gated paths do).
   const draftHeaders = () =>
     draftTokenRef.current ? { 'X-Draft-Token': draftTokenRef.current } : {}
+
+  // Discard the current draft token so the next ensureDraftToken()
+  // call issues a fresh one. Used when the customer's checkout
+  // identity changes mid-flow (currently: email-change in
+  // saveCustomer). PR 4c review fix 2026-05-29: without this, a
+  // draft already bound to the old email/customer_id would 403 the
+  // create-new-customer POST that the email-change branch
+  // explicitly takes.
+  const resetDraftToken = () => {
+    draftTokenRef.current = null
+    draftTokenPromiseRef.current = null
+    sessionStorage.removeItem('booking_draftToken')
+  }
   // DVLA lookup state
   const [dvlaLoading, setDvlaLoading] = useState(false)
   const [dvlaError, setDvlaError] = useState('')
@@ -1614,17 +1628,23 @@ function Bookings({ isModal = false, onClose }) {
       }
     }
 
-    // Email changed - reset vehicle since it's linked to old customer
+    // Email changed - reset vehicle since it's linked to old customer,
+    // and reset the draft token so the new POST /api/customers below
+    // doesn't 403 against the old draft.email / draft.customer_id
+    // binding (PR 4c review fix 2026-05-29 — new email = new
+    // checkout identity).
     if (emailChanged) {
-      console.log('Email changed, creating new customer and resetting vehicle')
+      console.log('Email changed, creating new customer + resetting vehicle + draft')
       setVehicleId(null)
+      resetDraftToken()
     }
 
     // Create new customer
     try {
+      await ensureDraftToken()
       const response = await fetch(`${API_BASE_URL}/api/customers`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...draftHeaders() },
         body: JSON.stringify({
           first_name: formData.firstName,
           last_name: formData.lastName,
@@ -1713,9 +1733,10 @@ function Bookings({ isModal = false, onClose }) {
     const customerIdToUse = custId || customerId
     if (!customerIdToUse) return false
     try {
+      await ensureDraftToken()
       const response = await fetch(`${API_BASE_URL}/api/customers/${customerIdToUse}/billing`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...draftHeaders() },
         body: JSON.stringify({
           billing_address1: formData.billingAddress1,
           billing_address2: formData.billingAddress2,

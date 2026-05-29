@@ -1419,9 +1419,10 @@ def _client_ip(request: Request) -> str:
 # ----- Booking Draft Token (PR 4b) ------------------------------------------
 #
 # Server-issued cryptorandom token bound to a single in-flight checkout
-# draft. Gates the 6 customer-flow endpoints PR 4a left open against
-# IDOR enumeration (PATCH customer, PATCH vehicle, POST vehicle,
-# GET + POST heard-about-us, POST dvla-lookup).
+# draft. Gates the 8 customer-flow endpoints PR 4a left open against
+# IDOR enumeration (POST + PATCH customer, PATCH customer billing,
+# POST + PATCH vehicle, GET + POST heard-about-us, POST dvla-lookup).
+# PR 4c filled POST customer + PATCH billing after PR 4b missed them.
 #
 # Rollout shape: ONE PR (backend + frontend together) with a 14-day
 # SOFT-MODE period. Backend accepts missing X-Draft-Token in soft mode
@@ -9318,13 +9319,48 @@ async def create_or_update_customer(
     request: CreateCustomerRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    draft: Optional[BookingDraft] = Depends(get_draft_token),
 ):
     """
     Create or update a customer (Step 1: Contact Details).
 
     If a customer with this email exists, updates their details.
     Returns the customer ID for use in subsequent steps.
+
+    Gated by PR 4c draft token (2026-05-29 security review follow-up
+    to PR 4b — this endpoint and PATCH /api/customers/{id}/billing
+    were missed in the original PR 4b surface map, would silently
+    pass in soft mode then 401 on the 2026-06-12 enforcement flip).
+    Binding: draft.email is first-touched on entry, draft.customer_id
+    is first-touched from the returned row. Soft mode preserved.
+
+    Pre-mutation ownership check (PR 4c review fix 2026-05-29):
+    if draft.customer_id is already set, look up the submitted email
+    BEFORE calling create_customer. If the email resolves to a
+    different customer (or to no customer at all when the draft is
+    already bound), 403 immediately — we never let a mutation land
+    on customer B and only THEN return "blocked". Customer-snapshot
+    semantics on bookings mean old bookings stay correct, but the
+    canonical customers row would otherwise be overwritten before
+    the binding-check fires.
     """
+    _bind_or_check(draft, "email", (request.email or "").lower(), db, http_request)
+
+    # Check ownership BEFORE writing. See docstring fix-block above.
+    if draft is not None and draft.customer_id is not None:
+        existing = db_service.get_customer_by_email(db, request.email)
+        if existing is None or existing.id != draft.customer_id:
+            print(
+                f"[DRAFT-TOKEN-BIND-MISMATCH] field=customer_id "
+                f"draft.value={draft.customer_id} "
+                f"req.email_resolves_to={existing.id if existing else None} "
+                f"token={draft.token[:8]}... ip={_client_ip(http_request)}"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="X-Draft-Token does not own this customer",
+            )
+
     try:
         customer, is_new_customer = db_service.create_customer(
             db=db,
@@ -9333,6 +9369,11 @@ async def create_or_update_customer(
             email=request.email,
             phone=request.phone,
         )
+
+        # Bind the (just-created or refreshed) customer to the draft so
+        # subsequent PATCH /api/customers/{id} and PATCH
+        # /api/customers/{id}/billing from this checkout match.
+        _bind_or_check(draft, "customer_id", customer.id, db, http_request)
 
         # Log audit event for customer entry
         log_audit_event(
@@ -9576,13 +9617,28 @@ async def update_customer_billing(
     request: UpdateCustomerBillingRequest,
     http_request: Request,
     db: Session = Depends(get_db),
+    draft: Optional[BookingDraft] = Depends(get_draft_token),
 ):
     """
     Update customer billing address (Step 5: Billing Address).
+
+    Gated by PR 4c draft token (2026-05-29 security review follow-up
+    to PR 4b — missed in the original PR 4b pass, would silently pass
+    in soft mode then 401 on the 2026-06-12 enforcement flip).
+    Binding: draft.customer_id is first-touched or matched. Soft mode
+    preserved — missing token allowed + logged.
+
+    Order is lookup-first, bind-second (PR 4c review fix): a request
+    against a nonexistent customer_id would otherwise poison the
+    draft (first-touch binds customer_id to the bogus value), then
+    return 404. With lookup-first the 404 fires cleanly without
+    side-effects on the draft.
     """
     customer = db_service.get_customer_by_id(db, customer_id)
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
+
+    _bind_or_check(draft, "customer_id", customer_id, db, http_request)
 
     try:
         from datetime import datetime, timezone
@@ -13864,9 +13920,10 @@ async def create_booking_draft(
 
     Frontend calls this on mount of the booking flow (BookingsNew.jsx).
     Public, no auth — issuance is the bootstrapping step. The token
-    itself is what guards the customer-flow endpoints from PR 4b's
-    surface map (PATCH customer / PATCH vehicle / POST vehicle /
-    GET + POST heard-about-us / POST dvla-lookup — 6 in total).
+    itself is what guards the customer-flow endpoints from the PR 4b+4c
+    surface map (POST + PATCH customer / PATCH customer billing /
+    POST + PATCH vehicle / GET + POST heard-about-us /
+    POST dvla-lookup — 8 in total).
 
     Anti-abuse: prunes expired rows on every call so the table stays
     lean even under spray; the token PK lookup is O(1) so creation
