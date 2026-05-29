@@ -1555,6 +1555,7 @@ class TestOvernightShiftBoundaries:
         """GET /api/roster with date filter should return overnight shifts starting on that date."""
         from main import app
         from database import get_db
+        from routers.roster import require_admin
 
         mock_shifts = [
             self.create_mock_shift(
@@ -1579,6 +1580,7 @@ class TestOvernightShiftBoundaries:
             yield mock_db
 
         app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = lambda: mock_admin_user
 
         try:
             client = TestClient(app)
@@ -1592,6 +1594,7 @@ class TestOvernightShiftBoundaries:
         """GET /api/roster with date filter should return overnight shifts ending on that date."""
         from main import app
         from database import get_db
+        from routers.roster import require_admin
 
         mock_shifts = [
             self.create_mock_shift(
@@ -1614,6 +1617,7 @@ class TestOvernightShiftBoundaries:
             yield mock_db
 
         app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = lambda: mock_admin_user
 
         try:
             client = TestClient(app)
@@ -1627,6 +1631,7 @@ class TestOvernightShiftBoundaries:
         """GET /api/roster with date_from/date_to should include overnight shifts ending in range."""
         from main import app
         from database import get_db
+        from routers.roster import require_admin
 
         # Shift starts Mar 31, ends Apr 1
         mock_shifts = [
@@ -1650,6 +1655,7 @@ class TestOvernightShiftBoundaries:
             yield mock_db
 
         app.dependency_overrides[get_db] = mock_get_db
+        app.dependency_overrides[require_admin] = lambda: mock_admin_user
 
         try:
             client = TestClient(app)

@@ -71,7 +71,14 @@ def client_with_shifts():
     def _mock_get_db():
         yield mock_db
 
+    from routers.roster import require_admin
+    from types import SimpleNamespace
+    _admin = SimpleNamespace(
+        id=1, email="admin@tag.test", is_admin=True, is_active=True,
+        first_name="Admin", last_name="Test",
+    )
     app.dependency_overrides[get_db] = _mock_get_db
+    app.dependency_overrides[require_admin] = lambda: _admin
     try:
         client = TestClient(app)
 

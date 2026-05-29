@@ -597,8 +597,12 @@ class TestEmployeeAPI:
         """Set up mock dependencies."""
         from main import app
         from database import get_db
+        from routers.roster import require_admin
 
         app.dependency_overrides[get_db] = lambda: mock_db
+        # Admin auth was added to roster endpoints 2026-05-29 — every
+        # admin-side test needs this override to clear the gate.
+        app.dependency_overrides[require_admin] = lambda: mock_admin_user
 
         yield
 
@@ -746,8 +750,11 @@ class TestRosterAPI:
         """Set up mock dependencies."""
         from main import app
         from database import get_db
+        from routers.roster import require_admin
 
         app.dependency_overrides[get_db] = lambda: mock_db
+        # Admin gate (added 2026-05-29) — overridden so the handler runs.
+        app.dependency_overrides[require_admin] = lambda: create_mock_user(is_admin=True)
 
         yield
 
@@ -868,8 +875,10 @@ class TestAutoAssign:
         """Set up mock dependencies."""
         from main import app
         from database import get_db
+        from routers.roster import require_admin
 
         app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[require_admin] = lambda: create_mock_user(is_admin=True)
 
         yield
 
@@ -1082,8 +1091,10 @@ class TestEmployeeListFormat:
         """Set up mock dependencies."""
         from main import app
         from database import get_db
+        from routers.roster import require_admin
 
         app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[require_admin] = lambda: create_mock_user(is_admin=True)
 
         yield
 
@@ -1259,8 +1270,10 @@ class TestPhoneNumberValidation:
         """Set up mock dependencies."""
         from main import app
         from database import get_db
+        from routers.roster import require_admin
 
         app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[require_admin] = lambda: create_mock_user(is_admin=True)
 
         yield
 
@@ -1392,8 +1405,10 @@ class TestStaffListAPI:
         """Set up mock dependencies."""
         from main import app
         from database import get_db
+        from routers.roster import require_admin
 
         app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[require_admin] = lambda: create_mock_user(is_admin=True)
 
         yield
 
@@ -1470,8 +1485,10 @@ class TestBookingsForDateAPI:
         """Set up mock dependencies."""
         from main import app
         from database import get_db
+        from routers.roster import require_admin
 
         app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[require_admin] = lambda: create_mock_user(is_admin=True)
 
         yield
 
@@ -1733,8 +1750,10 @@ class TestShiftBookingLink:
         """Set up mock dependencies."""
         from main import app
         from database import get_db
+        from routers.roster import require_admin
 
         app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[require_admin] = lambda: create_mock_user(is_admin=True)
 
         yield
 

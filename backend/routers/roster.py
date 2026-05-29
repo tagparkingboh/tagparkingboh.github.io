@@ -488,7 +488,8 @@ async def list_all_staff(
         None,
         description="Filter by auto_assign_excluded status. Pass false to get the assignable pool (excluded users hidden — used by the QA Roster Planner edit modal).",
     ),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     List ALL users (both admins and employees) for shift assignment.
@@ -512,7 +513,8 @@ async def list_all_staff(
 @router.get("/employees", response_model=List[EmployeeResponse])
 async def list_employees(
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     List all employee users (is_admin = False).
@@ -530,7 +532,8 @@ async def list_employees(
 @router.get("/employees/{employee_id}", response_model=EmployeeResponse)
 async def get_employee(
     employee_id: int,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """Get a single employee by ID."""
     employee = db.query(User).filter(
@@ -547,7 +550,8 @@ async def get_employee(
 @router.post("/employees", response_model=EmployeeResponse, status_code=201)
 async def create_employee(
     employee: EmployeeCreate,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     Create a new employee user (is_admin = False).
@@ -586,7 +590,8 @@ async def create_employee(
 async def update_employee(
     employee_id: int,
     updates: EmployeeUpdate,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """Update an employee's details."""
     employee = db.query(User).filter(
@@ -625,7 +630,8 @@ async def update_employee(
 @router.delete("/employees/{employee_id}")
 async def deactivate_employee(
     employee_id: int,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     Soft-deactivate an employee (sets is_active = False).
@@ -648,7 +654,8 @@ async def deactivate_employee(
 @router.post("/employees/{employee_id}/reactivate")
 async def reactivate_employee(
     employee_id: int,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """Reactivate a deactivated employee."""
     employee = db.query(User).filter(
@@ -684,7 +691,8 @@ async def list_shifts(
             "excludes 'auto' shifts so the regular admin Calendar stays clean."
         ),
     ),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     List roster shifts with optional filters.
@@ -751,7 +759,8 @@ async def list_shifts(
 @router.get("/roster/bookings-for-date")
 async def get_bookings_for_date(
     date: date_type = Query(..., description="Date to fetch bookings for (YYYY-MM-DD)"),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     Get bookings that have a drop-off or pickup on the specified date.
@@ -1196,7 +1205,8 @@ async def get_employee_monthly_hours(
 @router.get("/roster/export")
 async def export_roster_csv(
     week_start: date_type = Query(..., description="Start date for export"),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     Export roster shifts as CSV.
@@ -1261,7 +1271,8 @@ async def export_roster_csv(
 @router.get("/roster/{shift_id}", response_model=RosterShiftResponse)
 async def get_shift(
     shift_id: int,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """Get a single roster shift by ID."""
     shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
@@ -1275,7 +1286,8 @@ async def get_shift(
 @router.post("/roster", response_model=RosterShiftResponse, status_code=201)
 async def create_shift(
     shift_data: RosterShiftCreate,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     Create a new roster shift.
@@ -1373,7 +1385,8 @@ async def create_shift(
 async def update_shift(
     shift_id: int,
     updates: RosterShiftUpdate,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """Update a roster shift."""
     shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
@@ -1507,7 +1520,8 @@ async def update_shift(
 @router.delete("/roster/{shift_id}")
 async def delete_shift(
     shift_id: int,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """Delete a roster shift (hard delete)."""
     shift = db.query(RosterShift).filter(RosterShift.id == shift_id).first()
@@ -1972,7 +1986,8 @@ async def unassign_shift(
 @router.post("/roster/auto-assign", response_model=AutoAssignResponse)
 async def auto_assign_shifts(
     request: AutoAssignRequest,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     Auto-generate roster shifts from bookings in the date range.
@@ -2726,7 +2741,8 @@ async def delete_employee_unavailability(
 async def get_monthly_payroll(
     year: int = Query(..., description="Year (e.g., 2026)"),
     month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     Get monthly payroll summary for all staff.
@@ -2927,7 +2943,8 @@ async def list_holidays(
     date_from: Optional[date_type] = Query(None, description="Filter from date (YYYY-MM-DD)"),
     date_to: Optional[date_type] = Query(None, description="Filter to date (YYYY-MM-DD)"),
     staff_id: Optional[int] = Query(None, description="Filter by staff member"),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     List employee holidays with optional filters.
@@ -2959,7 +2976,8 @@ async def list_holidays(
 @router.get("/holidays/for-date")
 async def get_holidays_for_date(
     date: date_type = Query(..., description="Date to check (YYYY-MM-DD)"),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """
     Get all employees on holiday for a specific date.
@@ -2976,7 +2994,8 @@ async def get_holidays_for_date(
 @router.get("/holidays/{holiday_id}")
 async def get_holiday(
     holiday_id: int,
-    db: Session = Depends(get_db)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
 ):
     """Get a single holiday by ID."""
     holiday = db.query(EmployeeHoliday).filter(EmployeeHoliday.id == holiday_id).first()
