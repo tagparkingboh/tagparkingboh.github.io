@@ -104,7 +104,7 @@ from stripe_service import (
 )
 
 # Database imports
-from database import get_db, init_db
+from database import get_db, init_db, get_sql_console_db
 from db_models import BookingStatus, PaymentStatus, FlightDeparture, FlightArrival, AuditLog, AuditLogEvent, ErrorLog, ErrorSeverity, MarketingSubscriber, Booking as DbBooking, Vehicle as DbVehicle, User, LoginCode, Session as DbSession, VehicleInspection, InspectionType, BlockedDate, BookingDraft
 import db_service
 import json
@@ -15580,21 +15580,45 @@ async def get_sql_session_status(
 @app.post("/api/admin/sql/execute")
 async def execute_sql_query(
     request: SQLQueryRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sql_console_db),
     current_user: User = Depends(require_admin),
 ):
     """
     Execute a SQL query against the database.
 
-    Security:
-    - Requires valid session token from PIN verification
-    - Blocks dangerous commands (DROP, ALTER, CREATE, etc.)
-    - Requires confirmation for write operations (INSERT, UPDATE, DELETE)
-    - 30 second timeout
-    - 500 row limit on results
-    - All queries are logged to audit_logs
+    Security (post-PR-9 layering, 2026-05-30):
+      LAYER 1  require_admin + PIN session token (existing)
+      LAYER 2  prefix allow-list: only SELECT/WITH reach the executor
+               (PR 8)
+      LAYER 3  comment-aware checks + multi-statement block + CALL
+               blocklist (PR 7)
+      LAYER 4  SET TRANSACTION READ ONLY before the user query
+               (PR 8 review-fix HIGH)
+      LAYER 5  the DB connection itself uses the tag_sql_console
+               Postgres role, which has only SELECT privileges in
+               schema public (PR 9). Even if every other layer
+               somehow misfired, an UPDATE/INSERT/DELETE would still
+               fail with "permission denied for table ..." at the
+               Postgres role level.
+
+    Plus: 30s statement timeout, 500-row fetch limit, audit_logs
+    persisted for every attempt (success/error/blocked) via the
+    RW connection — the RO role can't INSERT to audit_logs but that
+    write was never the SQL console's job anyway.
     """
     import time
+
+    # PR 9 2026-05-30: fail closed if the RO connection isn't
+    # configured. Refusing to silently fall back to the RW
+    # connection (which would re-open the write path) means a
+    # misconfigured environment surfaces as a 503 instead of
+    # silently degrading the contract.
+    if db is None:
+        raise HTTPException(
+            status_code=503,
+            detail="SQL console DB role not configured "
+                   "(SQL_CONSOLE_DATABASE_URL env var unset).",
+        )
 
     # Verify session token
     session = sql_session_tokens.get(current_user.id)

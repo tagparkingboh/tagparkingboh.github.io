@@ -203,7 +203,13 @@ def valid_sql_session(admin_user, monkeypatch):
 
 @pytest.fixture
 def stub_db(monkeypatch):
-    """Replace the get_db dependency with a MagicMock session."""
+    """Replace the SQL console's dependency with a MagicMock session.
+
+    2026-05-30 PR 9: execute_sql_query now uses get_sql_console_db
+    (the read-only role dep), not get_db. Tests override BOTH so
+    legacy fixtures keep working and the 503 fail-closed in
+    execute_sql_query is short-circuited by the mock yielding."""
+    from database import get_sql_console_db
     db = MagicMock()
     db.execute = MagicMock()
     db.commit = MagicMock()
@@ -212,10 +218,12 @@ def stub_db(monkeypatch):
     def _gen():
         yield db
     app.dependency_overrides[get_db] = _gen
+    app.dependency_overrides[get_sql_console_db] = _gen
     try:
         yield db
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_sql_console_db, None)
 
 
 class TestExecuteMultiStatementGate:

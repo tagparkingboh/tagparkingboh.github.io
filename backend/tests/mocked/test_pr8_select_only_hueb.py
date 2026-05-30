@@ -90,6 +90,11 @@ def valid_sql_session(admin_user):
 
 @pytest.fixture
 def stub_db():
+    # 2026-05-30 PR 9: execute_sql_query now uses get_sql_console_db
+    # (the read-only role dep), not get_db. We override BOTH so the
+    # mock reaches the handler and the 503 fail-closed path doesn't
+    # trip in tests that aren't testing it.
+    from database import get_sql_console_db
     db = MagicMock()
     db.execute = MagicMock()
     db.commit = MagicMock()
@@ -98,10 +103,12 @@ def stub_db():
     def _gen():
         yield db
     app.dependency_overrides[get_db] = _gen
+    app.dependency_overrides[get_sql_console_db] = _gen
     try:
         yield db
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_sql_console_db, None)
 
 
 @pytest.fixture

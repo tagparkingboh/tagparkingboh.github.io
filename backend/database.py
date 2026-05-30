@@ -187,6 +187,76 @@ def get_db():
         db.close()
 
 
+# ----- SQL Console read-only engine (PR 9, 2026-05-30) ----------------------
+#
+# Defence in depth on top of PR 8. Even if SET TRANSACTION READ ONLY is
+# removed from execute_sql_query, this connection cannot write — the
+# tag_sql_console Postgres role only has SELECT privileges in schema
+# public (no INSERT/UPDATE/DELETE/TRUNCATE/ALTER/CREATE/anything).
+#
+# Provisioning DDL was run inline on staging + prod 2026-05-30:
+#   CREATE ROLE tag_sql_console WITH LOGIN PASSWORD '...';
+#   GRANT CONNECT ON DATABASE railway TO tag_sql_console;
+#   GRANT USAGE ON SCHEMA public TO tag_sql_console;
+#   GRANT SELECT ON ALL TABLES IN SCHEMA public TO tag_sql_console;
+#   ALTER DEFAULT PRIVILEGES IN SCHEMA public
+#     GRANT SELECT ON TABLES TO tag_sql_console;
+#
+# Staging and prod use distinct passwords for blast-radius isolation.
+# Both are configured on Railway as the env var SQL_CONSOLE_DATABASE_URL.
+#
+# Audit log writes (PR 7) continue to use the RW SessionLocal because
+# the RO role cannot INSERT to audit_logs — which is fine; an admin
+# inspecting prod shouldn't be inserting their own audit trail anyway.
+
+SQL_CONSOLE_DATABASE_URL = os.getenv("SQL_CONSOLE_DATABASE_URL", "")
+
+sql_console_engine = None
+SqlConsoleSessionLocal = None
+
+if SQL_CONSOLE_DATABASE_URL:
+    if SQL_CONSOLE_DATABASE_URL.startswith("postgres://"):
+        SQL_CONSOLE_DATABASE_URL = SQL_CONSOLE_DATABASE_URL.replace(
+            "postgres://", "postgresql://", 1,
+        )
+    try:
+        # Smaller pool — the SQL console is admin-only, rare-use.
+        sql_console_engine = create_engine(
+            SQL_CONSOLE_DATABASE_URL,
+            pool_size=2,
+            max_overflow=5,
+            pool_timeout=30,
+            pool_recycle=1800,
+            pool_pre_ping=True,
+        )
+        SqlConsoleSessionLocal = sessionmaker(
+            autocommit=False, autoflush=False, bind=sql_console_engine,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to create SQL console engine: {e}")
+        sql_console_engine = None
+        SqlConsoleSessionLocal = None
+
+
+def get_sql_console_db():
+    """FastAPI dep for the read-only SQL console connection.
+
+    Yields None when SQL_CONSOLE_DATABASE_URL is unset — the handler
+    is expected to fail-closed with a 503 in that case (same shape
+    as PR 6's SMS_WEBHOOK_SECRET). Refusing to silently fall back to
+    the RW connection means a misconfigured environment can't quietly
+    re-enable writes via the console.
+    """
+    if SqlConsoleSessionLocal is None:
+        yield None
+        return
+    db = SqlConsoleSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 def get_pool_status():
     """Get current connection pool status for monitoring."""
     pool = engine.pool
