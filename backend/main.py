@@ -1513,6 +1513,56 @@ def _bind_or_check(
         )
 
 
+# ----- SMS Webhook secret (PR 6, 2026-05-29) --------------------------------
+#
+# The SMS Works webhooks (inbound SMS + delivery report) were public and
+# unauthenticated pre-2026-05-29 — anyone who guessed the URL could
+# inject fake inbound rows or flip outbound rows to DELIVERED/FAILED.
+# PR 6 closes this with a URL-path shared secret. SMS Works' dashboard
+# does NOT expose a custom-header field on the webhook config screen
+# (the only input is the destination URL itself), so the secret is
+# baked into the path:
+#
+#   /api/webhooks/sms/incoming/{secret}
+#   /api/webhooks/sms/delivery-report/{secret}
+#
+# The secret lives in Railway env SMS_WEBHOOK_SECRET. The handler
+# compares the path-param against the env via secrets.compare_digest
+# and never logs the full URL (masked to first 8 chars).
+#
+# Hard cutover rollout — SMS webhooks are infrequent enough that
+# "in-flight" loss during the deploy window is acceptable, and SMS
+# Works retries failed webhooks.
+
+
+def _verify_sms_webhook_secret(secret: str) -> None:
+    """Verify the URL-path secret matches SMS_WEBHOOK_SECRET. Fails
+    closed:
+
+      - SMS_WEBHOOK_SECRET env var unset  → 503 "not configured"
+        (refuses to silently accept everything if ops forgot to set
+        the secret on a fresh environment).
+      - Path value missing or mismatched  → 401 "invalid"
+
+    Uses secrets.compare_digest for constant-time comparison so an
+    attacker can't time the comparison to discover prefix matches.
+    Caller (the route handler) raises HTTPException — this function
+    raises too, on the same code path. Returns None on success.
+    """
+    expected = os.environ.get("SMS_WEBHOOK_SECRET")
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="SMS webhook auth not configured "
+                   "(SMS_WEBHOOK_SECRET env var unset)",
+        )
+    if not secret or not secrets.compare_digest(secret, expected):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid SMS webhook secret",
+        )
+
+
 # =============================================================================
 # Admin Endpoints
 # =============================================================================
@@ -17878,27 +17928,43 @@ async def webhook_sendgrid(
 
 # SMS Webhooks (no auth - public endpoints for SMS Works callbacks)
 # Note: SMS Works sends requests with trailing slash, so we handle both formats
-@app.post("/api/webhooks/sms/incoming")
-@app.post("/api/webhooks/sms/incoming/")
-async def webhook_sms_incoming(
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """Handle incoming SMS webhook from SMS Works."""
-    payload = await request.json()
-    print(f"[SMS WEBHOOK] Received incoming SMS: {payload}")
-    success = sms_service.handle_incoming_sms(payload, db)
-    print(f"[SMS WEBHOOK] Processing result: {success}")
-    return {"success": success}
+# /api/webhooks/sms/incoming route removed 2026-05-29 PR 6: TAG sends
+# one-way SMS only ("Please do not reply to this text" appears on every
+# outbound message), so there is no legitimate inbound traffic and no
+# SMS Works dashboard config that would post here. Removing the route
+# eliminates the IDOR attack surface entirely; same pattern as PR 5
+# deleting the legacy POST /api/bookings. sms_service.handle_incoming_sms
+# stays — it's still imported by test_sms_integration.py for direct
+# in-memory exercises of the parsing/dedup logic, and re-adding the
+# route later (if "no reply" policy changes) is a small additive change.
 
 
-@app.post("/api/webhooks/sms/delivery-report")
-@app.post("/api/webhooks/sms/delivery-report/")
+@app.post("/api/webhooks/sms/delivery-report/{secret}")
+@app.post("/api/webhooks/sms/delivery-report/{secret}/")
 async def webhook_sms_delivery(
+    secret: str,
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """Handle delivery report webhook from SMS Works."""
+    """Handle delivery report webhook from SMS Works.
+
+    Gated by PR 6: the {secret} path param must match SMS_WEBHOOK_SECRET
+    in Railway env. Pre-2026-05-29 this was unauth — anyone who
+    guessed the URL could flip outbound SMS rows to DELIVERED or
+    FAILED by message id.
+
+    Both trailing and non-trailing slash forms are registered directly
+    (NOT via FastAPI redirect): some webhook providers don't follow
+    307 redirects on POST reliably, or treat the redirect as a failed
+    delivery and never retry. The pre-PR-6 code did this same dual
+    registration; PR 6 review-fix 2026-05-29 reinstated it after the
+    initial pivot to URL-path tokens accidentally collapsed it.
+
+    The full URL contains the secret, so we never log it: the
+    [SMS WEBHOOK] log line below only prints the parsed body, NOT
+    the request URL.
+    """
+    _verify_sms_webhook_secret(secret)
     payload = await request.json()
     print(f"[SMS WEBHOOK] Received delivery report: {payload}")
     success = sms_service.handle_delivery_report(payload, db)
