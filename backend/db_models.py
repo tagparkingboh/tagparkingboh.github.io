@@ -529,6 +529,9 @@ class AuditLogEvent(enum.Enum):
     # Roster Planner Phase 3 — additive commit + undo
     PLANNER_RUN_COMMITTED = "planner_run_committed"  # Admin committed N proposals from a run
     PLANNER_RUN_UNDONE = "planner_run_undone"  # Admin undid (deleted) committed shifts from a run
+    # Admin SQL console (PR 7, 2026-05-29) — every query attempt persists
+    # an audit_logs row with user_id, query, success/error, row count.
+    ADMIN_SQL_QUERY = "admin_sql_query"
 
 
 class AuditLog(Base):

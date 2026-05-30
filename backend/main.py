@@ -15325,22 +15325,161 @@ async def get_error_log_types(
 # Store SQL session tokens in memory (user_id -> {token, expires_at})
 sql_session_tokens: dict = {}
 
-# Blocked SQL commands for security
+# Blocked SQL commands for security. CALL added 2026-05-29 PR 7 — stored
+# procedures are arbitrary code execution from a SQL prompt, same shape
+# as the EXECUTE block.
 BLOCKED_SQL_COMMANDS = [
     'DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT', 'REVOKE',
     'VACUUM', 'REINDEX', 'CLUSTER', 'COPY', 'EXECUTE',
     'DEALLOCATE', 'PREPARE', 'LISTEN', 'NOTIFY', 'UNLISTEN',
     'LOAD', 'SECURITY', 'OWNER', 'TABLESPACE', 'EXTENSION',
+    'CALL',
 ]
 
 # Commands that require confirmation
 WRITE_SQL_COMMANDS = ['INSERT', 'UPDATE', 'DELETE']
 
 
+def _strip_sql_comments(query: str) -> str:
+    """Strip -- line comments and /* */ block comments BUT preserve
+    quoted-string contents.
+
+    PR 7 2026-05-29: used to NORMALISE the query before downstream
+    gates (write-confirmation, SELECT detection, query_type). Pre-PR-7
+    a leading comment broke is_write_operation:
+        /* maintenance */ UPDATE bookings SET status='cancelled'
+    The raw query started with '/' so the write-confirmation gate
+    skipped it. After stripping, the cleaned query starts with
+    'UPDATE' and the confirmation requirement fires.
+
+    NOTE on blocked-keyword detection: stripping comments BEFORE the
+    keyword regex means a destructive keyword that appears ONLY in
+    a comment (e.g. 'SELECT 1 -- DROP TABLE users') will NOT be
+    blocked. That is the correct behaviour — Postgres ignores the
+    comment, so the DROP would never execute; rejecting it would
+    only prevent legitimate annotated queries. The keyword must
+    appear OUTSIDE any comment to actually run, and the regex
+    catches it there.
+
+    Walks the query char-by-char tracking quote + comment state. A
+    '--' inside a 'string literal' is NOT treated as a comment.
+    Postgres escape '' (doubled single-quote) preserved.
+    """
+    out = []
+    i = 0
+    n = len(query)
+    in_squote = in_dquote = in_line_comment = in_block_comment = False
+    while i < n:
+        c = query[i]
+        nxt = query[i + 1] if i + 1 < n else ''
+        if in_line_comment:
+            if c == '\n':
+                in_line_comment = False
+                out.append(c)
+            i += 1
+            continue
+        if in_block_comment:
+            if c == '*' and nxt == '/':
+                in_block_comment = False
+                i += 2
+                continue
+            i += 1
+            continue
+        if in_squote:
+            out.append(c)
+            if c == "'" and nxt == "'":  # '' escape
+                out.append(nxt)
+                i += 2
+                continue
+            if c == "'":
+                in_squote = False
+            i += 1
+            continue
+        if in_dquote:
+            out.append(c)
+            if c == '"' and nxt == '"':
+                out.append(nxt)
+                i += 2
+                continue
+            if c == '"':
+                in_dquote = False
+            i += 1
+            continue
+        # Not inside any quote or comment
+        if c == '-' and nxt == '-':
+            in_line_comment = True
+            i += 2
+            continue
+        if c == '/' and nxt == '*':
+            in_block_comment = True
+            i += 2
+            continue
+        if c == "'":
+            in_squote = True
+        elif c == '"':
+            in_dquote = True
+        out.append(c)
+        i += 1
+    return ''.join(out)
+
+
+def _contains_unquoted_semicolon(query: str) -> bool:
+    """Return True if the query contains a ; outside of string literals.
+    PR 7 2026-05-29: closes the multi-statement chaining bypass:
+        SELECT 1; DELETE FROM bookings WHERE id > 0
+    The keyword check would flag DELETE only on a write op (requires
+    confirmation); chaining lets the SELECT win the gate and the
+    DELETE rides along. Reject any unquoted ; before the keyword
+    check runs.
+
+    Callers should strip ONE trailing ; first (so 'SELECT 1;' is
+    OK) — the execute handler does this.
+    """
+    in_squote = in_dquote = False
+    i = 0
+    n = len(query)
+    while i < n:
+        c = query[i]
+        nxt = query[i + 1] if i + 1 < n else ''
+        if in_squote:
+            if c == "'" and nxt == "'":
+                i += 2
+                continue
+            if c == "'":
+                in_squote = False
+            i += 1
+            continue
+        if in_dquote:
+            if c == '"' and nxt == '"':
+                i += 2
+                continue
+            if c == '"':
+                in_dquote = False
+            i += 1
+            continue
+        if c == "'":
+            in_squote = True
+        elif c == '"':
+            in_dquote = True
+        elif c == ';':
+            return True
+        i += 1
+    return False
+
+
 def is_sql_command_blocked(query: str) -> tuple[bool, str]:
-    """Check if a SQL query contains blocked commands."""
+    """Check if a SQL query contains blocked commands.
+
+    PR 7 2026-05-29: runs the keyword regex on the comment-stripped
+    form of the query. A destructive keyword that appears ONLY inside
+    a -- or /* */ comment passes the check (Postgres ignores comments
+    when executing, so the keyword wouldn't run anyway, and rejecting
+    annotated queries blocks a legitimate workflow). A real DROP /
+    CALL / etc. outside any comment still fires this gate.
+    """
     import re
-    query_upper = query.upper().strip()
+    cleaned = _strip_sql_comments(query)
+    query_upper = cleaned.upper().strip()
     for cmd in BLOCKED_SQL_COMMANDS:
         # Use word boundary regex to match whole command words only
         # This prevents false positives like 'created_at' matching 'CREATE'
@@ -15469,37 +15608,102 @@ async def execute_sql_query(
     if not query:
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    # Check for blocked commands
+    # Strip ONE trailing semicolon (a single trailing ; is normal SQL).
+    # Anything beyond — or ; in the middle of the query — is rejected
+    # below by the multi-statement guard.
+    if query.endswith(';'):
+        query = query[:-1].rstrip()
+        if not query:
+            raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    # PR 7 2026-05-29 (review-fix): strip comments ONCE and use the
+    # cleaned query for ALL downstream gate decisions — is_write_operation,
+    # SELECT detection, query_type. Pre-fix only is_sql_command_blocked
+    # used the stripped form, which let
+    #   /* maintenance */ UPDATE bookings SET status='cancelled'
+    # bypass the write-confirmation gate because the raw query started
+    # with '/' rather than 'UPDATE'. The ORIGINAL query is what we
+    # execute (Postgres ignores comments fine on its own).
+    cleaned_query = _strip_sql_comments(query).strip()
+    if not cleaned_query:
+        # Edge case: the user submitted only comments. Treat as empty.
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    cleaned_upper = cleaned_query.upper()
+
+    # PR 7 2026-05-29: durable audit. Define BEFORE any reject path
+    # (multi-statement, blocked-command, etc.) so suspicious attempts
+    # also leave a row behind. Pre-PR-7 the AuditLog object was created
+    # but never db.add'd or db.commit'd; pre-review-fix the persistence
+    # was after the gates so rejected requests vanished silently.
+    audit_event_data = {
+        "user_id": current_user.id,
+        "user_email": current_user.email,
+        "query": query[:1000],  # Truncate long queries
+    }
+
+    def _persist_sql_audit(extra: dict) -> None:
+        """Write the audit row in a fresh transaction so it lands even
+        if the user query caused a rollback. Best-effort — a logging
+        failure must NOT mask the underlying response."""
+        try:
+            from db_models import AuditLog as _AL, AuditLogEvent as _ALE
+            from database import SessionLocal as _SessionLocal
+            data = dict(audit_event_data)
+            data.update(extra)
+            with _SessionLocal() as audit_db:
+                audit_db.add(_AL(
+                    session_id=f"sql_admin_{current_user.id}",
+                    event=_ALE.ADMIN_SQL_QUERY,
+                    event_data=json.dumps(data),
+                    created_at=get_uk_now(),
+                ))
+                audit_db.commit()
+        except Exception as _e:
+            # Logging failure must NOT break the user-facing response.
+            print(f"[SQL] Failed to persist audit log: {_e}")
+
+    # PR 7 2026-05-29: reject any ; outside string literals. Closes the
+    # "SELECT 1; DELETE FROM bookings" chain — the keyword check below
+    # would let the SELECT pass on its own (no confirmation required)
+    # and the DELETE would ride along. Audit BEFORE raising so the
+    # attempt is forensically recoverable.
+    if _contains_unquoted_semicolon(query):
+        _persist_sql_audit({"status": "blocked", "reason": "multi_statement"})
+        raise HTTPException(
+            status_code=400,
+            detail="Multi-statement queries are not allowed. "
+                   "Submit one statement at a time.",
+        )
+
+    # Check for blocked commands (uses the comment-stripped form so a
+    # commented keyword doesn't trip the gate — see is_sql_command_blocked
+    # docstring). Audit the reject before raising.
     is_blocked, blocked_cmd = is_sql_command_blocked(query)
     if is_blocked:
-        raise HTTPException(status_code=403, detail=f"Command '{blocked_cmd}' is not allowed for security reasons")
+        _persist_sql_audit({
+            "status": "blocked",
+            "reason": "blocked_command",
+            "blocked_cmd": blocked_cmd,
+        })
+        raise HTTPException(
+            status_code=403,
+            detail=f"Command '{blocked_cmd}' is not allowed for security reasons",
+        )
 
-    # Check if write operation requires confirmation
-    is_write = is_write_operation(query)
+    # Check if write operation requires confirmation (uses cleaned_upper
+    # so /* comment */ UPDATE and -- comment\nDELETE still trip the
+    # confirmation requirement). Confirmation prompts are NOT audited
+    # — they're a 2-step UX, not a reject. The audit fires when the
+    # user re-submits with confirmed=True, on the success/error path.
+    is_write = any(cleaned_upper.startswith(cmd) for cmd in WRITE_SQL_COMMANDS)
     if is_write and not request.confirmed:
         return {
             "requires_confirmation": True,
-            "operation_type": query.upper().split()[0],
+            "operation_type": cleaned_upper.split()[0],
             "message": "This is a write operation. Please confirm to proceed.",
         }
 
-    # Log the query attempt
-    try:
-        from db_models import AuditLog, AuditLogEvent
-        audit_log = AuditLog(
-            session_id=f"sql_admin_{current_user.id}",
-            event=AuditLogEvent.ADMIN_SQL_QUERY if hasattr(AuditLogEvent, 'ADMIN_SQL_QUERY') else None,
-            event_data=json.dumps({
-                "user_id": current_user.id,
-                "user_email": current_user.email,
-                "query": query[:1000],  # Truncate long queries
-                "is_write": is_write,
-            }),
-            created_at=get_uk_now(),
-        )
-        # We'll add this after execution to include results
-    except Exception as e:
-        print(f"[SQL] Failed to create audit log: {e}")
+    audit_event_data["is_write"] = is_write
 
     # Execute the query with timeout
     start_time = time.time()
@@ -15511,8 +15715,9 @@ async def execute_sql_query(
 
         execution_time = time.time() - start_time
 
-        # Handle different query types
-        if query.upper().strip().startswith('SELECT'):
+        # Handle different query types — use the comment-stripped form
+        # so /* foo */ SELECT ... routes to the SELECT branch.
+        if cleaned_upper.startswith('SELECT'):
             # Fetch results with row limit
             rows = result.fetchmany(500)
             columns = list(result.keys()) if result.keys() else []
@@ -15536,6 +15741,14 @@ async def execute_sql_query(
             row_count = len(data)
             has_more = row_count == 500
 
+            _persist_sql_audit({
+                "status": "success",
+                "query_type": "SELECT",
+                "row_count": row_count,
+                "has_more": has_more,
+                "execution_time": round(execution_time, 3),
+            })
+
             return {
                 "success": True,
                 "query_type": "SELECT",
@@ -15549,10 +15762,18 @@ async def execute_sql_query(
             # Write operation - commit and return affected rows
             db.commit()
             affected_rows = result.rowcount
+            qt = cleaned_upper.split()[0]
+
+            _persist_sql_audit({
+                "status": "success",
+                "query_type": qt,
+                "affected_rows": affected_rows,
+                "execution_time": round(execution_time, 3),
+            })
 
             return {
                 "success": True,
-                "query_type": query.upper().split()[0],
+                "query_type": qt,
                 "affected_rows": affected_rows,
                 "execution_time": round(execution_time, 3),
             }
@@ -15561,6 +15782,11 @@ async def execute_sql_query(
         db.rollback()
         error_msg = str(e)
         print(f"[SQL] Query error by user {current_user.id}: {error_msg}")
+        _persist_sql_audit({
+            "status": "error",
+            "error": error_msg[:500],
+            "execution_time": round(time.time() - start_time, 3),
+        })
         raise HTTPException(status_code=400, detail=f"Query error: {error_msg}")
     finally:
         # Reset statement timeout
