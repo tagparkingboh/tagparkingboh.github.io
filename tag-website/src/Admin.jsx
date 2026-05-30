@@ -1024,6 +1024,19 @@ function Admin() {
     }
   }, [messagesSubTab, smsDirectionFilter, smsStatusFilter])
 
+  // Keep the open SMS thread fresh so delivery reports show ticks without
+  // forcing the admin to close and reopen the conversation.
+  useEffect(() => {
+    if (activeTab !== 'messages' || messagesSubTab !== 'conversations' || !selectedThread || !token) return
+
+    const interval = setInterval(() => {
+      fetchConversation(selectedThread.phone_number, { silent: true })
+      fetchSmsStats()
+    }, 300000)
+
+    return () => clearInterval(interval)
+  }, [activeTab, messagesSubTab, selectedThread?.phone_number, token])
+
   // Fetch booking locations when reports tab is active or map type changes
   useEffect(() => {
     if (activeTab === 'reports' && token) {
@@ -4623,8 +4636,9 @@ function Admin() {
   }
 
   // Fetch conversation messages for a specific thread
-  const fetchConversation = async (phoneNumber) => {
-    setLoadingConversation(true)
+  const fetchConversation = async (phoneNumber, options = {}) => {
+    const { silent = false } = options
+    if (!silent) setLoadingConversation(true)
     try {
       const response = await fetch(`${API_URL}/api/admin/sms/messages/conversation/${encodeURIComponent(phoneNumber)}`, {
         headers: { 'Authorization': `Bearer ${token}` },
@@ -4643,7 +4657,7 @@ function Admin() {
     } catch (err) {
       console.error('Failed to fetch conversation:', err)
     } finally {
-      setLoadingConversation(false)
+      if (!silent) setLoadingConversation(false)
     }
   }
 
@@ -4908,7 +4922,11 @@ function Admin() {
           setMessagesMessage('All statuses are up to date')
         }
         setTimeout(() => setMessagesMessage(''), 3000)
-        fetchSmsMessages()
+        if (selectedThread) {
+          fetchConversation(selectedThread.phone_number, { silent: true })
+        } else {
+          fetchSmsMessages()
+        }
         fetchSmsStats()
       } else {
         const err = await response.json()
