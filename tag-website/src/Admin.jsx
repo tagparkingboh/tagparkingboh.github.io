@@ -710,7 +710,8 @@ function Admin() {
   const [sqlResults, setSqlResults] = useState(null)
   const [sqlError, setSqlError] = useState('')
   const [sqlLoading, setSqlLoading] = useState(false)
-  const [sqlConfirmModal, setSqlConfirmModal] = useState(null)
+  // sqlConfirmModal removed 2026-05-30 PR 8: SQL console is read-only.
+  // No more write confirmation flow.
   const [sqlHistory, setSqlHistory] = useState([])
   const [sqlTemplatesExpanded, setSqlTemplatesExpanded] = useState({})
 
@@ -723,9 +724,7 @@ function Admin() {
       { name: 'Find by email (full)', query: "SELECT * FROM customers WHERE email = '{email}'", note: 'All columns' },
       { name: 'Recent customers', query: 'SELECT id, first_name, last_name, email, phone, created_at FROM customers ORDER BY created_at DESC LIMIT 20', note: 'Last 20' },
       { name: 'Search by name', query: "SELECT id, first_name, last_name, email, phone FROM customers WHERE first_name ILIKE '%{name}%' OR last_name ILIKE '%{name}%'", note: 'Partial match' },
-      { name: '✏️ Update contact', query: "UPDATE customers SET first_name = '{first}', last_name = '{last}', phone = '{phone}' WHERE id = {id}", note: 'Name/phone' },
-      { name: '✏️ Update email', query: "UPDATE customers SET email = '{email}' WHERE id = {id}", note: 'Email only' },
-      { name: '✏️ Update billing', query: "UPDATE customers SET billing_address1 = '{addr1}', billing_city = '{city}', billing_postcode = '{postcode}' WHERE id = {id}", note: 'Billing address' },
+      // Write templates (update contact, email, billing) removed 2026-05-30 PR 8.
     ],
     'Vehicles': [
       { name: 'Find by ID (quick)', query: 'SELECT id, customer_id, registration, make, model, colour FROM vehicles WHERE id = {id}', note: 'Essential columns' },
@@ -734,8 +733,7 @@ function Admin() {
       { name: 'Find by reg (full)', query: "SELECT * FROM vehicles WHERE registration = '{reg}'", note: 'All columns' },
       { name: 'Customer vehicles', query: 'SELECT id, registration, make, model, colour FROM vehicles WHERE customer_id = {id}', note: 'All vehicles for customer' },
       { name: 'Customer + Vehicle', query: 'SELECT c.id AS customer_id, c.first_name, c.last_name, c.email, v.id AS vehicle_id, v.registration, v.make, v.model, v.colour FROM customers c JOIN vehicles v ON v.customer_id = c.id WHERE c.id = {id}', note: 'Join by customer ID' },
-      { name: '➕ Add vehicle', query: "INSERT INTO vehicles (customer_id, registration, make, model, colour) VALUES ({customer_id}, '{reg}', '{make}', '{model}', '{colour}')", note: 'New vehicle' },
-      { name: '✏️ Update vehicle', query: "UPDATE vehicles SET registration = '{reg}', make = '{make}', model = '{model}', colour = '{colour}' WHERE id = {id}", note: 'All fields' },
+      // Write templates (add vehicle, update vehicle) removed 2026-05-30 PR 8.
     ],
     'Bookings': [
       { name: 'Find by ID (quick)', query: 'SELECT id, reference, customer_id, vehicle_id, status, dropoff_date, pickup_date FROM bookings WHERE id = {id}', note: 'Essential columns' },
@@ -747,11 +745,9 @@ function Admin() {
       { name: 'By date range', query: "SELECT id, reference, status, dropoff_date, pickup_date FROM bookings WHERE dropoff_date BETWEEN '{start}' AND '{end}' ORDER BY dropoff_date", note: 'YYYY-MM-DD format' },
       { name: "Today's drop-offs", query: "SELECT b.id, b.reference, c.first_name, c.last_name, v.registration, b.dropoff_time FROM bookings b JOIN customers c ON c.id = b.customer_id JOIN vehicles v ON v.id = b.vehicle_id WHERE b.status = 'confirmed' AND b.dropoff_date = CURRENT_DATE ORDER BY b.dropoff_time", note: 'Confirmed today' },
       { name: 'Customer + Vehicle + Booking', query: 'SELECT c.id AS cust_id, c.first_name, c.last_name, c.email, v.id AS veh_id, v.registration, b.id AS book_id, b.reference, b.status, b.dropoff_date, b.pickup_date FROM customers c JOIN vehicles v ON v.customer_id = c.id JOIN bookings b ON b.customer_id = c.id AND b.vehicle_id = v.id WHERE c.id = {id} ORDER BY b.created_at DESC', note: 'Full journey' },
-      { name: '🔄 Switch vehicle', query: 'UPDATE bookings SET vehicle_id = {new_vehicle_id} WHERE id = {booking_id}', note: 'Change vehicle' },
-      { name: '✏️ Update status', query: "UPDATE bookings SET status = '{status}' WHERE id = {id}", note: 'pending/confirmed/cancelled/completed/refunded' },
-      { name: '✏️ Update dates', query: "UPDATE bookings SET dropoff_date = '{dropoff}', pickup_date = '{pickup}' WHERE id = {id}", note: 'YYYY-MM-DD' },
-      { name: '✏️ Update times', query: "UPDATE bookings SET dropoff_time = '{dropoff_time}', pickup_time = '{pickup_time}' WHERE id = {id}", note: 'HH:MM:SS' },
-      { name: '✏️ Add notes', query: "UPDATE bookings SET admin_notes = '{notes}' WHERE id = {id}", note: 'Admin notes' },
+      // Write templates (switch vehicle, update status/dates/times, add notes)
+      // removed 2026-05-30 PR 8: SQL console is read-only. Writes route
+      // through inline python3 -c scripts.
     ],
     'Payments': [
       { name: 'Find by booking (quick)', query: 'SELECT id, booking_id, amount_pence, status, stripe_payment_intent_id FROM payments WHERE booking_id = {id}', note: 'Essential columns' },
@@ -759,8 +755,7 @@ function Admin() {
       { name: 'Find by Stripe ID', query: "SELECT id, booking_id, amount_pence, status FROM payments WHERE stripe_payment_intent_id = '{pi}'", note: 'By payment intent' },
       { name: 'Recent payments', query: 'SELECT p.id, b.reference, p.amount_pence, p.status, p.paid_at FROM payments p JOIN bookings b ON b.id = p.booking_id ORDER BY p.created_at DESC LIMIT 20', note: 'Last 20' },
       { name: 'Customer payments', query: 'SELECT b.reference, p.amount_pence, p.status, p.paid_at FROM payments p JOIN bookings b ON b.id = p.booking_id WHERE b.customer_id = {id} ORDER BY p.created_at DESC', note: 'All for customer' },
-      { name: '✏️ Update status', query: "UPDATE payments SET status = '{status}' WHERE booking_id = {id}", note: 'pending/processing/succeeded/failed/refunded' },
-      { name: '✏️ Record refund', query: "UPDATE payments SET status = 'refunded', refund_amount_pence = {amount}, refund_reason = '{reason}', refunded_at = NOW() WHERE booking_id = {id}", note: 'Mark refunded' },
+      // Write templates (update status, record refund) removed 2026-05-30 PR 8.
     ],
     'Promo Codes': [
       { name: 'Find code (quick)', query: "SELECT pc.id, pc.code, pc.is_used, pc.use_count, pr.discount_percent FROM promo_codes pc JOIN promotions pr ON pr.id = pc.promotion_id WHERE pc.code = '{code}'", note: 'Essential info' },
@@ -769,8 +764,7 @@ function Admin() {
       { name: 'Booking promo', query: 'SELECT pc.code, pr.discount_percent, pc.used_at FROM promo_codes pc JOIN promotions pr ON pr.id = pc.promotion_id WHERE pc.booking_id = {id}', note: 'By booking ID' },
       { name: 'Recent usage', query: 'SELECT pc.code, pr.discount_percent, pc.used_at, b.reference FROM promo_codes pc JOIN promotions pr ON pr.id = pc.promotion_id JOIN bookings b ON b.id = pc.booking_id WHERE pc.is_used = true ORDER BY pc.used_at DESC LIMIT 20', note: 'Last 20 uses' },
       { name: 'All promotions', query: 'SELECT id, name, discount_percent, code_prefix, total_codes, codes_used FROM promotions ORDER BY created_at DESC', note: 'Campaign list' },
-      { name: '✏️ Mark used', query: "UPDATE promo_codes SET is_used = true, used_at = NOW(), booking_id = {booking_id}, use_count = use_count + 1 WHERE code = '{code}'", note: 'Link to booking' },
-      { name: '✏️ Reset code', query: "UPDATE promo_codes SET is_used = false, used_at = NULL, booking_id = NULL WHERE code = '{code}'", note: 'Unmark as used' },
+      // Write templates (mark used, reset code) removed 2026-05-30 PR 8.
     ],
     'Flights': [
       { name: 'Departures (quick)', query: "SELECT id, flight_number, departure_time, destination_name, capacity_tier FROM flight_departures WHERE date = '{date}' ORDER BY departure_time", note: 'Essential columns' },
@@ -778,8 +772,7 @@ function Admin() {
       { name: 'Arrivals (quick)', query: "SELECT id, flight_number, arrival_time, origin_name FROM flight_arrivals WHERE date = '{date}' ORDER BY arrival_time", note: 'Essential columns' },
       { name: 'Arrivals (full)', query: "SELECT * FROM flight_arrivals WHERE date = '{date}' ORDER BY arrival_time", note: 'All columns' },
       { name: 'Available slots', query: "SELECT id, flight_number, departure_time, destination_name, capacity_tier, slots_booked_early, slots_booked_late FROM flight_departures WHERE date = '{date}' AND capacity_tier > 0 ORDER BY departure_time", note: 'With availability' },
-      { name: '✏️ Update capacity', query: 'UPDATE flight_departures SET capacity_tier = {tier} WHERE id = {id}', note: '0/2/4/6/8' },
-      { name: '✏️ Adjust slots', query: 'UPDATE flight_departures SET slots_booked_early = {early}, slots_booked_late = {late} WHERE id = {id}', note: 'Manual adjust' },
+      // Write templates (update capacity, adjust slots) removed 2026-05-30 PR 8.
     ],
     'Marketing': [
       { name: 'Find subscriber (quick)', query: "SELECT id, first_name, last_name, email, source FROM marketing_subscribers WHERE email = '{email}'", note: 'Essential columns' },
@@ -791,8 +784,7 @@ function Admin() {
       { name: 'All users', query: 'SELECT id, first_name, last_name, email, is_admin, is_active FROM users ORDER BY id', note: 'Staff list' },
       { name: 'Shifts (quick)', query: "SELECT rs.id, rs.staff_id, rs.date, rs.start_time, rs.end_time, rs.status FROM roster_shifts rs WHERE rs.date = '{date}' ORDER BY rs.start_time", note: 'Essential columns' },
       { name: 'Shifts (full)', query: "SELECT rs.*, u.first_name, u.last_name FROM roster_shifts rs LEFT JOIN users u ON u.id = rs.staff_id WHERE rs.date = '{date}' ORDER BY rs.start_time", note: 'With staff names' },
-      { name: '✏️ Assign staff', query: 'UPDATE roster_shifts SET staff_id = {staff_id} WHERE id = {shift_id}', note: 'Assign to shift' },
-      { name: '✏️ Update status', query: "UPDATE roster_shifts SET status = '{status}' WHERE id = {id}", note: 'scheduled/confirmed/completed/cancelled' },
+      // Write templates (assign staff, update status) removed 2026-05-30 PR 8.
     ],
     'Inspections': [
       { name: 'By booking (quick)', query: 'SELECT id, inspection_type, customer_name, mileage, declined FROM vehicle_inspections WHERE booking_id = {id}', note: 'Essential columns' },
@@ -1730,7 +1722,11 @@ function Admin() {
     setSqlQuery('')
   }
 
-  const executeSqlQuery = async (confirmed = false) => {
+  // 2026-05-30 PR 8: SQL console is read-only. `confirmed` flag +
+  // requires_confirmation response shape are dead — backend rejects
+  // any non-SELECT/WITH with 403 and an audit row. Writes route
+  // through inline python3 -c scripts.
+  const executeSqlQuery = async () => {
     if (!sqlQuery.trim()) return
 
     setSqlLoading(true)
@@ -1747,7 +1743,6 @@ function Admin() {
         body: JSON.stringify({
           query: sqlQuery,
           session_token: sqlSessionToken,
-          confirmed: confirmed,
         }),
       })
       const data = await response.json()
@@ -1766,21 +1761,13 @@ function Admin() {
         return
       }
 
-      if (data.requires_confirmation) {
-        setSqlConfirmModal({
-          operation: data.operation_type,
-          message: data.message,
-        })
-        return
-      }
-
       setSqlResults(data)
       // Add to history
       setSqlHistory(prev => [{
         query: sqlQuery,
         timestamp: new Date(),
         success: true,
-        rowCount: data.row_count || data.affected_rows || 0,
+        rowCount: data.row_count || 0,
       }, ...prev.slice(0, 19)])
 
     } catch (err) {
@@ -1790,10 +1777,7 @@ function Admin() {
     }
   }
 
-  const confirmSqlWrite = async () => {
-    setSqlConfirmModal(null)
-    await executeSqlQuery(true)
-  }
+  // confirmSqlWrite removed 2026-05-30 PR 8: no write path to confirm.
 
   const exportSqlResultsCSV = () => {
     if (!sqlResults || !sqlResults.data || sqlResults.data.length === 0) return
@@ -14569,18 +14553,31 @@ function Admin() {
                   </div>
                 ) : (
                   <div className="sql-interface">
+                    {/* PR 8 2026-05-30: read-only console notice */}
+                    <div className="sql-readonly-notice" style={{
+                      padding: '8px 12px',
+                      marginBottom: '8px',
+                      background: '#f5f5f5',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      color: '#555',
+                    }}>
+                      <strong>Read-only console.</strong> Only SELECT and WITH (CTE) queries are
+                      permitted. Writes go through inline <code>python3 -c</code> scripts.
+                    </div>
                     {/* Query Editor */}
                     <div className="sql-editor">
                       <textarea
                         value={sqlQuery}
                         onChange={(e) => setSqlQuery(e.target.value)}
-                        placeholder="Enter your SQL query here...&#10;&#10;Example: SELECT * FROM bookings LIMIT 10"
+                        placeholder="Enter your SELECT query here...&#10;&#10;Example: SELECT * FROM bookings LIMIT 10"
                         className="sql-textarea"
                         rows={8}
                       />
                       <div className="sql-editor-actions">
                         <button
-                          onClick={() => executeSqlQuery(false)}
+                          onClick={() => executeSqlQuery()}
                           disabled={sqlLoading || !sqlQuery.trim()}
                           className="sql-run-btn"
                         >
@@ -14722,8 +14719,12 @@ function Admin() {
 
                     {/* Security Notice */}
                     <div className="sql-security-notice">
-                      <strong>Security:</strong> All queries are logged. Blocked commands: DROP, TRUNCATE, ALTER, CREATE, GRANT.
-                      Write operations (INSERT, UPDATE, DELETE) require confirmation.
+                      <strong>Security:</strong> All queries are logged to the audit_logs table.
+                      Console is read-only — only SELECT and WITH (CTE) queries reach the
+                      database; everything else (INSERT, UPDATE, DELETE, DROP, TRUNCATE,
+                      ALTER, CREATE, GRANT, etc.) is blocked and audited.
+                      The database transaction is set READ ONLY before each query, so writes
+                      nested inside CTEs and SELECT...INTO are also rejected at the DB layer.
                     </div>
                   </div>
                 )}
@@ -14758,29 +14759,7 @@ function Admin() {
                   </div>
                 )}
 
-                {/* Write Confirmation Modal */}
-                {sqlConfirmModal && (
-                  <div className="admin-modal-overlay">
-                    <div className="admin-modal sql-confirm-modal">
-                      <div className="admin-modal-header">
-                        <h3>⚠️ Confirm {sqlConfirmModal.operation} Operation</h3>
-                      </div>
-                      <div className="admin-modal-body">
-                        <p>{sqlConfirmModal.message}</p>
-                        <p className="sql-confirm-warning">This action will modify the database. Are you sure?</p>
-                        <div className="sql-confirm-query">
-                          <code>{sqlQuery}</code>
-                        </div>
-                      </div>
-                      <div className="admin-modal-footer">
-                        <button onClick={() => setSqlConfirmModal(null)} className="admin-btn">Cancel</button>
-                        <button onClick={confirmSqlWrite} className="admin-btn admin-btn-danger">
-                          Confirm {sqlConfirmModal.operation}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* Write Confirmation Modal removed 2026-05-30 PR 8: console is read-only. */}
           </div>
         )}
 

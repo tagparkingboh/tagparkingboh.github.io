@@ -451,48 +451,13 @@ class TestExecuteCommentHiddenKeywords:
 # ============================================================================
 
 
-class TestLeadingCommentDoesNotBypassWriteConfirmation:
-    """Reviewer flagged HIGH: pre-fix is_write_operation used the raw
-    query, so /* maintenance */ UPDATE bookings... started with '/'
-    rather than 'UPDATE' and skipped the write-confirmation gate.
-    Fix: strip comments once and use the cleaned form for is_write +
-    SELECT detection + query_type."""
-
-    def test_U_block_comment_before_update_requires_confirmation(
-        self, admin_override, valid_sql_session, stub_db,
-    ):
-        # U: leading block comment + UPDATE → must return
-        # requires_confirmation, NOT execute the UPDATE.
-        client = TestClient(app)
-        resp = client.post("/api/admin/sql/execute", json={
-            "query": "/* maintenance */ UPDATE bookings SET status='cancelled' WHERE id=123",
-            "session_token": SESSION_TOKEN,
-            # confirmed deliberately omitted — expecting the
-            # confirmation prompt, NOT execution.
-        })
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body.get("requires_confirmation") is True, (
-            f"Expected requires_confirmation=True on leading-comment "
-            f"UPDATE; got {body!r}. The comment-strip normalisation "
-            f"is missing from is_write_operation."
-        )
-        assert body.get("operation_type") == "UPDATE"
-
-    def test_U_line_comment_before_delete_requires_confirmation(
-        self, admin_override, valid_sql_session, stub_db,
-    ):
-        # U: leading -- comment + newline + DELETE → must require
-        # confirmation. Same bypass shape as the block-comment case.
-        client = TestClient(app)
-        resp = client.post("/api/admin/sql/execute", json={
-            "query": "-- note: emergency cleanup\nDELETE FROM bookings WHERE id=123",
-            "session_token": SESSION_TOKEN,
-        })
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body.get("requires_confirmation") is True
-        assert body.get("operation_type") == "DELETE"
+# TestLeadingCommentDoesNotBypassWriteConfirmation removed 2026-05-30
+# PR 8: hard SELECT-only made the write-confirmation flow dead code.
+# The leading-comment + UPDATE/DELETE scenarios are now covered by
+# test_pr8_select_only_hueb.py::TestNonSelectIsRejected
+# ::test_E_block_comment_before_update_still_403 (and the U_update_403
+# / U_delete_403 cases) — all assert 403 + audit row with
+# reason='select_only' instead of the old requires_confirmation flow.
 
 
 class TestRejectedAttemptsAreAudited:

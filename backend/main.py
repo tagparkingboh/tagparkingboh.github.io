@@ -15336,8 +15336,11 @@ BLOCKED_SQL_COMMANDS = [
     'CALL',
 ]
 
-# Commands that require confirmation
-WRITE_SQL_COMMANDS = ['INSERT', 'UPDATE', 'DELETE']
+# PR 8 2026-05-30: console became read-only. Allowed query prefixes
+# (case-insensitive, on the comment-stripped form). Anything else
+# returns 403. WRITE_SQL_COMMANDS and is_write_operation are gone —
+# write paths now route through inline python3 -c scripts.
+ALLOWED_SQL_PREFIXES = ('SELECT', 'WITH')
 
 
 def _strip_sql_comments(query: str) -> str:
@@ -15489,13 +15492,9 @@ def is_sql_command_blocked(query: str) -> tuple[bool, str]:
     return False, ""
 
 
-def is_write_operation(query: str) -> bool:
-    """Check if a SQL query is a write operation."""
-    query_upper = query.upper().strip()
-    for cmd in WRITE_SQL_COMMANDS:
-        if query_upper.startswith(cmd):
-            return True
-    return False
+# is_write_operation removed 2026-05-30 PR 8: console is read-only.
+# The cleaned_upper.startswith(ALLOWED_SQL_PREFIXES) check in
+# execute_sql_query replaces it.
 
 
 def generate_sql_session_token() -> str:
@@ -15513,7 +15512,10 @@ class SQLQueryRequest(BaseModel):
     """Request to execute a SQL query."""
     query: str
     session_token: str
-    confirmed: bool = False  # Must be True for write operations
+    # `confirmed` retained for in-flight requests from old frontend
+    # builds; IGNORED as of PR 8 2026-05-30. Console is read-only;
+    # there is no longer a write-confirmation step.
+    confirmed: bool = False
 
 
 @app.post("/api/admin/sql/verify-pin")
@@ -15690,24 +15692,60 @@ async def execute_sql_query(
             detail=f"Command '{blocked_cmd}' is not allowed for security reasons",
         )
 
-    # Check if write operation requires confirmation (uses cleaned_upper
-    # so /* comment */ UPDATE and -- comment\nDELETE still trip the
-    # confirmation requirement). Confirmation prompts are NOT audited
-    # — they're a 2-step UX, not a reject. The audit fires when the
-    # user re-submits with confirmed=True, on the success/error path.
-    is_write = any(cleaned_upper.startswith(cmd) for cmd in WRITE_SQL_COMMANDS)
-    if is_write and not request.confirmed:
-        return {
-            "requires_confirmation": True,
-            "operation_type": cleaned_upper.split()[0],
-            "message": "This is a write operation. Please confirm to proceed.",
-        }
+    # PR 8 2026-05-30: hard SELECT-only. The admin SQL console is now
+    # a read-only inspector. Only queries beginning with SELECT or WITH
+    # (CTE) reach the executor; everything else — INSERT, UPDATE,
+    # DELETE, EXPLAIN, SHOW, BEGIN, anything — is rejected with 403
+    # and an audit row. There is intentionally NO env-var escape
+    # hatch (per the 2026-05-30 scoping decision: "the failure mode
+    # is exactly the bad one: someone flips it during stress and
+    # forgets"). Production writes route through inline python3 -c
+    # scripts, reviewed in a terminal.
+    #
+    # EXPLAIN is not on the allow list because EXPLAIN ANALYZE on
+    # an INSERT/UPDATE actually executes the write. Allowing EXPLAIN
+    # safely would mean parsing the inner statement to verify it's
+    # SELECT/WITH too — out of scope for narrow PR 8.
+    if not cleaned_upper.startswith(ALLOWED_SQL_PREFIXES):
+        attempted = cleaned_upper.split()[0] if cleaned_upper.split() else "UNKNOWN"
+        _persist_sql_audit({
+            "status": "blocked",
+            "reason": "select_only",
+            "attempted_cmd": attempted,
+        })
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "SQL console is read-only. Only SELECT and WITH (CTE) "
+                "queries are permitted. Writes happen via inline "
+                "python3 -c scripts, not through the browser."
+            ),
+        )
 
-    audit_event_data["is_write"] = is_write
+    # Past this point the query is guaranteed to be a read. is_write
+    # is False; is_write field retained on the audit row for the
+    # asymmetry mentioned in PR 7 (blocked rows lack it).
+    audit_event_data["is_write"] = False
 
     # Execute the query with timeout
     start_time = time.time()
     try:
+        # PR 8 review-fix 2026-05-30: DB-enforced read-only. The prefix
+        # gate above (SELECT/WITH) is a friendly pre-filter, but the
+        # actual security boundary is here. Postgres refuses
+        # INSERT/UPDATE/DELETE, SELECT...INTO (which creates a table),
+        # and writes nested inside CTEs (WITH d AS (DELETE ... RETURNING)
+        # SELECT * FROM d) when the transaction is READ ONLY. Any of
+        # these will raise psycopg2 ReadOnlySqlTransaction; the
+        # existing exception handler below converts that to a 400.
+        #
+        # ORDER MATTERS: SET TRANSACTION READ ONLY must be the first
+        # statement of the transaction. db.rollback() defensively
+        # closes any transaction that get_db / Session init may have
+        # opened (no-op on a fresh session) so we own this one cleanly.
+        db.rollback()
+        db.execute(text("SET TRANSACTION READ ONLY"))
+
         # Set statement timeout (30 seconds)
         db.execute(text("SET statement_timeout = '30s'"))
 
@@ -15715,68 +15753,52 @@ async def execute_sql_query(
 
         execution_time = time.time() - start_time
 
-        # Handle different query types — use the comment-stripped form
-        # so /* foo */ SELECT ... routes to the SELECT branch.
-        if cleaned_upper.startswith('SELECT'):
-            # Fetch results with row limit
-            rows = result.fetchmany(500)
-            columns = list(result.keys()) if result.keys() else []
+        # PR 8 2026-05-30: only SELECT/WITH reach this point (gate
+        # above raised 403 on anything else). Single read path —
+        # no more if SELECT / else write branch. Report the actual
+        # first-token (SELECT or WITH) as query_type for the audit
+        # row and response.
+        query_type = cleaned_upper.split()[0]  # SELECT or WITH
 
-            # Convert rows to list of dicts
-            data = []
-            for row in rows:
-                row_dict = {}
-                for i, col in enumerate(columns):
-                    val = row[i]
-                    # Handle non-JSON-serializable types
-                    if isinstance(val, datetime):
-                        val = val.isoformat()
-                    elif isinstance(val, (bytes,)):
-                        val = val.hex()
-                    elif hasattr(val, 'value'):  # Enum
-                        val = val.value
-                    row_dict[col] = val
-                data.append(row_dict)
+        rows = result.fetchmany(500)
+        columns = list(result.keys()) if result.keys() else []
 
-            row_count = len(data)
-            has_more = row_count == 500
+        # Convert rows to list of dicts
+        data = []
+        for row in rows:
+            row_dict = {}
+            for i, col in enumerate(columns):
+                val = row[i]
+                # Handle non-JSON-serializable types
+                if isinstance(val, datetime):
+                    val = val.isoformat()
+                elif isinstance(val, (bytes,)):
+                    val = val.hex()
+                elif hasattr(val, 'value'):  # Enum
+                    val = val.value
+                row_dict[col] = val
+            data.append(row_dict)
 
-            _persist_sql_audit({
-                "status": "success",
-                "query_type": "SELECT",
-                "row_count": row_count,
-                "has_more": has_more,
-                "execution_time": round(execution_time, 3),
-            })
+        row_count = len(data)
+        has_more = row_count == 500
 
-            return {
-                "success": True,
-                "query_type": "SELECT",
-                "columns": columns,
-                "data": data,
-                "row_count": row_count,
-                "has_more": has_more,
-                "execution_time": round(execution_time, 3),
-            }
-        else:
-            # Write operation - commit and return affected rows
-            db.commit()
-            affected_rows = result.rowcount
-            qt = cleaned_upper.split()[0]
+        _persist_sql_audit({
+            "status": "success",
+            "query_type": query_type,
+            "row_count": row_count,
+            "has_more": has_more,
+            "execution_time": round(execution_time, 3),
+        })
 
-            _persist_sql_audit({
-                "status": "success",
-                "query_type": qt,
-                "affected_rows": affected_rows,
-                "execution_time": round(execution_time, 3),
-            })
-
-            return {
-                "success": True,
-                "query_type": qt,
-                "affected_rows": affected_rows,
-                "execution_time": round(execution_time, 3),
-            }
+        return {
+            "success": True,
+            "query_type": query_type,
+            "columns": columns,
+            "data": data,
+            "row_count": row_count,
+            "has_more": has_more,
+            "execution_time": round(execution_time, 3),
+        }
 
     except Exception as e:
         db.rollback()

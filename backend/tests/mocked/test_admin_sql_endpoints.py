@@ -284,8 +284,11 @@ class TestBlockedCommands:
 
         assert is_blocked is False
 
-    def test_insert_not_blocked(self):
-        """Should not block INSERT commands (requires confirmation)."""
+    def test_insert_not_in_blocked_commands_list(self):
+        """INSERT is not in BLOCKED_SQL_COMMANDS — it's gated by the
+        SELECT-only check (PR 8 2026-05-30) instead, which fires
+        BEFORE this blocklist runs. End-to-end coverage that INSERT
+        returns 403 lives in test_pr8_select_only_hueb.py."""
         query = "INSERT INTO users (name) VALUES ('test')"
         query_upper = query.upper()
 
@@ -293,8 +296,9 @@ class TestBlockedCommands:
 
         assert is_blocked is False
 
-    def test_update_not_blocked(self):
-        """Should not block UPDATE commands (requires confirmation)."""
+    def test_update_not_in_blocked_commands_list(self):
+        """UPDATE is not in BLOCKED_SQL_COMMANDS — same path as INSERT
+        above; the SELECT-only gate rejects it first."""
         query = "UPDATE users SET name = 'new' WHERE id = 1"
         query_upper = query.upper()
 
@@ -302,8 +306,9 @@ class TestBlockedCommands:
 
         assert is_blocked is False
 
-    def test_delete_not_blocked(self):
-        """Should not block DELETE commands (requires confirmation)."""
+    def test_delete_not_in_blocked_commands_list(self):
+        """DELETE is not in BLOCKED_SQL_COMMANDS — same path as
+        INSERT/UPDATE above."""
         query = "DELETE FROM users WHERE id = 1"
         query_upper = query.upper()
 
@@ -313,32 +318,43 @@ class TestBlockedCommands:
 
 
 # ============================================================================
-# Execute Query Tests - Write Operations
+# Pre-PR-8 write-operation detection (kept as pure-string regression tests).
+#
+# These tests pre-date PR 8 (2026-05-30) and asserted that
+# INSERT/UPDATE/DELETE were correctly classified as writes for the
+# now-removed confirmation flow. The endpoint-level confirmation flow
+# is dead — the SELECT-only gate returns 403 directly — but the
+# underlying string-prefix matching is still a useful sanity check on
+# pytest itself. End-to-end coverage that these commands return 403
+# from the endpoint lives in
+# test_pr8_select_only_hueb.py::TestNonSelectIsRejected.
 # ============================================================================
 
 class TestWriteOperations:
-    """Tests for write operation detection."""
+    """Tests for write operation detection (string-prefix sanity).
+    The production write-confirmation flow was removed by PR 8; these
+    tests now exist as a pure regression on Python string behavior."""
 
     WRITE_COMMANDS = ['INSERT', 'UPDATE', 'DELETE']
 
-    def test_insert_is_write_operation(self):
-        """Should detect INSERT as write operation."""
+    def test_insert_prefix_detected_as_write(self):
+        """Pure-string sanity: 'INSERT ...' starts with a write keyword."""
         query = "INSERT INTO users (name) VALUES ('test')"
 
         is_write = query.upper().strip().startswith(tuple(self.WRITE_COMMANDS))
 
         assert is_write is True
 
-    def test_update_is_write_operation(self):
-        """Should detect UPDATE as write operation."""
+    def test_update_prefix_detected_as_write(self):
+        """Pure-string sanity: 'UPDATE ...' starts with a write keyword."""
         query = "UPDATE users SET name = 'new' WHERE id = 1"
 
         is_write = query.upper().strip().startswith(tuple(self.WRITE_COMMANDS))
 
         assert is_write is True
 
-    def test_delete_is_write_operation(self):
-        """Should detect DELETE as write operation."""
+    def test_delete_prefix_detected_as_write(self):
+        """Pure-string sanity: 'DELETE ...' starts with a write keyword."""
         query = "DELETE FROM users WHERE id = 1"
 
         is_write = query.upper().strip().startswith(tuple(self.WRITE_COMMANDS))
