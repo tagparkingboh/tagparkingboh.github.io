@@ -80,6 +80,40 @@ jobs:
             COVERAGE="0"
           fi
 
+          # Extract failing test nodes for the Actions summary and artifact.
+          if [ "$FAILED" != "0" ]; then
+            grep -E '^FAILED ' test-output.txt | sed -E 's/^FAILED //' > failed-tests.txt || true
+            python3 - <<'PY'
+          from collections import Counter
+          from pathlib import Path
+
+          failed_tests = [
+              line.strip().split(" - ")[0]
+              for line in Path("failed-tests.txt").read_text().splitlines()
+              if line.strip()
+          ]
+          by_file = Counter(node.split("::", 1)[0] for node in failed_tests)
+
+          lines = ["### Failed Tests By File", ""]
+          if failed_tests:
+              lines.extend(["| File | Failures |", "|------|----------|"])
+              for file_name, count in by_file.most_common():
+                  lines.append(f"| `{file_name}` | {count} |")
+              lines.extend(["", "<details><summary>Failed test nodes</summary>", ""])
+              lines.extend(f"- `{node}`" for node in failed_tests[:200])
+              if len(failed_tests) > 200:
+                  lines.append(f"- ...and {len(failed_tests) - 200} more")
+              lines.extend(["", "</details>"])
+          else:
+              lines.append("Pytest reported failures, but no failed-test summary lines were found in `test-output.txt`.")
+
+          Path("failure-summary.md").write_text("\n".join(lines) + "\n")
+          PY
+          else
+            : > failed-tests.txt
+            printf "### Failed Tests By File\n\nNo failures.\n" > failure-summary.md
+          fi
+
           # Set outputs
           echo "passed=$PASSED" >> $GITHUB_OUTPUT
           echo "failed=$FAILED" >> $GITHUB_OUTPUT
@@ -150,6 +184,8 @@ jobs:
             backend/test-results.xml
             backend/coverage.json
             backend/test-output.txt
+            backend/failed-tests.txt
+            backend/failure-summary.md
 
       - name: Create summary
         if: always()
@@ -164,6 +200,10 @@ jobs:
           echo "| Total | ${{ steps.test_run.outputs.total }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Coverage | ${{ steps.test_run.outputs.coverage }}% |" >> $GITHUB_STEP_SUMMARY
           echo "| Duration | ${{ steps.test_run.outputs.duration }}s |" >> $GITHUB_STEP_SUMMARY
+          if [ -f backend/failure-summary.md ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat backend/failure-summary.md >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Send email notification on failure
         if: steps.test_run.outputs.exit_code != '0'

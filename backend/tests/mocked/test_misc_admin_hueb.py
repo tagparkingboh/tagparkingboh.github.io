@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from fastapi.testclient import TestClient
 import main
 from main import app, require_admin
-from database import get_db
+from database import get_db, get_sql_console_db
 
 
 def _admin(id=1):
@@ -44,6 +44,7 @@ def _override_admin(db, user=None):
     def gen():
         yield db
     app.dependency_overrides[get_db] = gen
+    app.dependency_overrides[get_sql_console_db] = gen
     app.dependency_overrides[require_admin] = lambda: user or _admin()
 
 
@@ -341,8 +342,8 @@ class TestSqlExecute:
             "session_token": "valid-token",
             "confirmed": True,
         })
-        assert resp.status_code == 200
-        assert resp.json()["affected_rows"] == 3
+        assert resp.status_code == 403
+        assert "read-only" in resp.json()["detail"]
 
     def test_U_invalid_session_token(self):
         self._setup_session()
@@ -380,27 +381,24 @@ class TestSqlExecute:
         assert resp.status_code == 403
         assert "DROP" in resp.json()["detail"]
 
-    def test_E_write_op_without_confirmation_returns_prompt(self, monkeypatch):
+    def test_E_write_op_without_confirmation_returns_read_only_reject(self, monkeypatch):
         self._setup_session()
-        monkeypatch.setattr(main, "is_sql_command_blocked", lambda q: (False, ""))
-        monkeypatch.setattr(main, "is_write_operation", lambda q: True)
         _override_admin(MagicMock())
         resp = TestClient(app).post("/api/admin/sql/execute", json={
             "query": "UPDATE users SET x=1", "session_token": "valid-token",
             "confirmed": False,
         })
-        assert resp.status_code == 200
-        assert resp.json()["requires_confirmation"] is True
-        assert resp.json()["operation_type"] == "UPDATE"
+        assert resp.status_code == 403
+        assert "read-only" in resp.json()["detail"]
 
     def test_U_query_error_returns_400(self, monkeypatch):
         self._setup_session()
         db = MagicMock()
-        # First execute (SET timeout) succeeds, second one raises
+        # SET TRANSACTION READ ONLY + SET timeout succeed, user query raises.
         calls = {"n": 0}
         def _exec(*a, **kw):
             calls["n"] += 1
-            if calls["n"] == 1:
+            if calls["n"] <= 2:
                 return MagicMock()
             raise RuntimeError("relation does not exist")
         db.execute.side_effect = _exec

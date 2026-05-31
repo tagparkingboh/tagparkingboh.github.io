@@ -78,7 +78,12 @@ class TestAutoCreateGuard:
 
         result = auto_create_or_extend_for_booking(db, booking, _settings())
 
-        assert result == {"created": 0, "extended": 0, "skipped": 1}
+        assert result == {
+            "created": 0,
+            "deleted": 0,
+            "bookings_in_scope": 0,
+            "skipped": 1,
+        }
         # Guard fires before any query — proves it's a true short-circuit.
         db.query.assert_not_called()
 
@@ -109,14 +114,24 @@ class TestAutoCreateGuard:
 
         result = auto_create_or_extend_for_booking(db, booking, _settings())
 
-        assert result == {"created": 0, "extended": 0, "skipped": 1}
+        assert result == {
+            "created": 0,
+            "deleted": 0,
+            "bookings_in_scope": 0,
+            "skipped": 1,
+        }
         db.query.assert_not_called()
 
     def test_boundary_none_booking(self):
         """None booking — first guard short-circuits before service_type read."""
         db = MagicMock()
         result = auto_create_or_extend_for_booking(db, None, _settings())
-        assert result == {"created": 0, "extended": 0, "skipped": 1}
+        assert result == {
+            "created": 0,
+            "deleted": 0,
+            "bookings_in_scope": 0,
+            "skipped": 1,
+        }
         db.query.assert_not_called()
 
 
@@ -135,7 +150,12 @@ class TestHandleCancelledGuard:
 
         result = handle_booking_cancelled(db, booking)
 
-        assert result == {"links_removed": 0, "auto_shifts_deleted": 0}
+        assert result == {
+            "created": 0,
+            "deleted": 0,
+            "bookings_in_scope": 0,
+            "skipped": 0,
+        }
         db.query.assert_not_called()
 
     def test_unhappy_meet_greet_still_processes(self):
@@ -161,13 +181,23 @@ class TestHandleCancelledGuard:
 
         result = handle_booking_cancelled(db, booking)
 
-        assert result == {"links_removed": 0, "auto_shifts_deleted": 0}
+        assert result == {
+            "created": 0,
+            "deleted": 0,
+            "bookings_in_scope": 0,
+            "skipped": 0,
+        }
         db.query.assert_not_called()
 
     def test_boundary_none_booking(self):
         db = MagicMock()
         result = handle_booking_cancelled(db, None)
-        assert result == {"links_removed": 0, "auto_shifts_deleted": 0}
+        assert result == {
+            "created": 0,
+            "deleted": 0,
+            "bookings_in_scope": 0,
+            "skipped": 0,
+        }
         db.query.assert_not_called()
 
 

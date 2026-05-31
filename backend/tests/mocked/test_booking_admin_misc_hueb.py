@@ -49,6 +49,7 @@ def _booking(**kw):
         dropoff_time=time(10, 0),
         dropoff_airline_name="TUI", dropoff_flight_number="TOM1234",
         dropoff_destination="Tenerife",
+        flight_arrival_date=date_type(2026, 6, 8),
         flight_arrival_time=time(15, 0),
         flight_departure_time=time(12, 0),
     )

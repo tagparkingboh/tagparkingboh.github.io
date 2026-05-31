@@ -651,9 +651,7 @@ class TestRefreshMessageStatuses:
         mock_db = MagicMock()
 
         # Run async function
-        result = asyncio.get_event_loop().run_until_complete(
-            sms_service.refresh_message_statuses(mock_db)
-        )
+        result = asyncio.run(sms_service.refresh_message_statuses(mock_db))
 
         assert result["success"] is False
         assert "error" in result

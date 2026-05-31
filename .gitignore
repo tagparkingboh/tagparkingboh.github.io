@@ -35,6 +35,12 @@ venv/
 *.db
 *.sqlite3
 
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
 # Data files
 *.csv
 

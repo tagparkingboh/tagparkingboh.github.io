@@ -562,7 +562,13 @@ class TestWebhookEmailIntegration:
         actually contact Stripe — they only need the webhook to proceed past
         the configuration guard.
         """
-        with patch('main.is_stripe_configured', return_value=True):
+        async def _noop(*args, **kwargs):
+            return None
+
+        with patch('main.is_stripe_configured', return_value=True), \
+             patch('auto_roster.auto_create_or_extend_async', _noop), \
+             patch('roster_planner_runner.auto_link_booking_async', _noop), \
+             patch('dvla_compliance.check_and_alert_for_booking_async', _noop):
             yield
 
     def _create_mock_booking(self, booking_reference="TAG-TEST1234"):

@@ -527,8 +527,10 @@ class TestRebuildPickupExtensionBoundaries:
     def test_boundary_morning_wrap_start_lands_previous_day(self):
         """Morning arrivals 00:30/00:40/00:50 on June 17.
         2 missed pairs → start = 00:30 − 15 pickup-led base − 60 ext = 23:15
-        on June 16 (previous day). End = pickup_time(01:20) + 30 = 01:50 on
-        June 17. Shift spans midnight: starts on the day BEFORE the target."""
+        on June 16. End = pickup_time(01:20) + 30 = 01:50 on June 17.
+        Early pickup-led clusters are owned by the previous day's evening
+        shift, so the materialised shift date is June 15 even though the
+        custom start time is 23:15 on June 16."""
         bookings = []
         for i, (arr_h, arr_m) in enumerate([(0, 30), (0, 40), (0, 50)]):
             pt_total = arr_h * 60 + arr_m + 30  # no wrap, all stay on pickup_date
@@ -547,15 +549,13 @@ class TestRebuildPickupExtensionBoundaries:
             mk_settings(start_buffer_minutes=30, end_buffer_minutes=30),
         )
         from db_models import RosterShift
-        # Shift's start date is the previous day (16th) because the start
-        # buffer pushed it across midnight. Cluster_start.date() is still 17th
-        # (first event_time = arrival 00:30 on the 17th), so the rebuild for
-        # target {17th} owns this cluster — but the materialised shift sits
-        # on the 16th. Locking that semantic here.
+        # The custom start is 23:15 on the 16th, but the early-arrival
+        # ownership rule assigns pickup-led clusters before 02:00 to the
+        # previous day's evening shift.
         new_shifts = [a for a in db._added if isinstance(a, RosterShift)]
         assert len(new_shifts) == 1
         s = new_shifts[0]
-        assert s.date == date(2026, 6, 16)
+        assert s.date == date(2026, 6, 15)
         assert s.start_time == time(23, 15)
         assert s.end_date == date(2026, 6, 17)
         assert s.end_time == time(1, 50)

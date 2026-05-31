@@ -517,6 +517,18 @@ def select_date_in_picker(page: Page, date_obj, picker_id: str):
     time.sleep(0.5)
 
 
+def dismiss_busy_warning(page: Page):
+    """Dismiss the capacity warning modal when it appears during E2E flows."""
+    try:
+        warning_btn = page.locator(".busy-warning-btn")
+        if warning_btn.is_visible(timeout=1000):
+            print("    Dismissing busy-warning modal...")
+            warning_btn.click()
+            time.sleep(0.5)
+    except Exception:
+        pass
+
+
 def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
     """Create a single test booking using the booking form."""
 
@@ -565,6 +577,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         # Select Drop-off Date using the date picker
         print("    Selecting drop-off date...")
         select_date_in_picker(page, dropoff_date, "dropoffDate")
+        dismiss_busy_warning(page)
         time.sleep(1)
 
         # Select Airline
@@ -611,17 +624,20 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         flight_time_input = page.locator("#manualFlightTime")
         flight_time_input.wait_for(state="visible", timeout=10000)
         flight_time_input.fill(test_case["dropoff_time"])
+        dismiss_busy_warning(page)
         time.sleep(1)
 
         # Select Drop-off Time Slot - randomly select 2hr or 2.75hr slot
         print("    Selecting drop-off time slot...")
         time.sleep(2)  # Wait for slots to appear
+        dismiss_busy_warning(page)
         slot_cards = page.locator(".dropoff-slot .slot-card")
         slot_count = slot_cards.count()
         if slot_count > 0:
             # Randomly select a slot (usually 2 options: 2hr and 2.75hr windows)
             random_index = random.randint(0, slot_count - 1)
             selected_slot = slot_cards.nth(random_index)
+            dismiss_busy_warning(page)
             selected_slot.click()
             # Get the slot label text for logging
             try:
@@ -681,6 +697,7 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
 
         # Return flight details
         print("    Filling return flight details...")
+        dismiss_busy_warning(page)
         time.sleep(1)
 
         # Select Return Airline
@@ -717,12 +734,14 @@ def create_booking(page: Page, test_case: dict, test_num: int) -> bool:
         arrival_time_input = page.locator("#manualArrivalFlightTime")
         if arrival_time_input.is_visible():
             arrival_time_input.fill(test_case["return_time"])
+        dismiss_busy_warning(page)
         time.sleep(1)
 
         # ============ STEP 2: Package Selection ============
         print("  Proceeding to Step 2 (Package Selection)...")
 
         # Click Continue to Package Selection button
+        dismiss_busy_warning(page)
         package_btn = page.locator("button:has-text('Continue to Package Selection')")
         if package_btn.is_visible(timeout=5000):
             package_btn.click()

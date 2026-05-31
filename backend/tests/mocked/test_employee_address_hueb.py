@@ -209,6 +209,7 @@ class TestEmployeeBookings:
             dropoff_time=time(10, 0),
             pickup_date=date_type(2026, 6, 8),
             pickup_time=time(11, 30),
+            flight_arrival_date=date_type(2026, 6, 8),
             flight_arrival_time=time(15, 0),
             flight_departure_time=time(12, 0),
             dropoff_flight_number="TOM1",

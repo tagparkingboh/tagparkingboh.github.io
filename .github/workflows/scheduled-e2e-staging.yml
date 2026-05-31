@@ -54,6 +54,80 @@ jobs:
         run: |
           python3 run_staging_batches.py --matrix --size 4 --post-results
 
+      - name: Create E2E summary
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          root = Path("backend/staging_logs")
+          root.mkdir(parents=True, exist_ok=True)
+
+          logs = sorted(root.glob("**/test_*.log"))
+          rows = []
+          for log_path in logs:
+              text = log_path.read_text(errors="ignore")
+              env_name = log_path.parent.name if log_path.parent != root else "single"
+              test_name = log_path.stem.removeprefix("test_")
+              passed = "Successful: 1" in text and "Failed: 0" in text
+              reference_match = re.search(r"Reference:\s*([A-Z0-9-]+)", text)
+              error_line = ""
+              if not passed:
+                  for line in reversed(text.splitlines()):
+                      stripped = line.strip()
+                      if "Error:" in stripped or "Timeout" in stripped or "Failed:" in stripped:
+                          error_line = stripped
+                          break
+              rows.append(
+                  {
+                      "environment": env_name,
+                      "test": test_name,
+                      "passed": passed,
+                      "reference": reference_match.group(1) if reference_match else "",
+                      "error": error_line,
+                  }
+              )
+
+          lines = ["## E2E Staging Matrix Summary", ""]
+          if not rows:
+              lines.append("No per-test logs were found in `backend/staging_logs`.")
+          else:
+              by_env = {}
+              for row in rows:
+                  by_env.setdefault(row["environment"], []).append(row)
+
+              lines.extend(["| Environment | Passed | Failed | Total |", "|-------------|--------|--------|-------|"])
+              for env_name in sorted(by_env):
+                  env_rows = by_env[env_name]
+                  passed_count = sum(1 for row in env_rows if row["passed"])
+                  failed_count = len(env_rows) - passed_count
+                  lines.append(f"| `{env_name}` | {passed_count} | {failed_count} | {len(env_rows)} |")
+
+              failures = [row for row in rows if not row["passed"]]
+              if failures:
+                  lines.extend(["", "### Failed E2E Tests", "", "| Environment | Test | Last error |", "|-------------|------|------------|"])
+                  for row in failures:
+                      error = row["error"].replace("|", "\\|") or "No error line found in test log."
+                      lines.append(f"| `{row['environment']}` | `{row['test']}` | {error} |")
+
+              references = [row for row in rows if row["reference"]]
+              if references:
+                  lines.extend(["", "### Created Booking References", "", "| Environment | Test | Reference |", "|-------------|------|-----------|"])
+                  for row in references:
+                      lines.append(f"| `{row['environment']}` | `{row['test']}` | `{row['reference']}` |")
+
+          summary = "\n".join(lines) + "\n"
+          Path("backend/staging_logs/summary.md").write_text(summary)
+
+          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if step_summary:
+              with open(step_summary, "a", encoding="utf-8") as handle:
+                  handle.write(summary)
+          print(summary)
+          PY
+
       - name: Upload per-test logs
         if: always()
         uses: actions/upload-artifact@v4
