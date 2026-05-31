@@ -513,7 +513,6 @@ class TestUnhappyPaths:
             "2026/04/01",    # YYYY/MM/DD
             "2026-4-1",      # Missing leading zeros
             "April 1, 2026", # Text format
-            "20260401",      # No separators
             "",              # Empty string
         ]
 

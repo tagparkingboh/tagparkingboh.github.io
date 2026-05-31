@@ -961,16 +961,34 @@ class TestCompleteBookingEndpoint:
 class TestProcessAllPendingEmails:
     """Tests for the main email processing function that includes thank you emails."""
 
+    @patch('email_scheduler.process_pending_dvla_rechecks')
+    @patch('email_scheduler.process_pending_founder_followups')
     @patch('email_scheduler.process_pending_thankyou_emails')
     @patch('email_scheduler.process_pending_2day_reminders')
     @patch('email_scheduler.process_pending_welcome_emails')
+    @patch('email_scheduler.get_db')
+    @patch('email_scheduler.is_email_enabled', return_value=True)
     def test_process_all_includes_thankyou_emails(
-        self, mock_welcome, mock_reminders, mock_thankyou
+        self,
+        mock_enabled,
+        mock_get_db,
+        mock_welcome,
+        mock_reminders,
+        mock_thankyou,
+        mock_founder_followups,
+        mock_dvla_rechecks,
     ):
         """Test that process_all_pending_emails includes thank you emails."""
         from email_scheduler import process_all_pending_emails
+
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
+
         process_all_pending_emails()
 
-        mock_welcome.assert_called_once()
-        mock_reminders.assert_called_once()
-        mock_thankyou.assert_called_once()
+        mock_welcome.assert_called_once_with(mock_db)
+        mock_reminders.assert_called_once_with(mock_db)
+        mock_thankyou.assert_called_once_with(mock_db)
+        mock_founder_followups.assert_called_once_with(mock_db)
+        mock_dvla_rechecks.assert_called_once_with(mock_db)
+        mock_db.close.assert_called_once()
