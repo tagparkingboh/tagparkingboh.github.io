@@ -73,6 +73,7 @@ def log_promo(message: str, data: dict = None):
 
 from fastapi import FastAPI, HTTPException, Query, Request, Header, Depends, Body, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import text, or_, case, func
@@ -710,6 +711,17 @@ class BookingResponse(BaseModel):
 async def root():
     """Health check endpoint."""
     return {"status": "healthy", "service": "TAG Parking Booking API"}
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots_txt():
+    """Return crawler policy for requests that hit the API host directly."""
+    return (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "\n"
+        "Sitemap: https://tagparking.co.uk/sitemap.xml\n"
+    )
 
 
 @app.post("/api/slots/available", response_model=AvailableSlotsResponse)
