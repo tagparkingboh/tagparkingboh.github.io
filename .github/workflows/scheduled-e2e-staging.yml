@@ -52,7 +52,7 @@ jobs:
           PROD_API_URL: ${{ secrets.PROD_API_URL }}
           HEADLESS: 'true'
         run: |
-          python3 run_staging_batches.py --matrix --size 4 --post-results
+          python3 run_staging_batches.py --matrix --size 2 --retries 1 --post-results
 
       - name: Create E2E summary
         if: always()

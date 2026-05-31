@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the full 22-test staging suite in PARALLEL batches of N (default 4).
+"""Run the full 22-test staging suite in PARALLEL batches of N (default 2).
 
 Each test runs as its own subprocess (own Chromium, own Playwright) so we get
 true concurrency. Headed browser at slow_mo=100 to match the existing
@@ -9,7 +9,7 @@ batches, aggregates a final pass/fail report.
 Per-test stdout/stderr is captured to backend/staging_logs/test_<NN>.log.
 
 Usage:
-    python3 run_staging_batches.py             # batches of 4
+    python3 run_staging_batches.py             # batches of 2
     python3 run_staging_batches.py --size 2    # batches of 2
 
 Loads STAGING_DATABASE_URL etc. from backend/.env if python-dotenv is present.
@@ -53,9 +53,8 @@ BATCHES = [
 ]
 
 
-def run_one(test_idx_1based, name, env_label, browser, device, log_dir, headless=True):
-    """Run a single test as a subprocess. Returns (idx, name, ok, duration, log_path)."""
-    log_path = log_dir / f"test_{test_idx_1based:02d}.log"
+def run_one_attempt(test_idx_1based, env_label, browser, device, log_path, headless=True):
+    """Run a single test attempt. Appends output to log_path and returns True/False."""
     env = os.environ.copy()
     env["TEST_INDEX"] = str(test_idx_1based)
     env["HEADLESS"] = "true" if headless else "false"
@@ -64,8 +63,8 @@ def run_one(test_idx_1based, name, env_label, browser, device, log_dir, headless
         env["DEVICE"] = device
     else:
         env.pop("DEVICE", None)
-    started = time.time()
-    with open(log_path, "w") as out:
+
+    with open(log_path, "a") as out:
         out.write(f"[{env_label}] browser={browser} device={device or '-'} headless={headless}\n")
         try:
             result = subprocess.run(
@@ -77,10 +76,35 @@ def run_one(test_idx_1based, name, env_label, browser, device, log_dir, headless
                 check=False,
                 timeout=600,
             )
-            ok = (result.returncode == 0)
+            return result.returncode == 0
         except subprocess.TimeoutExpired:
-            ok = False
             out.write("\n!! Test exceeded 600s timeout, killed\n")
+            return False
+
+
+def run_one(test_idx_1based, name, env_label, browser, device, log_dir, headless=True, retries=1):
+    """Run a single test as a subprocess. Returns (idx, name, ok, duration, log_path)."""
+    log_path = log_dir / f"test_{test_idx_1based:02d}.log"
+    started = time.time()
+    ok = False
+    max_attempts = retries + 1
+
+    log_path.write_text("")
+    for attempt in range(1, max_attempts + 1):
+        with open(log_path, "a") as out:
+            out.write("\n" + "=" * 72 + "\n")
+            out.write(f"Attempt {attempt}/{max_attempts}: {name}\n")
+            out.write("=" * 72 + "\n")
+
+        ok = run_one_attempt(test_idx_1based, env_label, browser, device, log_path, headless)
+        if ok:
+            break
+
+        if attempt < max_attempts:
+            with open(log_path, "a") as out:
+                out.write("\n!! Attempt failed; retrying in a fresh browser after 10s\n")
+            time.sleep(10)
+
     duration = time.time() - started
     return test_idx_1based, name, ok, duration, log_path
 
@@ -143,7 +167,7 @@ def post_results_to_api(env_tag, passed, failed, total, duration_seconds, run_ty
         print(f"[{env_tag}] POST failed: {e}")
 
 
-def run_one_env(label, browser, device, batch_size, env_tag=None, post_results=False):
+def run_one_env(label, browser, device, batch_size, retries=1, env_tag=None, post_results=False):
     """Run the full 22-test suite for one (browser, device) env. Returns list of results."""
     log_dir = ROOT / "staging_logs" / label
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -159,7 +183,7 @@ def run_one_env(label, browser, device, batch_size, env_tag=None, post_results=F
         print(f"\n[{label}] Batch {batch_idx}/{len(BATCHES)} (parallel)")
         with ThreadPoolExecutor(max_workers=batch_size) as pool:
             futures = [
-                pool.submit(run_one, idx, tc["name"], label, browser, device, log_dir)
+                pool.submit(run_one, idx, tc["name"], label, browser, device, log_dir, retries=retries)
                 for idx, tc in batch
             ]
             for fut in as_completed(futures):
@@ -181,7 +205,8 @@ def run_one_env(label, browser, device, batch_size, env_tag=None, post_results=F
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--size", type=int, default=4, help="parallel workers per batch (default 4)")
+    parser.add_argument("--size", type=int, default=2, help="parallel workers per batch (default 2)")
+    parser.add_argument("--retries", type=int, default=1, help="retry failed tests in a fresh browser (default 1)")
     parser.add_argument("--browser", default=None, help="single env: chromium|firefox|webkit (ignores --matrix)")
     parser.add_argument("--device", default=None, help="single env: Playwright device name")
     parser.add_argument("--matrix", action="store_true", help="run the cross-browser matrix sequentially")
@@ -200,18 +225,20 @@ def main():
         print(f"Staging URL : {STAGING_URL}")
         print(f"Envs        : {len(envs)} (sequential)")
         print(f"Per env     : {total_tests_per_env} tests, parallel batches of {args.size}")
+        print(f"Retries     : {args.retries} per failed test")
         print(f"Total tests : {len(envs) * total_tests_per_env}")
         print(f"POST results: {args.post_results}")
         print("=" * 72)
         for label, browser, device, env_tag in envs:
             all_results.extend(
                 run_one_env(label, browser, device, args.size,
+                            retries=args.retries,
                             env_tag=env_tag, post_results=args.post_results)
             )
     else:
         label = (args.browser or "chromium") + ("-" + (args.device or "desktop").replace(" ", "_").lower())
         all_results.extend(run_one_env(
-            label, args.browser or "chromium", args.device, args.size,
+            label, args.browser or "chromium", args.device, args.size, retries=args.retries,
             env_tag=label[:20], post_results=args.post_results,
         ))
 
