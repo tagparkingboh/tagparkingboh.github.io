@@ -18092,6 +18092,21 @@ def _verify_sendgrid_signature(public_key_b64: str, signature_b64: str, timestam
         return False
 
 
+def _is_sendgrid_test_email(email: str) -> bool:
+    """Suppress founder alerts for reserved/test-only email domains."""
+    if not email or "@" not in email:
+        return False
+
+    domain = email.rsplit("@", 1)[1].strip().lower().rstrip(".")
+    return (
+        domain in {"example.com", "example.net", "example.org", "localhost"}
+        or domain.endswith(".example")
+        or domain == "test"
+        or domain.endswith(".test")
+        or domain.endswith(".invalid")
+    )
+
+
 @app.post("/api/webhooks/sendgrid")
 async def webhook_sendgrid(
     request: Request,
@@ -18163,6 +18178,10 @@ async def webhook_sendgrid(
             continue
 
         customer_email = event.get("email") or "(unknown)"
+        if _is_sendgrid_test_email(customer_email):
+            print(f"[SENDGRID WEBHOOK] Suppressed test email alert for {customer_email}")
+            continue
+
         reason = event.get("reason") or event.get("response") or ""
 
         # Look up most-recent booking for this email so the alert has context.

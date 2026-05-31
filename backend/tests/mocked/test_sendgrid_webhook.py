@@ -70,7 +70,7 @@ class TestEventFiltering:
     @patch("email_service.send_bounce_alert_email", return_value=True)
     def test_bounce_event_triggers_alert(self, mock_alert):
         payload = [
-            {"email": "x@example.com", "event": "bounce",
+            {"email": "x@customer.testmail.co.uk", "event": "bounce",
              "reason": "550 No such user", "sg_event_id": "evt-1"}
         ]
         resp = TestClient(app).post("/api/webhooks/sendgrid", json=payload)
@@ -78,7 +78,7 @@ class TestEventFiltering:
         assert resp.json() == {"received": 1, "alerted": 1}
         assert mock_alert.call_count == 1
         kwargs = mock_alert.call_args.kwargs
-        assert kwargs["customer_email"] == "x@example.com"
+        assert kwargs["customer_email"] == "x@customer.testmail.co.uk"
         assert kwargs["event_type"] == "bounce"
         assert "550" in kwargs["reason"]
 
@@ -108,6 +108,25 @@ class TestEventFiltering:
         payload = [{"email": "x@y.com", "event": "BOUNCE", "reason": "x"}]
         resp = TestClient(app).post("/api/webhooks/sendgrid", json=payload)
         assert resp.json()["alerted"] == 1
+
+    @patch("email_service.send_bounce_alert_email", return_value=True)
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "jane.smith@example.com",
+            "patch_test_8780b4fe@example.com",
+            "jo@x.test",
+            "user@example.org",
+            "user@example.net",
+            "user@subdomain.invalid",
+        ],
+    )
+    def test_reserved_test_email_domains_do_not_alert(self, mock_alert, email):
+        payload = [{"email": email, "event": "bounce", "reason": "test webhook"}]
+        resp = TestClient(app).post("/api/webhooks/sendgrid", json=payload)
+        assert resp.status_code == 200
+        assert resp.json() == {"received": 1, "alerted": 0}
+        mock_alert.assert_not_called()
 
 
 class TestMixedBatch:
@@ -429,7 +448,7 @@ class TestBookingLookup:
 
         resp = TestClient(app).post(
             "/api/webhooks/sendgrid",
-            json=[{"email": "found@example.com", "event": "bounce", "reason": "x"}],
+            json=[{"email": "found@customer.testmail.co.uk", "event": "bounce", "reason": "x"}],
         )
         assert resp.status_code == 200
         kwargs = mock_alert.call_args.kwargs
@@ -440,7 +459,7 @@ class TestBookingLookup:
         app.dependency_overrides[get_db] = lambda: iter([_empty_db()])
         resp = TestClient(app).post(
             "/api/webhooks/sendgrid",
-            json=[{"email": "stranger@example.com", "event": "bounce", "reason": "x"}],
+            json=[{"email": "stranger@customer.testmail.co.uk", "event": "bounce", "reason": "x"}],
         )
         assert resp.status_code == 200
         kwargs = mock_alert.call_args.kwargs
