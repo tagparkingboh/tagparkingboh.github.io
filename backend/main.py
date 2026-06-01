@@ -9514,7 +9514,7 @@ async def update_customer(
 # =============================================================================
 
 # Valid marketing source values
-VALID_MARKETING_SOURCES = ['newspaper', 'google', 'facebook', 'instagram', 'linkedin', 'afc_bournemouth', 'word_of_mouth', 'leaflet', 'tv', 'radio', 'other']
+VALID_MARKETING_SOURCES = ['newspaper', 'google', 'facebook', 'instagram', 'linkedin', 'afc_bournemouth', 'expectations_travel', 'word_of_mouth', 'leaflet', 'tv', 'radio', 'other']
 
 
 @app.get("/api/customers/heard-about-us-status")

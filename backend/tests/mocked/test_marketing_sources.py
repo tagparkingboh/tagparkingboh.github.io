@@ -34,6 +34,7 @@ VALID_MARKETING_SOURCES = [
     'instagram',
     'linkedin',
     'afc_bournemouth',
+    'expectations_travel',
     'word_of_mouth',
     'leaflet',
     'tv',
@@ -321,7 +322,8 @@ class TestValidMarketingSources:
     def test_all_valid_sources_defined(self):
         """All expected sources should be in VALID_MARKETING_SOURCES."""
         expected = ['newspaper', 'google', 'facebook', 'instagram',
-                   'linkedin', 'afc_bournemouth', 'word_of_mouth', 'leaflet', 'tv', 'radio', 'other']
+                   'linkedin', 'afc_bournemouth', 'expectations_travel',
+                   'word_of_mouth', 'leaflet', 'tv', 'radio', 'other']
 
         for source in expected:
             assert source in VALID_MARKETING_SOURCES
@@ -383,7 +385,7 @@ class TestSubmitMarketingSource:
     def test_submit_valid_source(self):
         """Should accept valid source without detail."""
         for source in ['google', 'facebook', 'instagram', 'newspaper',
-                      'linkedin', 'afc_bournemouth']:
+                      'linkedin', 'afc_bournemouth', 'expectations_travel']:
             ms = create_mock_marketing_source(source=source, source_detail=None)
 
             assert ms.source == source

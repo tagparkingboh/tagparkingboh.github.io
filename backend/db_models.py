@@ -1190,7 +1190,8 @@ class MarketingSource(Base):
     id = Column(Integer, primary_key=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, unique=True)
 
-    # Source dropdown value: newspaper, google, facebook, instagram, linkedin, afc_bournemouth, other
+    # Source dropdown value: newspaper, google, facebook, instagram, linkedin,
+    # afc_bournemouth, expectations_travel, word_of_mouth, leaflet, tv, radio, other
     source = Column(String(50), nullable=False)
     # Free-text detail (only populated when source = 'other')
     source_detail = Column(String(255), nullable=True)
